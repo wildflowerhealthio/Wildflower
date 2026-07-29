@@ -10,8 +10,7 @@ interface SliceSenderForwarderProps {
 
 /**
  * A slice's sender-context provider, viewed through the widest sender
- * the forwarder feeds it. A concrete slice provider
- * (e.g. `CollectorSenderProvider`) declares `send` as
+ * the forwarder feeds it. A concrete slice provider declares `send` as
  * its own narrower sender; it fits here by props contravariance —
  * `transport.sendMessage` (the function-intersection over every wired
  * bridge's outbound message) is assignable to any single slice sender,

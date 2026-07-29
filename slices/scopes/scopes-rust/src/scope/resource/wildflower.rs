@@ -54,6 +54,12 @@ pub enum WildflowerResource {
     /// The tunnel/relay settings singleton (`/tunnel`): read state (`.r`) and
     /// replace settings (`.u`).
     TunnelSettings,
+    /// The on-device sniffer webview (`/sniffer`): drive a sniffing session
+    /// (`.c` — open/navigate the webview, script page actions, dispose) and
+    /// read its captured-activity event stream (`.r`). The stream carries the
+    /// sniffed pages' response bodies, so a read is as sensitive as the
+    /// account credentials that produced them.
+    Sniffer,
 }
 
 impl WildflowerResourceScope {
@@ -118,6 +124,7 @@ impl WildflowerResource {
             "Apps" => Some(WildflowerResource::Apps),
             "Accounts" => Some(WildflowerResource::Accounts),
             "TunnelSettings" => Some(WildflowerResource::TunnelSettings),
+            "Sniffer" => Some(WildflowerResource::Sniffer),
             _ => None,
         }
     }
@@ -131,6 +138,7 @@ impl WildflowerResource {
             WildflowerResource::Apps => "Apps",
             WildflowerResource::Accounts => "Accounts",
             WildflowerResource::TunnelSettings => "TunnelSettings",
+            WildflowerResource::Sniffer => "Sniffer",
         }
     }
 }

@@ -1,55 +1,58 @@
 //! Rust-side bridge between `tauri-plugin-native-webview`'s native webview and
-//! the sniffer's `BRIDGE_EVENT` event bus. See
+//! the sniffer's `SnifferEvents` stream (fanned out to clients by
+//! `browser-sniffer-rust`'s `/sniffer/events` WebSocket). See
 //! [`Tauri Host Explanation.md`](../../docs/Tauri%20Host%20Explanation.md) for
 //! the full data-plane / transport plumbing.
 //!
 //! - **Native webview → host** ([`install`]): a long-lived
-//!   `Channel<NativeWebviewEvent>` decodes each plugin event and re-emits onto
-//!   `BRIDGE_EVENT`. `Message` is validated ([`validate_native_webview_message`])
-//!   and its inner payload forwarded; `Hidden` is synthesized into a host-origin
-//!   `UserDismissed` control message on `BRIDGE_EVENT` for the collector SPA, and
-//!   `Disposed` into a host-origin `SnifferDisposed` one. `Hidden` is the
+//!   `Channel<NativeWebviewEvent>` decodes each plugin event and publishes it
+//!   into `SnifferEvents`. `Message` is validated
+//!   ([`validate_native_webview_message`]) and its inner payload forwarded;
+//!   `Hidden` is synthesized into a host-origin `UserDismissed` lifecycle
+//!   event, and `Disposed` into a `SnifferDisposed` one. `Hidden` is the
 //!   user-dismissal signal *in practice* — see `classify_event` for the caveat
-//!   that a programmatic `hide()` would also emit it. The two stay separate tags
-//!   because a dispose is also the normal outcome of the SPA-driven
-//!   `SniffingComplete` teardown, so it arrives on every run and the SPA must be
-//!   able to tell it apart from a user's dismissal. The channel is cloned and
-//!   reused across opens — `Clone` preserves the handler, so it fires for every
-//!   native webview.
-//! - **Host → native webview** ([`forward_to_native_webview`]): mobile-only.
-//!   Desktop's content webview is a Tauri webview that receives
-//!   `app.emit('bridge', …)` natively.
-//! - **Desktop data plane**: the content webview can't emit on `BRIDGE_EVENT`
-//!   (its capability withholds the `emit` grant), so it rides the
-//!   [`native_webview_data_plane_emit`] command — the desktop counterpart of
-//!   the mobile `Message` allowlist gate.
+//!   that a programmatic `hide()` would also emit it. The two stay separate
+//!   tags because a dispose is also the normal outcome of the client-driven
+//!   `DELETE /sniffer/webview` teardown, so it arrives on every run and the
+//!   client must be able to tell it apart from a user's dismissal. The channel
+//!   is cloned and reused across opens — `Clone` preserves the handler, so it
+//!   fires for every native webview.
+//! - **Host → native webview** ([`forward_to_native_webview`]): the
+//!   `evaluate_js` forward the `SnifferWebviewHandle::forward_to_page` port
+//!   op rides, on **every** platform (the retired bridge had a desktop
+//!   direct-bus path; HTTP clients have no bus, so desktop now forwards the
+//!   same way mobile always did).
+//! - **Desktop data plane**: the content webview holds no bus grant at all;
+//!   its web→host stream rides the [`native_webview_data_plane_emit`]
+//!   command — the desktop counterpart of the mobile `Message` allowlist gate.
 
 use std::borrow::Cow;
 use std::fmt;
 
+use browser_sniffer_rust::domain::events as event_tags;
+use browser_sniffer_rust::SnifferEvents;
 use serde::de::{self, MapAccess, Visitor};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 use shared_structures_rust::bridge::BRIDGE_EVENT;
 use tauri::ipc::{Channel, InvokeResponseBody};
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Manager};
 use tauri_plugin_log::log;
 use tauri_plugin_native_webview::NativeWebviewEvent;
 
-use crate::events;
-
-/// The web→host data-plane tags the sniffer's native-webview page may raise on
-/// the bridge. See [`crate::events`] for the security rationale — control tags
-/// are excluded so an untrusted page can't spoof them.
-/// [`tests::data_plane_tags_match_ts`] drift-guards the literals.
+/// The web→host data-plane tags the sniffer's native-webview page may raise.
+/// Sourced from `browser-sniffer-rust`'s tag constants — the same strings the
+/// WebSocket contract is pinned to — so the gate and the stream can't drift.
+/// Control/lifecycle tags are deliberately excluded so an untrusted page can't
+/// spoof them; [`tests::data_plane_tags_match_ts`] drift-guards the literals.
 const NATIVE_WEBVIEW_DATA_PLANE_TAGS: &[&str] = &[
-    events::PAGE_LOADED,
-    events::RESPONSE_START,
-    events::RESPONSE_DATA,
-    events::RESPONSE_FINISHED,
-    events::REQUEST_ERROR,
-    events::CANCELLED,
-    events::LOG,
+    event_tags::PAGE_LOADED,
+    event_tags::RESPONSE_START,
+    event_tags::RESPONSE_DATA,
+    event_tags::RESPONSE_FINISHED,
+    event_tags::REQUEST_ERROR,
+    event_tags::CANCELLED,
+    event_tags::LOG,
 ];
 
 /// Managed state wrapping the [`Channel`] handed to each plugin `open` call.
@@ -61,16 +64,23 @@ pub(crate) struct NativeWebviewChannel {
     pub(crate) channel: Channel<NativeWebviewEvent>,
 }
 
+/// Managed state carrying the `SnifferEvents` publisher for the desktop
+/// data-plane command (which only receives an `AppHandle`).
+struct ManagedSnifferEvents {
+    events: SnifferEvents,
+}
+
 /// Build the channel, register its handler, and stash the
-/// [`NativeWebviewChannel`] state on the app. Call once from
+/// [`NativeWebviewChannel`] + the events publisher on the app. Call once from
 /// `attach_browser_sniffer`.
-pub(crate) fn install(app: &AppHandle) {
-    let app_handle = app.clone();
+pub(crate) fn install(app: &AppHandle, events: SnifferEvents) {
+    let channel_events = events.clone();
     let channel: Channel<NativeWebviewEvent> = Channel::new(move |body| {
-        dispatch_body(&app_handle, &body);
+        dispatch_body(&channel_events, &body);
         Ok(())
     });
     app.manage(NativeWebviewChannel { channel });
+    app.manage(ManagedSnifferEvents { events });
 }
 
 /// The native-webview-side bridge envelope a `NativeWebviewEvent::Message`
@@ -92,10 +102,10 @@ struct NativeWebviewEnvelope<'a> {
 /// allowlist check, while rejecting any duplicate top-level key.
 ///
 /// Hand-written (not `#[derive(Deserialize)]`) so it fails on a duplicate of
-/// *any* key, not just `_tag`: this guard re-emits the raw bytes verbatim, so it
-/// must never accept bytes that last-wins serde and a first-wins downstream
-/// reader would interpret differently. A missing / non-string / escaped `_tag`
-/// also fails to decode and the message is dropped (fail-closed).
+/// *any* key, not just `_tag`: this guard re-publishes the raw bytes verbatim,
+/// so it must never accept bytes that last-wins serde and a first-wins
+/// downstream reader would interpret differently. A missing / non-string /
+/// escaped `_tag` also fails to decode and the message is dropped (fail-closed).
 struct InnerPayload<'a> {
     tag: &'a str,
 }
@@ -147,17 +157,18 @@ impl<'de> Deserialize<'de> for InnerPayload<'de> {
 }
 
 /// Validate an untrusted native-webview `Message` envelope and return the inner
-/// payload to re-emit verbatim on `BRIDGE_EVENT`, or an `Err` describing why it
-/// was dropped (logged at warn by the caller).
+/// payload to publish verbatim into the event stream, or an `Err` describing
+/// why it was dropped (logged at warn by the caller).
 ///
 /// Security (the mobile path's load-bearing guard; desktop's counterpart is
 /// [`data_plane_value_is_allowed`]): the native webview hosts an arbitrary
 /// third-party page that can reach the native bridge directly, so both the
 /// envelope `event` and the inner `_tag` are attacker-controlled. We require the
 /// envelope target `BRIDGE_EVENT` AND the inner `_tag` be an allowlisted
-/// data-plane tag ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) — re-emitting anything
-/// else would let a hostile page fabricate a data event, prematurely raise
-/// `SniffingComplete`, or spoof a sibling slice's control tag.
+/// data-plane tag ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) — publishing anything
+/// else would let a hostile page fabricate a data event or forge the
+/// host-synthesized `UserDismissed` / `SnifferDisposed` lifecycle signals
+/// (cutting an `AwaitUserDismiss` hold short).
 fn validate_native_webview_message(envelope_json: &str) -> Result<&RawValue, Cow<'static, str>> {
     let envelope: NativeWebviewEnvelope = serde_json::from_str(envelope_json).map_err(|error| {
         Cow::Owned(format!(
@@ -188,53 +199,55 @@ fn validate_native_webview_message(envelope_json: &str) -> Result<&RawValue, Cow
 }
 
 /// The action [`dispatch_body`] takes for a decoded [`NativeWebviewEvent`],
-/// factored out so the dispatch decision is unit-testable without an
-/// `AppHandle`. A `ReEmit` borrows its payload from the event it was decoded
-/// from, so the lifetime ties the two together.
+/// factored out so the dispatch decision is unit-testable without a channel. A
+/// `Publish` borrows its payload from the event it was decoded from, so the
+/// lifetime ties the two together.
 #[derive(Debug)]
 enum BridgeAction<'a> {
-    /// Re-emit this inner payload verbatim on `BRIDGE_EVENT`.
-    ReEmit(&'a RawValue),
+    /// Publish this inner payload verbatim into the event stream.
+    Publish(&'a RawValue),
     /// Drop a `Message` that failed envelope / allowlist validation; the `Cow`
     /// is the warn-logged reason.
     Drop(Cow<'static, str>),
-    /// Synthesize a host-origin control envelope `{"_tag": tag}` and emit it on
-    /// `BRIDGE_EVENT`. Used for the `Hidden` → `UserDismissed` and
-    /// `Disposed` → `SnifferDisposed` signals — the payload is host-generated,
-    /// not forwarded from the page.
-    EmitControl(&'static str),
+    /// Synthesize a host-origin lifecycle event `{"_tag": tag}` and publish it.
+    /// Used for the `Hidden` → `UserDismissed` and `Disposed` →
+    /// `SnifferDisposed` signals — the payload is host-generated, not forwarded
+    /// from the page.
+    PublishLifecycle(&'static str),
 }
 
-/// Decide what to do with a decoded native-webview event. Pure (no `AppHandle`,
-/// no I/O) so the security-critical `Message` validation and the lifecycle
-/// no-emit arms are unit-testable; [`dispatch_body`] performs the effects.
+/// Decide what to do with a decoded native-webview event. Pure (no channel, no
+/// I/O) so the security-critical `Message` validation and the lifecycle arms
+/// are unit-testable; [`dispatch_body`] performs the effects.
 fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
     match event {
         NativeWebviewEvent::Message { payload } => match validate_native_webview_message(payload) {
-            Ok(inner_payload) => BridgeAction::ReEmit(inner_payload),
+            Ok(inner_payload) => BridgeAction::Publish(inner_payload),
             Err(reason) => BridgeAction::Drop(reason),
         },
-        // A `Hidden` is surfaced to the SPA as `UserDismissed` so an
+        // A `Hidden` is surfaced to the client as `UserDismissed` so an
         // `AwaitUserDismiss` step can stop waiting. It is the user-dismissal signal
         // *in practice* (desktop titlebar X / iOS Close/swipe / Android back →
         // `prevent_close` + `hide`; see plugin `lifecycle.rs`) — but note the
         // plugin's programmatic `hide()` command also emits `Hidden`, so this is a
         // faithful "user closed it" signal only because nothing calls `hide()` on
         // the `SNIFFER_WEBVIEW_ID` instance.
-        NativeWebviewEvent::Hidden => BridgeAction::EmitControl(events::USER_DISMISSED),
+        NativeWebviewEvent::Hidden => BridgeAction::PublishLifecycle(event_tags::USER_DISMISSED),
         // A `Disposed` is surfaced as its own `SnifferDisposed` tag rather than
-        // folded into `UserDismissed`: the SPA's own `SniffingComplete` teardown
-        // disposes the webview, so one arrives on every run. Kept distinct, the SPA
-        // can ignore it except while an `AwaitUserDismiss` step is waiting on a
-        // window that no longer exists.
-        NativeWebviewEvent::Disposed => BridgeAction::EmitControl(events::SNIFFER_DISPOSED),
+        // folded into `UserDismissed`: the client's own `DELETE /sniffer/webview`
+        // teardown disposes the webview, so one arrives on every run. Kept
+        // distinct, the client can ignore it except while an `AwaitUserDismiss`
+        // step is waiting on a window that no longer exists.
+        NativeWebviewEvent::Disposed => {
+            BridgeAction::PublishLifecycle(event_tags::SNIFFER_DISPOSED)
+        }
     }
 }
 
-/// Decode a channel body and dispatch to the bridge bus. Decode / emit
-/// failures log at warn — native-webview event delivery is best-effort, the
-/// listener loop continues.
-fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
+/// Decode a channel body and publish into the event stream. Decode failures
+/// log at warn — native-webview event delivery is best-effort, the listener
+/// loop continues.
+fn dispatch_body(events: &SnifferEvents, body: &InvokeResponseBody) {
     let json = match body {
         InvokeResponseBody::Json(string) => string,
         InvokeResponseBody::Raw(_) => {
@@ -252,41 +265,42 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
         }
     };
     match classify_event(&event) {
-        BridgeAction::ReEmit(inner_payload) => {
-            if let Err(error) = app.emit(BRIDGE_EVENT, inner_payload) {
-                log::warn!("[browser-sniffer] failed to re-emit native-webview message: {error}");
-            }
+        BridgeAction::Publish(inner_payload) => {
+            events.publish(inner_payload.get().to_owned());
         }
         BridgeAction::Drop(reason) => {
             log::warn!("[browser-sniffer] native-webview message dropped: {reason}");
         }
-        BridgeAction::EmitControl(tag) => {
-            match app.emit(BRIDGE_EVENT, serde_json::json!({ "_tag": tag })) {
-                // Log the success too, not just the failure: these tags are the
-                // host's only trace of a webview lifecycle transition, and "did the
-                // host see the dismissal and emit it?" has to be answerable from a
-                // log when a run ends earlier or later than a user expected.
-                Ok(()) => log::debug!("[browser-sniffer] emitted host control `{tag}`"),
-                Err(error) => {
-                    log::warn!("[browser-sniffer] failed to emit host control `{tag}`: {error}");
-                }
-            }
+        BridgeAction::PublishLifecycle(tag) => {
+            events.publish_lifecycle(tag);
+            // These tags are the host's only trace of a webview lifecycle
+            // transition, and "did the host see the dismissal and publish it?"
+            // has to be answerable from a log when a run ends earlier or later
+            // than a user expected.
+            log::debug!("[browser-sniffer] published host lifecycle `{tag}`");
         }
     }
 }
 
-/// Forward a `BRIDGE_EVENT` payload string into the native webview as a
-/// `window.__nativeWebviewReceive(...)` call. Mobile-only, invoked from the
-/// bridge listener in `lib.rs` for the native-webview-bound tags
-/// ([`events::PAGE_ACTION`](crate::events::PAGE_ACTION) /
-/// [`events::CANCEL_SNIFFER_REQUEST`](crate::events::CANCEL_SNIFFER_REQUEST));
-/// desktop's content webview receives `app.emit('bridge', …)` natively.
+/// Forward a tagged bridge envelope (`{"_tag":"PageAction",…}` /
+/// `{"_tag":"CancelSnifferRequest",…}`) into the native webview as a
+/// `window.__nativeWebviewReceive(...)` call — the
+/// `SnifferWebviewHandle::forward_to_page` port op, identical on every
+/// platform (both bootstraps install the receiver; see
+/// `browser-sniffer-tauri`'s `native-bridge.ts`).
 ///
-/// `payload_str` is the raw bridge envelope (`{"_tag":"PageAction", …}`), re-wrapped
-/// in `{"event":"bridge","payload":<envelope>}` to match the native-webview-side
-/// `makeNativeBridgeEventBus` `parseEnvelope`.
-#[cfg(any(target_os = "ios", target_os = "android"))]
-pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
+/// `envelope_json` is re-wrapped in `{"event":"bridge","payload":<envelope>}`
+/// to match the page-side `parseEnvelope`.
+///
+/// # Errors
+///
+/// A malformed envelope or a plugin failure. A **missing webview is `Ok`**:
+/// the collector cancels speculatively during teardown, so "no native webview
+/// open" is a benign no-op, not a failure the client can act on.
+pub(crate) fn forward_to_native_webview(
+    app: &AppHandle,
+    envelope_json: &str,
+) -> anyhow::Result<()> {
     use serde::Serialize;
     use tauri_plugin_native_webview::{EvaluateJsRequest, NativeWebviewExt};
 
@@ -300,62 +314,51 @@ pub(crate) fn forward_to_native_webview(app: &AppHandle, payload_str: &str) {
 
     // Parse as a borrowed `RawValue`: validates it's well-formed JSON (a
     // malformed payload must not inject broken script) and forwards verbatim.
-    let payload: &RawValue = match serde_json::from_str(payload_str) {
-        Ok(value) => value,
-        Err(error) => {
-            log::warn!(
-                "[browser-sniffer] forward_to_native_webview: undecodable bridge payload dropped: \
-                 {error}"
-            );
-            return;
-        }
-    };
-    let envelope_json = match serde_json::to_string(&OutboundEnvelope {
+    let payload: &RawValue = serde_json::from_str(envelope_json)
+        .map_err(|error| anyhow::anyhow!("undecodable forward envelope: {error}"))?;
+    let envelope = serde_json::to_string(&OutboundEnvelope {
         event: BRIDGE_EVENT,
         payload,
-    }) {
-        Ok(string) => string,
-        Err(error) => {
-            log::warn!(
-                "[browser-sniffer] forward_to_native_webview: failed to encode envelope: {error}"
-            );
-            return;
-        }
-    };
-    // Two-stage stringify: `envelope_json` is what the native-webview bridge
-    // parses; quoting it as a JS string literal escapes quotes/backslashes that
-    // would otherwise syntax-error the injected `evaluateJavaScript` script.
-    let quoted_envelope = serde_json::Value::String(envelope_json).to_string();
+    })
+    .map_err(|error| anyhow::anyhow!("failed to encode forward envelope: {error}"))?;
+    // Two-stage stringify: `envelope` is what the page-side receiver parses;
+    // quoting it as a JS string literal escapes quotes/backslashes that would
+    // otherwise syntax-error the injected `evaluateJavaScript` script.
+    let quoted_envelope = serde_json::Value::String(envelope).to_string();
     let script = format!("window.__nativeWebviewReceive({quoted_envelope})");
 
     if let Err(error) = app
         .native_webview()
         .evaluate_js(crate::SNIFFER_WEBVIEW_ID, EvaluateJsRequest { script })
     {
-        // Two failure modes hide behind one reject. The SPA emits Cancel
-        // speculatively, so a closed webview is benign/expected (debug);
-        // anything else dropped a real user action and stays at warn. We match
-        // the message string because the plugin's mobile `Error` carries only a
-        // string (`PluginInvoke`), not a kind.
-        const NO_WEBVIEW_OPEN: &str = "no native webview open";
+        // Two failure modes hide behind one reject, and the plugin's error
+        // carries only a string — match it. The collector cancels
+        // speculatively, so a closed webview is benign/expected (debug-log,
+        // `Ok`); anything else dropped a real action and is the caller's 500.
+        // Mobile spells it "no native webview open", desktop "no
+        // native-webview open".
         let message = error.to_string();
-        if message.contains(NO_WEBVIEW_OPEN) {
+        if message.contains("no native webview open") || message.contains("no native-webview open")
+        {
             log::debug!(
-                "[browser-sniffer] forward_to_native_webview: no native webview open (expected for \
-                 a speculative Cancel): {error}"
+                "[browser-sniffer] forward_to_page: no native webview open (expected for a \
+                 speculative Cancel): {error}"
             );
-        } else {
-            log::warn!("[browser-sniffer] forward_to_native_webview: plugin send failed: {error}");
+            return Ok(());
         }
+        return Err(anyhow::anyhow!(
+            "tauri-plugin-native-webview evaluate_js failed: {error}"
+        ));
     }
+    Ok(())
 }
 
-/// Validate a desktop content-webview data-plane payload before re-broadcasting
-/// it on `BRIDGE_EVENT`. The inner `_tag` must be allowlisted
+/// Validate a desktop content-webview data-plane payload before publishing it
+/// into the event stream. The inner `_tag` must be allowlisted
 /// ([`NATIVE_WEBVIEW_DATA_PLANE_TAGS`]) — the same gate mobile's
 /// [`validate_native_webview_message`] applies.
 ///
-/// This validates a parsed [`serde_json::Value`] and re-emits that *same*
+/// This validates a parsed [`serde_json::Value`] and publishes that *same*
 /// `Value`, so the [`InnerPayload`] duplicate-key concern doesn't apply: the
 /// bytes a downstream reader sees and the `_tag` we checked are necessarily one.
 fn data_plane_value_is_allowed(payload: &serde_json::Value) -> Result<(), Cow<'static, str>> {
@@ -376,25 +379,27 @@ fn data_plane_value_is_allowed(payload: &serde_json::Value) -> Result<(), Cow<'s
 /// Desktop-only transport for the content webview's web→host data-plane stream.
 ///
 /// The content webview is a Tauri webview loading arbitrary third-party content,
-/// so it is **not** trusted to emit on `BRIDGE_EVENT` directly:
-/// `capabilities/native-webview-window.json` withholds the `emit` grant and
-/// allows only this command, which allowlists the inner `_tag`
-/// ([`data_plane_value_is_allowed`]) before re-broadcasting — the desktop
-/// counterpart of the mobile [`validate_native_webview_message`] gate.
+/// so it is **not** trusted with any event-bus grant:
+/// `capabilities/native-webview-window.json` allows only this command, which
+/// allowlists the inner `_tag` ([`data_plane_value_is_allowed`]) before
+/// publishing into the sniffer event stream — the desktop counterpart of the
+/// mobile [`validate_native_webview_message`] gate.
 ///
-/// Best-effort: a rejected or unemittable payload is logged at warn and dropped.
-/// Registered unconditionally in the app's `invoke_handler`, but desktop-only in
+/// Best-effort: a rejected payload is logged at warn and dropped. Registered
+/// unconditionally in the app's `invoke_handler`, but desktop-only in
 /// practice — mobile's native webview can't reach Tauri commands.
 #[tauri::command]
 pub fn native_webview_data_plane_emit(app: AppHandle, payload: serde_json::Value) {
     match data_plane_value_is_allowed(&payload) {
-        Ok(()) => {
-            if let Err(error) = app.emit(BRIDGE_EVENT, &payload) {
+        Ok(()) => match serde_json::to_string(&payload) {
+            Ok(json) => app.state::<ManagedSnifferEvents>().events.publish(json),
+            Err(error) => {
                 log::warn!(
-                    "[browser-sniffer] desktop native-webview data-plane re-emit failed: {error}"
+                    "[browser-sniffer] desktop native-webview data-plane re-serialize failed: \
+                     {error}"
                 );
             }
-        }
+        },
         Err(reason) => {
             log::warn!(
                 "[browser-sniffer] desktop native-webview data-plane emit dropped: {reason}"
@@ -412,7 +417,21 @@ mod tests {
         classify_event, data_plane_value_is_allowed, validate_native_webview_message, BridgeAction,
         NATIVE_WEBVIEW_DATA_PLANE_TAGS,
     };
-    use crate::events;
+    use browser_sniffer_rust::domain::events as event_tags;
+
+    /// The control/lifecycle tags an untrusted page must never be able to
+    /// raise: the five retired bridge control verbs (now REST endpoints, kept
+    /// here as spoof probes — a page replaying old bridge traffic still gets
+    /// dropped) and the two host-synthesized lifecycle tags.
+    const SPOOFED_CONTROL_TAGS: &[&str] = &[
+        "SniffingComplete",
+        "Open",
+        "RequestSniffableWebView",
+        "SetSnifferStatus",
+        "EnsureSnifferVisible",
+        event_tags::USER_DISMISSED,
+        event_tags::SNIFFER_DISPOSED,
+    ];
 
     /// Drift guard: the Rust allowlist must match the sniffer's web→host
     /// emit set (`browser-sniffer-core`'s `messages.ts` page→host tags plus
@@ -436,7 +455,7 @@ mod tests {
     }
 
     /// Happy path: a `BRIDGE_EVENT` envelope wrapping an allowlisted
-    /// data-plane tag returns the inner payload verbatim for re-emit.
+    /// data-plane tag returns the inner payload verbatim for publishing.
     #[test]
     fn allowlisted_tag_forwards_inner_payload() {
         let json = format!(
@@ -463,34 +482,22 @@ mod tests {
         }
     }
 
-    /// Security: a control tag the page must NOT be able to raise (it would
-    /// prematurely end sniffing) is rejected even though the envelope targets
-    /// the right channel. This is the spoofing hole the inner-`_tag` allowlist
-    /// closes — the old `event_name`-only check let it through.
+    /// Security: a control/lifecycle tag the page must NOT be able to raise
+    /// (it could prematurely end sniffing or cut an `AwaitUserDismiss` hold
+    /// short) is rejected even though the envelope targets the right channel.
     #[test]
     fn spoofed_control_tag_is_rejected() {
-        for tag in [
-            events::SNIFFING_COMPLETE,
-            events::OPEN,
-            events::REQUEST_SNIFFABLE_WEBVIEW,
-            events::SET_SNIFFER_STATUS,
-            events::ENSURE_SNIFFER_VISIBLE,
-            // The two host-synthesized lifecycle tags: a page that could forge
-            // either would be able to cut an `AwaitUserDismiss` hold short, ending
-            // the run's collection early without the user ever closing the window.
-            events::USER_DISMISSED,
-            events::SNIFFER_DISPOSED,
-        ] {
+        for tag in SPOOFED_CONTROL_TAGS {
             let json = format!(r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"{tag}"}}}}"#);
             assert!(
                 validate_native_webview_message(&json).is_err(),
-                "control tag `{tag}` must not be re-emitted from a native-webview message"
+                "control tag `{tag}` must not be published from a native-webview message"
             );
         }
     }
 
-    /// An envelope targeting a different Tauri event name is refused — the
-    /// sniffer only ever multiplexes `BRIDGE_EVENT`.
+    /// An envelope targeting a different event name is refused — the sniffer
+    /// page only ever speaks the bridge envelope shape.
     #[test]
     fn unexpected_event_name_is_rejected() {
         let json = r#"{"event":"some-other-event","payload":{"_tag":"ResponseData"}}"#;
@@ -498,8 +505,7 @@ mod tests {
     }
 
     /// A missing or explicit-null `payload` is dropped as malformed rather
-    /// than re-emitting `null` onto the bus (the old code forwarded
-    /// `Value::Null`).
+    /// than publishing `null` into the stream.
     #[test]
     fn missing_or_null_payload_is_dropped() {
         let missing = format!(r#"{{"event":"{BRIDGE_EVENT}"}}"#);
@@ -519,10 +525,10 @@ mod tests {
     }
 
     /// Security: a duplicate top-level key is rejected. The validated `_tag`
-    /// (serde last-wins) could otherwise disagree with the verbatim-re-emitted
+    /// (serde last-wins) could otherwise disagree with the verbatim-published
     /// bytes a first-wins downstream reader sees — a duplicate `_tag` whose first
     /// occurrence is a rejected control tag must not slip past the allowlist. We
-    /// reject any duplicate key so the re-broadcast bytes are never attacker-shaped.
+    /// reject any duplicate key so the published bytes are never attacker-shaped.
     #[test]
     fn duplicate_keys_are_rejected() {
         let dup_tag = format!(
@@ -551,23 +557,15 @@ mod tests {
 
     /// Desktop transport security: the same control tags the mobile
     /// [`spoofed_control_tag_is_rejected`] guard blocks are rejected here too, so
-    /// a hostile content webview can't reach the command to forge them onto the
-    /// bus — the desktop counterpart of the mobile spoof-rejection guard.
+    /// a hostile content webview can't reach the command to forge them into the
+    /// stream — the desktop counterpart of the mobile spoof-rejection guard.
     #[test]
     fn desktop_data_plane_rejects_spoofed_control_tags() {
-        for tag in [
-            events::SNIFFING_COMPLETE,
-            events::OPEN,
-            events::REQUEST_SNIFFABLE_WEBVIEW,
-            events::SET_SNIFFER_STATUS,
-            events::ENSURE_SNIFFER_VISIBLE,
-            events::USER_DISMISSED,
-            events::SNIFFER_DISPOSED,
-        ] {
+        for tag in SPOOFED_CONTROL_TAGS {
             let payload = serde_json::json!({ "_tag": tag });
             assert!(
                 data_plane_value_is_allowed(&payload).is_err(),
-                "control tag `{tag}` must not be re-emittable through the desktop command"
+                "control tag `{tag}` must not be publishable through the desktop command"
             );
         }
     }
@@ -581,24 +579,24 @@ mod tests {
     }
 
     /// Dispatch classification: a `Message` wrapping an allowlisted data-plane
-    /// tag re-emits its inner payload verbatim (the load-bearing forward path).
+    /// tag publishes its inner payload verbatim (the load-bearing forward path).
     #[test]
-    fn message_with_allowlisted_tag_classifies_as_reemit() {
+    fn message_with_allowlisted_tag_classifies_as_publish() {
         let event = NativeWebviewEvent::Message {
             payload: format!(
                 r#"{{"event":"{BRIDGE_EVENT}","payload":{{"_tag":"ResponseData","id":"r1"}}}}"#
             ),
         };
         match classify_event(&event) {
-            BridgeAction::ReEmit(inner) => {
+            BridgeAction::Publish(inner) => {
                 assert_eq!(inner.get(), r#"{"_tag":"ResponseData","id":"r1"}"#);
             }
-            other => panic!("expected ReEmit, got {other:?}"),
+            other => panic!("expected Publish, got {other:?}"),
         }
     }
 
     /// Dispatch classification: a `Message` carrying a spoofed control tag is
-    /// dropped, never re-emitted — the security allowlist reached through the
+    /// dropped, never published — the security allowlist reached through the
     /// dispatch path, not just `validate_native_webview_message` in isolation.
     #[test]
     fn message_with_control_tag_classifies_as_drop() {
@@ -611,41 +609,41 @@ mod tests {
     }
 
     /// Dispatch classification: a `Hidden` (the user closing/dismissing the
-    /// sniffer window) is surfaced to the SPA as a host-origin `UserDismissed`
-    /// control message, carrying exactly that tag.
+    /// sniffer window) is surfaced to the client as a host-origin
+    /// `UserDismissed` lifecycle event, carrying exactly that tag.
     #[test]
-    fn hidden_classifies_as_user_dismissed_control() {
+    fn hidden_classifies_as_user_dismissed_lifecycle() {
         assert!(matches!(
             classify_event(&NativeWebviewEvent::Hidden),
-            BridgeAction::EmitControl(events::USER_DISMISSED)
+            BridgeAction::PublishLifecycle(event_tags::USER_DISMISSED)
         ));
     }
 
     /// Dispatch classification: a `Disposed` (the sniffer webview torn down) is
-    /// surfaced as its own `SnifferDisposed` control message — NOT as
-    /// `UserDismissed`. The SPA's own `SniffingComplete` teardown disposes the
-    /// webview, so one arrives on every run; conflating the two tags would make
-    /// ordinary shutdown indistinguishable from the user closing the window.
+    /// surfaced as its own `SnifferDisposed` lifecycle event — NOT as
+    /// `UserDismissed`. The client's own `DELETE /sniffer/webview` teardown
+    /// disposes the webview, so one arrives on every run; conflating the two
+    /// tags would make ordinary shutdown indistinguishable from the user
+    /// closing the window.
     #[test]
-    fn disposed_classifies_as_sniffer_disposed_control() {
+    fn disposed_classifies_as_sniffer_disposed_lifecycle() {
         assert!(matches!(
             classify_event(&NativeWebviewEvent::Disposed),
-            BridgeAction::EmitControl(events::SNIFFER_DISPOSED)
+            BridgeAction::PublishLifecycle(event_tags::SNIFFER_DISPOSED)
         ));
     }
 
     /// The two lifecycle signals carry distinct tags. Pinned explicitly because
-    /// the whole point of the separation is that the SPA can tell a user's
+    /// the whole point of the separation is that the client can tell a user's
     /// dismissal apart from teardown — a refactor that collapsed them would
     /// otherwise still satisfy both classification tests above.
     #[test]
     fn hidden_and_disposed_carry_distinct_tags() {
-        assert_ne!(events::USER_DISMISSED, events::SNIFFER_DISPOSED);
+        assert_ne!(event_tags::USER_DISMISSED, event_tags::SNIFFER_DISPOSED);
     }
 
-    /// Undecodable envelope JSON is an `Err`, not a panic. The bridge listener
-    /// relies on the channel handler never panicking — a panic would tear the
-    /// long-lived channel down.
+    /// Undecodable envelope JSON is an `Err`, not a panic. The channel handler
+    /// must never panic — a panic would tear the long-lived channel down.
     #[test]
     fn malformed_envelope_is_dropped_not_panicked() {
         assert!(validate_native_webview_message("not-json").is_err());

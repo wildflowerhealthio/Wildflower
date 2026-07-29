@@ -14,6 +14,9 @@ serde.workspace = true
 # `native_webview_bridge.rs`.
 serde_json = { workspace = true, features = ["raw_value"] }
 shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
+# The slice's HTTP crate: this adapter implements its `SnifferWebviewHandle`
+# port and publishes page/lifecycle events into its `SnifferEvents` stream.
+browser-sniffer-rust = { path = "../browser-sniffer-rust" }
 anyhow.workspace = true
 url = "2"
 # On iOS/Android the sniffer runs in the native-webview plugin (a real

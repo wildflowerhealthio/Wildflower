@@ -1,0 +1,47 @@
+[package]
+name = "browser-sniffer-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The browser-sniffer slice's HTTP surface: the `/sniffer` control endpoints
+# (open/navigate the sniffer webview, set its status subtitle, re-present it,
+# forward page actions, dispose) plus the `/sniffer/events` WebSocket that
+# streams the sniffed pages' captured activity back to the driving client.
+# Replaces the collector's Tauri `BRIDGE_EVENT` control/data plane so any web
+# client — the SPA or a browser on another device (via the tunnel) — can drive
+# the phone's sniffer.
+#
+# Pure Axum: no Tauri dependency. The host implements the
+# `SnifferWebviewHandle` port (over `tauri-plugin-native-webview`, see
+# `browser-sniffer-tauri-rust`) and feeds page/lifecycle events into the
+# `SnifferEvents` broadcast channel this crate fans out over the WebSocket.
+[dependencies]
+anyhow.workspace = true
+axum = { workspace = true }
+serde = { workspace = true }
+serde_json.workspace = true
+# The WebSocket fan-out subscribes per-connection; `sync` provides the
+# broadcast channel the host's Tauri adapter publishes into.
+tokio = { workspace = true, features = ["sync"] }
+# The scope grammar the `wildflower/Sniffer.*` capabilities gate on.
+scopes-rust = { path = "../../scopes/scopes-rust" }
+# The generic scope-gated capability machinery (`Scoped<F>`,
+# `FixedScopeCapability`, `ScopeClaims`); `openapi` derives `ToSchema` on the
+# 403 body so it's declarable in the utoipa `responses`.
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = ["openapi"] }
+utoipa.workspace = true
+utoipa-axum.workspace = true
+# The shared opaque-500 `InternalError` template.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
+url = "2"
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+# The OpenAPI snapshot helper enables the extra `openapi-snapshot` feature.
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+http-body-util = { workspace = true }
+tower = { workspace = true, features = ["util"] }

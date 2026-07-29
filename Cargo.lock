@@ -959,10 +959,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "browser-sniffer-rust"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "http-body-util",
+ "scope-capabilities-rust",
+ "scopes-rust",
+ "serde",
+ "serde_json",
+ "shared-structures-rust",
+ "tokio",
+ "tower",
+ "url",
+ "utoipa",
+ "utoipa-axum",
+]
+
+[[package]]
 name = "browser-sniffer-tauri-rust"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "browser-sniffer-rust",
  "serde",
  "serde_json",
  "shared-structures-rust",
@@ -9079,6 +9099,7 @@ dependencies = [
  "apps-rust",
  "async-trait",
  "axum",
+ "browser-sniffer-rust",
  "browser-sniffer-tauri-rust",
  "collector-rust",
  "databases-rust",

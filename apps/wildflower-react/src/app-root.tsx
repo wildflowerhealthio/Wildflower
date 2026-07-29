@@ -309,6 +309,7 @@ const renderApp = ({
                 router={router}
                 transportPromise={transportPromise}
                 platformSettingsItems={platformSettingsItems}
+                apiBaseUrl={apiBaseUrl}
               />
             </ActiveDeviceUserCodeProvider>
           </AuthStateProvider>

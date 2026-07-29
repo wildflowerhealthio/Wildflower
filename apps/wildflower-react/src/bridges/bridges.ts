@@ -1,4 +1,3 @@
-import { CollectorBridge } from 'collector-fundamentals/bridge'
 import { Logging } from 'effect-messaging-core'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { NavigationBridge } from 'navigation-core'
@@ -16,7 +15,10 @@ import { NavigationBridge } from 'navigation-core'
  * longer requires keeping a parallel list in `build-transport.ts` in
  * sync by hand.
  */
-const bridges = [NavigationBridge, GatekeeperBridge, CollectorBridge, Logging.LogBridge] as const
+// The collector no longer rides the bridge: its transport is HTTP (the
+// `/sniffer` REST endpoints + `/sniffer/events` WebSocket; see
+// collector-react's `http-collector-transport.ts`).
+const bridges = [NavigationBridge, GatekeeperBridge, Logging.LogBridge] as const
 
 type Bridges = typeof bridges
 

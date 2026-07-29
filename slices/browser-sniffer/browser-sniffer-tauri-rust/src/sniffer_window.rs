@@ -1,4 +1,4 @@
-use tauri::{AppHandle, Manager, WebviewUrl};
+use tauri::{AppHandle, Manager};
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 use crate::bootstrap::NATIVE_SNIFFER_BOOTSTRAP;
@@ -20,17 +20,10 @@ use crate::bootstrap::SNIFFER_BOOTSTRAP;
 /// `initial_subtitle` rather than a post-open `patch_window_text` so it paints
 /// with the native webview — on desktop `patch_window_text` would race the
 /// not-yet-built chrome webview.
-pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Result<()> {
+pub(crate) fn open_or_navigate(app: &AppHandle, url: url::Url) -> anyhow::Result<()> {
     use tauri_plugin_native_webview::{NativeWebviewExt, OpenRequest};
 
     use crate::native_webview_bridge::NativeWebviewChannel;
-
-    let WebviewUrl::External(parsed) = url else {
-        anyhow::bail!(
-            "non-External WebviewUrl handed to the native-webview path — only Uri sources are \
-             supported today"
-        )
-    };
 
     // Per-target `installSniffer` IIFE; see `crate::bootstrap` for the variants.
     #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -45,7 +38,7 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
         .open_url(
             crate::SNIFFER_WEBVIEW_ID,
             OpenRequest {
-                url: parsed.to_string(),
+                url: url.to_string(),
                 init_script: Some(bootstrap.to_owned()),
                 native_webview_event_channel: channel,
                 // `initial_title` unset → page URL shows via the plugin's
@@ -73,8 +66,8 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
 
 /// Write `name` to the sniffer chrome's **subtitle** — the live replacement for
 /// the static `"Collecting Automatically"` seed set at open time — so the user
-/// can see which scripted step is running. Driven by the collector SPA's
-/// `SetSnifferStatus` bridge message as each step begins.
+/// can see which scripted step is running. Driven by the collector client's
+/// `PUT /sniffer/status` as each step begins.
 ///
 /// `title` / `message` are left `None` (unchanged): the title keeps the plugin's
 /// URL fallback and the bottom `message` slot stays reserved for a future

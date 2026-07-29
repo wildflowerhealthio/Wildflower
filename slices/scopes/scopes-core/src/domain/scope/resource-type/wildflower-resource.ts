@@ -31,6 +31,7 @@ const RESOURCE_LABELS: Readonly<
   Apps: { label: 'App', plural: 'Apps' },
   Accounts: { label: 'Account', plural: 'Accounts' },
   TunnelSettings: { label: 'Tunnel settings', plural: 'Tunnel settings' },
+  Sniffer: { label: 'Sniffer session', plural: 'Sniffer sessions' },
 }
 
 // oxlint-disable import/group-exports
@@ -100,6 +101,7 @@ namespace WildflowerResourceType {
     | 'Apps'
     | 'Accounts'
     | 'TunnelSettings'
+    | 'Sniffer'
 
   namespace Resource {
     export const all: readonly Resource[] = [
@@ -110,6 +112,7 @@ namespace WildflowerResourceType {
       'Apps',
       'Accounts',
       'TunnelSettings',
+      'Sniffer',
     ]
 
     /** Whether a string is one of the closed set of Wildflower admin resources. */

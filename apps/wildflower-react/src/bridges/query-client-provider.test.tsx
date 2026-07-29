@@ -64,6 +64,7 @@ vi.mock('react-kitchen-sink', () => ({
 }))
 vi.mock('collector-react', () => ({
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
+  CollectorHttpTransportProvider: Passthrough,
 }))
 // fhir-r4-react migrated off its client provider; the app composes its
 // `sliceRuntimeLayer` (see `router-context.ts`), so mock that shape.
@@ -77,9 +78,6 @@ vi.mock('apps-react', () => ({
 vi.mock('tunnel-react', () => ({
   tunnelStateQueryOptions: () => ({ queryKey: ['tunnel', 'state'], queryFn: () => null }),
   TunnelRouterContext: { sliceRuntimeLayer: Layer.empty },
-}))
-vi.mock('./collector-sender-forwarder.tsx', () => ({
-  CollectorSenderForwarder: Passthrough,
 }))
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,

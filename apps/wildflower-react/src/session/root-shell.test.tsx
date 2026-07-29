@@ -15,8 +15,8 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/tes
  *    `TransportContext.Provider` (the value is seeded by a promise
  *    resolved outside React; the tree itself doesn't build the
  *    transport).
- *  - `InnerWrap` (passed to `<RouterProvider>`): `CollectorSenderForwarder`
- *    — a slice sender that closes over `useBridgeTransport`.
+ *  - `InnerWrap` (passed to `<RouterProvider>`): `CollectorHttpTransportProvider`
+ *    — the collector's HTTP transport (sender + register contexts).
  *
  * The invariant: TanStack's `<RouterProvider>` does NOT remount the
  * `InnerWrap` on child navigations — children mount/unmount inside the
@@ -99,6 +99,7 @@ vi.mock('gatekeeper-react', () => ({
 }))
 vi.mock('collector-react', () => ({
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
+  CollectorHttpTransportProvider: makePassthrough('CollectorHttpTransportProvider'),
 }))
 // fhir-r4-react no longer ships a client provider — the app composes its
 // `sliceRuntimeLayer` into the runtime layer (see `router-context.ts`),
@@ -113,9 +114,6 @@ vi.mock('apps-react', () => ({
 vi.mock('tunnel-react', () => ({
   tunnelStateQueryOptions: () => ({ queryKey: ['tunnel', 'state'], queryFn: () => null }),
   TunnelRouterContext: { sliceRuntimeLayer: Layer.empty },
-}))
-vi.mock('../bridges/collector-sender-forwarder.tsx', () => ({
-  CollectorSenderForwarder: makePassthrough('CollectorSenderForwarder'),
 }))
 // `renderApp` wraps the tree in `telemetry-web`'s `<ErrorBoundary>` and
 // reports to `Sentry`. Neither is the thing under test, and the real
@@ -176,10 +174,10 @@ const lifecycleEventsFor = (name: string): readonly ('mount' | 'unmount')[] =>
 describe('renderApp InnerWrap lifecycle', () => {
   // The providers that live around the router above its matched routes:
   // `AuthStateProvider` (just above `<RouterProvider>`) and the
-  // `CollectorSenderForwarder` slice sender that nests inside `InnerWrap`.
-  // The `TransportContext.Provider` is also above the router (in `AppRoot`)
-  // but is a plain context provider with no React-tree work to pin.
-  const INNER_WRAP_PROVIDERS = ['AuthStateProvider', 'CollectorSenderForwarder'] as const
+  // `CollectorHttpTransportProvider` slice transport that nests inside
+  // `InnerWrap`. The `TransportContext.Provider` is also above the router (in
+  // `AppRoot`) but is a plain context provider with no React-tree work to pin.
+  const INNER_WRAP_PROVIDERS = ['AuthStateProvider', 'CollectorHttpTransportProvider'] as const
 
   // `renderApp` mounts into `document.getElementById('root')` via
   // `createRoot`, so the container must exist before each render and be

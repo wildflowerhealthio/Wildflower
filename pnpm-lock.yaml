@@ -978,6 +978,9 @@ importers:
 
   slices/browser-sniffer/browser-sniffer-core:
     devDependencies:
+      '@effect/platform':
+        specifier: 0.96.1
+        version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@types/node':
         specifier: ^26
         version: 26.1.0
@@ -996,6 +999,9 @@ importers:
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      shared-structures-core:
+        specifier: workspace:*
+        version: link:../../shared-structures/shared-structures-core
       typescript:
         specifier: 5.9.3
         version: 5.9.3

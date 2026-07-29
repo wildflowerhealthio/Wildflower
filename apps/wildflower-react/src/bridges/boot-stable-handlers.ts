@@ -15,10 +15,9 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * boot-stable handler seed all live as one cohesive seam — adding a
  * fifth boot-stable slice means editing one place, not two.
  *
- * Collector registers its real inbound handlers on mount through
- * `makeHandlerCoordinator`; until then the coordinator serves a
- * drop-all record for that bridge. Logging is web→host only on the
- * page side (no inbound handlers).
+ * Logging is web→host only on the page side (no inbound handlers). The
+ * collector no longer rides the bridge at all — its transport is HTTP
+ * (see collector-react's `http-collector-transport.ts`).
  *
  * `setAuthState` is the gatekeeper bridge's only piece of state — the
  * entry's `AuthStateStore` constructs it (`makeWebAuthStateStore`

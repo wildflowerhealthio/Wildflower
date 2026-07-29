@@ -1,0 +1,437 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Browser Sniffer API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/sniffer/cancellations": {
+      "post": {
+        "tags": [
+          "Sniffer"
+        ],
+        "summary": "`POST /sniffer/cancellations` — cancel an in-flight sniffed request.\nSpeculative by design (the collector cancels during teardown), so a missing\nwebview is still a 204. Gated by `Scoped<SnifferDriver>`\n(`wildflower/Sniffer.c`).",
+        "operationId": "handle_cancel_request",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CancelRequestBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The cancellation was forwarded (or no webview was up)"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Sniffer.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sniffer/page-actions": {
+      "post": {
+        "tags": [
+          "Sniffer"
+        ],
+        "summary": "`POST /sniffer/page-actions` — script an interaction inside the sniffed\npage. Gated by `Scoped<SnifferDriver>` (`wildflower/Sniffer.c`).",
+        "operationId": "handle_page_action",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PageActionBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The action was forwarded into the page"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Sniffer.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sniffer/status": {
+      "put": {
+        "tags": [
+          "Sniffer"
+        ],
+        "summary": "`PUT /sniffer/status` — set the sniffer chrome's subtitle. A no-op when no\nwebview is up (the chrome patch reports `set: false`, never an error).\nGated by `Scoped<SnifferDriver>` (`wildflower/Sniffer.c`).",
+        "operationId": "handle_set_status",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetStatusBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The status subtitle is set (or no webview was up)"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Sniffer.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sniffer/visibility": {
+      "post": {
+        "tags": [
+          "Sniffer"
+        ],
+        "summary": "`POST /sniffer/visibility` — show the sniffer webview. Idempotent, and a\nno-op when none exists (the plugin's `show` can't tell \"absent\" from\n\"already visible\", so — like the bridge message — nothing distinguishes the\ntwo; a 204 means the request was honored, not that a window appeared).\nGated by `Scoped<SnifferDriver>` (`wildflower/Sniffer.c`).",
+        "operationId": "handle_show_webview",
+        "responses": {
+          "204": {
+            "description": "The show request was dispatched (best-effort)"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Sniffer.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sniffer/webview": {
+      "post": {
+        "tags": [
+          "Sniffer"
+        ],
+        "summary": "`POST /sniffer/webview` — validate the source and open/navigate the sniffer\nwebview to it. Gated by `Scoped<SnifferDriver>` (`wildflower/Sniffer.c`).",
+        "operationId": "handle_open_webview",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenWebviewBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "The sniffer webview is opening (or navigating) to the source"
+          },
+          "400": {
+            "description": "The source was rejected (non-http(s) URI, or the unsupported Html variant)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvalidSourceBody"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Sniffer.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Sniffer"
+        ],
+        "summary": "`DELETE /sniffer/webview` — dispose the sniffer webview and free its\nresources. Idempotent: disposing when none is up is a success. Gated by\n`Scoped<SnifferDriver>` (`wildflower/Sniffer.c`).",
+        "operationId": "handle_dispose_webview",
+        "responses": {
+          "204": {
+            "description": "The sniffer webview is disposed (or none was up)"
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `wildflower/Sniffer.c`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "CancelRequestBody": {
+        "type": "object",
+        "description": "POST body — the sniffer's per-request correlation id.",
+        "required": [
+          "id"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        }
+      },
+      "HtmlSource": {
+        "type": "object",
+        "description": "The `Html` variant's body — declared so the wire union matches the TS\nside; [`resolve_source`] rejects it as unsupported.",
+        "required": [
+          "html"
+        ],
+        "properties": {
+          "html": {
+            "type": "string"
+          },
+          "baseUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "InsufficientScopeBody": {
+        "type": "object",
+        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
+        "required": [
+          "error",
+          "missingScopes"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The rendered scopes the caller lacks."
+          }
+        }
+      },
+      "InvalidSourceBody": {
+        "type": "object",
+        "description": "Wire shape for the 400 — the submitted `WebViewSource` was rejected\n(non-http(s)/unparseable URI, or the unsupported `Html` variant). Under the\nretired bridge these were warn-and-drops; a modelled body gives a non-UI\nclient a decodable failure.",
+        "required": [
+          "error",
+          "message"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "OpenWebviewBody": {
+        "type": "object",
+        "description": "POST body. `linkedSpan` is the caller's trace linkage — accepted (the TS\nrunner sends it on the run-opening message) but unused by this host today,\nexactly as the retired bridge decoder decoded-and-dropped it.",
+        "required": [
+          "source"
+        ],
+        "properties": {
+          "source": {
+            "$ref": "#/components/schemas/WebViewSourcePayload"
+          },
+          "linkedSpan": {}
+        }
+      },
+      "PageActionBody": {
+        "type": "object",
+        "description": "POST body — the action union the injected sniffer bootstrap demuxes by\n`kind`.",
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "$ref": "#/components/schemas/PageActionPayload"
+          }
+        }
+      },
+      "PageActionPayload": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "querySelector",
+              "kind"
+            ],
+            "properties": {
+              "querySelector": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Click"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "querySelector",
+              "value",
+              "kind"
+            ],
+            "properties": {
+              "querySelector": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "Fill"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "A scripted in-page interaction, demuxed page-side by `kind`. Mirrors the TS\n`Click` / `Fill` action bodies."
+      },
+      "SetStatusBody": {
+        "type": "object",
+        "description": "PUT body — the step's display name (e.g. \"Entering email\").",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "UriSource": {
+        "type": "object",
+        "description": "The `Uri` variant's body. `method` / `headers` / `body` are part of the TS\nwire shape (a legacy of the React Native `<WebView source>` prop) but\nunused by this host — declared so the OpenAPI schema matches the client's,\ndecoded-and-ignored at runtime exactly as the old bridge decoder tolerated\nthem.",
+        "required": [
+          "uri"
+        ],
+        "properties": {
+          "uri": {
+            "type": "string"
+          },
+          "method": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "headers": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          },
+          "body": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "WebViewSourcePayload": {
+        "oneOf": [
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UriSource"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "_tag"
+                ],
+                "properties": {
+                  "_tag": {
+                    "type": "string",
+                    "enum": [
+                      "Uri"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/HtmlSource"
+              },
+              {
+                "type": "object",
+                "required": [
+                  "_tag"
+                ],
+                "properties": {
+                  "_tag": {
+                    "type": "string",
+                    "enum": [
+                      "Html"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "description": "Wire shape of the `WebViewSource` tagged union (mirrors the TS\n`WebViewSource.AnySchema` in `browser-sniffer-core`). The `Uri` variant\ncarries an `http(s)://`-only URL (both schemes, so a FHIR server reachable\nonly over http — e.g. a local dev HAPI instance — can still be sniffed).\n`Html` is decoded but rejected by [`resolve_source`] — the variant exists\nso the wire union matches the TS side (and the failure is an answerable\n400), not because the host can present raw HTML today."
+      }
+    }
+  }
+}

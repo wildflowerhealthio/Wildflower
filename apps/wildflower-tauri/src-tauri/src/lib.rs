@@ -192,6 +192,10 @@ async fn run_server(
     // app builds from `<resource_dir>/self-hosted-apps/`; the dev build ignores
     // it in favour of the workspace source tree.
     resource_dir: std::path::PathBuf,
+    // The sniffer event stream, created in `.setup()` (the page→host publisher
+    // side is wired there via `attach_browser_sniffer`) and fanned out to
+    // clients here by the `/sniffer/events` WebSocket.
+    sniffer_events: browser_sniffer_rust::SnifferEvents,
 ) -> anyhow::Result<()> {
     // Apply any deletions the Owner scheduled from the data-management screen
     // BEFORE opening the databases below: the `/databases` DELETE can't remove a
@@ -376,6 +380,22 @@ async fn run_server(
     let gated_collector = layer_router_with_gatekeeper_auth_gating(
         collector_rust::setup_collector(diesel_pool.clone())
             .context("failed to set up collector")?,
+        gatekeeper.state.clone(),
+        &[],
+    );
+
+    // The `/sniffer` surface: the control endpoints + events WebSocket any
+    // scoped HTTP client (the SPA, or a browser reaching this device through
+    // the tunnel) drives a collection run with. The Tauri-side handle
+    // implements the webview port over `tauri-plugin-native-webview`;
+    // `sniffer_events` is the same stream `.setup()` wired the page→host
+    // publishers into. Scope-gated per operation (`wildflower/Sniffer.{c,r}`)
+    // behind the same bearer gate as the rest of the admin API.
+    let sniffer_handle: Arc<dyn browser_sniffer_rust::SnifferWebviewHandle> = Arc::new(
+        browser_sniffer_tauri_rust::TauriSnifferWebviewHandle::new(app_handle.clone()),
+    );
+    let gated_sniffer = layer_router_with_gatekeeper_auth_gating(
+        browser_sniffer_rust::setup_browser_sniffer(sniffer_handle, sniffer_events),
         gatekeeper.state.clone(),
         &[],
     );
@@ -618,6 +638,7 @@ async fn run_server(
                 ("Apps", apps_rust::openapi_spec()),
                 ("Databases", databases_rust::openapi_spec()),
                 ("Collector", collector_rust::openapi_spec()),
+                ("Sniffer", browser_sniffer_rust::openapi_spec()),
                 ("Tunnel", tunnel_rust::openapi_spec()),
                 ("FHIR R4", emr_rust::openapi_spec()),
             ],
@@ -644,6 +665,7 @@ async fn run_server(
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
         .merge(gated_collector)
+        .merge(gated_sniffer)
         .merge(gated_tunnel)
         // The app-layer `/health`: an unauthenticated liveness endpoint the
         // tunnel's reachability probe round-trips through the relay. Ungated so
@@ -829,15 +851,19 @@ pub fn run() {
             // channel plumbing; the server task gets the publishers.
             let publishers = bridge::attach_bridge(app.handle());
 
-            // Wire the CollectorBridge.webToHost listeners that manage the
-            // sniffer child webview lifecycle (open / navigate / close).
-            // Sniffer-emitted data-plane events (`bridge:ResponseStart`
-            // etc.) reach the React SPA on the global Tauri event bus, but
-            // never straight from the untrusted content webview: the host
+            // Wire the sniffer's page→host side: validated data-plane events
+            // (`ResponseStart` etc.) and synthesized lifecycle events are
+            // published into this `SnifferEvents` stream, which the server
+            // task's `/sniffer/events` WebSocket fans out to clients. Events
+            // never flow straight from the untrusted content webview: the host
             // allowlists their inner `_tag` first (the mobile channel's
             // `validate_native_webview_message`, the desktop content webview's
-            // `native_webview_data_plane_emit` command) and re-broadcasts.
-            browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
+            // `native_webview_data_plane_emit` command).
+            let sniffer_events = browser_sniffer_rust::SnifferEvents::new();
+            browser_sniffer_tauri_rust::attach_browser_sniffer(
+                app.handle(),
+                sniffer_events.clone(),
+            );
 
             let error_handle = app.handle().clone();
             // The server task installs the apps on-device webview handle once
@@ -860,8 +886,14 @@ pub fn run() {
                     app_data_dir,
                 };
 
-                if let Err(error) =
-                    run_server(runtime, publishers, server_handle, resource_dir).await
+                if let Err(error) = run_server(
+                    runtime,
+                    publishers,
+                    server_handle,
+                    resource_dir,
+                    sniffer_events,
+                )
+                .await
                 {
                     tauri_plugin_log::log::error!("Wildflower server stopped: {error:?}");
                     // A failed/stopped server leaves the webview unable to

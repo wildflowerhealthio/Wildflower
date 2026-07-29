@@ -22,9 +22,9 @@ export {
 } from './queries/index.ts'
 
 export {
-  CollectorSenderProvider,
-  type CollectorSenderProviderProps,
-} from './runtime/collector-sender-provider.tsx'
+  CollectorHttpTransportProvider,
+  type CollectorHttpTransportProviderProps,
+} from './runtime/collector-http-transport-provider.tsx'
 export { useCollectorSender } from './runtime/use-collector-sender.ts'
 export type {
   CollectorOutboundMessage,

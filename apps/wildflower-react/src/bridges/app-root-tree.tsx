@@ -6,9 +6,10 @@ import { usePromiseOrDefault } from 'react-kitchen-sink'
 import { ErrorBodyRendererContext } from 'react-tundraish'
 import type { SettingsItem } from 'shared-structures-react'
 
+import { CollectorHttpTransportProvider } from 'collector-react'
+
 import { renderScopeError } from '../scope-error-renderer.tsx'
 import { PlatformSettingsItemsProvider } from '../session/platform-settings-items.tsx'
-import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
 
 interface AppRootTreeProps {
@@ -17,6 +18,13 @@ interface AppRootTreeProps {
   /** The entry's platform-specific settings rows, provided to the tree so the
    * `/settings` route can append them. See {@link PlatformSettingsItemsProvider}. */
   readonly platformSettingsItems: readonly SettingsItem[]
+  /**
+   * Absolute API origin for entries whose page is not served by the API
+   * server; feeds the collector's HTTP transport (its `/sniffer` REST calls
+   * and `/sniffer/events` WebSocket). Omitted on web/embedded, where the page
+   * IS the API origin.
+   */
+  readonly apiBaseUrl?: string | undefined
 }
 
 /**
@@ -36,6 +44,7 @@ const AppRootTree = ({
   router,
   transportPromise,
   platformSettingsItems,
+  apiBaseUrl,
 }: AppRootTreeProps): JSX.Element => {
   const transport = usePromiseOrDefault(transportPromise, stubTransport, () => stubTransport)
 
@@ -44,15 +53,17 @@ const AppRootTree = ({
       ({ children }: PropsWithChildren<object>): JSX.Element => (
         <Fragment>
           {/*
-           * NavigationBridgeHandler only needs `transport.sendMessage`
-           * (not the slice sender), so it sits beside the forwarder
-           * rather than buried inside it.
+           * NavigationBridgeHandler only needs `transport.sendMessage`,
+           * so it sits beside the collector transport provider (which is
+           * HTTP-backed — the collector no longer rides the bridge).
            */}
           <NavigationBridgeHandler sender={transport.sendMessage} />
-          <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
+          <CollectorHttpTransportProvider apiBaseUrl={apiBaseUrl}>
+            {children}
+          </CollectorHttpTransportProvider>
         </Fragment>
       ),
-    [transport.sendMessage]
+    [transport.sendMessage, apiBaseUrl]
   )
 
   return (

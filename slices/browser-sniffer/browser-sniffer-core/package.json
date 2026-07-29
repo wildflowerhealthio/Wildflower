@@ -26,6 +26,14 @@
       "source": "./src/telemetry/index.ts",
       "default": "./dist/telemetry/index.js"
     },
+    "./web-view-source": {
+      "source": "./src/web-view-source.ts",
+      "default": "./dist/web-view-source.js"
+    },
+    "./http-api-definition": {
+      "source": "./src/http-api-definition/index.ts",
+      "default": "./dist/http-api-definition/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -35,16 +43,19 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
+    "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@effect/platform": "catalog:",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*"
   }

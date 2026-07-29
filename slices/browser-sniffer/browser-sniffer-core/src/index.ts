@@ -20,3 +20,4 @@ export {
   ResponseStartMessageBody,
   SnifferRequestId,
 } from './messages.ts'
+export * as WebViewSource from './web-view-source.ts'

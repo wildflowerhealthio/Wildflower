@@ -141,8 +141,17 @@ type CollectorBridge = Bridge.Bridge<
 >
 
 /**
- * Slice-level bridge between the embedded collector SPA and the Tauri
- * host. Web→Host carries control signals (`RequestSniffableWebView`,
+ * Slice-level message contract between the collector client and the sniffer
+ * host. Since the Tauri→Axum migration this is no longer wired into a
+ * `BridgeTransport` — the transport is HTTP (collector-react's
+ * `http-collector-transport.ts`): each Web→Host message maps onto a
+ * `/sniffer` REST endpoint, and the Host→Web messages arrive on the
+ * `/sniffer/events` WebSocket as exactly these tagged-JSON shapes. The
+ * `Bridge.make` declaration is kept as the single place the two directional
+ * schema records live (the handler machinery and the transport both derive
+ * their types from it).
+ *
+ * Web→Host carries control signals (`RequestSniffableWebView`,
  * `CancelSnifferRequest`, `SniffingComplete`, `SetSnifferStatus`,
  * `EnsureSnifferVisible`) and script-driven navigation steps (`Open`,
  * `PageAction`); Host→Web carries the sniffer-event subset collector parses, the

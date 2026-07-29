@@ -1,14 +1,25 @@
-//! Tauri host plumbing for the browser sniffer. See
+//! Tauri host adapter for the browser sniffer. See
 //! [`slices/browser-sniffer/docs/Tauri Host Explanation.md`](../../../slices/browser-sniffer/docs/Tauri%20Host%20Explanation.md)
-//! for the full architecture write-up; this module is the public surface
-//! and event-bus glue.
+//! for the full architecture write-up.
+//!
+//! `browser-sniffer-rust` owns the `/sniffer` HTTP surface (the control
+//! endpoints + the events WebSocket); this crate is the host half behind its
+//! two ports:
+//!
+//!  - [`TauriSnifferWebviewHandle`] implements the `SnifferWebviewHandle`
+//!    port over `tauri-plugin-native-webview` (open/navigate, status
+//!    subtitle, show, dispose, and the `evaluate_js` forward into the page).
+//!  - [`attach_browser_sniffer`] wires the page→host side: the plugin's
+//!    native-webview channel and the desktop data-plane command validate
+//!    untrusted page messages (allowlist + duplicate-key rejection) and
+//!    publish them — plus the synthesized `UserDismissed` / `SnifferDisposed`
+//!    lifecycle events — into the `SnifferEvents` stream the HTTP crate fans
+//!    out.
 
 mod bootstrap;
-pub mod events;
-mod handlers;
-mod model;
 mod native_webview_bridge;
 mod sniffer_window;
+mod webview_handle;
 
 /// The `tauri-plugin-native-webview` instance id this slice owns. The sniffer's
 /// scrape webview is a distinct instance from the apps-launch popup (`"launch"`),
@@ -17,93 +28,28 @@ mod sniffer_window;
 /// it.
 pub(crate) const SNIFFER_WEBVIEW_ID: &str = "sniffer";
 
-use shared_structures_rust::bridge::{BridgeEnvelope, BRIDGE_EVENT};
-use tauri::{AppHandle, Listener};
-use tauri_plugin_log::log;
+use browser_sniffer_rust::SnifferEvents;
+use tauri::AppHandle;
 
 /// The desktop content webview's gated web→host data-plane command. The app's
 /// `invoke_handler` registers it; `capabilities/native-webview-window.json`
-/// grants it only to the untrusted content webview in lieu of a bus `emit`
-/// grant. See [`native_webview_bridge::native_webview_data_plane_emit`].
+/// grants it only to the untrusted content webview.
+/// See [`native_webview_bridge::native_webview_data_plane_emit`].
 pub use native_webview_bridge::native_webview_data_plane_emit;
+pub use webview_handle::TauriSnifferWebviewHandle;
 
-/// Wire one listener on the multiplexed bridge event and route the
-/// CollectorBridge tags this crate cares about by the envelope's `_tag`.
-/// Idempotent at the listener level — call once per app lifecycle from
-/// `setup()`.
-///
-/// This also wires the native-webview bridge (`native_webview_bridge::install`)
-/// on every platform. The inbound `PageAction` / `CancelSnifferRequest`
-/// forwarding into the native webview stays mobile-only — on desktop the
-/// content webview is a Tauri webview that receives `app.emit('bridge', …)`
-/// natively, so those forwarders are `cfg`-gated out.
-///
-/// Decode failures inside each handler log at warn; tags this crate
-/// does not care about (sibling slices' bridge traffic) are dropped silently.
-pub fn attach_browser_sniffer(app: &AppHandle) {
-    native_webview_bridge::install(app);
-    // The bridge channel is shared across listeners with no automated
-    // cross-process tag guard; log this crate's tag set at attach time so
-    // the boot log shows who dispatches what. See the effect-messaging-tauri
-    // README ("Tag uniqueness across processes").
-    log::info!(
-        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}, {}, {}]",
-        events::REQUEST_SNIFFABLE_WEBVIEW,
-        events::OPEN,
-        events::SNIFFING_COMPLETE,
-        events::SET_SNIFFER_STATUS,
-        events::ENSURE_SNIFFER_VISIBLE,
-        events::PAGE_ACTION,
-        events::CANCEL_SNIFFER_REQUEST,
-    );
-    let handle = app.clone();
-    app.listen(BRIDGE_EVENT, move |event| {
-        let payload = event.payload();
-        let tag = match serde_json::from_str::<BridgeEnvelope>(payload) {
-            Ok(envelope) => envelope.tag,
-            Err(error) => {
-                log::warn!("[browser-sniffer] undecodable bridge payload dropped: {error}");
-                return;
-            }
-        };
-        match tag.as_str() {
-            events::REQUEST_SNIFFABLE_WEBVIEW => {
-                handlers::request_sniffable_webview::handle(&handle, payload);
-            }
-            events::OPEN => handlers::open::handle(&handle, payload),
-            events::SNIFFING_COMPLETE => handlers::sniffing_complete::handle(&handle),
-            events::SET_SNIFFER_STATUS => handlers::set_sniffer_status::handle(&handle, payload),
-            events::ENSURE_SNIFFER_VISIBLE => handlers::ensure_sniffer_visible::handle(&handle),
-            #[cfg(any(target_os = "ios", target_os = "android"))]
-            events::PAGE_ACTION | events::CANCEL_SNIFFER_REQUEST => {
-                native_webview_bridge::forward_to_native_webview(&handle, payload);
-            }
-            _ => {}
-        }
-    });
+/// Wire the page→host side of the sniffer: install the plugin's
+/// native-webview channel and stash `events` where the desktop data-plane
+/// command can reach it. Validated page messages and synthesized lifecycle
+/// events are published into `events`. Idempotent at the install level — call
+/// once per app lifecycle from `setup()`, with a clone of the same
+/// `SnifferEvents` handed to `browser_sniffer_rust::setup_browser_sniffer`.
+pub fn attach_browser_sniffer(app: &AppHandle, events: SnifferEvents) {
+    native_webview_bridge::install(app, events);
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
-    /// Drift guard for this crate's sniffer-specific tag literals. The
-    /// shared `BRIDGE_EVENT` is drift-guarded in
-    /// `shared_structures_rust::bridge::tests`; this crate only owns
-    /// the per-tag literals on the multiplexed channel.
-    #[test]
-    fn bridge_tags_match_the_ts_convention() {
-        assert_eq!(events::REQUEST_SNIFFABLE_WEBVIEW, "RequestSniffableWebView");
-        assert_eq!(events::OPEN, "Open");
-        assert_eq!(events::SNIFFING_COMPLETE, "SniffingComplete");
-        assert_eq!(events::SET_SNIFFER_STATUS, "SetSnifferStatus");
-        assert_eq!(events::ENSURE_SNIFFER_VISIBLE, "EnsureSnifferVisible");
-        assert_eq!(events::PAGE_ACTION, "PageAction");
-        assert_eq!(events::CANCEL_SNIFFER_REQUEST, "CancelSnifferRequest");
-        assert_eq!(events::USER_DISMISSED, "UserDismissed");
-        assert_eq!(events::SNIFFER_DISPOSED, "SnifferDisposed");
-    }
-
     /// The bootstrap IIFE is generated at build time. An empty file
     /// silently injects a no-op into the sniffer webview; surface it
     /// loudly here so a missing regeneration step (`vp run
@@ -138,14 +84,5 @@ mod tests {
              stale — run `vp install` or `vp run generate-native-bootstrap` in that package.",
             NATIVE_SNIFFER_BOOTSTRAP.len(),
         );
-    }
-
-    #[test]
-    fn window_labels_match_tauri_conf() {
-        // tauri.conf.json's window default label is "main" when none is
-        // set in `app.windows[].label`. The existing bridge.rs pins the
-        // same literal — drift here would also break the consent popup
-        // raise path.
-        assert_eq!(events::MAIN_WINDOW_LABEL, "main");
     }
 }
