@@ -169,19 +169,29 @@ describe('PrescriptionEntity', () => {
       const dispenseRequest = request?.dispenseRequest
       expect(dispenseRequest?.numberOfRepeatsAllowed).toBe(3)
       expect(dispenseRequest?.quantity?.value).toBe(90)
-      expect(dispenseRequest?.validityPeriod?.end).toBeDefined()
+      // No nextFillDate on this payload, so expiryDate is the window end.
+      expect(epoch(dispenseRequest?.validityPeriod?.end)).toBe(Date.parse('2027-01-01T00:00:00Z'))
     })
 
-    it('opens the validity window at lastFillDate and, absent a nextFillDate, has a null end', () => {
+    it('opens the validity window at lastFillDate and, absent a nextFillDate, ends it at expiryDate', () => {
       const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
       const [request] = byType(result, 'MedicationRequest')
       const period = request?.dispenseRequest?.validityPeriod
       expect(epoch(period?.start)).toBe(Date.parse('2026-01-10T00:00:00Z'))
-      // No nextFillDate and no expiryDate here, so the window has no end — `epoch`
-      // maps an absent (null) slot to `undefined`, matching the sibling tests.
-      expect(epoch(period?.end)).toBeUndefined()
+      // No nextFillDate, so the window closes at the prescription's expiryDate.
+      expect(epoch(period?.end)).toBe(Date.parse('2027-01-01T00:00:00Z'))
       // lastFillDate also authors the request.
       expect(epoch(request?.authoredOn)).toBe(Date.parse('2026-01-10T00:00:00Z'))
+    })
+
+    it('leaves the window end absent when neither nextFillDate nor expiryDate is present', () => {
+      const json = prescriptionJson({ expiryDate: undefined })
+      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
+      const [request] = byType(result, 'MedicationRequest')
+      const period = request?.dispenseRequest?.validityPeriod
+      expect(epoch(period?.start)).toBe(Date.parse('2026-01-10T00:00:00Z'))
+      // `epoch` maps an absent (null) end slot to `undefined`.
+      expect(epoch(period?.end)).toBeUndefined()
     })
 
     it('ends the validity window at nextFillDate in preference to expiryDate', () => {

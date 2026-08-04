@@ -166,7 +166,7 @@ const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | 
   // (`end`). `nextFillDate` takes precedence over the prescription `expiryDate`
   // for `end`, which remains the fallback when no next-fill date is present.
   const validityStart = firstDateTime(rx.lastFillDate)
-  const validityEnd = firstDateTime(rx.nextFillDate)
+  const validityEnd = firstDateTime(rx.nextFillDate, rx.expiryDate)
   if (validityStart != null || validityEnd != null) {
     dr['validityPeriod'] = {
       ...(validityStart != null ? { start: validityStart } : {}),
