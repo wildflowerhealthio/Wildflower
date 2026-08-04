@@ -278,6 +278,8 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   // instances with `_sniffer*` properties.
   interface XhrState {
     id: string
+    /** HTTP method captured at `open`, surfaced in the failure message. */
+    method: string
     url: string
     /** Number of UTF-8 bytes already posted as ResponseData chunks. */
     sentBytes: number
@@ -405,8 +407,16 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       } else {
         errorUrl = request.url
       }
-      const message = err instanceof Error ? err.message : String(err)
-      logWarning(`fetch threw before response: ${message}`)
+      const rawError = err instanceof Error ? err.message : String(err)
+      // A fetch reject is always pre-response (the `await` never yielded a
+      // `Response`), so the cause set mirrors the XHR pre-response branch —
+      // plus an aborted `AbortSignal`, which rejects here rather than firing a
+      // separate event.
+      const method =
+        init?.method ??
+        (typeof request === 'object' && 'method' in request ? request.method : 'GET')
+      const message = `fetch ${method} ${errorUrl} failed before any response: ${rawError} — likely CORS, blocked mixed content, CSP connect-src, DNS, a refused connection, or an aborted request`
+      logWarning(message)
       post({
         _tag: 'ResponseStart',
         id: requestId,
@@ -507,6 +517,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     const rawUrl = String(url)
     xhrState.set(this, {
       id: makeRequestId(),
+      method,
       // Report absolute (issue #373) so downstream `UrlMatch` can match a
       // same-origin relative request. The internal guard stays on the RAW
       // string — normalizing first could rewrite a relative `/foo` into
@@ -524,6 +535,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   ): void {
     const state = xhrState.get(this) ?? {
       id: makeRequestId(),
+      method: '',
       url: '',
       sentBytes: 0,
       internal: false,
@@ -617,6 +629,32 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       }
     }
 
+    /**
+     * Reconstruct a legible failure message for the host log + `RequestError`
+     * terminal. XHR `error` / `abort` events carry no cause by design, so we
+     * surface what the shim *can* observe: method + URL, whether the response
+     * had begun, the bytes already streamed, and the XHR status / readyState.
+     * The response-begun split is the useful one — a pre-response failure is
+     * usually CORS, blocked mixed content, a CSP `connect-src` block, DNS, or a
+     * refused connection; a mid-body failure is a reset or a torn-down webview.
+     * `responseStarted` MUST be read by the caller *before* `ensureStartSent`
+     * flips `startSent`, or every failure would look mid-stream.
+     */
+    const describeXhrFailure = (
+      xhr: XMLHttpRequest,
+      responseStarted: boolean,
+      kind: 'error' | 'abort'
+    ): string => {
+      const where = `${state.method || 'GET'} ${state.url}`
+      if (kind === 'abort') {
+        return `XMLHttpRequest ${where} aborted after ${state.sentBytes} byte(s) received`
+      }
+      if (responseStarted || state.sentBytes > 0) {
+        return `XMLHttpRequest ${where} failed after the response started (${state.sentBytes} byte(s) received, status ${xhr.status}) — connection reset mid-body`
+      }
+      return `XMLHttpRequest ${where} failed before any response (status ${xhr.status}, readyState ${xhr.readyState}) — likely CORS, blocked mixed content, CSP connect-src, DNS, or a refused connection`
+    }
+
     this.addEventListener('progress', () => {
       // Guard against stale listeners from XHR reuse — `xhrState.get(this).id`
       // can rotate if `open()` is called again on the same instance.
@@ -648,6 +686,9 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
         // it would post a terminal under the old id. Mirror `progress`/`load`.
         if (xhrState.get(this)?.id !== requestId) return
         if (!activeRequests.has(requestId)) return
+        // Read the failure phase *before* `ensureStartSent` flips `startSent`.
+        const message = describeXhrFailure(this, startSent, 'error')
+        logWarning(message)
         // Emit a synthetic `ResponseStart` before the terminal so the host
         // sees the full Start→terminal pair. A network-level `error` fires
         // with `xhr.status === 0` and empty headers, so the synthesized start
@@ -661,7 +702,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
           _tag: 'RequestError',
           id: requestId,
           url: state.url,
-          message: 'XMLHttpRequest error',
+          message,
         })
       },
       { once: true }
@@ -671,6 +712,8 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       () => {
         if (xhrState.get(this)?.id !== requestId) return
         if (!activeRequests.has(requestId)) return
+        const message = describeXhrFailure(this, startSent, 'abort')
+        logWarning(message)
         // Same Start-before-terminal invariant as `error`. Emit `RequestError`
         // rather than `ResponseFinished`: an aborted request's body is
         // partial, and a `ResponseFinished` would hand that truncated payload
@@ -682,7 +725,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
           _tag: 'RequestError',
           id: requestId,
           url: state.url,
-          message: 'XMLHttpRequest aborted',
+          message,
         })
       },
       { once: true }

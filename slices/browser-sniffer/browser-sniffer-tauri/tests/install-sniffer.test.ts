@@ -303,7 +303,9 @@ describe('fetch shim', () => {
       expect.objectContaining({
         _tag: 'RequestError',
         url: 'https://test.example/fail',
-        message: 'network down',
+        message: expect.stringMatching(
+          /^fetch GET https:\/\/test\.example\/fail failed before any response: network down/
+        ),
       }),
     ])
     validateMessages(getMessages())
@@ -367,7 +369,10 @@ describe('fetch shim', () => {
         expect.objectContaining({ url: expected, status: 0 }),
       ])
       expect(withTag(getMessages(), 'RequestError')).toEqual([
-        expect.objectContaining({ url: expected, message: 'offline' }),
+        expect.objectContaining({
+          url: expected,
+          message: expect.stringMatching(/failed before any response: offline/),
+        }),
       ])
       validateMessages(getMessages())
     })
@@ -734,7 +739,10 @@ describe('XHR shim', () => {
 
     const expected = new URL('/fhir/Patient/1', window.location.href).href
     expect(withTag(getMessages(), 'RequestError')).toEqual([
-      expect.objectContaining({ url: expected, message: 'XMLHttpRequest error' }),
+      expect.objectContaining({
+        url: expected,
+        message: expect.stringMatching(/^XMLHttpRequest GET .* failed before any response/),
+      }),
     ])
   })
 
@@ -785,7 +793,9 @@ describe('XHR shim', () => {
     expect(withTag(getMessages(), 'RequestError')).toEqual([
       expect.objectContaining({
         url: 'https://test.example/xhr-err',
-        message: 'XMLHttpRequest error',
+        message: expect.stringMatching(
+          /^XMLHttpRequest GET https:\/\/test\.example\/xhr-err failed before any response/
+        ),
       }),
     ])
     validateMessages(getMessages())
@@ -807,7 +817,9 @@ describe('XHR shim', () => {
     expect(withTag(getMessages(), 'RequestError')).toEqual([
       expect.objectContaining({
         url: 'https://test.example/xhr-abort',
-        message: 'XMLHttpRequest aborted',
+        message: expect.stringMatching(
+          /^XMLHttpRequest GET https:\/\/test\.example\/xhr-abort aborted/
+        ),
       }),
     ])
     validateMessages(getMessages())
@@ -841,7 +853,9 @@ describe('XHR shim', () => {
     expect(withTag(getMessages(), 'RequestError')).toEqual([
       expect.objectContaining({
         url: 'https://test.example/pre-headers-error',
-        message: 'XMLHttpRequest error',
+        // A pre-response failure names the phase so host logs can tell it apart
+        // from a mid-body drop.
+        message: expect.stringContaining('failed before any response'),
       }),
     ])
     validateMessages(getMessages())
@@ -882,7 +896,11 @@ describe('XHR shim', () => {
     ])
     expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
     expect(withTag(getMessages(), 'RequestError')).toEqual([
-      expect.objectContaining({ message: 'XMLHttpRequest error' }),
+      // The mid-stream phase is now reflected in the message (progress delivered
+      // bytes before the drop), distinct from a pre-response failure.
+      expect.objectContaining({
+        message: expect.stringContaining('failed after the response started'),
+      }),
     ])
     validateMessages(getMessages())
   })
