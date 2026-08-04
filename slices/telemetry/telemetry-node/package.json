@@ -41,7 +41,7 @@
     "@sentry/opentelemetry": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "bumpp": "^12.1.0",
+    "bumpp": "^12.1.1",
     "effect": "catalog:",
     "telemetry-core": "workspace:*",
     "typescript": "catalog:",
