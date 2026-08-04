@@ -74,10 +74,26 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   `5000` and decodes back to `Millis:5000`. Equal by `Duration.equals`, different
   by `toEqual`, so raw doubles fail the round-trip property on Duration's
   internals rather than on anything this package does.
-- **`{sessionId}-{requestId}` is the identity of an exchange.** The sniffer
-  already assigns a correlation id per request, so ids are deterministic without
-  threading a counter through a parse, retried writes are idempotent upserts, and
-  two sessions cannot collide.
+- **`(sessionId, requestId)` is the identity of an exchange; the resource id is
+  its hash.** The sniffer already assigns a correlation id per request, so ids
+  are deterministic without threading a counter through a parse, retried writes
+  are idempotent upserts, and two sessions cannot collide. What the pair is
+  _rendered_ as is `fhir-r4`'s `localResourceId` — the one derivation every
+  stored resource is keyed under — so a reader goes through the two `Identifier`
+  entries, never through the id. `traceResourceId` is the **single** site that
+  mints it; a trace must never also be run through `adoptSourceIdentity`, which
+  would hash the hash. A session label is an arbitrary string, so spelling the
+  id `{sessionId}-{requestId}` verbatim could mint an id outside FHIR's grammar;
+  going through the derivation makes that unrepresentable. The pair is folded
+  with `joinIdComponents`, the length-prefixed encoding `localResourceId` uses on
+  its own components — a `-` join would make `('s-req', '77')` and
+  `('s', 'req-77')` the same exchange.
+- **`traceResourceId` is two hash lanes, not a concatenation — keep it out of
+  render paths.** It belongs at a write or a decode. The viewer keys its rows and
+  its selection with `web-trace-react`'s `exchangeKey` (the same encoded pair,
+  unhashed) because a React `key` needs identity within one list, not the
+  resource id. Calling this per row per render cost ~24 ms per keystroke on a
+  thousand-exchange session, against ~0.04 ms for the pair.
 - **The encoding has exactly one definition — import it, never reimplement it.**
   A second copy drifts, and already-recorded sessions stop decoding. The private
   systems and extension URLs in `src/codec/systems.ts` are part of the persisted

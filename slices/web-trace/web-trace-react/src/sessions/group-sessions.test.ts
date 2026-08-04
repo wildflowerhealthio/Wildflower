@@ -213,7 +213,7 @@ describe('groupIntoSessions', () => {
 
 /**
  * Exchanges spread across several sessions, with ids unique within each session
- * — the invariant the codec's `{sessionId}-{requestId}` resource id relies on,
+ * — the invariant the codec's `(sessionId, requestId)` resource id relies on,
  * and the one that makes "never lose or duplicate" a meaningful property.
  */
 const corpus = (): fc.Arbitrary<readonly TraceExchange[]> =>

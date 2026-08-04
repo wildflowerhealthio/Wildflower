@@ -14,17 +14,18 @@ that depends on `collector-fundamentals` only.
 
 ## What you're building
 
-| Piece          | Where                                       | Contract                                                       |
-| -------------- | ------------------------------------------- | -------------------------------------------------------------- |
-| Entities       | `*-client-collector/src/entities/`          | `EntityDefinition.make` — recognize + parse one response shape |
-| Config         | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
-| Scraping plan  | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — first page, steps, entities              |
-| Persist sink   | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |
-| Provenance     | `*-client-collector/src/config.ts`          | one `captureProvenance:` line on the plan (see step 6)         |
-| Descriptor     | `*-client-collector/src/config.ts`          | `CollectorDescriptor.make` — bundles all of the above          |
-| Config form    | `*-client-collector/src/*-config-form.tsx`  | `ConfigFormProps<Config>`                                      |
-| Registry entry | `collector-registry/src/registry.ts`        | append to `descriptors`                                        |
-| Form entry     | `collector-react/src/forms/config-form.tsx` | add to `configForms`                                           |
+| Piece           | Where                                       | Contract                                                       |
+| --------------- | ------------------------------------------- | -------------------------------------------------------------- |
+| Entities        | `*-client-collector/src/entities/`          | `EntityDefinition.make` — recognize + parse one response shape |
+| Config          | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
+| Scraping plan   | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — first page, steps, entities              |
+| Persist sink    | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |
+| Provenance      | `*-client-collector/src/config.ts`          | one `captureProvenance:` line on the plan (see step 6)         |
+| Source identity | `*-client-collector/src/config.ts`          | wrap the plan in `adoptSourceIdentity` (see step 7)            |
+| Descriptor      | `*-client-collector/src/config.ts`          | `CollectorDescriptor.make` — bundles all of the above          |
+| Config form     | `*-client-collector/src/*-config-form.tsx`  | `ConfigFormProps<Config>`                                      |
+| Registry entry  | `collector-registry/src/registry.ts`        | append to `descriptors`                                        |
+| Form entry      | `collector-react/src/forms/config-form.tsx` | add to `configForms`                                           |
 
 ## 1. Scaffold the client-collector package
 
@@ -234,7 +235,60 @@ That is the whole wiring. The framework owns everything else:
   `extractJson`-unwrapped string your entity decoded, verbatim: no allowlist,
   no truncation.
 
-## 7. Descriptor + package index
+## 7. Source identity: key every resource under the system it came from
+
+A resource is stored under its `id`, so the id has to mean the same thing across
+sources. Declare the absolute URI that names your source, and end the plan
+factory by wrapping the plan:
+
+```ts
+import { adoptSourceIdentity } from 'fhir-r4/identity'
+
+/** Persisted wire format: the hash domain and the `Identifier.system`. */
+const MY_SOURCE_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/my-portal'
+
+const scrapingPlan = (
+  config: InstanceConfig,
+  _runId: string
+): ScrapingPlan.ScrapingPlan<FhirResource> => {
+  const plan = ScrapingPlan.make<FhirResource>({ … })
+  return adoptSourceIdentity({ system: MY_SOURCE_SYSTEM })(plan)
+}
+```
+
+That is the whole wiring — entities stay unaware, and their suites keep testing
+the un-adopted decode. Every resource the plan parses gets a derived `wf-…` id,
+keeps the source's own id as `identifier[0]`, and has its references rewritten to
+match. See the [Source Identity Explanation](./Source%20Identity%20Explanation.md)
+for the derivation and the field table.
+
+Three choices to make:
+
+- **The system URI.** For a FHIR source, the **configured** root URL (never one
+  recovered from a response). For a scraper, a Wildflower-minted `sid` URI naming
+  the portal. It is persisted wire format: changing it orphans everything already
+  imported.
+- **`baseUrl`.** Set it (usually to the same value) when the source spells its
+  own references absolutely, so `https://host/base/Patient/1` rewrites like
+  `Patient/1`. Leave it off for a source whose references are relative.
+- **Nothing for a recorder.** A collector that _mints_ its resources locally
+  rather than importing them — `web-trace-collector` — must not be wrapped; its
+  ids already come from the same derivation at its codec, and wrapping would hash
+  a hash.
+
+Build the plan as `ScrapingPlan.make<FhirResource>`, as both production
+collectors do. `adoptSourceIdentity` rejects a plan whose entities declare a
+narrower element type at compile time: adoption widens to `FhirResource` and
+cannot be declared not to, so a combinator that handed such a plan back unchanged
+would be claiming a type it does not deliver. The error names the constraint —
+widen the entity list, don't work around it.
+
+If you later add a `followUpSteps` generator that needs the source's id to build
+a source-server URL, read it back with `originalIdOf(source, resource)` — under an
+adopted plan the generator receives adopted resources, so `resource.id` is the
+local id.
+
+## 8. Descriptor + package index
 
 `CollectorDescriptor.make` bundles the config schema, its default, the plan
 factory, the display strings, and the persist sink into the one value the
@@ -258,10 +312,10 @@ const FhirR4CollectorDescriptor = CollectorDescriptor.make({
 `make` adds the derived `resourcePersistenceRuntimeIfMatches` guard (how the
 registry dispatches a stored config without an unsafe cast). Keep `display`
 strings **kind-level** — a title like "Demo FHIR Server" names a _route's_ demo
-entry, not the collector. Export the descriptor (and the form from step 9) from
+entry, not the collector. Export the descriptor (and the form from step 10) from
 the package `index.ts`.
 
-## 8. Register in the registry
+## 9. Register in the registry
 
 Add the package as a dependency of `collector-registry` and append the
 descriptor to the closed tuple in `collector-registry/src/registry.ts`:
@@ -274,7 +328,7 @@ That's the only edit here. `CollectorConfig`, `CollectorTag`,
 `CollectorRequirements`, and `resourcePersistenceRuntimeForConfig` all re-derive
 from the tuple — there is no parallel switch or union to update.
 
-## 9. Write and register the config form
+## 10. Write and register the config form
 
 The form is written against the collector's own concrete config
 (`ConfigFormProps<Config>` from `collector-fundamentals/config-form`). It owns
@@ -298,12 +352,12 @@ const configForms: { readonly [T in CollectorTag]: ConfigFormComponent<T> } = {
 }
 ```
 
-The mapped type is the exhaustiveness lock: adding the descriptor in step 8
+The mapped type is the exhaustiveness lock: adding the descriptor in step 9
 widens `CollectorTag`, and this record then **fails to compile** until the new
 form is registered. That compile error is your reminder — you can't ship a
 registered collector with no form.
 
-## 10. Tests per layer
+## 11. Tests per layer
 
 Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 `/javascript-testing-expert` command). Cover each layer where it lives:
@@ -326,7 +380,7 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
   `collector-fundamentals`' own suites, not per collector).
 - **Form** — decodes valid input, renders a `ParseError` inline for bad input.
 
-## 11. Regenerate the OpenAPI snapshots (the non-obvious ripple)
+## 12. Regenerate the OpenAPI snapshots (the non-obvious ripple)
 
 A new config **widens `CollectorConfig`**, which is the payload schema of
 `CreateRemote` / `UpdateRemote`. That changes the collector remotes **wire
@@ -344,7 +398,7 @@ collector is added — but the _client_ spec (`OpenApi.fromApi(CollectorApi)`)
 does, and the TS drift test pins the two together. Details and gotchas:
 [OpenAPI Spec Drift How-To](../../../docs/Effect/OpenAPI%20Spec%20Drift%20How-To.md).
 
-## 12. Verify
+## 13. Verify
 
 ```bash
 vp run ready   # fmt + lint + lint:comments + lint:docs + pack + test:all

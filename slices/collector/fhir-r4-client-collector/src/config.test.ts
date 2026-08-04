@@ -1,10 +1,12 @@
-import { UrlMatch } from 'collector-fundamentals/model'
+import { type EntityDefinition, UrlMatch } from 'collector-fundamentals/model'
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Patient } from 'fhir-r4/resources'
+import { localResourceId, originalIdOf } from 'fhir-r4/identity'
+import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
+import { traceResourceId } from 'web-trace-core'
 
 import { FhirR4CollectorDescriptor, InstanceConfig, defaultConfig, scrapingPlan } from './config.ts'
 
@@ -189,7 +191,9 @@ describe('scrapingPlan', () => {
     const result = await Effect.runPromise(
       hook?.(FIXED_RUN_ID, response, [patient]) ?? Effect.die('hook asserted defined above')
     )
-    expect(result.diagnostics.map((trace) => trace.id)).toEqual(['fhir-r4-test-run-req-1'])
+    expect(result.diagnostics.map((trace) => trace.id)).toEqual([
+      traceResourceId({ sessionId: 'fhir-r4-test-run', requestId: 'req-1' }),
+    ])
   })
 
   it('percent-encodes a patientId that contains URL-significant characters', () => {
@@ -209,5 +213,103 @@ describe('scrapingPlan', () => {
       _tag: 'Uri',
       uri: 'https://example.com/Patient/a%2Fb%20c?_format=json',
     })
+  })
+})
+
+/**
+ * The plan's entities as the framework sees them — wrapped by
+ * `adoptSourceIdentity`, not the raw module singletons the entity suites
+ * exercise. The entity suites pin the FHIR decode; these pin what the plan does
+ * to it afterwards.
+ */
+describe('source identity', () => {
+  const ROOT_URL = 'https://r4.example.org/baseR4'
+  const CONFIG: InstanceConfig = {
+    _tag: 'fhir-r4',
+    rootUrl: ROOT_URL,
+    patientId: 'pat-7',
+  }
+
+  const entityNamed = (name: string): EntityDefinition.EntityDefinition<FhirResource> => {
+    const found = scrapingPlan(CONFIG, FIXED_RUN_ID).entityDefinitions.find(
+      (entity) => entity.name === name
+    )
+    if (found === undefined) throw new Error(`no entity named ${name}`)
+    return found
+  }
+
+  const parseBody = (name: string, url: string, body: unknown): readonly FhirResource[] =>
+    Effect.runSync(
+      entityNamed(name).parse(
+        makeRemoteResponse({
+          url,
+          headers: [['content-type', 'application/fhir+json']],
+          body: JSON.stringify(body),
+        })
+      )
+    )
+
+  const adoptedPatient = (): FhirResource => {
+    const [resource] = parseBody('PatientEntity', `${ROOT_URL}/Patient/pat-7`, {
+      resourceType: 'Patient',
+      id: 'pat-7',
+      identifier: [{ system: 'http://hospital.example/mrn', value: 'MRN-42' }],
+      // A server that spells its own references absolutely — `baseUrl` is what
+      // makes this rewrite rather than dangle.
+      managingOrganization: { reference: `${ROOT_URL}/Organization/org-3` },
+    })
+    if (resource === undefined) throw new Error('the fixture yields one Patient')
+    return resource
+  }
+
+  it('keys the Patient under the configured rootUrl, keeping the server id as an identifier', () => {
+    const adopted = adoptedPatient()
+    expect(adopted.id).toBe(localResourceId(ROOT_URL, 'Patient', 'pat-7'))
+    if (adopted.resourceType !== 'Patient') throw new Error('expected a Patient')
+    expect(adopted.identifier[0]?.value).toBe('pat-7')
+    expect(adopted.identifier[0]?.system?.href).toBe(new URL(ROOT_URL).href)
+    // The server's own identifier survives behind the injected one.
+    expect(adopted.identifier[1]?.value).toBe('MRN-42')
+  })
+
+  it('rewrites an absolute self-reference as if it had been written relatively', () => {
+    const adopted = adoptedPatient()
+    if (adopted.resourceType !== 'Patient') throw new Error('expected a Patient')
+    expect(adopted.managingOrganization?.reference).toBe(
+      `Organization/${localResourceId(ROOT_URL, 'Organization', 'org-3')}`
+    )
+  })
+
+  it('lands an Observation subject on the id its Patient is adopted to', () => {
+    // `emr-rust`'s `$everything` searches `?subject=Patient/{id}`, so the two
+    // sides have to agree after adoption, not just before it.
+    const patientId = adoptedPatient().id
+    const [observation] = parseBody(
+      'ObservationListEntity',
+      `${ROOT_URL}/Observation?subject%3APatient=pat-7`,
+      {
+        resourceType: 'Bundle',
+        type: 'searchset',
+        entry: [
+          {
+            resource: {
+              resourceType: 'Observation',
+              id: 'obs-1',
+              status: 'final',
+              code: { text: 'Weight' },
+              subject: { reference: 'Patient/pat-7' },
+            },
+          },
+        ],
+      }
+    )
+    if (observation?.resourceType !== 'Observation') throw new Error('expected an Observation')
+    expect(observation.id).toBe(localResourceId(ROOT_URL, 'Observation', 'obs-1'))
+    expect(observation.subject?.reference).toBe(`Patient/${patientId}`)
+  })
+
+  it('reads the server id back off an adopted resource', () => {
+    // What a follow-up generator would call to build a source-server URL.
+    expect(originalIdOf({ system: ROOT_URL, baseUrl: ROOT_URL }, adoptedPatient())).toBe('pat-7')
   })
 })

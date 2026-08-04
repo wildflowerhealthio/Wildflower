@@ -7,6 +7,7 @@ import {
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
+import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
@@ -69,6 +70,21 @@ const defaultConfig: InstanceConfig = {
   email: 'you@example.com',
   password: 'your-password',
 }
+
+/**
+ * The source system every resource this collector imports is keyed under.
+ *
+ * @remarks
+ * A Wildflower-minted `sid` URI in the same style as `web-trace`'s systems, not
+ * a carebook dialect constant — carebook publishes no namespace for "the id this
+ * portal gave a resource", so this names the portal on its behalf. It does not
+ * belong in `carebook.ts` for that reason.
+ *
+ * **Persisted wire format.** It is the hash domain for every derived local id
+ * and the `Identifier.system` written beside every carebook id, so changing it
+ * orphans everything already imported from Rexall.
+ */
+const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
 
 /** The user-facing login page the sniffer webview mounts first. */
 const LOGIN_URL = 'https://letsbewell.ca/sign-in'
@@ -148,6 +164,15 @@ const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
  * already carries `MedicationDispense`, so the deferred `followUpSteps` crawl is
  * left out until a capture diff proves the detail XHR is richer (issue #339).
  *
+ * The plan is wrapped in `adoptSourceIdentity` under
+ * {@link REXALL_CAREBOOK_SYSTEM}, so every resource it parses is re-keyed under
+ * a derived local id with the carebook id kept as `identifier[0]`. No `baseUrl`:
+ * carebook's references are relative. This is what separates a
+ * `MedicationRequest` from the `MedicationDispense` that shares its carebook id
+ * — the resource type is an input to the derivation — while
+ * `subject: Patient/<uid>` still lands on the id the adopted profile Patient
+ * gets, and `medicationReference: '#…'` fragments pass through untouched.
+ *
  * Provenance is the plan-level `captureProvenance` hook — the whole of this
  * collector's wiring is the one line naming it. The framework mints the run
  * id (this factory ignores its `runId` parameter — the hook receives it at
@@ -163,7 +188,7 @@ const scrapingPlan = (
   _runId: string
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: LOGIN_URL }
-  return ScrapingPlan.make<FhirResource>({
+  const plan = ScrapingPlan.make<FhirResource>({
     name: 'Rexall Be Well',
     entityDefinitions: [
       ProfileEntity,
@@ -239,6 +264,7 @@ const scrapingPlan = (
       { _tag: 'Delay', name: 'Collecting prescriptions', duration: SETTLE },
     ],
   })
+  return adoptSourceIdentity({ system: REXALL_CAREBOOK_SYSTEM })(plan)
 }
 
 /**
@@ -260,4 +286,10 @@ const RexallCollectorDescriptor = CollectorDescriptor.make({
   persistResources,
 })
 
-export { InstanceConfig, defaultConfig, scrapingPlan, RexallCollectorDescriptor }
+export {
+  InstanceConfig,
+  defaultConfig,
+  REXALL_CAREBOOK_SYSTEM,
+  scrapingPlan,
+  RexallCollectorDescriptor,
+}

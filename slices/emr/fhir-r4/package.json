@@ -14,6 +14,10 @@
       "source": "./src/data-types/index.ts",
       "default": "./dist/data-types/index.js"
     },
+    "./identity": {
+      "source": "./src/identity/index.ts",
+      "default": "./dist/identity/index.js"
+    },
     "./http-api-definition": {
       "source": "./src/http-api-definition/index.ts",
       "default": "./dist/http-api-definition/index.js"

@@ -142,7 +142,7 @@ describe('captureProvenance', () => {
     )
     const expected = `DocumentReference/${traceResourceId({ sessionId: SESSION_ID, requestId: 'req-7' })}`
     expect(capture.linked.map((resource) => resource.meta?.source)).toEqual([expected, expected])
-    expect(capture.trace.id).toBe('fhir-r4-run-1-req-7')
+    expect(capture.trace.id).toBe(traceResourceId({ sessionId: SESSION_ID, requestId: 'req-7' }))
   })
 
   it('should skip an id-less resource in the forward link without dropping it from the output', async () => {
@@ -242,7 +242,7 @@ describe('makeFhirProvenanceCapture', () => {
     if (trace === undefined) {
       throw new Error('expected the hook to produce a trace')
     }
-    expect(trace.id).toBe('fhir-r4-run-9-req-7')
+    expect(trace.id).toBe(traceResourceId({ sessionId: 'fhir-r4-run-9', requestId: 'req-7' }))
     const exchange = await Effect.runPromise(fromDocumentReference(trace))
     expect(exchange.sessionId).toBe('fhir-r4-run-9')
   })
@@ -252,9 +252,7 @@ describe('makeFhirProvenanceCapture', () => {
       hook('run-9', response(utf8('{}')), [observation('a'), observation('b')])
     )
     expect(result.diagnostics).toHaveLength(1)
-    expect(result.resources.map((resource) => resource.meta?.source)).toEqual([
-      'DocumentReference/fhir-r4-run-9-req-7',
-      'DocumentReference/fhir-r4-run-9-req-7',
-    ])
+    const source = `DocumentReference/${traceResourceId({ sessionId: 'fhir-r4-run-9', requestId: 'req-7' })}`
+    expect(result.resources.map((resource) => resource.meta?.source)).toEqual([source, source])
   })
 })

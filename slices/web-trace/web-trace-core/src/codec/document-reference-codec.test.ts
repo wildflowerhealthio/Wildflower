@@ -93,11 +93,15 @@ describe('TraceExchange ⇄ DocumentReference', () => {
     )
   })
 
-  test('property: the resource id is {sessionId}-{requestId}, so a retried write is an upsert', () => {
+  test('property: the resource id is derived from (sessionId, requestId), so a retried write is an upsert', () => {
     fc.assert(
       fc.property(exchangeArbitrary, (exchange) => {
-        expect(traceExchangeToWire(exchange).id).toBe(`${exchange.sessionId}-${exchange.requestId}`)
         expect(traceExchangeToWire(exchange).id).toBe(traceResourceId(exchange))
+        // The pair is still the identity — the same pair from a second
+        // exchange object writes the same row.
+        expect(traceExchangeToWire(exchange).id).toBe(
+          traceResourceId({ sessionId: exchange.sessionId, requestId: exchange.requestId })
+        )
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )

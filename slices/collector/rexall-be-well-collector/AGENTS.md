@@ -41,6 +41,10 @@ machinery lives in `slices/emr/fhir-stu3-as-r4`.
   `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
+- the source identity — `adoptSourceIdentity({ system: REXALL_CAREBOOK_SYSTEM })`
+  wrapping the plan factory's return. It is what stops the request/dispense pair
+  that shares a carebook id from collapsing onto one row. See the
+  [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a copy of
   `fhir-r4-client-collector`'s; slice layering forbids importing it).
 - `src/rexall-config-form.tsx` (+ `.module.css`) — the email/password
@@ -86,9 +90,9 @@ payload. The trace is the only record of what the transform was actually given.
   inputs.** The framework mints the run id at dispatch (one per
   `resourcePersistenceRuntimeIfMatches` call, so one plan build is one run);
   this factory ignores the parameter — the hook receives the id at invocation.
-  The trace resource id is `{rexall-runId}-{requestId}`, which is why the id
-  must be fresh per run: a config-derived id would make a second sync of the
-  same account silently upsert its traces over the first's. Tests deep-equal
+  The trace resource id is derived from `(rexall-runId, requestId)`, which is
+  why the run id must be fresh per run: a config-derived one would make a second
+  sync of the same account silently upsert its traces over the first's. Tests deep-equal
   plans built with a fixed run id.
 - **A response that produced no resource is not captured.** The tracker skips
   the hook on an empty parse — the line between provenance collection and bulk
@@ -278,7 +282,8 @@ Observed, not acted on — worth knowing before trusting a field:
 
 - A `MedicationRequest` and its `MedicationDispense` **share the same `id`** and
   the same identifier pair. Anything keying on id alone rather than
-  (resourceType, id) collapses the two.
+  (resourceType, id) collapses the two — which is why the plan is wrapped in
+  `adoptSourceIdentity`, whose derivation takes the resource type as an input.
 - `authorizingPrescription[].reference` does **not** resolve to any bundle
   entry; the working link is `identifier.value`. The two entries are the same
   reference twice, differing only in `identifier.system` (`…-type-order` /
