@@ -13,8 +13,29 @@ is a verbatim copy, per slice layering.
 
 Like every other importer, the plan is wrapped in `adoptSourceIdentity` so its
 resources are re-keyed under derived local ids — see
-[pcId ≠ patientId](#pcid--patientid-two-patient-records-by-design) and the
+[account vs patient records](#account-vs-patient-records) and the
 [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
+
+## The endpoints (version-agnostic)
+
+The capture shows an `/api/p1/…` version segment while the portal is documented
+elsewhere as `/api/v1/…` — the two disagree, so **every recognizer matches
+`/api/<anything>/…`** (`/api/[^/]+/…`), never a literal `p1`/`v1`. The four real
+XHRs the collector cares about, and which page fires each:
+
+- `GET …/api/<seg>/customers/:uuid?expand=…` — the account and the people it
+  manages. Fired by the health dashboard **and** the prescription-history page.
+  → `CustomerEntity`.
+- `GET …/api/<seg>/prescriptions/:uuid/prescription-status` — one **per
+  prescription**, fired by the prescription-dashboard page. → `PrescriptionEntity`.
+- `GET …/api/<seg>/prescription-history?customerId=…` — **every** dispense across
+  all prescriptions (the status endpoint carries at most the latest fill per
+  prescription), fired by the prescription-history page. → `PrescriptionHistoryEntity`.
+- `…/customers/:uuid/toasts?source=LOGIN` and other sub-paths are **not** claimed
+  — the `customers` recognizer anchors the uuid as the final path segment.
+
+The three recognizers are **disjoint by construction** (different path segments),
+so `entityDefinitions` order is not load-bearing.
 
 ## The collector
 
@@ -23,18 +44,28 @@ Mirrors `fhir-r4-client-collector`; wired into `collector-registry` +
 
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'shoppers-drugmart', email,
 password }`) with fast-check arbitraries, `defaultConfig`, the
-  login-pause-for-2FA-and-list `scrapingPlan`, and the
+  login-pause-for-2FA-then-visit-dashboard-and-history `scrapingPlan`, and the
   `ShoppersDrugMartCollectorDescriptor`.
-- `src/entities/profile-entity.ts` — recognizes `…/api/profile/getProfile/` and
-  synthesizes an R4 `Patient` from the (non-FHIR) profile JSON, keyed by `pcId`.
+- `src/entities/customer-entity.ts` — recognizes `…/customers/<uuid>` and
+  synthesizes, from the account payload, one demographic `Patient` per managed
+  person (keyed by `patients[].id`) plus a linked account `Patient` (keyed by
+  `pcid`).
 - `src/entities/prescription-entity.ts` — recognizes
-  `…/api/v1/prescriptions/:uuid/prescription-status` (one XHR **per
-  prescription**) and synthesizes, from each response, a minimal `Patient`
-  (keyed by `patientId`), one `MedicationRequest`, and one `MedicationDispense`
-  per `dispenses` entry.
-- `src/shoppers.ts` — the identifier/coding-system URL catalogue, plus
-  `SHOPPERS_DRUGMART_SYSTEM` (in `config.ts`) — the Wildflower-minted `sid` URI
-  the plan adopts under, mirroring Rexall's `REXALL_CAREBOOK_SYSTEM`.
+  `…/prescriptions/:uuid/prescription-status` (one XHR per prescription) and
+  synthesizes one `MedicationRequest` and one `MedicationDispense` per
+  `dispenses` entry. No Patient (the subject records come from `CustomerEntity`).
+- `src/entities/prescription-history-entity.ts` — recognizes
+  `…/prescription-history?customerId=…` and synthesizes one `MedicationDispense`
+  per history entry (no Patient, no MedicationRequest).
+- `src/entities/medication-wire.ts` — the `medicationCodeableConcept` builder
+  (brand/chemical text + DIN coding) shared by the two dispense-emitting entities;
+  the DIN is per-payload (fills of one rx can differ).
+- `src/dates.ts` — the `decodesAsDateTime` / `firstDateTime` date-validation
+  helpers shared across entities.
+- `src/shoppers.ts` — the identifier/coding-system URL catalogue
+  (`ShoppersIdentifierSystem`, `DIN_CODE_SYSTEM`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`),
+  plus `SHOPPERS_DRUGMART_SYSTEM` (in `config.ts`) — the Wildflower-minted `sid`
+  URI the plan adopts under, mirroring Rexall's `REXALL_CAREBOOK_SYSTEM`.
 - the write sink — `fhir-r4/clients`' shared `persistResources`, imported in
   `config.ts` and handed straight to the descriptor (no per-collector copy).
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a verbatim copy, per
@@ -43,9 +74,9 @@ password }`) with fast-check arbitraries, `defaultConfig`, the
   `ConfigFormProps` form `collector-react` registers.
 - `src/index.ts` — the barrel.
 
-Only user-facing portal pages are ever navigated (the login page, then the
-prescription dashboard); the collector only **sniffs** the XHRs those pages fire.
-No API URL is ever crafted or opened directly.
+Only user-facing portal pages are ever navigated (login → health dashboard →
+prescription dashboard → prescription history); the collector only **sniffs** the
+XHRs those pages fire. No API URL is ever crafted or opened directly.
 
 ## The login + 2FA flow
 
@@ -58,77 +89,97 @@ The plan's `stepSequence`:
    `button[type="submit"]`.
 3. **`AwaitPageSettled` on `…/en/healthdashboard/` with a 5-minute timeout** —
    this is the human-in-the-loop 2FA pause. The dashboard only loads once the
-   user completes verification on `accounts.pcid.ca/login/verification`; its
-   `…/api/profile/getProfile/` XHR is sniffed as the dashboard settles.
-4. `Open`s the prescription dashboard, `AwaitPageSettled` on it, then a trailing
-   `Delay` for the per-prescription `prescription-status` XHR fan-out.
+   user completes verification on `accounts.pcid.ca/login/verification`.
+4. `Open`s the prescription dashboard, `AwaitPageSettled` on it, then a `Delay`
+   for the per-prescription `prescription-status` XHR fan-out.
+5. `Open`s the prescription-history page, `AwaitPageSettled` on it, then a
+   trailing `Delay` — one visit fires both the `prescription-history` and
+   `customers` XHRs (full dispense history + the account and its managed people).
 
-## pcId ≠ patientId (two Patient records, by design)
+## Account vs patient records
 
-The profile's `pcId` and a prescription's `patientId` are **different
-identifiers for the same person** and do **not** align (confirmed against
-production). Collector entities parse each XHR **independently** — there is no
-shared state and no join key between the two ids — so the collector emits **two
-Patient records**:
+The account's `pcid` (`== customer.id ==` the `customerId` query param) and a
+managed person's `patientId` (a `customer.patients[].id`) are **different kinds
+of id** — an account vs a person — but the relationship is **known and joinable**:
+the customers payload carries both together. So `CustomerEntity` emits:
 
-- a **demographic** `Patient` keyed by `pcId` (from `getProfile`: name, DOB,
-  email/phone telecom, postal address), and
-- a **minimal** `Patient` keyed by `patientId` (from each prescription), which is
-  the id `MedicationRequest.subject` / `MedicationDispense.subject` resolve to.
+- a **demographic** `Patient` per `customer.patients[]` entry, keyed by its `id`
+  (name, phone telecom, address) — the record `MedicationRequest.subject` /
+  `MedicationDispense.subject` resolve to, and
+- an **account** `Patient` keyed by `customer.pcid` (account name, email, phone,
+  address) carrying a `link.seealso` to each demographic Patient.
 
 Each carries its own id as a FHIR `identifier` (distinct systems in
-`shoppers.ts`) so the two can be reconciled downstream. Keying the demographic
-Patient by `patientId` isn't possible here (the profile payload never carries
-`patientId`), and keying the subject by `pcId` isn't either (the prescription
-payload never carries `pcId`).
+`shoppers.ts`). `adoptSourceIdentity` re-keys each Patient under
+`localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', <original id>)` — the account
+and each person get **distinct** derived ids (the original id is an input to the
+derivation) — and rewrites the `link.seealso` relative reference onto the
+demographic Patient's derived id, so the join is **materialized** in the store and
+lands on the same id `subject` resolves to.
 
-`adoptSourceIdentity` preserves this. Each Patient is re-keyed under
-`localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', <original id>)`, so the
-`pcId` and `patientId` Patients still get **distinct** derived ids (the original
-id is an input to the derivation), and the portal id is kept as `identifier[0]`
-behind the ones the entity already stamped. A `MedicationRequest.subject` /
-`MedicationDispense.subject` of `Patient/<patientId>` is rewritten to
-`Patient/<that same derived id>` — the reference and its target go through the
-one derivation, so the link that held by both entities agreeing on `patientId`
-now holds by construction. The store-locator `supportingInformation` URL is
-absolute, not a relative `Type/id` reference, so adoption leaves it untouched.
+**`PrescriptionEntity` no longer emits a subject Patient.** `CustomerEntity` owns
+those records, and the same run always visits a page that fires the customers XHR.
+The trade-off (documented in the entity): a run where the customers XHR fails
+leaves the prescriptions' `subject` references dangling, which the store tolerates
+(references are not FK-enforced).
 
 ## Resource mapping notes
 
-- **`MedicationRequest.status` is always `'unknown'`** — the portal `status` is a
-  free-text label (`"Unable to renew online"`), not a FHIR code. The label is
-  preserved in `statusReason.text` and its longer `labelDescription` in a `note`,
-  so nothing is lost and no clinical state is asserted.
-- **Dates are validated before use** (`decodesAsDateTime`), so a malformed
-  date drops just that slot rather than failing the whole resource decode.
+- **`MedicationRequest.status`** is `'stopped'` when the payload's top-level
+  `expired` or `archived` flag is set, and `'unknown'` otherwise — deliberately
+  conservative (nothing maps to `'active'`; the portal enum asserts a
+  renewal/refill affordance, not clinical activity).
+- **`statusReason`** carries the portal's machine `status.type` as a coding under
+  `PRESCRIPTION_STATUS_TYPE_SYSTEM` (an **open** code set — `READY_FOR_RENEW`,
+  `UNABLE_TO_RENEW_ONLINE`, `READY_FOR_REFILL_NO_DISPENSE`, …) plus the human
+  label as `text`; the longer `labelDescription` rides a `note`.
+- **`priorPrescription`** is an **identifier-only** reference built from
+  `previousPrescription` (the prior rx's human number) — we don't know its uuid,
+  and adoption leaves an identifier-only reference untouched.
+- **Dates are validated before use** (`decodesAsDateTime`), so a malformed date
+  drops just that slot rather than failing the whole resource decode. The portal
+  uses date-only strings (`YYYY-MM-DD`), which decode as midnight UTC.
 - **The fill window is `dispenseRequest.validityPeriod`** — `lastFillDate` opens
   it (`start`), `nextFillDate` closes it (`end`), with the prescription
-  `expiryDate` as the `end` fallback when no `nextFillDate` is present. Only one
-  of `lastFillDate` / `nextFillDate` is ever observed, and whichever is present
-  also authors the request (`authoredOn`, preferring `lastFillDate`).
-- **The dispensing `storeId` becomes a `supportingInformation` reference** to the
-  public store-locator URL (`…/store-locator/store/:id`, built from
-  `SHOPPERS_STORE_LOCATOR_BASE`). The medication-sponsorship UI shows a "Shoppers"
-  store button by prefix-matching that same base — keep the two constants in sync.
-- A **dispense with no `dispenseId`** has no logical id to write under, so it is
-  dropped-and-counted (`Effect.logInfo`) rather than silently skipped at the sink.
+  `expiryDate` as the `end` fallback. Only one of `lastFillDate` / `nextFillDate`
+  is ever present, and whichever it is also authors the request (`authoredOn`).
+- **The dispensing store becomes a store-locator reference** to the public
+  `…/store-locator/store/:id` URL (`SHOPPERS_STORE_LOCATOR_BASE`) — on
+  `MedicationRequest.supportingInformation` (from the status `storeId`) and on
+  `MedicationDispense.location` (from the history `store.id`, with `store.storeName`
+  as `display`). Absolute URLs, so adoption leaves them untouched. The
+  medication-sponsorship UI prefix-matches that same base — keep the constants in
+  sync.
+- **History dispenses** get `status: 'completed'` (history entries are completed
+  fills; the payload has no status field to say otherwise) and **no `subject`**
+  (the history payload carries no `patientId`, and `MedicationDispense.subject` is
+  0..1 in R4). They link to their request via `authorizingPrescription` (a
+  relative `MedicationRequest/<prescriptionId>` reference carrying the human
+  `prescriptionNumber` as the reference's own `identifier`).
+- **Status/history dispense overlap.** The latest fill of a prescription appears
+  in both the status feed and the history feed; same `dispenseId` → same adopted
+  id → an idempotent upsert. The history version is strictly richer, and write
+  ordering within a run is not guaranteed, so last-write-wins on the shared id is
+  acceptable.
+- A **dispense with no `dispenseId`** (and a **patient with no `id`**) has no
+  logical id to write under, so it is dropped-and-counted (`Effect.logInfo`)
+  rather than silently skipped at the sink.
 
 ## Fixtures & open questions caveat
 
-The entity schemas are **synthesized from the ticket's notes, not real captured
-payloads**. Reconcile against redacted real captures before relying on the
-collector end-to-end:
+The entity schemas are **reconciled against a redacted real capture** of the
+portal (a `web-trace` HAR that exists in `.local-notes/`, kept out of the repo).
+Fixtures are hand-written with the same shapes and obviously-fake values — no
+decoded body is committed. Remaining unknowns:
 
-- **Login-form selectors / submit button** — `config.ts`'s `SUBMIT_SELECTOR` is a
-  best-guess standard submit button; the email/password selectors are the ones
-  the ticket specified.
-- **`dispenses` shape** — real captures wrap each dispense in a numeric-keyed
-  object (`[{ "0": { … } }]`); `flattenDispenses` tolerates both that and a flat
-  array, but the exact shape should be confirmed.
-- **Endpoint URLs / trailing slashes** — `getProfile` carries a trailing slash;
-  the recognizers are hand-rolled regexes (not `UrlMatch.make`) to tolerate it.
-- **System URIs** (`shoppers.ts`) — best-guess namespaces; the canonical Health
-  Canada / Infoway DIN system URI in particular should be reconciled.
+- **Login-form selectors / submit button** — the login/health-dashboard segment
+  was **not** captured, so `config.ts`'s selectors are unchanged best-guesses;
+  reconcile against the real DOM.
+- **`p1` vs `v1` API version segment** — the HAR shows `p1`, the endpoint is
+  documented as `v1`; recognizers are version-agnostic on purpose.
+- **System URIs** (`shoppers.ts`) — best-guess namespaces under the portal host;
+  the canonical Health Canada / Infoway DIN system URI in particular should be
+  reconciled.
 
 ## References
 

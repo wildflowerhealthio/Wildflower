@@ -1,68 +1,39 @@
-import { DateTime, Effect, type Either, type ParseResult } from 'effect'
+import { Effect, type Either, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
+import type { FhirResource } from 'fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { Response } from 'collector-fundamentals/model'
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
-import type { FhirResource } from 'fhir-r4/resources'
 
+import {
+  DIN_CODE_SYSTEM,
+  PRESCRIPTION_STATUS_TYPE_SYSTEM,
+  ShoppersIdentifierSystem,
+  shoppersStoreLocatorUrl,
+} from '../shoppers.ts'
 import { PrescriptionEntity } from './prescription-entity.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
 
+const STATUS_URL =
+  'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-uuid-1/prescription-status'
+
+const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
+const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
+
 const makeResponse = (body: string): Response.RemoteResponse =>
-  makeRemoteResponse({
-    url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-uuid-1/prescription-status',
-    body,
-  })
+  makeRemoteResponse({ url: STATUS_URL, body })
+
+const parse = (body: string): readonly FhirResource[] =>
+  Effect.runSync(PrescriptionEntity.parse(makeResponse(body)))
 
 const runParse = (
   r: Response.RemoteResponse
 ): Either.Either<readonly FhirResource[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(PrescriptionEntity.parse(r)))
-
-/** A representative prescription-status payload; `dispenses` uses the numeric-keyed wrapper. */
-const prescriptionJson = (
-  overrides: Record<string, unknown> = {},
-  dispenses: unknown = [
-    {
-      '0': {
-        dispenseId: 'disp-1',
-        quantityDispensed: 30,
-        status: 'COMPLETE',
-        dispenseDate: '2026-01-10T00:00:00Z',
-      },
-    },
-  ]
-): string =>
-  JSON.stringify({
-    id: 'rx-uuid-1',
-    url: '/api/v1/prescriptions/rx-uuid-1',
-    storeId: 1414,
-    patientId: 'pt-uuid-1',
-    prescriptionNumber: 998877,
-    brandName: 'Atorvastatin',
-    chemicalName: 'atorvastatin 20mg',
-    numFillsLeft: 3,
-    prescriberName: 'Dr. A Prescriber',
-    remainingQuantity: 60,
-    status: {
-      label: 'Unable to renew online',
-      portalLabel: 'Unable to renew online',
-      labelDescription: 'Contact your Pharmacy Team for more details',
-    },
-    din: '02123456',
-    direction: 'Take one tablet daily',
-    refillQuantity: 90,
-    dosageForm: 'tablets',
-    expiryDate: '2027-01-01T00:00:00Z',
-    lastFillDate: '2026-01-10T00:00:00Z',
-    expired: false,
-    renewable: false,
-    dispenses,
-    ...overrides,
-  })
 
 /** Filter + narrow a heterogeneous batch to one resource type. */
 const byType = <T extends FhirResource['resourceType']>(
@@ -71,15 +42,106 @@ const byType = <T extends FhirResource['resourceType']>(
 ): ReadonlyArray<Extract<FhirResource, { resourceType: T }>> =>
   resources.filter((r): r is Extract<FhirResource, { resourceType: T }> => r.resourceType === type)
 
-/** Epoch-ms of a decoded FHIR `dateTime` slot (a `DateTime`), format-agnostic. */
-const epoch = (dt: DateTime.DateTime | null | undefined): number | undefined =>
-  dt == null ? undefined : DateTime.toEpochMillis(dt)
+/**
+ * A representative prescription-status payload modelled on the real capture:
+ * flat `dispenses`, a machine `status.type`, the top-level status flags, and a
+ * `previousPrescription`. Obviously-fake values. `overrides` merges over the
+ * base; `dispenses` is passed separately so a test can exercise the wrapper
+ * tolerance or the empty case.
+ */
+const prescriptionJson = (
+  overrides: Record<string, unknown> = {},
+  dispenses: unknown = [
+    {
+      dispenseId: 'disp-1',
+      quantityDispensed: 30,
+      status: 'COMPLETE',
+      dispenseDate: '2026-01-10T00:00:00Z',
+    },
+  ]
+): string =>
+  JSON.stringify({
+    id: 'rx-uuid-1',
+    storeId: 1414,
+    patientId: 'pt-uuid-1',
+    prescriptionNumber: 998877,
+    brandName: 'Atorvastatin',
+    chemicalName: 'atorvastatin 20mg',
+    numFillsLeft: 3,
+    prescriberName: 'Dr. A Prescriber',
+    status: {
+      label: 'Unable to renew online',
+      portalLabel: 'Unable to renew online',
+      labelDescription: 'Contact your Pharmacy Team for more details',
+      type: 'UNABLE_TO_RENEW_ONLINE',
+    },
+    din: '02123456',
+    direction: 'Take one tablet daily',
+    refillQuantity: 90,
+    expiryDate: '2027-01-01T00:00:00Z',
+    lastFillDate: '2026-01-10T00:00:00Z',
+    expired: false,
+    archived: false,
+    renewable: false,
+    previousPrescription: 5994285,
+    dispenses,
+    ...overrides,
+  })
+
+/** The MedicationRequest the base fixture is expected to synthesize. */
+const expectedRequest = decodeRequest({
+  resourceType: 'MedicationRequest',
+  id: 'rx-uuid-1',
+  status: 'unknown',
+  intent: 'order',
+  subject: { reference: 'Patient/pt-uuid-1' },
+  identifier: [{ system: ShoppersIdentifierSystem.PrescriptionNumber, value: '998877' }],
+  medicationCodeableConcept: {
+    coding: [{ system: DIN_CODE_SYSTEM, code: '02123456', display: 'atorvastatin 20mg' }],
+    text: 'Atorvastatin',
+  },
+  requester: { display: 'Dr. A Prescriber' },
+  statusReason: {
+    coding: [{ system: PRESCRIPTION_STATUS_TYPE_SYSTEM, code: 'UNABLE_TO_RENEW_ONLINE' }],
+    text: 'Unable to renew online',
+  },
+  note: [{ text: 'Contact your Pharmacy Team for more details' }],
+  priorPrescription: {
+    identifier: { system: ShoppersIdentifierSystem.PrescriptionNumber, value: '5994285' },
+  },
+  authoredOn: '2026-01-10T00:00:00Z',
+  dosageInstruction: [{ text: 'Take one tablet daily' }],
+  supportingInformation: [{ reference: shoppersStoreLocatorUrl(1414) }],
+  dispenseRequest: {
+    numberOfRepeatsAllowed: 3,
+    quantity: { value: 90 },
+    validityPeriod: { start: '2026-01-10T00:00:00Z', end: '2027-01-01T00:00:00Z' },
+  },
+})
+
+/** The MedicationDispense the base fixture's single dispense is expected to synthesize. */
+const expectedDispense = decodeDispense({
+  resourceType: 'MedicationDispense',
+  id: 'disp-1',
+  identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
+  status: 'completed',
+  subject: { reference: 'Patient/pt-uuid-1' },
+  authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
+  medicationCodeableConcept: {
+    coding: [{ system: DIN_CODE_SYSTEM, code: '02123456', display: 'atorvastatin 20mg' }],
+    text: 'Atorvastatin',
+  },
+  quantity: { value: 30 },
+  whenHandedOver: '2026-01-10T00:00:00Z',
+})
 
 describe('PrescriptionEntity', () => {
   describe('isFoundAt', () => {
     it.each([
+      { url: STATUS_URL, match: true },
+      // Both API version segments (the capture shows `p1`, docs say `v1`).
       {
-        url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1/prescription-status',
+        url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/prescriptions/rx-1/prescription-status',
         match: true,
       },
       // Trailing slash / query still match.
@@ -91,191 +153,120 @@ describe('PrescriptionEntity', () => {
         url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1/prescription-status?x=1',
         match: true,
       },
-      // Disjoint from the profile pattern and from the bare prescription URL.
-      { url: 'https://mypharmacy.shoppersdrugmart.ca/api/profile/getProfile/', match: false },
+      // Disjoint from the neighbouring entities and from the bare prescription URL.
       {
-        url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1',
+        url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/customers/cust-1?expand=abc',
         match: false,
       },
+      {
+        url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/prescription-history?customerId=c1',
+        match: false,
+      },
+      { url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1', match: false },
     ])('returns $match for "$url"', ({ url, match }) => {
       expect(PrescriptionEntity.isFoundAt(url)).toBe(match)
     })
   })
 
   describe('parse', () => {
-    it('synthesizes a minimal Patient, a MedicationRequest, and a MedicationDispense', () => {
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
-      expect(byType(result, 'Patient')).toHaveLength(1)
-      expect(byType(result, 'MedicationRequest')).toHaveLength(1)
-      expect(byType(result, 'MedicationDispense')).toHaveLength(1)
+    it('synthesizes a MedicationRequest and a MedicationDispense (no Patient)', () => {
+      // Act
+      const result = parse(prescriptionJson())
+
+      // Assert — whole-value on the full batch; the subject Patient now comes
+      // from CustomerEntity, so no minimal Patient is emitted here.
+      expect(result).toStrictEqual([expectedRequest, expectedDispense])
     })
 
-    it('keys the minimal Patient by patientId (not pcId) and records it as an identifier', () => {
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
-      const [patient] = byType(result, 'Patient')
-      expect(patient?.id).toBe('pt-uuid-1')
-      expect(patient?.identifier).toEqual([
-        expect.objectContaining({
-          system: new URL('https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/patient-id'),
-          value: 'pt-uuid-1',
-        }),
-      ])
+    it.each([
+      { flag: 'expired', expected: 'stopped' },
+      { flag: 'archived', expected: 'stopped' },
+    ])('maps $flag=true onto MedicationRequest.status $expected', ({ flag, expected }) => {
+      // Act
+      const [request] = byType(parse(prescriptionJson({ [flag]: true })), 'MedicationRequest')
+
+      // Assert
+      expect(request?.status).toBe(expected)
     })
 
-    it('maps the MedicationRequest fields, keeping status unknown + the portal label in statusReason', () => {
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
-      const [request] = byType(result, 'MedicationRequest')
-      expect(request?.id).toBe('rx-uuid-1')
+    it('leaves status unknown when neither expired nor archived is set', () => {
+      const [request] = byType(parse(prescriptionJson({ renewable: true })), 'MedicationRequest')
       expect(request?.status).toBe('unknown')
-      expect(request?.intent).toBe('order')
-      expect(request?.subject).toEqual(expect.objectContaining({ reference: 'Patient/pt-uuid-1' }))
-      expect(request?.statusReason).toEqual(
-        expect.objectContaining({ text: 'Unable to renew online' })
+    })
+
+    it('accepts the numeric-keyed dispense wrapper too (belt-and-braces)', () => {
+      // Arrange — the same single dispense, wrapped in a numeric key.
+      const json = prescriptionJson({}, [
+        {
+          '0': {
+            dispenseId: 'disp-1',
+            quantityDispensed: 30,
+            status: 'COMPLETE',
+            dispenseDate: '2026-01-10T00:00:00Z',
+          },
+        },
+      ])
+
+      // Act
+      const dispenses = byType(parse(json), 'MedicationDispense')
+
+      // Assert — unwrapped to the identical dispense.
+      expect(dispenses).toStrictEqual([expectedDispense])
+    })
+
+    it('omits priorPrescription when the payload carries no previousPrescription', () => {
+      const [request] = byType(
+        parse(prescriptionJson({ previousPrescription: undefined })),
+        'MedicationRequest'
       )
-      expect(request?.note).toEqual([
-        expect.objectContaining({ text: 'Contact your Pharmacy Team for more details' }),
-      ])
-      expect(request?.requester).toEqual(expect.objectContaining({ display: 'Dr. A Prescriber' }))
-      expect(request?.dosageInstruction).toEqual([
-        expect.objectContaining({ text: 'Take one tablet daily' }),
-      ])
-      expect(request?.identifier).toEqual([
-        expect.objectContaining({
-          system: new URL(
-            'https://mypharmacy.shoppersdrugmart.ca/fhir/identifier/prescription-number'
-          ),
-          value: '998877',
-        }),
-      ])
+      expect(request?.priorPrescription).toBeNull()
     })
 
-    it('maps medication brand/chemical name and DIN coding onto medicationCodeableConcept', () => {
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
-      const [request] = byType(result, 'MedicationRequest')
-      // `medicationCodeableConcept` is a `medication[x]` choice-passthrough slot,
-      // so it types loosely — index straight into `expect(...)` rather than
-      // binding it to a typed const.
-      expect(request?.medicationCodeableConcept?.text).toBe('Atorvastatin')
-      expect(request?.medicationCodeableConcept?.coding?.[0]?.system).toEqual(
-        new URL('https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din')
+    it('opens the validity window at lastFillDate and ends it at expiryDate absent a nextFillDate', () => {
+      const [request] = byType(parse(prescriptionJson()), 'MedicationRequest')
+      expect(request?.dispenseRequest?.validityPeriod).toStrictEqual(
+        decodeRequest({
+          resourceType: 'MedicationRequest',
+          status: 'unknown',
+          intent: 'order',
+          subject: { reference: 'Patient/x' },
+          dispenseRequest: {
+            validityPeriod: { start: '2026-01-10T00:00:00Z', end: '2027-01-01T00:00:00Z' },
+          },
+        }).dispenseRequest?.validityPeriod
       )
-      expect(request?.medicationCodeableConcept?.coding?.[0]?.code).toBe('02123456')
-      expect(request?.medicationCodeableConcept?.coding?.[0]?.display).toBe('atorvastatin 20mg')
-    })
-
-    it('maps numFillsLeft / refillQuantity / expiryDate onto dispenseRequest', () => {
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
-      const [request] = byType(result, 'MedicationRequest')
-      const dispenseRequest = request?.dispenseRequest
-      expect(dispenseRequest?.numberOfRepeatsAllowed).toBe(3)
-      expect(dispenseRequest?.quantity?.value).toBe(90)
-      // No nextFillDate on this payload, so expiryDate is the window end.
-      expect(epoch(dispenseRequest?.validityPeriod?.end)).toBe(Date.parse('2027-01-01T00:00:00Z'))
-    })
-
-    it('opens the validity window at lastFillDate and, absent a nextFillDate, ends it at expiryDate', () => {
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
-      const [request] = byType(result, 'MedicationRequest')
-      const period = request?.dispenseRequest?.validityPeriod
-      expect(epoch(period?.start)).toBe(Date.parse('2026-01-10T00:00:00Z'))
-      // No nextFillDate, so the window closes at the prescription's expiryDate.
-      expect(epoch(period?.end)).toBe(Date.parse('2027-01-01T00:00:00Z'))
-      // lastFillDate also authors the request.
-      expect(epoch(request?.authoredOn)).toBe(Date.parse('2026-01-10T00:00:00Z'))
-    })
-
-    it('leaves the window end absent when neither nextFillDate nor expiryDate is present', () => {
-      const json = prescriptionJson({ expiryDate: undefined })
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
-      const [request] = byType(result, 'MedicationRequest')
-      const period = request?.dispenseRequest?.validityPeriod
-      expect(epoch(period?.start)).toBe(Date.parse('2026-01-10T00:00:00Z'))
-      // `epoch` maps an absent (null) end slot to `undefined`.
-      expect(epoch(period?.end)).toBeUndefined()
     })
 
     it('ends the validity window at nextFillDate in preference to expiryDate', () => {
-      const json = prescriptionJson({ nextFillDate: '2026-03-15T00:00:00Z' })
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
-      const [request] = byType(result, 'MedicationRequest')
+      const [request] = byType(
+        parse(prescriptionJson({ nextFillDate: '2026-03-15T00:00:00Z' })),
+        'MedicationRequest'
+      )
       const period = request?.dispenseRequest?.validityPeriod
-      expect(epoch(period?.start)).toBe(Date.parse('2026-01-10T00:00:00Z'))
-      expect(epoch(period?.end)).toBe(Date.parse('2026-03-15T00:00:00Z'))
+      expect(period?.end).not.toBeNull()
+      expect(period).toStrictEqual(
+        decodeRequest({
+          resourceType: 'MedicationRequest',
+          status: 'unknown',
+          intent: 'order',
+          subject: { reference: 'Patient/x' },
+          dispenseRequest: {
+            validityPeriod: { start: '2026-01-10T00:00:00Z', end: '2026-03-15T00:00:00Z' },
+          },
+        }).dispenseRequest?.validityPeriod
+      )
     })
 
-    it('falls back to nextFillDate for authoredOn (and the window end) when lastFillDate is absent', () => {
-      const json = prescriptionJson({
-        lastFillDate: undefined,
-        nextFillDate: '2026-03-15T00:00:00Z',
-      })
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
-      const [request] = byType(result, 'MedicationRequest')
-      expect(epoch(request?.authoredOn)).toBe(Date.parse('2026-03-15T00:00:00Z'))
-      const period = request?.dispenseRequest?.validityPeriod
-      // No lastFillDate → the window has no start; nextFillDate is its end.
-      expect(epoch(period?.start)).toBeUndefined()
-      expect(epoch(period?.end)).toBe(Date.parse('2026-03-15T00:00:00Z'))
+    it('drops a dispense with no dispenseId, still emitting the request', () => {
+      const json = prescriptionJson({}, [{ quantityDispensed: 5, status: 'COMPLETE' }])
+      const result = parse(json)
+      expect(byType(result, 'MedicationDispense')).toStrictEqual([])
+      expect(byType(result, 'MedicationRequest')).toStrictEqual([expectedRequest])
     })
 
-    it('stamps the storeId onto supportingInformation as a store-locator reference', () => {
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
-      const [request] = byType(result, 'MedicationRequest')
-      expect(request?.supportingInformation).toEqual([
-        expect.objectContaining({
-          reference: 'https://www.shoppersdrugmart.ca/store-locator/store/1414',
-        }),
-      ])
-    })
-
-    it('omits supportingInformation when the payload carries no storeId', () => {
-      const json = prescriptionJson({ storeId: undefined })
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
-      const [request] = byType(result, 'MedicationRequest')
-      expect(request?.supportingInformation).toEqual([])
-    })
-
-    it('maps a COMPLETE dispense onto a completed MedicationDispense linked to its request', () => {
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(prescriptionJson())))
-      const [dispense] = byType(result, 'MedicationDispense')
-      expect(dispense?.id).toBe('disp-1')
-      expect(dispense?.status).toBe('completed')
-      expect(dispense?.quantity?.value).toBe(30)
-      expect(dispense?.subject).toEqual(expect.objectContaining({ reference: 'Patient/pt-uuid-1' }))
-      expect(dispense?.authorizingPrescription).toEqual([
-        expect.objectContaining({ reference: 'MedicationRequest/rx-uuid-1' }),
-      ])
-      expect(dispense?.whenHandedOver).toBeDefined()
-    })
-
-    it('accepts a flat (non-wrapped) dispenses array too', () => {
-      const json = prescriptionJson({}, [
-        {
-          dispenseId: 'flat-1',
-          quantityDispensed: 15,
-          status: 'COMPLETE',
-          dispenseDate: '2026-02-01T00:00:00Z',
-        },
-      ])
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
-      const dispenses = byType(result, 'MedicationDispense')
-      expect(dispenses).toHaveLength(1)
-      expect(dispenses[0]?.id).toBe('flat-1')
-    })
-
-    it('drops a dispense with no dispenseId (no logical id to write under)', () => {
-      const json = prescriptionJson({}, [{ '0': { quantityDispensed: 5, status: 'COMPLETE' } }])
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
-      expect(byType(result, 'MedicationDispense')).toHaveLength(0)
-      // The request + patient are still produced.
-      expect(byType(result, 'MedicationRequest')).toHaveLength(1)
-    })
-
-    it('produces just Patient + MedicationRequest when there are no dispenses', () => {
-      const json = prescriptionJson({}, [])
-      const result = Effect.runSync(PrescriptionEntity.parse(makeResponse(json)))
-      expect(byType(result, 'MedicationDispense')).toHaveLength(0)
-      expect(byType(result, 'MedicationRequest')).toHaveLength(1)
-      expect(byType(result, 'Patient')).toHaveLength(1)
+    it('emits just the MedicationRequest when there are no dispenses', () => {
+      const result = parse(prescriptionJson({}, []))
+      expect(result).toStrictEqual([expectedRequest])
     })
 
     it('fails with ParseError when required id / patientId are missing', () => {

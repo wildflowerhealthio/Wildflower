@@ -10,8 +10,9 @@ import { persistResources } from 'fhir-r4/clients'
 import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 
+import { CustomerEntity } from './entities/customer-entity.ts'
 import { PrescriptionEntity } from './entities/prescription-entity.ts'
-import { ProfileEntity } from './entities/profile-entity.ts'
+import { PrescriptionHistoryEntity } from './entities/prescription-history-entity.ts'
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -130,6 +131,32 @@ const PRESCRIPTIONS_TIMEOUT = Duration.seconds(30)
 const SETTLE = Duration.seconds(8)
 
 /**
+ * The user-facing prescription-history page. Visiting it makes the SPA fire the
+ * `…/api/<seg>/prescription-history?customerId=…` XHR (every dispense across all
+ * prescriptions) **and** the `…/api/<seg>/customers/:id?expand=…` XHR (the
+ * account + its managed people) automatically — one page visit feeds both the
+ * {@link PrescriptionHistoryEntity} and {@link CustomerEntity} recognizers.
+ */
+const PRESCRIPTION_HISTORY_URL = 'https://mypharmacy.shoppersdrugmart.ca/en/prescription-history'
+
+/**
+ * The prescription-history page itself. After `Open`ing
+ * {@link PRESCRIPTION_HISTORY_URL}, an `AwaitPageSettled` hold waits for this
+ * page to load and settle before the trailing {@link HISTORY_SETTLE} window — so
+ * the settle window measures quiet time on the page, not a race against its
+ * initial load.
+ */
+const HISTORY_SETTLED_PATTERN = /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/prescription-history/
+const HISTORY_TIMEOUT = Duration.seconds(30)
+
+/**
+ * Trailing settle window for the `customers` + `prescription-history` XHRs the
+ * history page fires. Keeps the run open long enough for both to start and be
+ * tracked before the queue drains and the run completes.
+ */
+const HISTORY_SETTLE = Duration.seconds(8)
+
+/**
  * The source system every resource this collector imports is keyed under.
  *
  * @remarks
@@ -151,23 +178,27 @@ const SHOPPERS_DRUGMART_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/shoppers-
 
 /**
  * Build the Shoppers Drug Mart scraping plan for a configured account. Every
- * navigated page is a user-facing portal page — the login page, then the
- * prescription dashboard — and the collector only *sniffs* the XHRs those pages
- * fire (the profile `getProfile` GET and the per-prescription `prescription-status`
- * GETs). No API URL is ever `Open`ed directly.
+ * navigated page is a user-facing portal page — login → health dashboard →
+ * prescription dashboard → prescription history — and the collector only
+ * *sniffs* the XHRs those pages fire (the per-prescription `prescription-status`
+ * GETs, and the `prescription-history` + `customers` GETs the history page
+ * triggers). No API URL is ever `Open`ed directly.
  *
  * The `stepSequence` waits for the cross-host redirect to `accounts.pcid.ca`,
  * scripts the login (Fill email, Fill password, Click submit), then **pauses on
  * an `AwaitPageSettled` for the health dashboard** while the user completes 2FA
  * on `accounts.pcid.ca/login/verification` (the dashboard only loads once 2FA
- * succeeds; its `getProfile` XHR is sniffed as it settles). It then `Open`s the
- * prescription dashboard, waits for *it* to settle, and holds open for
- * {@link SETTLE} while the per-prescription status XHRs settle. Every
- * `Fill`/`Click` dispatches and advances immediately (a `PageAction` fires no
- * `PageLoaded`), so the short `Delay`s between them are the only thing pacing the
- * login form. `ProfileEntity` recognizes `…/profile/getProfile/`;
- * `PrescriptionEntity` recognizes `…/prescriptions/:uuid/prescription-status` —
- * disjoint patterns, so entity order is not load-bearing.
+ * succeeds). It then `Open`s the prescription dashboard, waits for *it* to
+ * settle, holds open for {@link SETTLE} while the per-prescription status XHRs
+ * settle, then `Open`s the prescription-history page and holds open for
+ * {@link HISTORY_SETTLE} while its `prescription-history` + `customers` XHRs
+ * settle. Every `Fill`/`Click` dispatches and advances immediately (a
+ * `PageAction` fires no `PageLoaded`), so the short `Delay`s between them are the
+ * only thing pacing the login form. `CustomerEntity` recognizes
+ * `…/customers/<uuid>`; `PrescriptionEntity` recognizes
+ * `…/prescriptions/:uuid/prescription-status`; `PrescriptionHistoryEntity`
+ * recognizes `…/prescription-history?customerId=…` — disjoint patterns, so entity
+ * order is not load-bearing.
  *
  * The plan is wrapped in `adoptSourceIdentity` under
  * {@link SHOPPERS_DRUGMART_SYSTEM}, so every resource its entities synthesize is
@@ -185,9 +216,13 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     // Widening upcast (safe: `EntityDefinition` is covariant in its resource
     // type, and Patient / MedicationRequest / MedicationDispense are all
     // `FhirResource`), mirroring `fhir-r4-client-collector`.
+    // Order is not load-bearing — the three recognizers are disjoint by
+    // construction (`/customers/<uuid>`, `/prescriptions/:uuid/prescription-status`,
+    // `/prescription-history?customerId=…` — different path segments).
     entityDefinitions: [
-      ProfileEntity,
+      CustomerEntity,
       PrescriptionEntity,
+      PrescriptionHistoryEntity,
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     firstPage,
     stepSequence: [
@@ -254,7 +289,25 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
         pattern: PRESCRIPTIONS_SETTLED_PATTERN,
         timeout: PRESCRIPTIONS_TIMEOUT,
       },
-      { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: SETTLE },
+      { _tag: 'Delay', name: 'Waiting for prescriptions', duration: SETTLE },
+      // Visit the prescription-history page: its load fires both the
+      // `prescription-history` and `customers` XHRs (full dispense history +
+      // the account and its managed people).
+      {
+        _tag: 'Navigation',
+        name: 'Opening prescription history',
+        action: {
+          _tag: 'Open',
+          source: { _tag: 'Uri', uri: PRESCRIPTION_HISTORY_URL },
+        },
+      },
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Waiting for prescription history to settle',
+        pattern: HISTORY_SETTLED_PATTERN,
+        timeout: HISTORY_TIMEOUT,
+      },
+      { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: HISTORY_SETTLE },
     ],
   })
   return adoptSourceIdentity({ system: SHOPPERS_DRUGMART_SYSTEM })(plan)

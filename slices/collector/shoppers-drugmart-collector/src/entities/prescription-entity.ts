@@ -1,24 +1,30 @@
 import { EntityDefinition } from 'collector-fundamentals/model'
 import { Effect, Option, Schema } from 'effect'
-import { MedicationDispense, MedicationRequest, Patient } from 'fhir-r4/resources'
+import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 
+import { decodesAsDateTime, firstDateTime } from '../dates.ts'
 import { extractJson } from '../extract-json.ts'
-import { DIN_CODE_SYSTEM, ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
+import {
+  PRESCRIPTION_STATUS_TYPE_SYSTEM,
+  ShoppersIdentifierSystem,
+  shoppersStoreLocatorUrl,
+} from '../shoppers.ts'
+import { medicationWire } from './medication-wire.ts'
 
 /**
- * Just-enough schema for one `…/api/v1/prescriptions/:uuid/prescription-status`
+ * Just-enough schema for one `…/api/<seg>/prescriptions/:uuid/prescription-status`
  * payload — a bespoke portal JSON shape, **not FHIR**. Only `id` (the
  * prescription's uuid → `MedicationRequest.id`) and `patientId` (→ the
  * `subject` reference) are required; everything else is optional and lenient
  * (unknown fields are dropped on decode), so a field the capture omits simply
  * leaves its R4 slot at the schema default rather than failing the decode.
  *
- * `dispenses` is decoded as an array of `Unknown` and normalized in code: real
- * captures wrap each dispense in a numeric-keyed object
- * (`[{ "0": { dispenseId, … } }]`), so {@link flattenDispenses} unwraps that
- * before per-entry decode. **OPEN QUESTION** — the exact `dispenses` shape is
- * synthesized from the ticket's notes; reconcile against a redacted capture.
+ * The shape is reconciled against a redacted real capture. `dispenses` is a
+ * **flat** array of `{ dispenseId, quantityDispensed, status, dispenseDate }`;
+ * {@link flattenDispenses} is retained only as belt-and-braces (see its remark).
+ * `status.type` is a machine enum and the top-level `expired`/`archived`/
+ * `renewable` flags drive `MedicationRequest.status` (see {@link requestWire}).
  */
 const SourcePrescription = Schema.Struct({
   id: Schema.String,
@@ -33,6 +39,10 @@ const SourcePrescription = Schema.Struct({
       label: Schema.optional(Schema.String),
       portalLabel: Schema.optional(Schema.String),
       labelDescription: Schema.optional(Schema.String),
+      // The portal's machine-readable status enum (`READY_FOR_RENEW`,
+      // `UNABLE_TO_RENEW_ONLINE`, `READY_FOR_REFILL_NO_DISPENSE`, …). The set is
+      // open, so it is a free string, not a literal union.
+      type: Schema.optional(Schema.String),
     })
   ),
   din: Schema.optional(Schema.String),
@@ -47,6 +57,16 @@ const SourcePrescription = Schema.Struct({
   // `supportingInformation` (see {@link supportingInformationWire}). Lenient on
   // string vs number since the portal's typing of it is unconfirmed.
   storeId: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
+  // Top-level status flags. `expired`/`archived` drive `MedicationRequest.status`
+  // → `'stopped'`; `renewable` is decoded for completeness but not mapped (it
+  // asserts a renewal affordance, not a clinical state).
+  expired: Schema.optional(Schema.Boolean),
+  archived: Schema.optional(Schema.Boolean),
+  renewable: Schema.optional(Schema.Boolean),
+  // The prior prescription's human-facing number → an identifier-only
+  // `priorPrescription` reference (see {@link requestWire}). We don't know the
+  // prior rx's uuid, so there is no relative reference to write.
+  previousPrescription: Schema.optional(Schema.Number),
   dispenses: Schema.optional(Schema.Array(Schema.Unknown)),
 })
 
@@ -64,25 +84,21 @@ type SourceDispense = typeof SourceDispense.Type
 
 const decodePrescription = Schema.decode(Schema.parseJson(SourcePrescription))
 const decodeSourceDispense = Schema.decodeUnknownOption(SourceDispense)
-const decodePatient = Schema.decodeUnknown(Patient.Schema)
 const decodeRequest = Schema.decodeUnknown(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
-/** True iff `value` decodes as a FHIR R4 date-time (so it can ride a wire slot). */
-const decodesAsDateTime = (value: string | undefined): value is string =>
-  value != null && Option.isSome(Schema.decodeUnknownOption(Schema.DateTimeUtc)(value))
-
-/** The first of `values` that decodes as a FHIR date-time, else `undefined`. */
-const firstDateTime = (...values: Array<string | undefined>): string | undefined =>
-  values.find(decodesAsDateTime)
-
 /**
- * Unwrap the numeric-keyed dispense wrappers real captures use
- * (`[{ "0": { dispenseId, … } }]` → `[{ dispenseId, … }]`). An entry that
- * already looks like a dispense (has a `dispenseId`) passes through untouched;
- * any other object contributes its values. Non-object entries pass through so a
- * malformed one is dropped downstream by {@link decodeSourceDispense} rather
- * than here.
+ * Unwrap a numeric-keyed dispense wrapper (`[{ "0": { dispenseId, … } }]` →
+ * `[{ dispenseId, … }]`). An entry that already looks like a dispense (has a
+ * `dispenseId`) passes through untouched; any other object contributes its
+ * values. Non-object entries pass through so a malformed one is dropped
+ * downstream by {@link decodeSourceDispense} rather than here.
+ *
+ * @remarks
+ * The numeric-key wrapper was **never observed** in the real capture —
+ * `dispenses` is a flat array there. This helper is retained purely as
+ * belt-and-braces (it passes a flat array through untouched), not because
+ * captures use the wrapper.
  */
 const flattenDispenses = (raw: ReadonlyArray<unknown>): ReadonlyArray<unknown> =>
   raw.flatMap((entry) => {
@@ -109,47 +125,9 @@ const dispenseStatus = (status: string | undefined): string => {
   }
 }
 
-/**
- * The `medicationCodeableConcept` wire shape shared by the request and its
- * dispenses: `text` from the brand (falling back to the chemical) name, plus a
- * DIN coding when the payload carries one. Returns `undefined` when the payload
- * names no medication at all, so the caller omits the slot entirely.
- */
-const medicationWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
-  const text = rx.brandName ?? rx.chemicalName
-  const coding =
-    rx.din != null
-      ? [
-          {
-            system: DIN_CODE_SYSTEM,
-            code: rx.din,
-            ...(rx.chemicalName != null ? { display: rx.chemicalName } : {}),
-          },
-        ]
-      : []
-  if (text == null && coding.length === 0) return undefined
-  return {
-    ...(coding.length > 0 ? { coding } : {}),
-    ...(text != null ? { text } : {}),
-  }
-}
-
 /** `Patient/{id}` reference wire object. */
 const patientReference = (patientId: string): Record<string, unknown> => ({
   reference: `Patient/${patientId}`,
-})
-
-/**
- * The minimal R4 `Patient` for a prescription's `patientId` — the id
- * `MedicationRequest.subject` resolves to. Demographics come from the *profile*
- * (a separate Patient keyed by `pcId`); the two ids don't align and can't be
- * joined here (see {@link ProfileEntity}), so this record carries only the
- * `patientId` (as id + identifier) to keep the subject reference resolvable.
- */
-const minimalPatientWire = (patientId: string): Record<string, unknown> => ({
-  resourceType: 'Patient',
-  id: patientId,
-  identifier: [{ system: ShoppersIdentifierSystem.PatientId, value: patientId }],
 })
 
 /** Build the R4 `MedicationRequest.dispenseRequest` wire, or `undefined` if it would be empty. */
@@ -192,17 +170,42 @@ const supportingInformationWire = (
 }
 
 /**
+ * Map the portal's top-level status flags onto the FHIR R4
+ * `MedicationRequest.status` value set. `expired` or `archived` → `'stopped'`;
+ * everything else stays `'unknown'`. Deliberately conservative — nothing maps to
+ * `'active'`, because the portal's enum asserts a renewal/refill affordance, not
+ * clinical activity.
+ */
+const requestStatus = (rx: SourcePrescription): string =>
+  rx.expired === true || rx.archived === true ? 'stopped' : 'unknown'
+
+/**
+ * The `statusReason` wire: the portal's machine `status.type` as a coding under
+ * {@link PRESCRIPTION_STATUS_TYPE_SYSTEM}, plus the human label as `text`.
+ * `undefined` when the payload carries neither, so the caller omits the slot.
+ */
+const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
+  const type = rx.status?.type
+  const text = rx.status?.portalLabel ?? rx.status?.label
+  if (type == null && text == null) return undefined
+  return {
+    ...(type != null ? { coding: [{ system: PRESCRIPTION_STATUS_TYPE_SYSTEM, code: type }] } : {}),
+    ...(text != null ? { text } : {}),
+  }
+}
+
+/**
  * Build the FHIR R4 `MedicationRequest` **wire** object from the decoded
- * prescription. `status` is `'unknown'` (the portal's free-text status label is
- * not a FHIR code); the portal label is preserved in `statusReason.text` and its
- * longer description in a `note` so nothing is lost. Only slots the payload
- * populates are emitted.
+ * prescription. `status` is `'stopped'` for an expired/archived prescription and
+ * `'unknown'` otherwise (see {@link requestStatus}); the portal's machine
+ * `status.type` and human label ride `statusReason` and its longer description a
+ * `note`, so nothing is lost. Only slots the payload populates are emitted.
  */
 const requestWire = (rx: SourcePrescription): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationRequest',
     id: rx.id,
-    status: 'unknown',
+    status: requestStatus(rx),
     intent: 'order',
     subject: patientReference(rx.patientId),
   }
@@ -218,10 +221,22 @@ const requestWire = (rx: SourcePrescription): Record<string, unknown> => {
   if (medication != null) wire['medicationCodeableConcept'] = medication
   if (rx.prescriberName != null) wire['requester'] = { display: rx.prescriberName }
 
-  const statusLabel = rx.status?.portalLabel ?? rx.status?.label
-  if (statusLabel != null) wire['statusReason'] = { text: statusLabel }
+  const statusReason = statusReasonWire(rx)
+  if (statusReason != null) wire['statusReason'] = statusReason
   if (rx.status?.labelDescription != null) {
     wire['note'] = [{ text: rx.status.labelDescription }]
+  }
+
+  // The prior prescription's number, as an identifier-only reference (no
+  // `reference` field): we don't know the prior rx's uuid, and adoption leaves an
+  // identifier-only reference untouched.
+  if (rx.previousPrescription != null) {
+    wire['priorPrescription'] = {
+      identifier: {
+        system: ShoppersIdentifierSystem.PrescriptionNumber,
+        value: String(rx.previousPrescription),
+      },
+    }
   }
 
   // `authoredOn` prefers `lastFillDate`, falling back to `nextFillDate` when a
@@ -269,8 +284,10 @@ const dispenseWire = (
 /**
  * `…://host/…/prescriptions/<uuid>/prescription-status`. Hand-rolled (not
  * `UrlMatch.make`) so it tolerates an optional trailing slash / query and stays
- * disjoint from {@link ProfileEntity}'s `…/profile/getProfile/` pattern —
- * entity order is therefore not load-bearing.
+ * disjoint from {@link !CustomerEntity}'s `…/customers/<uuid>` pattern and
+ * {@link !PrescriptionHistoryEntity}'s `…/prescription-history?customerId=…`
+ * pattern (different path segments) — entity order is therefore not
+ * load-bearing.
  */
 const prescriptionStatusUrl =
   /:\/\/[^/]+(?:\/[^/?#]+)*?\/prescriptions\/[^/?#]+\/prescription-status\/?(?:[?#]|$)/
@@ -280,20 +297,25 @@ const prescriptionStatusUrl =
  * payload the prescription-dashboard page fires once **per prescription**. Each
  * response is a single bespoke JSON object (not FHIR), synthesized here into:
  *
- * - a **minimal `Patient`** keyed by the payload's `patientId` (the id
- *   `subject` resolves to — demographics live on the separate profile Patient
- *   keyed by `pcId`, which does not align; see {@link ProfileEntity});
- * - one **`MedicationRequest`** (`status: 'unknown'`, portal label kept in
+ * - one **`MedicationRequest`** (`status` from the expired/archived flags,
+ *   otherwise `'unknown'`; the machine `status.type` and portal label kept in
  *   `statusReason` / `note`); and
- * - one **`MedicationDispense`** per entry in `dispenses` (numeric-keyed
- *   wrappers unwrapped by {@link flattenDispenses}). A dispense with no
+ * - one **`MedicationDispense`** per entry in `dispenses`. A dispense with no
  *   `dispenseId` has no logical id to write under, so it is dropped and the loss
  *   surfaced via `Effect.logInfo` rather than silently skipped.
  *
- * v1 is **list-only** in the sense that the prescription-dashboard fans out one
- * status XHR per prescription and this entity sniffs each — no per-prescription
- * detail crawl (`followUpSteps`) is emitted. {@link extractJson} normalizes the
- * body across raw-XHR intercepts and the mobile WebView's JSON-viewer wrap.
+ * **No `Patient`.** The subject Patient records now come from
+ * {@link !CustomerEntity} (the customers XHR fires on the same run), so the
+ * `subject: Patient/<patientId>` references here resolve to the demographic
+ * Patient that entity emits — this entity no longer synthesizes a minimal stub.
+ * The trade-off: a run where the customers XHR fails leaves those `subject`
+ * references dangling, which the store tolerates (references are not
+ * FK-enforced).
+ *
+ * The prescription-dashboard fans out one status XHR per prescription and this
+ * entity sniffs each — no per-prescription detail crawl (`followUpSteps`) is
+ * emitted. {@link extractJson} normalizes the body across raw-XHR intercepts and
+ * the mobile WebView's JSON-viewer wrap.
  */
 const PrescriptionEntity: EntityDefinition.EntityDefinition<FhirResource> = EntityDefinition.make({
   name: 'PrescriptionEntity',
@@ -301,7 +323,6 @@ const PrescriptionEntity: EntityDefinition.EntityDefinition<FhirResource> = Enti
   parse: (response) =>
     Effect.gen(function* () {
       const rx = yield* decodePrescription(extractJson(response.text()))
-      const patient = yield* decodePatient(minimalPatientWire(rx.patientId))
       const request = yield* decodeRequest(requestWire(rx))
 
       const rawDispenses = flattenDispenses(rx.dispenses ?? [])
@@ -322,7 +343,7 @@ const PrescriptionEntity: EntityDefinition.EntityDefinition<FhirResource> = Enti
         )
       }
 
-      return [patient, request, ...dispenses]
+      return [request, ...dispenses]
     }),
 })
 

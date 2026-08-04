@@ -215,6 +215,24 @@ describe('scrapingPlan', () => {
         pattern: /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/prescription-dashboard/,
         timeout: Duration.seconds(30),
       },
+      { _tag: 'Delay', name: 'Waiting for prescriptions', duration: Duration.seconds(8) },
+      {
+        _tag: 'Navigation',
+        name: 'Opening prescription history',
+        action: {
+          _tag: 'Open',
+          source: {
+            _tag: 'Uri',
+            uri: 'https://mypharmacy.shoppersdrugmart.ca/en/prescription-history',
+          },
+        },
+      },
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Waiting for prescription history to settle',
+        pattern: /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/prescription-history/,
+        timeout: Duration.seconds(30),
+      },
       { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: Duration.seconds(8) },
     ])
   })
@@ -256,7 +274,7 @@ describe('source identity', () => {
   const parseThrough = (name: string, url: string, body: unknown): readonly FhirResource[] =>
     Effect.runSync(entityNamed(name).parse(makeRemoteResponse({ url, body: JSON.stringify(body) })))
 
-  const PROFILE_URL = 'https://mypharmacy.shoppersdrugmart.ca/api/profile/getProfile/'
+  const CUSTOMERS_URL = 'https://mypharmacy.shoppersdrugmart.ca/api/v1/customers/pc-uuid-1?expand=x'
   const STATUS_URL =
     'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-uuid-1/prescription-status'
 
@@ -269,7 +287,16 @@ describe('source identity', () => {
     chemicalName: 'atorvastatin 20mg',
     din: '02123456',
     status: { label: 'Active' },
-    dispenses: [{ '0': { dispenseId: 'disp-1', status: 'COMPLETE' } }],
+    dispenses: [{ dispenseId: 'disp-1', status: 'COMPLETE' }],
+  }
+
+  const customerPayload = {
+    customer: {
+      pcid: 'pc-uuid-1',
+      firstName: 'Dana',
+      lastName: 'Okafor',
+      patients: [{ id: 'pt-uuid-1', firstName: 'Dana', lastName: 'Okafor' }],
+    },
   }
 
   const parsePrescription = (): readonly FhirResource[] =>
@@ -312,8 +339,9 @@ describe('source identity', () => {
     if (dispense?.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
 
     const patientId = localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', 'pt-uuid-1')
-    // The subject link only holds because both the minimal Patient and the
-    // references to it go through the one derivation.
+    // The subject link holds because the reference and the demographic Patient
+    // CustomerEntity emits (see below) both go through the one derivation on
+    // `pt-uuid-1`.
     expect(request.subject.reference).toBe(`Patient/${patientId}`)
     expect(dispense.subject?.reference).toBe(`Patient/${patientId}`)
     expect(dispense.authorizingPrescription[0]?.reference).toBe(`MedicationRequest/${request.id}`)
@@ -330,17 +358,27 @@ describe('source identity', () => {
     )
   })
 
-  it('adopts the demographic Patient under the same system but a distinct id from the subject Patient', () => {
-    const [profilePatient] = parseThrough('ProfileEntity', PROFILE_URL, { pcId: 'pc-uuid-1' })
-    if (profilePatient?.resourceType !== 'Patient') throw new Error('expected a Patient')
+  it('adopts the account Patient under a distinct id from the demographic Patient, materializing the link', () => {
+    const resources = parseThrough('CustomerEntity', CUSTOMERS_URL, customerPayload)
+    const account = resources.find(
+      (r) => r.resourceType === 'Patient' && r.identifier[1]?.value === 'pc-uuid-1'
+    )
+    const demographic = resources.find(
+      (r) => r.resourceType === 'Patient' && r.identifier[1]?.value === 'pt-uuid-1'
+    )
+    if (account?.resourceType !== 'Patient') throw new Error('expected an account Patient')
+    if (demographic?.resourceType !== 'Patient') throw new Error('expected a demographic Patient')
 
-    expect(profilePatient.id).toBe(
-      localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', 'pc-uuid-1')
-    )
-    expect(profilePatient.identifier[0]?.value).toBe('pc-uuid-1')
-    // pcId ≠ patientId, so the two Patient records stay distinct after adoption.
-    expect(profilePatient.id).not.toBe(
-      localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', 'pt-uuid-1')
-    )
+    const accountId = localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', 'pc-uuid-1')
+    const demographicId = localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', 'pt-uuid-1')
+    expect(account.id).toBe(accountId)
+    expect(demographic.id).toBe(demographicId)
+    // pcid names the account, a patients[].id names a person — distinct records.
+    expect(account.id).not.toBe(demographic.id)
+    // The `link.seealso` reference is rewritten onto the demographic Patient's
+    // derived id, so the account↔person join the payload asserts is materialized
+    // and lands on the same id `subject` resolves to.
+    expect(account.link[0]?.other.reference).toBe(`Patient/${demographicId}`)
+    expect(demographic.id).toBe(localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', 'pt-uuid-1'))
   })
 })

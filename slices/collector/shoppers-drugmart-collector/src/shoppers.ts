@@ -2,21 +2,27 @@
  * Constants for the Shoppers Drug Mart "mypharmacy" portal
  * (`mypharmacy.shoppersdrugmart.ca`): the FHIR identifier and coding systems
  * this collector stamps onto the resources it synthesizes from the portal's
- * bespoke (non-FHIR) `getProfile` / `prescription-status` JSON.
+ * bespoke (non-FHIR) `customers` / `prescription-status` / `prescription-history`
+ * JSON.
  *
  * Grouped here so the entity modules reference one catalogue rather than
  * sprinkling opaque URLs through the code, and so a future correction is a
  * one-line change.
  *
  * @remarks
- * **OPEN QUESTION** — these system URIs are best-guess namespaces under the
- * portal host, *not* captured from a canonical registry. In particular:
+ * These system URIs are best-guess namespaces under the portal host, *not*
+ * captured from a canonical registry. In particular:
  *
- * - `PcId` vs `PatientId` are **two distinct identifier systems on purpose**:
- *   the profile's `pcId` and a prescription's `patientId` do **not** align
- *   (confirmed against production), so each patient identifier is carried under
- *   its own system rather than conflated. See the profile/prescription entity
- *   docs for how the two Patient records relate.
+ * - `PcId` vs `PatientId` are **two distinct identifier systems**: `pcId` names
+ *   the account (the `customer.pcid`, the `customerId` in every query string),
+ *   `patientId` names a person the account manages (a `customer.patients[].id`,
+ *   the id a prescription's `patientId` references). Unlike the earlier design,
+ *   the relationship is now **known and joinable**: the customers payload carries
+ *   both — `customer.pcid` alongside each `customer.patients[].id` — so the
+ *   account `Patient` links to each demographic `Patient` via `link.seealso`
+ *   (see {@link !CustomerEntity}). The two systems stay distinct because they
+ *   identify different things (an account vs a person), not because the join is
+ *   unknown.
  * - `DIN_CODE_SYSTEM` names Health Canada's Drug Identification Number. The
  *   canonical Health Canada / Infoway DIN system URI should be reconciled
  *   against a real capture before relying on downstream code lookups; the
@@ -29,9 +35,17 @@ const SYSTEM_BASE = 'https://mypharmacy.shoppersdrugmart.ca/fhir'
 
 /** Shoppers identifier systems for the ids the portal JSON carries. */
 const ShoppersIdentifierSystem = {
-  /** The profile's `pcId` (PC Health id). Distinct from {@link ShoppersIdentifierSystem.PatientId}. */
+  /**
+   * The account's `pcid` (PC Health id, `== customer.id == the customerId` query
+   * param). Names the account, not a managed person — distinct from
+   * {@link ShoppersIdentifierSystem.PatientId}.
+   */
   PcId: `${SYSTEM_BASE}/identifier/pc-id`,
-  /** A prescription's `patientId`. Does **not** align with `pcId`. */
+  /**
+   * A managed person's `patientId` (a `customer.patients[].id`, the id a
+   * prescription's `patientId` references). Joinable to `pcId` through the
+   * customers payload, but a different kind of thing — see the module remarks.
+   */
   PatientId: `${SYSTEM_BASE}/identifier/patient-id`,
   /** A prescription's human-facing `prescriptionNumber`. */
   PrescriptionNumber: `${SYSTEM_BASE}/identifier/prescription-number`,
@@ -45,6 +59,17 @@ const ShoppersIdentifierSystem = {
  * — reconcile against the canonical Health Canada / Infoway DIN system URI.
  */
 const DIN_CODE_SYSTEM = `${SYSTEM_BASE}/CodeSystem/din`
+
+/**
+ * Coding system for the portal's machine-readable prescription-status `type`
+ * enum (`READY_FOR_RENEW`, `UNABLE_TO_RENEW_ONLINE`,
+ * `READY_FOR_REFILL_NO_DISPENSE`, …), stamped onto the synthesized
+ * `MedicationRequest.statusReason.coding`. The set is **open** — new codes may
+ * appear — so the schema decodes it as a free string rather than a literal
+ * union, and this system just namespaces whatever code the portal sends so the
+ * coding stays self-describing.
+ */
+const PRESCRIPTION_STATUS_TYPE_SYSTEM = `${SYSTEM_BASE}/CodeSystem/prescription-status-type`
 
 /**
  * Base of the public Shoppers Drug Mart store-locator URL. A prescription's
@@ -64,6 +89,7 @@ const shoppersStoreLocatorUrl = (storeId: string | number): string =>
 export {
   ShoppersIdentifierSystem,
   DIN_CODE_SYSTEM,
+  PRESCRIPTION_STATUS_TYPE_SYSTEM,
   SYSTEM_BASE,
   SHOPPERS_STORE_LOCATOR_BASE,
   shoppersStoreLocatorUrl,
