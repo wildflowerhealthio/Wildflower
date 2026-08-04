@@ -33,13 +33,13 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
+        uses: voidzero-dev/setup-vp@v1.15.0
         with:
           cache: true
 
       - name: Install dependencies
         run: vp install
 
-      - uses: DavidAnson/markdownlint-cli2-action@v24
+      - uses: DavidAnson/markdownlint-cli2-action@v24.1.0
         with:
           config: .markdownlint-cli2.mjs
