@@ -51,7 +51,7 @@
     "@tsdown/css": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "jsdom": "^30.0.0",
+    "jsdom": "^30.0.1",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
