@@ -6,11 +6,12 @@ import {
 } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
+import { persistResources } from 'fhir-r4/clients'
+import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { PrescriptionEntity } from './entities/prescription-entity.ts'
 import { ProfileEntity } from './entities/profile-entity.ts'
-import { persistResources } from './persist.ts'
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -129,6 +130,26 @@ const PRESCRIPTIONS_TIMEOUT = Duration.seconds(30)
 const SETTLE = Duration.seconds(8)
 
 /**
+ * The source system every resource this collector imports is keyed under.
+ *
+ * @remarks
+ * A Wildflower-minted `sid` URI naming the Shoppers "mypharmacy" portal as an
+ * import source, in the same style as `rexall-be-well-collector`'s
+ * `REXALL_CAREBOOK_SYSTEM`. It is deliberately *not* one of `shoppers.ts`'s
+ * per-field identifier systems (`SYSTEM_BASE`/`ShoppersIdentifierSystem`): those
+ * name what a *field value* means (a `pcId`, a `patientId`), whereas this names
+ * the *portal the whole resource came from* — the hash domain and the injected
+ * `Identifier.system`. Keeping it here rather than in `shoppers.ts` mirrors that
+ * split.
+ *
+ * **Persisted wire format.** It is the hash domain for every derived local id
+ * (via {@link adoptSourceIdentity} → `localResourceId`) and the
+ * `Identifier.system` written beside every source id, so changing it orphans
+ * everything already imported from Shoppers Drug Mart.
+ */
+const SHOPPERS_DRUGMART_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
+
+/**
  * Build the Shoppers Drug Mart scraping plan for a configured account. Every
  * navigated page is a user-facing portal page — the login page, then the
  * prescription dashboard — and the collector only *sniffs* the XHRs those pages
@@ -147,10 +168,19 @@ const SETTLE = Duration.seconds(8)
  * login form. `ProfileEntity` recognizes `…/profile/getProfile/`;
  * `PrescriptionEntity` recognizes `…/prescriptions/:uuid/prescription-status` —
  * disjoint patterns, so entity order is not load-bearing.
+ *
+ * The plan is wrapped in `adoptSourceIdentity` under
+ * {@link SHOPPERS_DRUGMART_SYSTEM}, so every resource its entities synthesize is
+ * re-keyed under a derived local id, with the portal's own id kept as
+ * `identifier[0]`. No `baseUrl`: the collector only ever writes relative
+ * references (`subject: Patient/<patientId>`). This is what keeps the
+ * prescription `MedicationRequest`/`MedicationDispense` pair from colliding with
+ * another source's ids, while `subject: Patient/<patientId>` still lands on the
+ * id the adopted minimal Patient gets — both go through the one derivation.
  */
 const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: LOGIN_URL }
-  return ScrapingPlan.make<FhirResource>({
+  const plan = ScrapingPlan.make<FhirResource>({
     name: 'Shoppers Drug Mart',
     // Widening upcast (safe: `EntityDefinition` is covariant in its resource
     // type, and Patient / MedicationRequest / MedicationDispense are all
@@ -227,6 +257,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: SETTLE },
     ],
   })
+  return adoptSourceIdentity({ system: SHOPPERS_DRUGMART_SYSTEM })(plan)
 }
 
 /**
@@ -249,4 +280,10 @@ const ShoppersDrugMartCollectorDescriptor = CollectorDescriptor.make({
   persistResources,
 })
 
-export { InstanceConfig, defaultConfig, scrapingPlan, ShoppersDrugMartCollectorDescriptor }
+export {
+  InstanceConfig,
+  defaultConfig,
+  SHOPPERS_DRUGMART_SYSTEM,
+  scrapingPlan,
+  ShoppersDrugMartCollectorDescriptor,
+}

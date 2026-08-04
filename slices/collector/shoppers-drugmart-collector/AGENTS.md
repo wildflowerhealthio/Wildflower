@@ -7,8 +7,14 @@ on-device FHIR **R4** store. Unlike `rexall-be-well-collector` (whose tunnel API
 serves FHIR STU3 the `fhir-stu3-as-r4` slice decodes), the Shoppers portal serves
 **bespoke, non-FHIR JSON**; this package **synthesizes** R4 resources from it
 directly with the `fhir-r4` schemas. Independent of the Rexall collector — it
-shares no code with it (the persist sink and JSON extractor are verbatim copies,
-per slice layering).
+shares no code with it. The write sink is `fhir-r4/clients`' shared
+`persistResources` (the same one every FHIR collector uses); the JSON extractor
+is a verbatim copy, per slice layering.
+
+Like every other importer, the plan is wrapped in `adoptSourceIdentity` so its
+resources are re-keyed under derived local ids — see
+[pcId ≠ patientId](#pcid--patientid-two-patient-records-by-design) and the
+[Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 
 ## The collector
 
@@ -26,10 +32,13 @@ password }`) with fast-check arbitraries, `defaultConfig`, the
   prescription**) and synthesizes, from each response, a minimal `Patient`
   (keyed by `patientId`), one `MedicationRequest`, and one `MedicationDispense`
   per `dispenses` entry.
-- `src/shoppers.ts` — the identifier/coding-system URL catalogue.
-- `src/persist.ts` — the write sink (a verbatim copy of
-  `fhir-r4-client-collector/src/persist.ts`; slice layering forbids importing it).
-- `src/extract-json.ts` — XHR/JSON-viewer body normalizer (also copied).
+- `src/shoppers.ts` — the identifier/coding-system URL catalogue, plus
+  `SHOPPERS_DRUGMART_SYSTEM` (in `config.ts`) — the Wildflower-minted `sid` URI
+  the plan adopts under, mirroring Rexall's `REXALL_CAREBOOK_SYSTEM`.
+- the write sink — `fhir-r4/clients`' shared `persistResources`, imported in
+  `config.ts` and handed straight to the descriptor (no per-collector copy).
+- `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a verbatim copy, per
+  slice layering).
 - `src/shoppers-drugmart-config-form.tsx` (+ `.module.css`) — the email/password
   `ConfigFormProps` form `collector-react` registers.
 - `src/index.ts` — the barrel.
@@ -72,6 +81,17 @@ Each carries its own id as a FHIR `identifier` (distinct systems in
 Patient by `patientId` isn't possible here (the profile payload never carries
 `patientId`), and keying the subject by `pcId` isn't either (the prescription
 payload never carries `pcId`).
+
+`adoptSourceIdentity` preserves this. Each Patient is re-keyed under
+`localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', <original id>)`, so the
+`pcId` and `patientId` Patients still get **distinct** derived ids (the original
+id is an input to the derivation), and the portal id is kept as `identifier[0]`
+behind the ones the entity already stamped. A `MedicationRequest.subject` /
+`MedicationDispense.subject` of `Patient/<patientId>` is rewritten to
+`Patient/<that same derived id>` — the reference and its target go through the
+one derivation, so the link that held by both entities agreeing on `patientId`
+now holds by construction. The store-locator `supportingInformation` URL is
+absolute, not a relative `Type/id` reference, so adoption leaves it untouched.
 
 ## Resource mapping notes
 

@@ -3,25 +3,19 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Response } from 'collector-fundamentals/model'
+import type { Response } from 'collector-fundamentals/model'
+import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import type { Patient } from 'fhir-r4/resources'
 
 import { ProfileEntity } from './profile-entity.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
-const encoder = new TextEncoder()
-
-const makeResponse = (body: string): Response.RemoteResponse => {
-  const r = new Response.RemoteResponse(
-    'https://mypharmacy.shoppersdrugmart.ca/api/profile/getProfile/',
-    200,
-    'OK',
-    [['content-type', 'application/json']]
-  )
-  r.appendChunk(encoder.encode(body))
-  return r
-}
+const makeResponse = (body: string): Response.RemoteResponse =>
+  makeRemoteResponse({
+    url: 'https://mypharmacy.shoppersdrugmart.ca/api/profile/getProfile/',
+    body,
+  })
 
 const runParse = (
   r: Response.RemoteResponse

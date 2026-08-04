@@ -3,25 +3,19 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Response } from 'collector-fundamentals/model'
+import type { Response } from 'collector-fundamentals/model'
+import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { PrescriptionEntity } from './prescription-entity.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
 
-const encoder = new TextEncoder()
-
-const makeResponse = (body: string): Response.RemoteResponse => {
-  const r = new Response.RemoteResponse(
-    'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-uuid-1/prescription-status',
-    200,
-    'OK',
-    [['content-type', 'application/json']]
-  )
-  r.appendChunk(encoder.encode(body))
-  return r
-}
+const makeResponse = (body: string): Response.RemoteResponse =>
+  makeRemoteResponse({
+    url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-uuid-1/prescription-status',
+    body,
+  })
 
 const runParse = (
   r: Response.RemoteResponse
@@ -183,7 +177,9 @@ describe('PrescriptionEntity', () => {
       const [request] = byType(result, 'MedicationRequest')
       const period = request?.dispenseRequest?.validityPeriod
       expect(epoch(period?.start)).toBe(Date.parse('2026-01-10T00:00:00Z'))
-      expect(epoch(period?.end)).toBe(null)
+      // No nextFillDate and no expiryDate here, so the window has no end — `epoch`
+      // maps an absent (null) slot to `undefined`, matching the sibling tests.
+      expect(epoch(period?.end)).toBeUndefined()
       // lastFillDate also authors the request.
       expect(epoch(request?.authoredOn)).toBe(Date.parse('2026-01-10T00:00:00Z'))
     })
