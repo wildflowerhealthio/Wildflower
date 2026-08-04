@@ -3,15 +3,16 @@ import { useContext } from 'react'
 import { CollectorSenderContext, type CollectorSender } from './collector-sender-context.ts'
 
 /**
- * Returns the CollectorBridge Web→Host sender. Throws when no
- * `<CollectorSenderProvider>` is in the tree (the app's
- * `<CollectorSenderForwarder>` always wraps the collector routes in
- * one).
+ * Returns the collector's Web→Host sender — since the Tauri→Axum migration,
+ * the HTTP transport's `/sniffer` REST caller (see
+ * `http-collector-transport.ts`). Throws when no
+ * `<CollectorHttpTransportProvider>` is in the tree (the app mounts one around
+ * the collector routes).
  */
 const useCollectorSender = (): CollectorSender => {
   const sender = useContext(CollectorSenderContext)
   if (sender === null) {
-    throw new Error('useCollectorSender must be used inside <CollectorSenderProvider>')
+    throw new Error('useCollectorSender must be used inside <CollectorHttpTransportProvider>')
   }
   return sender
 }

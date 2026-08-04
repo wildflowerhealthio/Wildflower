@@ -392,7 +392,18 @@ fn data_plane_value_is_allowed(payload: &serde_json::Value) -> Result<(), Cow<'s
 pub fn native_webview_data_plane_emit(app: AppHandle, payload: serde_json::Value) {
     match data_plane_value_is_allowed(&payload) {
         Ok(()) => match serde_json::to_string(&payload) {
-            Ok(json) => app.state::<ManagedSnifferEvents>().events.publish(json),
+            // `try_state`, not `state`: the command is registered
+            // unconditionally in the app's `invoke_handler` while the publisher
+            // is only managed by `attach_browser_sniffer`. A panic here would
+            // take down the invoke task; a dropped event with a warn matches
+            // the rest of this command's best-effort contract.
+            Ok(json) => match app.try_state::<ManagedSnifferEvents>() {
+                Some(events) => events.events.publish(json),
+                None => log::warn!(
+                    "[browser-sniffer] desktop native-webview data-plane emit dropped: the \
+                     sniffer event stream is not managed (attach_browser_sniffer never ran)"
+                ),
+            },
             Err(error) => {
                 log::warn!(
                     "[browser-sniffer] desktop native-webview data-plane re-serialize failed: \

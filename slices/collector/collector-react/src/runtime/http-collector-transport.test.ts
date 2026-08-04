@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { describe, expect, it, vi } from 'vite-plus/test'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   eventsUrlFor,
@@ -10,6 +10,13 @@ import {
   type CollectorHandlers,
   type EventSocket,
 } from './http-collector-transport.ts'
+
+// The close-code cases spy on `console.warn`. Restoring in a teardown hook
+// rather than at the end of each body: a failing assertion would otherwise
+// leave the spy installed and swallow every later case's console output.
+afterEach(() => {
+  vi.restoreAllMocks()
+})
 
 describe('httpRequestForMessage', () => {
   it('should map every outbound tag onto its /sniffer endpoint', () => {
@@ -305,7 +312,6 @@ describe('makeHttpCollectorTransport', () => {
       expect(warn).toHaveBeenCalledTimes(1)
       expect(String(warn.mock.calls[0]?.[0])).toContain('1011')
       expect(String(warn.mock.calls[0]?.[0])).toContain('event stream lagged')
-      warn.mockRestore()
     })
 
     it('should stay silent when the stream closes normally', async () => {
@@ -326,7 +332,6 @@ describe('makeHttpCollectorTransport', () => {
 
       // Assert
       expect(warn).not.toHaveBeenCalled()
-      warn.mockRestore()
     })
 
     it('should not close a newer run’s socket when an older run releases late', async () => {
@@ -473,10 +478,17 @@ const dropAllHandlers = (): CollectorHandlers => ({
   SnifferDisposed: () => Effect.void,
 })
 
-/** Let the sequential dispatch pump drain its queued microtasks. */
-const flushDispatch = async (): Promise<void> => {
-  for (let i = 0; i < 20; i += 1) {
-    // oxlint-disable-next-line no-await-in-loop -- draining the pump tick by tick
-    await Promise.resolve()
-  }
-}
+/**
+ * Let the sequential dispatch pump drain fully.
+ *
+ * A macrotask boundary, not a fixed count of microtask ticks: the pump chains
+ * one `Effect.runPromise` per frame, so the number of ticks scales with how
+ * many frames a case emits and how many the Effect runtime needs per run. The
+ * whole microtask cascade is guaranteed to have drained before a `setTimeout`
+ * callback runs, so adding a frame to a case can never silently truncate the
+ * assertion the way a hard-coded tick budget could.
+ */
+const flushDispatch = (): Promise<void> =>
+  new Promise<void>((resolve) => {
+    setTimeout(resolve, 0)
+  })

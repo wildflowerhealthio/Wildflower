@@ -73,8 +73,13 @@ impl SnifferEvents {
     }
 
     /// Publish a host-synthesized, payload-less lifecycle event (`{"_tag": tag}`).
+    ///
+    /// Serialized through `serde_json` rather than `format!`-interpolated: this
+    /// is a `pub` entry point on a `pub` type, so a caller outside the crate
+    /// could hand it a tag containing `"` or `\` and produce bytes the client's
+    /// decoder would silently drop.
     pub fn publish_lifecycle(&self, tag: &str) {
-        self.publish(format!(r#"{{"_tag":"{tag}"}}"#));
+        self.publish(serde_json::json!({ "_tag": tag }).to_string());
     }
 
     /// A new subscription starting from the events published after this call.
