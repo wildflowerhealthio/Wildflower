@@ -5,6 +5,7 @@ import type {
   CancelledMessageBody,
   PageActionMessageBody,
   PageLoadedMessageBody,
+  PageRequestedMessageBody,
   RequestErrorMessageBody,
   ResponseDataMessageBody,
   ResponseFinishedMessageBody,
@@ -26,8 +27,10 @@ import type { JsonValue } from 'kitchen-sink/schema'
  *
  * Wire format:
  *   - Emits `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
- *     `RequestError`, `Cancelled`, `PageLoaded` on the multiplexed
- *     `BRIDGE_EVENT` channel (discriminated by `_tag`). `PageLoaded` is held
+ *     `RequestError`, `Cancelled`, `PageRequested`, `PageLoaded` on the
+ *     multiplexed `BRIDGE_EVENT` channel (discriminated by `_tag`).
+ *     `PageRequested` fires once per document at `DOMContentLoaded` (early,
+ *     pre-settlement, URL only); `PageLoaded` is held
  *     until the page *settles* — no DOM mutations and no in-flight fetch/XHR
  *     for a continuous quiet window, or a hard ceiling — rather than firing on
  *     the raw `window.load` event (see the settle watch below). Emits are
@@ -56,6 +59,7 @@ type SnifferOutboundMessage =
   | Schema.Schema.Encoded<typeof RequestErrorMessageBody>
   | Schema.Schema.Encoded<typeof CancelledMessageBody>
   | Schema.Schema.Encoded<typeof PageLoadedMessageBody>
+  | Schema.Schema.Encoded<typeof PageRequestedMessageBody>
 
 /** Wire form received Host→Web. */
 type SnifferInboundMessage =
@@ -73,6 +77,13 @@ interface SnifferState {
    * Named `pageLoadHandler` because it remains the one `load` handler.
    */
   readonly pageLoadHandler: () => void
+  /**
+   * The `DOMContentLoaded` listener that emits the early `PageRequested`
+   * notification (registered only when the sniffer installs into a
+   * still-loading document). Exposed so tests can remove a not-yet-fired
+   * listener between cases.
+   */
+  readonly pageRequestedHandler: () => void
   /**
    * Tear the settle watch down: disconnect the `MutationObserver` and clear the
    * quiet-window / ceiling timers. Idempotent. Settlement calls it itself before
@@ -852,6 +863,23 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   }
   win.addEventListener('load', startSettleWatch)
 
+  // Early page-arrival notification, `PageLoaded`'s pre-settlement sibling:
+  // emitted once per document at `DOMContentLoaded` (or immediately if the
+  // document is already parsed when the sniffer installs), so it fires even
+  // for a page whose `load` or quiescence never comes. Notification only —
+  // no DOM snapshot; that stays tied to settlement above.
+  let pageRequestedEmitted = false
+  const emitPageRequested = (): void => {
+    if (pageRequestedEmitted) return
+    pageRequestedEmitted = true
+    post({ _tag: 'PageRequested', url: win.location.href })
+  }
+  if (document.readyState === 'loading') {
+    win.addEventListener('DOMContentLoaded', emitPageRequested, { once: true })
+  } else {
+    emitPageRequested()
+  }
+
   // Host→Web messages arrive on the multiplexed `BRIDGE_EVENT` channel;
   // demux by `_tag`. Unrecognized tags (other slices' traffic, our own
   // echo from the broadcast bus) are dropped. Only Tauri IPC can invoke
@@ -944,6 +972,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     nativeXHRSend,
     activeRequests,
     pageLoadHandler: startSettleWatch,
+    pageRequestedHandler: emitPageRequested,
     teardownSettleWatch,
     unlistens,
   }

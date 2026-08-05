@@ -87,9 +87,12 @@ The plan's `stepSequence`:
    target the wrong DOM.
 2. Fills `input[type="email"]` / `input[type="password"]`, clicks
    `button[type="submit"]`.
-3. **`AwaitPageSettled` on `…/en/healthdashboard/` with a 5-minute timeout** —
+3. **`AwaitPageRequested` on `…/en/healthdashboard/` with a 5-minute timeout** —
    this is the human-in-the-loop 2FA pause. The dashboard only loads once the
-   user completes verification on `accounts.pcid.ca/login/verification`.
+   user completes verification on `accounts.pcid.ca/login/verification`. Arrival
+   (`DOMContentLoaded`), not settlement, on purpose: the dashboard keeps loading
+   past the sniffer's settle detector, so an `AwaitPageSettled` here sat parked
+   with the page visibly up until its timeout.
 4. `Open`s the prescription dashboard, `AwaitPageSettled` on it, then a `Delay`
    for the per-prescription `prescription-status` XHR fan-out.
 5. `Open`s the prescription-history page, `AwaitPageSettled` on it, then a

@@ -33,6 +33,14 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 interface AutomaticNavigation {
   readonly handlePageLoaded: Service['PageLoaded']
   /**
+   * The early `PageRequested` page-arrival notification (fired at
+   * `DOMContentLoaded`, before settlement). Consumed only by a parked
+   * `AwaitPageRequested` hold; a silent no-op in every other state — in
+   * particular it never starts the start-up drain, which stays gated on the
+   * first settled `PageLoaded`.
+   */
+  readonly handlePageRequested: Service['PageRequested']
+  /**
    * The external `UserDismissed` signal (the user closed the sniffer webview),
    * forwarded from the host on the `CollectorBridge`. Consumes an
    * `AwaitUserDismiss` hold the machine is parked on and resumes draining; a
@@ -137,6 +145,7 @@ const make = <TResources>({
           sideEffectHandlers.RequestCompletionCheck(m, ctx)
         ),
         Match.tag('WarnUrlMatchTimeout', (m) => sideEffectHandlers.WarnUrlMatchTimeout(m, ctx)),
+        Match.tag('WarnUrlMatchAdvanced', (m) => sideEffectHandlers.WarnUrlMatchAdvanced(m, ctx)),
         Match.tag('WarnUserDismissTimeout', (m) =>
           sideEffectHandlers.WarnUserDismissTimeout(m, ctx)
         ),
@@ -165,6 +174,7 @@ const make = <TResources>({
       )
 
     const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
+    const handlePageRequested: Service['PageRequested'] = (event) => dispatch(event)
     const handleUserDismissed: Service['UserDismissed'] = () => dispatch({ _tag: 'UserDismissed' })
     const handleSnifferDisposed: Service['SnifferDisposed'] = () =>
       dispatch({ _tag: 'SnifferDisposed' })
@@ -178,6 +188,7 @@ const make = <TResources>({
 
     return {
       handlePageLoaded,
+      handlePageRequested,
       handleUserDismissed,
       handleSnifferDisposed,
       handleStepsGenerated,

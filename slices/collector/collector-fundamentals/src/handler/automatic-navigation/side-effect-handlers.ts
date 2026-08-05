@@ -195,6 +195,13 @@ const sideEffectHandlers = {
     Effect.logWarning(
       `CollectorBridgeMessageHandler.PageLoaded: URL-match step timed out after ${msg.timeoutMs}ms with no matching PageLoaded; aborting via SniffingComplete`
     ),
+  WarnUrlMatchAdvanced: (
+    msg: { readonly timeoutMs: number },
+    _ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      `CollectorBridgeMessageHandler.PageLoaded: URL-match step timed out after ${msg.timeoutMs}ms with no matching page; advancing to the next step (continueOnTimeout: true)`
+    ),
   WarnUserDismissTimeout: (
     msg: { readonly timeoutMs: number },
     _ctx: HandlerContext

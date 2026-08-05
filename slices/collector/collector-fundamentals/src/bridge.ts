@@ -3,6 +3,7 @@ import {
   CancelledMessage,
   PageActionMessage,
   PageLoadedMessage,
+  PageRequestedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
@@ -126,6 +127,7 @@ type CollectorBridge = Bridge.Bridge<
     RequestError: typeof RequestErrorMessage
     Cancelled: typeof CancelledMessage
     PageLoaded: typeof PageLoadedMessage
+    PageRequested: typeof PageRequestedMessage
     UserDismissed: typeof UserDismissed
     SnifferDisposed: typeof SnifferDisposed
   },
@@ -146,7 +148,8 @@ type CollectorBridge = Bridge.Bridge<
  * `CancelSnifferRequest`, `SniffingComplete`, `SetSnifferStatus`,
  * `EnsureSnifferVisible`) and script-driven navigation steps (`Open`,
  * `PageAction`); Host→Web carries the sniffer-event subset collector parses, the
- * `PageLoaded` notification that drives the step timer, and the two sniffer
+ * `PageLoaded` / `PageRequested` notifications that drive the step machine's
+ * holds (settled load / early DOMContentLoaded arrival), and the two sniffer
  * webview lifecycle signals (`UserDismissed` — the user closed it;
  * `SnifferDisposed` — it was torn down). `SetSnifferStatus` is a pure
  * chrome-label update the host writes to the sniffer webview's subtitle; it is
@@ -170,6 +173,7 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['RequestError', RequestErrorMessage],
     ['Cancelled', CancelledMessage],
     ['PageLoaded', PageLoadedMessage],
+    ['PageRequested', PageRequestedMessage],
     ['UserDismissed', UserDismissed],
     ['SnifferDisposed', SnifferDisposed],
   ] as const,

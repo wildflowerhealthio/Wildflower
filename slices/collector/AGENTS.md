@@ -123,16 +123,21 @@ before adding one.
 
 ## Traps
 
-- **`Step` is a `Navigation | Delay | AwaitPageSettled | AwaitUserDismiss |
-EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
-  `action` (typed against the bridge message bodies themselves) and
+- **`Step` is a `Navigation | Delay | AwaitPageSettled | AwaitPageRequested |
+AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire — a
+  `Navigation`'s `action` (typed against the bridge message bodies themselves) and
   `EnsureWindowVisible` (a fire-and-advance `EnsureSnifferVisible` show request).
-  The three plan-only holds (`Delay`, `AwaitPageSettled`, `AwaitUserDismiss`) carry
-  no payload and are consumed by the FSM, so they stay off the wire by construction
-  — there is no "strip before dispatch" step to remember. A new scripted
-  interaction is a `PageAction` `action` union variant, not a new bridge tag; a new
-  _pause_ is a `Delay` (fixed) or `AwaitPageSettled` (wait for a matching settled
-  page load) step, not a plan-wide delay field.
+  The four plan-only holds (`Delay`, `AwaitPageSettled`, `AwaitPageRequested`,
+  `AwaitUserDismiss`) carry no payload and are consumed by the FSM, so they stay
+  off the wire by construction — there is no "strip before dispatch" step to
+  remember. A new scripted interaction is a `PageAction` `action` union variant,
+  not a new bridge tag; a new _pause_ is a `Delay` (fixed), `AwaitPageSettled`
+  (wait for a matching settled page load), or `AwaitPageRequested` (wait for a
+  matching page to merely _arrive_ — the sniffer's `PageRequested` fired at
+  `DOMContentLoaded`; use it when the awaited page may never satisfy the settle
+  detector, e.g. a busy SPA behind a 2FA pause — a matching settled load also
+  releases it, but a mere arrival never releases an `AwaitPageSettled`) step, not
+  a plan-wide delay field.
 - **`EnsureWindowVisible` asks for the sniffer window on screen — best-effort,
   not a guarantee.** A fire-and-advance step (dispatches and advances like a
   `Navigation`) whose `EnsureSnifferVisible` message the host maps to
@@ -201,7 +206,9 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   `PageAction` fires none at all), so consecutive actions drain in one turn; a
   login is `Fill`/`Fill`/`Click` back-to-back. Any wait is an explicit step: a
   `Delay` for a fixed pause, or an **`AwaitPageSettled`** to hold until a settled
-  `PageLoaded` matches a url pattern (aborting on its `timeout`). Two consequences:
+  `PageLoaded` matches a url pattern (aborting on its `timeout` by default, or
+  advancing to the next step when the hold sets `continueOnTimeout: true` — for a
+  best-effort page an already-authenticated session may skip). Two consequences:
   (1) after a `Click`/`Open` that navigates, gate the _next_ step with an
   `AwaitPageSettled` for the destination — don't expect the action itself to wait;
   (2) to keep the run open for post-load XHR fan-out, add a trailing

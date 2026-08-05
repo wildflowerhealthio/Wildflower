@@ -107,6 +107,7 @@ const makeCollectingHostHandlers = (): {
     RequestError: push,
     Cancelled: push,
     PageLoaded: push,
+    PageRequested: push,
   }
   return { collected, handlers }
 }
@@ -143,10 +144,11 @@ const runHost = async (
 }
 
 describe('BrowserSnifferBridge — shape', () => {
-  test('declares the six sniffer events on Web→Host and the two control messages on Host→Web', () => {
+  test('declares the seven sniffer events on Web→Host and the two control messages on Host→Web', () => {
     expect(Object.keys(BrowserSnifferBridge.WebToHost).toSorted()).toEqual([
       'Cancelled',
       'PageLoaded',
+      'PageRequested',
       'RequestError',
       'ResponseData',
       'ResponseFinished',

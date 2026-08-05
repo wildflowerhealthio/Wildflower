@@ -105,13 +105,33 @@ const REDIRECT_TIMEOUT = Duration.seconds(30)
  * The post-login landing page: the `mypharmacy` health dashboard. After the
  * submit `Click`, the user completes 2FA on
  * `accounts.pcid.ca/login/verification`; the run **pauses** on an
- * `AwaitPageSettled` for this dashboard until that 2FA finishes and the
- * dashboard loads and settles (its `…/api/profile/getProfile/` XHR fires and is
- * sniffed while it settles). {@link TWO_FA_TIMEOUT} bounds the human-in-the-loop
- * wait so a stalled login aborts rather than hangs.
+ * `AwaitPageRequested` for this dashboard until that 2FA finishes and the
+ * dashboard *arrives* (`DOMContentLoaded`). Arrival, not settlement, on
+ * purpose: the dashboard was observed to keep loading past the sniffer's
+ * settle detector, so an `AwaitPageSettled` here sat out its whole timeout
+ * with the page visibly up. Its `…/api/profile/getProfile/` XHR may not have
+ * fired by the time the hold releases — acceptable, because the
+ * prescription-history page fires the customers XHR again later in the run.
+ * {@link TWO_FA_TIMEOUT} bounds the human-in-the-loop wait so a stalled login
+ * aborts rather than hangs.
  */
 const HEALTHDASHBOARD_PATTERN = /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/healthdashboard/
 const TWO_FA_TIMEOUT = Duration.minutes(5)
+
+/**
+ * The plan's silent-host idle guard, raised **above** {@link TWO_FA_TIMEOUT}.
+ *
+ * The sync runner abandons a run when no sniff *result* (a tracked, decoded
+ * response) arrives within `ScrapingPlan.idleTimeout` (default 30 s). During the
+ * human-in-the-loop 2FA pause nothing is tracked — the login/pcid pages fire no
+ * XHR any entity claims — so the default 30 s guard would kill the run long
+ * before the user finishes 2FA and the first dashboard XHR lands. This mirrors
+ * the documented `AwaitUserDismiss` requirement: a hold waiting on a person must
+ * lift the idle guard above its own `timeout`. One minute of headroom over the
+ * 2FA bound (plus the redirect wait ahead of it) keeps a genuinely stalled run
+ * from hanging while giving the user the full 2FA window.
+ */
+const IDLE_TIMEOUT = Duration.sum(TWO_FA_TIMEOUT, Duration.minutes(1))
 
 /**
  * The prescription dashboard itself. After `Open`ing {@link PRESCRIPTIONS_URL},
@@ -186,9 +206,11 @@ const SHOPPERS_DRUGMART_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/shoppers-
  *
  * The `stepSequence` waits for the cross-host redirect to `accounts.pcid.ca`,
  * scripts the login (Fill email, Fill password, Click submit), then **pauses on
- * an `AwaitPageSettled` for the health dashboard** while the user completes 2FA
- * on `accounts.pcid.ca/login/verification` (the dashboard only loads once 2FA
- * succeeds). It then `Open`s the prescription dashboard, waits for *it* to
+ * an `AwaitPageRequested` for the health dashboard** while the user completes
+ * 2FA on `accounts.pcid.ca/login/verification` (the dashboard only loads once
+ * 2FA succeeds; arrival — not settlement — releases the hold, because the
+ * dashboard never goes quiet enough to settle). It then `Open`s the
+ * prescription dashboard, waits for *it* to
  * settle, holds open for {@link SETTLE} while the per-prescription status XHRs
  * settle, then `Open`s the prescription-history page and holds open for
  * {@link HISTORY_SETTLE} while its `prescription-history` + `customers` XHRs
@@ -213,6 +235,10 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
   const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: LOGIN_URL }
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Shoppers Drug Mart',
+    // Lifted above the 2FA hold's timeout so the silent-host idle guard does not
+    // abandon the run during the human-in-the-loop 2FA pause (nothing is tracked
+    // until the dashboard's XHRs fire) — see {@link IDLE_TIMEOUT}.
+    idleTimeout: IDLE_TIMEOUT,
     // Widening upcast (safe: `EntityDefinition` is covariant in its resource
     // type, and Patient / MedicationRequest / MedicationDispense are all
     // `FhirResource`), mirroring `fhir-r4-client-collector`.
@@ -233,7 +259,15 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
         name: 'Waiting for login page',
         pattern: PCID_LOGIN_PATTERN,
         timeout: REDIRECT_TIMEOUT,
+        // An already-authenticated session skips the `accounts.pcid.ca/login`
+        // redirect entirely (it lands straight on the dashboard), so this hold
+        // is best-effort: on timeout, continue into the login `Fill`s rather than
+        // aborting the whole run. The `Fill`/`Click` no-op against a DOM without
+        // those inputs, and the later `AwaitPageRequested` still gates on the
+        // dashboard.
+        continueOnTimeout: true,
       },
+      { _tag: 'Delay', name: 'Waiting to enter email', duration: Duration.seconds(1) },
       {
         _tag: 'Navigation',
         name: 'Entering email',
@@ -246,7 +280,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
           },
         },
       },
-      { _tag: 'Delay', name: 'Waiting to enter email', duration: Duration.seconds(0.25) },
+      { _tag: 'Delay', name: 'Waiting to enter password', duration: Duration.seconds(0.25) },
       {
         _tag: 'Navigation',
         name: 'Entering password',
@@ -265,10 +299,11 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
         },
       },
       // Pause through the user's 2FA on `accounts.pcid.ca/login/verification`
-      // until the health dashboard loads and settles (its `getProfile` XHR is
-      // sniffed as it settles).
+      // until the health dashboard *arrives* (`DOMContentLoaded`). Arrival, not
+      // settlement — the dashboard never satisfies the settle detector; see
+      // `HEALTHDASHBOARD_PATTERN`.
       {
-        _tag: 'AwaitPageSettled',
+        _tag: 'AwaitPageRequested',
         name: 'Waiting for Health Dashboard',
         pattern: HEALTHDASHBOARD_PATTERN,
         timeout: TWO_FA_TIMEOUT,

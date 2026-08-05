@@ -125,6 +125,17 @@ const useSyncRunner = ({ onError, idleTimeout }: SyncRunnerInput = {}): SyncRunn
         throw error
       })
     },
+    // TEMP DEBUG (receiver-drop diagnosis): show how/when the run's mutation
+    // settles and whether it was an explicit abort, so we can correlate the
+    // CollectorBridge unregister against the auth/consent activity in the logs.
+    onSettled: (data, error) => {
+      // oxlint-disable-next-line no-console
+      console.warn(
+        `[collector-debug] sync mutation SETTLED — aborted=${
+          abortRef.current?.signal.aborted ?? false
+        } cancelled=${data?.cancelled ?? false} error=${error ? String(error) : 'none'}`
+      )
+    },
   })
 
   const { mutate } = mutation
@@ -137,6 +148,11 @@ const useSyncRunner = ({ onError, idleTimeout }: SyncRunnerInput = {}): SyncRunn
   )
 
   const cancel = useCallback(() => {
+    // TEMP DEBUG (receiver-drop diagnosis): flag every explicit abort so a
+    // mid-run unregister can be traced to a real `cancel()` call vs some other
+    // scope-close. `new Error().stack` captures who called it.
+    // oxlint-disable-next-line no-console
+    console.warn('[collector-debug] cancel() called — aborting run', new Error('cancel() caller').stack)
     abortRef.current?.abort()
   }, [])
 

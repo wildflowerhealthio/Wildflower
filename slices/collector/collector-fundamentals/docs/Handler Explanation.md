@@ -246,7 +246,9 @@ identity is **owner of a step queue** (seeded from `stepSequence`, grown by
 
 The inputs are `PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
 `UserDismissTimeoutFired`, `StepsGenerated`, `NoMoreResultsExpected`,
-`UserDismissed`, and `SnifferDisposed`; the states are `AwaitingPageLoaded`,
+`UserDismissed`, `SnifferDisposed`, and `PageRequested` (the sniffer's early
+page-arrival notification, fired at `DOMContentLoaded` before settlement); the
+states are `AwaitingPageLoaded`,
 `DelayPending`, `AwaitingUrlMatch`, `AwaitingUserDismiss`, `Drained`, and `Done`.
 Because the queue lives in the state, the transition needs no `ScrapingPlan`
 closure — it names `SetStepName` / `DispatchNavigation` /
@@ -260,7 +262,11 @@ and it keeps draining as far as it can each turn: a `Navigation` **dispatches it
 a `PageLoaded`, so consecutive navigations dispatch back-to-back), a `Delay` arms
 a timer for its `duration` and rests, an `AwaitPageSettled` parks until a settled
 `PageLoaded` matches its `pattern` (or aborts on its `timeout`) — resuming the
-drain from the tail on a match — an `EnsureWindowVisible` dispatches an
+drain from the tail on a match — an `AwaitPageRequested` parks the same way but
+is released by a matching early `PageRequested` arrival _or_ a matching settled
+`PageLoaded` (settled implies arrived; the converse does not hold — a mere
+arrival never releases an `AwaitPageSettled`, and never starts the start-up
+drain), an `EnsureWindowVisible` dispatches an
 `EnsureSnifferVisible` show request and immediately advances (fire-and-advance,
 like a `Navigation`), and an empty queue transitions to `Drained`. A
 `StepsGenerated` input appends to the back of the queue (breadth-first), or from
@@ -274,8 +280,9 @@ to the sniffer chrome's subtitle so the running step is visible. A back-to-back
 seen — names on hold steps (or a `Navigation` gated by a following hold) are the
 ones a user reliably reads.
 There is **no implicit settle timer**: all waiting is an explicit `Delay`,
-`AwaitPageSettled`, or `AwaitUserDismiss` step, so `AwaitingPageLoaded` is a
-start-up-only resting state (nothing but `Stop` returns to it).
+`AwaitPageSettled`, `AwaitPageRequested`, or `AwaitUserDismiss` step, so
+`AwaitingPageLoaded` is a start-up-only resting state (nothing but `Stop`
+returns to it).
 
 An `AwaitUserDismiss` step parks in `AwaitingUserDismiss` under its own `timeout`.
 Three inputs resume from there, all onto the same path — **consume the hold and
@@ -290,11 +297,21 @@ own. Outside the hold, `UserDismissed` and `SnifferDisposed` are
 silent no-ops — both also occur during ordinary teardown, so neither may disturb
 a run that isn't waiting on one.
 
-Note the asymmetry with the other timed hold. An `AwaitPageSettled` that times out
-**aborts** the run (`Done` + `SniffingComplete`), because the page it needed never
-arrived and every step behind it is meaningless. An `AwaitUserDismiss` that ends
-merely **drains**, because the plan got as far as handing control to the user and
-whatever was sniffed is a valid result.
+Note the asymmetry with the other timed holds. An `AwaitPageSettled` or
+`AwaitPageRequested` that times out **aborts** the run by default (`Done` +
+`SniffingComplete`), because the page it needed never came and every step behind
+it is meaningless — unless the hold set `continueOnTimeout: true`, in which case a
+timeout instead **drains** the tail (the page was best-effort: e.g. a
+login/redirect page an already-authenticated session skips). An `AwaitUserDismiss`
+that ends always **drains**, because the plan got as far as handing control to the
+user and whatever was sniffed is a valid result.
+
+Both terminals write a fixed chrome label just before `SniffingComplete` — `'Done'`
+on clean completion, `'Timed out'` on an abort — so the sniffer subtitle reflects
+the terminal state instead of freezing on the last step's `name`. The host disposes
+the webview on `SniffingComplete`, so the `'Done'` label is short-lived (a clean
+finish tears the window down at once); the `'Timed out'` label is the one a user
+actually reads, since an aborted run leaves the window on screen.
 
 That difference is load-bearing rather than stylistic: the dismiss path is the one
 that can end with requests still in flight. The webview stays alive and keeps

@@ -165,7 +165,11 @@ describe('scrapingPlan', () => {
         name: 'Waiting for login page',
         pattern: /:\/\/accounts\.pcid\.ca\/login/,
         timeout: Duration.seconds(30),
+        // An already-authenticated session skips the pcid login redirect, so this
+        // hold advances into the login fills on timeout rather than aborting.
+        continueOnTimeout: true,
       },
+      { _tag: 'Delay', name: 'Waiting to enter email', duration: Duration.seconds(1) },
       {
         _tag: 'Navigation',
         name: 'Entering email',
@@ -174,7 +178,7 @@ describe('scrapingPlan', () => {
           action: { kind: 'Fill', querySelector: 'input[type="email"]', value: 'a@b.com' },
         },
       },
-      { _tag: 'Delay', name: 'Waiting to enter email', duration: Duration.seconds(0.25) },
+      { _tag: 'Delay', name: 'Waiting to enter password', duration: Duration.seconds(0.25) },
       {
         _tag: 'Navigation',
         name: 'Entering password',
@@ -192,8 +196,11 @@ describe('scrapingPlan', () => {
           action: { kind: 'Click', querySelector: 'button[type="submit"]' },
         },
       },
+      // Arrival (`DOMContentLoaded`), not settlement: the dashboard keeps
+      // loading past the sniffer's settle detector, so a settled hold would sit
+      // out its whole 2FA timeout with the page visibly up.
       {
-        _tag: 'AwaitPageSettled',
+        _tag: 'AwaitPageRequested',
         name: 'Waiting for Health Dashboard',
         pattern: /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/healthdashboard/,
         timeout: Duration.minutes(5),
@@ -251,6 +258,21 @@ describe('scrapingPlan', () => {
         : []
     )
     expect(fills).toEqual(['user@shoppers.test', 'hunter2'])
+  })
+
+  it('lifts the idle-timeout guard above the 2FA hold so the pause is not abandoned', () => {
+    const plan = scrapingPlan(defaultConfig)
+    const twoFaHold = plan.stepSequence.find((step) => step._tag === 'AwaitPageRequested')
+    if (twoFaHold === undefined || twoFaHold._tag !== 'AwaitPageRequested') {
+      throw new Error('expected an AwaitPageRequested 2FA hold')
+    }
+    if (plan.idleTimeout === undefined) {
+      throw new Error('expected the plan to set an idleTimeout')
+    }
+    // The silent-host guard must outlast the human-in-the-loop 2FA wait, or the
+    // sync runner abandons the run mid-pause — nothing is tracked until the
+    // dashboard's XHRs fire, so the default 30 s guard would kill it first.
+    expect(Duration.greaterThan(Duration.decode(plan.idleTimeout), twoFaHold.timeout)).toBe(true)
   })
 })
 

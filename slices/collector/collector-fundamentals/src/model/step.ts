@@ -26,10 +26,11 @@ import type { OpenMessage } from '../bridge.ts'
  * is not a claim that only `Navigation` steps reach the host (an
  * {@link EnsureWindowVisibleStep} does too, via a machine-built message).
  *
- * The three plan-only holds ({@link DelayStep}, {@link AwaitPageSettledStep},
- * {@link AwaitUserDismissStep}) carry no `action` at all and are consumed by the
- * FSM as timers / holds, so they structurally cannot leak — there is no "strip
- * before dispatch" step to remember.
+ * The four plan-only holds ({@link DelayStep}, {@link AwaitPageSettledStep},
+ * {@link AwaitPageRequestedStep}, {@link AwaitUserDismissStep}) carry no
+ * `action` at all and are consumed by the FSM as timers / holds, so they
+ * structurally cannot leak — there is no "strip before dispatch" step to
+ * remember.
  */
 type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
 
@@ -96,15 +97,64 @@ interface DelayStep {
  *
  * `timeout` is the machine-side cap on that wait — distinct from the sniffer's
  * internal settle ceiling: if no matching settled `PageLoaded` arrives within
- * it, the run aborts via `SniffingComplete` rather than hanging (the sync
- * runner's idle timeout is the ultimate backstop). `pattern` is a `RegExp` built
- * with `UrlMatch.make({ segments, end })`.
+ * it, the hold's `continueOnTimeout` decides what happens (default: abort the
+ * run via `SniffingComplete`; see the field). The sync runner's idle timeout is
+ * the ultimate backstop. `pattern` is a `RegExp` built with
+ * `UrlMatch.make({ segments, end })`.
  */
 interface AwaitPageSettledStep {
   readonly _tag: 'AwaitPageSettled'
   readonly name: string
   readonly pattern: RegExp
   readonly timeout: Duration.Duration
+  /**
+   * What a `timeout` does. Omitted or `false` (the default) **aborts** the run
+   * via `SniffingComplete` — the awaited page never arrived, so the plan can't
+   * proceed. `true` instead **advances** to the next step: the unmatched hold is
+   * consumed and the queue tail drains, with no page in hand (so a following
+   * hold parks as usual). Set `true` for a hold whose page may legitimately be
+   * skipped — e.g. a login/redirect page that an already-authenticated session
+   * never lands on — where reaching it is best-effort, not a precondition.
+   */
+  readonly continueOnTimeout?: boolean
+}
+
+/**
+ * A plan-only hold that waits for a page whose url matches `pattern` to have
+ * *arrived* — the sniffer's early `PageRequested` notification, fired once per
+ * document at `DOMContentLoaded` — rather than to have fully settled. The
+ * early sibling of {@link AwaitPageSettledStep}: same shape, same parking
+ * behaviour, but its gate is "the navigation landed and the DOM is parsed",
+ * nothing about quiescence.
+ *
+ * Use it when the page being waited for may never satisfy the sniffer's
+ * settle detector — a resource that hangs `load`, an SPA that never goes
+ * quiet — so an `AwaitPageSettled` would sit out its whole `timeout` even
+ * though the page visibly arrived. The canonical case is a human-in-the-loop
+ * pause (a 2FA hold) whose *destination* page is busy: the plan only needs to
+ * know the user got there. Because it advances at `DOMContentLoaded`, the
+ * page's own XHR fan-out may not have started yet — pair it with a trailing
+ * `Delay` (or follow it with a step on another page that fires the same
+ * requests) when that fan-out matters.
+ *
+ * A matching *settled* `PageLoaded` also satisfies it (a settled page
+ * necessarily arrived), so it never waits longer than an `AwaitPageSettled`
+ * would. `timeout` bounds the wait exactly like
+ * {@link AwaitPageSettledStep.timeout}, and `continueOnTimeout` governs expiry
+ * the same way (default: abort via `SniffingComplete`).
+ */
+interface AwaitPageRequestedStep {
+  readonly _tag: 'AwaitPageRequested'
+  readonly name: string
+  readonly pattern: RegExp
+  readonly timeout: Duration.Duration
+  /**
+   * What a `timeout` does — identical to {@link AwaitPageSettledStep.continueOnTimeout}.
+   * Omitted or `false` (the default) **aborts** the run via `SniffingComplete`;
+   * `true` **advances** to the next step, consuming the unmatched hold and
+   * draining the tail with no page in hand.
+   */
+  readonly continueOnTimeout?: boolean
 }
 
 /**
@@ -191,9 +241,11 @@ interface EnsureWindowVisibleStep {
  * {@link EnsureWindowVisibleStep} the automatic-navigation machine dispatches to
  * the host, or one of the plan-only holds the FSM consumes without dispatching —
  * a {@link DelayStep} (fixed wait), an {@link AwaitPageSettledStep} (wait for a
- * matching settled page load), or an {@link AwaitUserDismissStep} (wait for the
- * user to close the sniffer webview). A tagged union keyed by `_tag`; the
- * automatic-navigation machine routes on it.
+ * matching settled page load), an {@link AwaitPageRequestedStep} (wait for a
+ * matching page to merely arrive, at `DOMContentLoaded`), or an
+ * {@link AwaitUserDismissStep} (wait for the user to close the sniffer
+ * webview). A tagged union keyed by `_tag`; the automatic-navigation machine
+ * routes on it.
  *
  * Every variant carries a **required** `name`: a manually-authored,
  * human-readable label ("Entering email", "Waiting for prescriptions to load")
@@ -202,8 +254,9 @@ interface EnsureWindowVisibleStep {
  * it executes. Unlike a `Navigation`'s `action`, `name` never rides the step's
  * own wire message — the machine surfaces it through a separate
  * `SetSnifferStatus` bridge control message (see `bridge.ts`), which is why the
- * plan-only holds (`Delay` / `AwaitPageSettled` / `AwaitUserDismiss`) can label
- * the chrome even though they carry no `action`. Because consecutive
+ * plan-only holds (`Delay` / `AwaitPageSettled` / `AwaitPageRequested` /
+ * `AwaitUserDismiss`) can label the chrome even though they carry no `action`.
+ * Because consecutive
  * `Navigation` steps drain in one turn, only the last of a back-to-back run is
  * visible — a name is most meaningful on a step that holds, or on one
  * immediately followed by a hold.
@@ -212,6 +265,7 @@ type Step =
   | NavigationStep
   | DelayStep
   | AwaitPageSettledStep
+  | AwaitPageRequestedStep
   | AwaitUserDismissStep
   | EnsureWindowVisibleStep
 
@@ -220,6 +274,7 @@ export type {
   NavigationStep,
   DelayStep,
   AwaitPageSettledStep,
+  AwaitPageRequestedStep,
   AwaitUserDismissStep,
   EnsureWindowVisibleStep,
   StepAction,

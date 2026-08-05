@@ -89,11 +89,13 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
 
         // No request is tracked (the PageLoaded url matches no entity), so the
         // queue drains onto an empty map and the forked completion check drives
+        // completion: a terminal `SetSnifferStatus('Done')` chrome label, then
         // `SniffingComplete` → the stream closes.
         yield* handler.PageLoaded(pageLoaded())
         yield* settleForkedWork
-        expect(sendMessage).toHaveBeenCalledOnce()
-        expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+        expect(sendMessage).toHaveBeenCalledTimes(2)
+        expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SetSnifferStatus', name: 'Done' })
+        expect(sendMessage.mock.calls[1][0]).toEqual({ _tag: 'SniffingComplete' })
         expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)
       }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
     ))

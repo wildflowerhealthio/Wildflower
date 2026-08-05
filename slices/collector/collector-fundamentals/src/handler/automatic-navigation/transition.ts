@@ -16,6 +16,7 @@ import {
   warnDroppedPageLoaded,
   warnDroppedSteps,
   warnSnifferDisposed,
+  warnUrlMatchAdvanced,
   warnUrlMatchTimeout,
   warnUserDismissTimeout,
 } from './messages.ts'
@@ -34,35 +35,43 @@ import * as State from './state.ts'
  * dropped as stale.
  *
  * Every `Navigation` **dispatches and immediately advances** — no step waits for
- * a `PageLoaded` on its own account. Waiting is expressed only by the three hold
+ * a `PageLoaded` on its own account. Waiting is expressed only by the four hold
  * steps: `Delay` (a fixed timer), `AwaitPageSettled` (park until a matching
- * settled `PageLoaded`), and `AwaitUserDismiss` (park until the user closes the
- * sniffer webview). `AwaitingPageLoaded` is therefore a *start-up-only* resting
- * state: the machine waits there for the first settled page load, then drains
- * the queue.
+ * settled `PageLoaded`), `AwaitPageRequested` (park until a matching page has
+ * merely *arrived* — the early `PageRequested` fired at `DOMContentLoaded` — or
+ * a matching settled `PageLoaded`, which implies arrival), and
+ * `AwaitUserDismiss` (park until the user closes the sniffer webview).
+ * `AwaitingPageLoaded` is therefore a *start-up-only* resting state: the
+ * machine waits there for the first settled page load, then drains the queue
+ * (a `PageRequested` never starts the start-up drain — a plan's first steps may
+ * act on a DOM that is still loading).
  *
  * Note the asymmetry in how the two *timed-out* holds end: an `AwaitPageSettled`
- * that times out **aborts** the run, because the page it needed never arrived
- * and every step after it is meaningless. An `AwaitUserDismiss` that ends — by
- * dismissal, timeout, or dispose — merely **resumes draining**, because the plan
- * got as far as handing control to the user and whatever was sniffed is a valid
- * result. Only that second path can leave requests in flight, which is why it
- * must go through `Drained` rather than completing directly.
+ * (or `AwaitPageRequested`) that times out **aborts** the run by default, because
+ * the page it needed never arrived and every step after it is meaningless —
+ * unless the hold set `continueOnTimeout: true`, in which case the expiry instead
+ * **resumes draining** (the page was best-effort, not a precondition). An
+ * `AwaitUserDismiss` that ends — by dismissal, timeout, or dispose — always
+ * **resumes draining**, because the plan got as far as handing control to the
+ * user and whatever was sniffed is a valid result. Both drain paths can leave
+ * requests in flight, which is why they go through `Drained` rather than
+ * completing directly.
  *
  * Transition table (see [Handler Explanation](../../../docs/Handler%20Explanation.md)):
  * ```text
  *   AwaitingPageLoaded(q) ─PageLoaded→ drain(q, url)                    (start-up: first settled load)
  *   DelayPending(q)       ─PageLoaded→ DelayPending(q)                  (no re-arm)
  *   DelayPending(q)       ─DelayTimerFired (gen match)→ drain(q, ⊥)
- *   AwaitingUrlMatch(q)   ─PageLoaded, head AwaitPageSettled matches→ drain(tail, url)  (cancels timeout)
- *   AwaitingUrlMatch(q)   ─PageLoaded, still unmatched→ AwaitingUrlMatch(q)   (no-op)
- *   AwaitingUrlMatch(q)   ─UrlMatchTimeoutFired (gen match)→ Done       (dispatches SniffingComplete)
+ *   AwaitingUrlMatch(q)   ─PageLoaded, head hold matches→ drain(tail, url settled)  (either hold kind; cancels timeout)
+ *   AwaitingUrlMatch(q)   ─PageRequested, head AwaitPageRequested matches→ drain(tail, url unsettled)  (cancels timeout)
+ *   AwaitingUrlMatch(q)   ─PageLoaded/PageRequested, still unmatched→ AwaitingUrlMatch(q)  (no-op)
+ *   AwaitingUrlMatch(q)   ─UrlMatchTimeoutFired (gen match)→ Done       ('Timed out' chrome label + SniffingComplete; unless continueOnTimeout:true → drain(tail, ⊥))
  *   AwaitingUserDismiss(q)─UserDismissed→ drain(tail, ⊥)                (cancels timeout)
  *   AwaitingUserDismiss(q)─UserDismissTimeoutFired (gen match)→ drain(tail, ⊥)  (WARN)
  *   AwaitingUserDismiss(q)─SnifferDisposed→ drain(tail, ⊥)              (WARN; cancels timeout)
  *   AwaitingUserDismiss(q)─PageLoaded→ AwaitingUserDismiss(q)           (no-op; the webview is still alive)
  *   Drained               ─StepsGenerated→ drain(steps, ⊥)             (re-awaken, no PageLoaded)
- *   Drained               ─NoMoreResultsExpected→ Done                  (dispatches SniffingComplete)
+ *   Drained               ─NoMoreResultsExpected→ Done                  ('Done' chrome label + SniffingComplete)
  *   <active>              ─StepsGenerated→ append to queue              (otherwise unchanged)
  *   <not Drained>         ─NoMoreResultsExpected→ no-op
  *   <not parked>          ─UserDismissed / SnifferDisposed→ no-op       (silent: both also occur at teardown)
@@ -75,8 +84,9 @@ import * as State from './state.ts'
  * ```text
  *   q empty                             → Drained + RequestCompletionCheck (ask the lifecycle to confirm completion)
  *   Delay head                          → arm timer, DelayPending(tail)
- *   AwaitPageSettled head, url matches  → continue with tail             (already on the awaited page)
- *   AwaitPageSettled head, no/no-match  → AwaitingUrlMatch(q) + timeout  (head kept, parks for a matching PageLoaded)
+ *   AwaitPageSettled head, settled url matches → continue with tail      (already on the awaited page)
+ *   AwaitPageRequested head, any url matches   → continue with tail      (arrival suffices; settled implies arrived)
+ *   either page hold head, otherwise    → AwaitingUrlMatch(q) + timeout  (head kept, parks for a matching page event)
  *   AwaitUserDismiss head               → AwaitingUserDismiss(q) + timeout (head kept, parks for UserDismissed)
  *   EnsureWindowVisible head            → dispatch EnsureSnifferVisible, continue with tail (fire-and-advance)
  *   Navigation head                     → dispatch action, continue with tail
@@ -87,6 +97,18 @@ import * as State from './state.ts'
 type Transition = readonly [State.StepState, readonly SideEffectMessage[]]
 
 /**
+ * The page event a drain was started by, if any: its url plus whether it was a
+ * *settled* `PageLoaded` or only an early `PageRequested` arrival. A settled
+ * page satisfies both hold kinds (a settled page necessarily arrived); a
+ * merely-requested page satisfies only an `AwaitPageRequested` head — an
+ * `AwaitPageSettled` reached in the same drain must still park.
+ */
+interface PageInHand {
+  readonly url: string
+  readonly settled: boolean
+}
+
+/**
  * Drain the queue front-to-back until it rests. `Navigation` and
  * `EnsureWindowVisible` heads **dispatch and continue** in the same turn; the
  * three holds rest instead — a `Delay` as a timer, an `AwaitPageSettled` parked
@@ -94,17 +116,21 @@ type Transition = readonly [State.StepState, readonly SideEffectMessage[]]
  * close the sniffer webview (each under a fresh generation, so a superseded
  * timer's `*Fired` is dropped as stale).
  *
- * `url` is the settled-page url in hand — the one that started this drain (a
- * `PageLoaded`), or `undefined` when draining off a timer fire, a `Drained`
+ * `page` is the {@link PageInHand} that started this drain (a `PageLoaded` or
+ * `PageRequested`), or `undefined` when draining off a timer fire, a `Drained`
  * re-awaken, or a consumed `AwaitUserDismiss` hold. An `AwaitPageSettled` is
- * satisfied immediately only if that url already matches its `pattern`;
- * otherwise it parks in `AwaitingUrlMatch` to await a matching settled
- * `PageLoaded`.
+ * satisfied immediately only if a *settled* page in hand matches its
+ * `pattern`; an `AwaitPageRequested` by any matching page in hand. Otherwise
+ * the hold parks in `AwaitingUrlMatch` to await a matching page event.
  *
  * Every step reached emits a leading `SetStepName` for its required `name`, so
  * the sniffer chrome's subtitle tracks the current step.
  */
-const drainFrom = (queue: State.Queue, url: string | undefined, generation: number): Transition => {
+const drainFrom = (
+  queue: State.Queue,
+  page: PageInHand | undefined,
+  generation: number
+): Transition => {
   const [head, ...tail] = queue
   if (head === undefined) {
     // Queue drained. Not terminal on its own — an in-flight request could still
@@ -124,14 +150,20 @@ const drainFrom = (queue: State.Queue, url: string | undefined, generation: numb
       [nameEffect, scheduleDelayTimer(g, Duration.toMillis(head.duration))],
     ]
   }
-  if (head._tag === 'AwaitPageSettled') {
-    if (url !== undefined && head.pattern.test(url)) {
-      // Already on the settled page this hold waits for — proceed without parking.
-      const [next, effects] = drainFrom(tail, url, generation)
+  if (head._tag === 'AwaitPageSettled' || head._tag === 'AwaitPageRequested') {
+    // A settled page in hand satisfies either hold kind; a merely-requested one
+    // satisfies only `AwaitPageRequested`.
+    const satisfied =
+      page !== undefined &&
+      (page.settled || head._tag === 'AwaitPageRequested') &&
+      head.pattern.test(page.url)
+    if (satisfied) {
+      // Already on the page this hold waits for — proceed without parking.
+      const [next, effects] = drainFrom(tail, page, generation)
       return [next, [nameEffect, ...effects]]
     }
     // The awaited page is not (yet) in hand: keep the hold at the queue head and
-    // park under a fresh URL-match timeout until a matching `PageLoaded` arrives.
+    // park under a fresh URL-match timeout until a matching page event arrives.
     const g = generation + 1
     return [
       State.awaitingUrlMatch(queue, g),
@@ -153,14 +185,14 @@ const drainFrom = (queue: State.Queue, url: string | undefined, generation: numb
     // Fire-and-advance, like a Navigation: ask the host to re-present the sniffer
     // webview and keep draining the tail in the same turn. It is not a hold — it
     // dispatches and moves on — so no timer is armed (generation unchanged).
-    const [next, effects] = drainFrom(tail, url, generation)
+    const [next, effects] = drainFrom(tail, page, generation)
     return [next, [nameEffect, dispatchEnsureVisible, ...effects]]
   }
   // Navigation: dispatch the action now and keep draining the tail in the same
   // turn. A `Fill` / `Click` / `Open` never waits for a `PageLoaded` — waiting is
   // a hold step's job — so several actions can dispatch back-to-back. No timer is
   // armed, so the generation is unchanged.
-  const [next, effects] = drainFrom(tail, url, generation)
+  const [next, effects] = drainFrom(tail, page, generation)
   return [next, [nameEffect, dispatchNavigation(head.action), ...effects]]
 }
 
@@ -168,17 +200,23 @@ const onPageLoaded = (state: State.StepState, url: string): Transition =>
   Match.value(state).pipe(
     Match.withReturnType<Transition>(),
     // Start-up: the first settled page load kicks off draining the queue.
-    Match.tag('AwaitingPageLoaded', (s) => drainFrom(s.queue, url, s.generation)),
+    Match.tag('AwaitingPageLoaded', (s) =>
+      drainFrom(s.queue, { url, settled: true }, s.generation)
+    ),
     // Extra `PageLoaded`s during a `Delay` do not re-arm the timer — fixed
     // delays make timing the plan author's responsibility.
     Match.tag('DelayPending', (s) => [s, []]),
-    // An `AwaitPageSettled` hold: if this settled page matches, cancel the
-    // timeout and resume draining from the tail (the hold is consumed, never
-    // dispatched); otherwise stay parked.
+    // A parked page hold: a settled page satisfies either hold kind, so if this
+    // page matches, cancel the timeout and resume draining from the tail (the
+    // hold is consumed, never dispatched); otherwise stay parked.
     Match.tag('AwaitingUrlMatch', (s) => {
       const [head, ...tail] = s.queue
-      if (head !== undefined && head._tag === 'AwaitPageSettled' && head.pattern.test(url)) {
-        const [next, effects] = drainFrom(tail, url, s.generation)
+      if (
+        head !== undefined &&
+        (head._tag === 'AwaitPageSettled' || head._tag === 'AwaitPageRequested') &&
+        head.pattern.test(url)
+      ) {
+        const [next, effects] = drainFrom(tail, { url, settled: true }, s.generation)
         return [next, [cancelTimer(s.generation), ...effects]]
       }
       return [s, []]
@@ -192,6 +230,25 @@ const onPageLoaded = (state: State.StepState, url: string): Transition =>
     Match.exhaustive
   )
 
+// The early page-arrival sibling of `onPageLoaded`. Deliberately narrower:
+// it satisfies only a parked `AwaitPageRequested` head — it must not start the
+// start-up drain (a plan's first steps may act on a DOM that is still loading)
+// and an `AwaitPageSettled` hold still requires real settlement. Everywhere
+// else it is a silent no-op rather than a WARN: every document emits one right
+// before its `PageLoaded`, so a dropped `PageRequested` carries no diagnostic
+// signal the dropped `PageLoaded`'s WARN doesn't already.
+const onPageRequested = (state: State.StepState, url: string): Transition => {
+  if (state._tag !== 'AwaitingUrlMatch') {
+    return [state, []]
+  }
+  const [head, ...tail] = state.queue
+  if (head !== undefined && head._tag === 'AwaitPageRequested' && head.pattern.test(url)) {
+    const [next, effects] = drainFrom(tail, { url, settled: false }, state.generation)
+    return [next, [cancelTimer(state.generation), ...effects]]
+  }
+  return [state, []]
+}
+
 const onDelayTimerFired = (state: State.StepState, generation: number): Transition => {
   // Stale fire — re-armed, cleared, or cancelled since it was scheduled.
   if (state._tag !== 'DelayPending' || state.generation !== generation) {
@@ -200,14 +257,42 @@ const onDelayTimerFired = (state: State.StepState, generation: number): Transiti
   return drainFrom(state.queue, undefined, state.generation)
 }
 
+// Terminal chrome labels the machine writes to the sniffer subtitle (a
+// `SetSnifferStatus`, reusing `setStepName`) right before it dispatches
+// `SniffingComplete`, so a finished run no longer freezes the chrome on the last
+// step's name. The host disposes the webview on `SniffingComplete`, so
+// `DONE_STATUS` is short-lived (a clean finish tears the window down at once);
+// `TIMED_OUT_STATUS` is the one a user actually reads, because an aborted run
+// leaves the window on screen.
+const DONE_STATUS = 'Done'
+const TIMED_OUT_STATUS = 'Timed out'
+
 const onUrlMatchTimeoutFired = (state: State.StepState, generation: number): Transition => {
   if (state._tag !== 'AwaitingUrlMatch' || state.generation !== generation) {
     return [state, []] // stale fire — a match arrived first, or it was cleared
   }
   const head = state.queue[0]
-  const timeoutMs =
-    head !== undefined && head._tag === 'AwaitPageSettled' ? Duration.toMillis(head.timeout) : 0
-  return [State.done(state.generation), [warnUrlMatchTimeout(timeoutMs), dispatchSniffingComplete]]
+  if (head !== undefined && (head._tag === 'AwaitPageSettled' || head._tag === 'AwaitPageRequested')) {
+    const timeoutMs = Duration.toMillis(head.timeout)
+    // `continueOnTimeout` turns the expiry into an *advance* rather than an
+    // abort: consume the unmatched hold and drain its tail (no page in hand, so
+    // a following hold parks) — the page was best-effort, not a precondition.
+    if (head.continueOnTimeout === true) {
+      const [, ...tail] = state.queue
+      const [next, effects] = drainFrom(tail, undefined, state.generation)
+      return [next, [warnUrlMatchAdvanced(timeoutMs), ...effects]]
+    }
+    return [
+      State.done(state.generation),
+      [setStepName(TIMED_OUT_STATUS), warnUrlMatchTimeout(timeoutMs), dispatchSniffingComplete],
+    ]
+  }
+  // Not a page hold at the head (shouldn't happen in `AwaitingUrlMatch`) — keep
+  // the abort default rather than silently advancing.
+  return [
+    State.done(state.generation),
+    [setStepName(TIMED_OUT_STATUS), warnUrlMatchTimeout(0), dispatchSniffingComplete],
+  ]
 }
 
 const onStepsGenerated = (state: State.StepState, steps: readonly Step[]): Transition => {
@@ -246,7 +331,7 @@ const onStepsGenerated = (state: State.StepState, steps: readonly Step[]): Trans
 
 const onNoMoreResultsExpected = (state: State.StepState): Transition =>
   state._tag === 'Drained'
-    ? [State.done(state.generation), [dispatchSniffingComplete]]
+    ? [State.done(state.generation), [setStepName(DONE_STATUS), dispatchSniffingComplete]]
     : [state, []]
 
 /**
@@ -345,6 +430,7 @@ const transition =
     Match.value(message).pipe(
       Match.withReturnType<Transition>(),
       Match.tag('PageLoaded', (m) => onPageLoaded(state, m.url)),
+      Match.tag('PageRequested', (m) => onPageRequested(state, m.url)),
       Match.tag('DelayTimerFired', (m) => onDelayTimerFired(state, m.generation)),
       Match.tag('UrlMatchTimeoutFired', (m) => onUrlMatchTimeoutFired(state, m.generation)),
       Match.tag('UserDismissTimeoutFired', (m) => onUserDismissTimeoutFired(state, m.generation)),

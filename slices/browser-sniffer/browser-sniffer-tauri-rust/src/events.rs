@@ -28,6 +28,9 @@ pub const ENSURE_SNIFFER_VISIBLE: &str = "EnsureSnifferVisible";
 /// `browser-sniffer-core`'s `messages.ts` page→host set plus the `Log`
 /// console-shim tag; drift-guarded in `native_webview_bridge::tests`.
 pub const PAGE_LOADED: &str = "PageLoaded";
+/// Early page-arrival notification: emitted once per document at
+/// `DOMContentLoaded`, before (and even without) the settled `PAGE_LOADED`.
+pub const PAGE_REQUESTED: &str = "PageRequested";
 pub const RESPONSE_START: &str = "ResponseStart";
 pub const RESPONSE_DATA: &str = "ResponseData";
 pub const RESPONSE_FINISHED: &str = "ResponseFinished";

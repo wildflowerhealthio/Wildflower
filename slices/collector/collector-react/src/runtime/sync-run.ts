@@ -348,6 +348,12 @@ const buildImportEffect = <Resources, R>({
                   Effect.logError('useSyncRunner: handler registration failed', error)
                 )
               )
+            // TEMP DEBUG (receiver-drop diagnosis): confirm the CollectorBridge
+            // receiver is installed and *when*, so a later drop can be blamed on
+            // this scope closing rather than a wiring gap.
+            yield* Effect.logWarning(
+              `[collector-debug] CollectorBridge handlers REGISTERED (runId=${runId})`
+            )
             // Captured inside the `Sync` span (see `Effect.withSpan` below),
             // so the sniffer can link its per-page root traces back to this
             // run's trace.
@@ -370,7 +376,14 @@ const buildImportEffect = <Resources, R>({
             }
           }),
           ({ cancelAllRequestSniffing, pipeThroughHandlers }) =>
-            cancelAllRequestSniffing(sendCollectorMessage).pipe(
+            // TEMP DEBUG (receiver-drop diagnosis): the scope is closing, so the
+            // CollectorBridge receiver is about to be removed. If this fires
+            // mid-run (before completion), every subsequent sniffer event drops
+            // with "no receiver installed" — the observed stall.
+            Effect.logWarning(
+              `[collector-debug] CollectorBridge scope CLOSING → unregister (runId=${runId})`
+            ).pipe(
+              Effect.andThen(cancelAllRequestSniffing(sendCollectorMessage)),
               Effect.andThen(
                 collectorRegister
                   .unregister(pipeThroughHandlers)
@@ -413,6 +426,18 @@ const buildImportEffect = <Resources, R>({
       Effect.annotateCurrentSpan(
         Telemetry.Sync.Attributes.Outcome,
         exit._tag === 'Success' ? 'clean' : 'cancelled'
+      ).pipe(
+        // TEMP DEBUG (receiver-drop diagnosis): record how the run's fiber
+        // ended — a `Failure` carrying an interrupt (vs a real error vs a clean
+        // `Success`) tells us whether something aborted the run mid-flight.
+        Effect.andThen(
+          exit._tag === 'Failure'
+            ? Effect.logWarning(
+                `[collector-debug] run fiber EXITED as Failure (runId=${runId})`,
+                exit.cause
+              )
+            : Effect.logWarning(`[collector-debug] run fiber EXITED as Success (runId=${runId})`)
+        )
       )
     ),
     Effect.withSpan(Telemetry.Sync.Span.Name, {})

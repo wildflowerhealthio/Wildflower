@@ -266,6 +266,7 @@ const make = <TResources>({
       RequestError: tracker.handleRequestError,
       Cancelled: tracker.handleCancelled,
       PageLoaded: automaticNavigation.handlePageLoaded,
+      PageRequested: automaticNavigation.handlePageRequested,
       UserDismissed: automaticNavigation.handleUserDismissed,
       SnifferDisposed: automaticNavigation.handleSnifferDisposed,
     }

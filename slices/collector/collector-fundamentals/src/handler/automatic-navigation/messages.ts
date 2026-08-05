@@ -1,4 +1,8 @@
-import type { PageActionMessage, PageLoadedMessageBody } from 'browser-sniffer-core'
+import type {
+  PageActionMessage,
+  PageLoadedMessageBody,
+  PageRequestedMessageBody,
+} from 'browser-sniffer-core'
 
 import type {
   EnsureSnifferVisible as EnsureSnifferVisibleMessage,
@@ -40,11 +44,14 @@ type StepOutboundMessage =
 // ---------------------------------------------------------------------------
 
 /**
- * Everything that can drive the machine forward — nine inputs, in seven kinds:
+ * Everything that can drive the machine forward — ten inputs, in seven kinds:
  *
- * - `PageLoaded` — the sole *external* event, forwarded verbatim from the
- *   bridge (its shape is `browser-sniffer-core`'s `PageLoadedMessageBody`,
- *   reused rather than re-declared).
+ * - `PageLoaded` / `PageRequested` — the *external* page events, forwarded
+ *   verbatim from the bridge (their shapes are `browser-sniffer-core`'s
+ *   `PageLoadedMessageBody` / `PageRequestedMessageBody`, reused rather than
+ *   re-declared). `PageLoaded` is the settled load; `PageRequested` is its
+ *   early sibling (fired at `DOMContentLoaded`), consumed only by a parked
+ *   `AwaitPageRequested` hold and ignored everywhere else.
  * - `Stop` — the single *command*, which the run lifecycle's teardown (and its
  *   idle-timeout abandon) invokes to halt the machine (interrupt any pending
  *   timer). Modelling it as an input keeps the whole machine one transition
@@ -82,6 +89,7 @@ type StepOutboundMessage =
  */
 type InputMessage =
   | typeof PageLoadedMessageBody.Type
+  | typeof PageRequestedMessageBody.Type
   | { readonly _tag: 'Stop' }
   | { readonly _tag: 'DelayTimerFired'; readonly generation: number }
   | { readonly _tag: 'UrlMatchTimeoutFired'; readonly generation: number }
@@ -126,8 +134,10 @@ type InputMessage =
  *   whether requests have all settled and, if so, re-injects
  *   `NoMoreResultsExpected`). Forked, exactly like a timer, so it re-enters the
  *   machine's lock *after* this transition commits — no re-entrant deadlock.
- * - `WarnUrlMatchTimeout` / `WarnUserDismissTimeout` / `WarnSnifferDisposed` /
- *   `WarnDroppedPageLoaded` / `WarnDroppedSteps` — the WARN logs.
+ * - `WarnUrlMatchTimeout` / `WarnUrlMatchAdvanced` / `WarnUserDismissTimeout` /
+ *   `WarnSnifferDisposed` / `WarnDroppedPageLoaded` / `WarnDroppedSteps` — the
+ *   WARN logs. `WarnUrlMatchTimeout` is the aborting expiry; `WarnUrlMatchAdvanced`
+ *   is its `continueOnTimeout: true` sibling that advanced past the unmatched page.
  *
  * Durations ride as `…Ms` numbers so the messages stay plain structs; the
  * handlers re-inflate via `Duration.millis`.
@@ -155,6 +165,7 @@ type SideEffectMessage =
   | { readonly _tag: 'CancelTimer'; readonly generation: number }
   | { readonly _tag: 'RequestCompletionCheck' }
   | { readonly _tag: 'WarnUrlMatchTimeout'; readonly timeoutMs: number }
+  | { readonly _tag: 'WarnUrlMatchAdvanced'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnUserDismissTimeout'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnSnifferDisposed' }
   | { readonly _tag: 'WarnDroppedPageLoaded'; readonly url: string }
@@ -189,6 +200,10 @@ const warnUrlMatchTimeout = (timeoutMs: number): SideEffectMessage => ({
   _tag: 'WarnUrlMatchTimeout',
   timeoutMs,
 })
+const warnUrlMatchAdvanced = (timeoutMs: number): SideEffectMessage => ({
+  _tag: 'WarnUrlMatchAdvanced',
+  timeoutMs,
+})
 const warnUserDismissTimeout = (timeoutMs: number): SideEffectMessage => ({
   _tag: 'WarnUserDismissTimeout',
   timeoutMs,
@@ -217,6 +232,7 @@ export {
   warnDroppedPageLoaded,
   warnDroppedSteps,
   warnSnifferDisposed,
+  warnUrlMatchAdvanced,
   warnUrlMatchTimeout,
   warnUserDismissTimeout,
 }
