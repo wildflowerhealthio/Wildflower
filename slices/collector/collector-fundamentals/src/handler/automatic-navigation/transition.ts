@@ -84,7 +84,8 @@ import * as State from './state.ts'
  * ```text
  *   q empty                             → Drained + RequestCompletionCheck (ask the lifecycle to confirm completion)
  *   Delay head                          → arm timer, DelayPending(tail)
- *   AwaitPageSettled head, settled url matches → continue with tail      (already on the awaited page)
+ *   AwaitPageSettled head (with pattern), settled url matches → continue with tail  (already on the awaited page)
+ *   AwaitPageSettled head (no pattern)  → always AwaitingUrlMatch(q) + timeout  (never matches in hand; waits for the next settle)
  *   AwaitPageRequested head, any url matches   → continue with tail      (arrival suffices; settled implies arrived)
  *   either page hold head, otherwise    → AwaitingUrlMatch(q) + timeout  (head kept, parks for a matching page event)
  *   AwaitUserDismiss head               → AwaitingUserDismiss(q) + timeout (head kept, parks for UserDismissed)
@@ -152,10 +153,14 @@ const drainFrom = (
   }
   if (head._tag === 'AwaitPageSettled' || head._tag === 'AwaitPageRequested') {
     // A settled page in hand satisfies either hold kind; a merely-requested one
-    // satisfies only `AwaitPageRequested`.
+    // satisfies only `AwaitPageRequested`. A *pattern-less* `AwaitPageSettled`
+    // is never satisfied by the page in hand (it waits for the *next* settle),
+    // so it always parks — which is what makes it skip the `about:blank` mount
+    // (and any earlier page) and hold for the page the preceding `Open` opened.
     const satisfied =
       page !== undefined &&
       (page.settled || head._tag === 'AwaitPageRequested') &&
+      head.pattern !== undefined &&
       head.pattern.test(page.url)
     if (satisfied) {
       // Already on the page this hold waits for — proceed without parking.
@@ -208,13 +213,14 @@ const onPageLoaded = (state: State.StepState, url: string): Transition =>
     Match.tag('DelayPending', (s) => [s, []]),
     // A parked page hold: a settled page satisfies either hold kind, so if this
     // page matches, cancel the timeout and resume draining from the tail (the
-    // hold is consumed, never dispatched); otherwise stay parked.
+    // hold is consumed, never dispatched); otherwise stay parked. A pattern-less
+    // `AwaitPageSettled` head matches *any* settled load.
     Match.tag('AwaitingUrlMatch', (s) => {
       const [head, ...tail] = s.queue
       if (
         head !== undefined &&
         (head._tag === 'AwaitPageSettled' || head._tag === 'AwaitPageRequested') &&
-        head.pattern.test(url)
+        (head.pattern === undefined || head.pattern.test(url))
       ) {
         const [next, effects] = drainFrom(tail, { url, settled: true }, s.generation)
         return [next, [cancelTimer(s.generation), ...effects]]
@@ -272,7 +278,10 @@ const onUrlMatchTimeoutFired = (state: State.StepState, generation: number): Tra
     return [state, []] // stale fire — a match arrived first, or it was cleared
   }
   const head = state.queue[0]
-  if (head !== undefined && (head._tag === 'AwaitPageSettled' || head._tag === 'AwaitPageRequested')) {
+  if (
+    head !== undefined &&
+    (head._tag === 'AwaitPageSettled' || head._tag === 'AwaitPageRequested')
+  ) {
     const timeoutMs = Duration.toMillis(head.timeout)
     // `continueOnTimeout` turns the expiry into an *advance* rather than an
     // abort: consume the unmatched hold and drain its tail (no page in hand, so

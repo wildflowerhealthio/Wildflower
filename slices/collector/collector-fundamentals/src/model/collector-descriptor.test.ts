@@ -17,7 +17,6 @@ const makeScrapingPlan = (config: SampleConfig): ScrapingPlan.ScrapingPlan<never
   ScrapingPlan.make<never>({
     name: `sample:${config.host}`,
     entityDefinitions: [],
-    firstPage: { _tag: 'Uri', uri: `https://${config.host}` },
     stepSequence: [],
   })
 

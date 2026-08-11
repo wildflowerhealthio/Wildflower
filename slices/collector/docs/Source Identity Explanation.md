@@ -176,7 +176,7 @@ reference immediately afterwards — rewriting it earlier is dead work.
 
 `adoptSourceIdentity(source)` wraps a whole `ScrapingPlan`: it replaces each
 entity's `parse` with one that adopts the parse output, and passes every other
-plan field (`captureProvenance`, `stepSequence`, `firstPage`, timeouts) through by
+plan field (`captureProvenance`, `stepSequence`, timeouts) through by
 reference. A collector's entire wiring is one line at the end of its plan factory
 — see the [Adding a Collector How-To](./Adding%20a%20Collector%20How-To.md).
 

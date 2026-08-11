@@ -6,6 +6,7 @@ import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 import { BrowserSnifferBridge } from './bridge.ts'
 import {
+  PageRequestedMessage,
   CancelSnifferRequestMessage,
   CancelledMessage,
   PageActionMessage,
@@ -23,6 +24,7 @@ type WebToHostMessage =
   | Schema.Schema.Type<typeof RequestErrorMessage>
   | Schema.Schema.Type<typeof CancelledMessage>
   | Schema.Schema.Type<typeof PageLoadedMessage>
+  | Schema.Schema.Type<typeof PageRequestedMessage>
 
 type HostToWebMessage =
   | Schema.Schema.Type<typeof CancelSnifferRequestMessage>
@@ -62,6 +64,8 @@ const encodeWebToHost = (m: WebToHostMessage): string => {
       return Schema.encodeSync(CancelledMessage)(m)
     case 'PageLoaded':
       return Schema.encodeSync(PageLoadedMessage)(m)
+    case 'PageRequested':
+      return Schema.encodeSync(PageRequestedMessage)(m)
     default: {
       const exhaustive: never = m
       throw new Error(`unreachable encodeWebToHost: ${JSON.stringify(exhaustive)}`)

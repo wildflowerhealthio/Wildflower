@@ -1,5 +1,5 @@
 import type { CollectorDescriptor } from 'collector-fundamentals/model'
-import { Duration, Effect, Either, Fiber, Mailbox, Stream, TestClock, TestContext } from 'effect'
+import { Effect, Either, Fiber, Mailbox, Stream, TestContext } from 'effect'
 import { UnknownException } from 'effect/Cause'
 import * as fc from 'fast-check'
 import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
@@ -8,10 +8,8 @@ import { describe, expect, it, vi } from 'vite-plus/test'
 import {
   processSniffResultsFromMailbox,
   collectImportSummary,
-  DEFAULT_IDLE_TIMEOUT,
   type FailedResource,
   makeProcessSniffResult,
-  resolveIdleTimeout,
   type SniffResult,
 } from './sync-run.ts'
 
@@ -22,9 +20,9 @@ import {
  * - {@link collectImportSummary} — the fold that turns the drive stream's
  *   per-step failure chunks into the `ImportSummary` (and drives `setFailed` /
  *   `onError`).
- * - {@link processSniffResultsFromMailbox} — the drive loop itself, over `TestClock`: results
- *   are drained until the mailbox is `done`, and an idle timeout triggers the
- *   injected abandon action.
+ * - {@link processSniffResultsFromMailbox} — the drive loop itself: results are
+ *   drained until the mailbox is `done` (there is no idle guard — a plan bounds
+ *   itself through its step holds' `timeout`s).
  *
  * Write-retry exhaustion (the persist sink) is covered by
  * `fhir-r4-client-collector/src/persist.test.ts`. Closing the
@@ -48,32 +46,6 @@ class RecordingSink {
     this.onErrorCalls.push(cause)
   }
 }
-
-describe('resolveIdleTimeout', () => {
-  const caller = Duration.seconds(5)
-  const plan = Duration.minutes(20)
-
-  it('lets an explicit caller override beat the plan', () => {
-    // The regression: this used to read `plan ?? caller`, so a collector whose
-    // plan set a timeout silently overrode the argument the caller passed.
-    expect(resolveIdleTimeout(caller, plan)).toBe(caller)
-  })
-
-  it("falls back to the plan's guard when the caller has no opinion", () => {
-    // A plan ending in `AwaitUserDismiss` raises this, since that hold waits on a
-    // person rather than the host — the default would abandon the run first.
-    expect(resolveIdleTimeout(undefined, plan)).toBe(plan)
-  })
-
-  it('falls back to the runner default when neither sets one', () => {
-    expect(resolveIdleTimeout(undefined, undefined)).toBe(DEFAULT_IDLE_TIMEOUT)
-  })
-
-  it('treats a caller-supplied zero as chosen, not absent', () => {
-    // Guards a `||`-style regression: zero is falsy but a legitimate choice.
-    expect(resolveIdleTimeout(Duration.zero, plan)).toBe(Duration.zero)
-  })
-})
 
 describe('makeProcessSniffResult', () => {
   /** A resource is a bare `label`/`id` pair so failures can be built without a codec. */
@@ -254,7 +226,7 @@ describe('processSniffResultsFromMailbox', () => {
 
         // A done, drained mailbox makes `take` fail immediately, so the loop
         // drains both queued results then stops — no clock needed.
-        yield* Fiber.join(yield* Effect.fork(drive(source, neverIdle(source), rec)))
+        yield* Fiber.join(yield* Effect.fork(drive(source, rec)))
       })
     )
     expect(rec.processed.map((e) => (Either.isRight(e) ? 'parsed' : 'responseFailure'))).toEqual([
@@ -269,63 +241,14 @@ describe('processSniffResultsFromMailbox', () => {
       Effect.gen(function* () {
         const source = yield* Mailbox.make<SniffResult<unknown>>()
         yield* source.end
-        yield* Fiber.join(yield* Effect.fork(drive(source, neverIdle(source), rec)))
+        yield* Fiber.join(yield* Effect.fork(drive(source, rec)))
       })
     )
     expect(rec.processed).toEqual([])
-  })
-
-  it('runs onIdleTimeout when nothing arrives within the idle timeout, then terminates', async () => {
-    const rec = recorder()
-    let idled = false
-    await runTest(
-      Effect.gen(function* () {
-        const source = yield* Mailbox.make<SniffResult<unknown>>()
-        // The abandon action records the idle trip and ends the mailbox so the
-        // loop can then observe `done`.
-        const onIdleTimeout = Effect.sync(() => {
-          idled = true
-        }).pipe(Effect.andThen(source.end))
-
-        const fiber = yield* Effect.fork(drive(source, onIdleTimeout, rec))
-        yield* TestClock.adjust(IDLE_TIMEOUT)
-        yield* Fiber.join(fiber)
-      })
-    )
-    expect(idled).toBe(true)
-    expect(rec.processed).toEqual([])
-  })
-
-  it('drains a failure the abandon action offers on idle, then terminates', async () => {
-    const rec = recorder()
-    await runTest(
-      Effect.gen(function* () {
-        const source = yield* Mailbox.make<SniffResult<unknown>>()
-        // Mirrors `abandonAllRequestSniffing`: fail a stalled request as a Left, then close.
-        const onIdleTimeout = source
-          .offer(
-            Either.left({
-              error: new UnknownException('stalled'),
-              url: 'https://example.com/slow',
-              abandoned: true,
-            })
-          )
-          .pipe(Effect.andThen(source.end))
-
-        const fiber = yield* Effect.fork(drive(source, onIdleTimeout, rec))
-        yield* TestClock.adjust(IDLE_TIMEOUT)
-        yield* Fiber.join(fiber)
-      })
-    )
-    // The abandoned response is drained as a normal Left result after the idle trip.
-    expect(rec.processed).toHaveLength(1)
-    expect(Either.isLeft(rec.processed[0])).toBe(true)
   })
 })
 
 // Helpers
-
-const IDLE_TIMEOUT = Duration.seconds(30)
 
 /**
  * A recording `processSniffResult` sink so each `processSniffResultsFromMailbox`
@@ -351,24 +274,13 @@ const recorder = (): {
   }
 }
 
-/**
- * An `onIdleTimeout` for tests that should never idle: it just `end`s the
- * mailbox (harmless — those tests end it up front), so an unexpected idle trip
- * still terminates rather than hanging the test.
- */
-const neverIdle = (source: Mailbox.Mailbox<SniffResult<unknown>>): Effect.Effect<void> =>
-  source.end.pipe(Effect.asVoid)
-
 const drive = (
   results: Mailbox.ReadonlyMailbox<SniffResult<unknown>>,
-  onIdleTimeout: Effect.Effect<void>,
   rec: ReturnType<typeof recorder>
 ): Effect.Effect<void> =>
   Stream.runDrain(
     processSniffResultsFromMailbox({
       sniffResultMailbox: results,
       processSniffResult: rec.processSniffResult,
-      onIdleTimeout,
-      idleTimeout: IDLE_TIMEOUT,
     })
   )

@@ -2,7 +2,6 @@ import { Duration, type Effect } from 'effect'
 import type * as EntityDefinition from './entity-definition.ts'
 import type { RemoteResponse } from './response.ts'
 import type * as Step from './step.ts'
-import type * as WebViewSource from './web-view-source.ts'
 
 /** Default {@link ScrapingPlan.maxGeneratedSteps} when a plan omits it. */
 const DEFAULT_MAX_GENERATED_STEPS = 500
@@ -40,12 +39,15 @@ interface CaptureProvenanceResult<TResources> {
  *     whether to track the in-flight response (first `isFoundAt` match
  *     wins; non-matching responses are cancelled via `sendMessage`).
  *   - Drives the sniffer through a **breadth-first step queue** seeded with
- *     `stepSequence`. Starting on the first settled `PageLoaded` it drains the
- *     queue front-to-back: each `Navigation` step's `action` is dispatched and
+ *     `stepSequence`. The host mounts the sniffer webview on `about:blank`; its
+ *     near-instant settle is the first `PageLoaded`, which kicks off draining
+ *     the queue front-to-back — so the plan's first step is an `Open` to the
+ *     real starting page. Each `Navigation` step's `action` is dispatched and
  *     the drain immediately continues (a `Fill` / `Click` / `Open` never waits
  *     for a `PageLoaded`), a `Delay` step arms a timer for its `duration`, and
  *     an `AwaitPageSettled` step holds until a settled `PageLoaded` matches its
- *     `pattern` (aborting via `SniffingComplete` if its `timeout` elapses first).
+ *     `pattern` — or, when it has no `pattern`, until the *next* settled load
+ *     arrives (aborting via `SniffingComplete` if its `timeout` elapses first).
  *     When the queue drains *and* every sniffed request has settled, fires
  *     `SniffingComplete`.
  *   - Appends any steps an entity's `followUpSteps` produces to the *back* of
@@ -53,45 +55,34 @@ interface CaptureProvenanceResult<TResources> {
  *     naturally recursive. `maxGeneratedSteps` and run-wide URI dedup of
  *     generated `Open`s (see below) keep that fan-out terminating.
  *
- * `firstPage` is the host-side `WebViewSource` the sniffer webview is
- * initially mounted with; it is *not* read by the handler (the handler
- * only sees PageLoaded events). It lives on the plan so each slice's
- * configuration is a single export.
+ * The sniffer webview is always mounted on `about:blank` (the host takes no
+ * per-plan starting page), so the run's very first navigation is an authored
+ * `Open` step at the head of `stepSequence`.
  *
  * - `name`: stable identifier for logs / UI.
  * - `entityDefinitions`: ordered list of recognizer/parser pairs.
  *   `CollectorBridgeMessageHandler` consults `isFoundAt` against each
  *   response URL; the first match wins.
- * - `firstPage`: the initial `WebViewSource` (inline HTML or absolute
- *   `https://` URI) to mount the sniffer webview with.
  * - `stepSequence`: the *initial* contents of the navigation queue — an
- *   ordered list of `Step`s (`Navigation` actions and/or `Delay` pauses). An
- *   empty array completes as soon as the first `PageLoaded`'s requests settle.
+ *   ordered list of `Step`s (`Navigation` actions and/or `Delay` pauses),
+ *   beginning with the `Open` that navigates off `about:blank` to the real
+ *   first page. An empty array completes as soon as `about:blank` settles.
  * - `maxGeneratedSteps`: per-run safety cap on steps produced by
  *   `followUpSteps` (default {@link DEFAULT_MAX_GENERATED_STEPS}). Generated
  *   steps beyond it are WARN-logged and dropped; the run continues. The
  *   authored `stepSequence` never counts against this.
  * - `dedupeGeneratedOpenUris`: when `true` (the default), a *generated* `Open`
- *   step whose `Uri` source was already visited (the `firstPage`, any authored
- *   `Open`, or an earlier generated `Open`) is dropped, so a page that links to
- *   itself or a cycle of pages terminates. Dedup applies only to *generated*
- *   steps — the authored sequence is never dropped.
- * - `idleTimeout`: the plan's silent-host idle guard, used when the caller
- *   doesn't override it (the runner's `DEFAULT_IDLE_TIMEOUT` otherwise; an
- *   explicit runner option beats both). Raise it for a plan that ends in an
- *   `AwaitUserDismiss` step: that hold waits on a person, not the host, so the
- *   default 30 s guard would abandon the run long before the user acts. Set it
- *   comfortably *above* that step's own `timeout`, or the guard fires first and
- *   the hold's bound never gets to do its job.
+ *   step whose `Uri` source was already visited (any authored `Open` or an
+ *   earlier generated `Open`) is dropped, so a page that links to itself or a
+ *   cycle of pages terminates. Dedup applies only to *generated* steps — the
+ *   authored sequence is never dropped.
  */
 interface ScrapingPlan<TResources> {
   readonly name: string
   readonly entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[]
-  readonly firstPage: WebViewSource.Any
   readonly stepSequence: readonly Step.Step[]
   readonly maxGeneratedSteps?: number
   readonly dedupeGeneratedOpenUris?: boolean
-  readonly idleTimeout?: Duration.DurationInput
   // Declared as a *method* signature, not a `readonly` arrow property, for the
   // same reason as `EntityDefinition.followUpSteps`: `produced` puts
   // `TResources` in a parameter (contravariant) position, which would make
@@ -124,9 +115,9 @@ interface ScrapingPlan<TResources> {
  * Recursively freeze `value` — `kitchen-sink`'s `deepFreeze`, except that
  * `Duration`s are left alone.
  *
- * A plan carries `Duration`s in four places (`Delay.duration`,
- * `AwaitPageSettled.timeout`, `AwaitUserDismiss.timeout`, and `idleTimeout`), and
- * some of them are **process-wide singletons**: `Duration.infinity` and
+ * A plan carries `Duration`s in three places (`Delay.duration`,
+ * `AwaitPageSettled.timeout`, and `AwaitUserDismiss.timeout`), and some of them
+ * are **process-wide singletons**: `Duration.infinity` and
  * `Duration.zero` are module-level values Effect hands out by reference, so
  * freezing one here mutates state every other caller in the process shares.
  * Concretely, `Duration`'s `Hash` implementation memoises onto the instance with
@@ -165,11 +156,9 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
   const frozen: ScrapingPlan<TResources> = {
     name: plan.name,
     entityDefinitions: plan.entityDefinitions,
-    firstPage: plan.firstPage,
     stepSequence: plan.stepSequence,
     maxGeneratedSteps: plan.maxGeneratedSteps,
     dedupeGeneratedOpenUris: plan.dedupeGeneratedOpenUris,
-    idleTimeout: plan.idleTimeout,
     // Declared as a method (for covariance — see the interface note), so
     // copying the reference trips `unbound-method`; it is a pure, `this`-free
     // function, so the concern (unintended `this` scoping) can't apply.

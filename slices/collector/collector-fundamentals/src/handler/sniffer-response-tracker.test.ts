@@ -72,7 +72,6 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
               SimpleEntity,
               AnotherEntity,
             ] as readonly EntityDefinition.EntityDefinition<MultiResources>[],
-            firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
             stepSequence: [],
           }),
           sendMessage,
@@ -236,7 +235,6 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
           scrapingPlan: ScrapingPlan.make<SimpleResources>({
             name: 'OverlappingPlan',
             entityDefinitions: [OverlappingEntity, SimpleEntity],
-            firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
             stepSequence: [],
           }),
           sendMessage: noopSendMessage,
@@ -627,7 +625,6 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
     ScrapingPlan.make<SimpleResources>({
       name: 'CapturePlan',
       entityDefinitions: [entity],
-      firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
       stepSequence: [],
       captureProvenance,
     })

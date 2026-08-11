@@ -3,19 +3,20 @@ import { Schema } from 'effect'
 /**
  * What a host `<WebView>` should load. Tagged discriminated union — the
  * `_tag` makes the variant explicit, so a single source value can flow
- * through the `RequestSniffableWebView` bridge wire schema (which
- * encodes `_tag` for serialization) and the host's native WebView prop
- * (which ignores the extra property at runtime; consumers strip it via
- * destructuring before forwarding to `react-native-webview` if their
- * typings reject unknown fields).
+ * through the `Open` bridge wire schema (which encodes `_tag` for
+ * serialization) and the host's native WebView prop (which ignores the
+ * extra property at runtime; consumers strip it via destructuring before
+ * forwarding to `react-native-webview` if their typings reject unknown
+ * fields).
  *
- * The slice's `Remote.firstPage` is typed as {@link Any}; concrete
- * remotes choose whether to point at an external URL ({@link Uri}) or
- * to ship an inline page ({@link Html}).
+ * A plan's navigation `Open` steps carry an {@link Any}; each chooses whether
+ * to point at an external URL ({@link Uri}) or to ship an inline page
+ * ({@link Html}). (The sniffer webview itself is always mounted on
+ * `about:blank` by the host, so the *mount* message carries no source.)
  *
- * The schemas are exported so the `RequestSniffableWebView` bridge wire
- * schema in `bridge.ts` can reuse them — keeping a single source of
- * truth for the host-side type and the wire shape.
+ * The schemas are exported so the `Open` bridge wire schema in `bridge.ts` can
+ * reuse them — keeping a single source of truth for the host-side type and the
+ * wire shape.
  */
 
 /**

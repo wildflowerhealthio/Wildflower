@@ -210,7 +210,7 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
           // The run must NOT have completed: `SniffingComplete` here would be
           // dispatched against a non-empty incomplete map, and the lifecycle only
           // closes the stream when that map is empty — so the stream would never
-          // close and the run would hang until the idle timeout.
+          // close and the run would hang indefinitely (there is no idle backstop).
           expect(dispatched(sendMessage)).toEqual([])
           expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
 
@@ -361,15 +361,14 @@ const dispatched = (
 
 /**
  * Build a handler whose single entity parses a JSON person and generates the
- * given `followUpSteps`. `firstPage` defaults to `/people/1` (seeding the dedup
- * visited-set), the step sequence is empty (the crawl is driven entirely by
- * generation).
+ * given `followUpSteps`. The step sequence is empty (the crawl is driven
+ * entirely by generation, and these tests simulate the page events directly),
+ * so the dedup visited-set starts empty and grows only from generated `Open`s.
  */
 const makeGeneratingHandler = (opts: {
   readonly sendMessage: SendMessage
   readonly followUpSteps: EntityDefinition.EntityDefinition<Person>['followUpSteps']
   readonly maxGeneratedSteps?: number
-  readonly firstPage?: WebViewSource.Any
 }): CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<Person> =>
   Effect.runSync(
     CollectorBridgeMessageHandler.make<Person>({
@@ -386,7 +385,6 @@ const makeGeneratingHandler = (opts: {
             followUpSteps: opts.followUpSteps,
           }),
         ],
-        firstPage: opts.firstPage ?? { _tag: 'Uri', uri: 'https://example.com/people/1' },
         stepSequence: [],
         maxGeneratedSteps: opts.maxGeneratedSteps,
       }),

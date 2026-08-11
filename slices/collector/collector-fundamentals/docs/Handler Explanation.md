@@ -176,11 +176,11 @@ _whether any request is still incomplete_ (Gate B) through the injected
 `hasIncompleteSniffedRequests` — the tracker's map stays the single source of
 truth, so there is no shadow counter to drift.
 
-| End-path                    | publishes                     | closes the stream?            | trigger                                           |
-| --------------------------- | ----------------------------- | ----------------------------- | ------------------------------------------------- |
-| natural completion          | (results, via prior settles)  | once no request is incomplete | automatic-navigation machine's `SniffingComplete` |
-| `abandonAllRequestSniffing` | incomplete requests as `Left` | now                           | consumer's idle timeout                           |
-| `cancelAllRequestSniffing`  | nothing                       | no (consumer has gone)        | screen unmount                                    |
+| End-path                    | publishes                     | closes the stream?            | trigger                                                 |
+| --------------------------- | ----------------------------- | ----------------------------- | ------------------------------------------------------- |
+| natural completion          | (results, via prior settles)  | once no request is incomplete | automatic-navigation machine's `SniffingComplete`       |
+| `abandonAllRequestSniffing` | incomplete requests as `Left` | now                           | (retained mechanism; not driven — no runner idle guard) |
+| `cancelAllRequestSniffing`  | nothing                       | no (consumer has gone)        | screen unmount                                          |
 
 Completion is thus a property of the stream, not a predicate the consumer
 computes. `endRequestSniffingResultsUnlessMoreExpected` runs after each settle
@@ -200,14 +200,16 @@ consumer's drive loop simply drains until `take` reports it done.
   A url-match-timeout abort reaches `Done` with requests possibly still in flight,
   so `handleSniffingComplete` withholds the close then and lets the last settle's
   close-check do it. (The machines still share no state — the lifecycle mediates.)
-- **`abandonAllRequestSniffing`** is the idle-timeout escape. The consumer calls it
-  when its drive loop has been idle past its timeout (a stalled download whose
-  `ResponseData` chunks never produced a terminal): it `stopAutomaticNavigation`s
-  the machine first (so a parked `Delay`/URL-match timer can't leak), then the
-  tracker's `failIncompleteSniffedRequests` publishes every still-incomplete
-  request as a `Left` failure, then the lifecycle closes the stream _now_ — it
-  force-closes (bypassing Gate A) because at an idle timeout sniffing may not yet
-  be complete.
+- **`abandonAllRequestSniffing`** is the force-close mechanism for a stalled
+  run (a sniffed download whose `ResponseData` chunks never produced a terminal):
+  it `stopAutomaticNavigation`s the machine first (so a parked `Delay`/URL-match
+  timer can't leak), then the tracker's `failIncompleteSniffedRequests` publishes
+  every still-incomplete request as a `Left` failure, then the lifecycle closes
+  the stream _now_ — force-closing (bypassing Gate A) because sniffing may not yet
+  be complete. **Nothing drives it today:** the runner-side idle guard was
+  removed, so a run bounds itself through its plan's step-hold `timeout`s instead.
+  It is kept as the seam a positional backstop (e.g. escalating a terminal hold's
+  timeout) would reuse.
 - **`cancelAllRequestSniffing`** is the screen-unmount teardown. It runs
   `stopAutomaticNavigation` (interrupt the automatic-navigation machine's timer) then the tracker's
   `cancelIncompleteSniffedRequests` (send a `CancelSnifferRequest` to the host per
@@ -256,13 +258,18 @@ closure — it names `SetStepName` / `DispatchNavigation` /
 `CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the runtime to
 discharge.
 
-On the first `PageLoaded` the machine begins draining the queue front-to-back,
-and it keeps draining as far as it can each turn: a `Navigation` **dispatches its
-`action` and immediately advances** (a `Fill` / `Click` / `Open` never waits for
-a `PageLoaded`, so consecutive navigations dispatch back-to-back), a `Delay` arms
-a timer for its `duration` and rests, an `AwaitPageSettled` parks until a settled
-`PageLoaded` matches its `pattern` (or aborts on its `timeout`) — resuming the
-drain from the tail on a match — an `AwaitPageRequested` parks the same way but
+The host mounts the sniffer webview on `about:blank`, whose near-instant settle
+is the first `PageLoaded` — so on that first load the machine begins draining the
+queue front-to-back (the plan's first step is therefore an `Open` to the real
+starting page). It keeps draining as far as it can each turn: a `Navigation`
+**dispatches its `action` and immediately advances** (a `Fill` / `Click` / `Open`
+never waits for a `PageLoaded`, so consecutive navigations dispatch back-to-back),
+a `Delay` arms a timer for its `duration` and rests, an `AwaitPageSettled` parks
+until a settled `PageLoaded` matches its `pattern` (or, when it carries **no**
+`pattern`, until the _next_ settled load arrives — never satisfied by the page in
+hand, so it skips the `about:blank` mount and the prior page; or aborts on its
+`timeout`) — resuming the drain from the tail on a match — an `AwaitPageRequested`
+parks the same way but
 is released by a matching early `PageRequested` arrival _or_ a matching settled
 `PageLoaded` (settled implies arrived; the converse does not hold — a mere
 arrival never releases an `AwaitPageSettled`, and never starts the start-up
@@ -319,9 +326,10 @@ sniffing them, so dispatching `SniffingComplete` at dismissal would hit
 `handleSniffingComplete` with a non-empty incomplete-request map — which closes
 nothing (see [Termination](#termination-the-run-lifecycle)) — and the results
 stream would never close. Draining instead defers to the ordinary gate, so a
-dismissal cannot outrun the requests it leaves behind. Because the hold waits on a
-person rather than the host, a plan using it should raise
-`ScrapingPlan.idleTimeout` above the step's `timeout`.
+dismissal cannot outrun the requests it leaves behind. Because there is no
+runner-side idle guard, this step's own `timeout` is the sole bound on the wait —
+set it generously (this is the plan whose hold legitimately spans a long manual
+session).
 
 The **transition function is pure** — it never sends a message, forks a
 fiber, or logs; it only names the side-effect messages the runtime should

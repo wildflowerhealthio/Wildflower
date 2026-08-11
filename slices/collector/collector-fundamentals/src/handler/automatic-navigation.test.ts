@@ -454,6 +454,61 @@ describe('automatic-navigation.make', () => {
           expect(dispatched(sendMessage)).toEqual([linkA.action])
         })
       ))
+
+    describe('pattern-less (waits for the next settle)', () => {
+      it('parks past the page already in hand and releases on the next settled load', () =>
+        run(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({
+              sendMessage,
+              stepSequence: [awaitSettledAny(), linkA],
+            })
+
+            // A pattern-less hold never matches the page in hand — it always waits
+            // for the *next* settle, which is what makes it skip the `about:blank`
+            // mount (and the prior page) after a leading `Open`.
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+            expect(dispatched(sendMessage)).toEqual([]) // parked, not satisfied in hand
+
+            // The next settled load — whatever its url — releases the hold.
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/anything'))
+            expect(dispatched(sendMessage)).toEqual([linkA.action])
+          })
+        ))
+
+      it('is not released by a mere page arrival (settle-only)', () =>
+        run(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({
+              sendMessage,
+              stepSequence: [awaitSettledAny(), linkA],
+            })
+
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+            // An arrival (DOMContentLoaded) is not a settle — the hold stays parked.
+            yield* machine.handlePageRequested(pageRequested('https://example.com/next'))
+            expect(dispatched(sendMessage)).toEqual([])
+          })
+        ))
+
+      it('aborts via SniffingComplete when no settled load arrives within the timeout', () =>
+        run(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({
+              sendMessage,
+              stepSequence: [awaitSettledAny(), linkA],
+            })
+
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+            yield* TestClock.adjust(Duration.seconds(30))
+            yield* Effect.yieldNow()
+            expect(dispatched(sendMessage)).toEqual([{ _tag: 'SniffingComplete' }])
+          })
+        ))
+    })
   })
 
   describe('AwaitPageRequested', () => {
@@ -1259,7 +1314,6 @@ const makeMachine = (options: {
       scrapingPlan: ScrapingPlan.make({
         name: 'TestPlan',
         entityDefinitions: [],
-        firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
         stepSequence: options.stepSequence ?? [],
       }),
       sendMessage: options.sendMessage,
@@ -1362,6 +1416,16 @@ const awaitSettled = (
   _tag: 'AwaitPageSettled',
   name,
   pattern: UrlMatch.make({ segments: [UrlMatch.literal(segment)] }),
+  timeout,
+})
+
+/** A pattern-less hold: waits for the *next* settled load, whatever its url. */
+const awaitSettledAny = (
+  timeout: Duration.Duration = Duration.seconds(30),
+  name = 'await next settle'
+): Step.AwaitPageSettledStep => ({
+  _tag: 'AwaitPageSettled',
+  name,
   timeout,
 })
 

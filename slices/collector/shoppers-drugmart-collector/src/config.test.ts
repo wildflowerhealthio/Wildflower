@@ -149,17 +149,29 @@ describe('ShoppersDrugMartCollectorDescriptor', () => {
 })
 
 describe('scrapingPlan', () => {
-  it('mounts the mypharmacy login page as the first page', () => {
+  it('opens the mypharmacy login page as its first step (off about:blank)', () => {
     const plan = scrapingPlan(defaultConfig)
-    expect(plan.firstPage).toEqual({
-      _tag: 'Uri',
-      uri: 'https://mypharmacy.shoppersdrugmart.ca/en/login',
+    expect(plan.stepSequence[0]).toEqual({
+      _tag: 'Navigation',
+      name: 'Opening login page',
+      action: {
+        _tag: 'Open',
+        source: { _tag: 'Uri', uri: 'https://mypharmacy.shoppersdrugmart.ca/en/login' },
+      },
     })
   })
 
-  it('waits for the pcid redirect, scripts login, pauses for 2FA, opens prescriptions, and settles', () => {
+  it('opens login, waits for the pcid redirect, scripts login, pauses for 2FA, opens prescriptions, and settles', () => {
     const plan = scrapingPlan({ _tag: 'shoppers-drugmart', email: 'a@b.com', password: 'secret' })
     expect(plan.stepSequence).toEqual([
+      {
+        _tag: 'Navigation',
+        name: 'Opening login page',
+        action: {
+          _tag: 'Open',
+          source: { _tag: 'Uri', uri: 'https://mypharmacy.shoppersdrugmart.ca/en/login' },
+        },
+      },
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for login page',
@@ -219,7 +231,6 @@ describe('scrapingPlan', () => {
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescriptions to settle',
-        pattern: /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/prescription-dashboard/,
         timeout: Duration.seconds(30),
       },
       { _tag: 'Delay', name: 'Waiting for prescriptions', duration: Duration.seconds(8) },
@@ -237,7 +248,6 @@ describe('scrapingPlan', () => {
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescription history to settle',
-        pattern: /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/prescription-history/,
         timeout: Duration.seconds(30),
       },
       { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: Duration.seconds(8) },
@@ -258,21 +268,6 @@ describe('scrapingPlan', () => {
         : []
     )
     expect(fills).toEqual(['user@shoppers.test', 'hunter2'])
-  })
-
-  it('lifts the idle-timeout guard above the 2FA hold so the pause is not abandoned', () => {
-    const plan = scrapingPlan(defaultConfig)
-    const twoFaHold = plan.stepSequence.find((step) => step._tag === 'AwaitPageRequested')
-    if (twoFaHold === undefined || twoFaHold._tag !== 'AwaitPageRequested') {
-      throw new Error('expected an AwaitPageRequested 2FA hold')
-    }
-    if (plan.idleTimeout === undefined) {
-      throw new Error('expected the plan to set an idleTimeout')
-    }
-    // The silent-host guard must outlast the human-in-the-loop 2FA wait, or the
-    // sync runner abandons the run mid-pause — nothing is tracked until the
-    // dashboard's XHRs fire, so the default 30 s guard would kill it first.
-    expect(Duration.greaterThan(Duration.decode(plan.idleTimeout), twoFaHold.timeout)).toBe(true)
   })
 })
 

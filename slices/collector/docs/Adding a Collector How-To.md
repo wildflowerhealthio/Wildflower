@@ -18,7 +18,7 @@ that depends on `collector-fundamentals` only.
 | --------------- | ------------------------------------------- | -------------------------------------------------------------- |
 | Entities        | `*-client-collector/src/entities/`          | `EntityDefinition.make` — recognize + parse one response shape |
 | Config          | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
-| Scraping plan   | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — first page, steps, entities              |
+| Scraping plan   | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — steps (leading `Open`), entities         |
 | Persist sink    | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |
 | Provenance      | `*-client-collector/src/config.ts`          | one `captureProvenance:` line on the plan (see step 6)         |
 | Source identity | `*-client-collector/src/config.ts`          | wrap the plan in `adoptSourceIdentity` (see step 7)            |
@@ -106,19 +106,23 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
   ScrapingPlan.make({
     name: 'FHIR R4',
     entityDefinitions: [PatientEntity, ObservationEntity, ObservationListEntity],
-    firstPage: { _tag: 'Uri', uri: `${config.rootUrl}/Patient/${id}?_format=json` },
+    // The sniffer mounts on `about:blank`; the first step navigates off it.
     stepSequence: [
       {
         _tag: 'Navigation',
+        name: 'Loading observations',
         action: { _tag: 'Open', source: { _tag: 'Uri', uri: observationUrl } },
       },
+      { _tag: 'AwaitPageSettled', name: 'Waiting for observations', timeout: OBSERVATION_TIMEOUT },
     ],
     // maxGeneratedSteps / dedupeGeneratedOpenUris default to 500 / true.
   })
 ```
 
-- **`firstPage`** is the `WebViewSource` (inline `Html` or absolute `Uri`) the
-  sniffer webview mounts first.
+- There is **no `firstPage`**: the host always mounts the sniffer on
+  `about:blank`, so the run's first navigation is an authored `Open` step at the
+  head of `stepSequence` (followed by a hold — usually a pattern-less
+  `AwaitPageSettled` — since an `Open` dispatches and advances immediately).
 - **`stepSequence`** is the _initial_ contents of the navigation queue — a list
   of `Step`s, each a `Navigation` or a `Delay`:
   - A **`Navigation`** step's `action` is forwarded to the sniffer verbatim: an
@@ -136,8 +140,9 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     start (and be tracked) before the queue drains and the run completes.
 - **`maxGeneratedSteps`** (default 500) caps steps produced by `followUpSteps`,
   and **`dedupeGeneratedOpenUris`** (default `true`) drops a generated `Open`
-  whose `Uri` was already visited (the `firstPage`, an authored `Open`, or an
-  earlier generated `Open`). Together they terminate a naturally-recursive crawl;
+  whose `Uri` was already visited (an authored `Open` — including the leading one
+  off `about:blank` — or an earlier generated `Open`). Together they terminate a
+  naturally-recursive crawl;
   both are adjustable per-plan.
 
 For the machines that consume the plan, see the
@@ -367,8 +372,9 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 - **Entities** — `isFoundAt` matches the right URLs and _rejects_ the
   neighbours (the disjointness that step 2's ordering depends on); `parse`
   decodes a fixture and drops unusable entries.
-- **Scraping plan** — `firstPage` / `stepSequence` are the exact URLs
-  (encoding, `?_format=json`, disjoint query patterns).
+- **Scraping plan** — `stepSequence` (starting with the leading `Open` off
+  `about:blank`) holds the exact URLs (encoding, `?_format=json`, disjoint query
+  patterns).
 - **Descriptor** — `resourcePersistenceRuntimeIfMatches` matches its own configs
   and returns `undefined` for foreign ones; `display` strings.
 - **Persist sink** — a failing write becomes one `PersistFailure`, not a run

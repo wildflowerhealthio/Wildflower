@@ -16,16 +16,13 @@ import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
 
 /**
  * Web → Host: the collector SPA asks the host to open a sniffer-enabled
- * WebView for the given `source`. The Tauri host
- * (`browser-sniffer-tauri-rust`) opens a sniffer `WebviewWindow` and
- * forwards the resulting sniffer events back through this same bridge's
- * Host→Web channel.
+ * WebView. The Tauri host (`browser-sniffer-tauri-rust`) creates the sniffer
+ * `WebviewWindow` **mounted on `about:blank`** and forwards the resulting
+ * sniffer events back through this same bridge's Host→Web channel.
  *
- * The `source` field reuses the slice's `WebViewSource.AnySchema` so
- * the bridge wire-shape and the host-side `WebViewSource.Any` type
- * share one definition. The schema's `Uri` variant is `http(s)://`-only
- * (see `web-view-source.ts`) — non-http(s) schemes (`file:`,
- * `javascript:`, …) fail to decode at the bridge boundary.
+ * There is no starting-page `source`: the plan takes over from `about:blank`
+ * with a leading `Open` step. `about:blank` settles almost immediately, which
+ * is the first `PageLoaded` the automatic-navigation machine drains on.
  *
  * `linkedSpan` is the optional OpenTelemetry span context of the trace
  * active on the SPA when it asked for the sniffer. The host threads it
@@ -36,7 +33,6 @@ import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
  */
 const RequestSniffableWebView = Schema.parseJson(
   Schema.TaggedStruct('RequestSniffableWebView', {
-    source: WebViewSourceSchema,
     linkedSpan: Schema.optional(Schema.Struct({ traceId: Schema.String, spanId: Schema.String })),
   })
 )
@@ -52,12 +48,12 @@ const SniffingComplete = Schema.parseJson(Schema.TaggedStruct('SniffingComplete'
 
 /**
  * Web → Host: the collector SPA's handler decided the active sync's
- * next step is to navigate the sniffer webview to a fresh page.
- * `source` reuses the slice's `WebViewSource.AnySchema` so the same
- * tagged union the host uses for the initial `firstPage` also covers
- * subsequent navigations — `{ _tag: 'Uri', uri: 'https://…' }` for a
- * remote page, `{ _tag: 'Html', html: '…' }` for an inline scaffold.
- * The page reload re-injects the sniffer (idempotently keyed by
+ * next step is to navigate the sniffer webview to a fresh page — including
+ * the run's very first navigation off the `about:blank` scaffold the host
+ * mounts. `source` reuses the slice's `WebViewSource.AnySchema` —
+ * `{ _tag: 'Uri', uri: 'https://…' }` for a remote page,
+ * `{ _tag: 'Html', html: '…' }` for an inline scaffold. The page reload
+ * re-injects the sniffer (idempotently keyed by
  * `Symbol.for('browser-sniffer:state')`) and a new `PageLoaded`
  * eventually flows back through Host→Web.
  */

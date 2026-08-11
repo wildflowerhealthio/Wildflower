@@ -2,7 +2,6 @@ import {
   CollectorDescriptor,
   type EntityDefinition,
   ScrapingPlan,
-  type WebViewSource,
 } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
@@ -71,7 +70,7 @@ const defaultConfig: InstanceConfig = {
   password: 'your-password',
 }
 
-/** The user-facing login page the sniffer webview mounts first (redirects to `accounts.pcid.ca`). */
+/** The user-facing login page the plan opens first (redirects to `accounts.pcid.ca`). */
 const LOGIN_URL = 'https://mypharmacy.shoppersdrugmart.ca/en/login'
 
 /**
@@ -94,9 +93,12 @@ const SUBMIT_SELECTOR = 'button[type="submit"]'
 
 /**
  * The shared PC ID login host the `mypharmacy` login page redirects to. After
- * mounting {@link LOGIN_URL} the plan holds on an `AwaitPageSettled` for this
- * cross-host redirect before filling the credentials — filling before the
- * redirect lands would target the wrong (pre-redirect) DOM.
+ * `Open`ing {@link LOGIN_URL} the plan holds on a *patterned* `AwaitPageSettled`
+ * for this cross-host redirect before filling the credentials — filling before
+ * the redirect lands would target the wrong (pre-redirect) DOM. The `pattern` is
+ * load-bearing here: the awaited page (`accounts.pcid.ca`) is a *different* host
+ * than the one opened (`mypharmacy…`), so a pattern-less "next settle" could
+ * match the pre-redirect page.
  */
 const PCID_LOGIN_PATTERN = /:\/\/accounts\.pcid\.ca\/login/
 const REDIRECT_TIMEOUT = Duration.seconds(30)
@@ -119,28 +121,14 @@ const HEALTHDASHBOARD_PATTERN = /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/heal
 const TWO_FA_TIMEOUT = Duration.minutes(5)
 
 /**
- * The plan's silent-host idle guard, raised **above** {@link TWO_FA_TIMEOUT}.
- *
- * The sync runner abandons a run when no sniff *result* (a tracked, decoded
- * response) arrives within `ScrapingPlan.idleTimeout` (default 30 s). During the
- * human-in-the-loop 2FA pause nothing is tracked — the login/pcid pages fire no
- * XHR any entity claims — so the default 30 s guard would kill the run long
- * before the user finishes 2FA and the first dashboard XHR lands. This mirrors
- * the documented `AwaitUserDismiss` requirement: a hold waiting on a person must
- * lift the idle guard above its own `timeout`. One minute of headroom over the
- * 2FA bound (plus the redirect wait ahead of it) keeps a genuinely stalled run
- * from hanging while giving the user the full 2FA window.
+ * Machine-side cap on waiting for the prescription dashboard to settle. After
+ * `Open`ing {@link PRESCRIPTIONS_URL}, a **pattern-less** `AwaitPageSettled`
+ * waits for *that* page to load and settle before the trailing {@link SETTLE}
+ * window — so the settle window measures quiet time on the dashboard, not a race
+ * against its initial load. Pattern-less because the `Open` immediately before
+ * it targets this same page (unlike the cross-host pcid-login redirect, which
+ * keeps a `pattern`).
  */
-const IDLE_TIMEOUT = Duration.sum(TWO_FA_TIMEOUT, Duration.minutes(1))
-
-/**
- * The prescription dashboard itself. After `Open`ing {@link PRESCRIPTIONS_URL},
- * an `AwaitPageSettled` hold waits for *this* page to load and settle before the
- * trailing {@link SETTLE} window — so the settle window measures quiet time on
- * the dashboard, not a race against its initial load.
- */
-const PRESCRIPTIONS_SETTLED_PATTERN =
-  /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/prescription-dashboard/
 const PRESCRIPTIONS_TIMEOUT = Duration.seconds(30)
 
 /**
@@ -160,13 +148,13 @@ const SETTLE = Duration.seconds(8)
 const PRESCRIPTION_HISTORY_URL = 'https://mypharmacy.shoppersdrugmart.ca/en/prescription-history'
 
 /**
- * The prescription-history page itself. After `Open`ing
- * {@link PRESCRIPTION_HISTORY_URL}, an `AwaitPageSettled` hold waits for this
- * page to load and settle before the trailing {@link HISTORY_SETTLE} window — so
- * the settle window measures quiet time on the page, not a race against its
- * initial load.
+ * Machine-side cap on waiting for the prescription-history page to settle. After
+ * `Open`ing {@link PRESCRIPTION_HISTORY_URL}, a **pattern-less** `AwaitPageSettled`
+ * waits for that page to load and settle before the trailing
+ * {@link HISTORY_SETTLE} window — so the settle window measures quiet time on the
+ * page, not a race against its initial load. Pattern-less because the `Open`
+ * immediately before it targets this same page.
  */
-const HISTORY_SETTLED_PATTERN = /:\/\/mypharmacy\.shoppersdrugmart\.ca\/en\/prescription-history/
 const HISTORY_TIMEOUT = Duration.seconds(30)
 
 /**
@@ -204,19 +192,22 @@ const SHOPPERS_DRUGMART_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/shoppers-
  * GETs, and the `prescription-history` + `customers` GETs the history page
  * triggers). No API URL is ever `Open`ed directly.
  *
- * The `stepSequence` waits for the cross-host redirect to `accounts.pcid.ca`,
- * scripts the login (Fill email, Fill password, Click submit), then **pauses on
- * an `AwaitPageRequested` for the health dashboard** while the user completes
- * 2FA on `accounts.pcid.ca/login/verification` (the dashboard only loads once
- * 2FA succeeds; arrival — not settlement — releases the hold, because the
- * dashboard never goes quiet enough to settle). It then `Open`s the
- * prescription dashboard, waits for *it* to
- * settle, holds open for {@link SETTLE} while the per-prescription status XHRs
- * settle, then `Open`s the prescription-history page and holds open for
- * {@link HISTORY_SETTLE} while its `prescription-history` + `customers` XHRs
- * settle. Every `Fill`/`Click` dispatches and advances immediately (a
- * `PageAction` fires no `PageLoaded`), so the short `Delay`s between them are the
- * only thing pacing the login form. `CustomerEntity` recognizes
+ * The sniffer mounts on `about:blank`; the `stepSequence` `Open`s the
+ * `mypharmacy` login page, holds on a *patterned* `AwaitPageSettled` for the
+ * cross-host redirect to `accounts.pcid.ca` (a different host, so the url pattern
+ * disambiguates), scripts the login (Fill email, Fill password, Click submit),
+ * then **pauses on an `AwaitPageRequested` for the health dashboard** while the
+ * user completes 2FA on `accounts.pcid.ca/login/verification` (the dashboard only
+ * loads once 2FA succeeds; arrival — not settlement — releases the hold, because
+ * the dashboard never goes quiet enough to settle). It then `Open`s the
+ * prescription dashboard, waits for *it* to settle with a *pattern-less*
+ * `AwaitPageSettled`, holds open for {@link SETTLE} while the per-prescription
+ * status XHRs settle, then `Open`s the prescription-history page and (again
+ * pattern-less) holds open for {@link HISTORY_SETTLE} while its
+ * `prescription-history` + `customers` XHRs settle. Every `Fill`/`Click`
+ * dispatches and advances immediately (a `PageAction` fires no `PageLoaded`), so
+ * the short `Delay`s between them are the only thing pacing the login form.
+ * `CustomerEntity` recognizes
  * `…/customers/<uuid>`; `PrescriptionEntity` recognizes
  * `…/prescriptions/:uuid/prescription-status`; `PrescriptionHistoryEntity`
  * recognizes `…/prescription-history?customerId=…` — disjoint patterns, so entity
@@ -232,13 +223,8 @@ const SHOPPERS_DRUGMART_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/shoppers-
  * id the adopted minimal Patient gets — both go through the one derivation.
  */
 const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
-  const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: LOGIN_URL }
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Shoppers Drug Mart',
-    // Lifted above the 2FA hold's timeout so the silent-host idle guard does not
-    // abandon the run during the human-in-the-loop 2FA pause (nothing is tracked
-    // until the dashboard's XHRs fire) — see {@link IDLE_TIMEOUT}.
-    idleTimeout: IDLE_TIMEOUT,
     // Widening upcast (safe: `EntityDefinition` is covariant in its resource
     // type, and Patient / MedicationRequest / MedicationDispense are all
     // `FhirResource`), mirroring `fhir-r4-client-collector`.
@@ -250,8 +236,16 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       PrescriptionEntity,
       PrescriptionHistoryEntity,
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
-    firstPage,
     stepSequence: [
+      // Navigate off `about:blank` to the `mypharmacy` login page.
+      {
+        _tag: 'Navigation',
+        name: 'Opening login page',
+        action: {
+          _tag: 'Open',
+          source: { _tag: 'Uri', uri: LOGIN_URL },
+        },
+      },
       // Wait for the `mypharmacy` login page to redirect to the shared
       // `accounts.pcid.ca` login before filling the credentials.
       {
@@ -318,10 +312,10 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       },
       // Hold until the prescription dashboard itself has loaded and settled, then
       // give its per-prescription status XHR fan-out the trailing settle window.
+      // Pattern-less: the next settle after the `Open` above is this page.
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescriptions to settle',
-        pattern: PRESCRIPTIONS_SETTLED_PATTERN,
         timeout: PRESCRIPTIONS_TIMEOUT,
       },
       { _tag: 'Delay', name: 'Waiting for prescriptions', duration: SETTLE },
@@ -336,10 +330,10 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
           source: { _tag: 'Uri', uri: PRESCRIPTION_HISTORY_URL },
         },
       },
+      // Pattern-less: the next settle after the `Open` above is this page.
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescription history to settle',
-        pattern: HISTORY_SETTLED_PATTERN,
         timeout: HISTORY_TIMEOUT,
       },
       { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: HISTORY_SETTLE },

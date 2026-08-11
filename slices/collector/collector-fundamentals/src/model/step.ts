@@ -8,11 +8,12 @@ import type { OpenMessage } from '../bridge.ts'
  * bridge message bodies themselves* so a step can never carry a field the wire
  * doesn't:
  *
- * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries
- *   the same `WebViewSource` shape the host uses for the initial `firstPage`,
- *   so a slice's `stepSequence` can mix inline-HTML bootstraps and absolute
- *   `https://` URIs without a translation layer. It is its own tag because
- *   the Tauri host *decodes* it to navigate the sniffer `WebviewWindow`.
+ * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries a
+ *   `WebViewSource`, so a slice's `stepSequence` can mix inline-HTML bootstraps
+ *   and absolute `https://` URIs without a translation layer. The run's first
+ *   step is an `Open` off the `about:blank` scaffold the host mounts. It is its
+ *   own tag because the Tauri host *decodes* it to navigate the sniffer
+ *   `WebviewWindow`.
  * - `PageAction` (`browser-sniffer-core`'s `PageActionMessage`): an in-page
  *   interaction (`Click` / `Fill`, discriminated by the inner `kind`). New
  *   interaction kinds are added as `action` union variants, not new tags.
@@ -95,17 +96,32 @@ interface DelayStep {
  * reached already matches, it is satisfied immediately; otherwise the machine
  * parks until a matching `PageLoaded` arrives.
  *
+ * **Omitting `pattern`** turns the hold into "wait for the *next* settled page
+ * load, whatever its url" — it is *never* satisfied by the page already in hand,
+ * so it always parks and the first subsequent settled `PageLoaded` releases it.
+ * Use it for the common case of a hold that waits on the page the immediately
+ * preceding `Open` navigated to: there is no cross-host redirect to disambiguate,
+ * and the page in hand is the *previous* one (at run start, the `about:blank`
+ * scaffold the sniffer mounts on), which a pattern-less hold correctly skips. A
+ * `pattern` is only needed when the awaited page differs from the one opened — a
+ * login/redirect that lands on another host.
+ *
  * `timeout` is the machine-side cap on that wait — distinct from the sniffer's
  * internal settle ceiling: if no matching settled `PageLoaded` arrives within
  * it, the hold's `continueOnTimeout` decides what happens (default: abort the
- * run via `SniffingComplete`; see the field). The sync runner's idle timeout is
- * the ultimate backstop. `pattern` is a `RegExp` built with
- * `UrlMatch.make({ segments, end })`.
+ * run via `SniffingComplete`; see the field). There is no runner-side idle
+ * backstop — this `timeout` is the bound. `pattern`, when present, is a `RegExp`
+ * built with `UrlMatch.make({ segments, end })`.
  */
 interface AwaitPageSettledStep {
   readonly _tag: 'AwaitPageSettled'
   readonly name: string
-  readonly pattern: RegExp
+  /**
+   * The url the awaited settled page must match, or **omitted** to wait for the
+   * next settled load regardless of url (see the type doc). A pattern-less hold
+   * never matches the page in hand, so it always parks for a fresh settle.
+   */
+  readonly pattern?: RegExp
   readonly timeout: Duration.Duration
   /**
    * What a `timeout` does. Omitted or `false` (the default) **aborts** the run
@@ -181,11 +197,11 @@ interface AwaitPageRequestedStep {
  *
  * `timeout` bounds the wait, mirroring {@link AwaitPageSettledStep}'s: if the
  * user never closes the window, the hold gives up after it (WARN-logged) and
- * wraps up the same way rather than parking forever. Two more things can end the
- * wait early: the sniffer webview being torn down (the plugin's `Disposed`
- * event, surfaced as `SnifferDisposed`), and the sync runner's own idle guard —
- * so a plan ending in this step should set {@link ScrapingPlan.idleTimeout}
- * comfortably *above* this `timeout`, or the guard will abandon the run first.
+ * wraps up the same way rather than parking forever — and since there is no
+ * runner-side idle guard, this `timeout` is the *only* bound on the wait, so set
+ * it generously (this is the plan whose hold legitimately spans a long manual
+ * session). The other thing that can end the wait early is the sniffer webview
+ * being torn down (the plugin's `Disposed` event, surfaced as `SnifferDisposed`).
  * Note also that the native-webview plugin's own absolute lifetime cap is not
  * re-armed by a `show`, so it can cut a very long hold short.
  *

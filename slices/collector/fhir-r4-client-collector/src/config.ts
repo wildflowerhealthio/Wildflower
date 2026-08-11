@@ -2,8 +2,6 @@ import {
   CollectorDescriptor,
   type EntityDefinition,
   ScrapingPlan,
-  UrlMatch,
-  type WebViewSource,
 } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
@@ -83,15 +81,8 @@ const defaultConfig: InstanceConfig = {
 // ahead of the Rexall collector ticket that adds the entities emitting them
 // (issue #334), so this plan needs no widening when they arrive.
 
-/**
- * The settled `Observation` list page the trailing hold waits for — the same
- * `…/Observation?…` shape `ObservationListEntity` matches (host-relative,
- * `mustHaveQuery` so it's the list endpoint, not a single-resource read).
- */
-const OBSERVATION_SETTLED_PATTERN = UrlMatch.make({
-  segments: [UrlMatch.literal('Observation')],
-  end: 'mustHaveQuery',
-})
+/** Machine-side cap on waiting for the Patient JSON document to settle. */
+const PATIENT_TIMEOUT = Duration.seconds(30)
 /** Machine-side cap on waiting for the Observation page to settle. */
 const OBSERVATION_TIMEOUT = Duration.seconds(30)
 
@@ -106,25 +97,28 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
 
 /**
  * Build the FHIR R4 scraping plan for a configured patient on a
- * configured server. The plan's `firstPage` navigates the sniffer
- * webview directly to `/Patient/:id?_format=json`; the browser-sniffer's
- * window-`load` handler snapshots the rendered document (the browser's
- * native JSON viewer wraps the response in `<pre>{json}</pre>`), streams
- * it through the standard `ResponseStart`/`Data`/`Finished` triple keyed
+ * configured server. The sniffer is mounted on `about:blank`; the plan's first
+ * `Open` step navigates it directly to `/Patient/:id?_format=json`. The
+ * browser-sniffer's window-`load` handler snapshots the rendered document (the
+ * browser's native JSON viewer wraps the response in `<pre>{json}</pre>`),
+ * streams it through the standard `ResponseStart`/`Data`/`Finished` triple keyed
  * on the FHIR URL, and `PatientEntity.parse` extracts the JSON via
- * `extractJson`. Once the Patient page is settled, the `Open` step
- * navigates the WebView to `/Observation?subject:Patient=…&_count=250`;
- * the same snapshot-and-extract flow yields the Observation Bundle
- * entries.
+ * `extractJson`. A pattern-less `AwaitPageSettled` holds until that Patient page
+ * has settled, then the next `Open` step navigates the WebView to
+ * `/Observation?subject:Patient=…&_count=250`; the same snapshot-and-extract
+ * flow yields the Observation Bundle entries, gated by a second pattern-less
+ * `AwaitPageSettled`.
  *
  * A `Navigation` dispatches and advances immediately (it never waits for a
- * `PageLoaded`), so the `Open` is followed by a trailing `AwaitPageSettled`
- * hold that keeps the run open until the Observation page has actually loaded
- * and settled — without it the queue would drain the instant the `Open`
- * dispatches and the run could complete before the Observation request is even
- * tracked. The FHIR endpoints are direct JSON documents (one request per page,
- * no post-load XHR fan-out), so the hold on the settled page is sufficient — no
- * additional fixed `Delay` grace step is needed.
+ * `PageLoaded`), so each `Open` is followed by an `AwaitPageSettled` hold that
+ * keeps the run open until that page has actually loaded and settled — without
+ * it the queue would drain the instant the `Open` dispatches and the run could
+ * complete before the request is even tracked. The holds are **pattern-less**:
+ * each waits for the *next* settle after its `Open` (skipping the `about:blank`
+ * mount and the prior page), which is unambiguous because each `Open` targets a
+ * fresh document. The FHIR endpoints are direct JSON documents (one request per
+ * page, no post-load XHR fan-out), so the hold on the settled page is
+ * sufficient — no additional fixed `Delay` grace step is needed.
  * `entityDefinitions` are listed Patient → Observation → Bundle so
  * `isFoundAt` matches are evaluated in that order; `mustHaveQuery` on
  * the Bundle pattern keeps the list disjoint from the single-resource
@@ -158,10 +152,6 @@ const scrapingPlan = (
   const safePatientId = encodeURIComponent(config.patientId)
   const patientUrl = `${config.rootUrl}/Patient/${safePatientId}?_format=json`
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
-  const firstPage: WebViewSource.Any = {
-    _tag: 'Uri',
-    uri: patientUrl,
-  }
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
     entityDefinitions: [
@@ -170,8 +160,25 @@ const scrapingPlan = (
       ObservationListEntity,
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     captureProvenance,
-    firstPage,
     stepSequence: [
+      // Navigate off `about:blank` to the Patient JSON document, then hold until
+      // it settles before opening the Observation page.
+      {
+        _tag: 'Navigation',
+        name: 'Loading patient',
+        action: {
+          _tag: 'Open',
+          source: {
+            _tag: 'Uri',
+            uri: patientUrl,
+          },
+        },
+      },
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Waiting for patient to load',
+        timeout: PATIENT_TIMEOUT,
+      },
       {
         _tag: 'Navigation',
         name: 'Loading observations',
@@ -189,7 +196,6 @@ const scrapingPlan = (
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for observations to load',
-        pattern: OBSERVATION_SETTLED_PATTERN,
         timeout: OBSERVATION_TIMEOUT,
       },
     ],

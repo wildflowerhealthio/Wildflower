@@ -103,16 +103,16 @@ artifact for designing a collector against a search API — are not captured.
 - **`sessionLabel` is a label, not an identity.** It only prefixes the run id
   for legibility. Deriving the id from it alone collides on exactly the case a
   user is most likely to hit — recording the same flow twice.
-- **`[EnsureWindowVisible, AwaitUserDismiss]` is the whole run model.** An empty
-  `stepSequence` would complete the instant the first `PageLoaded` settled, before
-  the user had clicked anything. `EnsureWindowVisible` puts the window on screen
-  (best-effort — nothing acknowledges it); `AwaitUserDismiss` parks until the user
-  closes it, then **drains** rather than completing, so requests still in flight
-  at that moment are finished and recorded.
-- **`idleTimeout` must stay above the hold's own `timeout`.** The sync runner's
-  silent-host guard does not know the hold is waiting on a person and would
-  abandon the run long before the user acts. `IDLE_TIMEOUT` (3 h) sits above
-  `USER_DISMISS_TIMEOUT` (2 h), and `config.test.ts` pins the ordering.
+- **`[Open(rootUrl), EnsureWindowVisible, AwaitUserDismiss]` is the whole run
+  model.** The sniffer mounts on `about:blank`, so the plan `Open`s the configured
+  root URL first; a sequence that stopped there would complete the instant that
+  page settled, before the user had clicked anything. `EnsureWindowVisible` puts
+  the window on screen (best-effort — nothing acknowledges it); `AwaitUserDismiss`
+  parks until the user closes it, then **drains** rather than completing, so
+  requests still in flight at that moment are finished and recorded.
+- **`USER_DISMISS_TIMEOUT` (2 h) is the sole bound on the wait.** There is no
+  runner-side idle guard to fight, so the hold's own `timeout` is what ends a
+  session the user walks away from; `config.test.ts` pins the step ordering.
 - **The allowlist matches media-type _tokens_, not full media types.** An entry
   is matched against the type, the subtype, and both halves of a structured
   suffix, so `json` covers `application/fhir+json` — which is the single most
@@ -154,6 +154,6 @@ Two static edits, per the descriptor seam:
 - [web-trace slice AGENTS.md](../../web-trace/AGENTS.md) — why the slice exists
   and the store-raw/anonymize-at-export asymmetry.
 - [slices/collector/AGENTS.md](../AGENTS.md) — the `AwaitUserDismiss` /
-  `EnsureWindowVisible` / `idleTimeout` traps in full.
+  `EnsureWindowVisible` traps in full.
 - [browser-sniffer AGENTS.md](../../browser-sniffer/AGENTS.md) — the sniffer whose
   shim scope invariant 4 describes.

@@ -150,16 +150,13 @@ _and_ no sniffed request is still incomplete (see the
 the stream reports done:
 
 ```text
-                 ┌──────────────────────────────────────────────┐
-   each iteration │  take next result, waiting up to idleTimeout │
-                 └──────┬───────────────┬──────────────┬─────────┘
-                  result│          done │         idle │
-                        ▼               ▼              ▼
-                 process, loop        DONE        onIdleTimeout
-                                (stream drained) (abandonAllRequestSniffing:
-                                                    fail incomplete
-                                                    requests + close),
-                                                    then loop → drain → DONE
+                 ┌──────────────────────────────┐
+   each iteration │  take next result (blocking) │
+                 └──────┬───────────────┬────────┘
+                  result│          done │
+                        ▼               ▼
+                 process, loop        DONE
+                                (stream drained)
 ```
 
 - **`done`** is a `take` on a finished, drained stream failing with
@@ -167,17 +164,18 @@ the stream reports done:
   every queued result is taken before `done` — the tracker's drop-then-offer
   order (it offers the result before the close-check runs) guarantees the final
   result is queued before the stream closes.
-- The **`idleTimeout`** (`DEFAULT_IDLE_TIMEOUT`) is the escape hatch for a silent
-  host. If nothing arrives within it — a stalled download whose `ResponseData`
-  chunks never produce a terminal, or a host gone quiet — the loop runs the
-  injected abandon action (`abandonAllRequestSniffing`), which publishes every
-  still-incomplete sniffed request as a `Left` failure on `requestSniffingResults`
-  (surfaced in the `partial` summary) and closes the stream. Those failures then
-  drain like any other result before `done`.
+- **There is no runner-side idle guard.** The loop blocks on `take` until the
+  stream is done; a run is bounded entirely by its plan's own step holds'
+  `timeout`s (a terminal `AwaitPageSettled`, an `AwaitUserDismiss`, …), whichever
+  is parked when a host goes quiet. The trade-off: a sniffed request that starts
+  (`ResponseStart` seen) but whose `ResponseData` chunks never produce a terminal
+  keeps the completion gate (queue drained ∧ every request settled) unmet, so
+  such a run parks until the user cancels — there is no longer an `idleTimeout`
+  to fail it. (`abandonAllRequestSniffing` still exists on the handler as the
+  mechanism for that, but nothing in the runner drives it today.)
 
-On completion (or idle settle, or an explicit cancel via the run's
-`AbortSignal`) the Effect's `release` tears the handler down:
-`cancelAllRequestSniffing` → `unregister`.
+On completion (or an explicit cancel via the run's `AbortSignal`) the Effect's
+`release` tears the handler down: `cancelAllRequestSniffing` → `unregister`.
 
 ## The React shell
 

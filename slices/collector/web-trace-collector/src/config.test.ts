@@ -1,5 +1,5 @@
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
-import { Arbitrary, Duration, Effect, Schema } from 'effect'
+import { Arbitrary, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -9,12 +9,10 @@ import {
   DEFAULT_BODY_CONTENT_TYPES,
   DEFAULT_MAX_BODY_BYTES,
   defaultConfig,
-  IDLE_TIMEOUT,
   InstanceConfig,
   isAbsoluteHttpUrl,
   sessionIdFor,
   scrapingPlan,
-  USER_DISMISS_TIMEOUT,
   WebTraceCollectorDescriptor,
 } from './config.ts'
 
@@ -112,29 +110,30 @@ describe('sessionIdFor', () => {
 })
 
 describe('scrapingPlan', () => {
-  it('opens the configured root URL first', () => {
+  it('opens the configured root URL as its first step (off about:blank)', () => {
     const plan = scrapingPlan(
       { ...defaultConfig, rootUrl: 'https://portal.example.com/login' },
       'run-1'
     )
-    expect(plan.firstPage).toEqual({ _tag: 'Uri', uri: 'https://portal.example.com/login' })
+    expect(plan.stepSequence[0]).toEqual({
+      _tag: 'Navigation',
+      name: 'Opening the browser',
+      action: {
+        _tag: 'Open',
+        source: { _tag: 'Uri', uri: 'https://portal.example.com/login' },
+      },
+    })
   })
 
-  it('hands the browser to the user: show the window, then park until they close it', () => {
-    // The pairing is the whole reason this collector can exist — an empty step
-    // sequence would complete on the first settled PageLoaded, before the user
-    // had clicked anything.
+  it('opens the page, then hands the browser to the user: show the window, park until they close it', () => {
+    // The trailing pairing is the whole reason this collector can exist — a plan
+    // that only opened the page would complete on the first settled PageLoaded,
+    // before the user had clicked anything.
     expect(scrapingPlan(defaultConfig, 'run-1').stepSequence.map((step) => step._tag)).toEqual([
+      'Navigation',
       'EnsureWindowVisible',
       'AwaitUserDismiss',
     ])
-  })
-
-  it('sets the plan idle timeout above the hold’s own timeout', () => {
-    // Otherwise the sync runner's silent-host guard abandons the run long
-    // before the user acts, and before the hold's own bound can do its job.
-    expect(Duration.toMillis(IDLE_TIMEOUT)).toBeGreaterThan(Duration.toMillis(USER_DISMISS_TIMEOUT))
-    expect(scrapingPlan(defaultConfig, 'run-1').idleTimeout).toStrictEqual(IDLE_TIMEOUT)
   })
 
   it('registers exactly one entity, and it is the catch-all recorder', () => {

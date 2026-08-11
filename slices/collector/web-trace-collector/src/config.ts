@@ -2,7 +2,6 @@ import {
   CollectorDescriptor,
   type EntityDefinition,
   ScrapingPlan,
-  type WebViewSource,
 } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
@@ -115,14 +114,6 @@ const defaultConfig: InstanceConfig = {
 const USER_DISMISS_TIMEOUT = Duration.hours(2)
 
 /**
- * The plan's silent-host guard. **Must sit above {@link USER_DISMISS_TIMEOUT}** —
- * the sync runner does not know the hold is waiting on a person, and its 30 s
- * default would abandon the run first. See the `AwaitUserDismiss` trap in
- * [slices/collector/AGENTS.md](../AGENTS.md).
- */
-const IDLE_TIMEOUT = Duration.hours(3)
-
-/**
  * Derive the id every exchange in one recording shares.
  *
  * @param config - The remote's config, for its optional label
@@ -151,9 +142,11 @@ const sessionIdFor = (config: InstanceConfig, runId: string): string => {
  *
  * @remarks
  * The run model everywhere else in this slice is *scripted*; this one is
- * *exploratory*. An empty `stepSequence` would complete the instant the first
- * `PageLoaded` settled — before the user had clicked anything — so completion is
- * deferred to them by `[EnsureWindowVisible, AwaitUserDismiss]`.
+ * *exploratory*. The sniffer mounts on `about:blank`, so the plan `Open`s the
+ * configured root URL as its first step. A sequence that stopped there would
+ * complete the instant that page settled — before the user had clicked anything
+ * — so completion is deferred to them by the trailing
+ * `[EnsureWindowVisible, AwaitUserDismiss]`.
  *
  * The session id derives from the framework-minted `runId` (one per plan
  * build, enforced by `CollectorDescriptor.make`), so one plan build is one
@@ -166,7 +159,6 @@ const scrapingPlan = (
   config: InstanceConfig,
   runId: string
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
-  const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: config.rootUrl }
   const entity = makeRawExchangeEntity({
     sessionId: sessionIdFor(config, runId),
     policy: { bodyContentTypes: config.bodyContentTypes, maxBodyBytes: config.maxBodyBytes },
@@ -177,11 +169,20 @@ const scrapingPlan = (
     // type, and `DocumentReference` is a `FhirResource`), mirroring
     // `rexall-be-well-collector`.
     entityDefinitions: [entity] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
-    firstPage,
     stepSequence: [
+      // Navigate off `about:blank` to the configured root URL, then hand the
+      // browser to the user.
+      {
+        _tag: 'Navigation',
+        name: 'Opening the browser',
+        action: {
+          _tag: 'Open',
+          source: { _tag: 'Uri', uri: config.rootUrl },
+        },
+      },
       {
         _tag: 'EnsureWindowVisible',
-        name: 'Opening the browser',
+        name: 'Bringing the window forward',
       },
       {
         _tag: 'AwaitUserDismiss',
@@ -189,7 +190,6 @@ const scrapingPlan = (
         timeout: USER_DISMISS_TIMEOUT,
       },
     ],
-    idleTimeout: IDLE_TIMEOUT,
   })
 }
 
@@ -221,7 +221,6 @@ export {
   DEFAULT_BODY_CONTENT_TYPES,
   DEFAULT_MAX_BODY_BYTES,
   defaultConfig,
-  IDLE_TIMEOUT,
   InstanceConfig,
   isAbsoluteHttpUrl,
   sessionIdFor,

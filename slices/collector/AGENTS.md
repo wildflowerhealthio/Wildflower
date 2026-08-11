@@ -132,7 +132,9 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   off the wire by construction — there is no "strip before dispatch" step to
   remember. A new scripted interaction is a `PageAction` `action` union variant,
   not a new bridge tag; a new _pause_ is a `Delay` (fixed), `AwaitPageSettled`
-  (wait for a matching settled page load), or `AwaitPageRequested` (wait for a
+  (wait for a settled page load matching its `pattern` — or, with **no** `pattern`,
+  the _next_ settled load, which is the idiom right after an `Open` to that page),
+  or `AwaitPageRequested` (wait for a
   matching page to merely _arrive_ — the sniffer's `PageRequested` fired at
   `DOMContentLoaded`; use it when the awaited page may never satisfy the settle
   detector, e.g. a busy SPA behind a 2FA pause — a matching settled load also
@@ -157,8 +159,8 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   itself. That is load-bearing: requests sniffed before the dismissal may still be
   in flight and the webview stays alive to finish them, so completing here would
   fire `SniffingComplete` against a non-empty request map and the results stream
-  would never close (the run would hang until the idle timeout). Completion stays
-  on the usual gate — queue drained ∧ every request settled.
+  would never close (the run would hang indefinitely — there is no idle guard).
+  Completion stays on the usual gate — queue drained ∧ every request settled.
 - **Three things can end that hold, all via the same drain path:** the host→web
   `UserDismissed` message (synthesized from the plugin's `Hidden` lifecycle
   event), the step's own required `timeout` (WARN), and `SnifferDisposed`
@@ -167,13 +169,11 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   `SniffingComplete` teardown disposes the webview — one arrives on every run, so
   conflating them would race ordinary shutdown. Both signals are silent no-ops
   outside the hold.
-- **A plan ending in `AwaitUserDismiss` must raise `ScrapingPlan.idleTimeout`
-  above that step's `timeout`.** The sync runner's silent-host guard (default
-  30 s) doesn't know the hold is waiting on a person, and will abandon the run
-  long before the user acts — and before the hold's own bound can do its job.
-  Note the runner's `idleTimeout` option, when passed, wins over the plan's.
-  `web-trace-collector` is the one plan that uses the pairing today, and its
-  `config.test.ts` pins the ordering.
+- **A plan ending in `AwaitUserDismiss` bounds itself through that step's own
+  `timeout` — there is no runner-side idle guard to fight.** The hold waits on a
+  person, so its `timeout` legitimately spans a long manual session (set it
+  generously); nothing else caps the wait. `web-trace-collector` is the one plan
+  that uses the pairing today (`USER_DISMISS_TIMEOUT` = 2 h).
 - **Plan factories are `(config, runId) => plan` and deterministic given their
   inputs — the framework mints the id.** `CollectorDescriptor.make`'s
   `resourcePersistenceRuntimeIfMatches` mints one uuid per dispatch, applies
@@ -225,8 +225,9 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   it only closes the stream.
 - **`followUpSteps` generation is guarded at the injection point, not in the pure
   transition.** The composition (`collector-bridge-message-handler.ts`) dedups
-  generated `Open`s by `Uri` (a run-wide visited-set seeded with `firstPage` +
-  authored `Open`s) and caps total generated steps at `maxGeneratedSteps`
+  generated `Open`s by `Uri` (a run-wide visited-set seeded with the authored
+  `Open`s — which include the run's first navigation off `about:blank`) and caps
+  total generated steps at `maxGeneratedSteps`
   (default 500) — both adjustable per-plan (`dedupeGeneratedOpenUris`,
   `maxGeneratedSteps`). Dropped steps WARN-log with counts. These two are the
   termination guards for the naturally-recursive entity-hung generators.
@@ -254,9 +255,10 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
 - **The sync drive loop is a decision table, not a state machine, and
   completion is not computed in the runner.** It drains the handler's
   `requestSniffingResults` stream until that stream finishes; the handler closes
-  it once sniffing is complete and every response has settled. `idleTimeout` is
-  the escape hatch for a silent host. Contrast the automatic-navigation machine,
-  which _is_ an FSM (overlapping delay/URL-match timers).
+  it once sniffing is complete and every response has settled. There is **no
+  runner-side idle guard** — a run bounds itself through its plan's step-hold
+  `timeout`s. Contrast the automatic-navigation machine, which _is_ an FSM
+  (overlapping delay/URL-match timers).
 - **`CollectorConfig` is TS-owned and opaque to Rust.** `collector-rust` stores
   and serves the config JSON verbatim; its utoipa field is
   `#[schema(value_type = Value)]` (an empty schema the drift engine treats as a

@@ -2,7 +2,6 @@ import {
   CollectorDescriptor,
   type EntityDefinition,
   ScrapingPlan,
-  type WebViewSource,
 } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
@@ -117,13 +116,14 @@ const APP_LANDED_PATTERN = /:\/\/app\.letsbewell\.ca/
 const LOGIN_TIMEOUT = Duration.seconds(30)
 
 /**
- * The prescriptions page itself (the `app.` landing above is any post-login
- * page). After `Open`ing it, an `AwaitPageSettled` hold waits for *this* page to
+ * Machine-side cap on waiting for the prescriptions page to settle. After
+ * `Open`ing it, a **pattern-less** `AwaitPageSettled` waits for *that* page to
  * load and settle before the trailing {@link SETTLE} window — so the settle
  * window measures quiet time on the prescriptions page, not a race against its
- * initial load.
+ * initial load. Pattern-less because the `Open` immediately before it targets
+ * this same page, so the next settle is unambiguously it (unlike the post-login
+ * redirect, which lands on a *different* host and so keeps a `pattern`).
  */
-const PRESCRIPTIONS_SETTLED_PATTERN = /:\/\/app\.letsbewell\.ca\/health\/prescriptions/
 const PRESCRIPTIONS_TIMEOUT = Duration.seconds(30)
 
 /**
@@ -150,12 +150,15 @@ const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
  * URL is ever `Open`ed directly**: the tunnel requests need auth/bearer headers
  * the Angular SPA injects, and crafting them is an explicit product constraint.
  *
- * The `stepSequence` scripts the login (Fill email, Fill password, Click submit),
- * holds on an `AwaitPageSettled` for the post-login `app.letsbewell.ca` redirect,
- * then `Open`s the prescriptions page, waits for *it* to settle, and holds open
- * for {@link SETTLE} while its profile + list XHRs settle. Every `Fill`/`Click`
- * dispatches and advances immediately (a `PageAction` fires no `PageLoaded`), so
- * the short `Delay`s between them are the only thing pacing the login form.
+ * The sniffer mounts on `about:blank`; the `stepSequence` `Open`s the login page,
+ * scripts the login (Fill email, Fill password, Click submit), holds on a
+ * *patterned* `AwaitPageSettled` for the post-login `app.letsbewell.ca` redirect
+ * (a different host than the login page, so the url pattern disambiguates), then
+ * `Open`s the prescriptions page, waits for *it* to settle with a *pattern-less*
+ * `AwaitPageSettled`, and holds open for {@link SETTLE} while its profile + list
+ * XHRs settle. Every `Fill`/`Click` dispatches and advances immediately (a
+ * `PageAction` fires no `PageLoaded`), so the short `Delay`s between them are the
+ * only thing pacing the login form.
  * `ProfileEntity` recognizes `…/profile/v2/me`; `MedicationListEntity` recognizes
  * the `…/pharmacy/Location?…` searchset — disjoint patterns, so entity order is
  * not load-bearing.
@@ -187,7 +190,6 @@ const scrapingPlan = (
   config: InstanceConfig,
   _runId: string
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
-  const firstPage: WebViewSource.Any = { _tag: 'Uri', uri: LOGIN_URL }
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Rexall Be Well',
     entityDefinitions: [
@@ -195,8 +197,18 @@ const scrapingPlan = (
       MedicationListEntity,
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     captureProvenance,
-    firstPage,
     stepSequence: [
+      // Navigate off `about:blank` to the login page, then a fixed pause while it
+      // loads (the login DOM/selectors are best-guess — see #339 — so a settle
+      // hold could race a form that isn't there yet).
+      {
+        _tag: 'Navigation',
+        name: 'Opening login page',
+        action: {
+          _tag: 'Open',
+          source: { _tag: 'Uri', uri: LOGIN_URL },
+        },
+      },
       {
         _tag: 'Delay',
         name: 'Waiting for login page',
@@ -255,10 +267,10 @@ const scrapingPlan = (
       },
       // Hold until the prescriptions page itself has loaded and settled, then
       // give its profile + list XHR fan-out the trailing settle window.
+      // Pattern-less: the next settle after the `Open` above is this page.
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescriptions to load',
-        pattern: PRESCRIPTIONS_SETTLED_PATTERN,
         timeout: PRESCRIPTIONS_TIMEOUT,
       },
       { _tag: 'Delay', name: 'Collecting prescriptions', duration: SETTLE },
