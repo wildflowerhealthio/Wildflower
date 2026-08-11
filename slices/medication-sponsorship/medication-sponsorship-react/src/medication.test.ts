@@ -366,9 +366,30 @@ describe('medicationRequestToMedicationView', () => {
     expect(unknownUnit.nextFillDate).toBe('2026-07-01T00:00:00.000Z')
   })
 
-  test('falls back to the first coded medicationCodeableConcept coding for DIN', () => {
+  test('falls back to a DIN-system medicationCodeableConcept coding for DIN', () => {
     const view = medicationRequestToMedicationView(decode(shoppersRequest), 'fallback')
     expect(view.din).toBe('02241497')
+  })
+
+  test.each([
+    { label: 'RxNorm', system: 'http://www.nlm.nih.gov/research/umls/rxnorm', code: '1049221' },
+    { label: 'SNOMED CT', system: 'http://snomed.info/sct', code: '108537001' },
+    { label: 'systemless', system: undefined, code: '12345678' },
+  ])('does not surface a $label coding as a DIN', ({ system, code }) => {
+    // A generic FHIR R4 source spells `medicationCodeableConcept` with a drug
+    // vocabulary that is not a DIN; printing its code as "DIN …" would be a
+    // confidently wrong identifier.
+    const view = medicationRequestToMedicationView(
+      decode({
+        ...base,
+        medicationCodeableConcept: {
+          text: 'Oxycodone 5mg',
+          coding: [{ ...(system === undefined ? {} : { system }), code }],
+        },
+      }),
+      'fallback'
+    )
+    expect(view.din).toBeNull()
   })
 
   test('falls back to the joined dosageInstruction sig for the description', () => {

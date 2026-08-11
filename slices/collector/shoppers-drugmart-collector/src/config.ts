@@ -8,6 +8,7 @@ import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
+import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
 import { CustomerEntity } from './entities/customer-entity.ts'
 import { PrescriptionEntity } from './entities/prescription-entity.ts'
@@ -111,8 +112,8 @@ const REDIRECT_TIMEOUT = Duration.seconds(30)
  * dashboard *arrives* (`DOMContentLoaded`). Arrival, not settlement, on
  * purpose: the dashboard was observed to keep loading past the sniffer's
  * settle detector, so an `AwaitPageSettled` here sat out its whole timeout
- * with the page visibly up. Its `…/api/profile/getProfile/` XHR may not have
- * fired by the time the hold releases — acceptable, because the
+ * with the page visibly up. Its `…/api/<seg>/customers/:uuid?expand=…` XHR may
+ * not have fired by the time the hold releases — acceptable, because the
  * prescription-history page fires the customers XHR again later in the run.
  * {@link TWO_FA_TIMEOUT} bounds the human-in-the-loop wait so a stalled login
  * aborts rather than hangs.
@@ -185,6 +186,15 @@ const HISTORY_SETTLE = Duration.seconds(8)
 const SHOPPERS_DRUGMART_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
 
 /**
+ * This collector's provenance hook: every response an entity derives a
+ * resource from is stored verbatim as a trace `DocumentReference`, linked
+ * both ways to the resources it produced. Module-level — not built inside
+ * the factory — so two plans built from one config share the reference and
+ * stay deep-equal (`toEqual` compares functions by identity).
+ */
+const captureProvenance = makeFhirProvenanceCapture('shoppers-drugmart')<FhirResource>
+
+/**
  * Build the Shoppers Drug Mart scraping plan for a configured account. Every
  * navigated page is a user-facing portal page — login → health dashboard →
  * prescription dashboard → prescription history — and the collector only
@@ -221,8 +231,22 @@ const SHOPPERS_DRUGMART_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/shoppers-
  * prescription `MedicationRequest`/`MedicationDispense` pair from colliding with
  * another source's ids, while `subject: Patient/<patientId>` still lands on the
  * id the adopted minimal Patient gets — both go through the one derivation.
+ *
+ * Provenance is the plan-level `captureProvenance` hook — the whole of this
+ * collector's wiring is the one line naming it. The framework mints the run
+ * id (this factory ignores its `runId` parameter — the hook receives it at
+ * invocation), invokes the hook only for a response whose parse produced
+ * resources, and persists the resulting trace best-effort. It matters more here
+ * than for `fhir-r4-client-collector`, because this collector *synthesizes*
+ * R4 resources from bespoke JSON against a hand-reconciled schema — the trace is
+ * the only record of what a mapping was actually given. The factory stays
+ * deterministic given its inputs, so tests deep-equal plans built from one
+ * config.
  */
-const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> => {
+const scrapingPlan = (
+  config: InstanceConfig,
+  _runId: string
+): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Shoppers Drug Mart',
     // Widening upcast (safe: `EntityDefinition` is covariant in its resource
@@ -236,6 +260,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
       PrescriptionEntity,
       PrescriptionHistoryEntity,
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    captureProvenance,
     stepSequence: [
       // Navigate off `about:blank` to the `mypharmacy` login page.
       {

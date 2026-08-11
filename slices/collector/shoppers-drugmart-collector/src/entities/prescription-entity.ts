@@ -87,14 +87,24 @@ const decodeSourceDispense = Schema.decodeUnknownOption(SourceDispense)
 const decodeRequest = Schema.decodeUnknown(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
+/** True for a value that is itself a dispense object (carries a `dispenseId`). */
+const isDispenseLike = (value: unknown): boolean =>
+  value !== null && typeof value === 'object' && 'dispenseId' in value
+
 /**
  * Unwrap a numeric-keyed dispense wrapper (`[{ "0": { dispenseId, … } }]` →
  * `[{ dispenseId, … }]`). An entry that already looks like a dispense (has a
- * `dispenseId`) passes through untouched; any other object contributes its
- * values. Non-object entries pass through so a malformed one is dropped
- * downstream by {@link decodeSourceDispense} rather than here.
+ * `dispenseId`) passes through untouched, and so does any other entry —
+ * including an object whose values are *not* all dispenses. Non-object entries
+ * pass through so a malformed one is dropped downstream by
+ * {@link decodeSourceDispense} rather than here.
  *
  * @remarks
+ * The `every(isDispenseLike)` guard is load-bearing: without it a genuine but
+ * `dispenseId`-less dispense (`{ quantityDispensed: 5, status: 'COMPLETE' }`)
+ * is mistaken for a wrapper and shredded into its scalar values, turning one
+ * dropped entry into several and destroying the entry the drop count reports on.
+ *
  * The numeric-key wrapper was **never observed** in the real capture —
  * `dispenses` is a flat array there. This helper is retained purely as
  * belt-and-braces (it passes a flat array through untouched), not because
@@ -103,7 +113,8 @@ const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 const flattenDispenses = (raw: ReadonlyArray<unknown>): ReadonlyArray<unknown> =>
   raw.flatMap((entry) => {
     if (entry !== null && typeof entry === 'object' && !('dispenseId' in entry)) {
-      return Object.values(entry)
+      const values = Object.values(entry)
+      if (values.length > 0 && values.every(isDispenseLike)) return values
     }
     return [entry]
   })
@@ -201,7 +212,10 @@ const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | und
  * `status.type` and human label ride `statusReason` and its longer description a
  * `note`, so nothing is lost. Only slots the payload populates are emitted.
  */
-const requestWire = (rx: SourcePrescription): Record<string, unknown> => {
+const requestWire = (
+  rx: SourcePrescription,
+  medication: Record<string, unknown> | undefined
+): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
     resourceType: 'MedicationRequest',
     id: rx.id,
@@ -217,7 +231,6 @@ const requestWire = (rx: SourcePrescription): Record<string, unknown> => {
       },
     ]
   }
-  const medication = medicationWire(rx)
   if (medication != null) wire['medicationCodeableConcept'] = medication
   if (rx.prescriberName != null) wire['requester'] = { display: rx.prescriberName }
 
@@ -239,9 +252,10 @@ const requestWire = (rx: SourcePrescription): Record<string, unknown> => {
     }
   }
 
-  // `authoredOn` prefers `lastFillDate`, falling back to `nextFillDate` when a
-  // payload carries only the latter — the two are never both present.
-  const authoredOn = firstDateTime(rx.lastFillDate, rx.nextFillDate)
+  // Only a *past* fill date can stand in for "when the request was initially
+  // authored" — `nextFillDate` is deliberately not a fallback (see the resource
+  // mapping notes in this package's AGENTS.md).
+  const authoredOn = firstDateTime(rx.lastFillDate)
   if (authoredOn != null) wire['authoredOn'] = authoredOn
   if (rx.direction != null) wire['dosageInstruction'] = [{ text: rx.direction }]
 
@@ -258,10 +272,15 @@ const requestWire = (rx: SourcePrescription): Record<string, unknown> => {
  * prescription. Returns `undefined` when the dispense has no `dispenseId` (there
  * is no logical id to write it under, so it is dropped-and-counted rather than
  * silently skipped at the persist sink).
+ *
+ * `medication` is the prescription-level `medicationCodeableConcept`, built once
+ * by the caller: the status payload names the drug on the prescription, not
+ * per-dispense, so rebuilding it inside the loop produced N identical objects.
  */
 const dispenseWire = (
   dispense: SourceDispense,
-  rx: SourcePrescription
+  rx: SourcePrescription,
+  medication: Record<string, unknown> | undefined
 ): Record<string, unknown> | undefined => {
   if (dispense.dispenseId == null) return undefined
   const wire: Record<string, unknown> = {
@@ -272,7 +291,6 @@ const dispenseWire = (
     subject: patientReference(rx.patientId),
     authorizingPrescription: [{ reference: `MedicationRequest/${rx.id}` }],
   }
-  const medication = medicationWire(rx)
   if (medication != null) wire['medicationCodeableConcept'] = medication
   if (dispense.quantityDispensed != null && Number.isFinite(dispense.quantityDispensed)) {
     wire['quantity'] = { value: dispense.quantityDispensed }
@@ -323,14 +341,19 @@ const PrescriptionEntity: EntityDefinition.EntityDefinition<FhirResource> = Enti
   parse: (response) =>
     Effect.gen(function* () {
       const rx = yield* decodePrescription(extractJson(response.text()))
-      const request = yield* decodeRequest(requestWire(rx))
+      // The status payload names the drug once, on the prescription — build the
+      // concept once and share it with the request and every dispense.
+      const medication = medicationWire(rx)
+      const request = yield* decodeRequest(requestWire(rx, medication))
 
       const rawDispenses = flattenDispenses(rx.dispenses ?? [])
       const dispenses: Array<typeof MedicationDispense.Schema.Type> = []
       let dropped = 0
       for (const raw of rawDispenses) {
         const decoded = decodeSourceDispense(raw)
-        const wire = Option.isSome(decoded) ? dispenseWire(decoded.value, rx) : undefined
+        const wire = Option.isSome(decoded)
+          ? dispenseWire(decoded.value, rx, medication)
+          : undefined
         if (wire === undefined) {
           dropped += 1
           continue

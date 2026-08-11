@@ -37,6 +37,12 @@ const REXALL_STORE_URL_BASE = 'https://www.rexall.ca/storelocator/store/'
 // any `supportingInformation.reference` under this base marks a Shoppers store.
 // Keep in sync with the collector's `SHOPPERS_STORE_LOCATOR_BASE`.
 const SHOPPERS_STORE_URL_BASE = 'https://www.shoppersdrugmart.ca/store-locator/store/'
+// Shoppers puts the DIN inline on `medicationCodeableConcept.coding` rather than
+// on a contained Medication. Keep in sync with the collector's
+// `DIN_CODE_SYSTEM` (`shoppers-drugmart-collector/src/shoppers.ts`).
+const SHOPPERS_DIN_CODING_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din'
+// The coding systems whose `code` genuinely *is* a DIN — see `conceptDinOf`.
+const DIN_CODING_SYSTEMS: readonly string[] = [DIN_CODING_SYSTEM, SHOPPERS_DIN_CODING_SYSTEM]
 
 // Several fields we read — the `medication[x]` choice slots, `contained`,
 // `requester`, `note`, `dispenseRequest`, and the passthrough `value[x]` on an
@@ -120,6 +126,8 @@ const DispenseRequest = Schema.Struct({
     Schema.Array(Schema.Struct({ url: nullableString, valueDecimal: nullableNumber }))
   ),
 })
+/** Decoded once per view and threaded into the readers that need it. */
+type DispenseRequestValue = Schema.Schema.Type<typeof DispenseRequest>
 
 /** Top-level `MedicationRequest.extension` entries carrying a `valueString`. */
 const StringExtensions = Schema.Array(
@@ -179,14 +187,20 @@ const dinOf = (medication: ContainedMedicationValue): string | null => {
 /**
  * DIN fallback for requests that carry the code inline on
  * `medicationCodeableConcept.coding` (e.g. Shoppers Drug Mart) rather than on a
- * contained Medication: the first coding bearing a non-empty `code`, whatever
- * its system.
+ * contained Medication: the first coding under a known DIN system
+ * ({@link DIN_CODING_SYSTEMS}) bearing a non-empty `code`.
+ *
+ * Matching on the system is what keeps this a *DIN* fallback rather than a
+ * "first code wins" one — a generic FHIR R4 source's `medicationCodeableConcept`
+ * is usually RxNorm or SNOMED CT, and neither is a DIN.
  */
 const conceptDinOf = (request: MedicationRequestResource): string | null => {
   const conceptSlot: unknown = request.medicationCodeableConcept
   const concept = decodeConcept(conceptSlot)
   if (Option.isNone(concept)) return null
   for (const coding of concept.value.coding ?? []) {
+    const system = nonEmpty(coding.system)
+    if (system === null || !DIN_CODING_SYSTEMS.includes(system)) continue
     const code = nonEmpty(coding.code)
     if (code !== null) return code
   }
@@ -247,20 +261,29 @@ const descriptionOf = (medication: ContainedMedicationValue): string | null => {
 }
 
 /**
+ * Newline-join the non-empty `text` of every entry in a decoded `{ text }[]`
+ * slot; `null` when none carry text. Shared by the `note` and
+ * `dosageInstruction` readers, which differ only in which slot they decode.
+ */
+const joinTexts = (
+  entries: Option.Option<readonly { readonly text?: string | null }[]>
+): string | null => {
+  if (Option.isNone(entries)) return null
+  const texts = entries.value.flatMap((entry) => {
+    const text = nonEmpty(entry.text)
+    return text === null ? [] : [text]
+  })
+  return texts.length > 0 ? texts.join('\n') : null
+}
+
+/**
  * The free-text dosage sig, newline-joining every `dosageInstruction.text`
  * (e.g. Shoppers Drug Mart's per-prescription "direction"); `null` when none
  * carry text. Used as the description fallback when no carebook description
  * extension is present.
  */
-const dosageTextOf = (request: MedicationRequestResource): string | null => {
-  const instructions = decodeDosageInstructions(request.dosageInstruction)
-  if (Option.isNone(instructions)) return null
-  const texts = instructions.value.flatMap((instruction) => {
-    const text = nonEmpty(instruction.text)
-    return text === null ? [] : [text]
-  })
-  return texts.length > 0 ? texts.join('\n') : null
-}
+const dosageTextOf = (request: MedicationRequestResource): string | null =>
+  joinTexts(decodeDosageInstructions(request.dosageInstruction))
 
 /**
  * Best human-readable name for the medication, preferring the inline
@@ -304,15 +327,8 @@ const requesterOf = (request: MedicationRequestResource): string | null => {
 }
 
 /** All `MedicationRequest.note` texts, newline-joined; `null` when there are none. */
-const noteOf = (request: MedicationRequestResource): string | null => {
-  const notes = decodeNotes(request.note)
-  if (Option.isNone(notes)) return null
-  const texts = notes.value.flatMap((note) => {
-    const text = nonEmpty(note.text)
-    return text === null ? [] : [text]
-  })
-  return texts.length > 0 ? texts.join('\n') : null
-}
+const noteOf = (request: MedicationRequestResource): string | null =>
+  joinTexts(decodeNotes(request.note))
 
 /**
  * The Rexall store-locator URL for a request that carries both the
@@ -360,9 +376,8 @@ const shoppersStoreUrlOf = (request: MedicationRequestResource): string | null =
  * carebook remaining-repeats `modifierExtension` (`valueDecimal`).
  */
 const repeatsOf = (
-  request: MedicationRequestResource
+  dispenseRequest: Option.Option<DispenseRequestValue>
 ): { readonly allowed: number | null; readonly available: number | null } => {
-  const dispenseRequest = decodeDispenseRequest(request.dispenseRequest)
   if (Option.isNone(dispenseRequest)) return { allowed: null, available: null }
   const allowed = dispenseRequest.value.numberOfRepeatsAllowed ?? null
   let available: number | null = null
@@ -430,10 +445,12 @@ const supplyToParts = (supply: SupplyDuration): Partial<DateTime.DateTime.PartsF
  * out). `null` unless both the authored date and a usable supply duration are
  * present.
  */
-const nextFillDateOf = (request: MedicationRequestResource): string | null => {
+const nextFillDateOf = (
+  request: MedicationRequestResource,
+  dispenseRequest: Option.Option<DispenseRequestValue>
+): string | null => {
   const authored = request.authoredOn
   if (authored === null || authored === undefined) return null
-  const dispenseRequest = decodeDispenseRequest(request.dispenseRequest)
   if (Option.isNone(dispenseRequest)) return null
   const supply = dispenseRequest.value.expectedSupplyDuration
   if (supply === null || supply === undefined) return null
@@ -448,11 +465,10 @@ const nextFillDateOf = (request: MedicationRequestResource): string | null => {
  * expiry date but no `expectedSupplyDuration` populate this, so it backs the
  * next-fill hint when {@link nextFillDateOf} can't compute one.
  */
-const validityPeriodEndOf = (request: MedicationRequestResource): string | null => {
-  const dispenseRequest = decodeDispenseRequest(request.dispenseRequest)
-  if (Option.isNone(dispenseRequest)) return null
-  return nonEmpty(dispenseRequest.value.validityPeriod?.end)
-}
+const validityPeriodEndOf = (
+  dispenseRequest: Option.Option<DispenseRequestValue>
+): string | null =>
+  Option.isNone(dispenseRequest) ? null : nonEmpty(dispenseRequest.value.validityPeriod?.end)
 
 /**
  * A coarse, human-readable distance from `nowMillis` (epoch ms) to an ISO
@@ -505,7 +521,8 @@ interface MedicationView {
   readonly medication: Medication
   /**
    * Drug Identification Number, from the contained Medication's DIN coding,
-   * falling back to the first coded `medicationCodeableConcept.coding`.
+   * falling back to a `medicationCodeableConcept.coding` under a known DIN
+   * system ({@link !DIN_CODING_SYSTEMS}).
    */
   readonly din: string | null
   /**
@@ -539,7 +556,8 @@ const medicationRequestToMedicationView = (
   fallbackId: string
 ): MedicationView => {
   const contained = containedMedicationOf(request)
-  const repeats = repeatsOf(request)
+  const dispenseRequest = decodeDispenseRequest(request.dispenseRequest)
+  const repeats = repeatsOf(dispenseRequest)
   return {
     medication: medicationRequestToMedication(request, fallbackId),
     din: (contained === undefined ? null : dinOf(contained)) ?? conceptDinOf(request),
@@ -549,7 +567,7 @@ const medicationRequestToMedicationView = (
     note: noteOf(request),
     repeatsAllowed: repeats.allowed,
     repeatsAvailable: repeats.available,
-    nextFillDate: nextFillDateOf(request) ?? validityPeriodEndOf(request),
+    nextFillDate: nextFillDateOf(request, dispenseRequest) ?? validityPeriodEndOf(dispenseRequest),
     rexallStoreUrl: rexallStoreUrlOf(request),
     shoppersStoreUrl: shoppersStoreUrlOf(request),
   }

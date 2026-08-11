@@ -214,6 +214,39 @@ describe('PrescriptionEntity', () => {
       expect(dispenses).toStrictEqual([expectedDispense])
     })
 
+    it('does not mistake a dispenseId-less dispense for a numeric-keyed wrapper', () => {
+      // Arrange — a genuine dispense entry that merely lacks its own
+      // `dispenseId` while carrying a nested object that has one. Treating it as
+      // a wrapper would harvest that nested value and emit a dispense the feed
+      // never listed at top level.
+      const json = prescriptionJson({}, [
+        { quantityDispensed: 5, detail: { dispenseId: 'not-a-top-level-dispense' } },
+      ])
+
+      // Act
+      const result = parse(json)
+
+      // Assert — the entry is dropped whole; nothing is harvested out of it.
+      expect(byType(result, 'MedicationDispense')).toStrictEqual([])
+      expect(byType(result, 'MedicationRequest')).toStrictEqual([expectedRequest])
+    })
+
+    it('does not author the request from a future nextFillDate', () => {
+      // Arrange — the payload carries only `nextFillDate` (a future date).
+      const json = prescriptionJson({
+        lastFillDate: undefined,
+        nextFillDate: '2030-03-15T00:00:00Z',
+      })
+
+      // Act
+      const [request] = byType(parse(json), 'MedicationRequest')
+
+      // Assert — `authoredOn` stays unset rather than being future-dated.
+      expect(request?.authoredOn).toBeNull()
+      // …while the fill window still closes on the next-fill date.
+      expect(request?.dispenseRequest?.validityPeriod?.end).not.toBeNull()
+    })
+
     it('omits priorPrescription when the payload carries no previousPrescription', () => {
       const [request] = byType(
         parse(prescriptionJson({ previousPrescription: undefined })),

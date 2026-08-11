@@ -68,6 +68,12 @@ password }`) with fast-check arbitraries, `defaultConfig`, the
   URI the plan adopts under, mirroring Rexall's `REXALL_CAREBOOK_SYSTEM`.
 - the write sink — `fhir-r4/clients`' shared `persistResources`, imported in
   `config.ts` and handed straight to the descriptor (no per-collector copy).
+- provenance — the plan-level `captureProvenance` hook
+  (`web-trace-core`'s `makeFhirProvenanceCapture('shoppers-drugmart')`), so every
+  portal response an entity synthesized from is stored verbatim as a trace
+  `DocumentReference`. It matters more here than for a FHIR source: these
+  resources are **synthesized** against a hand-reconciled schema, so the raw
+  payload is the only way to check a mapping after the fact.
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a verbatim copy, per
   slice layering).
 - `src/shoppers-drugmart-config-form.tsx` (+ `.module.css`) — the email/password
@@ -145,14 +151,22 @@ leaves the prescriptions' `subject` references dangling, which the store tolerat
 - **The fill window is `dispenseRequest.validityPeriod`** — `lastFillDate` opens
   it (`start`), `nextFillDate` closes it (`end`), with the prescription
   `expiryDate` as the `end` fallback. Only one of `lastFillDate` / `nextFillDate`
-  is ever present, and whichever it is also authors the request (`authoredOn`).
+  is ever present.
+- **`authoredOn` comes from `lastFillDate` only.** `nextFillDate` is deliberately
+  _not_ a fallback: it is a future date, and `authoredOn` means "when the request
+  was initially authored" — future-dating it would float the prescription to the
+  top of the medications list (sorted newest-authored first) and skew
+  `medication-sponsorship-react`'s `authoredOn + expectedSupplyDuration`
+  next-fill estimate. A payload carrying only `nextFillDate` leaves the slot unset.
 - **The dispensing store becomes a store-locator reference** to the public
   `…/store-locator/store/:id` URL (`SHOPPERS_STORE_LOCATOR_BASE`) — on
   `MedicationRequest.supportingInformation` (from the status `storeId`) and on
   `MedicationDispense.location` (from the history `store.id`, with `store.storeName`
   as `display`). Absolute URLs, so adoption leaves them untouched. The
   medication-sponsorship UI prefix-matches that same base — keep the constants in
-  sync.
+  sync. It likewise matches `DIN_CODE_SYSTEM` by value to decide whether an inline
+  `medicationCodeableConcept.coding` is a DIN (its `SHOPPERS_DIN_CODING_SYSTEM`),
+  so that constant is a second keep-in-sync pair.
 - **History dispenses** get `status: 'completed'` (history entries are completed
   fills; the payload has no status field to say otherwise) and **no `subject`**
   (the history payload carries no `patientId`, and `MedicationDispense.subject` is

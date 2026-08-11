@@ -3,9 +3,10 @@ import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId } from 'fhir-r4/identity'
-import type { FhirResource } from 'fhir-r4/resources'
+import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
+import { traceResourceId } from 'web-trace-core'
 
 import {
   InstanceConfig,
@@ -16,6 +17,16 @@ import {
 } from './config.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
+
+/**
+ * The factory is deterministic given `(config, runId)` and its function-valued
+ * fields (entities, the provenance hook) are module-level singletons, so plans
+ * from one config deep-equal each other — no identity projection needed.
+ */
+const FIXED_RUN_ID = 'test-run'
+
+/** A minimal decoded Patient for exercising the provenance hook's wiring. */
+const patient = Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id: 'p1' })
 
 describe('InstanceConfig', () => {
   it('decodes defaultConfig without error', () => {
@@ -98,9 +109,9 @@ describe('ShoppersDrugMartCollectorDescriptor', () => {
     // The framework mints the run id and passes it as the second argument; this
     // factory ignores it (there is no per-run identity to derive), so the plan is
     // a pure function of config.
-    expect(ShoppersDrugMartCollectorDescriptor.makeScrapingPlan(defaultConfig, 'test-run')).toEqual(
-      scrapingPlan(defaultConfig)
-    )
+    expect(
+      ShoppersDrugMartCollectorDescriptor.makeScrapingPlan(defaultConfig, FIXED_RUN_ID)
+    ).toEqual(scrapingPlan(defaultConfig, FIXED_RUN_ID))
   })
 
   it('exposes kind-level display strings', () => {
@@ -122,7 +133,9 @@ describe('ShoppersDrugMartCollectorDescriptor', () => {
   it('matches its own configs and rejects foreign ones via resourcePersistenceRuntimeIfMatches', () => {
     const runtime =
       ShoppersDrugMartCollectorDescriptor.resourcePersistenceRuntimeIfMatches(defaultConfig)
-    expect(runtime?.run((context) => context.scrapingPlan)).toEqual(scrapingPlan(defaultConfig))
+    expect(runtime?.run((context) => context.scrapingPlan)).toEqual(
+      scrapingPlan(defaultConfig, FIXED_RUN_ID)
+    )
     expect(
       ShoppersDrugMartCollectorDescriptor.resourcePersistenceRuntimeIfMatches({
         _tag: 'fhir-r4',
@@ -150,7 +163,7 @@ describe('ShoppersDrugMartCollectorDescriptor', () => {
 
 describe('scrapingPlan', () => {
   it('opens the mypharmacy login page as its first step (off about:blank)', () => {
-    const plan = scrapingPlan(defaultConfig)
+    const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
     expect(plan.stepSequence[0]).toEqual({
       _tag: 'Navigation',
       name: 'Opening login page',
@@ -162,7 +175,10 @@ describe('scrapingPlan', () => {
   })
 
   it('opens login, waits for the pcid redirect, scripts login, pauses for 2FA, opens prescriptions, and settles', () => {
-    const plan = scrapingPlan({ _tag: 'shoppers-drugmart', email: 'a@b.com', password: 'secret' })
+    const plan = scrapingPlan(
+      { _tag: 'shoppers-drugmart', email: 'a@b.com', password: 'secret' },
+      FIXED_RUN_ID
+    )
     expect(plan.stepSequence).toEqual([
       {
         _tag: 'Navigation',
@@ -254,12 +270,33 @@ describe('scrapingPlan', () => {
     ])
   })
 
+  it('states the provenance hook, which mints shoppers-drugmart-prefixed session ids', async () => {
+    // The hook itself is exercised in web-trace-core's suite; here pin that
+    // the plan wires it and that this collector's traces carry its prefix.
+    const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
+    // Declared as a method for covariance; it is pure and this-free, so the
+    // reference is safe to bind.
+    // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method
+    const hook = plan.captureProvenance
+    expect(hook).toBeDefined()
+    const response = makeRemoteResponse({ id: 'req-1' })
+    const result = await Effect.runPromise(
+      hook?.(FIXED_RUN_ID, response, [patient]) ?? Effect.die('hook asserted defined above')
+    )
+    expect(result.diagnostics.map((trace) => trace.id)).toEqual([
+      traceResourceId({ sessionId: 'shoppers-drugmart-test-run', requestId: 'req-1' }),
+    ])
+  })
+
   it('interpolates the config credentials into the login fills', () => {
-    const plan = scrapingPlan({
-      _tag: 'shoppers-drugmart',
-      email: 'user@shoppers.test',
-      password: 'hunter2',
-    })
+    const plan = scrapingPlan(
+      {
+        _tag: 'shoppers-drugmart',
+        email: 'user@shoppers.test',
+        password: 'hunter2',
+      },
+      FIXED_RUN_ID
+    )
     const fills = plan.stepSequence.flatMap((step) =>
       step._tag === 'Navigation' &&
       step.action._tag === 'PageAction' &&
@@ -281,7 +318,7 @@ describe('scrapingPlan', () => {
  */
 describe('source identity', () => {
   const entityNamed = (name: string): EntityDefinition.EntityDefinition<FhirResource> => {
-    const found = scrapingPlan(defaultConfig).entityDefinitions.find(
+    const found = scrapingPlan(defaultConfig, FIXED_RUN_ID).entityDefinitions.find(
       (entity) => entity.name === name
     )
     if (found === undefined) throw new Error(`no entity named ${name}`)
