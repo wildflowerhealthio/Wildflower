@@ -16,7 +16,7 @@ catalog:
   '@effect/cli': 0.77.0
   '@effect/cluster': 0.60.2
   '@effect/experimental': 0.61.1
-  '@effect/language-service': ^0.87.1
+  '@effect/language-service': ^0.87.2
   '@effect/opentelemetry': 0.64.0
   '@effect/platform': 0.97.1
   '@effect/platform-browser': 0.77.1
@@ -51,8 +51,8 @@ catalog:
   '@sentry/opentelemetry': 10.69.0
   '@sentry/react': 10.69.0
   '@tanstack/react-query': ^5.101.4
-  '@tanstack/react-router': ^1.170.18
-  '@tanstack/router-plugin': ^1.168.23
+  '@tanstack/react-router': ^1.170.23
+  '@tanstack/router-plugin': ^1.168.27
   '@tanstack/virtual-file-routes': ^1.162.0
   '@tauri-apps/api': ^2
   '@tauri-apps/plugin-fs': ~2.5.1
@@ -60,7 +60,7 @@ catalog:
   '@tauri-apps/plugin-opener': ^2
   '@testing-library/dom': ^10.4.0
   '@testing-library/react': ^16.3.0
-  '@testing-library/user-event': ^14.5.2
+  '@testing-library/user-event': ^14.6.3
   '@tsdown/css': ^0.22.14
   '@types/fhir': ^0.0.44
   # `har-schema` is the published HAR 1.2 JSON Schema and `ajv` compiles it —
@@ -90,7 +90,7 @@ catalog:
 
   typescript: 7.0.2
   vite: npm:@voidzero-dev/vite-plus-core@^0.2.2
-  vite-plus: ^0.2.7
+  vite-plus: ^0.2.8
   # vite-plus 0.2.x depends on real vitest (the @voidzero-dev/vite-plus-test
   # alias line ended at 0.1.24); pin to the version `vp --version` bundles.
   vitest: 4.1.10
