@@ -53,8 +53,8 @@ type StepOutboundMessage =
  *   early sibling (fired at `DOMContentLoaded`), consumed only by a parked
  *   `AwaitPageRequested` hold and ignored everywhere else.
  * - `Stop` — the single *command*, which the run lifecycle's teardown (and its
- *   idle-timeout abandon) invokes to halt the machine (interrupt any pending
- *   timer). Modelling it as an input keeps the whole machine one transition
+ *   `abandonAllRequestSniffing` escape) invokes to halt the machine (interrupt
+ *   any pending timer). Modelling it as an input keeps the whole machine one transition
  *   table. There is no separate "reset vs fold" variant: teardown always
  *   *discards* the machine (a fresh one is built next run).
  * - `DelayTimerFired` / `UrlMatchTimeoutFired` / `UserDismissTimeoutFired` — the

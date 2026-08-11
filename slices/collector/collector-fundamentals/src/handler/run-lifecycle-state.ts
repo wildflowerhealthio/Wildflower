@@ -32,10 +32,11 @@ import type { SniffResult } from './sniffer-response-tracker.ts'
  *   url-match-timeout abort). Latch Gate A and close the stream — unless a
  *   request is still incomplete (an abort can fire mid-flight), in which case the
  *   last settle's end-check closes it.
- * - **`abandonAllRequestSniffing`** — the idle-timeout escape. Stop the machine
+ * - **`abandonAllRequestSniffing`** — the force-close escape. Stop the machine
  *   (so a parked timer can't leak), publish every still-incomplete request as a
- *   failure, and close the stream *now*, so the run reports the loss instead of
- *   hanging on a silent host.
+ *   failure, and close the stream *now*, so a caller can report the loss instead
+ *   of hanging on a silent host. Nothing in the runner drives it today (the
+ *   runner-side idle guard was removed).
  * - **`cancelAllRequestSniffing`** — the screen-unmount teardown. Stop the
  *   automatic navigation and ask the host to `CancelSnifferRequest` every
  *   incomplete request; publishes nothing and leaves the stream open (the
@@ -64,7 +65,7 @@ interface RunLifecycleState<TResources> {
    * machine is told when the map has emptied (and the stream closes if it was the
    * last thing awaited). The tracker is the sole caller, and it drops the settled
    * id *before* calling this — so the offer lands before the end-check, and the
-   * end-check sees the request gone. The idle-timeout abandon path publishes with
+   * end-check sees the request gone. The abandon path publishes with
    * `abandoned` set: it force-closes the stream itself, so the per-result
    * end-check is skipped.
    */
@@ -81,7 +82,7 @@ interface RunLifecycleState<TResources> {
   readonly endRequestSniffingResultsUnlessMoreExpected: Effect.Effect<void, never, never>
   /** The machine reached `Done`: latch Gate A and close the stream if nothing is incomplete. */
   readonly handleSniffingComplete: Effect.Effect<void, never, never>
-  /** Idle escape: stop the machine, publish every incomplete request as a failure, then close. */
+  /** Force-close escape: stop the machine, publish every incomplete request as a failure, then close. */
   readonly abandonAllRequestSniffing: Effect.Effect<void, never, never>
   /** Unmount teardown: stop navigation + `CancelSnifferRequest` each incomplete request; no close. */
   readonly cancelAllRequestSniffing: (
@@ -144,7 +145,7 @@ const make = <TResources>({
       result: SniffResult<TResources>
     ): Effect.Effect<void, never, never> => {
       requestSniffingResults.unsafeOffer(result)
-      // The idle-timeout abandon path (`failIncompleteSniffedRequests`) publishes
+      // The abandon path (`failIncompleteSniffedRequests`) publishes
       // each stalled request `abandoned` before force-closing the stream itself,
       // so running the end-check per result there is pointless — the map isn't
       // cleared until every failure is published. Skip it for those.
@@ -171,7 +172,7 @@ const make = <TResources>({
       }
     })
 
-    // Idle-timeout escape: stop the machine first (interrupt any pending `Delay` /
+    // Force-close escape: stop the machine first (interrupt any pending `Delay` /
     // URL-match timer so a parked state can't leak one), publish every incomplete
     // request as a failure, then force-close the stream — a stalled host is
     // reported as a loss, not a hang. Wrapped in `Effect.gen` (not an eager

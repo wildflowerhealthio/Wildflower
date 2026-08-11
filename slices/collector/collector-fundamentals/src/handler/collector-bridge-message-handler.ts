@@ -58,11 +58,11 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
    */
   readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TResources>>
   /**
-   * Idle-timeout escape: publish every still-incomplete sniffed request as a
-   * `Left` failure and close `requestSniffingResults`. The runner calls this when
-   * its drive loop has been idle past the idle timeout (a stalled download that
-   * never finished), so the run reports the loss instead of hanging. See
-   * {@link RunLifecycleState}.
+   * Force-close escape: publish every still-incomplete sniffed request as a
+   * `Left` failure and close `requestSniffingResults`, so a caller can report a
+   * stalled download as a loss instead of hanging. Retained as the escape
+   * mechanism for a stalled run, but nothing in the runner drives it today —
+   * the runner-side idle guard was removed. See {@link RunLifecycleState}.
    */
   readonly abandonAllRequestSniffing: Effect.Effect<void, never, never>
   /**
