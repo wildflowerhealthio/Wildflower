@@ -7,6 +7,13 @@ import type * as Step from './step.ts'
 const DEFAULT_MAX_GENERATED_STEPS = 500
 
 /**
+ * Default {@link ScrapingPlan.drainedGuardTimeout} when a plan omits it.
+ * Generous, because it only ever runs with the queue empty: a minute of total
+ * silence there means the host will not deliver the terminal event.
+ */
+const DEFAULT_DRAINED_GUARD_TIMEOUT = Duration.seconds(60)
+
+/**
  * What one invocation of {@link ScrapingPlan.captureProvenance} hands back:
  * the parse output (possibly annotated with links) and any diagnostic
  * resources the capture minted alongside it.
@@ -76,6 +83,13 @@ interface CaptureProvenanceResult<TResources> {
  *   earlier generated `Open`) is dropped, so a page that links to itself or a
  *   cycle of pages terminates. Dedup applies only to *generated* steps — the
  *   authored sequence is never dropped.
+ * - `drainedGuardTimeout`: bounds the run's *tail* — the window after the queue
+ *   drains where completion waits only on in-flight requests to settle, and no
+ *   step hold is parked to bound anything (default
+ *   {@link DEFAULT_DRAINED_GUARD_TIMEOUT}). Raise it for a plan whose tail
+ *   requests are legitimately slow; it never has to account for how long the
+ *   plan's *holds* run, because it is armed only while the queue is empty. See
+ *   [Handler Explanation](../../docs/Handler%20Explanation.md#the-drained-guard-the-only-bound-on-gate-b).
  */
 interface ScrapingPlan<TResources> {
   readonly name: string
@@ -83,6 +97,7 @@ interface ScrapingPlan<TResources> {
   readonly stepSequence: readonly Step.Step[]
   readonly maxGeneratedSteps?: number
   readonly dedupeGeneratedOpenUris?: boolean
+  readonly drainedGuardTimeout?: Duration.Duration
   // Declared as a *method* signature, not a `readonly` arrow property, for the
   // same reason as `EntityDefinition.followUpSteps`: `produced` puts
   // `TResources` in a parameter (contravariant) position, which would make
@@ -115,8 +130,9 @@ interface ScrapingPlan<TResources> {
  * Recursively freeze `value` — `kitchen-sink`'s `deepFreeze`, except that
  * `Duration`s are left alone.
  *
- * A plan carries `Duration`s in three places (`Delay.duration`,
- * `AwaitPageSettled.timeout`, and `AwaitUserDismiss.timeout`), and some of them
+ * A plan carries `Duration`s in four places (`Delay.duration`,
+ * `AwaitPageSettled.timeout`, `AwaitUserDismiss.timeout`, and the plan-level
+ * `drainedGuardTimeout`), and some of them
  * are **process-wide singletons**: `Duration.infinity` and
  * `Duration.zero` are module-level values Effect hands out by reference, so
  * freezing one here mutates state every other caller in the process shares.
@@ -159,6 +175,7 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
     stepSequence: plan.stepSequence,
     maxGeneratedSteps: plan.maxGeneratedSteps,
     dedupeGeneratedOpenUris: plan.dedupeGeneratedOpenUris,
+    drainedGuardTimeout: plan.drainedGuardTimeout,
     // Declared as a method (for covariance — see the interface note), so
     // copying the reference trips `unbound-method`; it is a pure, `this`-free
     // function, so the concern (unintended `this` scoping) can't apply.
@@ -169,5 +186,5 @@ const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResourc
   return frozen
 }
 
-export { make, DEFAULT_MAX_GENERATED_STEPS }
+export { make, DEFAULT_DRAINED_GUARD_TIMEOUT, DEFAULT_MAX_GENERATED_STEPS }
 export type { CaptureProvenanceResult, ScrapingPlan }

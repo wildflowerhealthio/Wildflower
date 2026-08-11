@@ -35,8 +35,10 @@ import type { SniffResult } from './sniffer-response-tracker.ts'
  * - **`abandonAllRequestSniffing`** — the force-close escape. Stop the machine
  *   (so a parked timer can't leak), publish every still-incomplete request as a
  *   failure, and close the stream *now*, so a caller can report the loss instead
- *   of hanging on a silent host. Nothing in the runner drives it today (the
- *   runner-side idle guard was removed).
+ *   of hanging on a silent host. Driven by the automatic-navigation machine's
+ *   **drained guard**, the only bound on Gate B — see the
+ *   [Handler Explanation](../../docs/Handler%20Explanation.md#the-drained-guard-the-only-bound-on-gate-b).
+ *   The runner drives nothing here.
  * - **`cancelAllRequestSniffing`** — the screen-unmount teardown. Stop the
  *   automatic navigation and ask the host to `CancelSnifferRequest` every
  *   incomplete request; publishes nothing and leaves the stream open (the

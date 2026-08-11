@@ -192,6 +192,15 @@ describe('scrapingPlan', () => {
         name: 'Opening login page',
         action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://letsbewell.ca/sign-in' } },
       },
+      // The hold and the delay are a pair: the hold stops the delay racing the
+      // login page's network load (every run starts on `about:blank`), and the
+      // delay still absorbs a form rendered after the page goes quiet.
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Loading login page',
+        timeout: Duration.seconds(30),
+        continueOnTimeout: true,
+      },
       { _tag: 'Delay', name: 'Waiting for login page', duration: Duration.seconds(2) },
       {
         _tag: 'Navigation',

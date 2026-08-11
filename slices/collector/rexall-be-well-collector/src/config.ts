@@ -85,8 +85,26 @@ const defaultConfig: InstanceConfig = {
  */
 const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
 
-/** The user-facing login page the sniffer webview mounts first. */
+/** The user-facing login page the plan `Open`s first (off `about:blank`). */
 const LOGIN_URL = 'https://letsbewell.ca/sign-in'
+
+/**
+ * Machine-side cap on waiting for the login page itself to load and settle.
+ * Best-effort (`continueOnTimeout: true`) — a login page that never settles is
+ * still worth filling, and the post-login {@link LOGIN_TIMEOUT} hold is the real
+ * gate on whether the login worked. Pattern-less is safe because the *preceding*
+ * page (`about:blank`) has already settled, so the next settle cannot be a stale
+ * one. See the AGENTS.md § login-page settle for why the hold and
+ * {@link LOGIN_PAGE_DELAY} are both needed.
+ */
+const LOGIN_PAGE_TIMEOUT = Duration.seconds(30)
+
+/**
+ * Fixed grace period between the login page settling and the first `Fill`. The
+ * login DOM/selectors are best-guess (see #339), so this absorbs a form that
+ * renders shortly after the page goes quiet.
+ */
+const LOGIN_PAGE_DELAY = Duration.seconds(2)
 
 /** The user-facing prescriptions page whose load fires the profile + list XHRs. */
 const PRESCRIPTIONS_URL = 'https://app.letsbewell.ca/health/prescriptions'
@@ -198,9 +216,12 @@ const scrapingPlan = (
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     captureProvenance,
     stepSequence: [
-      // Navigate off `about:blank` to the login page, then a fixed pause while it
-      // loads (the login DOM/selectors are best-guess — see #339 — so a settle
-      // hold could race a form that isn't there yet).
+      // Navigate off `about:blank` to the login page, then wait for *that page*
+      // to load and settle before pacing the form. Both steps are needed: the
+      // hold stops the delay from racing the page's network load (every run now
+      // starts on the near-instantly-settling `about:blank`), and the delay
+      // still absorbs a form that renders after the page goes quiet — the login
+      // DOM/selectors are best-guess, see #339.
       {
         _tag: 'Navigation',
         name: 'Opening login page',
@@ -210,9 +231,17 @@ const scrapingPlan = (
         },
       },
       {
+        _tag: 'AwaitPageSettled',
+        name: 'Loading login page',
+        timeout: LOGIN_PAGE_TIMEOUT,
+        // Best-effort: a login page that never settles is still worth filling,
+        // and the post-login hold is the real gate on whether the login worked.
+        continueOnTimeout: true,
+      },
+      {
         _tag: 'Delay',
         name: 'Waiting for login page',
-        duration: Duration.seconds(2),
+        duration: LOGIN_PAGE_DELAY,
       },
       {
         _tag: 'Navigation',

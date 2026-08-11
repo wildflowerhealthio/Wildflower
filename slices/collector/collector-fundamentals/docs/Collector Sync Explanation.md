@@ -164,15 +164,20 @@ the stream reports done:
   every queued result is taken before `done` — the tracker's drop-then-offer
   order (it offers the result before the close-check runs) guarantees the final
   result is queued before the stream closes.
-- **There is no runner-side idle guard.** The loop blocks on `take` until the
-  stream is done; a run is bounded entirely by its plan's own step holds'
-  `timeout`s (a terminal `AwaitPageSettled`, an `AwaitUserDismiss`, …), whichever
-  is parked when a host goes quiet. The trade-off: a sniffed request that starts
-  (`ResponseStart` seen) but whose `ResponseData` chunks never produce a terminal
-  keeps the completion gate (queue drained ∧ every request settled) unmet, so
-  such a run parks until the user cancels — there is no longer an `idleTimeout`
-  to fail it. (`abandonAllRequestSniffing` still exists on the handler as the
-  mechanism for that, but nothing in the runner drives it today.)
+- **There is no runner-side idle guard, but the run is still bounded.** The loop
+  blocks on `take` until the stream is done. A plan's _navigation_ is bounded by
+  its own step holds' `timeout`s (a terminal `AwaitPageSettled`, an
+  `AwaitUserDismiss`, …), whichever is parked when a host goes quiet. Those bound
+  only the step queue, though: a sniffed request that starts (`ResponseStart`
+  seen) but whose `ResponseData` chunks never produce a terminal keeps the
+  completion gate (queue drained ∧ every request settled) unmet at a point where
+  no hold is parked and no timer is armed. The **drained guard** covers exactly
+  that window — armed by the automatic-navigation machine on entry to `Drained`
+  under the plan's `drainedGuardTimeout` (default 60 s), cancelled the moment the
+  queue re-awakens or the run completes, and wired to the handler's
+  `abandonAllRequestSniffing`, which publishes each stalled request as a failure
+  and closes the stream. So a stalled host ends the run as a reported partial
+  result instead of parking until the user cancels.
 
 On completion (or an explicit cancel via the run's `AbortSignal`) the Effect's
 `release` tears the handler down: `cancelAllRequestSniffing` → `unregister`.

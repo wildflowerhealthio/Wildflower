@@ -44,7 +44,7 @@ type StepOutboundMessage =
 // ---------------------------------------------------------------------------
 
 /**
- * Everything that can drive the machine forward — ten inputs, in seven kinds:
+ * Everything that can drive the machine forward — eleven inputs, in seven kinds:
  *
  * - `PageLoaded` / `PageRequested` — the *external* page events, forwarded
  *   verbatim from the bridge (their shapes are `browser-sniffer-core`'s
@@ -57,8 +57,8 @@ type StepOutboundMessage =
  *   any pending timer). Modelling it as an input keeps the whole machine one transition
  *   table. There is no separate "reset vs fold" variant: teardown always
  *   *discards* the machine (a fresh one is built next run).
- * - `DelayTimerFired` / `UrlMatchTimeoutFired` / `UserDismissTimeoutFired` — the
- *   *internal* timer expiries.
+ * - `DelayTimerFired` / `UrlMatchTimeoutFired` / `UserDismissTimeoutFired` /
+ *   `DrainedGuardTimeoutFired` — the *internal* timer expiries.
  *   A forked daemon re-injects one of these (carrying the `generation` it was
  *   scheduled under) rather than committing a transition directly, so the
  *   transition stays the single source of truth. A fired timer whose
@@ -94,6 +94,14 @@ type InputMessage =
   | { readonly _tag: 'DelayTimerFired'; readonly generation: number }
   | { readonly _tag: 'UrlMatchTimeoutFired'; readonly generation: number }
   | { readonly _tag: 'UserDismissTimeoutFired'; readonly generation: number }
+  /**
+   * The `Drained` guard elapsed: the queue has been empty for the plan's
+   * `drainedGuardTimeout` and the run still has not completed, which can only
+   * mean a sniffed request never reached a terminal event. Escalates to the
+   * lifecycle's `abandonAllRequestSniffing` so the stall is reported as a
+   * partial failure instead of hanging forever. See `onDrainedGuardTimeoutFired`.
+   */
+  | { readonly _tag: 'DrainedGuardTimeoutFired'; readonly generation: number }
   | { readonly _tag: 'StepsGenerated'; readonly steps: readonly Step[] }
   | { readonly _tag: 'NoMoreResultsExpected' }
   | { readonly _tag: 'UserDismissed' }
@@ -124,8 +132,8 @@ type InputMessage =
  *   `EnsureWindowVisible` step's request to re-present the sniffer webview),
  *   span-wrapped.
  * - `ScheduleDelayTimer` / `ScheduleUrlMatchTimeout` /
- *   `ScheduleUserDismissTimeout` — fork a daemon that sleeps then re-injects the
- *   matching `*Fired` input under `generation`.
+ *   `ScheduleUserDismissTimeout` / `ScheduleDrainedGuard` — fork a daemon that
+ *   sleeps then re-injects the matching `*Fired` input under `generation`.
  * - `CancelTimer` — interrupt the daemon registered under `generation`
  *   (the no-wasted-sleep optimisation; the generation guard alone would
  *   already make a fired-but-stale timer inert).
@@ -134,6 +142,12 @@ type InputMessage =
  *   whether requests have all settled and, if so, re-injects
  *   `NoMoreResultsExpected`). Forked, exactly like a timer, so it re-enters the
  *   machine's lock *after* this transition commits — no re-entrant deadlock.
+ * - `DrainedGuardExpired` — the `Drained` guard elapsed. The handler forks the
+ *   injected `onDrainedGuardExpired` effect (wired to the lifecycle's
+ *   `abandonAllRequestSniffing`), which publishes every still-incomplete request
+ *   as a failure and closes the results stream. Forked for the same reason as
+ *   `RequestCompletionCheck`, and doubly so here: that effect calls
+ *   `stopAutomaticNavigation`, which dispatches `Stop` back into this machine.
  * - `WarnUrlMatchTimeout` / `WarnUrlMatchAdvanced` / `WarnUserDismissTimeout` /
  *   `WarnSnifferDisposed` / `WarnDroppedPageLoaded` / `WarnDroppedSteps` — the
  *   WARN logs. `WarnUrlMatchTimeout` is the aborting expiry; `WarnUrlMatchAdvanced`
@@ -162,8 +176,15 @@ type SideEffectMessage =
       readonly generation: number
       readonly timeoutMs: number
     }
+  | {
+      readonly _tag: 'ScheduleDrainedGuard'
+      readonly generation: number
+      readonly timeoutMs: number
+    }
   | { readonly _tag: 'CancelTimer'; readonly generation: number }
   | { readonly _tag: 'RequestCompletionCheck' }
+  | { readonly _tag: 'DrainedGuardExpired' }
+  | { readonly _tag: 'WarnDrainedGuardExpired'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnUrlMatchTimeout'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnUrlMatchAdvanced'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnUserDismissTimeout'; readonly timeoutMs: number }
@@ -194,8 +215,18 @@ const scheduleUserDismissTimeout = (generation: number, timeoutMs: number): Side
   generation,
   timeoutMs,
 })
+const scheduleDrainedGuard = (generation: number, timeoutMs: number): SideEffectMessage => ({
+  _tag: 'ScheduleDrainedGuard',
+  generation,
+  timeoutMs,
+})
 const cancelTimer = (generation: number): SideEffectMessage => ({ _tag: 'CancelTimer', generation })
 const requestCompletionCheck: SideEffectMessage = { _tag: 'RequestCompletionCheck' }
+const drainedGuardExpired: SideEffectMessage = { _tag: 'DrainedGuardExpired' }
+const warnDrainedGuardExpired = (timeoutMs: number): SideEffectMessage => ({
+  _tag: 'WarnDrainedGuardExpired',
+  timeoutMs,
+})
 const warnUrlMatchTimeout = (timeoutMs: number): SideEffectMessage => ({
   _tag: 'WarnUrlMatchTimeout',
   timeoutMs,
@@ -224,11 +255,14 @@ export {
   dispatchEnsureVisible,
   dispatchNavigation,
   dispatchSniffingComplete,
+  drainedGuardExpired,
   requestCompletionCheck,
   scheduleDelayTimer,
+  scheduleDrainedGuard,
   scheduleUrlMatchTimeout,
   scheduleUserDismissTimeout,
   setStepName,
+  warnDrainedGuardExpired,
   warnDroppedPageLoaded,
   warnDroppedSteps,
   warnSnifferDisposed,

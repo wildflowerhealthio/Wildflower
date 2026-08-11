@@ -129,6 +129,13 @@ const TWO_FA_TIMEOUT = Duration.minutes(5)
  * against its initial load. Pattern-less because the `Open` immediately before
  * it targets this same page (unlike the cross-host pcid-login redirect, which
  * keeps a `pattern`).
+ *
+ * The hold is **best-effort** (`continueOnTimeout: true`): this is the same SPA
+ * shell the plan already concludes never settles (hence the
+ * {@link HEALTHDASHBOARD_PATTERN} arrival hold above it), so aborting would kill
+ * the run 30 seconds after a five-minute 2FA. Pattern-less, so a late settle
+ * belonging to the previous page can still release it early — a known, accepted
+ * risk. Both are spelled out in the AGENTS.md § the login + 2FA flow.
  */
 const PRESCRIPTIONS_TIMEOUT = Duration.seconds(30)
 
@@ -155,6 +162,9 @@ const PRESCRIPTION_HISTORY_URL = 'https://mypharmacy.shoppersdrugmart.ca/en/pres
  * {@link HISTORY_SETTLE} window — so the settle window measures quiet time on the
  * page, not a race against its initial load. Pattern-less because the `Open`
  * immediately before it targets this same page.
+ *
+ * Best-effort for the same reason as {@link PRESCRIPTIONS_TIMEOUT}, and carrying
+ * the same pattern-less risk.
  */
 const HISTORY_TIMEOUT = Duration.seconds(30)
 
@@ -342,6 +352,10 @@ const scrapingPlan = (
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescriptions to settle',
         timeout: PRESCRIPTIONS_TIMEOUT,
+        // Best-effort: this is the same SPA shell the plan already treats as
+        // never-settling (hence the `AwaitPageRequested` above). Aborting would
+        // discard a run right after the user's 2FA. See `PRESCRIPTIONS_TIMEOUT`.
+        continueOnTimeout: true,
       },
       { _tag: 'Delay', name: 'Waiting for prescriptions', duration: SETTLE },
       // Visit the prescription-history page: its load fires both the
@@ -360,6 +374,8 @@ const scrapingPlan = (
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescription history to settle',
         timeout: HISTORY_TIMEOUT,
+        // Best-effort, same SPA shell — see `HISTORY_TIMEOUT`.
+        continueOnTimeout: true,
       },
       { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: HISTORY_SETTLE },
     ],

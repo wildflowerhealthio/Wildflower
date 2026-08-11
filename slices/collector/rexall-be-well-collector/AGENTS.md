@@ -262,6 +262,14 @@ and what it did not:
 - **Login-form selectors** — `config.ts`'s `EMAIL_SELECTOR` / `PASSWORD_SELECTOR`
   / `SUBMIT_SELECTOR` are best-guess defaults for `verify.letsbewell.ca/login`.
   The capture covers only the post-login XHRs.
+- **Login-page settle** — the leading `AwaitPageSettled`
+  (`continueOnTimeout: true`) between the `Open` and the 2 s `Delay` assumes the
+  sign-in page surfaces a settled `PageLoaded`. It is there because every run now
+  starts on `about:blank`, which settles near-instantly: without it the `Delay`
+  would run _concurrently with_ the login page's network load rather than after
+  it, and any load slower than 2 s left the `Fill` selectors matching nothing. The
+  `Delay` is kept alongside it — settlement means "quiet DOM, no in-flight XHR",
+  which an SPA can reach before the login form has rendered (see #339).
 - **Login transition** — the `AwaitPageSettled` hold after the submit `Click`
   assumes the post-login jump to `app.letsbewell.ca` surfaces a settled
   `PageLoaded` (a hard cross-host redirect, or an SPA route the sniffer's settle

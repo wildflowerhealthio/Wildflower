@@ -248,6 +248,9 @@ describe('scrapingPlan', () => {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescriptions to settle',
         timeout: Duration.seconds(30),
+        // Best-effort: the same SPA shell the plan already treats as
+        // never-settling, so aborting would discard a run right after 2FA.
+        continueOnTimeout: true,
       },
       { _tag: 'Delay', name: 'Waiting for prescriptions', duration: Duration.seconds(8) },
       {
@@ -265,6 +268,7 @@ describe('scrapingPlan', () => {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescription history to settle',
         timeout: Duration.seconds(30),
+        continueOnTimeout: true,
       },
       { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: Duration.seconds(8) },
     ])

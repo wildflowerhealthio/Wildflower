@@ -6,6 +6,12 @@ import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { type Step, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
+
+/** The guard bound every test here relies on unless it overrides it per-plan. */
+const DEFAULT_DRAINED_GUARD_TIMEOUT = ScrapingPlan.DEFAULT_DRAINED_GUARD_TIMEOUT
+
+/** The same bound in millis, for the tests that drive the pure transition. */
+const GUARD_MS = Duration.toMillis(DEFAULT_DRAINED_GUARD_TIMEOUT)
 import {
   type AutomaticNavigation,
   make,
@@ -1014,6 +1020,224 @@ describe('automatic-navigation.make', () => {
       ))
   })
 
+  /**
+   * The run's last-resort bound. Completion needs two gates — the queue drained
+   * *and* every sniffed request settled — but a step hold's `timeout` bounds only
+   * the first. Once the queue drains the machine is parked on no hold at all, so
+   * without this guard a request whose terminal event never arrives leaves the
+   * run with no timer armed anywhere and it hangs forever.
+   *
+   * The guard is armed on entry to `Drained` and cancelled the moment the queue
+   * re-awakens or the run completes, which is what keeps it from behaving like
+   * the rolling runner-side idle guard it replaced: it cannot exist while the
+   * plan is legitimately parked on a long hold.
+   */
+  describe('drained guard', () => {
+    it('should escalate to the abandon hook when the queue drains and the run never completes', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange: nothing ever injects NoMoreResultsExpected, standing in for
+          // a sniffed request that never reached a terminal event.
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA],
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act
+          yield* machine.handlePageLoaded(pageLoaded()) // dispatches linkA, drains
+          yield* settleForkedWork
+          expect(abandoned).toBe(0) // still within the guard's window
+
+          yield* TestClock.adjust(DEFAULT_DRAINED_GUARD_TIMEOUT)
+          yield* settleForkedWork
+
+          // Assert: the stall is escalated rather than left to hang, and the
+          // machine does not fake a clean finish on its way there.
+          expect(abandoned).toBe(1)
+          expect(sentTags(sendMessage)).toEqual(['Open'])
+        })
+      ))
+
+    it('should not escalate when the run completes before the guard elapses', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [],
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* machine.signalNoMoreResultsExpected // completes: Drained → Done
+          yield* TestClock.adjust(Duration.times(DEFAULT_DRAINED_GUARD_TIMEOUT, 10))
+          yield* settleForkedWork
+
+          // Assert: completion cancels the guard, so a finished run never abandons.
+          expect(abandoned).toBe(0)
+          expect(sentTags(sendMessage)).toEqual(['SniffingComplete'])
+        })
+      ))
+
+    it('should not escalate while parked on a long AwaitUserDismiss hold', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange: the pairing that forced the old rolling idle guard out — a
+          // hold that legitimately spans hours.
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitUserDismiss(Duration.hours(2))],
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act
+          yield* machine.handlePageLoaded(pageLoaded()) // parks, never reaching Drained
+          yield* TestClock.adjust(Duration.minutes(90))
+          yield* settleForkedWork
+
+          // Assert: the guard is scoped to `Drained`, so it does not exist here.
+          expect(abandoned).toBe(0)
+        })
+      ))
+
+    it('should cancel the guard when follow-up steps re-awaken a drained machine', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [],
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act: drain (arming the guard), then generate a hold that outlasts it.
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* settleForkedWork
+          yield* machine.handleStepsGenerated([delayStep(Duration.minutes(5)), linkA])
+          yield* TestClock.adjust(Duration.times(DEFAULT_DRAINED_GUARD_TIMEOUT, 2))
+          yield* settleForkedWork
+
+          // Assert: a guard armed before the generated work cannot kill it.
+          expect(abandoned).toBe(0)
+          expect(sentTags(sendMessage)).toEqual([])
+
+          // The generated Delay still governs, and the step behind it runs.
+          yield* TestClock.adjust(Duration.minutes(5))
+          yield* settleForkedWork
+          expect(sentTags(sendMessage)).toEqual(['Open'])
+        })
+      ))
+
+    it('should honour a plan-level drainedGuardTimeout override', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange
+          const timeout = Duration.seconds(5)
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [],
+            drainedGuardTimeout: timeout,
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* TestClock.adjust(Duration.seconds(4))
+          yield* settleForkedWork
+          expect(abandoned).toBe(0) // the plan's bound, not the default, governs
+
+          yield* TestClock.adjust(Duration.seconds(2))
+          yield* settleForkedWork
+
+          // Assert
+          expect(abandoned).toBe(1)
+        })
+      ))
+
+    it('should ignore a stale guard fire after the queue re-drained under a new generation', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [],
+            drainedGuardTimeout: Duration.seconds(30),
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act: drain, re-awaken partway through, and let the run re-drain — the
+          // first guard's sleep would otherwise still be counting toward its fire.
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* settleForkedWork
+          yield* TestClock.adjust(Duration.seconds(20))
+          yield* machine.handleStepsGenerated([linkA])
+          yield* settleForkedWork
+          yield* TestClock.adjust(Duration.seconds(20))
+          yield* settleForkedWork
+
+          // Assert: the second drain's guard restarts the clock rather than
+          // inheriting the first's elapsed time.
+          expect(abandoned).toBe(0)
+
+          yield* TestClock.adjust(Duration.seconds(15))
+          yield* settleForkedWork
+          expect(abandoned).toBe(1)
+        })
+      ))
+
+    it('should WARN when the guard escalates', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [] })
+
+          // The timer daemon keeps the logger it was forked under, so the drain
+          // that arms it has to happen inside the capture.
+          yield* Effect.gen(function* () {
+            yield* machine.handlePageLoaded(pageLoaded())
+            yield* TestClock.adjust(Duration.times(DEFAULT_DRAINED_GUARD_TIMEOUT, 2))
+            yield* settleForkedWork
+          }).pipe(
+            LoggingLayerTest.expectToLog((logs) => {
+              expect(logs).toContainEqual(
+                expect.objectContaining({
+                  level: 'WARN',
+                  message: expect.stringContaining('never reached a terminal event'),
+                })
+              )
+            }),
+            Effect.scoped
+          )
+        })
+      ))
+  })
+
   describe('Stop', () => {
     it('should interrupt a pending Delay timer', () =>
       run(
@@ -1057,7 +1281,7 @@ describe('automatic-navigation.make', () => {
      */
     it('should ask for the pending AwaitUserDismiss timeout to be cancelled', () => {
       const queue: readonly Step.Step[] = [awaitUserDismiss(five)]
-      const step = transition(queue)
+      const step = transition(queue, GUARD_MS)
       const start: StepState = { _tag: 'AwaitingPageLoaded', queue, generation: 0 }
 
       const [parked, parkEffects] = step(start, pageLoaded())
@@ -1071,6 +1295,43 @@ describe('automatic-navigation.make', () => {
       const [stopped, stopEffects] = step(parked, { _tag: 'Stop' })
       expect(stopped._tag).toBe('AwaitingPageLoaded')
       expect(stopEffects).toContainEqual({ _tag: 'CancelTimer', generation: 1 })
+    })
+
+    /**
+     * `Drained` is timer-bearing too, since the guard is armed on entry — and its
+     * sleep is a full `drainedGuardTimeout`, so an uncancelled daemon would keep
+     * the discarded machine's context alive for that whole span. Asserted against
+     * the pure transition for the same reason as the sibling test above.
+     */
+    it('should ask for the pending drained guard to be cancelled', () => {
+      const queue: readonly Step.Step[] = []
+      const step = transition(queue, GUARD_MS)
+      const start: StepState = { _tag: 'AwaitingPageLoaded', queue, generation: 0 }
+
+      const [drained, drainEffects] = step(start, pageLoaded())
+      expect(drained._tag).toBe('Drained')
+      expect(drainEffects).toContainEqual({
+        _tag: 'ScheduleDrainedGuard',
+        generation: 1,
+        timeoutMs: GUARD_MS,
+      })
+
+      const [stopped, stopEffects] = step(drained, { _tag: 'Stop' })
+      expect(stopped._tag).toBe('AwaitingPageLoaded')
+      expect(stopEffects).toContainEqual({ _tag: 'CancelTimer', generation: 1 })
+    })
+
+    it('should cancel the drained guard on the way to Done', () => {
+      const queue: readonly Step.Step[] = []
+      const step = transition(queue, GUARD_MS)
+      const start: StepState = { _tag: 'AwaitingPageLoaded', queue, generation: 0 }
+
+      const [drained] = step(start, pageLoaded())
+      const [done, doneEffects] = step(drained, { _tag: 'NoMoreResultsExpected' })
+
+      expect(done._tag).toBe('Done')
+      expect(doneEffects).toContainEqual({ _tag: 'CancelTimer', generation: 1 })
+      expect(doneEffects).toContainEqual({ _tag: 'DispatchSniffingComplete' })
     })
 
     it('should restore the initial queue so a subsequent PageLoaded restarts from step 0', () =>
@@ -1307,7 +1568,9 @@ const makeMachine = (options: {
   readonly sendMessage: SendMessage
   readonly onSniffingComplete?: Effect.Effect<void, never, never>
   readonly onDrained?: Effect.Effect<void, never, never>
+  readonly onDrainedGuardExpired?: Effect.Effect<void, never, never>
   readonly stepSequence?: readonly Step.Step[]
+  readonly drainedGuardTimeout?: Duration.Duration
 }): AutomaticNavigation =>
   Effect.runSync(
     make({
@@ -1315,10 +1578,12 @@ const makeMachine = (options: {
         name: 'TestPlan',
         entityDefinitions: [],
         stepSequence: options.stepSequence ?? [],
+        drainedGuardTimeout: options.drainedGuardTimeout,
       }),
       sendMessage: options.sendMessage,
       onSniffingComplete: options.onSniffingComplete ?? Effect.void,
       onDrained: options.onDrained ?? Effect.void,
+      onDrainedGuardExpired: options.onDrainedGuardExpired ?? Effect.void,
     })
   )
 

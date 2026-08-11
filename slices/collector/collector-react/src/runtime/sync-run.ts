@@ -30,10 +30,9 @@
  * at sniff-complete + drained) — see the timeline in
  * `collector-fundamentals/docs/Collector Sync Explanation.md`.
  *
- * There is **no runner-side idle guard**: a plan bounds its own run through its
- * step holds' `timeout`s (a stalled or silent host is caught by whichever hold
- * is parked), so timing lives entirely in the plan rather than in a rolling
- * timer here.
+ * There is **no runner-side idle guard**: timing lives in the plan (its step
+ * holds' `timeout`s) and in the handler (the drained guard bounding the tail),
+ * not in a rolling timer here.
  */
 import { CollectorBridgeMessageHandler } from 'collector-fundamentals/handler'
 import type { CollectorDescriptor } from 'collector-fundamentals/model'
@@ -288,9 +287,10 @@ const buildImportEffect = <Resources, R>({
           // `pipeThroughHandlers` bridge tags so they don't leak into the
           // transport's tag→handler map. Only `requestSniffingResults` (the drive
           // loop's mailbox) and `cancelAllRequestSniffing` (the release) are
-          // consumed; `incompleteSniffedRequests` and `abandonAllRequestSniffing`
-          // are excluded-only — nothing drives them now that the idle guard is
-          // gone — so they are destructured to `_`-prefixed throwaways.
+          // consumed here; `incompleteSniffedRequests` and
+          // `abandonAllRequestSniffing` are excluded-only, so they are
+          // destructured to `_`-prefixed throwaways. The handler's own drained
+          // guard drives the abandon escape, not the runner.
           const {
             incompleteSniffedRequests: _incompleteSniffedRequests,
             requestSniffingResults,
@@ -352,9 +352,9 @@ const buildImportEffect = <Resources, R>({
         processSniffResult,
       })
       // The drive loop reads `requestSniffingResults` directly — completion is
-      // that stream finishing (queue drained ∧ every sniffed request settled),
-      // with no idle backstop. A plan bounds itself through its step holds'
-      // `timeout`s.
+      // that stream finishing (queue drained ∧ every sniffed request settled).
+      // Bounded by the plan's step holds and the handler's drained guard; there
+      // is still no runner-side idle guard.
       return yield* collectImportSummary(
         persistFailureStream,
         handleFailureSetUpdated,

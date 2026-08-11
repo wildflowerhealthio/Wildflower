@@ -167,6 +167,38 @@ the last few), **quiesced** (both gates met; stream closed = natural completion)
 > reaching `Drained`, keeping the run open while those requests start and are
 > tracked.
 
+### The drained guard: the only bound on Gate B
+
+A step hold's `timeout` bounds the **step queue** (Gate A) and nothing else. Once
+the queue drains, the machine is parked on no hold, so a sniffed request that
+emitted `ResponseStart` and never reached a terminal event leaves Gate B unmet
+with **no timer armed anywhere** — the stream never closes and the run hangs
+until the user cancels.
+
+The **drained guard** is the bound for exactly that window. The
+automatic-navigation machine arms it on entry to `Drained` under the plan's
+`ScrapingPlan.drainedGuardTimeout` (default 60 s) and cancels it the moment the
+queue re-awakens or the run completes. Its expiry drives
+`abandonAllRequestSniffing`, so a stalled request lands as a reported partial
+failure instead of a permanent hang.
+
+Two properties follow from _where_ it lives:
+
+- **It reads no state to know what happened.** Reaching the expiry in `Drained`
+  can only mean a request never terminated: had the incomplete-request map been
+  empty, the `RequestCompletionCheck` armed alongside the guard would have
+  injected `NoMoreResultsExpected` and the run would already be `Done`.
+- **It cannot fight a long hold.** Being scoped to `Drained` — rather than
+  rolling on activity, like the runner-side idle guard it replaced — it does not
+  exist while the machine is parked in `AwaitingUserDismiss` or
+  `AwaitingUrlMatch`. A 2 h `AwaitUserDismiss` and a multi-minute 2FA
+  `AwaitPageRequested` are both untouched by it.
+
+It is an ordinary generation-correlated timer (see
+[Timers are inputs](#timers-are-inputs-correlated-by-generation)), which is what
+makes it self-disarming: a `followUpSteps` re-awaken bumps the generation, so a
+guard armed before the generated work cannot fire against it.
+
 ### The lifecycle owns every end-path
 
 Termination lives in the run lifecycle rather than spread across the tracker, a
@@ -176,11 +208,11 @@ _whether any request is still incomplete_ (Gate B) through the injected
 `hasIncompleteSniffedRequests` — the tracker's map stays the single source of
 truth, so there is no shadow counter to drift.
 
-| End-path                    | publishes                     | closes the stream?            | trigger                                                 |
-| --------------------------- | ----------------------------- | ----------------------------- | ------------------------------------------------------- |
-| natural completion          | (results, via prior settles)  | once no request is incomplete | automatic-navigation machine's `SniffingComplete`       |
-| `abandonAllRequestSniffing` | incomplete requests as `Left` | now                           | (retained mechanism; not driven — no runner idle guard) |
-| `cancelAllRequestSniffing`  | nothing                       | no (consumer has gone)        | screen unmount                                          |
+| End-path                    | publishes                     | closes the stream?            | trigger                                             |
+| --------------------------- | ----------------------------- | ----------------------------- | --------------------------------------------------- |
+| natural completion          | (results, via prior settles)  | once no request is incomplete | automatic-navigation machine's `SniffingComplete`   |
+| `abandonAllRequestSniffing` | incomplete requests as `Left` | now                           | the machine's drained guard (`drainedGuardTimeout`) |
+| `cancelAllRequestSniffing`  | nothing                       | no (consumer has gone)        | screen unmount                                      |
 
 Completion is thus a property of the stream, not a predicate the consumer
 computes. `endRequestSniffingResultsUnlessMoreExpected` runs after each settle
@@ -206,10 +238,15 @@ consumer's drive loop simply drains until `take` reports it done.
   timer can't leak), then the tracker's `failIncompleteSniffedRequests` publishes
   every still-incomplete request as a `Left` failure, then the lifecycle closes
   the stream _now_ — force-closing (bypassing Gate A) because sniffing may not yet
-  be complete. **Nothing drives it today:** the runner-side idle guard was
-  removed, so a run bounds itself through its plan's step-hold `timeout`s instead.
-  It is kept as the seam a positional backstop (e.g. escalating a terminal hold's
-  timeout) would reuse.
+  be complete. **It is driven by the automatic-navigation machine's drained
+  guard:** a timer armed on entry to `Drained` under the plan's
+  `drainedGuardTimeout` (default 60 s) and cancelled the moment the queue
+  re-awakens or the run completes. Its expiry can only mean the plan finished and
+  a sniffed request never terminated — the one hang a plan's step holds cannot
+  bound, since they bound Gate A and this is Gate B. Because the guard exists only
+  while the queue is empty, it cannot fire during a legitimately long hold such as
+  `AwaitUserDismiss`, which is what distinguishes it from the rolling runner-side
+  idle guard it replaced.
 - **`cancelAllRequestSniffing`** is the screen-unmount teardown. It runs
   `stopAutomaticNavigation` (interrupt the automatic-navigation machine's timer) then the tracker's
   `cancelIncompleteSniffedRequests` (send a `CancelSnifferRequest` to the host per
@@ -326,9 +363,10 @@ sniffing them, so dispatching `SniffingComplete` at dismissal would hit
 `handleSniffingComplete` with a non-empty incomplete-request map — which closes
 nothing (see [Termination](#termination-the-run-lifecycle)) — and the results
 stream would never close. Draining instead defers to the ordinary gate, so a
-dismissal cannot outrun the requests it leaves behind. Because there is no
-runner-side idle guard, this step's own `timeout` is the sole bound on the wait —
-set it generously (this is the plan whose hold legitimately spans a long manual
+dismissal cannot outrun the requests it leaves behind. This step's own `timeout`
+is the sole bound on the wait — there is no runner-side idle guard, and the
+drained guard is armed only in `Drained`, never while this hold is parked — so set
+it generously (this is the plan whose hold legitimately spans a long manual
 session).
 
 The **transition function is pure** — it never sends a message, forks a

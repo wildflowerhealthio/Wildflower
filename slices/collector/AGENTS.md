@@ -159,8 +159,9 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   itself. That is load-bearing: requests sniffed before the dismissal may still be
   in flight and the webview stays alive to finish them, so completing here would
   fire `SniffingComplete` against a non-empty request map and the results stream
-  would never close (the run would hang indefinitely — there is no idle guard).
-  Completion stays on the usual gate — queue drained ∧ every request settled.
+  would never close. Completion stays on the usual gate — queue drained ∧ every
+  request settled — with the machine's **drained guard** as the backstop if a
+  request in that map never terminates.
 - **Three things can end that hold, all via the same drain path:** the host→web
   `UserDismissed` message (synthesized from the plugin's `Hidden` lifecycle
   event), the step's own required `timeout` (WARN), and `SnifferDisposed`
@@ -172,8 +173,12 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
 - **A plan ending in `AwaitUserDismiss` bounds itself through that step's own
   `timeout` — there is no runner-side idle guard to fight.** The hold waits on a
   person, so its `timeout` legitimately spans a long manual session (set it
-  generously); nothing else caps the wait. `web-trace-collector` is the one plan
-  that uses the pairing today (`USER_DISMISS_TIMEOUT` = 2 h).
+  generously); nothing else caps the wait. The plan-level `drainedGuardTimeout`
+  does not, either: that guard is armed only in `Drained`, and this hold parks the
+  machine in `AwaitingUserDismiss`, so it cannot fire during the manual session —
+  which is exactly the conflict that got the old rolling idle guard removed.
+  `web-trace-collector` is the one plan that uses the pairing today
+  (`USER_DISMISS_TIMEOUT` = 2 h).
 - **Plan factories are `(config, runId) => plan` and deterministic given their
   inputs — the framework mints the id.** `CollectorDescriptor.make`'s
   `resourcePersistenceRuntimeIfMatches` mints one uuid per dispatch, applies
@@ -256,9 +261,20 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   completion is not computed in the runner.** It drains the handler's
   `requestSniffingResults` stream until that stream finishes; the handler closes
   it once sniffing is complete and every response has settled. There is **no
-  runner-side idle guard** — a run bounds itself through its plan's step-hold
-  `timeout`s. Contrast the automatic-navigation machine, which _is_ an FSM
+  runner-side idle guard** — a plan bounds its navigation through its step-hold
+  `timeout`s, and the _tail_ is bounded by the machine's drained guard (see the
+  next trap). Contrast the automatic-navigation machine, which _is_ an FSM
   (overlapping delay/URL-match timers).
+- **Step holds bound the queue; the drained guard bounds the requests.**
+  Completion needs both gates, and a hold's `timeout` only ever bounds Gate A. A
+  sniffed request that emits `ResponseStart` and never reaches a terminal event
+  leaves Gate B unmet _after_ the queue has drained — at which point the machine
+  is parked on no hold and nothing is armed. The machine therefore arms a guard on
+  entering `Drained` (plan-level `drainedGuardTimeout`, default 60 s) and cancels
+  it the instant the queue re-awakens or the run completes; its expiry drives
+  `abandonAllRequestSniffing`, so the stall lands as a reported partial failure
+  rather than a permanent hang. Scoping it to `Drained` is what keeps it from
+  re-creating the rolling idle guard that fought `AwaitUserDismiss`.
 - **`CollectorConfig` is TS-owned and opaque to Rust.** `collector-rust` stores
   and serves the config JSON verbatim; its utoipa field is
   `#[schema(value_type = Value)]` (an empty schema the drift engine treats as a

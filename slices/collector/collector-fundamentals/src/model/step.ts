@@ -110,8 +110,10 @@ interface DelayStep {
  * internal settle ceiling: if no matching settled `PageLoaded` arrives within
  * it, the hold's `continueOnTimeout` decides what happens (default: abort the
  * run via `SniffingComplete`; see the field). There is no runner-side idle
- * backstop — this `timeout` is the bound. `pattern`, when present, is a `RegExp`
- * built with `UrlMatch.make({ segments, end })`.
+ * backstop — this `timeout` is the bound on *this step*. (The plan-level
+ * `drainedGuardTimeout` bounds only the tail after the queue drains, so it never
+ * shortens a hold.) `pattern`, when present, is a `RegExp` built with
+ * `UrlMatch.make({ segments, end })`.
  */
 interface AwaitPageSettledStep {
   readonly _tag: 'AwaitPageSettled'
@@ -197,10 +199,11 @@ interface AwaitPageRequestedStep {
  *
  * `timeout` bounds the wait, mirroring {@link AwaitPageSettledStep}'s: if the
  * user never closes the window, the hold gives up after it (WARN-logged) and
- * wraps up the same way rather than parking forever — and since there is no
- * runner-side idle guard, this `timeout` is the *only* bound on the wait, so set
- * it generously (this is the plan whose hold legitimately spans a long manual
- * session). The other thing that can end the wait early is the sniffer webview
+ * wraps up the same way rather than parking forever — and this `timeout` is the
+ * *only* bound on the wait (there is no runner-side idle guard, and the plan's
+ * `drainedGuardTimeout` is armed only in `Drained`, never while this hold is
+ * parked), so set it generously (this is the plan whose hold legitimately spans a
+ * long manual session). The other thing that can end the wait early is the sniffer webview
  * being torn down (the plugin's `Disposed` event, surfaced as `SnifferDisposed`).
  * Note also that the native-webview plugin's own absolute lifetime cap is not
  * re-armed by a `show`, so it can cut a very long hold short.

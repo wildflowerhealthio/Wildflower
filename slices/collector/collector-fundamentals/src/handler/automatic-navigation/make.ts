@@ -1,9 +1,9 @@
-import { Effect, HashMap, Match, Ref, SynchronizedRef } from 'effect'
+import { Duration, Effect, HashMap, Match, Ref, SynchronizedRef } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import type { RuntimeFiber } from 'effect/Fiber'
 
 import type { CollectorBridge } from '../../bridge.ts'
-import type { ScrapingPlan } from '../../model/index.ts'
+import { ScrapingPlan } from '../../model/index.ts'
 import type { Step } from '../../model/step.ts'
 import type { InputMessage, SideEffectMessage, StepOutboundMessage } from './messages.ts'
 import {
@@ -86,6 +86,7 @@ const make = <TResources>({
   sendMessage,
   onSniffingComplete,
   onDrained,
+  onDrainedGuardExpired,
 }: {
   scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
   sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
@@ -103,6 +104,12 @@ const make = <TResources>({
    * (e.g. a trailing `Delay`) that a settle-only trigger would leave hanging.
    */
   onDrained: Effect.Effect<void, never, never>
+  /**
+   * Run (forked) when the drained guard elapses. The composition wires this to
+   * the lifecycle's `abandonAllRequestSniffing` — see
+   * [Handler Explanation](../../../docs/Handler%20Explanation.md#the-drained-guard-the-only-bound-on-gate-b).
+   */
+  onDrainedGuardExpired: Effect.Effect<void, never, never>
 }): Effect.Effect<AutomaticNavigation, never, never> =>
   Effect.gen(function* () {
     const initialQueue = scrapingPlan.stepSequence
@@ -110,7 +117,14 @@ const make = <TResources>({
     const registry: TimerRegistry = yield* Ref.make(
       HashMap.empty<number, RuntimeFiber<void, never>>()
     )
-    const step = transition(initialQueue)
+    // The plan's last-resort bound, resolved to millis once here rather than on
+    // every drain — the pure transition takes a number, not a `Duration`.
+    const step = transition(
+      initialQueue,
+      Duration.toMillis(
+        scrapingPlan.drainedGuardTimeout ?? ScrapingPlan.DEFAULT_DRAINED_GUARD_TIMEOUT
+      )
+    )
 
     // `dispatch` and `ctx` are mutually recursive (a timer daemon / the
     // completion-check daemon re-injects an input via `ctx.dispatch`). The arrow
@@ -120,6 +134,7 @@ const make = <TResources>({
       sendMessage,
       onSniffingComplete,
       onDrained,
+      onDrainedGuardExpired,
       dispatch: (message) => dispatch(message),
       registry,
     }
@@ -140,9 +155,14 @@ const make = <TResources>({
         Match.tag('ScheduleUserDismissTimeout', (m) =>
           sideEffectHandlers.ScheduleUserDismissTimeout(m, ctx)
         ),
+        Match.tag('ScheduleDrainedGuard', (m) => sideEffectHandlers.ScheduleDrainedGuard(m, ctx)),
         Match.tag('CancelTimer', (m) => sideEffectHandlers.CancelTimer(m, ctx)),
         Match.tag('RequestCompletionCheck', (m) =>
           sideEffectHandlers.RequestCompletionCheck(m, ctx)
+        ),
+        Match.tag('DrainedGuardExpired', (m) => sideEffectHandlers.DrainedGuardExpired(m, ctx)),
+        Match.tag('WarnDrainedGuardExpired', (m) =>
+          sideEffectHandlers.WarnDrainedGuardExpired(m, ctx)
         ),
         Match.tag('WarnUrlMatchTimeout', (m) => sideEffectHandlers.WarnUrlMatchTimeout(m, ctx)),
         Match.tag('WarnUrlMatchAdvanced', (m) => sideEffectHandlers.WarnUrlMatchAdvanced(m, ctx)),

@@ -105,6 +105,22 @@ The plan's `stepSequence`:
    trailing `Delay` — one visit fires both the `prescription-history` and
    `customers` XHRs (full dispense history + the account and its managed people).
 
+**Both trailing `AwaitPageSettled` holds set `continueOnTimeout: true`, and that
+is load-bearing.** They wait on the same SPA shell step 3 already concluded never
+satisfies the settle detector. The sniffer arms its settle watch only from
+`window.load`, so a shell whose `load` never fires never settles and never
+reaches the detector's own hard ceiling either — an aborting hold would therefore
+kill the run 30 seconds after the user finished a 5-minute 2FA interaction, with
+the XHRs quite possibly already sniffed. Advancing into the trailing `Delay`
+keeps whatever was captured.
+
+**Known residual risk:** both holds are pattern-less, so _any_ settled load
+releases them — including a late settle belonging to the previous page, which was
+still the current document when the `Open` was dispatched. That would start the
+trailing `Delay` against the wrong page and cut the fan-out short. Closing it
+means asserting a URL pattern for a page whose settle behaviour has not been
+characterised, so it is deferred until the portal's real behaviour is observed.
+
 ## Account vs patient records
 
 The account's `pcid` (`== customer.id ==` the `customerId` query param) and a

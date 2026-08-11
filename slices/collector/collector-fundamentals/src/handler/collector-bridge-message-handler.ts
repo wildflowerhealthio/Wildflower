@@ -60,9 +60,10 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
   /**
    * Force-close escape: publish every still-incomplete sniffed request as a
    * `Left` failure and close `requestSniffingResults`, so a caller can report a
-   * stalled download as a loss instead of hanging. Retained as the escape
-   * mechanism for a stalled run, but nothing in the runner drives it today —
-   * the runner-side idle guard was removed. See {@link RunLifecycleState}.
+   * stalled download as a loss instead of hanging. Nothing in the *runner* drives
+   * it — the automatic-navigation machine's drained guard does, on expiry of the
+   * plan's `drainedGuardTimeout`. Exposed here anyway so a caller can force the
+   * same escape. See {@link RunLifecycleState}.
    */
   readonly abandonAllRequestSniffing: Effect.Effect<void, never, never>
   /**
@@ -253,6 +254,9 @@ const make = <TResources>({
         sendMessage,
         onSniffingComplete: lifecycle.handleSniffingComplete,
         onDrained: lifecycle.endRequestSniffingResultsUnlessMoreExpected,
+        // The tail bound: a stalled request becomes a reported partial result
+        // rather than a permanent hang.
+        onDrainedGuardExpired: lifecycle.abandonAllRequestSniffing,
       })
 
     return {

@@ -34,6 +34,8 @@ const Sniffing = {
     UrlMatchTimeoutMs: 'collector.sniffing.step.url_match_timeout_ms',
     /** Configured user-dismiss wait cap for the step, in milliseconds. */
     UserDismissTimeoutMs: 'collector.sniffing.step.user_dismiss_timeout_ms',
+    /** Configured plan-level drained-guard cap, in milliseconds. */
+    DrainedGuardTimeoutMs: 'collector.sniffing.drained_guard_timeout_ms',
   },
   /** Waiting out an explicit `Delay` step before processing the next queue entry. */
   Wait: {
@@ -58,6 +60,18 @@ const Sniffing = {
    */
   UserDismissWait: {
     Span: { Name: 'collector.sniffing.user_dismiss_wait' },
+  },
+  /**
+   * The run's last-resort bound, armed whenever the step queue drains and
+   * disarmed the moment it re-awakens or the run completes. It ends *normally*
+   * only when the run failed to complete on its own — i.e. a sniffed request
+   * never reached a terminal event — which escalates to
+   * `abandonAllRequestSniffing`. A healthy run always ends this span
+   * *interrupted*, so unlike the other waits, a closed span here is the anomaly
+   * worth alerting on.
+   */
+  DrainedGuardWait: {
+    Span: { Name: 'collector.sniffing.drained_guard_wait' },
   },
   /** Dispatching a navigation (or the terminal `SniffingComplete`) to the sniffer. */
   Dispatch: {
