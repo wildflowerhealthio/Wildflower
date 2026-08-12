@@ -40,7 +40,12 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   what a value looks like and generates another value that looks the same,
   `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
   policy/rewrite engine, and `hmac.ts` is the Web Crypto seam.
-- **`src/har/`** — HAR 1.2 emission.
+- **`src/har/`** — HAR 1.2, both directions. `emit.ts` writes an archive from
+  `TraceExchange`es; `parse.ts` reads one — including a foreign one — into
+  `ParsedHarEntry`es, the importer's front door. `har.ts` holds the emitted
+  subset as TypeScript types; the parsed subset is a schema in `parse.ts`.
+  `fixtures/chrome-devtools.har.json` is a synthetic DevTools export the parse
+  tests hold themselves to.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 
@@ -216,6 +221,35 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   plausible value would make the trace lie about what was observed.
 - **The emitter does not redact.** `emitHar` on raw exchanges produces an archive
   containing everything the capture saw. Redaction is the caller's step.
+- **The parser accepts archives it did not write, which is the whole point.**
+  `ParsedHarFromHar` names only the fields an import reads and ignores every
+  other key, so a Chrome DevTools export — `pages`, cookies, `postData`,
+  `_initiator`, `_priority` — decodes. Don't "tighten" it by naming fields
+  nothing consumes (`content.size`, `content.mimeType`, `timings`): each one
+  added is a new way for a real archive to be rejected over something that does
+  not matter. Its `response.status` is deliberately looser than the sniffer's
+  `[0, 1000]` for the same reason.
+- **Parsing is decode-only, and encoding is refused rather than approximated.**
+  A `ParsedHar` drops the request side, the timings, the mime types and the
+  sizes, so writing a HAR back from one would be an archive asserting facts
+  nobody observed. `emitHar` is the writing direction and it starts from a
+  `TraceExchange`, which holds them.
+- **`bodyAbsent` is a distinct fact from an empty body.** Our own emitter writes
+  a `size` with no `text` for a policy-skipped body and DevTools does the same
+  for content the browser discarded; both parse to empty bytes _plus_ the flag.
+  A consumer that reads `body.length === 0` as "the response was empty" is
+  reading a gap in the archive as data.
+- **`ParsedHarEntry` is a shape, not a dependency — same trick as
+  `CapturedResponse`.** Its field names (`id`, `url`, `status`, `statusText`,
+  `headers`, `startedAt`) are the ones a captured response carries, so a replay
+  runner can consume an imported entry and a live capture through one type
+  without this package importing the collector slice. Renaming a field here
+  breaks that alignment silently — the compiler has nothing to check it against.
+- **A HAR gives an exchange no identity, so the parser synthesizes one.**
+  `har-entry-<index>` at the entry's position in `log.entries`: the format has
+  no request id, and two entries can be identical in every field a parse reads.
+  Entries stay in **file** order — the emitter sorts by start instant, a parse
+  does not re-sort, and a DevTools export is not sorted at all.
 
 ## Testing
 
@@ -228,6 +262,9 @@ that are not URLs, which exercises nothing anything downstream actually does.
 The five properties the privacy boundary rests on live in
 `src/pseudonymizer/redact.test.ts`; the HAR emitter is validated against the
 published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
+The parser is held to the emitter — a property in `src/har/parse.test.ts`
+round-trips a generated session through `emitHar` and back — and to a committed
+synthetic DevTools export for the half our own archives never exercise.
 
 `ajv` is catalogued and listed in the **root** `devDependencies` so version 8
 wins the hoist — eslint drags in ajv 6, and a root-level `vp lint` resolves bare
