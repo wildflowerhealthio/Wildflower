@@ -248,6 +248,11 @@ URL)` / `Auto — hidden (schema URLs off)`. Those paths are exempt from the
   option. The viewer shows every content type; the export does not, and
   `droppedBodyCount` surfaces the difference. An export that quietly dropped a
   body would misrepresent what the session did.
+- **The archive is encoded before it is stringified.** `emitHar` builds the
+  _decoded_ form of `web-trace-core`'s `Har` schema — instants are `DateTime`s,
+  bodies are a tagged union — so `harBlob` runs `Schema.encodeSync(Har)` first.
+  A plain `JSON.stringify` of what `emitHar` returns writes a file no HAR reader
+  accepts, and the export panel's own assertions would still pass.
 - **The download is a blob from the app's own origin, and there is nowhere to
   add an upload.** No network egress at any point is the premise of the app —
   registered `local_only = 1`, which is also why the host uses a plain

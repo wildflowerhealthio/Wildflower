@@ -1,4 +1,5 @@
-import type { Har } from 'web-trace-core/har'
+import { Schema } from 'effect'
+import { Har } from 'web-trace-core/har'
 
 /**
  * Handing a finished archive to the reader — as a blob from the app's own
@@ -36,6 +37,9 @@ const harFileName = (sessionId: string): string => {
   return `web-trace-${safe === '' ? 'session' : safe}.har`
 }
 
+/** The archive as the JSON the HAR spec describes. */
+const encodeHar = Schema.encodeSync(Har)
+
 /**
  * The archive as a blob.
  *
@@ -43,11 +47,16 @@ const harFileName = (sessionId: string): string => {
  * @returns A JSON blob of the archive, indented
  *
  * @remarks
+ * The archive is *encoded* before it is stringified: `emitHar` builds the
+ * decoded form, whose instants are `DateTime`s and whose bodies are a tagged
+ * union, and stringifying that directly would write a file no HAR reader
+ * accepts.
+ *
  * Indented because a HAR is read by a person as often as by a tool, and the
  * archive is already the redacted, size-bounded form of the session.
  */
 const harBlob = (har: Har): Blob =>
-  new Blob([JSON.stringify(har, null, 2)], { type: HAR_MEDIA_TYPE })
+  new Blob([JSON.stringify(encodeHar(har), null, 2)], { type: HAR_MEDIA_TYPE })
 
 /**
  * Saves a blob under a file name, through the browser's own download path.

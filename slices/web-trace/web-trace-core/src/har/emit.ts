@@ -1,7 +1,16 @@
-import { DateTime, Duration } from 'effect'
+import { DateTime, Duration, Schema } from 'effect'
 
 import type { TraceExchange } from '../trace-exchange.ts'
-import type { Har, HarContent, HarEntry, HarNameValue, HarRequest, HarTimings } from './har.ts'
+import {
+  type Har,
+  type HarBody,
+  type HarEntry,
+  HarFromJson,
+  type HarNameValue,
+  type HarRequest,
+  type HarTimings,
+  NOT_MEASURED,
+} from './har.ts'
 
 /**
  * Turns a set of decoded exchanges into a HAR 1.2 archive — the format the
@@ -13,11 +22,12 @@ import type { Har, HarContent, HarEntry, HarNameValue, HarRequest, HarTimings } 
  * has only the response half, so this emitter is explicit about every gap rather
  * than filling one in. See {@link emitHar}.
  *
+ * This builds an archive; it does not serialize one. Writing the file is
+ * `Schema.encode` of {@link HarFromJson} — the same schema an import reads
+ * through, so the two directions cannot drift.
+ *
  * @packageDocumentation
  */
-
-/** HAR's own sentinel for "not applicable, or not measured". */
-const NOT_MEASURED = -1
 
 /**
  * Why `request.method` is `UNKNOWN`. Carried on every entry so a reader who has
@@ -60,24 +70,20 @@ const queryStringOf = (url: string): readonly HarNameValue[] => {
   }
 }
 
-const headersOf = (exchange: TraceExchange): readonly HarNameValue[] =>
-  exchange.headers.map(([name, value]) => ({ name, value }))
-
-const mimeTypeOf = (exchange: TraceExchange): string => exchange.body.contentType
-
-const contentOf = (exchange: TraceExchange): HarContent =>
+/** A stored body rides as base64, which is what the capture already holds. */
+const bodyOf = (exchange: TraceExchange): HarBody =>
   exchange.body._tag === 'StoredBody'
-    ? {
-        size: exchange.body.size,
-        mimeType: mimeTypeOf(exchange),
-        text: exchange.body.data,
-        encoding: 'base64',
-      }
-    : {
-        size: exchange.body.size,
-        mimeType: mimeTypeOf(exchange),
-        comment: `${SKIPPED_BODY_COMMENT} Reason: ${exchange.body.reason}`,
-      }
+    ? { _tag: 'HarBase64Body', text: exchange.body.data }
+    : { _tag: 'HarNoBody' }
+
+const contentOf = (exchange: TraceExchange): HarEntry['response']['content'] => ({
+  size: exchange.body.size,
+  mimeType: exchange.body.contentType,
+  body: bodyOf(exchange),
+  ...(exchange.body._tag === 'StoredBody'
+    ? {}
+    : { comment: `${SKIPPED_BODY_COMMENT} Reason: ${exchange.body.reason}` }),
+})
 
 /** HAR states every phase in milliseconds, so a measured `Duration` becomes one. */
 const phaseOf = (measured: Duration.Duration | null): number =>
@@ -115,7 +121,7 @@ const requestOf = (exchange: TraceExchange): HarRequest => ({
 const entryOf = (exchange: TraceExchange): HarEntry => {
   const timings = timingsOf(exchange)
   return {
-    startedDateTime: DateTime.formatIso(exchange.startedAt),
+    startedDateTime: exchange.startedAt,
     time: totalTimeOf(timings),
     request: requestOf(exchange),
     response: {
@@ -123,7 +129,7 @@ const entryOf = (exchange: TraceExchange): HarEntry => {
       statusText: exchange.statusText,
       httpVersion: '',
       cookies: [],
-      headers: headersOf(exchange),
+      headers: exchange.headers,
       content: contentOf(exchange),
       redirectURL: '',
       headersSize: NOT_MEASURED,
@@ -139,15 +145,15 @@ const entryOf = (exchange: TraceExchange): HarEntry => {
  *
  * @param exchanges - The exchanges to include, typically already redacted
  * @param options - Session identity and creator metadata
- * @returns An archive that validates against the HAR 1.2 schema
+ * @returns An archive that encodes to one the HAR 1.2 schema validates
  *
  * @remarks
- * Entries come out ordered by `startedDateTime`, the only ordering a reader can
- * act on — the capture order of concurrent requests is not meaningful.
+ * Entries come out ordered by start instant, the only ordering a reader can act
+ * on — the capture order of concurrent requests is not meaningful.
  *
  * Nothing unobserved is guessed: `request.method` is `UNKNOWN`, unmeasured
- * timings are `-1`, and a skipped body has a `size` and no `text`. Each carries
- * a HAR `comment` saying so, so a reader learns it from the file.
+ * timings are `-1`, and a skipped body is a `HarNoBody` with a size. Each
+ * carries a HAR `comment` saying so, so a reader learns it from the file.
  *
  * This function does not redact. Pass it exchanges that have already been
  * through the pseudonymizer — an archive built from raw exchanges contains
@@ -171,4 +177,19 @@ const emitHar = (exchanges: readonly TraceExchange[], options: EmitHarOptions): 
   },
 })
 
-export { CREATOR_NAME, type EmitHarOptions, emitHar, NOT_MEASURED }
+/** Serializes an archive to the text of a `.har` file. */
+const harToJson = Schema.encode(HarFromJson)
+
+/** Reads the text of a `.har` file into an archive. */
+const harFromJson = Schema.decodeUnknown(HarFromJson)
+
+export {
+  CREATOR_NAME,
+  type EmitHarOptions,
+  emitHar,
+  harFromJson,
+  harToJson,
+  METHOD_COMMENT,
+  REQUEST_COMMENT,
+  SKIPPED_BODY_COMMENT,
+}
