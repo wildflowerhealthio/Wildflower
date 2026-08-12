@@ -9,7 +9,7 @@ import {
   smartHttpClientLayer,
   UnexpectedFhirBase,
   type SmartSession,
-} from './smart-runtime.ts'
+} from './self-hosted-runtime.ts'
 
 /**
  * Drive one request through a layer and hand back what actually went on the
