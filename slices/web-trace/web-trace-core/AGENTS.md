@@ -40,12 +40,14 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   what a value looks like and generates another value that looks the same,
   `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
   policy/rewrite engine, and `hmac.ts` is the Web Crypto seam.
-- **`src/har/`** — HAR 1.2, both directions. `emit.ts` writes an archive from
-  `TraceExchange`es; `parse.ts` reads one — including a foreign one — into
-  `ParsedHarEntry`es, the importer's front door. `har.ts` holds the emitted
-  subset as TypeScript types; the parsed subset is a schema in `parse.ts`.
-  `fixtures/chrome-devtools.har.json` is a synthetic DevTools export the parse
-  tests hold themselves to.
+- **`src/har/`** — HAR 1.2, as a schema read in both directions. `har.ts` is
+  the format itself (`Har`, and `HarFromJson` for a file's text): encoded side
+  the JSON the spec describes, type side the same structure with its values
+  decoded. `emit.ts` builds an archive from `TraceExchange`es;
+  `archived-exchange.ts` is the projection an importer and a replay consume
+  (`ArchivedExchange`, `ArchivedSessionFromHar`), and it encodes back.
+  `fixtures/chrome-devtools.har.json` is a synthetic DevTools export the tests
+  hold themselves to.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 
@@ -221,31 +223,42 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   plausible value would make the trace lie about what was observed.
 - **The emitter does not redact.** `emitHar` on raw exchanges produces an archive
   containing everything the capture saw. Redaction is the caller's step.
-- **The parser accepts archives it did not write, which is the whole point.**
-  `ParsedHarFromHar` names only the fields an import reads and ignores every
-  other key, so a Chrome DevTools export — `pages`, cookies, `postData`,
-  `_initiator`, `_priority` — decodes. Don't "tighten" it by naming fields
-  nothing consumes (`content.size`, `content.mimeType`, `timings`): each one
-  added is a new way for a real archive to be rejected over something that does
-  not matter. Its `response.status` is deliberately looser than the sniffer's
-  `[0, 1000]` for the same reason.
-- **Parsing is decode-only, and encoding is refused rather than approximated.**
-  A `ParsedHar` drops the request side, the timings, the mime types and the
-  sizes, so writing a HAR back from one would be an archive asserting facts
-  nobody observed. `emitHar` is the writing direction and it starts from a
-  `TraceExchange`, which holds them.
+- **The archive format is a schema, not a reader and a writer.** `Har` is one
+  definition read in both directions, like the codec: `Schema.decode` reads an
+  archive, `Schema.encode` writes one, `HarFromJson` does both from a file's
+  text, and every failure is a `ParseError`. `emitHar` builds the **decoded**
+  form — instants as `DateTime`, headers as pairs, bodies as a `HarBody` union
+  — so anything writing a file has to encode first. `web-trace-react`'s
+  `harBlob` is the one place that matters; stringifying the decoded form
+  directly writes a file no HAR reader accepts.
+- **Decoding is forgiving, encoding is canonical.** Fields the spec requires but
+  an import has no opinion about (`httpVersion`, `cookies`, `headersSize`,
+  `cache`, `timings`) default rather than fail, and unknown keys are ignored —
+  which is what lets a Chrome DevTools export with its `pages`, `postData` and
+  `_`-prefixed extras decode at all. `response.status` is deliberately looser
+  than the sniffer's `[0, 1000]` for the same reason. Encoding writes every
+  field the spec requires, and a body always goes out base64 — a text body read
+  from a foreign archive comes back base64, same bytes.
+- **`ArchivedExchange` is a projection, so encoding it is canonical rather than
+  verbatim.** It carries the response half and the body bytes, so a re-encoded
+  archive states HAR's own "not observed" values for the request side and the
+  timings, with a comment saying they were not carried through the import. The
+  properties that hold are `decode(encode(x)) == x` and `read(write(read(f)))
+== read(f)` — not `encode(decode(f)) == f`, which no projection can give.
 - **`bodyAbsent` is a distinct fact from an empty body.** Our own emitter writes
   a `size` with no `text` for a policy-skipped body and DevTools does the same
   for content the browser discarded; both parse to empty bytes _plus_ the flag.
   A consumer that reads `body.length === 0` as "the response was empty" is
   reading a gap in the archive as data.
-- **`ParsedHarEntry` is a shape, not a dependency — same trick as
+- **`ArchivedExchange` is a shape, not a dependency — same trick as
   `CapturedResponse`.** Its field names (`id`, `url`, `status`, `statusText`,
   `headers`, `startedAt`) are the ones a captured response carries, so a replay
-  runner can consume an imported entry and a live capture through one type
+  runner can consume an imported exchange and a live capture through one type
   without this package importing the collector slice. Renaming a field here
   breaks that alignment silently — the compiler has nothing to check it against.
-- **A HAR gives an exchange no identity, so the parser synthesizes one.**
+  Its `mimeType` on the way back out is re-derived from its own headers with
+  `contentTypeOf`, the same rule the capture side uses.
+- **A HAR gives an exchange no identity, so a read synthesizes one.**
   `har-entry-<index>` at the entry's position in `log.entries`: the format has
   no request id, and two entries can be identical in every field a parse reads.
   Entries stay in **file** order — the emitter sorts by start instant, a parse
@@ -262,9 +275,11 @@ that are not URLs, which exercises nothing anything downstream actually does.
 The five properties the privacy boundary rests on live in
 `src/pseudonymizer/redact.test.ts`; the HAR emitter is validated against the
 published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
-The parser is held to the emitter — a property in `src/har/parse.test.ts`
-round-trips a generated session through `emitHar` and back — and to a committed
-synthetic DevTools export for the half our own archives never exercise.
+The reading direction is held to the emitter — a property in
+`src/har/archived-exchange.test.ts` round-trips a generated session through
+`emitHar` and back — and to a committed synthetic DevTools export for the half
+our own archives never exercise. `emit.test.ts` validates the **encoded**
+archive against `har-schema`, which is the only side the spec describes.
 
 `ajv` is catalogued and listed in the **root** `devDependencies` so version 8
 wins the hoist — eslint drags in ajv 6, and a root-level `vp lint` resolves bare

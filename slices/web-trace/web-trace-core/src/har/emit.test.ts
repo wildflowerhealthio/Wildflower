@@ -4,7 +4,7 @@
 // count, not reduce it.
 import { Ajv } from 'ajv'
 import draft06 from 'ajv/dist/refs/json-schema-draft-06.json' with { type: 'json' }
-import { DateTime, Duration, Effect } from 'effect'
+import { DateTime, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import afterRequestSchema from 'har-schema/lib/afterRequest.json' with { type: 'json' }
 import beforeRequestSchema from 'har-schema/lib/beforeRequest.json' with { type: 'json' }
@@ -33,7 +33,7 @@ import { arbitraries, jsonBody, traceExchange } from '../test-helpers.ts'
 import { noTimings } from '../trace-exchange.ts'
 import type { TraceExchange } from '../trace-exchange.ts'
 import { emitHar } from './emit.ts'
-import type { Har } from './har.ts'
+import { Har } from './har.ts'
 
 const { session: sessionArbitrary } = arbitraries(fc)
 
@@ -79,18 +79,25 @@ const validateHar = ((): ((value: unknown) => true | readonly string[]) => {
 const emit = (exchanges: readonly TraceExchange[]): Har =>
   emitHar(exchanges, { sessionId: 'session-2f8c', creatorVersion: '1.0.0' })
 
+/**
+ * The archive as it is written to a file. `har-schema` describes the JSON, so
+ * the schema check has to run on the encoded side, not on the decoded values
+ * `emitHar` builds.
+ */
+const encode = Schema.encodeSync(Har)
+
 describe('emitHar', () => {
   test('property: every emitted archive validates against the HAR 1.2 schema', () => {
     fc.assert(
       fc.property(sessionArbitrary, (session) => {
-        expect(validateHar(emit(session))).toBe(true)
+        expect(validateHar(encode(emit(session)))).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   test('the schema check can fail — a missing required field is caught', () => {
-    const archive = emit([traceExchange()])
+    const archive = encode(emit([traceExchange()]))
     const broken = {
       log: {
         ...archive.log,
@@ -142,8 +149,7 @@ describe('emitHar', () => {
     expect(entry?.response.content).toEqual({
       size: 7,
       mimeType: 'application/json',
-      text: data,
-      encoding: 'base64',
+      body: { _tag: 'HarBase64Body', text: data },
     })
   })
 
@@ -160,7 +166,7 @@ describe('emitHar', () => {
       }),
     ]).log.entries
     expect(entry?.response.content.size).toBe(918_273)
-    expect(entry?.response.content.text).toBeUndefined()
+    expect(entry?.response.content.body).toEqual({ _tag: 'HarNoBody' })
     expect(entry?.response.content.comment).toContain('Body exceeds the 2 MiB cap')
     expect(entry?.response.content.comment).toContain('not stored by the capture policy')
   })
@@ -177,7 +183,9 @@ describe('emitHar', () => {
   test('property: entries come out ordered by startedDateTime', () => {
     fc.assert(
       fc.property(sessionArbitrary, (session) => {
-        const times = emit(session).log.entries.map((entry) => Date.parse(entry.startedDateTime))
+        const times = emit(session).log.entries.map((entry) =>
+          DateTime.toEpochMillis(entry.startedDateTime)
+        )
         expect(times).toEqual([...times].toSorted((left, right) => left - right))
       }),
       { numRuns: numRunsFor({ base: 50 }) }
@@ -198,8 +206,8 @@ describe('emitHar', () => {
     expect(entry?.response.status).toBe(404)
     expect(entry?.response.statusText).toBe('Not Found')
     expect(entry?.response.headers).toEqual([
-      { name: 'Content-Type', value: 'application/json' },
-      { name: 'X-Request-Id', value: 'abc' },
+      ['Content-Type', 'application/json'],
+      ['X-Request-Id', 'abc'],
     ])
   })
 })
@@ -215,27 +223,27 @@ describe('a redacted HAR is usable as a fixture', () => {
     url: entry.request.url,
     status: entry.response.status,
     statusText: entry.response.statusText,
-    headers: entry.response.headers.map(({ name, value }) => [name, value] as const),
-    startedAt: DateTime.unsafeMake(Date.parse(entry.startedDateTime)),
+    headers: entry.response.headers,
+    startedAt: entry.startedDateTime,
     timings: {
       wait: entry.timings.wait < 0 ? null : Duration.millis(entry.timings.wait),
       receive: entry.timings.receive < 0 ? null : Duration.millis(entry.timings.receive),
     },
     body:
-      entry.response.content.text === undefined
+      entry.response.content.body._tag === 'HarBase64Body'
         ? {
+            _tag: 'StoredBody',
+            contentType: entry.response.content.mimeType,
+            data: entry.response.content.body.text,
+            size: entry.response.content.size,
+            hash: '',
+          }
+        : {
             _tag: 'SkippedBody',
             contentType: entry.response.content.mimeType,
             size: entry.response.content.size,
             hash: '',
             reason: entry.response.content.comment ?? '',
-          }
-        : {
-            _tag: 'StoredBody',
-            contentType: entry.response.content.mimeType,
-            data: entry.response.content.text,
-            size: entry.response.content.size,
-            hash: '',
           },
     // HAR 1.2 has no field for "the resources this response produced", so an
     // exported archive cannot carry the provenance link and a reader cannot
@@ -252,7 +260,7 @@ describe('a redacted HAR is usable as a fixture', () => {
           )
         )
         const archive = emitHar(redacted, { sessionId: 'redacted-session' })
-        expect(validateHar(archive)).toBe(true)
+        expect(validateHar(encode(archive))).toBe(true)
 
         const rebuilt = archive.log.entries.map(exchangeFromEntry)
         expect(rebuilt).toHaveLength(session.length)
