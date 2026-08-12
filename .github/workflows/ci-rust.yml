@@ -138,7 +138,7 @@ jobs:
         with:
           cache-shared-key: rust-workspace-all
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.85.6
+        uses: taiki-e/install-action@v2.85.10
         with:
           tool: nextest
       # fmt / clippy / nextest go through scripts/checks/rust.sh — the single
