@@ -97,13 +97,11 @@ const preloadTunnel = async (
     context,
     history: createMemoryHistory({ initialEntries: ['/'] }),
   })
+  // `preloadRoute` awaits the load lane, so the matches it resolves with are
+  // already settled — no re-read from the router store needed.
   const matches = await loaderRouter.preloadRoute({ to: '/settings/tunnel' })
-  const preloaded = matches?.find((m) => m.routeId === '/settings/tunnel/')
-  if (preloaded === undefined) throw new Error('expected a match for /settings/tunnel/')
-  // The array `preloadRoute` returns is a point-in-time snapshot; re-read
-  // the settled match from the router store by id.
-  const settled = loaderRouter.getMatch(preloaded.id)
-  if (settled === undefined) throw new Error('expected the preloaded match to be retained')
+  const settled = matches?.find((m) => m.routeId === '/settings/tunnel/')
+  if (settled === undefined) throw new Error('expected a match for /settings/tunnel/')
   return { status: settled.status, error: settled.error }
 }
 

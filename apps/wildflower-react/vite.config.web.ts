@@ -6,6 +6,6 @@ export default defineConfig({
   base: '/',
   build: {
     outDir: 'dist-web',
-    rollupOptions: { input: 'index.html' },
+    rolldownOptions: { input: 'index.html' },
   },
 })

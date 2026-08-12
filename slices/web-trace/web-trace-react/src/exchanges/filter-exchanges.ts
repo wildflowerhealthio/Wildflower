@@ -76,7 +76,7 @@ const normalizeContentType = mediaTypeOf
 const contentTypeOptions = (exchanges: readonly TraceExchange[]): readonly string[] =>
   [...new Set(exchanges.map((exchange) => normalizeContentType(exchange.body.contentType)))]
     .filter((contentType) => contentType !== '')
-    .sort((left, right) => left.localeCompare(right))
+    .toSorted((left, right) => left.localeCompare(right))
 
 /**
  * The hundreds digit of a status code to its class. Anything absent from this

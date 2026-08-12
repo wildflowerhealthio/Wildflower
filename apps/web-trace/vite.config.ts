@@ -22,7 +22,7 @@ export default defineConfig({
     // startup. The folder is gitignored like every other vendored build.
     outDir: '../../slices/apps/self-hosted-apps/web-trace',
     emptyOutDir: true,
-    rollupOptions: {
+    rolldownOptions: {
       input: {
         main: './index.html',
         launch: './launch.html',

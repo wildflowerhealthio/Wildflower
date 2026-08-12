@@ -75,16 +75,15 @@ const arbitraryJsonValue: LazyArbitrary<JsonValue> = (fc: typeof FastCheck) =>
  * example, a `Record({ key: Schema.String, value: JsonValue })` is a
  * lossless replacement for `Schema.Unknown` in JSON-bound contexts.
  */
-const JsonValue: Schema.Schema<JsonValue> = Schema.suspend(
-  (): Schema.Schema<JsonValue> =>
-    Schema.Union(
-      Schema.String,
-      Schema.JsonNumber,
-      Schema.Boolean,
-      Schema.Null,
-      Schema.Record({ key: Schema.String, value: JsonValue }),
-      Schema.Array(JsonValue)
-    )
+const JsonValue: Schema.Schema<JsonValue> = Schema.suspend((): Schema.Schema<JsonValue> =>
+  Schema.Union(
+    Schema.String,
+    Schema.JsonNumber,
+    Schema.Boolean,
+    Schema.Null,
+    Schema.Record({ key: Schema.String, value: JsonValue }),
+    Schema.Array(JsonValue)
+  )
 ).annotations({
   identifier: 'JsonValue',
   description:

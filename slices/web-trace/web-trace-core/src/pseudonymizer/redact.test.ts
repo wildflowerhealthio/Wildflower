@@ -464,9 +464,9 @@ describe('the enum carve-out', () => {
               return value
             }),
         }
-        for (const exchange of session) {
-          await Effect.runPromise(mapExchangeLeaves(exchange, checking))
-        }
+        await Effect.runPromise(
+          Effect.forEach(session, (exchange) => mapExchangeLeaves(exchange, checking))
+        )
         expect(offenders).toEqual([])
       }),
       { numRuns: numRunsFor({ base: 40 }) }
@@ -749,9 +749,9 @@ describe('the namespace-URI carve-out', () => {
               return value
             }),
         }
-        for (const exchange of session) {
-          await Effect.runPromise(mapExchangeLeaves(exchange, checking))
-        }
+        await Effect.runPromise(
+          Effect.forEach(session, (exchange) => mapExchangeLeaves(exchange, checking))
+        )
         expect(offenders).toEqual([])
       }),
       { numRuns: numRunsFor({ base: 40 }) }

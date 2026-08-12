@@ -142,17 +142,14 @@ const useSyncRunner = ({ onError, idleTimeout }: SyncRunnerInput = {}): SyncRunn
 
   const state: RunnerState = Match.value(mutation).pipe(
     Match.when({ status: 'error' }, ({ error }): RunnerState => ({ _tag: 'errored', error })),
-    Match.when(
-      { status: 'pending' },
-      (): RunnerState => (failed.length > 0 ? { _tag: 'partial', failed } : { _tag: 'running' })
+    Match.when({ status: 'pending' }, (): RunnerState =>
+      failed.length > 0 ? { _tag: 'partial', failed } : { _tag: 'running' }
     ),
-    Match.when(
-      { status: 'success', data: { cancelled: true } },
-      (): RunnerState => ({ _tag: 'idle' })
-    ),
-    Match.when(
-      { status: 'success' },
-      (): RunnerState => (failed.length > 0 ? { _tag: 'partial', failed } : { _tag: 'done' })
+    Match.when({ status: 'success', data: { cancelled: true } }, (): RunnerState => ({
+      _tag: 'idle',
+    })),
+    Match.when({ status: 'success' }, (): RunnerState =>
+      failed.length > 0 ? { _tag: 'partial', failed } : { _tag: 'done' }
     ),
     Match.orElse((): RunnerState => ({ _tag: 'idle' }))
   )

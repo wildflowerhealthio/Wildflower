@@ -42,7 +42,11 @@ const registerShutdownHandlers = (provider: NodeTracerProvider, sentryOn: boolea
       await Sentry.close(2000).catch(() => undefined)
     }
   }
-  const handler = (): void => void shutdown()
+  // Fire-and-forget: the process is already being torn down, so there is
+  // nothing left to await on.
+  const handler = (): void => {
+    shutdown().catch(() => undefined)
+  }
   process.on('SIGTERM', handler)
   process.on('SIGINT', handler)
 }
