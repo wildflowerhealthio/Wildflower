@@ -19,10 +19,9 @@ import type { ReplayResponse } from './replay-entities.ts'
  * polices, so a new kind of collector needs no change here. Keep the values
  * spread out enough to insert between.
  *
- * `claims` must be pure and total: it is called with the whole response set
- * (it may sample or scan as it likes) and answers yes or no. It sees the same
- * structural {@link ReplayResponse}s the replay runner does, so a recognizer
- * and the entities it speaks for read the same evidence.
+ * `claims` must be pure and total, and sees the same structural
+ * {@link ReplayResponse}s the replay runner does — a recognizer and the
+ * entities it speaks for read the same evidence.
  *
  * The interface is open by design — the resolver is generic in it, so a caller
  * carries its own payload (the collector descriptor, a plan factory) on the

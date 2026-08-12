@@ -8,19 +8,16 @@ import { Response } from '../model/index.ts'
  * {@link Response.RemoteResponse} carries, with the body already in hand.
  *
  * @remarks
- * The shape matches what a HAR reader produces (`web-trace-core`'s
- * `ParsedHarEntry`) *by shape only*: this package names no archive format and
- * depends on nothing that does, so a caller that reads its responses from
- * somewhere else (a fixture, a proxy log, a future capture format) feeds the
- * runner just as well.
+ * A HAR reader's parsed entry lines up with this *by shape only*: this package
+ * names no archive format and depends on nothing that does, so a fixture, a
+ * proxy log, or a future capture format feeds the runner just as well.
  *
- * `bodyAbsent` is the archive's "the body was not captured" flag — distinct
- * from a genuinely empty body, which is `body: new Uint8Array()` with
- * `bodyAbsent: false`. A HAR entry can record the exchange while omitting its
- * content (`content.text` absent, a `_transferSize`-only entry, a body the
- * exporter dropped for size), and decoding that as an empty payload would
- * manufacture a parse failure for a response that was never in evidence — so
- * {@link replayEntities} reports it as its own outcome instead.
+ * `bodyAbsent` is the source's "the body was not captured" flag — distinct
+ * from a genuinely empty body (`body: new Uint8Array()`, `bodyAbsent: false`).
+ * An archive can record an exchange while omitting its content, and decoding
+ * that as an empty payload would manufacture a parse failure for a response
+ * that was never in evidence — so {@link replayEntities} reports it as its own
+ * outcome instead.
  */
 interface ReplayResponse {
   readonly id: string
@@ -89,11 +86,9 @@ interface ReplayOutcome<TResources> {
  * `followUpSteps`.
  *
  * @remarks
- * Follow-up generation drives *navigation* — there is nothing offline to
- * navigate, and the archive already contains whatever the live run's
- * generated steps fetched. Ignoring it silently would let a plan behave
- * differently here than it reads, so the ignore is announced once at the top
- * of the fold rather than buried in a per-response branch.
+ * Generation drives *navigation*, and there is nothing offline to navigate.
+ * Announced once at the top of the fold rather than ignored silently: a plan
+ * that reads as if it crawls must not quietly not crawl.
  */
 const warnIgnoredFollowUpSteps = <TResources>(
   entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[]
