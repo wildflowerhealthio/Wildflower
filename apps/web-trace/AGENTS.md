@@ -10,7 +10,16 @@ What is _not_ shared with it is the auth wiring below.
 
 ## Why this app has a router and a bearer token
 
-Two facts about a self-hosted app drive everything in `smart-runtime.ts`:
+The wiring itself is **not this app's** — it lives in
+[`fhir-r4-react/smart`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.ts),
+because every self-hosted SMART app needs the same thing and this app was only
+the first. `app.tsx` imports `buildSmartRouterContext` from there directly —
+there is no local re-export to edit, deliberately, so a change to the behaviour
+has to be made in the one place that owns it. The guardrail listing the three
+properties that must survive is in
+[slices/emr/AGENTS.md](../../slices/emr/AGENTS.md).
+
+Two facts about a self-hosted app drive everything in that runtime:
 
 - **It is served from its own origin** (`http://127.0.0.1:8091/` on device, a
   tunnel subdomain through the front) — not the API's. The typed FHIR client
@@ -30,24 +39,18 @@ package growing a second, prop-threaded way in.
 
 ## Traps
 
-- **`iss` is `{origin}/fhir-r4` and the typed client already prefixes
-  `/fhir-r4`.** Prepending `iss` verbatim gives `{origin}/fhir-r4/fhir-r4/…`.
-  `apiBaseUrlFromIss` is the single place the two halves are reconciled, and it
-  **raises** on an `iss` that does not carry the prefix rather than falling back
-  to an origin — a guessed prefix sends every request somewhere plausible and
-  wrong, surfacing as an unexplained 404.
+- **Three of the traps that used to be listed here are the shared runtime's
+  now** — the `iss`-prefix reconciliation that **raises** rather than guessing,
+  the bearer token that rides only the requests the layer addressed, and the
+  transport staying a parameter. They are unchanged, but they are enforced in
+  `fhir-r4-react/smart`; the guardrail that spells all three out is in
+  [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md). What is still this app's is
+  that `app.tsx` names the real transport, and `app.test.tsx` pins what goes on
+  the wire end to end.
 - **The history is a memory history.** This page is the OAuth redirect target,
   so its real URL carries `?code=…&state=…`. A browser history would try to
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
-- **The bearer token rides only the requests the layer addressed.** An
-  already-absolute URL is passed through untouched _and_ uncredentialed: the
-  SMART token was granted for the FHIR server the handshake named, so it must
-  never leave for an origin the session did not name.
-- **The transport is a parameter, not a baked-in `FetchHttpClient.layer`.** That
-  is what lets `app.test.tsx` drive the whole tree — router, query, typed client,
-  codec — over a stub and assert what actually went on the wire. `app.tsx` is the
-  one place the real transport is named.
 - **Plain `FetchHttpClient.layer`, not `telemetry-react`'s
   `webHttpClientLayer`.** The app is registered `local_only = 1`, and the
   telemetry layer's OTLP exporter is exactly the kind of outbound request that
@@ -109,9 +112,11 @@ above `MIN_UPLOAD_PORT` (8082) so shipping it does not consume a low upload port
 
 ## Testing
 
-- `smart-runtime.test.ts` — the auth wiring in isolation: prefix derivation
-  (including the raise), the relative/absolute split, and that an absent token
-  sets no header rather than a `Bearer` with nothing after it.
+- The auth wiring in isolation — prefix derivation (including the raise), the
+  relative/absolute split, and that an absent token sets no header rather than a
+  `Bearer` with nothing after it — is
+  [`fhir-r4-react`'s `self-hosted-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.test.ts),
+  moved there with the code it covers.
 - `app.test.tsx` — the whole tree over a stub transport. It asserts the URL and
   the `Authorization` header that actually went on the wire, so the two
   self-hosted-origin facts above are pinned rather than assumed. It also walks
@@ -127,6 +132,9 @@ Body decoding and header-row keying are the slice's tests now, in
 
 ## References
 
+- [emr slice AGENTS.md](../../slices/emr/AGENTS.md) — the shared self-hosted
+  SMART runtime this app imports (`fhir-r4-react/smart`), and the three
+  auth-critical properties it must keep.
 - [web-trace-react AGENTS.md](../../slices/web-trace/web-trace-react/AGENTS.md) —
   the viewer this app mounts, and its traps.
 - [web-trace slice AGENTS.md](../../slices/web-trace/AGENTS.md) — the

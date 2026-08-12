@@ -1,19 +1,18 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
 import { Duration, Effect, Layer, pipe } from 'effect'
-import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { FhirResourcesApiPrefix } from 'fhir-r4/http-api-definition'
 
-/**
- * The router context `web-trace-react` reads through — this app's instantiation
- * of the shared shape, narrowed to the one slice client it needs.
- */
-type RouterContext = FhirR4ResourcesRouterContext.RouterContext
-type RunAuthed = FhirR4ResourcesRouterContext.RunAuthed
-type RuntimeLayer = FhirR4ResourcesRouterContext.RuntimeLayer
+import {
+  sliceRuntimeLayer,
+  type RouterContext,
+  type RunAuthed,
+  type RuntimeLayer,
+} from '../router-context.ts'
 
 /**
- * The SMART handshake resolved to the two facts this app's HTTP layer needs.
+ * The SMART handshake resolved to the two facts a self-hosted app's HTTP layer
+ * needs.
  *
  * @remarks
  * Deliberately not a `fhirclient` `Client`: keeping the seam to primitives means
@@ -28,7 +27,7 @@ interface SmartSession {
 }
 
 /**
- * The `iss` did not name a FHIR base this app's typed client can address.
+ * The `iss` did not name a FHIR base the typed client can address.
  *
  * @remarks
  * Thrown rather than papered over. The typed client's own paths already carry
@@ -143,8 +142,8 @@ const smartHttpClientLayer = (
  *
  * `awaitAuthReady` resolves immediately: the shared shape carries it for host
  * apps whose route guards wait on a token that arrives asynchronously, and by
- * the time this runs the handshake is already complete. `web-trace-react` reads
- * only `runAuthed`, but the context has to be a faithful
+ * the time this runs the handshake is already complete. A consumer typically
+ * reads only `runAuthed`, but the context has to be a faithful
  * `RouterContextWith<FhirR4ResourcesHttpApiClient>` for its `useRouteContext`
  * select to type.
  *
@@ -162,14 +161,15 @@ const buildSmartRouterContext = (
   transport: Layer.Layer<HttpClient.HttpClient>
 ): RouterContext => {
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(
-    FhirR4ResourcesRouterContext.sliceRuntimeLayer,
+    sliceRuntimeLayer,
     smartHttpClientLayer(session, transport)
   )
   const runAuthed: RunAuthed = (effect, options) =>
     Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
   return {
-    // In-memory only, no persister: a trace body is the rawest data on the
-    // device, and this app is the surface that reads it.
+    // In-memory only, no persister: what a self-hosted app reads is the data
+    // already on the device, and the app is the surface that reads it — a
+    // second on-disk copy of it, outside the store, buys nothing.
     queryClient: new QueryClient({
       defaultOptions: {
         queries: {
@@ -190,8 +190,5 @@ export {
   buildSmartRouterContext,
   smartHttpClientLayer,
   UnexpectedFhirBase,
-  type RouterContext,
-  type RunAuthed,
-  type RuntimeLayer,
   type SmartSession,
 }
