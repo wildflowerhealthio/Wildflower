@@ -136,8 +136,23 @@ const UCUM_MILLISECOND_CODE = 'ms'
  */
 const BODY_SKIPPED_REASON_EXTENSION = `${WEB_TRACE_EXTENSION_BASE}/web-trace-body-skipped` as const
 
+/**
+ * `DocumentReference.type` **and** `.category` code — this resource is a whole
+ * `.har` file, stored as an attachment.
+ *
+ * @remarks
+ * One code on both axes, unlike a trace, which spells the kind
+ * ({@link WEB_REQUEST_TRACE_CODE}) separately from the axis a browser filters
+ * on ({@link WEB_TRACE_CATEGORY_CODE}). An archive is its own category on
+ * purpose: **the two document kinds must stay disjoint**, so the viewer's
+ * category search never returns an archive and the importer's archive list
+ * never returns a trace.
+ */
+const HAR_ARCHIVE_CODE = 'har-archive'
+
 export {
   BODY_SKIPPED_REASON_EXTENSION,
+  HAR_ARCHIVE_CODE,
   RESPONSE_HEADER_EXTENSION,
   RESPONSE_HEADER_NAME_EXTENSION,
   RESPONSE_HEADER_VALUE_EXTENSION,

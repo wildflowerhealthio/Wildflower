@@ -24,6 +24,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`src/codec/`** — `TraceExchange` ⇄ FHIR R4 `DocumentReference`.
   `systems.ts` holds the private systems and extension URLs;
   `fhir-duration.ts` is the `Duration` ⇄ FHIR `Duration` unit conversion.
+  `har-archive-codec.ts` is the _second_, deliberately disjoint encoding:
+  a whole uploaded `.har` file as one attachment (`HarArchive`), for the
+  importer to read back and parse.
 - **`src/capture/`** — the capture-side primitives both consumers share:
   the content-type rule, the SHA-256 every body carries, and `storeBodyVerbatim`.
   Policy is _not_ here — see the trap below.
@@ -156,6 +159,24 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   artifacts that happen to contain PHI; an unset `subject` keeps them out of
   `Patient/$everything` and out of clinical exports. They stay reachable by
   `category` search — `isWebTrace` is the one place that predicate is spelled out.
+  The same holds for a HAR archive, for the same reason.
+- **Traces and HAR archives share a code system and nothing else, and the
+  disjointness is load-bearing.** A trace is one exchange this system captured;
+  a `har-archive` document is an opaque `.har` file someone uploaded. They sit
+  on the same `category` axis under different codes, so `isWebTrace` and
+  `isHarArchive` never both hold and each decoder rejects the other's documents
+  rather than reading nonsense out of them — the viewer must never list an
+  archive, and the importer's server list must never list a trace. A property
+  over both generated corpora fails if that ever stops being true.
+- **The archive codec stores bytes, never text, and does not parse HAR.** A
+  `HarArchive.bytes` is base64 of the file exactly as uploaded, so a truncated or
+  mis-encoded upload is preserved rather than mangled and the attachment `hash`
+  means something. Reading the archive's contents is the importer's parser's job.
+- **Every upload is a fresh document.** The id is a uuid the caller mints, not a
+  derivation over the bytes — the same file twice is two documents on purpose.
+  Dedupe stays _detectable_ through `hash`/`size` without being forced, which is
+  the opposite of a trace, whose id **is** its `(sessionId, requestId)` identity
+  so a retried write upserts.
 - **The `-core` layer talks to `globalThis.crypto.subtle`, not `node:crypto`.**
   That is what keeps the pure layer platform-free, and it is why the
   pseudonymizer is `Effect`-returning: Web Crypto has no synchronous digest.
