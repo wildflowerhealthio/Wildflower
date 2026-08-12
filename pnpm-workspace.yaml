@@ -82,7 +82,7 @@ catalog:
   har-schema: ^2.0.0
   jose: ^6.2.8
   jsdom: ^30.0.1
-  nanoid: ^6.0.0
+  nanoid: ^6.0.1
   qrcode-generator: 2.0.4
   react: 19.2.8
   react-dom: 19.2.8
