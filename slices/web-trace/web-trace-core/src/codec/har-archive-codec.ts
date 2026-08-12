@@ -97,11 +97,10 @@ const decodeArchive = ParseResult.decodeUnknown(HarArchive)
  * @returns The wire-format resource, ready to decode or to write
  *
  * @remarks
- * The hash is a parameter rather than something computed here because Web
- * Crypto's digest is `Promise`-returning and this builder is not: the schema's
- * encode direction computes it and hands it in. Passing a digest of anything
- * other than these bytes would make the resource lie about its own content —
- * {@link HarArchiveFromDocumentReference} is the only caller that should exist.
+ * The hash is a parameter because Web Crypto's digest is `Promise`-returning and
+ * this builder is not — {@link HarArchiveFromDocumentReference} computes it and
+ * hands it in, and is the only caller that should exist. A digest of anything
+ * but these bytes would make the resource lie about its own content.
  *
  * `subject` is deliberately absent, for the same reason it is on a trace: an
  * archive is an engineering artifact that happens to contain PHI, and leaving
@@ -154,13 +153,10 @@ const hasArchiveCoding = (concept: FhirR4.CodeableConcept | undefined): boolean 
  * here.
  *
  * The coding is checked first and is not negotiable: without it a trace resource
- * would decode as an archive whose "HAR file" is one response body. Disjointness
- * is the whole point of the separate code.
+ * would decode as an archive whose "HAR file" is one response body.
  *
- * The bytes are taken as they are. `hash` and `size` are written from the same
- * bytes on encode and are left for a reader that wants to dedupe or verify;
- * re-digesting a multi-megabyte file on every read would buy nothing this
- * package needs.
+ * The bytes are taken as they are — `hash` and `size` are a reader's dedupe
+ * signal, not a checksum this decode re-derives over a multi-megabyte file.
  */
 const readEncodedArchive = (
   wire: FhirR4.DocumentReference
