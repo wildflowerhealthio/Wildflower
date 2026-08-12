@@ -117,9 +117,8 @@ describe('Scope.scopeParse — total parse (mirrors Rust Scope)', () => {
         fc.constantFrom('Observation', 'Patient', '*'),
         fhirPermission
       )
-      .map(
-        ([ctx, name, a]): Scope.Base =>
-          a instanceof Scope.Permission.ReadWrite ? fhirV1(ctx, name, a) : fhirV2(ctx, name, a)
+      .map(([ctx, name, a]): Scope.Base =>
+        a instanceof Scope.Permission.ReadWrite ? fhirV1(ctx, name, a) : fhirV2(ctx, name, a)
       )
     const wfArb = fc
       .tuple(fc.constantFrom<Scope.ResourceType.Wildflower.Resource>('Grant', 'Client'), crudsArb)

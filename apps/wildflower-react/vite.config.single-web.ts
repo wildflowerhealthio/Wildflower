@@ -33,6 +33,6 @@ export default defineConfig({
   plugins: [...(baseConfig.plugins ?? []), viteSingleFile(), emitHtmlAsModule()],
   build: {
     outDir: 'dist-single-web',
-    rollupOptions: { input: 'index-single-web.html' },
+    rolldownOptions: { input: 'index-single-web.html' },
   },
 })

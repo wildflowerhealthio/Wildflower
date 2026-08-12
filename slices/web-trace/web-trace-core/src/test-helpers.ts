@@ -193,24 +193,22 @@ const arbitraries = (
   })).node
 
   const body: FastCheck.Arbitrary<TraceBody> = fc.oneof(
-    jsonBodyValue.map(
-      (value): TraceBody => ({
-        _tag: 'StoredBody',
-        contentType: 'application/json',
-        data: jsonBody(value),
-        size: JSON.stringify(value).length,
-        hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
-      })
-    ),
-    fc.tuple(fc.constantFrom('text/html', 'image/png'), fc.integer({ min: 0, max: 1_000_000 })).map(
-      ([contentType, size]): TraceBody => ({
+    jsonBodyValue.map((value): TraceBody => ({
+      _tag: 'StoredBody',
+      contentType: 'application/json',
+      data: jsonBody(value),
+      size: JSON.stringify(value).length,
+      hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+    })),
+    fc
+      .tuple(fc.constantFrom('text/html', 'image/png'), fc.integer({ min: 0, max: 1_000_000 }))
+      .map(([contentType, size]): TraceBody => ({
         _tag: 'SkippedBody',
         contentType,
         size,
         hash: 'A49bTU9YfPy0AjKGWZlIY4S0RvOKrCNjHYnCTLTPQGA=',
         reason: 'Content type outside the allowlist',
-      })
-    )
+      }))
   )
 
   // Whole microseconds: the resolution a capture actually measures at, and the
