@@ -2,12 +2,12 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { Effect, Layer } from 'effect'
+import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 import { traceExchangeToWire } from 'web-trace-core/codec'
 import { traceExchange } from 'web-trace-core/test-helpers'
 
 import { TraceApp } from './app.tsx'
-import { buildSmartRouterContext } from './smart-runtime.ts'
 
 /**
  * The app's own wiring, end to end: its router context satisfies

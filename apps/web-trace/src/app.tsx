@@ -7,14 +7,20 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { readySmartClient } from 'fhir-r4-react/smart'
+import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
+import { buildSmartRouterContext, readySmartClient } from 'fhir-r4-react/smart'
 import { useId, useEffect, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageLoading } from 'react-tundraish'
 import { DocumentsPanel, RecordingsPanel } from 'web-trace-react'
 
-import { buildSmartRouterContext, type RouterContext } from './smart-runtime.ts'
 import styles from './app.module.css'
+
+/**
+ * The router context `web-trace-react` reads through — this app's instantiation
+ * of the shared shape, narrowed to the one slice client it needs.
+ */
+type RouterContext = FhirR4ResourcesRouterContext.RouterContext
 
 /** Which of the viewer's two panels is showing. */
 type ViewerTab = 'recordings' | 'documents'

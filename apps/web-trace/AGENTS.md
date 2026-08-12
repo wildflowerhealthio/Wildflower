@@ -13,9 +13,10 @@ What is _not_ shared with it is the auth wiring below.
 The wiring itself is **not this app's** — it lives in
 [`fhir-r4-react/smart`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.ts),
 because every self-hosted SMART app needs the same thing and this app was only
-the first. `src/smart-runtime.ts` is a re-export, so the import sites here read
-the way they did when the code lived in them. Change the behaviour there, not
-here; the guardrail listing the three properties that must survive is in
+the first. `app.tsx` imports `buildSmartRouterContext` from there directly —
+there is no local re-export to edit, deliberately, so a change to the behaviour
+has to be made in the one place that owns it. The guardrail listing the three
+properties that must survive is in
 [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md).
 
 Two facts about a self-hosted app drive everything in that runtime:
@@ -132,7 +133,7 @@ Body decoding and header-row keying are the slice's tests now, in
 ## References
 
 - [emr slice AGENTS.md](../../slices/emr/AGENTS.md) — the shared self-hosted
-  SMART runtime this app's `smart-runtime.ts` re-exports, and the three
+  SMART runtime this app imports (`fhir-r4-react/smart`), and the three
   auth-critical properties it must keep.
 - [web-trace-react AGENTS.md](../../slices/web-trace/web-trace-react/AGENTS.md) —
   the viewer this app mounts, and its traps.
