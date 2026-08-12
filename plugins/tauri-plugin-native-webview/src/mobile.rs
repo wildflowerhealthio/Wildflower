@@ -72,12 +72,12 @@ impl<R: Runtime> NativeWebview<R> {
     /// navigate it to `payload.url` by invoking the Swift/Kotlin `openUrl` command.
     /// Does not change visibility — call [`show`](Self::show) to present.
     ///
-    /// Validates the URL up front via [`crate::url_scheme::parse_http_url`] so
-    /// every backend rejects a non-http(s) URL identically: the Android native
-    /// side otherwise hands an unvalidated string straight to `WebView.loadUrl`
-    /// and still resolves `opened: true`.
+    /// Validates the URL up front via [`crate::url_scheme::parse_target`] so
+    /// every backend accepts `about:blank` and rejects any other non-http(s) URL
+    /// identically: the Android native side otherwise hands an unvalidated string
+    /// straight to `WebView.loadUrl` and still resolves `opened: true`.
     pub fn open_url(&self, id: &str, payload: OpenRequest) -> crate::Result<()> {
-        crate::url_scheme::parse_http_url(&payload.url)?;
+        crate::url_scheme::parse_target(&payload.url)?;
         self.0
             .run_mobile_plugin::<OpenResponse>("openUrl", WithId { id, inner: payload })
             .map_err(|error| crate::Error::PluginInvoke(error.to_string()))?;

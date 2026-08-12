@@ -39,6 +39,79 @@ import { settleForkedWork } from './collector-bridge-message-handler.test-helper
  * `queue drained (Drained) ∧ NoMoreResultsExpected`.
  */
 describe('automatic-navigation.make', () => {
+  describe('start-up kick (Start)', () => {
+    it('should dispatch the leading Open on Start alone — no PageLoaded needed', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
+
+          // The composition fires `handleStart` right after asking the host to
+          // mount the sniffer. The leading `Open` is a navigation, so it drains
+          // with no page in hand and the run rests on the following hold — the
+          // machine never depends on `about:blank` producing a first settle.
+          yield* machine.handleStart
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should proceed past the parked hold on the awaited settled load after a Start', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
+
+          yield* machine.handleStart
+          // The real awaited page settles → the hold releases → linkB dispatches.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/gate'))
+          expect(dispatched(sendMessage)).toEqual([linkA.action, linkB.action])
+        })
+      ))
+
+    it('should make the sniffer’s own first PageLoaded inert once Start kicked off (no double dispatch)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
+
+          yield* machine.handleStart
+          // The `about:blank` mount later settles; that first `PageLoaded` (and a
+          // duplicate `Start`) must not re-run the leading `Open` — the machine
+          // has already left `AwaitingPageLoaded`.
+          yield* machine.handlePageLoaded(pageLoaded('about:blank'))
+          yield* machine.handleStart
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should treat Start as a no-op when the first PageLoaded already kicked off (order-independent)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
+
+          // The mount settled before the composition's `Start` landed: the first
+          // settled load drains the leading `Open`, and the later `Start` adds
+          // nothing (whichever trigger wins, the other is inert).
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
+          yield* machine.handleStart
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+  })
+
   describe('navigation dispatch', () => {
     it('should drain consecutive navigations on the first settled load, with no settle delay', () =>
       run(

@@ -45,10 +45,14 @@ import * as State from './state.ts'
  * merely *arrived* — the early `PageRequested` fired at `DOMContentLoaded` — or
  * a matching settled `PageLoaded`, which implies arrival), and
  * `AwaitUserDismiss` (park until the user closes the sniffer webview).
- * `AwaitingPageLoaded` is therefore a *start-up-only* resting state: the
- * machine waits there for the first settled page load, then drains the queue
- * (a `PageRequested` never starts the start-up drain — a plan's first steps may
- * act on a DOM that is still loading).
+ * `AwaitingPageLoaded` is therefore a *start-up-only* resting state, left by
+ * whichever comes first of two triggers: the composition's one-shot `Start`
+ * command (injected right after the sniffer mount) or the first settled
+ * `PageLoaded`. Both drain the queue — the leading step is an `Open`, a
+ * navigation that needs no page in hand — so `Start` is what stops a mount whose
+ * first page never settles from stranding the run here (this state arms no
+ * timer). A `PageRequested` never starts the start-up drain — a plan's first
+ * steps may act on a DOM that is still loading.
  *
  * Note the asymmetry in how the two *timed-out* holds end: an `AwaitPageSettled`
  * (or `AwaitPageRequested`) that times out **aborts** the run by default, because
@@ -63,6 +67,7 @@ import * as State from './state.ts'
  *
  * Transition table (see [Handler Explanation](../../../docs/Handler%20Explanation.md)):
  * ```text
+ *   AwaitingPageLoaded(q) ─Start→ drain(q, ⊥)                          (start-up kick: no page needed; races the first PageLoaded)
  *   AwaitingPageLoaded(q) ─PageLoaded→ drain(q, url)                    (start-up: first settled load)
  *   DelayPending(q)       ─PageLoaded→ DelayPending(q)                  (no re-arm)
  *   DelayPending(q)       ─DelayTimerFired (gen match)→ drain(q, ⊥)
@@ -80,6 +85,7 @@ import * as State from './state.ts'
  *   <active>              ─StepsGenerated→ append to queue              (otherwise unchanged)
  *   <not Drained>         ─NoMoreResultsExpected→ no-op
  *   <not parked>          ─UserDismissed / SnifferDisposed→ no-op       (silent: both also occur at teardown)
+ *   <not AwaitingPageLoaded>─Start→ no-op                              (the start-up kick already happened)
  *   Done                  ─PageLoaded / StepsGenerated→ WARN-drop
  *   any                   ─Stop→ AwaitingPageLoaded(initialQueue)       (interrupt any pending timer)
  * ```
@@ -226,6 +232,19 @@ const drainFrom = (
   return [next, [nameEffect, dispatchNavigation(head.action), ...effects]]
 }
 
+// The runner's one-shot start-up kick, injected at run start. Drains the queue
+// with no page in hand — the leading step is an `Open` (a navigation) that
+// builds the sniffer webview directly on the real target URL, so start-up needs
+// no settled page — which is what stops a sniffer whose first page never settles
+// (its web content process dies, say) from stranding the run in the timer-less
+// `AwaitingPageLoaded`. A no-op in every other state: it races the sniffer's own
+// first `PageLoaded`, and whichever lands first drains (the drain leaves
+// `AwaitingPageLoaded`, so the loser is inert here).
+const onStart = (state: State.StepState, drainedGuardTimeoutMs: number): Transition =>
+  state._tag === 'AwaitingPageLoaded'
+    ? drainFrom(state.queue, undefined, state.generation, drainedGuardTimeoutMs)
+    : [state, []]
+
 const onPageLoaded = (
   state: State.StepState,
   url: string,
@@ -233,7 +252,8 @@ const onPageLoaded = (
 ): Transition =>
   Match.value(state).pipe(
     Match.withReturnType<Transition>(),
-    // Start-up: the first settled page load kicks off draining the queue.
+    // Start-up: the first settled page load kicks off draining the queue (unless
+    // `Start` already did — then this state is left and the load lands below).
     Match.tag('AwaitingPageLoaded', (s) =>
       drainFrom(s.queue, { url, settled: true }, s.generation, drainedGuardTimeoutMs)
     ),
@@ -549,6 +569,7 @@ const transition =
   (state: State.StepState, message: InputMessage): Transition =>
     Match.value(message).pipe(
       Match.withReturnType<Transition>(),
+      Match.tag('Start', () => onStart(state, drainedGuardTimeoutMs)),
       Match.tag('PageLoaded', (m) => onPageLoaded(state, m.url, drainedGuardTimeoutMs)),
       Match.tag('PageRequested', (m) => onPageRequested(state, m.url, drainedGuardTimeoutMs)),
       Match.tag('DelayTimerFired', (m) =>

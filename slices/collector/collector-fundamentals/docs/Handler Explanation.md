@@ -283,7 +283,8 @@ identity is **owner of a step queue** (seeded from `stepSequence`, grown by
 | Transition           | transition.ts           | pure `(state, input) → [state, effects]`       |
 | Runtime              | make.ts                 | serialized dispatch + timer registry           |
 
-The inputs are `PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
+The inputs are `Start` (the composition's one-shot start-up kick),
+`PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
 `UserDismissTimeoutFired`, `StepsGenerated`, `NoMoreResultsExpected`,
 `UserDismissed`, `SnifferDisposed`, and `PageRequested` (the sniffer's early
 page-arrival notification, fired at `DOMContentLoaded` before settlement); the
@@ -295,17 +296,26 @@ closure — it names `SetStepName` / `DispatchNavigation` /
 `CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the runtime to
 discharge.
 
-The host mounts the sniffer webview on `about:blank`, whose near-instant settle
-is the first `PageLoaded` — so on that first load the machine begins draining the
-queue front-to-back (the plan's first step is therefore an `Open` to the real
-starting page). It keeps draining as far as it can each turn: a `Navigation`
+The machine begins draining the queue front-to-back, and the plan's first step is
+an `Open` that builds the sniffer webview directly on the real starting page —
+there is no separate `about:blank` mount. Two triggers leave the start-up state,
+whichever comes first: the runner fires a one-shot `Start` at run start (in
+`collector-react`'s `sync-run.ts`, right after registering the handler), and the
+sniffer's own first `PageLoaded` arrives once that first page settles. `Start` is
+what makes the run robust — the leading `Open` is a navigation that needs no page
+in hand, so the drain need not wait for a first settle that may never come (if
+the sniffer's web content process terminates before its first page settles,
+`AwaitingPageLoaded` arms no timer, so without `Start` the run would hang there
+indefinitely). Whichever trigger wins, the other is inert (the drain has already
+left `AwaitingPageLoaded`). It keeps draining as
+far as it can each turn: a `Navigation`
 **dispatches its `action` and immediately advances** (a `Fill` / `Click` / `Open`
 never waits for a `PageLoaded`, so consecutive navigations dispatch back-to-back),
 a `Delay` arms a timer for its `duration` and rests, an `AwaitPageSettled` parks
 until a settled `PageLoaded` matches its `pattern` (or, when it carries **no**
 `pattern`, until the _next_ settled load arrives — never satisfied by the page in
-hand, so it skips the `about:blank` mount and the prior page; or aborts on its
-`timeout`) — resuming the drain from the tail on a match — an `AwaitPageRequested`
+hand, so it skips the prior page and holds for the freshly-opened one; or aborts
+on its `timeout`) — resuming the drain from the tail on a match — an `AwaitPageRequested`
 parks the same way but
 is released by a matching early `PageRequested` arrival _or_ a matching settled
 `PageLoaded` (settled implies arrived; the converse does not hold — a mere
@@ -397,17 +407,29 @@ bumps or abandons the generation, so the superseded daemon's fire is
 dropped. This is the schema-free replacement for a fiber-identity check.
 A `CancelTimer` effect additionally interrupts the registered fiber (a
 `Ref<HashMap<generation, Fiber>>`) to save the wasted sleep, but the
-generation guard alone is what makes the machine correct.
+generation guard alone is what makes the machine correct — which is why it
+interrupts **fire-and-forget** (`Fiber.interruptFork`), never awaiting the
+fiber's exit (see the next section).
 
-### Why `dispatch` is not `uninterruptible`
+### Why `CancelTimer` interrupts fire-and-forget
 
-The `SynchronizedRef` lock already makes a transition and its `sendMessage`
-atomic, and a timer daemon removes itself from the registry _before_
-re-dispatching, so no `CancelTimer` can interrupt an in-flight commit.
-Wrapping the dispatch body in `Effect.uninterruptible` is therefore both
-unnecessary and actively harmful: `stopAutomaticNavigation` calls
-`Fiber.interrupt` on a timer fiber _while holding the lock_, and an
-uninterruptible region there deadlocks. Its absence is deliberate.
+`CancelTimer` runs inside the dispatch's `SynchronizedRef` lock, so it must
+**not** await the fiber it interrupts — `Fiber.interruptFork`, never
+`Fiber.interrupt`. Awaiting deadlocks the machine: the timer being cancelled may
+be blocked acquiring that _same_ lock (a timer that fired just as its hold was
+released), or its `withSpan` finalizer may not settle promptly while the lock is
+held — so the dispatch waits for the timer to exit while the timer waits for the
+dispatch to release the lock. `interruptFork` sends the interrupt and returns;
+the generation guard already makes any late `*Fired` a no-op, so the fiber
+needn't be gone before the transition commits.
+
+The dispatch body is likewise **not** wrapped in `Effect.uninterruptible`. The
+`SynchronizedRef` lock already makes a transition and its `sendMessage` atomic,
+and a timer daemon removes itself from the registry _before_ re-dispatching, so
+no `CancelTimer` can interrupt an in-flight commit — an uninterruptible region is
+unnecessary. It would also be harmful: `stopAutomaticNavigation` and every hold
+release interrupt timer fibers while holding the lock, which is a second way an
+uninterruptible region there would deadlock. Its absence is deliberate.
 
 ## See also
 

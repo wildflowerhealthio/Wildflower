@@ -50,7 +50,8 @@ const ABSOLUTE_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// The transient `about:blank` a cookie-seeding open builds at before
 /// navigating to the real target (see [`present`]).
 pub(super) fn blank_url() -> crate::Result<Url> {
-    Url::parse("about:blank").map_err(|error| crate::Error::Internal(error.to_string()))
+    Url::parse(crate::url_scheme::BLANK_URL)
+        .map_err(|error| crate::Error::Internal(error.to_string()))
 }
 
 /// Claim the next [`super::state::InstanceState::open_generation`] for instance
@@ -250,7 +251,7 @@ pub(super) fn present<R: Runtime>(
         // A cookie-seeding open transits `about:blank` before the real target;
         // that transient load must neither flash in the chrome URL bar nor
         // count as a history entry for the Back-button approximation.
-        if payload.url().as_str() == "about:blank" {
+        if payload.url().as_str() == crate::url_scheme::BLANK_URL {
             return;
         }
         // URL-fallback sync, kept independent of the nav-button bookkeeping below
@@ -473,4 +474,15 @@ fn install_window_listeners<R: Runtime>(app: &AppHandle<R>, id: &str, window: &W
         }
         _ => {}
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn blank_url_parses_to_the_blank_sentinel() {
+        let url = blank_url().expect("about:blank must parse");
+        assert_eq!(url.as_str(), crate::url_scheme::BLANK_URL);
+    }
 }

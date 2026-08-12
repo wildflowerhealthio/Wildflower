@@ -42,6 +42,30 @@ pub(crate) fn parse_http_url(uri: &str) -> crate::Result<Url> {
     }
 }
 
+/// The one non-http(s) navigation target the native webview accepts: the blank
+/// placeholder the sniffer mounts on before its first real `Open`, and the
+/// transient page a cookie-seeding open parks at. Named once here so the sentinel
+/// is not re-spelled at every call site.
+pub(crate) const BLANK_URL: &str = "about:blank";
+
+/// Validate a caller's navigation target and return the parsed [`Url`].
+/// `about:blank` (the [`BLANK_URL`] placeholder — no network, no scheme
+/// validation) is the one non-`http(s)` target accepted; every other target must
+/// be an `http(s)://` URL (see [`parse_http_url`]). Recognising the sentinel here
+/// keeps `about:blank` out of each `open_url` call site.
+///
+/// # Errors
+///
+/// Returns [`crate::Error`] when `uri` is neither `about:blank` nor a parseable
+/// `http(s)` URL.
+pub(crate) fn parse_target(uri: &str) -> crate::Result<Url> {
+    if uri == BLANK_URL {
+        return Url::parse(BLANK_URL)
+            .map_err(|error| scheme_error(format!("invalid blank URL {uri}: {error}")));
+    }
+    parse_http_url(uri)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -75,5 +99,28 @@ mod tests {
     #[test]
     fn rejects_unparseable() {
         assert!(parse_http_url("not a url").is_err());
+    }
+
+    #[test]
+    fn parse_target_accepts_blank_and_http() {
+        assert_eq!(
+            parse_target(BLANK_URL).expect("about:blank should parse").as_str(),
+            BLANK_URL,
+        );
+        assert_eq!(
+            parse_target("https://example.test/page")
+                .expect("https should parse")
+                .as_str(),
+            "https://example.test/page",
+        );
+    }
+
+    #[test]
+    fn parse_target_rejects_other_non_http_schemes() {
+        // `about:blank` is the *only* non-http(s) target accepted — a sibling
+        // `about:` URL or any other scheme still rejects.
+        for uri in ["about:srcdoc", "file:///etc/passwd", "data:text/html,x", "not a url"] {
+            assert!(parse_target(uri).is_err(), "{uri} should have been rejected");
+        }
     }
 }

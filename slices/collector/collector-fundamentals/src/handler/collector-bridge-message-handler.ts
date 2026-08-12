@@ -58,6 +58,16 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
    */
   readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TResources>>
   /**
+   * Start the automatic navigation: dispatch the plan's leading `Open` — which
+   * builds the sniffer webview directly on the real target URL — without waiting
+   * for its first `PageLoaded`. The runner fires this **once**, at run start
+   * (there is no separate `about:blank` mount), so a sniffer whose first page
+   * never settles (its web content process dies, say) can't strand the run in
+   * the automatic navigation's timer-less start-up state. See
+   * {@link AutomaticNavigation.AutomaticNavigation.handleStart}.
+   */
+  readonly startAutomaticNavigation: Effect.Effect<void, never, never>
+  /**
    * Force-close escape: publish every still-incomplete sniffed request as a
    * `Left` failure and close `requestSniffingResults`, so a caller can report a
    * stalled download as a loss instead of hanging. Nothing in the *runner* drives
@@ -262,6 +272,7 @@ const make = <TResources>({
     return {
       incompleteSniffedRequests: tracker.incompleteSniffedRequests,
       requestSniffingResults: lifecycle.requestSniffingResults,
+      startAutomaticNavigation: automaticNavigation.handleStart,
       abandonAllRequestSniffing: lifecycle.abandonAllRequestSniffing,
       cancelAllRequestSniffing: lifecycle.cancelAllRequestSniffing,
       ResponseStart: tracker.handleResponseStart,

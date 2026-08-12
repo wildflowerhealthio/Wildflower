@@ -41,6 +41,16 @@ interface AutomaticNavigation {
    */
   readonly handlePageRequested: Service['PageRequested']
   /**
+   * The one-shot start-up kick, dispatched by the runner at run start (see
+   * {@link CollectorBridgeMessageHandler}). Drains the queue's leading `Open` —
+   * which builds the sniffer webview directly on the real target URL — without
+   * waiting for its first `PageLoaded`, so a sniffer whose first page never
+   * settles (its web content process dies, say) can't strand the run in the
+   * timer-less `AwaitingPageLoaded`. Idempotent against that first `PageLoaded`:
+   * whichever arrives first drains, the other is a no-op.
+   */
+  readonly handleStart: Effect.Effect<void, never, never>
+  /**
    * The external `UserDismissed` signal (the user closed the sniffer webview),
    * forwarded from the host on the `CollectorBridge`. Consumes an
    * `AwaitUserDismiss` hold the machine is parked on and resumes draining; a
@@ -195,6 +205,7 @@ const make = <TResources>({
 
     const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
     const handlePageRequested: Service['PageRequested'] = (event) => dispatch(event)
+    const handleStart: Effect.Effect<void, never, never> = dispatch({ _tag: 'Start' })
     const handleUserDismissed: Service['UserDismissed'] = () => dispatch({ _tag: 'UserDismissed' })
     const handleSnifferDisposed: Service['SnifferDisposed'] = () =>
       dispatch({ _tag: 'SnifferDisposed' })
@@ -209,6 +220,7 @@ const make = <TResources>({
     return {
       handlePageLoaded,
       handlePageRequested,
+      handleStart,
       handleUserDismissed,
       handleSnifferDisposed,
       handleStepsGenerated,

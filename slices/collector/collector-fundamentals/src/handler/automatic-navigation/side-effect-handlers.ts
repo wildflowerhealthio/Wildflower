@@ -196,7 +196,16 @@ const sideEffectHandlers = {
       const registered = HashMap.get(yield* Ref.get(ctx.registry), msg.generation)
       if (Option.isSome(registered)) {
         yield* Ref.update(ctx.registry, HashMap.remove(msg.generation))
-        yield* Fiber.interrupt(registered.value)
+        // Interrupt WITHOUT awaiting the fiber's exit. `CancelTimer` runs inside
+        // the dispatch's `SynchronizedRef` lock; awaiting the interrupt
+        // (`Fiber.interrupt`) deadlocks the machine whenever the timer being
+        // cancelled can't finish interrupting promptly while that lock is held —
+        // e.g. a timer that fired as its hold was released is blocked acquiring
+        // the same lock, or its `withSpan` finalizer stalls. The generation guard
+        // in the transition already makes any late `*Fired` a no-op, so the fiber
+        // needn't be gone before we proceed. See the Handler Explanation
+        // § why dispatch is not uninterruptible.
+        yield* Fiber.interruptFork(registered.value)
       }
     }),
   RequestCompletionCheck: (

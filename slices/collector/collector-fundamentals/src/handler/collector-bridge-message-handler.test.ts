@@ -38,6 +38,27 @@ import * as CollectorBridgeMessageHandler from './collector-bridge-message-handl
  * stream closed), and the `followUpSteps` → dedup/cap → queue injection path.
  */
 describe('CollectorBridgeMessageHandler.make: composition', () => {
+  it('startAutomaticNavigation dispatches the plan’s leading Open without a PageLoaded', () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
+        // Leading Open, then a page hold so the run parks rather than draining to
+        // completion — isolating the start-up dispatch. `awaitSettledFor('1')`
+        // matches `…/people/1`, which the Open's url does not, so it stays parked.
+        const handler = makeSimpleHandler({
+          sendMessage,
+          stepSequence: [linkA, awaitSettledFor('1')],
+        })
+
+        // The runner fires this at run start; the leading Open dispatches with
+        // no page in hand and builds the sniffer directly on the real URL — a
+        // sniffer whose first page never settles can't strand the run in the
+        // machine's timer-less start-up state.
+        yield* handler.startAutomaticNavigation
+        expect(dispatchedOpens(sendMessage)).toEqual(['https://example.com/a'])
+      }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+    ))
+
   it('cancelAllRequestSniffing cancels each incomplete id AND stops the automatic navigation', () =>
     Effect.runPromise(
       Effect.gen(function* () {

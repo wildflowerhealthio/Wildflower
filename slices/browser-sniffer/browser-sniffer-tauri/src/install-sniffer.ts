@@ -72,9 +72,12 @@ interface SnifferState {
   readonly nativeXHRSend: XMLHttpRequest['send']
   readonly activeRequests: Set<string>
   /**
-   * The sole `window.load` listener. Arms the settlement detector — which fires
-   * `PageLoaded` once the page is quiet — rather than snapshotting synchronously.
-   * Named `pageLoadHandler` because it remains the one `load` handler.
+   * The settlement-detector arm. Registered as the sole `window.load` listener
+   * when a `load` is still coming, or called directly at install when the
+   * document is already `'complete'` (the sniffer installed after `load` fired,
+   * so no event will). Arms the detector — which fires `PageLoaded` once the
+   * page is quiet — rather than snapshotting synchronously. Named
+   * `pageLoadHandler` because it remains the one `load` handler.
    */
   readonly pageLoadHandler: () => void
   /**
@@ -774,7 +777,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     const content = document.documentElement.outerHTML
     const pageContentId = makeRequestId()
     const bytes = utf8.encode(content)
-    post({ _tag: 'PageLoaded', url: win.location.href, pageContentId })
     activeRequests.add(pageContentId)
     post({
       _tag: 'ResponseStart',
@@ -793,6 +795,16 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       activeRequests.delete(pageContentId)
       post({ _tag: 'ResponseFinished', id: pageContentId })
     }
+    // Announce the settled page LAST — after its content request has been
+    // tracked, streamed, and finished. The *final* page's `PageLoaded` is what
+    // drains the collector FSM's queue and triggers the completion check
+    // (Drained ∧ every sniffed request settled). Emitting it *before* the
+    // content's `ResponseStart` let that (forked) check run against an empty
+    // incomplete-request map, so the run completed and tore down before the last
+    // page's resources were parsed — dropping them intermittently. Ordering the
+    // notification after the content stream keeps the page-content request in
+    // the map until it settles, so completion can't outrun it.
+    post({ _tag: 'PageLoaded', url: win.location.href, pageContentId })
   }
 
   const teardownSettleWatch = (): void => {
@@ -861,7 +873,21 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     ceilingTimer = setTimeout(settleNow, maxWaitMs)
     armQuietTimer()
   }
-  win.addEventListener('load', startSettleWatch)
+  // Arm the settle watch on `load` — but only if a `load` is still coming. When
+  // the sniffer installs into an *already-loaded* document (`readyState` is
+  // `'complete'`), that event has already fired and will not fire again, so arm
+  // the watch off the current readyState instead. Defensive: the normal flow
+  // injects at document-start (the sniffer mounts on `about:blank`, then
+  // navigates), but a bfcache restore or a re-injection into a settled page can
+  // land post-`load`, and a `load`-only arm would then never start —
+  // `PageLoaded` would never emit and a pattern-less `AwaitPageSettled` hold
+  // would hang until its timeout. Mirrors the `PageRequested` already-parsed
+  // branch just below.
+  if (document.readyState === 'complete') {
+    startSettleWatch()
+  } else {
+    win.addEventListener('load', startSettleWatch)
+  }
 
   // Early page-arrival notification, `PageLoaded`'s pre-settlement sibling:
   // emitted once per document at `DOMContentLoaded` (or immediately if the

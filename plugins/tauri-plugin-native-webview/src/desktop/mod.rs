@@ -104,9 +104,12 @@ impl<R: Runtime> NativeWebview<R> {
     /// reuses the content webview, so a dispose→open on the `launch` instance
     /// keeps its auth seeding.
     pub fn open_url(&self, id: &str, payload: OpenRequest) -> crate::Result<()> {
-        // Parse once (http(s)-only — see [`crate::url_scheme`]) and thread the
-        // parsed `Url` to `present` so the build path doesn't re-parse.
-        let target = crate::url_scheme::parse_http_url(&payload.url)?;
+        // Parse once — accepting `about:blank` for the sniffer mount / cookie-seed
+        // transit, every other target http(s)-only (see [`crate::url_scheme`]) —
+        // and thread the parsed `Url` to `present` so the build path doesn't
+        // re-parse. The build path already keys `about:blank` off the empty-cookie
+        // case, so the target kind is not needed here.
+        let target = crate::url_scheme::parse_target(&payload.url)?;
         // Keep a copy for the seed on the build/rewire path. The payload keeps its
         // OWN `cookies` so the deferred branch carries them into `pending_reopen`
         // for the replay to seed (see the method doc).

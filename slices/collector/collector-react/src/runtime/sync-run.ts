@@ -40,7 +40,6 @@ import * as Telemetry from 'collector-fundamentals/telemetry'
 import type { Mailbox } from 'effect'
 import { Effect, Either, Option, Stream } from 'effect'
 
-import { captureLinkedSpan } from './capture-linked-span.ts'
 import type { CollectorSender } from './collector-sender-context.ts'
 import type { useCollectorRegister } from './use-collector-register.ts'
 
@@ -235,9 +234,11 @@ const makeProcessSniffResult =
  * fiber:
  *
  *   - `acquire`: build the `CollectorBridgeMessageHandler`, register its
- *     bridge tags in the coordinator's `Collector` slot, then dispatch
- *     `RequestSniffableWebView`. Register-before-dispatch guarantees the
- *     host's sniffer events land on the live handler.
+ *     bridge tags in the coordinator's `Collector` slot, then kick the
+ *     automatic navigation (`startAutomaticNavigation`). Register-before-kick
+ *     guarantees the host's sniffer events land on the live handler. The plan's
+ *     leading `Open` step builds the sniffer webview directly on the real
+ *     target URL — there is no separate `about:blank` mount.
  *   - The handler publishes each result onto its `requestSniffingResults` stream,
  *     which {@link processSniffResultsFromMailbox} reads directly. The drive stream pulls each
  *     result and, for a `Right` batch, hands it to the injected `persistResources`
@@ -283,10 +284,11 @@ const buildImportEffect = <Resources, R>({
       // plain sender — no completion wrap needed here.
       const { requestSniffingResults: sniffResultMailbox } = yield* Effect.acquireRelease(
         Effect.gen(function* () {
-          // Separate the handler's four control surfaces off the
+          // Separate the handler's five control surfaces off the
           // `pipeThroughHandlers` bridge tags so they don't leak into the
-          // transport's tag→handler map. Only `requestSniffingResults` (the drive
-          // loop's mailbox) and `cancelAllRequestSniffing` (the release) are
+          // transport's tag→handler map. `requestSniffingResults` (the drive
+          // loop's mailbox), `startAutomaticNavigation` (the one-shot start-up
+          // kick, fired below), and `cancelAllRequestSniffing` (the release) are
           // consumed here; `incompleteSniffedRequests` and
           // `abandonAllRequestSniffing` are excluded-only, so they are
           // destructured to `_`-prefixed throwaways. The handler's own drained
@@ -294,6 +296,7 @@ const buildImportEffect = <Resources, R>({
           const {
             incompleteSniffedRequests: _incompleteSniffedRequests,
             requestSniffingResults,
+            startAutomaticNavigation,
             abandonAllRequestSniffing: _abandonAllRequestSniffing,
             cancelAllRequestSniffing,
             ...pipeThroughHandlers
@@ -310,21 +313,16 @@ const buildImportEffect = <Resources, R>({
                 Effect.logError('useSyncRunner: handler registration failed', error)
               )
             )
-          // Captured inside the `Sync` span (see `Effect.withSpan` below),
-          // so the sniffer can link its per-page root traces back to this
-          // run's trace.
-          const linkedSpan = yield* captureLinkedSpan
-          // No starting page: the host mounts the sniffer on `about:blank` and
-          // the plan navigates from there with its leading `Open` step.
-          yield* sendCollectorMessage(
-            linkedSpan === undefined
-              ? { _tag: 'RequestSniffableWebView' }
-              : { _tag: 'RequestSniffableWebView', linkedSpan }
-          ).pipe(
-            Effect.catchAllCause((cause) =>
-              Effect.logError('useSyncRunner: failed to dispatch RequestSniffableWebView', cause)
-            )
-          )
+          // The sniffer webview is built by the plan's leading `Open` step, not
+          // by a separate mount request: `startAutomaticNavigation` kicks the
+          // machine, which dispatches that `Open` straight away, and the host's
+          // `open_or_navigate` builds the sniffer fresh (missing → build) on the
+          // real target URL and shows it. There is no `about:blank` placeholder
+          // for the webview's content process to crash on, and no first
+          // `PageLoaded` to wait for — `Start` needs no page in hand (see
+          // `AutomaticNavigation.handleStart`). Registered above, before this
+          // kick, so the sniffer's first events land on the live handler.
+          yield* startAutomaticNavigation
           return {
             requestSniffingResults,
             cancelAllRequestSniffing,

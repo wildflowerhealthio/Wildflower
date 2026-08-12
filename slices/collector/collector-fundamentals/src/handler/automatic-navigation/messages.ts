@@ -44,7 +44,7 @@ type StepOutboundMessage =
 // ---------------------------------------------------------------------------
 
 /**
- * Everything that can drive the machine forward — eleven inputs, in seven kinds:
+ * Everything that can drive the machine forward — eleven inputs, in eight kinds:
  *
  * - `PageLoaded` / `PageRequested` — the *external* page events, forwarded
  *   verbatim from the bridge (their shapes are `browser-sniffer-core`'s
@@ -52,6 +52,16 @@ type StepOutboundMessage =
  *   re-declared). `PageLoaded` is the settled load; `PageRequested` is its
  *   early sibling (fired at `DOMContentLoaded`), consumed only by a parked
  *   `AwaitPageRequested` hold and ignored everywhere else.
+ * - `Start` — the *command* the runner injects **once**, at run start, to kick
+ *   off the run without waiting for a first `PageLoaded`. Only meaningful in the
+ *   start-up `AwaitingPageLoaded` state, where it drains the queue exactly as
+ *   that first settled `PageLoaded` would (the leading step is an `Open` — a
+ *   navigation that builds the sniffer webview on the real target URL and needs
+ *   no page in hand); a no-op everywhere else. It races the sniffer's own first
+ *   `PageLoaded`: whichever lands first drains, the other is inert. This is what
+ *   keeps a sniffer whose first page never settles (its web content process
+ *   dies, say) from stranding the run in `AwaitingPageLoaded`, which arms no
+ *   timer.
  * - `Stop` — the single *command*, which the run lifecycle's teardown (and its
  *   `abandonAllRequestSniffing` escape) invokes to halt the machine (interrupt
  *   any pending timer). Modelling it as an input keeps the whole machine one transition
@@ -90,6 +100,7 @@ type StepOutboundMessage =
 type InputMessage =
   | typeof PageLoadedMessageBody.Type
   | typeof PageRequestedMessageBody.Type
+  | { readonly _tag: 'Start' }
   | { readonly _tag: 'Stop' }
   | { readonly _tag: 'DelayTimerFired'; readonly generation: number }
   | { readonly _tag: 'UrlMatchTimeoutFired'; readonly generation: number }
