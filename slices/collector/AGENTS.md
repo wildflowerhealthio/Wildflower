@@ -17,10 +17,14 @@ before adding one.
   machine + run lifecycle). Provenance is core here: the framework mints the
   run id at dispatch and invokes the plan's optional `captureProvenance` hook
   at the tracker seam, and a settled batch structurally separates `resources`
-  from best-effort `diagnostics`. No
+  from best-effort `diagnostics`. Also `./replay` — the **offline** counterpart
+  to the live machinery: `Replay.replayEntities(entityDefinitions, responses)`
+  folds a static set of responses through a plan's entities (same
+  first-`isFoundAt`-match-wins routing, no navigation, no persistence), and
+  `Recognizer.resolve` ranks the collectors that claim a set of responses. No
   registry, no HTTP runtime, no React. Everything else depends on it; it depends
   on nothing else in the slice. Deliberately FHIR-agnostic — nothing here names
-  a resource type.
+  a resource type, and `./replay` names no archive format either.
 - **`collector-registry`** — the **closed, compile-time** assembly. A single
   `descriptors` tuple lists every collector; the `CollectorConfig` union, the
   `CollectorTag` literal, `CollectorRequirements`, and the
@@ -108,6 +112,9 @@ before adding one.
   too-broad pattern earlier in the list shadows a later entity. Make patterns
   disjoint by construction, e.g. `mustHaveQuery` on a list-by-query pattern so
   it can't also match a single-resource URL (see `UrlMatch`).
+  `collector-fundamentals/replay` walks the same list the same way, so a plan
+  shadows identically live and offline — that is deliberate: a plan must not
+  decode one thing through a webview and another through an archive.
 - **A new config in the union changes the remotes API wire schema — regenerate
   the OpenAPI snapshots.** `CollectorConfig` is the payload of
   `CreateRemote`/`UpdateRemote`; widening it drifts the committed spec. Run
@@ -236,7 +243,10 @@ EnsureWindowVisible` union.** Two variants reach the wire — a `Navigation`'s
   on unchanged (a diagnostic never takes a run down, and the stream's error
   shape is untouched), and `followUpSteps` receives the **raw** parse output —
   generation runs before the hook — so a generator that opens a link per
-  resource does not also fire for a provenance record.
+  resource does not also fire for a provenance record. **Offline replay never
+  invokes it at all** — an archive-driven import already has its source as one
+  artifact, so its provenance is the link to that archive, not a per-response
+  trace. `followUpSteps` is likewise WARN-ignored there (nothing to navigate).
 - **The tracker's ordering is generate → capture → drop → offer.** A successful
   parse's `followUpSteps` are injected _before_ the settle is dropped and
   offered, so the machine leaves `Drained` before the offer's close-check can
