@@ -3,6 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { emitHar, fromHarJson, HarFromJson } from '../har/index.ts'
 import { arbitraries } from '../test-helpers.ts'
 import { isWebTrace, toDocumentReference } from './document-reference-codec.ts'
 import type { HarArchive } from './har-archive-codec.ts'
@@ -172,6 +173,32 @@ describe('HarArchive ⇄ DocumentReference', () => {
       creation: '2024-01-01T00:00:00.000Z',
     })
     expect(wire.date).toBe('2024-01-01T00:00:00.000Z')
+  })
+
+  test('property: stored bytes still parse as a HAR after the round trip, which is the point of storing them', async () => {
+    // The seam between this codec and `src/har/`: an archive is only worth
+    // storing if what comes back out is still readable as the file that went
+    // in. Nothing here parses HAR — `HarFromJson` and `ArchivedSessionFromHar`
+    // do, on the bytes this codec hands back.
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(exchangeArbitrary, { minLength: 1, maxLength: 4 }),
+        async (exchanges) => {
+          const fileText = await Effect.runPromise(
+            Schema.encode(HarFromJson)(emitHar(exchanges, { sessionId: 'session-0' }))
+          )
+          const stored = await roundTrip(harArchive({ bytes: new TextEncoder().encode(fileText) }))
+
+          const session = await Effect.runPromise(
+            fromHarJson(new TextDecoder().decode(stored.bytes))
+          )
+          expect(session.exchanges.map((entry) => entry.url).toSorted()).toEqual(
+            exchanges.map((exchange) => exchange.url).toSorted()
+          )
+        }
+      ),
+      { numRuns: numRunsFor({ base: 25 }) }
+    )
   })
 
   test('the same file uploaded twice is two documents, told apart by id and alike by hash', async () => {

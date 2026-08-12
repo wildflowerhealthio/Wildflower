@@ -171,7 +171,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **The archive codec stores bytes, never text, and does not parse HAR.** A
   `HarArchive.bytes` is base64 of the file exactly as uploaded, so a truncated or
   mis-encoded upload is preserved rather than mangled and the attachment `hash`
-  means something. Reading the archive's contents is the importer's parser's job.
+  means something. Reading the contents is `src/har/`'s job — `HarFromJson` and
+  the `ArchivedSessionFromHar` projection — and it is where a malformed upload
+  is meant to fail, not here.
 - **Every upload is a fresh document.** The id is a uuid the caller mints, not a
   derivation over the bytes — the same file twice is two documents on purpose.
   Dedupe stays _detectable_ through `hash`/`size` without being forced, which is

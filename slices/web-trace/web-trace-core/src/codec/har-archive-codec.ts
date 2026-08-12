@@ -26,7 +26,8 @@ import {
  * never list a trace.
  *
  * Nothing here parses HAR. The bytes are carried, hashed, and handed back
- * exactly as they arrived.
+ * exactly as they arrived; reading them is `src/har/`'s job, through
+ * `HarFromJson` and the `ArchivedSessionFromHar` projection.
  *
  * @packageDocumentation
  */
@@ -68,7 +69,8 @@ const HarArchiveId = Schema.NonEmptyString.pipe(
  * `bytes` is the file verbatim — base64 on the wire, a `Uint8Array` decoded, and
  * never a UTF-8 round trip. A HAR is JSON, but a truncated or mis-encoded upload
  * is stored as it arrived rather than mangled, so the `hash` means something and
- * the parser downstream sees exactly what the user handed over.
+ * `HarFromJson` sees exactly what the user handed over — including the malformed
+ * input it is meant to reject with a `ParseError`.
  *
  * `uploadedAt` is when this system received the file, not anything the archive
  * claims about itself: the recording instants inside a HAR belong to whoever
