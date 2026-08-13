@@ -12,6 +12,11 @@
  * `toDocumentReference` / `fromDocumentReference` are its two directions, and
  * both fail with a `ParseError` like any other schema.
  *
+ * A second, deliberately disjoint encoding lives alongside it:
+ * `HarArchiveFromDocumentReference` stores a whole uploaded `.har` file as one
+ * attachment. `isWebTrace` and `isHarArchive` never both hold — the viewer lists
+ * traces, the importer lists archives.
+ *
  * @packageDocumentation
  */
 export {
@@ -25,7 +30,19 @@ export {
 } from './document-reference-codec.ts'
 export { DurationFromFhirDuration, UCUM_TIME_CODES } from './fhir-duration.ts'
 export {
+  HAR_ARCHIVE_CONTENT_TYPE,
+  HarArchive,
+  HarArchiveFromDocumentReference,
+  HarArchiveFromFhirJson,
+  harArchiveFromDocumentReference,
+  HarArchiveId,
+  harArchiveToDocumentReference,
+  harArchiveToWire,
+  isHarArchive,
+} from './har-archive-codec.ts'
+export {
   BODY_SKIPPED_REASON_EXTENSION,
+  HAR_ARCHIVE_CODE,
   RESPONSE_HEADER_EXTENSION,
   RESPONSE_HEADER_NAME_EXTENSION,
   RESPONSE_HEADER_VALUE_EXTENSION,
