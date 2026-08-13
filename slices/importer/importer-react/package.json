@@ -1,0 +1,61 @@
+{
+  "name": "importer-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser UI adapter for the importer slice: the source picker that hands the importer one HAR to replay. A file dropped or picked on device, or a previously uploaded HAR archive read back off the device's own FHIR server, all converge on one PickedHar. Presentation and interaction only — the HAR archive codec and the HAR parser both live in web-trace-core, and this package validates a local pick through the parser rather than reimplementing it.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/importer/importer-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-tundraish": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "web-trace-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "@effect/platform": "catalog:",
+    "@tanstack/react-query": "catalog:",
+    "@tanstack/react-router": "catalog:",
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-r4-react": "workspace:*",
+    "react": "catalog:",
+    "react-tundraish": "workspace:*",
+    "web-trace-core": "workspace:*"
+  }
+}

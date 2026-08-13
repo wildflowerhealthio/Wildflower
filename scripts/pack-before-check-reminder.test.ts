@@ -116,7 +116,28 @@ describe('pack-before-check-reminder hook', () => {
     expect(heldReason(runHook('local-bin', 'node_modules/.bin/vp check'))).toBeDefined()
   })
 
-  it.each([['vp run lint:docs'], ['vp install'], ['vp test'], ['git status'], ['./scripts/x.sh']])(
+  it('holds a bare workspace-wide `vp test` and points at `vp run pack`', () => {
+    const reason = heldReason(runHook('holds-test', 'vp test'))
+    expect(reason).toContain('vp run pack')
+    // The test-specific reminder, not the typecheck one: it names the filtered
+    // escape hatch rather than the Testing Reference section.
+    expect(reason).toContain('vp test <filter>')
+  })
+
+  it('holds `vp run test:all` too — it runs the whole workspace Vitest pass', () => {
+    expect(heldReason(runHook('run-test-all', 'vp run test:all'))).toBeDefined()
+  })
+
+  it('leaves a filtered `vp test <filter>` alone — one suite is fine unbuilt', () => {
+    expect(heldReason(runHook('filtered-test', 'vp test importer'))).toBeUndefined()
+  })
+
+  it('lets the `vp test` retry through — the hold is once per session', () => {
+    expect(heldReason(runHook('test-retry', 'vp test'))).toBeDefined()
+    expect(heldReason(runHook('test-retry', 'vp test'))).toBeUndefined()
+  })
+
+  it.each([['vp run lint:docs'], ['vp install'], ['git status'], ['./scripts/x.sh']])(
     'ignores `%s` — neither a build nor a check',
     (unrelated) => {
       // A real session id is a uuid; the hook flattens anything else so a

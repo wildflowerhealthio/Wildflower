@@ -1,4 +1,4 @@
-import { DateTime, type Duration, Effect, ParseResult, Schema } from 'effect'
+import { DateTime, type Duration, Effect, Either, ParseResult, Schema } from 'effect'
 import { DocumentReference } from 'fhir-r4/resources'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -283,31 +283,27 @@ const readBody = (content: FhirR4.DocumentReferenceContent): Record<string, unkn
  */
 const readEncodedExchange = (
   wire: FhirR4.DocumentReference
-):
-  | {
-      readonly ok: true
-      readonly value: unknown
-      readonly content: FhirR4.DocumentReferenceContent
-    }
-  | { readonly ok: false; readonly reason: string } => {
+): Either.Either<
+  { readonly value: unknown; readonly content: FhirR4.DocumentReferenceContent },
+  string
+> => {
   const content = wire.content?.[0]
-  if (content === undefined) return { ok: false, reason: 'No content entry' }
+  if (content === undefined) return Either.left('No content entry')
 
   const status = findExtension(wire.extension, RESPONSE_STATUS_EXTENSION)?.extension
   const statusCode = findExtension(status, RESPONSE_STATUS_CODE_EXTENSION)?.valueInteger
   const statusText = findExtension(status, RESPONSE_STATUS_TEXT_EXTENSION)?.valueString
   if (statusCode === undefined || statusText === undefined) {
-    return { ok: false, reason: `Missing ${RESPONSE_STATUS_EXTENSION}` }
+    return Either.left(`Missing ${RESPONSE_STATUS_EXTENSION}`)
   }
 
   const sessionId = identifierValue(wire, WEB_TRACE_SESSION_IDENTIFIER_SYSTEM)
   const requestId = identifierValue(wire, WEB_TRACE_REQUEST_IDENTIFIER_SYSTEM)
   if (sessionId === undefined || requestId === undefined) {
-    return { ok: false, reason: 'Missing session or request identifier' }
+    return Either.left('Missing session or request identifier')
   }
 
-  return {
-    ok: true,
+  return Either.right({
     content,
     value: {
       sessionId,
@@ -320,7 +316,7 @@ const readEncodedExchange = (
       body: readBody(content),
       producedResources: readProducedResources(wire),
     },
-  }
+  })
 }
 
 /**
@@ -348,17 +344,19 @@ const TraceExchangeFromDocumentReference: Schema.Schema<TraceExchange, DocumentR
       strict: true,
       decode: (resource, _options, ast) =>
         encodeResource(resource).pipe(
-          Effect.flatMap((wire) => {
-            const read = readEncodedExchange(wire)
-            return read.ok
-              ? Effect.all({
-                  exchange: decodeExchangeWithoutTimings(read.value),
-                  timings: readTimings(read.content),
-                }).pipe(Effect.map(({ exchange, timings }) => ({ ...exchange, timings })))
-              : Effect.fail(
-                  new ParseResult.Type(ast, resource, `${wire.id ?? '<no id>'}: ${read.reason}`)
-                )
-          })
+          Effect.flatMap((wire) =>
+            Either.match(readEncodedExchange(wire), {
+              onLeft: (reason) =>
+                Effect.fail(
+                  new ParseResult.Type(ast, resource, `${wire.id ?? '<no id>'}: ${reason}`)
+                ),
+              onRight: ({ value, content }) =>
+                Effect.all({
+                  exchange: decodeExchangeWithoutTimings(value),
+                  timings: readTimings(content),
+                }).pipe(Effect.map(({ exchange, timings }) => ({ ...exchange, timings }))),
+            })
+          )
         ),
       encode: (exchange) => decodeResource(traceExchangeToWire(exchange)),
     }
