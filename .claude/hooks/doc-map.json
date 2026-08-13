@@ -36,6 +36,15 @@
       ]
     },
     {
+      "id": "diesel-persistence",
+      "tools": "edit",
+      "pattern": "^slices/persistence/persistence-rust/src/|^slices/[^/]+/[^/]+-rust/src/db/",
+      "docs": [
+        "docs/Persistence/Diesel Persistence How-To.md — recipes for diesel column mappings (JSON/typed/nullable), in-memory test pools, namespaced migrations, and the store transaction seam",
+        "docs/Persistence/Shared Diesel Pool Explanation.md — the one-pool-per-file picture, write-contention trade-off, and per-slice migration namespacing"
+      ]
+    },
+    {
       "id": "bridge",
       "tools": "any",
       "pattern": "(^|/)bridge(-[a-z-]+)?\\.(ts|rs)$|effect-messaging",
