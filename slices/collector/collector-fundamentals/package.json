@@ -34,6 +34,10 @@
       "source": "./src/model/index.ts",
       "default": "./dist/model/index.js"
     },
+    "./replay": {
+      "source": "./src/replay/index.ts",
+      "default": "./dist/replay/index.js"
+    },
     "./telemetry": {
       "source": "./src/telemetry/index.ts",
       "default": "./dist/telemetry/index.js"

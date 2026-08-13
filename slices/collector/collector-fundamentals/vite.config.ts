@@ -13,6 +13,7 @@ export default defineConfig({
       'model/index': 'src/model/index.ts',
       'test-helpers': 'src/test-helpers.ts',
       'handler/index': 'src/handler/index.ts',
+      'replay/index': 'src/replay/index.ts',
     },
   },
   test: {
