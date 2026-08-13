@@ -192,6 +192,15 @@ the deadlock is structurally impossible. The same reasoning applies to reads:
 wry's `cookies_for_url` pumps identically, so the post-seed read-back log uses an
 async `getAllCookies` too.
 
+The rule this generalizes to, for anyone adding a macOS call from code the main
+thread can reach: **any wry API that looks like a synchronous getter/setter may
+be a nested run-loop pump in disguise.** Before calling one, grep wry for
+`wait_for_blocking_operation` — that pump is the tell, and a call site that
+reaches it from the main thread is the hazard. When a hang does slip through,
+`sample` the hung process (this is a deadlock, not a crash, so there is no crash
+log to read): the re-entrant `draw_rect` → `handle_nonuser_event` →
+`__psynch_mutexwait` stack it prints identifies this class of hang immediately.
+
 Two consequences worth holding onto:
 
 - **`open_url` returns before the cookies commit** and before the target starts
@@ -204,6 +213,25 @@ Two consequences worth holding onto:
 Non-macOS desktop targets keep the wry `set_cookie` path (their cookie APIs do
 not pump), and iOS/Android already issue the load from their native cookie-write
 completion handlers.
+
+## Cookie boolean attributes are presence-keyed
+
+A seeded cookie's boolean attributes (`HttpOnly`, `Secure`) are written **only
+when true**, never as an explicit false. Foundation's `NSHTTPCookie` (and the
+Swift/wry conversions that feed it) key these attributes off a property's
+**presence**, not its value: a property present with value `"FALSE"` still lands
+the cookie `HttpOnly`/`Secure`. So a cookie built with an explicit `false` — e.g.
+`cookie::Cookie::set_http_only(false)`, which the `cookie` crate records as
+`Some(false)` and both the wry and `WKHTTPCookieStore` conversions map to a
+_present_ native property — comes out `HttpOnly` anyway, hiding the JS-readable
+`wf_auth_exp` companion from the page that needs it.
+
+The seeding paths therefore set each boolean attribute only when it is true and
+leave it unset otherwise (`desktop/cookies/wry.rs`, `desktop/cookies/wkwebview.rs`,
+and the Swift `seedCookies`), and the tests pin the JS-readable cookie's
+`http_only()` at `None`, not `Some(false)`. (The `cookie` crate's `to_string()`
+renders `Some(false)` as no attribute, so `Set-Cookie`-header paths are immune;
+only the typed-`Cookie` → native-property path hits this.)
 
 ## A seed's navigation belongs to the open that scheduled it
 

@@ -54,6 +54,15 @@
       ]
     },
     {
+      "id": "native-webview-plugin",
+      "tools": "edit",
+      "pattern": "^plugins/tauri-plugin-native-webview/",
+      "docs": [
+        "plugins/tauri-plugin-native-webview/docs/Lifecycle and Races Explanation.md — the cross-platform lifecycle/race protocols the backends implement; note the macOS cookie-seed run-loop-pump deadlock (grep wry for `wait_for_blocking_operation` before calling a sync-looking API from main-thread-reachable code) and the presence-keyed cookie-boolean trap",
+        "plugins/tauri-plugin-native-webview/docs/Explanation.md — what the plugin is, its commands, and the desktop-vs-mobile presentation model"
+      ]
+    },
+    {
       "id": "effect-slice-core",
       "tools": "edit",
       "pattern": "^slices/[^/]+/[^/]+-core/src/.*\\.ts$",

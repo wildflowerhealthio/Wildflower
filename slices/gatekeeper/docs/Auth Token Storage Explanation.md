@@ -87,3 +87,26 @@ a `localStorage`-cached value can only ever be stale and racing the
 host's fresh push. A stale value surfacing as the store's initial signal
 would resolve the auth-ready gate early and pin TanStack Query loaders
 on cached 401s.
+
+## Why authed loaders gate on `beforeLoad`, not a component or a loader
+
+On embedded the token does not exist at first paint — it arrives via the
+host `AuthTokenIssued` bridge handler, which fires only **after** the
+transport handshake (`transport.flushed`) completes. A TanStack `loader`
+runs during routing, so an authed loader that fired on first paint would
+`401` before the token landed.
+
+The gate is therefore a **`beforeLoad`** on the pathless `_auth` /
+`/settings` layouts (`apps/wildflower-react`'s `authGatedRouteOptions`),
+which `await`s `context.awaitAuthReady(href)` — and on embedded
+`awaitAuthReady` waits the same bridge handshake. Because `beforeLoad`
+resolves before the route's `loader` and children render, every authed
+loader beneath the gate is **guaranteed a token**; the slice loaders are
+plain `ensureQueryData` with no `isTokenReady` reader (standalone web
+resolves synchronously, since `wf_auth` is already present on the first
+document request). A bounded **boot-race retry** in
+`apps/wildflower-react/src/router-context.ts` (`unauthorizedRetrySchedule`)
+covers only the residual window between gate-pass and the just-planted
+cookie physically landing in the WebView's jar, and latches off once any
+authed request succeeds so a genuine expiry redirects to device login
+without delay.
