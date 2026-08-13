@@ -266,6 +266,18 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   invokes it at all** — an archive-driven import already has its source as one
   artifact, so its provenance is the link to that archive, not a per-response
   trace. `followUpSteps` is likewise WARN-ignored there (nothing to navigate).
+- **`RemoteResponse` answers a _recorder_'s questions, not just a decoder's.**
+  The seam exposes everything an entity may know about a response, including the
+  three a capturing entity needs that a decoding one ignores: the sniffer's
+  correlation `id` (so a stored record keys on `(sessionId, requestId)` and a
+  retried write is an idempotent upsert, not a threaded counter), `startedAt`
+  (the `ResponseStart` instant — `parse` runs at settle, so an entity reading
+  its own clock there would timestamp the response's end as its beginning), and
+  `bytes()` (lossless; `text()` corrupts a non-UTF-8 body, and its return is
+  pinned to `Uint8Array<ArrayBuffer>` so platform `BufferSource` calls need no
+  cast). A seam shaped around one consumer silently bakes in that consumer's
+  assumptions — add the field the second consumer needs to the response, don't
+  re-derive it downstream.
 - **The tracker's ordering is generate → capture → drop → offer.** A successful
   parse's `followUpSteps` are injected _before_ the settle is dropped and
   offered, so the machine leaves `Drained` before the offer's close-check can
