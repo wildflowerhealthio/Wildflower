@@ -97,6 +97,28 @@ event bus only (mirroring the browser-sniffer posture). The chrome child needs
 no capability — it issues no Tauri commands. The mobile backends avoid the
 `__TAURI__` exposure entirely.
 
+### The content webview's IPC needs a real `http(s)` origin
+
+On desktop the content child is a Tauri webview, and its host↔page messaging
+rides Tauri IPC — the gated `native_webview_data_plane_emit` command for the
+web→host data plane, and `__TAURI__.event.listen` (internally
+`plugin:event|listen`) for host→web. Tauri's IPC parses the request's `Origin`
+header, and a page with a **null origin** — `about:blank`, a `data:` document, or
+a `WebviewBuilder::with_html` first page — carries the literal origin string
+`null`, which does not parse. Every IPC call from such a page is rejected with
+`Origin header is not a valid URL`, so a null-origin content page is both deaf and
+mute: it can neither emit its data plane nor receive host messages.
+
+That is the runtime reason `about:blank` is only ever a **transient** park (the
+cookie-seed transit in `open_url` above), never where an injected script does its
+work — the plugin navigates to the real `http(s)` target before the page is
+expected to talk to the host. A consumer that injects an IPC-using script (the
+browser sniffer) can only run it on a real `http(s)` origin; mounting one on a
+blank/`data:`/`with_html` first page and expecting it to reach the host does not
+work. `url_scheme.rs` constrains navigation _targets_ to `http(s)` (plus the
+`about:blank` transit); this null-origin rule is why the transit page can't double
+as the working page.
+
 ## Shape
 
 ```text

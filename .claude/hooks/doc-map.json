@@ -36,6 +36,15 @@
       ]
     },
     {
+      "id": "diesel-persistence",
+      "tools": "edit",
+      "pattern": "^slices/persistence/persistence-rust/src/|^slices/[^/]+/[^/]+-rust/src/db/",
+      "docs": [
+        "docs/Persistence/Diesel Persistence How-To.md — recipes for diesel column mappings (JSON/typed/nullable), in-memory test pools, namespaced migrations, and the store transaction seam",
+        "docs/Persistence/Shared Diesel Pool Explanation.md — the one-pool-per-file picture, write-contention trade-off, and per-slice migration namespacing"
+      ]
+    },
+    {
       "id": "bridge",
       "tools": "any",
       "pattern": "(^|/)bridge(-[a-z-]+)?\\.(ts|rs)$|effect-messaging",
@@ -51,6 +60,15 @@
       "docs": [
         "docs/Effect/HttpApi Composition How-To.md — phantom-id bridge, cross-slice composition, topLevel collision",
         "docs/Effect/OpenAPI Spec Drift How-To.md — regenerating committed snapshots"
+      ]
+    },
+    {
+      "id": "native-webview-plugin",
+      "tools": "edit",
+      "pattern": "^plugins/tauri-plugin-native-webview/",
+      "docs": [
+        "plugins/tauri-plugin-native-webview/docs/Lifecycle and Races Explanation.md — the cross-platform lifecycle/race protocols the backends implement; note the macOS cookie-seed run-loop-pump deadlock (grep wry for `wait_for_blocking_operation` before calling a sync-looking API from main-thread-reachable code) and the presence-keyed cookie-boolean trap",
+        "plugins/tauri-plugin-native-webview/docs/Explanation.md — what the plugin is, its commands, and the desktop-vs-mobile presentation model"
       ]
     },
     {

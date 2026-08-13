@@ -307,7 +307,25 @@ in hand, so the drain need not wait for a first settle that may never come (if
 the sniffer's web content process terminates before its first page settles,
 `AwaitingPageLoaded` arms no timer, so without `Start` the run would hang there
 indefinitely). Whichever trigger wins, the other is inert (the drain has already
-left `AwaitingPageLoaded`). It keeps draining as
+left `AwaitingPageLoaded`).
+
+> **Known open issue — a host→SPA `PageLoaded` delivery race.** On a fast, clean
+> first load the target's single start-up `PageLoaded` is sometimes not observed
+> by the machine: the sniffer's emit reaches the host log, but the machine's
+> input trace never shows it. A crash-delayed first load is delivered normally, so
+> the loss surfaces only on the quickest loads. It is _not_ a plain "listener not
+> up yet" gap — the transport's inbound-dispatch fiber is app-lifetime (forked
+> before any run and never torn down), and `sync-run.ts` registers the collector
+> handler record _before_ it fires the start-up `Start` — which is what makes the
+> loss subtle; the root cause is still being pinned down. The one-shot `Start`
+> above is what keeps a run from _hanging_ on this: the leading `Open` drains with
+> no page in hand, so start-up never blocks on that first settle. The residual
+> consequence is a plan whose first hold waits on the freshly-opened page's settle
+> (a pattern-less `AwaitPageSettled` right after the leading `Open`) — in this
+> window it can park until that hold's `timeout` rather than release on the dropped
+> settle, so set that first hold's `timeout` with the race in mind.
+
+It keeps draining as
 far as it can each turn: a `Navigation`
 **dispatches its `action` and immediately advances** (a `Fill` / `Click` / `Open`
 never waits for a `PageLoaded`, so consecutive navigations dispatch back-to-back),
