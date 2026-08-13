@@ -6,6 +6,12 @@ import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { type Step, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
+
+/** The guard bound every test here relies on unless it overrides it per-plan. */
+const DEFAULT_DRAINED_GUARD_TIMEOUT = ScrapingPlan.DEFAULT_DRAINED_GUARD_TIMEOUT
+
+/** The same bound in millis, for the tests that drive the pure transition. */
+const GUARD_MS = Duration.toMillis(DEFAULT_DRAINED_GUARD_TIMEOUT)
 import {
   type AutomaticNavigation,
   make,
@@ -25,12 +31,87 @@ import { settleForkedWork } from './collector-bridge-message-handler.test-helper
  * grown by `handleStepsGenerated`). Every `Navigation` **dispatches and advances
  * immediately** — no action waits for a `PageLoaded` — so consecutive
  * navigations drain on a single settled load. The only waits are the hold steps:
- * a `Delay` (fixed timer) and an `AwaitPageSettled` (park until a matching
- * settled `PageLoaded`, aborting on its `timeout`). The first `PageLoaded` is
+ * a `Delay` (fixed timer), an `AwaitPageSettled` (park until a matching settled
+ * `PageLoaded`, aborting on its `timeout`), and an `AwaitPageRequested` (same,
+ * but a matching early `PageRequested` arrival — or a settled load — releases
+ * it). The first `PageLoaded` is
  * start-up: it kicks off draining the queue. Completion is
  * `queue drained (Drained) ∧ NoMoreResultsExpected`.
  */
 describe('automatic-navigation.make', () => {
+  describe('start-up kick (Start)', () => {
+    it('should dispatch the leading Open on Start alone — no PageLoaded needed', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
+
+          // The composition fires `handleStart` right after registering the
+          // handler. The leading `Open` is a navigation, so it drains with no
+          // page in hand and the run rests on the following hold — the machine
+          // never depends on a first settle it did not ask for.
+          yield* machine.handleStart
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should proceed past the parked hold on the awaited settled load after a Start', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
+
+          yield* machine.handleStart
+          // The real awaited page settles → the hold releases → linkB dispatches.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/gate'))
+          expect(dispatched(sendMessage)).toEqual([linkA.action, linkB.action])
+        })
+      ))
+
+    it('should make the sniffer’s own first PageLoaded inert once Start kicked off (no double dispatch)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
+
+          yield* machine.handleStart
+          // The opened page later settles; that first `PageLoaded` (and a
+          // duplicate `Start`) must not re-run the leading `Open` — the machine
+          // has already left `AwaitingPageLoaded`.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/a'))
+          yield* machine.handleStart
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should treat Start as a no-op when the first PageLoaded already kicked off (order-independent)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA, awaitSettled('gate'), linkB],
+          })
+
+          // The mount settled before the composition's `Start` landed: the first
+          // settled load drains the leading `Open`, and the later `Start` adds
+          // nothing (whichever trigger wins, the other is inert).
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
+          yield* machine.handleStart
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+  })
+
   describe('navigation dispatch', () => {
     it('should drain consecutive navigations on the first settled load, with no settle delay', () =>
       run(
@@ -430,6 +511,268 @@ describe('automatic-navigation.make', () => {
           expect(dispatched(sendMessage)).toHaveLength(1)
         })
       ))
+
+    it('should advance to the next step instead of aborting when continueOnTimeout is true', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [{ ...awaitSettled('dashboard'), continueOnTimeout: true }, linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          yield* TestClock.adjust(Duration.seconds(29))
+          yield* Effect.yieldNow()
+          expect(dispatched(sendMessage)).toEqual([]) // still parked before the timeout
+
+          // On timeout the unmatched hold is consumed and the tail drains — linkA
+          // dispatches and the run continues (no SniffingComplete).
+          yield* TestClock.adjust(Duration.seconds(1))
+          yield* Effect.yieldNow()
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    describe('pattern-less (waits for the next settle)', () => {
+      it('parks past the page already in hand and releases on the next settled load', () =>
+        run(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({
+              sendMessage,
+              stepSequence: [awaitSettledAny(), linkA],
+            })
+
+            // A pattern-less hold never matches the page in hand — it always waits
+            // for the *next* settle, which is what makes it skip the prior page
+            // after a leading `Open`.
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+            expect(dispatched(sendMessage)).toEqual([]) // parked, not satisfied in hand
+
+            // The next settled load — whatever its url — releases the hold.
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/anything'))
+            expect(dispatched(sendMessage)).toEqual([linkA.action])
+          })
+        ))
+
+      it('is not released by a mere page arrival (settle-only)', () =>
+        run(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({
+              sendMessage,
+              stepSequence: [awaitSettledAny(), linkA],
+            })
+
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+            // An arrival (DOMContentLoaded) is not a settle — the hold stays parked.
+            yield* machine.handlePageRequested(pageRequested('https://example.com/next'))
+            expect(dispatched(sendMessage)).toEqual([])
+          })
+        ))
+
+      it('aborts via SniffingComplete when no settled load arrives within the timeout', () =>
+        run(
+          Effect.gen(function* () {
+            const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+            const machine = makeMachine({
+              sendMessage,
+              stepSequence: [awaitSettledAny(), linkA],
+            })
+
+            yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+            yield* TestClock.adjust(Duration.seconds(30))
+            yield* Effect.yieldNow()
+            expect(dispatched(sendMessage)).toEqual([{ _tag: 'SniffingComplete' }])
+          })
+        ))
+    })
+  })
+
+  describe('AwaitPageRequested', () => {
+    it('should hold until a matching page arrival, then resume draining', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitRequested('dashboard'), linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          expect(dispatched(sendMessage)).toEqual([]) // login ≠ dashboard → parked
+
+          // The early arrival (DOMContentLoaded) is enough — no settlement needed.
+          yield* machine.handlePageRequested(pageRequested('https://example.com/dashboard'))
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should also be satisfied by a matching settled load (settled implies arrived)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitRequested('dashboard'), linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should not release an AwaitPageSettled hold on a mere page arrival', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitSettled('dashboard'), linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          // The dashboard *arrives* but never settles — the settled hold stays parked.
+          yield* machine.handlePageRequested(pageRequested('https://example.com/dashboard'))
+          expect(dispatched(sendMessage)).toEqual([])
+        })
+      ))
+
+    it('should not start the start-up drain on a page arrival', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
+
+          // Start-up stays gated on the first *settled* load — a plan's first
+          // steps may act on a DOM that is still loading.
+          yield* machine.handlePageRequested(pageRequested('https://example.com/'))
+          expect(dispatched(sendMessage)).toEqual([])
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should not satisfy a later AwaitPageSettled with the merely-requested page in hand', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitRequested('dashboard'), awaitSettled('dashboard'), linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          // The arrival consumes the first hold, but the same (unsettled) page
+          // must not pass through the settled hold behind it.
+          yield* machine.handlePageRequested(pageRequested('https://example.com/dashboard'))
+          expect(dispatched(sendMessage)).toEqual([])
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/dashboard'))
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should satisfy a later AwaitPageRequested with the settled page in hand', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitRequested('login'), linkA],
+          })
+
+          // The start-up load is already on the awaited page → the hold passes
+          // through in the same drain and linkA dispatches at once.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should abort via SniffingComplete when no matching arrival comes within the timeout', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitRequested('dashboard'), linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          yield* TestClock.adjust(Duration.seconds(29))
+          yield* Effect.yieldNow()
+          expect(dispatched(sendMessage)).toEqual([])
+
+          yield* TestClock.adjust(Duration.seconds(1))
+          yield* Effect.yieldNow()
+          expect(dispatched(sendMessage)).toEqual([{ _tag: 'SniffingComplete' }])
+        })
+      ))
+
+    it('should cancel the abort when a matching arrival comes before the timeout', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitRequested('dashboard'), linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          yield* TestClock.adjust(Duration.seconds(10))
+          yield* machine.handlePageRequested(pageRequested('https://example.com/dashboard'))
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+
+          // The superseded timeout must not fire an abort after being cancelled.
+          yield* TestClock.adjust(Duration.seconds(60))
+          yield* Effect.yieldNow()
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should advance instead of aborting when continueOnTimeout is true', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [{ ...awaitRequested('dashboard'), continueOnTimeout: true }, linkA],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
+          yield* TestClock.adjust(Duration.seconds(30))
+          yield* Effect.yieldNow()
+          // Timeout drains the tail rather than ending the run — linkA dispatches,
+          // no SniffingComplete.
+          expect(dispatched(sendMessage)).toEqual([linkA.action])
+        })
+      ))
+
+    it('should ignore a page arrival in every non-parked state (silent no-op)', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [delayStep(five)],
+          })
+
+          // DelayPending: arrival ignored, timer untouched.
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/'))
+          yield* machine.handlePageRequested(pageRequested('https://example.com/x'))
+          expect(dispatched(sendMessage)).toEqual([])
+
+          // Drained (after the delay): still ignored, and no WARN-drop message
+          // rides the wire (only its paired PageLoaded WARNs there).
+          yield* TestClock.adjust(five)
+          yield* Effect.yieldNow()
+          yield* machine.handlePageRequested(pageRequested('https://example.com/x'))
+          expect(dispatched(sendMessage)).toEqual([])
+        })
+      ))
   })
 
   describe('AwaitUserDismiss', () => {
@@ -750,6 +1093,224 @@ describe('automatic-navigation.make', () => {
       ))
   })
 
+  /**
+   * The run's last-resort bound. Completion needs two gates — the queue drained
+   * *and* every sniffed request settled — but a step hold's `timeout` bounds only
+   * the first. Once the queue drains the machine is parked on no hold at all, so
+   * without this guard a request whose terminal event never arrives leaves the
+   * run with no timer armed anywhere and it hangs forever.
+   *
+   * The guard is armed on entry to `Drained` and cancelled the moment the queue
+   * re-awakens or the run completes, which is what keeps it from behaving like
+   * the rolling runner-side idle guard it replaced: it cannot exist while the
+   * plan is legitimately parked on a long hold.
+   */
+  describe('drained guard', () => {
+    it('should escalate to the abandon hook when the queue drains and the run never completes', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange: nothing ever injects NoMoreResultsExpected, standing in for
+          // a sniffed request that never reached a terminal event.
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [linkA],
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act
+          yield* machine.handlePageLoaded(pageLoaded()) // dispatches linkA, drains
+          yield* settleForkedWork
+          expect(abandoned).toBe(0) // still within the guard's window
+
+          yield* TestClock.adjust(DEFAULT_DRAINED_GUARD_TIMEOUT)
+          yield* settleForkedWork
+
+          // Assert: the stall is escalated rather than left to hang, and the
+          // machine does not fake a clean finish on its way there.
+          expect(abandoned).toBe(1)
+          expect(sentTags(sendMessage)).toEqual(['Open'])
+        })
+      ))
+
+    it('should not escalate when the run completes before the guard elapses', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [],
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* machine.signalNoMoreResultsExpected // completes: Drained → Done
+          yield* TestClock.adjust(Duration.times(DEFAULT_DRAINED_GUARD_TIMEOUT, 10))
+          yield* settleForkedWork
+
+          // Assert: completion cancels the guard, so a finished run never abandons.
+          expect(abandoned).toBe(0)
+          expect(sentTags(sendMessage)).toEqual(['SniffingComplete'])
+        })
+      ))
+
+    it('should not escalate while parked on a long AwaitUserDismiss hold', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange: the pairing that forced the old rolling idle guard out — a
+          // hold that legitimately spans hours.
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [awaitUserDismiss(Duration.hours(2))],
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act
+          yield* machine.handlePageLoaded(pageLoaded()) // parks, never reaching Drained
+          yield* TestClock.adjust(Duration.minutes(90))
+          yield* settleForkedWork
+
+          // Assert: the guard is scoped to `Drained`, so it does not exist here.
+          expect(abandoned).toBe(0)
+        })
+      ))
+
+    it('should cancel the guard when follow-up steps re-awaken a drained machine', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [],
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act: drain (arming the guard), then generate a hold that outlasts it.
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* settleForkedWork
+          yield* machine.handleStepsGenerated([delayStep(Duration.minutes(5)), linkA])
+          yield* TestClock.adjust(Duration.times(DEFAULT_DRAINED_GUARD_TIMEOUT, 2))
+          yield* settleForkedWork
+
+          // Assert: a guard armed before the generated work cannot kill it.
+          expect(abandoned).toBe(0)
+          expect(sentTags(sendMessage)).toEqual([])
+
+          // The generated Delay still governs, and the step behind it runs.
+          yield* TestClock.adjust(Duration.minutes(5))
+          yield* settleForkedWork
+          expect(sentTags(sendMessage)).toEqual(['Open'])
+        })
+      ))
+
+    it('should honour a plan-level drainedGuardTimeout override', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange
+          const timeout = Duration.seconds(5)
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [],
+            drainedGuardTimeout: timeout,
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* TestClock.adjust(Duration.seconds(4))
+          yield* settleForkedWork
+          expect(abandoned).toBe(0) // the plan's bound, not the default, governs
+
+          yield* TestClock.adjust(Duration.seconds(2))
+          yield* settleForkedWork
+
+          // Assert
+          expect(abandoned).toBe(1)
+        })
+      ))
+
+    it('should ignore a stale guard fire after the queue re-drained under a new generation', () =>
+      run(
+        Effect.gen(function* () {
+          // Arrange
+          let abandoned = 0
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [],
+            drainedGuardTimeout: Duration.seconds(30),
+            onDrainedGuardExpired: Effect.sync(() => {
+              abandoned += 1
+            }),
+          })
+
+          // Act: drain, re-awaken partway through, and let the run re-drain — the
+          // first guard's sleep would otherwise still be counting toward its fire.
+          yield* machine.handlePageLoaded(pageLoaded())
+          yield* settleForkedWork
+          yield* TestClock.adjust(Duration.seconds(20))
+          yield* machine.handleStepsGenerated([linkA])
+          yield* settleForkedWork
+          yield* TestClock.adjust(Duration.seconds(20))
+          yield* settleForkedWork
+
+          // Assert: the second drain's guard restarts the clock rather than
+          // inheriting the first's elapsed time.
+          expect(abandoned).toBe(0)
+
+          yield* TestClock.adjust(Duration.seconds(15))
+          yield* settleForkedWork
+          expect(abandoned).toBe(1)
+        })
+      ))
+
+    it('should WARN when the guard escalates', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [] })
+
+          // The timer daemon keeps the logger it was forked under, so the drain
+          // that arms it has to happen inside the capture.
+          yield* Effect.gen(function* () {
+            yield* machine.handlePageLoaded(pageLoaded())
+            yield* TestClock.adjust(Duration.times(DEFAULT_DRAINED_GUARD_TIMEOUT, 2))
+            yield* settleForkedWork
+          }).pipe(
+            LoggingLayerTest.expectToLog((logs) => {
+              expect(logs).toContainEqual(
+                expect.objectContaining({
+                  level: 'WARN',
+                  message: expect.stringContaining('never reached a terminal event'),
+                })
+              )
+            }),
+            Effect.scoped
+          )
+        })
+      ))
+  })
+
   describe('Stop', () => {
     it('should interrupt a pending Delay timer', () =>
       run(
@@ -793,7 +1354,7 @@ describe('automatic-navigation.make', () => {
      */
     it('should ask for the pending AwaitUserDismiss timeout to be cancelled', () => {
       const queue: readonly Step.Step[] = [awaitUserDismiss(five)]
-      const step = transition(queue)
+      const step = transition(queue, GUARD_MS)
       const start: StepState = { _tag: 'AwaitingPageLoaded', queue, generation: 0 }
 
       const [parked, parkEffects] = step(start, pageLoaded())
@@ -807,6 +1368,43 @@ describe('automatic-navigation.make', () => {
       const [stopped, stopEffects] = step(parked, { _tag: 'Stop' })
       expect(stopped._tag).toBe('AwaitingPageLoaded')
       expect(stopEffects).toContainEqual({ _tag: 'CancelTimer', generation: 1 })
+    })
+
+    /**
+     * `Drained` is timer-bearing too, since the guard is armed on entry — and its
+     * sleep is a full `drainedGuardTimeout`, so an uncancelled daemon would keep
+     * the discarded machine's context alive for that whole span. Asserted against
+     * the pure transition for the same reason as the sibling test above.
+     */
+    it('should ask for the pending drained guard to be cancelled', () => {
+      const queue: readonly Step.Step[] = []
+      const step = transition(queue, GUARD_MS)
+      const start: StepState = { _tag: 'AwaitingPageLoaded', queue, generation: 0 }
+
+      const [drained, drainEffects] = step(start, pageLoaded())
+      expect(drained._tag).toBe('Drained')
+      expect(drainEffects).toContainEqual({
+        _tag: 'ScheduleDrainedGuard',
+        generation: 1,
+        timeoutMs: GUARD_MS,
+      })
+
+      const [stopped, stopEffects] = step(drained, { _tag: 'Stop' })
+      expect(stopped._tag).toBe('AwaitingPageLoaded')
+      expect(stopEffects).toContainEqual({ _tag: 'CancelTimer', generation: 1 })
+    })
+
+    it('should cancel the drained guard on the way to Done', () => {
+      const queue: readonly Step.Step[] = []
+      const step = transition(queue, GUARD_MS)
+      const start: StepState = { _tag: 'AwaitingPageLoaded', queue, generation: 0 }
+
+      const [drained] = step(start, pageLoaded())
+      const [done, doneEffects] = step(drained, { _tag: 'NoMoreResultsExpected' })
+
+      expect(done._tag).toBe('Done')
+      expect(doneEffects).toContainEqual({ _tag: 'CancelTimer', generation: 1 })
+      expect(doneEffects).toContainEqual({ _tag: 'DispatchSniffingComplete' })
     })
 
     it('should restore the initial queue so a subsequent PageLoaded restarts from step 0', () =>
@@ -992,6 +1590,44 @@ describe('automatic-navigation.make', () => {
           expect(statusNames(sendMessage)).toEqual(['Entering email', 'Entering password'])
         })
       ))
+
+    it('should push a terminal Done status right before SniffingComplete on clean completion', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({ sendMessage, stepSequence: [linkA] })
+
+          yield* machine.handlePageLoaded(pageLoaded()) // drains linkA → Drained
+          yield* machine.signalNoMoreResultsExpected // Drained → Done
+          // The chrome's last label is the terminal state, not the frozen last step,
+          // and it is pushed just before the terminal SniffingComplete on the wire.
+          expect(statusNames(sendMessage).at(-1)).toBe('Done')
+          expect(allSent(sendMessage).at(-2)).toEqual({ _tag: 'SetSnifferStatus', name: 'Done' })
+          expect(allSent(sendMessage).at(-1)).toEqual({ _tag: 'SniffingComplete' })
+        })
+      ))
+
+    it('should push a terminal Timed out status when a page hold aborts on timeout', () =>
+      run(
+        Effect.gen(function* () {
+          const sendMessage = vi.fn<SendMessage>(() => Effect.void)
+          const machine = makeMachine({
+            sendMessage,
+            stepSequence: [
+              awaitSettled('dashboard', Duration.seconds(30), 'Waiting for dashboard'),
+              linkA,
+            ],
+          })
+
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/login')) // parks
+          yield* TestClock.adjust(Duration.seconds(30))
+          yield* Effect.yieldNow()
+          // The abort replaces the now-misleading 'Waiting for dashboard' with the
+          // terminal state rather than freezing the chrome on it.
+          expect(statusNames(sendMessage)).toEqual(['Waiting for dashboard', 'Timed out'])
+          expect(allSent(sendMessage).at(-1)).toEqual({ _tag: 'SniffingComplete' })
+        })
+      ))
   })
 })
 
@@ -1005,19 +1641,22 @@ const makeMachine = (options: {
   readonly sendMessage: SendMessage
   readonly onSniffingComplete?: Effect.Effect<void, never, never>
   readonly onDrained?: Effect.Effect<void, never, never>
+  readonly onDrainedGuardExpired?: Effect.Effect<void, never, never>
   readonly stepSequence?: readonly Step.Step[]
+  readonly drainedGuardTimeout?: Duration.Duration
 }): AutomaticNavigation =>
   Effect.runSync(
     make({
       scrapingPlan: ScrapingPlan.make({
         name: 'TestPlan',
         entityDefinitions: [],
-        firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
         stepSequence: options.stepSequence ?? [],
+        drainedGuardTimeout: options.drainedGuardTimeout,
       }),
       sendMessage: options.sendMessage,
       onSniffingComplete: options.onSniffingComplete ?? Effect.void,
       onDrained: options.onDrained ?? Effect.void,
+      onDrainedGuardExpired: options.onDrainedGuardExpired ?? Effect.void,
     })
   )
 
@@ -1088,6 +1727,24 @@ const userDismissed = (): { readonly _tag: 'UserDismissed' } => ({ _tag: 'UserDi
 /** The decoded `SnifferDisposed` bridge message the machine's handler accepts. */
 const snifferDisposed = (): { readonly _tag: 'SnifferDisposed' } => ({ _tag: 'SnifferDisposed' })
 
+/** The decoded `PageRequested` bridge message the machine's handler accepts. */
+const pageRequested = (url: string): { readonly _tag: 'PageRequested'; readonly url: string } => ({
+  _tag: 'PageRequested',
+  url,
+})
+
+/** A hold until a page whose last path segment is `segment` has merely arrived. */
+const awaitRequested = (
+  segment: string,
+  timeout: Duration.Duration = Duration.seconds(30),
+  name = `await ${segment} arrival`
+): Step.AwaitPageRequestedStep => ({
+  _tag: 'AwaitPageRequested',
+  name,
+  pattern: UrlMatch.make({ segments: [UrlMatch.literal(segment)] }),
+  timeout,
+})
+
 /** A hold until a settled `PageLoaded` whose last path segment is `segment`. */
 const awaitSettled = (
   segment: string,
@@ -1097,6 +1754,16 @@ const awaitSettled = (
   _tag: 'AwaitPageSettled',
   name,
   pattern: UrlMatch.make({ segments: [UrlMatch.literal(segment)] }),
+  timeout,
+})
+
+/** A pattern-less hold: waits for the *next* settled load, whatever its url. */
+const awaitSettledAny = (
+  timeout: Duration.Duration = Duration.seconds(30),
+  name = 'await next settle'
+): Step.AwaitPageSettledStep => ({
+  _tag: 'AwaitPageSettled',
+  name,
   timeout,
 })
 

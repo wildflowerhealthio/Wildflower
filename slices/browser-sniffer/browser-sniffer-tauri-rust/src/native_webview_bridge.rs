@@ -44,6 +44,7 @@ use crate::events;
 /// [`tests::data_plane_tags_match_ts`] drift-guards the literals.
 const NATIVE_WEBVIEW_DATA_PLANE_TAGS: &[&str] = &[
     events::PAGE_LOADED,
+    events::PAGE_REQUESTED,
     events::RESPONSE_START,
     events::RESPONSE_DATA,
     events::RESPONSE_FINISHED,
@@ -425,6 +426,7 @@ mod tests {
             NATIVE_WEBVIEW_DATA_PLANE_TAGS,
             [
                 "PageLoaded",
+                "PageRequested",
                 "ResponseStart",
                 "ResponseData",
                 "ResponseFinished",
@@ -472,7 +474,6 @@ mod tests {
         for tag in [
             events::SNIFFING_COMPLETE,
             events::OPEN,
-            events::REQUEST_SNIFFABLE_WEBVIEW,
             events::SET_SNIFFER_STATUS,
             events::ENSURE_SNIFFER_VISIBLE,
             // The two host-synthesized lifecycle tags: a page that could forge
@@ -558,7 +559,6 @@ mod tests {
         for tag in [
             events::SNIFFING_COMPLETE,
             events::OPEN,
-            events::REQUEST_SNIFFABLE_WEBVIEW,
             events::SET_SNIFFER_STATUS,
             events::ENSURE_SNIFFER_VISIBLE,
             events::USER_DISMISSED,

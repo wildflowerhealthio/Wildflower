@@ -51,6 +51,7 @@
     "react-tundraish": "workspace:*",
     "rexall-be-well-collector": "workspace:*",
     "shared-structures-react": "workspace:*",
+    "shoppers-drugmart-collector": "workspace:*",
     "telemetry-react": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
@@ -75,6 +76,7 @@
     "react-tundraish": "workspace:*",
     "rexall-be-well-collector": "workspace:*",
     "shared-structures-react": "workspace:*",
+    "shoppers-drugmart-collector": "workspace:*",
     "telemetry-react": "workspace:*",
     "web-trace-collector": "workspace:*"
   }

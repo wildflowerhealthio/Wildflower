@@ -132,6 +132,25 @@ const PageLoadedMessageBody = Schema.TaggedStruct('PageLoaded', {
 })
 const PageLoadedMessage = Schema.parseJson(PageLoadedMessageBody)
 
+/**
+ * Early page-arrival notification — emitted once per document at
+ * `DOMContentLoaded` (or immediately on injection into an already-parsed
+ * document), so it precedes the settled `PageLoaded` and fires even for a page
+ * that never settles (a resource that hangs `load`, a page that never goes
+ * quiet). "Requested" names what a consumer may conclude: the awaited page has
+ * been requested and its DOM has arrived — nothing about quiescence.
+ *
+ * Notification only: no `pageContentId` (the DOM snapshot stays tied to
+ * settlement, streamed by `PageLoaded`'s Response triple), no body. The host
+ * never decodes it — it forwards by `_tag` like the rest of the data plane.
+ *
+ * Wire: `{"_tag":"PageRequested","url":"https://…"}`
+ */
+const PageRequestedMessageBody = Schema.TaggedStruct('PageRequested', {
+  url: Schema.String,
+})
+const PageRequestedMessage = Schema.parseJson(PageRequestedMessageBody)
+
 const CancelSnifferRequestMessageBody = Schema.TaggedStruct('CancelSnifferRequest', {
   id: SnifferRequestId,
 })
@@ -212,6 +231,8 @@ export {
   CancelledMessageBody,
   PageLoadedMessage,
   PageLoadedMessageBody,
+  PageRequestedMessage,
+  PageRequestedMessageBody,
   CancelSnifferRequestMessage,
   CancelSnifferRequestMessageBody,
   PageActionMessage,

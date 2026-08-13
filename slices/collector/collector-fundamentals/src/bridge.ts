@@ -3,6 +3,7 @@ import {
   CancelledMessage,
   PageActionMessage,
   PageLoadedMessage,
+  PageRequestedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
@@ -12,33 +13,6 @@ import { Schema } from 'effect'
 import { Bridge } from 'effect-messaging-core'
 
 import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
-
-/**
- * Web → Host: the collector SPA asks the host to open a sniffer-enabled
- * WebView for the given `source`. The Tauri host
- * (`browser-sniffer-tauri-rust`) opens a sniffer `WebviewWindow` and
- * forwards the resulting sniffer events back through this same bridge's
- * Host→Web channel.
- *
- * The `source` field reuses the slice's `WebViewSource.AnySchema` so
- * the bridge wire-shape and the host-side `WebViewSource.Any` type
- * share one definition. The schema's `Uri` variant is `http(s)://`-only
- * (see `web-view-source.ts`) — non-http(s) schemes (`file:`,
- * `javascript:`, …) fail to decode at the bridge boundary.
- *
- * `linkedSpan` is the optional OpenTelemetry span context of the trace
- * active on the SPA when it asked for the sniffer. The host threads it
- * into the sniffer webview, which adds it as a span *link* on every
- * root span it opens (the initial-load span and each per-page span), so
- * the otherwise-independent sniffer traces point back at the collector's
- * sync trace. Omitted when no span was in scope at send time.
- */
-const RequestSniffableWebView = Schema.parseJson(
-  Schema.TaggedStruct('RequestSniffableWebView', {
-    source: WebViewSourceSchema,
-    linkedSpan: Schema.optional(Schema.Struct({ traceId: Schema.String, spanId: Schema.String })),
-  })
-)
 
 /**
  * Web → Host: the collector SPA decided the active sync is done (either
@@ -51,12 +25,14 @@ const SniffingComplete = Schema.parseJson(Schema.TaggedStruct('SniffingComplete'
 
 /**
  * Web → Host: the collector SPA's handler decided the active sync's
- * next step is to navigate the sniffer webview to a fresh page.
- * `source` reuses the slice's `WebViewSource.AnySchema` so the same
- * tagged union the host uses for the initial `firstPage` also covers
- * subsequent navigations — `{ _tag: 'Uri', uri: 'https://…' }` for a
- * remote page, `{ _tag: 'Html', html: '…' }` for an inline scaffold.
- * The page reload re-injects the sniffer (idempotently keyed by
+ * next step is to navigate the sniffer webview to a fresh page — including the
+ * run's very first navigation, which is what builds the sniffer webview: the
+ * host's `open_or_navigate` opens it fresh when absent, so there is no separate
+ * mount request and no placeholder page. `source` reuses the slice's
+ * `WebViewSource.AnySchema` —
+ * `{ _tag: 'Uri', uri: 'https://…' }` for a remote page,
+ * `{ _tag: 'Html', html: '…' }` for an inline scaffold. The page reload
+ * re-injects the sniffer (idempotently keyed by
  * `Symbol.for('browser-sniffer:state')`) and a new `PageLoaded`
  * eventually flows back through Host→Web.
  */
@@ -126,11 +102,11 @@ type CollectorBridge = Bridge.Bridge<
     RequestError: typeof RequestErrorMessage
     Cancelled: typeof CancelledMessage
     PageLoaded: typeof PageLoadedMessage
+    PageRequested: typeof PageRequestedMessage
     UserDismissed: typeof UserDismissed
     SnifferDisposed: typeof SnifferDisposed
   },
   {
-    RequestSniffableWebView: typeof RequestSniffableWebView
     CancelSnifferRequest: typeof CancelSnifferRequestMessage
     SniffingComplete: typeof SniffingComplete
     Open: typeof OpenMessage
@@ -142,11 +118,12 @@ type CollectorBridge = Bridge.Bridge<
 
 /**
  * Slice-level bridge between the embedded collector SPA and the Tauri
- * host. Web→Host carries control signals (`RequestSniffableWebView`,
- * `CancelSnifferRequest`, `SniffingComplete`, `SetSnifferStatus`,
- * `EnsureSnifferVisible`) and script-driven navigation steps (`Open`,
+ * host. Web→Host carries control signals (`CancelSnifferRequest`,
+ * `SniffingComplete`, `SetSnifferStatus`, `EnsureSnifferVisible`) and
+ * script-driven navigation steps (`Open`,
  * `PageAction`); Host→Web carries the sniffer-event subset collector parses, the
- * `PageLoaded` notification that drives the step timer, and the two sniffer
+ * `PageLoaded` / `PageRequested` notifications that drive the step machine's
+ * holds (settled load / early DOMContentLoaded arrival), and the two sniffer
  * webview lifecycle signals (`UserDismissed` — the user closed it;
  * `SnifferDisposed` — it was torn down). `SetSnifferStatus` is a pure
  * chrome-label update the host writes to the sniffer webview's subtitle; it is
@@ -170,11 +147,11 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['RequestError', RequestErrorMessage],
     ['Cancelled', CancelledMessage],
     ['PageLoaded', PageLoadedMessage],
+    ['PageRequested', PageRequestedMessage],
     ['UserDismissed', UserDismissed],
     ['SnifferDisposed', SnifferDisposed],
   ] as const,
   webToHost: [
-    ['RequestSniffableWebView', RequestSniffableWebView],
     ['CancelSnifferRequest', CancelSnifferRequestMessage],
     ['SniffingComplete', SniffingComplete],
     ['Open', OpenMessage],
@@ -188,7 +165,6 @@ export {
   CollectorBridge,
   EnsureSnifferVisible,
   OpenMessage,
-  RequestSniffableWebView,
   SetSnifferStatus,
   SnifferDisposed,
   SniffingComplete,

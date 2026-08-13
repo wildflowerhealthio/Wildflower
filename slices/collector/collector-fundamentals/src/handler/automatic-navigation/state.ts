@@ -21,9 +21,12 @@ import type { Step } from '../../model/step.ts'
  *   this state except `Stop`'s reset.
  * - `DelayPending` — a `Delay` step's timer is running; `queue` is what remains
  *   *after* that delay.
- * - `AwaitingUrlMatch` — the head `AwaitPageSettled` hold's `pattern` is unmet;
- *   `queue[0]` is that still-unconsumed hold and a URL-match timeout daemon is
- *   pending.
+ * - `AwaitingUrlMatch` — the head page hold's (`AwaitPageSettled` or
+ *   `AwaitPageRequested`) `pattern` is unmet; `queue[0]` is that
+ *   still-unconsumed hold and a URL-match timeout daemon is pending. Which
+ *   input can satisfy it follows from the head's tag: a settled `PageLoaded`
+ *   satisfies either kind, an early `PageRequested` only an
+ *   `AwaitPageRequested`.
  * - `AwaitingUserDismiss` — parked on a head `AwaitUserDismiss` hold, waiting for
  *   the external `UserDismissed` signal (the user closing the sniffer webview).
  *   `queue[0]` is that still-unconsumed hold and a user-dismiss timeout daemon is

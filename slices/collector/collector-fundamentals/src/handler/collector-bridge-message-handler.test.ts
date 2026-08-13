@@ -38,6 +38,27 @@ import * as CollectorBridgeMessageHandler from './collector-bridge-message-handl
  * stream closed), and the `followUpSteps` → dedup/cap → queue injection path.
  */
 describe('CollectorBridgeMessageHandler.make: composition', () => {
+  it('startAutomaticNavigation dispatches the plan’s leading Open without a PageLoaded', () =>
+    Effect.runPromise(
+      Effect.gen(function* () {
+        const sendMessage = vi.fn<SimpleHandlerArgs['sendMessage']>(() => Effect.void)
+        // Leading Open, then a page hold so the run parks rather than draining to
+        // completion — isolating the start-up dispatch. `awaitSettledFor('1')`
+        // matches `…/people/1`, which the Open's url does not, so it stays parked.
+        const handler = makeSimpleHandler({
+          sendMessage,
+          stepSequence: [linkA, awaitSettledFor('1')],
+        })
+
+        // The runner fires this at run start; the leading Open dispatches with
+        // no page in hand and builds the sniffer directly on the real URL — a
+        // sniffer whose first page never settles can't strand the run in the
+        // machine's timer-less start-up state.
+        yield* handler.startAutomaticNavigation
+        expect(dispatchedOpens(sendMessage)).toEqual(['https://example.com/a'])
+      }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
+    ))
+
   it('cancelAllRequestSniffing cancels each incomplete id AND stops the automatic navigation', () =>
     Effect.runPromise(
       Effect.gen(function* () {
@@ -89,11 +110,13 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
 
         // No request is tracked (the PageLoaded url matches no entity), so the
         // queue drains onto an empty map and the forked completion check drives
+        // completion: a terminal `SetSnifferStatus('Done')` chrome label, then
         // `SniffingComplete` → the stream closes.
         yield* handler.PageLoaded(pageLoaded())
         yield* settleForkedWork
-        expect(sendMessage).toHaveBeenCalledOnce()
-        expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SniffingComplete' })
+        expect(sendMessage).toHaveBeenCalledTimes(2)
+        expect(sendMessage.mock.calls[0][0]).toEqual({ _tag: 'SetSnifferStatus', name: 'Done' })
+        expect(sendMessage.mock.calls[1][0]).toEqual({ _tag: 'SniffingComplete' })
         expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(true)
       }).pipe(Effect.provide(Layer.mergeAll(TestContext.TestContext, adapterLayer)))
     ))
@@ -208,7 +231,7 @@ describe('CollectorBridgeMessageHandler.make: composition', () => {
           // The run must NOT have completed: `SniffingComplete` here would be
           // dispatched against a non-empty incomplete map, and the lifecycle only
           // closes the stream when that map is empty — so the stream would never
-          // close and the run would hang until the idle timeout.
+          // close and the run would hang indefinitely (there is no idle backstop).
           expect(dispatched(sendMessage)).toEqual([])
           expect(Option.isNone(yield* handler.requestSniffingResults.size)).toBe(false)
 
@@ -359,15 +382,14 @@ const dispatched = (
 
 /**
  * Build a handler whose single entity parses a JSON person and generates the
- * given `followUpSteps`. `firstPage` defaults to `/people/1` (seeding the dedup
- * visited-set), the step sequence is empty (the crawl is driven entirely by
- * generation).
+ * given `followUpSteps`. The step sequence is empty (the crawl is driven
+ * entirely by generation, and these tests simulate the page events directly),
+ * so the dedup visited-set starts empty and grows only from generated `Open`s.
  */
 const makeGeneratingHandler = (opts: {
   readonly sendMessage: SendMessage
   readonly followUpSteps: EntityDefinition.EntityDefinition<Person>['followUpSteps']
   readonly maxGeneratedSteps?: number
-  readonly firstPage?: WebViewSource.Any
 }): CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<Person> =>
   Effect.runSync(
     CollectorBridgeMessageHandler.make<Person>({
@@ -384,7 +406,6 @@ const makeGeneratingHandler = (opts: {
             followUpSteps: opts.followUpSteps,
           }),
         ],
-        firstPage: opts.firstPage ?? { _tag: 'Uri', uri: 'https://example.com/people/1' },
         stepSequence: [],
         maxGeneratedSteps: opts.maxGeneratedSteps,
       }),

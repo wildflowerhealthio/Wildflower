@@ -2,10 +2,10 @@ use serde::Deserialize;
 
 use super::web_view_source::WebViewSourcePayload;
 
-/// Wire shape of `CollectorBridge.webToHost.Open`. Identical shape to
-/// `RequestSniffableWebView` minus the optional `linkedSpan`, but split
-/// into its own struct so future divergence (e.g. add a `clearStateFirst`
-/// flag) doesn't accidentally couple the two.
+/// Wire shape of `CollectorBridge.webToHost.Open`: the source the sniffer
+/// webview should load. Its own struct (rather than a bare
+/// `WebViewSourcePayload`) so future envelope fields — e.g. a
+/// `clearStateFirst` flag — have somewhere to land.
 #[derive(Debug, PartialEq, Deserialize)]
 pub(crate) struct OpenPayload {
     pub(crate) source: WebViewSourcePayload,

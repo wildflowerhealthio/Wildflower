@@ -48,7 +48,6 @@ const makeSimpleHandler = (
       scrapingPlan: ScrapingPlan.make<SimpleResources>({
         name: 'TestPlan',
         entityDefinitions: [SimpleEntity],
-        firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
         stepSequence: stepSequence ?? [],
       }),
       sendMessage: noopSendMessage,

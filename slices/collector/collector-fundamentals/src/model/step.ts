@@ -8,11 +8,12 @@ import type { OpenMessage } from '../bridge.ts'
  * bridge message bodies themselves* so a step can never carry a field the wire
  * doesn't:
  *
- * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries
- *   the same `WebViewSource` shape the host uses for the initial `firstPage`,
- *   so a slice's `stepSequence` can mix inline-HTML bootstraps and absolute
- *   `https://` URIs without a translation layer. It is its own tag because
- *   the Tauri host *decodes* it to navigate the sniffer `WebviewWindow`.
+ * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries a
+ *   `WebViewSource`, so a slice's `stepSequence` can mix inline-HTML bootstraps
+ *   and absolute `https://` URIs without a translation layer. The run's first
+ *   step is an `Open`, which is also what builds the sniffer webview. It is its
+ *   own tag because the Tauri host *decodes* it to navigate the sniffer
+ *   `WebviewWindow`.
  * - `PageAction` (`browser-sniffer-core`'s `PageActionMessage`): an in-page
  *   interaction (`Click` / `Fill`, discriminated by the inner `kind`). New
  *   interaction kinds are added as `action` union variants, not new tags.
@@ -26,10 +27,11 @@ import type { OpenMessage } from '../bridge.ts'
  * is not a claim that only `Navigation` steps reach the host (an
  * {@link EnsureWindowVisibleStep} does too, via a machine-built message).
  *
- * The three plan-only holds ({@link DelayStep}, {@link AwaitPageSettledStep},
- * {@link AwaitUserDismissStep}) carry no `action` at all and are consumed by the
- * FSM as timers / holds, so they structurally cannot leak — there is no "strip
- * before dispatch" step to remember.
+ * The four plan-only holds ({@link DelayStep}, {@link AwaitPageSettledStep},
+ * {@link AwaitPageRequestedStep}, {@link AwaitUserDismissStep}) carry no
+ * `action` at all and are consumed by the FSM as timers / holds, so they
+ * structurally cannot leak — there is no "strip before dispatch" step to
+ * remember.
  */
 type StepAction = typeof OpenMessage.Type | typeof PageActionMessage.Type
 
@@ -94,17 +96,83 @@ interface DelayStep {
  * reached already matches, it is satisfied immediately; otherwise the machine
  * parks until a matching `PageLoaded` arrives.
  *
+ * **Omitting `pattern`** turns the hold into "wait for the *next* settled page
+ * load, whatever its url" — it is *never* satisfied by the page already in hand,
+ * so it always parks and the first subsequent settled `PageLoaded` releases it.
+ * Use it for the common case of a hold that waits on the page the immediately
+ * preceding `Open` navigated to: there is no cross-host redirect to disambiguate,
+ * and the page in hand is the *previous* one (at run start, none at all), which
+ * a pattern-less hold correctly skips. A
+ * `pattern` is only needed when the awaited page differs from the one opened — a
+ * login/redirect that lands on another host.
+ *
  * `timeout` is the machine-side cap on that wait — distinct from the sniffer's
  * internal settle ceiling: if no matching settled `PageLoaded` arrives within
- * it, the run aborts via `SniffingComplete` rather than hanging (the sync
- * runner's idle timeout is the ultimate backstop). `pattern` is a `RegExp` built
- * with `UrlMatch.make({ segments, end })`.
+ * it, the hold's `continueOnTimeout` decides what happens (default: abort the
+ * run via `SniffingComplete`; see the field). There is no runner-side idle
+ * backstop — this `timeout` is the bound on *this step*. (The plan-level
+ * `drainedGuardTimeout` bounds only the tail after the queue drains, so it never
+ * shortens a hold.) `pattern`, when present, is a `RegExp` built with
+ * `UrlMatch.make({ segments, end })`.
  */
 interface AwaitPageSettledStep {
   readonly _tag: 'AwaitPageSettled'
   readonly name: string
+  /**
+   * The url the awaited settled page must match, or **omitted** to wait for the
+   * next settled load regardless of url (see the type doc). A pattern-less hold
+   * never matches the page in hand, so it always parks for a fresh settle.
+   */
+  readonly pattern?: RegExp
+  readonly timeout: Duration.Duration
+  /**
+   * What a `timeout` does. Omitted or `false` (the default) **aborts** the run
+   * via `SniffingComplete` — the awaited page never arrived, so the plan can't
+   * proceed. `true` instead **advances** to the next step: the unmatched hold is
+   * consumed and the queue tail drains, with no page in hand (so a following
+   * hold parks as usual). Set `true` for a hold whose page may legitimately be
+   * skipped — e.g. a login/redirect page that an already-authenticated session
+   * never lands on — where reaching it is best-effort, not a precondition.
+   */
+  readonly continueOnTimeout?: boolean
+}
+
+/**
+ * A plan-only hold that waits for a page whose url matches `pattern` to have
+ * *arrived* — the sniffer's early `PageRequested` notification, fired once per
+ * document at `DOMContentLoaded` — rather than to have fully settled. The
+ * early sibling of {@link AwaitPageSettledStep}: same shape, same parking
+ * behaviour, but its gate is "the navigation landed and the DOM is parsed",
+ * nothing about quiescence.
+ *
+ * Use it when the page being waited for may never satisfy the sniffer's
+ * settle detector — a resource that hangs `load`, an SPA that never goes
+ * quiet — so an `AwaitPageSettled` would sit out its whole `timeout` even
+ * though the page visibly arrived. The canonical case is a human-in-the-loop
+ * pause (a 2FA hold) whose *destination* page is busy: the plan only needs to
+ * know the user got there. Because it advances at `DOMContentLoaded`, the
+ * page's own XHR fan-out may not have started yet — pair it with a trailing
+ * `Delay` (or follow it with a step on another page that fires the same
+ * requests) when that fan-out matters.
+ *
+ * A matching *settled* `PageLoaded` also satisfies it (a settled page
+ * necessarily arrived), so it never waits longer than an `AwaitPageSettled`
+ * would. `timeout` bounds the wait exactly like
+ * {@link AwaitPageSettledStep.timeout}, and `continueOnTimeout` governs expiry
+ * the same way (default: abort via `SniffingComplete`).
+ */
+interface AwaitPageRequestedStep {
+  readonly _tag: 'AwaitPageRequested'
+  readonly name: string
   readonly pattern: RegExp
   readonly timeout: Duration.Duration
+  /**
+   * What a `timeout` does — identical to {@link AwaitPageSettledStep.continueOnTimeout}.
+   * Omitted or `false` (the default) **aborts** the run via `SniffingComplete`;
+   * `true` **advances** to the next step, consuming the unmatched hold and
+   * draining the tail with no page in hand.
+   */
+  readonly continueOnTimeout?: boolean
 }
 
 /**
@@ -131,11 +199,12 @@ interface AwaitPageSettledStep {
  *
  * `timeout` bounds the wait, mirroring {@link AwaitPageSettledStep}'s: if the
  * user never closes the window, the hold gives up after it (WARN-logged) and
- * wraps up the same way rather than parking forever. Two more things can end the
- * wait early: the sniffer webview being torn down (the plugin's `Disposed`
- * event, surfaced as `SnifferDisposed`), and the sync runner's own idle guard —
- * so a plan ending in this step should set {@link ScrapingPlan.idleTimeout}
- * comfortably *above* this `timeout`, or the guard will abandon the run first.
+ * wraps up the same way rather than parking forever — and this `timeout` is the
+ * *only* bound on the wait (there is no runner-side idle guard, and the plan's
+ * `drainedGuardTimeout` is armed only in `Drained`, never while this hold is
+ * parked), so set it generously (this is the plan whose hold legitimately spans a
+ * long manual session). The other thing that can end the wait early is the sniffer webview
+ * being torn down (the plugin's `Disposed` event, surfaced as `SnifferDisposed`).
  * Note also that the native-webview plugin's own absolute lifetime cap is not
  * re-armed by a `show`, so it can cut a very long hold short.
  *
@@ -191,9 +260,11 @@ interface EnsureWindowVisibleStep {
  * {@link EnsureWindowVisibleStep} the automatic-navigation machine dispatches to
  * the host, or one of the plan-only holds the FSM consumes without dispatching —
  * a {@link DelayStep} (fixed wait), an {@link AwaitPageSettledStep} (wait for a
- * matching settled page load), or an {@link AwaitUserDismissStep} (wait for the
- * user to close the sniffer webview). A tagged union keyed by `_tag`; the
- * automatic-navigation machine routes on it.
+ * matching settled page load), an {@link AwaitPageRequestedStep} (wait for a
+ * matching page to merely arrive, at `DOMContentLoaded`), or an
+ * {@link AwaitUserDismissStep} (wait for the user to close the sniffer
+ * webview). A tagged union keyed by `_tag`; the automatic-navigation machine
+ * routes on it.
  *
  * Every variant carries a **required** `name`: a manually-authored,
  * human-readable label ("Entering email", "Waiting for prescriptions to load")
@@ -202,8 +273,9 @@ interface EnsureWindowVisibleStep {
  * it executes. Unlike a `Navigation`'s `action`, `name` never rides the step's
  * own wire message — the machine surfaces it through a separate
  * `SetSnifferStatus` bridge control message (see `bridge.ts`), which is why the
- * plan-only holds (`Delay` / `AwaitPageSettled` / `AwaitUserDismiss`) can label
- * the chrome even though they carry no `action`. Because consecutive
+ * plan-only holds (`Delay` / `AwaitPageSettled` / `AwaitPageRequested` /
+ * `AwaitUserDismiss`) can label the chrome even though they carry no `action`.
+ * Because consecutive
  * `Navigation` steps drain in one turn, only the last of a back-to-back run is
  * visible — a name is most meaningful on a step that holds, or on one
  * immediately followed by a hold.
@@ -212,6 +284,7 @@ type Step =
   | NavigationStep
   | DelayStep
   | AwaitPageSettledStep
+  | AwaitPageRequestedStep
   | AwaitUserDismissStep
   | EnsureWindowVisibleStep
 
@@ -220,6 +293,7 @@ export type {
   NavigationStep,
   DelayStep,
   AwaitPageSettledStep,
+  AwaitPageRequestedStep,
   AwaitUserDismissStep,
   EnsureWindowVisibleStep,
   StepAction,

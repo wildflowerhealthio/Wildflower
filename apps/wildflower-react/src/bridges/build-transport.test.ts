@@ -14,6 +14,18 @@ import type { buildTransport as BuildTransportFn } from './build-transport.ts'
 // `signalReady` is what lets the ordering test pin "interceptor
 // installed before the signal-ready await."
 let signalReadyResolve: (() => void) | null = null
+// Deterministic hand-off for "the build chain reached `transport.signalReady`",
+// resolved from inside the mocked `signalReady` the instant it is entered. Tests
+// await this instead of polling microtasks against `signalReadyResolve`, so the
+// wait no longer depends on how Effect schedules the chain's hops (micro- vs
+// macrotask) — the source of the old bulk-run flakiness.
+let signalReadyEntered: (() => void) | null = null
+let signalReadyEnteredPromise: Promise<void> = Promise.resolve()
+// The interceptor's call count captured at the instant `signalReady` is entered:
+// the exact ordering point the "install before signalReady" test asserts on,
+// snapshotted within this test's own chain rather than re-read live afterwards
+// (a live re-read is what let an adjacent test's count bleed in under load).
+let installCountAtSignalReady = -1
 let lastMakeWebTransportConfig: {
   readonly bridges: ReadonlyArray<{ readonly name: string }>
   readonly handlers: ReadonlyArray<Record<string, unknown>>
@@ -44,9 +56,14 @@ vi.mock('effect-messaging-core', async () => {
           sendMessage: fakeSendMessage,
           enqueue: () => Effect.void,
           signalReady: Effect.async<void>((resume) => {
+            // The source installs the interceptor immediately before awaiting
+            // `signalReady`, so its count here is the ordering assertion, snapshot
+            // it before handing control back to the test.
+            installCountAtSignalReady = fakeInstallConsoleInterceptor.mock.calls.length
             signalReadyResolve = (): void => {
               resume(Effect.void)
             }
+            signalReadyEntered?.()
           }),
           registerHandlers: fakeRegisterHandlers,
         })
@@ -98,6 +115,10 @@ const importBuildTransport = async (): Promise<typeof BuildTransportFn> =>
 beforeEach(() => {
   lastMakeWebTransportConfig = null
   signalReadyResolve = null
+  installCountAtSignalReady = -1
+  signalReadyEnteredPromise = new Promise<void>((resolve) => {
+    signalReadyEntered = resolve
+  })
   coordinatorConnectArg = null
   fakeRegisterHandlers.mockClear()
   fakeSendMessage.mockClear()
@@ -110,20 +131,6 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-// Poll across microtasks until `predicate()` returns true or the
-// budget is exhausted. The build chain is `runPromise → .then →
-// runPromise(signalReady)` — multiple microtask hops — so a fixed
-// `await Promise.resolve()` count races the chain. Polling makes the
-// wait insensitive to the exact hop count without bringing in real
-// timers.
-const waitForMicrotask = async (predicate: () => boolean, budget = 50): Promise<void> => {
-  for (let i = 0; i < budget; i++) {
-    if (predicate()) return
-    // oxlint-disable-next-line no-await-in-loop -- polling each microtask tick
-    await Promise.resolve()
-  }
-}
-
 describe('buildTransport', () => {
   test('seeds Navigation and Gatekeeper handlers and leaves slices unseeded for the coordinator', async () => {
     const buildTransport = await importBuildTransport()
@@ -132,9 +139,8 @@ describe('buildTransport', () => {
       () => undefined,
       () => undefined
     )
-    // The build chain hops through several microtasks before
-    // `transport.signalReady` runs and our mock sets `signalReadyResolve`.
-    await waitForMicrotask(() => signalReadyResolve !== null)
+    // Resolves the instant the build chain reaches `transport.signalReady`.
+    await signalReadyEnteredPromise
     signalReadyResolve?.()
     await promise
 
@@ -158,14 +164,15 @@ describe('buildTransport', () => {
       () => undefined,
       () => undefined
     )
-    // Wait until the build chain has reached `transport.signalReady`
-    // (which fires our mock's `Effect.async` and sets `signalReadyResolve`).
-    // The interceptor is installed in the same `.then` block immediately
-    // before `signalReady` runs, so by this point it must have fired —
-    // if it hadn't, the ordering contract would be broken.
-    await waitForMicrotask(() => signalReadyResolve !== null)
+    // Resolves the instant the build chain reaches `transport.signalReady`.
+    // The interceptor is installed in the same `.then` block immediately before
+    // `signalReady` runs, so the count snapshotted at that entry point (within
+    // this test's own chain) is exactly the ordering contract — assert on the
+    // snapshot rather than re-reading the shared mock live, which could pick up
+    // an adjacent test's call under load.
+    await signalReadyEnteredPromise
 
-    expect(fakeInstallConsoleInterceptor).toHaveBeenCalledTimes(1)
+    expect(installCountAtSignalReady).toBe(1)
     expect(signalReadyResolve).not.toBeNull()
 
     // Unblock signalReady so the returned promise can settle.
@@ -180,7 +187,7 @@ describe('buildTransport', () => {
       () => undefined,
       () => undefined
     )
-    await waitForMicrotask(() => signalReadyResolve !== null)
+    await signalReadyEnteredPromise
     signalReadyResolve?.()
     await promise
 

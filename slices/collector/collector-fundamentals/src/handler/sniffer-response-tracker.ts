@@ -51,7 +51,7 @@ type SniffFailure = {
   readonly error: ParseResult.ParseError | UnknownException | SnifferCancelled
   readonly url: string
   /**
-   * `true` only for a request settled by the idle-timeout abandon path
+   * `true` only for a request settled by the abandon path
    * (`failIncompleteSniffedRequests`), which force-closes the results stream
    * itself — the signal for `handleNewSniffResult` to skip its per-result
    * stream-close check. A normal terminal (including a `Cancelled` event) is
@@ -116,7 +116,7 @@ interface SnifferResponseTracker<TResources> {
    * lifecycle's stream (a stalled download whose `ResponseData` chunks never
    * produced a terminal), then drop them. Does **not** close the stream — the
    * lifecycle owns that (`abandonAllRequestSniffing` chains the close after
-   * this). Backs the idle-timeout escape.
+   * this). Backs that force-close escape.
    */
   readonly failIncompleteSniffedRequests: Effect.Effect<void, never, never>
   /**
@@ -409,7 +409,7 @@ const make = <TResources>({
         const incomplete = Array.from(MutableHashMap.values(incompleteSniffedRequests))
         if (incomplete.length > 0) {
           yield* Effect.logWarning(
-            `CollectorBridgeMessageHandler: idle timeout with ${incomplete.length} response(s) still in-flight; settling as failures`
+            `CollectorBridgeMessageHandler: abandoning with ${incomplete.length} response(s) still in-flight; settling as failures`
           )
         }
         // Run each publish (don't just call it): `handleNewSniffResult` returns
@@ -422,7 +422,7 @@ const make = <TResources>({
             handleNewSniffResult(
               Either.left({
                 error: new UnknownException(
-                  `response for ${response.url} still in-flight at idle timeout; abandoning`
+                  `response for ${response.url} still in-flight at abandon; abandoning`
                 ),
                 url: response.url,
                 abandoned: true,

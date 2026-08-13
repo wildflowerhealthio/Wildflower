@@ -1,9 +1,9 @@
-import { Effect, HashMap, Match, Ref, SynchronizedRef } from 'effect'
+import { Duration, Effect, HashMap, Match, Ref, SynchronizedRef } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import type { RuntimeFiber } from 'effect/Fiber'
 
 import type { CollectorBridge } from '../../bridge.ts'
-import type { ScrapingPlan } from '../../model/index.ts'
+import { ScrapingPlan } from '../../model/index.ts'
 import type { Step } from '../../model/step.ts'
 import type { InputMessage, SideEffectMessage, StepOutboundMessage } from './messages.ts'
 import {
@@ -32,6 +32,24 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  */
 interface AutomaticNavigation {
   readonly handlePageLoaded: Service['PageLoaded']
+  /**
+   * The early `PageRequested` page-arrival notification (fired at
+   * `DOMContentLoaded`, before settlement). Consumed only by a parked
+   * `AwaitPageRequested` hold; a silent no-op in every other state — in
+   * particular it never starts the start-up drain, which stays gated on the
+   * first settled `PageLoaded`.
+   */
+  readonly handlePageRequested: Service['PageRequested']
+  /**
+   * The one-shot start-up kick, dispatched by the runner at run start (see
+   * {@link CollectorBridgeMessageHandler}). Drains the queue's leading `Open` —
+   * which builds the sniffer webview directly on the real target URL — without
+   * waiting for its first `PageLoaded`, so a sniffer whose first page never
+   * settles (its web content process dies, say) can't strand the run in the
+   * timer-less `AwaitingPageLoaded`. Idempotent against that first `PageLoaded`:
+   * whichever arrives first drains, the other is a no-op.
+   */
+  readonly handleStart: Effect.Effect<void, never, never>
   /**
    * The external `UserDismissed` signal (the user closed the sniffer webview),
    * forwarded from the host on the `CollectorBridge`. Consumes an
@@ -78,6 +96,7 @@ const make = <TResources>({
   sendMessage,
   onSniffingComplete,
   onDrained,
+  onDrainedGuardExpired,
 }: {
   scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
   sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
@@ -95,6 +114,12 @@ const make = <TResources>({
    * (e.g. a trailing `Delay`) that a settle-only trigger would leave hanging.
    */
   onDrained: Effect.Effect<void, never, never>
+  /**
+   * Run (forked) when the drained guard elapses. The composition wires this to
+   * the lifecycle's `abandonAllRequestSniffing` — see
+   * [Handler Explanation](../../../docs/Handler%20Explanation.md#the-drained-guard-the-only-bound-on-gate-b).
+   */
+  onDrainedGuardExpired: Effect.Effect<void, never, never>
 }): Effect.Effect<AutomaticNavigation, never, never> =>
   Effect.gen(function* () {
     const initialQueue = scrapingPlan.stepSequence
@@ -102,7 +127,14 @@ const make = <TResources>({
     const registry: TimerRegistry = yield* Ref.make(
       HashMap.empty<number, RuntimeFiber<void, never>>()
     )
-    const step = transition(initialQueue)
+    // The plan's last-resort bound, resolved to millis once here rather than on
+    // every drain — the pure transition takes a number, not a `Duration`.
+    const step = transition(
+      initialQueue,
+      Duration.toMillis(
+        scrapingPlan.drainedGuardTimeout ?? ScrapingPlan.DEFAULT_DRAINED_GUARD_TIMEOUT
+      )
+    )
 
     // `dispatch` and `ctx` are mutually recursive (a timer daemon / the
     // completion-check daemon re-injects an input via `ctx.dispatch`). The arrow
@@ -112,6 +144,7 @@ const make = <TResources>({
       sendMessage,
       onSniffingComplete,
       onDrained,
+      onDrainedGuardExpired,
       dispatch: (message) => dispatch(message),
       registry,
     }
@@ -132,11 +165,17 @@ const make = <TResources>({
         Match.tag('ScheduleUserDismissTimeout', (m) =>
           sideEffectHandlers.ScheduleUserDismissTimeout(m, ctx)
         ),
+        Match.tag('ScheduleDrainedGuard', (m) => sideEffectHandlers.ScheduleDrainedGuard(m, ctx)),
         Match.tag('CancelTimer', (m) => sideEffectHandlers.CancelTimer(m, ctx)),
         Match.tag('RequestCompletionCheck', (m) =>
           sideEffectHandlers.RequestCompletionCheck(m, ctx)
         ),
+        Match.tag('DrainedGuardExpired', (m) => sideEffectHandlers.DrainedGuardExpired(m, ctx)),
+        Match.tag('WarnDrainedGuardExpired', (m) =>
+          sideEffectHandlers.WarnDrainedGuardExpired(m, ctx)
+        ),
         Match.tag('WarnUrlMatchTimeout', (m) => sideEffectHandlers.WarnUrlMatchTimeout(m, ctx)),
+        Match.tag('WarnUrlMatchAdvanced', (m) => sideEffectHandlers.WarnUrlMatchAdvanced(m, ctx)),
         Match.tag('WarnUserDismissTimeout', (m) =>
           sideEffectHandlers.WarnUserDismissTimeout(m, ctx)
         ),
@@ -165,6 +204,8 @@ const make = <TResources>({
       )
 
     const handlePageLoaded: Service['PageLoaded'] = (event) => dispatch(event)
+    const handlePageRequested: Service['PageRequested'] = (event) => dispatch(event)
+    const handleStart: Effect.Effect<void, never, never> = dispatch({ _tag: 'Start' })
     const handleUserDismissed: Service['UserDismissed'] = () => dispatch({ _tag: 'UserDismissed' })
     const handleSnifferDisposed: Service['SnifferDisposed'] = () =>
       dispatch({ _tag: 'SnifferDisposed' })
@@ -178,6 +219,8 @@ const make = <TResources>({
 
     return {
       handlePageLoaded,
+      handlePageRequested,
+      handleStart,
       handleUserDismissed,
       handleSnifferDisposed,
       handleStepsGenerated,

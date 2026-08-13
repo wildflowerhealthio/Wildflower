@@ -4,6 +4,7 @@ import {
   CancelledMessage,
   PageActionMessage,
   PageLoadedMessage,
+  PageRequestedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
@@ -23,6 +24,7 @@ type BrowserSnifferBridge = Bridge.Bridge<
     RequestError: typeof RequestErrorMessage
     Cancelled: typeof CancelledMessage
     PageLoaded: typeof PageLoadedMessage
+    PageRequested: typeof PageRequestedMessage
   }
 >
 
@@ -39,7 +41,9 @@ type BrowserSnifferBridge = Bridge.Bridge<
  * `PageLoaded` carries the page URL and a `pageContentId` that
  * correlates with a `Response*` stream containing
  * `documentElement.outerHTML`; subscribe to that stream if you need
- * the DOM body.
+ * the DOM body. `PageRequested` is its early sibling — fired at
+ * `DOMContentLoaded`, before (and even without) settlement, carrying
+ * only the URL.
  *
  * Consumers (e.g. `collector-react`) re-export this bridge's
  * `webToHost` schemas as their own `Host→Web` messages to forward
@@ -66,6 +70,7 @@ const BrowserSnifferBridge: BrowserSnifferBridge = Bridge.make({
     ['RequestError', RequestErrorMessage],
     ['Cancelled', CancelledMessage],
     ['PageLoaded', PageLoadedMessage],
+    ['PageRequested', PageRequestedMessage],
   ] as const,
 })
 

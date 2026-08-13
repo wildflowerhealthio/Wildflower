@@ -40,14 +40,16 @@ config.rootUrl })` wrapping the plan factory's return, so every resource is
 
 ## The plan
 
-`firstPage` navigates the sniffer webview **directly to the FHIR JSON endpoint**
-(`…/Patient/:id?_format=json`) rather than to a page that fetches it: the
-browser's native JSON viewer renders the response, the sniffer snapshots the
-document, and `extractJson` unwraps the `<pre>` before the entity decodes. Then
-one `Open` step navigates to `…/Observation?subject%3APatient=…`, followed by an
-`AwaitPageSettled` hold — a `Navigation` dispatches and advances immediately, so
-without that hold the queue would drain before the Observation request is even
-tracked.
+The plan's first `Open` step brings the sniffer up
+**directly on the FHIR JSON endpoint** (`…/Patient/:id?_format=json`) rather than
+to a page that fetches it: the browser's native JSON viewer renders the response,
+the sniffer snapshots the document, and `extractJson` unwraps the `<pre>` before
+the entity decodes. A pattern-less `AwaitPageSettled` holds until that page
+settles, then a second `Open` step navigates to `…/Observation?subject%3APatient=…`,
+followed by another pattern-less `AwaitPageSettled` — a `Navigation` dispatches
+and advances immediately, so without each hold the queue would drain before the
+request is even tracked. The holds are pattern-less because each `Open` targets a
+fresh document, so "wait for the next settle" is unambiguous.
 
 ## Provenance
 

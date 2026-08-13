@@ -3,6 +3,7 @@
 
 import {
   PageLoadedMessage,
+  PageRequestedMessage,
   RequestErrorMessage,
   ResponseDataMessage,
   ResponseFinishedMessage,
@@ -50,6 +51,7 @@ const resetShims = (): void => {
   const state = getState()
   if (state !== undefined) {
     window.removeEventListener('load', state.pageLoadHandler)
+    window.removeEventListener('DOMContentLoaded', state.pageRequestedHandler)
     // Disconnect the MutationObserver and clear any pending settle timers so a
     // mid-flight watch from one test can't leak a PageLoaded into the next.
     state.teardownSettleWatch()
@@ -136,6 +138,7 @@ const decodeResponseData = Schema.decodeUnknownSync(Schema.typeSchema(ResponseDa
 const decodeResponseFinished = Schema.decodeUnknownSync(Schema.typeSchema(ResponseFinishedMessage))
 const decodeRequestError = Schema.decodeUnknownSync(Schema.typeSchema(RequestErrorMessage))
 const decodePageLoaded = Schema.decodeUnknownSync(Schema.typeSchema(PageLoadedMessage))
+const decodePageRequested = Schema.decodeUnknownSync(Schema.typeSchema(PageRequestedMessage))
 const decodeByTag: Record<string, (msg: unknown) => unknown> = {
   Log: decodeLog,
   ResponseStart: decodeResponseStart,
@@ -143,6 +146,7 @@ const decodeByTag: Record<string, (msg: unknown) => unknown> = {
   ResponseFinished: decodeResponseFinished,
   RequestError: decodeRequestError,
   PageLoaded: decodePageLoaded,
+  PageRequested: decodePageRequested,
 }
 
 const validateMessages = (msgs: Message[]): void => {
@@ -289,7 +293,7 @@ describe('fetch shim', () => {
 
     // No ResponseData emitted between start and finish for a null body.
     const lifecycle = getMessages()
-      .filter((m) => m._tag !== 'Log')
+      .filter((m) => m._tag !== 'Log' && m._tag !== 'PageRequested')
       .map((m) => m._tag)
     expect(lifecycle).toEqual(['ResponseStart', 'ResponseFinished'])
   })
@@ -303,7 +307,9 @@ describe('fetch shim', () => {
       expect.objectContaining({
         _tag: 'RequestError',
         url: 'https://test.example/fail',
-        message: 'network down',
+        message: expect.stringMatching(
+          /^fetch GET https:\/\/test\.example\/fail failed before any response: network down/
+        ),
       }),
     ])
     validateMessages(getMessages())
@@ -367,7 +373,10 @@ describe('fetch shim', () => {
         expect.objectContaining({ url: expected, status: 0 }),
       ])
       expect(withTag(getMessages(), 'RequestError')).toEqual([
-        expect.objectContaining({ url: expected, message: 'offline' }),
+        expect.objectContaining({
+          url: expected,
+          message: expect.stringMatching(/failed before any response: offline/),
+        }),
       ])
       validateMessages(getMessages())
     })
@@ -459,7 +468,9 @@ describe('fetch shim', () => {
         const res = await window.fetch('https://test.example')
         await res.text()
 
-        const msgs = getMs().filter((m) => m._tag !== 'Log')
+        // `Log` and the install-time `PageRequested` are id-less notifications;
+        // only the request stream carries the correlation id under test.
+        const msgs = getMs().filter((m) => m._tag !== 'Log' && m._tag !== 'PageRequested')
         const ids = new Set(msgs.map((m) => m['id']))
         expect(ids.size).toBe(1)
       }),
@@ -734,7 +745,10 @@ describe('XHR shim', () => {
 
     const expected = new URL('/fhir/Patient/1', window.location.href).href
     expect(withTag(getMessages(), 'RequestError')).toEqual([
-      expect.objectContaining({ url: expected, message: 'XMLHttpRequest error' }),
+      expect.objectContaining({
+        url: expected,
+        message: expect.stringMatching(/^XMLHttpRequest GET .* failed before any response/),
+      }),
     ])
   })
 
@@ -785,7 +799,9 @@ describe('XHR shim', () => {
     expect(withTag(getMessages(), 'RequestError')).toEqual([
       expect.objectContaining({
         url: 'https://test.example/xhr-err',
-        message: 'XMLHttpRequest error',
+        message: expect.stringMatching(
+          /^XMLHttpRequest GET https:\/\/test\.example\/xhr-err failed before any response/
+        ),
       }),
     ])
     validateMessages(getMessages())
@@ -807,7 +823,9 @@ describe('XHR shim', () => {
     expect(withTag(getMessages(), 'RequestError')).toEqual([
       expect.objectContaining({
         url: 'https://test.example/xhr-abort',
-        message: 'XMLHttpRequest aborted',
+        message: expect.stringMatching(
+          /^XMLHttpRequest GET https:\/\/test\.example\/xhr-abort aborted/
+        ),
       }),
     ])
     validateMessages(getMessages())
@@ -827,7 +845,7 @@ describe('XHR shim', () => {
     xhr.dispatchEvent(new Event('error'))
 
     const lifecycle = getMessages()
-      .filter((m) => m._tag !== 'Log')
+      .filter((m) => m._tag !== 'Log' && m._tag !== 'PageRequested')
       .map((m) => m._tag)
     expect(lifecycle).toEqual(['ResponseStart', 'RequestError'])
     expect(withTag(getMessages(), 'ResponseStart')).toEqual([
@@ -841,7 +859,9 @@ describe('XHR shim', () => {
     expect(withTag(getMessages(), 'RequestError')).toEqual([
       expect.objectContaining({
         url: 'https://test.example/pre-headers-error',
-        message: 'XMLHttpRequest error',
+        // A pre-response failure names the phase so host logs can tell it apart
+        // from a mid-body drop.
+        message: expect.stringContaining('failed before any response'),
       }),
     ])
     validateMessages(getMessages())
@@ -871,7 +891,7 @@ describe('XHR shim', () => {
     // before-headers error), the partial chunk survives, one terminal, no
     // ResponseFinished (the body was never complete).
     const lifecycle = getMessages()
-      .filter((m) => m._tag !== 'Log')
+      .filter((m) => m._tag !== 'Log' && m._tag !== 'PageRequested')
       .map((m) => m._tag)
     expect(lifecycle).toEqual(['ResponseStart', 'ResponseData', 'RequestError'])
     expect(withTag(getMessages(), 'ResponseStart')).toEqual([
@@ -882,7 +902,11 @@ describe('XHR shim', () => {
     ])
     expect(withTag(getMessages(), 'ResponseFinished')).toEqual([])
     expect(withTag(getMessages(), 'RequestError')).toEqual([
-      expect.objectContaining({ message: 'XMLHttpRequest error' }),
+      // The mid-stream phase is now reflected in the message (progress delivered
+      // bytes before the drop), distinct from a pre-response failure.
+      expect.objectContaining({
+        message: expect.stringContaining('failed after the response started'),
+      }),
     ])
     validateMessages(getMessages())
   })
@@ -1475,6 +1499,25 @@ describe('PageLoaded', () => {
     expect(withTag(getMessages(), 'PageLoaded')).toHaveLength(1)
   })
 
+  test('should arm the settle watch at install for an already-loaded document (no load event)', async () => {
+    // Regression: a sniffer injected into a freshly-built webview runs *after*
+    // the page's own `load` has fired (`document.readyState === 'complete'`),
+    // so no `load` event is coming. It must still arm the settle watch off the
+    // current readyState and emit PageLoaded once the page is quiet — otherwise
+    // a navigate-straight-to-target page (the collector's leading `Open`, which
+    // builds the webview directly on the URL) never settles and the run hangs
+    // on its pattern-less `AwaitPageSettled` hold. jsdom's readyState is already
+    // `'complete'`, so this is "install, never dispatch load, and settle anyway".
+    document.body.innerHTML = '<main>already loaded</main>'
+    installSnifferForTest(SETTLE)
+    // Deliberately no `window.dispatchEvent(new Event('load'))`.
+    await advanceSettle(SETTLE.quietWindowMs)
+
+    expect(withTag(getMessages(), 'PageLoaded')).toEqual([
+      expect.objectContaining({ _tag: 'PageLoaded', url: window.location.href }),
+    ])
+  })
+
   test('should serialize the entire <html>… subtree, including arbitrary body content', async () => {
     document.body.innerHTML = '<p id="x">hello &amp; goodbye</p>'
     await installAndSettle()
@@ -1539,6 +1582,97 @@ describe('PageLoaded', () => {
     // `&nbsp;`) get entity-encoded; everything else passes through. Assert
     // one specific high-byte value survives — the `\xff`.
     expect(content).toContain('\xff')
+    validateMessages(msgs)
+  })
+})
+
+describe('PageRequested', () => {
+  let getMessages: () => Message[]
+
+  beforeEach(() => {
+    resetShims()
+    XMLHttpRequest.prototype.open = vi.fn() as XMLHttpRequest['open']
+    XMLHttpRequest.prototype.send = vi.fn() as XMLHttpRequest['send']
+    getMessages = setupEnv()
+    vi.useFakeTimers()
+  })
+
+  afterEach(() => {
+    resetShims()
+    vi.useRealTimers()
+  })
+
+  // jsdom's document is already parsed (`readyState === 'complete'`) when a
+  // test installs, so install-time emission is the default path here; the
+  // listening-for-DOMContentLoaded path stubs `readyState` back to 'loading'.
+  const withLoadingReadyState = (fn: () => void): void => {
+    Object.defineProperty(document, 'readyState', { configurable: true, value: 'loading' })
+    try {
+      fn()
+    } finally {
+      // Deleting the own property re-exposes the prototype getter.
+      delete (document as { readyState?: unknown }).readyState
+    }
+  }
+
+  test('should post PageRequested immediately when the document is already parsed', () => {
+    installSnifferForTest()
+
+    expect(withTag(getMessages(), 'PageRequested')).toEqual([
+      { _tag: 'PageRequested', url: window.location.href },
+    ])
+  })
+
+  test('should hold PageRequested until DOMContentLoaded when the document is still loading', () => {
+    withLoadingReadyState(() => {
+      installSnifferForTest()
+      expect(withTag(getMessages(), 'PageRequested')).toHaveLength(0)
+
+      window.dispatchEvent(new Event('DOMContentLoaded'))
+    })
+
+    expect(withTag(getMessages(), 'PageRequested')).toEqual([
+      { _tag: 'PageRequested', url: window.location.href },
+    ])
+  })
+
+  test('should emit a single PageRequested even if DOMContentLoaded fires twice', () => {
+    withLoadingReadyState(() => {
+      installSnifferForTest()
+      window.dispatchEvent(new Event('DOMContentLoaded'))
+      window.dispatchEvent(new Event('DOMContentLoaded'))
+    })
+
+    expect(withTag(getMessages(), 'PageRequested')).toHaveLength(1)
+  })
+
+  test('should precede the settled PageLoaded for a page that settles', async () => {
+    installSnifferForTest(SETTLE)
+    window.dispatchEvent(new Event('load'))
+    await advanceSettle(SETTLE.quietWindowMs)
+
+    const tags = getMessages().map((m) => m._tag)
+    expect(tags.indexOf('PageRequested')).toBeGreaterThanOrEqual(0)
+    expect(tags.indexOf('PageRequested')).toBeLessThan(tags.indexOf('PageLoaded'))
+  })
+
+  test('should still fire for a still-loading page whose load never comes (schema-valid, no PageLoaded)', async () => {
+    // A page injected into while still parsing (`readyState === 'loading'`)
+    // whose `load` never fires — a hung SPA, or the 2FA-pause case behind an
+    // `AwaitPageRequested`. PageRequested fires at DOMContentLoaded, but with no
+    // `load` and no install-time arm (the document is NOT already `'complete'`)
+    // the settle watch never starts, so no PageLoaded. Contrast the
+    // already-`'complete'` document, which arms at install — see the
+    // 'PageLoaded' block's already-loaded regression test.
+    withLoadingReadyState(() => {
+      installSnifferForTest(SETTLE)
+      window.dispatchEvent(new Event('DOMContentLoaded'))
+    })
+    await advanceSettle(SETTLE.maxWaitMs)
+
+    const msgs = getMessages()
+    expect(withTag(msgs, 'PageRequested')).toHaveLength(1)
+    expect(withTag(msgs, 'PageLoaded')).toHaveLength(0)
     validateMessages(msgs)
   })
 })

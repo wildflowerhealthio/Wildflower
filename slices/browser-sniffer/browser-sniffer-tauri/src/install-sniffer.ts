@@ -5,6 +5,7 @@ import type {
   CancelledMessageBody,
   PageActionMessageBody,
   PageLoadedMessageBody,
+  PageRequestedMessageBody,
   RequestErrorMessageBody,
   ResponseDataMessageBody,
   ResponseFinishedMessageBody,
@@ -26,8 +27,10 @@ import type { JsonValue } from 'kitchen-sink/schema'
  *
  * Wire format:
  *   - Emits `Log`, `ResponseStart`, `ResponseData`, `ResponseFinished`,
- *     `RequestError`, `Cancelled`, `PageLoaded` on the multiplexed
- *     `BRIDGE_EVENT` channel (discriminated by `_tag`). `PageLoaded` is held
+ *     `RequestError`, `Cancelled`, `PageRequested`, `PageLoaded` on the
+ *     multiplexed `BRIDGE_EVENT` channel (discriminated by `_tag`).
+ *     `PageRequested` fires once per document at `DOMContentLoaded` (early,
+ *     pre-settlement, URL only); `PageLoaded` is held
  *     until the page *settles* — no DOM mutations and no in-flight fetch/XHR
  *     for a continuous quiet window, or a hard ceiling — rather than firing on
  *     the raw `window.load` event (see the settle watch below). Emits are
@@ -56,6 +59,7 @@ type SnifferOutboundMessage =
   | Schema.Schema.Encoded<typeof RequestErrorMessageBody>
   | Schema.Schema.Encoded<typeof CancelledMessageBody>
   | Schema.Schema.Encoded<typeof PageLoadedMessageBody>
+  | Schema.Schema.Encoded<typeof PageRequestedMessageBody>
 
 /** Wire form received Host→Web. */
 type SnifferInboundMessage =
@@ -68,11 +72,21 @@ interface SnifferState {
   readonly nativeXHRSend: XMLHttpRequest['send']
   readonly activeRequests: Set<string>
   /**
-   * The sole `window.load` listener. Arms the settlement detector — which fires
-   * `PageLoaded` once the page is quiet — rather than snapshotting synchronously.
-   * Named `pageLoadHandler` because it remains the one `load` handler.
+   * The settlement-detector arm. Registered as the sole `window.load` listener
+   * when a `load` is still coming, or called directly at install when the
+   * document is already `'complete'` (the sniffer installed after `load` fired,
+   * so no event will). Arms the detector — which fires `PageLoaded` once the
+   * page is quiet — rather than snapshotting synchronously. Named
+   * `pageLoadHandler` because it remains the one `load` handler.
    */
   readonly pageLoadHandler: () => void
+  /**
+   * The `DOMContentLoaded` listener that emits the early `PageRequested`
+   * notification (registered only when the sniffer installs into a
+   * still-loading document). Exposed so tests can remove a not-yet-fired
+   * listener between cases.
+   */
+  readonly pageRequestedHandler: () => void
   /**
    * Tear the settle watch down: disconnect the `MutationObserver` and clear the
    * quiet-window / ceiling timers. Idempotent. Settlement calls it itself before
@@ -278,6 +292,8 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   // instances with `_sniffer*` properties.
   interface XhrState {
     id: string
+    /** HTTP method captured at `open`, surfaced in the failure message. */
+    method: string
     url: string
     /** Number of UTF-8 bytes already posted as ResponseData chunks. */
     sentBytes: number
@@ -405,8 +421,16 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       } else {
         errorUrl = request.url
       }
-      const message = err instanceof Error ? err.message : String(err)
-      logWarning(`fetch threw before response: ${message}`)
+      const rawError = err instanceof Error ? err.message : String(err)
+      // A fetch reject is always pre-response (the `await` never yielded a
+      // `Response`), so the cause set mirrors the XHR pre-response branch —
+      // plus an aborted `AbortSignal`, which rejects here rather than firing a
+      // separate event.
+      const method =
+        init?.method ??
+        (typeof request === 'object' && 'method' in request ? request.method : 'GET')
+      const message = `fetch ${method} ${errorUrl} failed before any response: ${rawError} — likely CORS, blocked mixed content, CSP connect-src, DNS, a refused connection, or an aborted request`
+      logWarning(message)
       post({
         _tag: 'ResponseStart',
         id: requestId,
@@ -507,6 +531,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     const rawUrl = String(url)
     xhrState.set(this, {
       id: makeRequestId(),
+      method,
       // Report absolute (issue #373) so downstream `UrlMatch` can match a
       // same-origin relative request. The internal guard stays on the RAW
       // string — normalizing first could rewrite a relative `/foo` into
@@ -524,6 +549,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   ): void {
     const state = xhrState.get(this) ?? {
       id: makeRequestId(),
+      method: '',
       url: '',
       sentBytes: 0,
       internal: false,
@@ -617,6 +643,32 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       }
     }
 
+    /**
+     * Reconstruct a legible failure message for the host log + `RequestError`
+     * terminal. XHR `error` / `abort` events carry no cause by design, so we
+     * surface what the shim *can* observe: method + URL, whether the response
+     * had begun, the bytes already streamed, and the XHR status / readyState.
+     * The response-begun split is the useful one — a pre-response failure is
+     * usually CORS, blocked mixed content, a CSP `connect-src` block, DNS, or a
+     * refused connection; a mid-body failure is a reset or a torn-down webview.
+     * `responseStarted` MUST be read by the caller *before* `ensureStartSent`
+     * flips `startSent`, or every failure would look mid-stream.
+     */
+    const describeXhrFailure = (
+      xhr: XMLHttpRequest,
+      responseStarted: boolean,
+      kind: 'error' | 'abort'
+    ): string => {
+      const where = `${state.method || 'GET'} ${state.url}`
+      if (kind === 'abort') {
+        return `XMLHttpRequest ${where} aborted after ${state.sentBytes} byte(s) received`
+      }
+      if (responseStarted || state.sentBytes > 0) {
+        return `XMLHttpRequest ${where} failed after the response started (${state.sentBytes} byte(s) received, status ${xhr.status}) — connection reset mid-body`
+      }
+      return `XMLHttpRequest ${where} failed before any response (status ${xhr.status}, readyState ${xhr.readyState}) — likely CORS, blocked mixed content, CSP connect-src, DNS, or a refused connection`
+    }
+
     this.addEventListener('progress', () => {
       // Guard against stale listeners from XHR reuse — `xhrState.get(this).id`
       // can rotate if `open()` is called again on the same instance.
@@ -648,6 +700,9 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
         // it would post a terminal under the old id. Mirror `progress`/`load`.
         if (xhrState.get(this)?.id !== requestId) return
         if (!activeRequests.has(requestId)) return
+        // Read the failure phase *before* `ensureStartSent` flips `startSent`.
+        const message = describeXhrFailure(this, startSent, 'error')
+        logWarning(message)
         // Emit a synthetic `ResponseStart` before the terminal so the host
         // sees the full Start→terminal pair. A network-level `error` fires
         // with `xhr.status === 0` and empty headers, so the synthesized start
@@ -661,7 +716,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
           _tag: 'RequestError',
           id: requestId,
           url: state.url,
-          message: 'XMLHttpRequest error',
+          message,
         })
       },
       { once: true }
@@ -671,6 +726,8 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       () => {
         if (xhrState.get(this)?.id !== requestId) return
         if (!activeRequests.has(requestId)) return
+        const message = describeXhrFailure(this, startSent, 'abort')
+        logWarning(message)
         // Same Start-before-terminal invariant as `error`. Emit `RequestError`
         // rather than `ResponseFinished`: an aborted request's body is
         // partial, and a `ResponseFinished` would hand that truncated payload
@@ -682,7 +739,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
           _tag: 'RequestError',
           id: requestId,
           url: state.url,
-          message: 'XMLHttpRequest aborted',
+          message,
         })
       },
       { once: true }
@@ -720,7 +777,6 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     const content = document.documentElement.outerHTML
     const pageContentId = makeRequestId()
     const bytes = utf8.encode(content)
-    post({ _tag: 'PageLoaded', url: win.location.href, pageContentId })
     activeRequests.add(pageContentId)
     post({
       _tag: 'ResponseStart',
@@ -739,6 +795,16 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       activeRequests.delete(pageContentId)
       post({ _tag: 'ResponseFinished', id: pageContentId })
     }
+    // Announce the settled page LAST — after its content request has been
+    // tracked, streamed, and finished. The *final* page's `PageLoaded` is what
+    // drains the collector FSM's queue and triggers the completion check
+    // (Drained ∧ every sniffed request settled). Emitting it *before* the
+    // content's `ResponseStart` let that (forked) check run against an empty
+    // incomplete-request map, so the run completed and tore down before the last
+    // page's resources were parsed — dropping them intermittently. Ordering the
+    // notification after the content stream keeps the page-content request in
+    // the map until it settles, so completion can't outrun it.
+    post({ _tag: 'PageLoaded', url: win.location.href, pageContentId })
   }
 
   const teardownSettleWatch = (): void => {
@@ -807,7 +873,38 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     ceilingTimer = setTimeout(settleNow, maxWaitMs)
     armQuietTimer()
   }
-  win.addEventListener('load', startSettleWatch)
+  // Arm the settle watch on `load` — but only if a `load` is still coming. When
+  // the sniffer installs into an *already-loaded* document (`readyState` is
+  // `'complete'`), that event has already fired and will not fire again, so arm
+  // the watch off the current readyState instead. Defensive: the normal flow
+  // injects at document-start (the bootstrap is the webview's initialization
+  // script, so it runs before any page script), but a bfcache restore or a re-injection into a settled page can
+  // land post-`load`, and a `load`-only arm would then never start —
+  // `PageLoaded` would never emit and a pattern-less `AwaitPageSettled` hold
+  // would hang until its timeout. Mirrors the `PageRequested` already-parsed
+  // branch just below.
+  if (document.readyState === 'complete') {
+    startSettleWatch()
+  } else {
+    win.addEventListener('load', startSettleWatch)
+  }
+
+  // Early page-arrival notification, `PageLoaded`'s pre-settlement sibling:
+  // emitted once per document at `DOMContentLoaded` (or immediately if the
+  // document is already parsed when the sniffer installs), so it fires even
+  // for a page whose `load` or quiescence never comes. Notification only —
+  // no DOM snapshot; that stays tied to settlement above.
+  let pageRequestedEmitted = false
+  const emitPageRequested = (): void => {
+    if (pageRequestedEmitted) return
+    pageRequestedEmitted = true
+    post({ _tag: 'PageRequested', url: win.location.href })
+  }
+  if (document.readyState === 'loading') {
+    win.addEventListener('DOMContentLoaded', emitPageRequested, { once: true })
+  } else {
+    emitPageRequested()
+  }
 
   // Host→Web messages arrive on the multiplexed `BRIDGE_EVENT` channel;
   // demux by `_tag`. Unrecognized tags (other slices' traffic, our own
@@ -901,6 +998,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     nativeXHRSend,
     activeRequests,
     pageLoadHandler: startSettleWatch,
+    pageRequestedHandler: emitPageRequested,
     teardownSettleWatch,
     unlistens,
   }

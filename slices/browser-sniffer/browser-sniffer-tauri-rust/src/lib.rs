@@ -47,8 +47,7 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
     // the boot log shows who dispatches what. See the effect-messaging-tauri
     // README ("Tag uniqueness across processes").
     log::info!(
-        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}, {}, {}]",
-        events::REQUEST_SNIFFABLE_WEBVIEW,
+        "[browser-sniffer] listening on '{BRIDGE_EVENT}' for tags: [{}, {}, {}, {}, {}, {}]",
         events::OPEN,
         events::SNIFFING_COMPLETE,
         events::SET_SNIFFER_STATUS,
@@ -67,9 +66,6 @@ pub fn attach_browser_sniffer(app: &AppHandle) {
             }
         };
         match tag.as_str() {
-            events::REQUEST_SNIFFABLE_WEBVIEW => {
-                handlers::request_sniffable_webview::handle(&handle, payload);
-            }
             events::OPEN => handlers::open::handle(&handle, payload),
             events::SNIFFING_COMPLETE => handlers::sniffing_complete::handle(&handle),
             events::SET_SNIFFER_STATUS => handlers::set_sniffer_status::handle(&handle, payload),
@@ -93,7 +89,6 @@ mod tests {
     /// the per-tag literals on the multiplexed channel.
     #[test]
     fn bridge_tags_match_the_ts_convention() {
-        assert_eq!(events::REQUEST_SNIFFABLE_WEBVIEW, "RequestSniffableWebView");
         assert_eq!(events::OPEN, "Open");
         assert_eq!(events::SNIFFING_COMPLETE, "SniffingComplete");
         assert_eq!(events::SET_SNIFFER_STATUS, "SetSnifferStatus");
@@ -102,6 +97,7 @@ mod tests {
         assert_eq!(events::CANCEL_SNIFFER_REQUEST, "CancelSnifferRequest");
         assert_eq!(events::USER_DISMISSED, "UserDismissed");
         assert_eq!(events::SNIFFER_DISPOSED, "SnifferDisposed");
+        assert_eq!(events::PAGE_REQUESTED, "PageRequested");
     }
 
     /// The bootstrap IIFE is generated at build time. An empty file

@@ -87,13 +87,26 @@ describe('resourcePersistenceRuntimeForConfig', () => {
    *
    * What survives the projection still fails loudly on a mis-dispatch: a plan
    * from the wrong descriptor has a different `name`, different entity names,
-   * and a `firstPage` derived from a different config field.
+   * and a different leading `Open` URL (derived from a different config field).
    */
+  const firstOpenUri = (plan: ScrapingPlan.ScrapingPlan<unknown>): string | undefined => {
+    for (const step of plan.stepSequence) {
+      if (
+        step._tag === 'Navigation' &&
+        step.action._tag === 'Open' &&
+        step.action.source._tag === 'Uri'
+      ) {
+        return step.action.source.uri
+      }
+    }
+    return undefined
+  }
+
   const planIdentity = (
     plan: ScrapingPlan.ScrapingPlan<unknown>
   ): Record<string, unknown> | undefined => ({
     name: plan.name,
-    firstPage: plan.firstPage,
+    firstOpenUri: firstOpenUri(plan),
     stepNames: plan.stepSequence.map((step) => `${step._tag}:${step.name}`),
     entityNames: plan.entityDefinitions.map((entity) => entity.name),
   })

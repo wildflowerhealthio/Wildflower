@@ -154,9 +154,13 @@ describe('RexallCollectorDescriptor', () => {
 })
 
 describe('scrapingPlan', () => {
-  it('mounts the letsbewell login page as the first page', () => {
+  it('opens the letsbewell login page as its first step', () => {
     const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
-    expect(plan.firstPage).toEqual({ _tag: 'Uri', uri: 'https://letsbewell.ca/sign-in' })
+    expect(plan.stepSequence[0]).toEqual({
+      _tag: 'Navigation',
+      name: 'Opening login page',
+      action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://letsbewell.ca/sign-in' } },
+    })
   })
 
   it('states the provenance hook, which mints rexall-prefixed session ids', async () => {
@@ -183,6 +187,20 @@ describe('scrapingPlan', () => {
       FIXED_RUN_ID
     )
     expect(plan.stepSequence).toEqual([
+      {
+        _tag: 'Navigation',
+        name: 'Opening login page',
+        action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://letsbewell.ca/sign-in' } },
+      },
+      // The hold and the delay are a pair: the hold stops the delay racing the
+      // login page's network load, and the
+      // delay still absorbs a form rendered after the page goes quiet.
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Loading login page',
+        timeout: Duration.seconds(30),
+        continueOnTimeout: true,
+      },
       { _tag: 'Delay', name: 'Waiting for login page', duration: Duration.seconds(2) },
       {
         _tag: 'Navigation',
@@ -227,7 +245,6 @@ describe('scrapingPlan', () => {
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for prescriptions to load',
-        pattern: /:\/\/app\.letsbewell\.ca\/health\/prescriptions/,
         timeout: Duration.seconds(30),
       },
       { _tag: 'Delay', name: 'Collecting prescriptions', duration: Duration.seconds(8) },

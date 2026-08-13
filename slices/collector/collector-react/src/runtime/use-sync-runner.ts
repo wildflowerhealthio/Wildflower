@@ -18,7 +18,7 @@
 import { useMutation } from '@tanstack/react-query'
 import type { Remotes } from 'collector-registry/http-api-definition'
 import { resourcePersistenceRuntimeForConfig } from 'collector-registry/registry'
-import { type Duration, Match } from 'effect'
+import { Match } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from '../queries/use-run-authed.ts'
@@ -29,20 +29,13 @@ import { useCollectorSender } from './use-collector-sender.ts'
 /**
  * Optional hook config. `onError` notifies the screen of parse/transport
  * failures and write-retry exhaustion (fired once per failed item, after
- * retries). `idleTimeout` is the stalled-host guard: if no sniffer event
- * arrives within the window the run settles anyway, so a silent host
- * can't pin the mutation in `pending` forever.
+ * retries).
  *
- * Supplying `idleTimeout` **overrides the collector's own
- * `ScrapingPlan.idleTimeout`** for this runner; omitting it lets the plan's
- * value apply, falling back to `sync-run.ts`'s `DEFAULT_IDLE_TIMEOUT`. It is
- * deliberately left `undefined` rather than defaulted here — defaulting at this
- * boundary would make every run look like an explicit override and the plan's
- * guard could never take effect.
+ * There is no idle/stalled-host option: a run is bounded by its plan's own step
+ * holds' `timeout`s, so nothing here needs to cap a silent host.
  */
 interface SyncRunnerInput {
   readonly onError?: (error: unknown) => void
-  readonly idleTimeout?: Duration.DurationInput
 }
 
 /** The wire shape of a configured remote, as served by `ListRemotes`. */
@@ -73,10 +66,10 @@ interface SyncRunner {
  * once any write/parse failed), `success` → `done` (or `partial`), and
  * a rejected run → `errored`. An explicit cancel resolves cleanly and
  * maps back to `idle`. There is no unmount→interrupt wiring: a run is
- * left to finish (or settle via the idle guard); all teardown lives in
- * the Effect's `release`.
+ * left to finish (bounded by its plan's own step-hold `timeout`s); all
+ * teardown lives in the Effect's `release`.
  */
-const useSyncRunner = ({ onError, idleTimeout }: SyncRunnerInput = {}): SyncRunner => {
+const useSyncRunner = ({ onError }: SyncRunnerInput = {}): SyncRunner => {
   const sendCollectorMessage = useCollectorSender()
   const collectorRegister = useCollectorRegister()
   const runAuthed = useRunAuthed()
@@ -106,10 +99,9 @@ const useSyncRunner = ({ onError, idleTimeout }: SyncRunnerInput = {}): SyncRunn
           collectorRegister,
           onNewFailureCause: (error) => onErrorRef.current?.(error),
           onFailureSetUpdated: setFailed,
-          idleTimeout,
         })
       ),
-    [sendCollectorMessage, collectorRegister, setFailed, idleTimeout]
+    [sendCollectorMessage, collectorRegister, setFailed]
   )
 
   const mutation = useMutation<ImportSummary, Error, CollectorRemote>({

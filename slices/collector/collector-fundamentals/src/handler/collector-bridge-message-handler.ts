@@ -58,11 +58,22 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
    */
   readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TResources>>
   /**
-   * Idle-timeout escape: publish every still-incomplete sniffed request as a
-   * `Left` failure and close `requestSniffingResults`. The runner calls this when
-   * its drive loop has been idle past the idle timeout (a stalled download that
-   * never finished), so the run reports the loss instead of hanging. See
-   * {@link RunLifecycleState}.
+   * Start the automatic navigation: dispatch the plan's leading `Open` — which
+   * builds the sniffer webview directly on the real target URL — without waiting
+   * for its first `PageLoaded`. The runner fires this **once**, at run start
+   * (that `Open` is the only mount), so a sniffer whose first page
+   * never settles (its web content process dies, say) can't strand the run in
+   * the automatic navigation's timer-less start-up state. See
+   * {@link AutomaticNavigation.AutomaticNavigation.handleStart}.
+   */
+  readonly startAutomaticNavigation: Effect.Effect<void, never, never>
+  /**
+   * Force-close escape: publish every still-incomplete sniffed request as a
+   * `Left` failure and close `requestSniffingResults`, so a caller can report a
+   * stalled download as a loss instead of hanging. Nothing in the *runner* drives
+   * it — the automatic-navigation machine's drained guard does, on expiry of the
+   * plan's `drainedGuardTimeout`. Exposed here anyway so a caller can force the
+   * same escape. See {@link RunLifecycleState}.
    */
   readonly abandonAllRequestSniffing: Effect.Effect<void, never, never>
   /**
@@ -118,9 +129,9 @@ const openUri = (step: Step.Step): string | undefined => {
  *
  * **Dedup + cap live here, at the injection point**, so the pure transition table
  * stays free of run-history: generated steps are filtered (run-wide URI dedup of
- * `Open`s, seeded with the `firstPage` and authored `Open` URIs; a
- * `maxGeneratedSteps` cap) *before* `handleStepsGenerated` dispatches them, and
- * dropped counts are WARN-logged.
+ * `Open`s, seeded with the authored `Open` URIs — which include the run's first
+ * navigation; a `maxGeneratedSteps` cap) *before*
+ * `handleStepsGenerated` dispatches them, and dropped counts are WARN-logged.
  *
  * The three parts form a construction cycle — the tracker publishes into the
  * lifecycle's stream and injects generated steps into the machine, the lifecycle
@@ -160,15 +171,15 @@ const make = <TResources>({
     // Run-wide crawler safety, applied to *generated* steps only (never the
     // authored sequence): dedup generated `Open`s by URI so a self-link or a
     // cycle terminates, and cap total generated steps. The visited-set is seeded
-    // with the `firstPage` and the authored `Open` URIs, so a generator can't
-    // re-open an already-visited page.
+    // with the authored `Open` URIs (which include the run's first
+    // navigation), so a generator can't re-open an
+    // already-visited page.
     const maxGeneratedSteps =
       scrapingPlan.maxGeneratedSteps ?? ScrapingPlan.DEFAULT_MAX_GENERATED_STEPS
     const dedupeGeneratedOpenUris = scrapingPlan.dedupeGeneratedOpenUris ?? true
     const visitedUris = new Set<string>()
     // Only seed when dedup is on — with it off the set is never consulted below.
     if (dedupeGeneratedOpenUris) {
-      if (isUriSource(scrapingPlan.firstPage)) visitedUris.add(scrapingPlan.firstPage.uri)
       for (const step of scrapingPlan.stepSequence) {
         const uri = openUri(step)
         if (uri !== undefined) visitedUris.add(uri)
@@ -253,11 +264,15 @@ const make = <TResources>({
         sendMessage,
         onSniffingComplete: lifecycle.handleSniffingComplete,
         onDrained: lifecycle.endRequestSniffingResultsUnlessMoreExpected,
+        // The tail bound: a stalled request becomes a reported partial result
+        // rather than a permanent hang.
+        onDrainedGuardExpired: lifecycle.abandonAllRequestSniffing,
       })
 
     return {
       incompleteSniffedRequests: tracker.incompleteSniffedRequests,
       requestSniffingResults: lifecycle.requestSniffingResults,
+      startAutomaticNavigation: automaticNavigation.handleStart,
       abandonAllRequestSniffing: lifecycle.abandonAllRequestSniffing,
       cancelAllRequestSniffing: lifecycle.cancelAllRequestSniffing,
       ResponseStart: tracker.handleResponseStart,
@@ -266,6 +281,7 @@ const make = <TResources>({
       RequestError: tracker.handleRequestError,
       Cancelled: tracker.handleCancelled,
       PageLoaded: automaticNavigation.handlePageLoaded,
+      PageRequested: automaticNavigation.handlePageRequested,
       UserDismissed: automaticNavigation.handleUserDismissed,
       SnifferDisposed: automaticNavigation.handleSnifferDisposed,
     }

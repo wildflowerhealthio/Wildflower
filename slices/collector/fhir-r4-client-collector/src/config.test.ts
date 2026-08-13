@@ -1,4 +1,4 @@
-import { type EntityDefinition, UrlMatch } from 'collector-fundamentals/model'
+import type { EntityDefinition } from 'collector-fundamentals/model'
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
@@ -139,22 +139,32 @@ describe('FhirR4CollectorDescriptor', () => {
 })
 
 describe('scrapingPlan', () => {
-  // The plan navigates the sniffer webview directly to the FHIR JSON
-  // endpoints via `Uri` sources (the browser's native viewer renders the
-  // response, which the sniffer snapshots). A regression to the old
-  // inline-`Html` wrapper — or a dropped `?_format=json` / mis-encoded
-  // `subject:Patient` query — would silently change what page loads.
-  it('mounts the Patient endpoint as the first page via a direct Uri', () => {
-    const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
-    expect(plan.firstPage).toEqual({
-      _tag: 'Uri',
-      uri: 'https://r4.smarthealthit.org/Patient/8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882?_format=json',
-    })
-  })
-
-  it('navigates to the Observation endpoint as an Open step, then holds until it settles', () => {
+  // The plan's `Open` steps take the sniffer
+  // directly to the FHIR JSON endpoints via `Uri` sources (the browser's native
+  // viewer renders the response, which the sniffer snapshots). Each `Open` is
+  // followed by a **pattern-less** `AwaitPageSettled` — "wait for the next
+  // settle" — because each `Open` targets a fresh document, so no url pattern is
+  // needed to disambiguate. A dropped `?_format=json` / mis-encoded
+  // `subject:Patient` query, or a re-introduced settle `pattern`, would show here.
+  it('opens the Patient then Observation endpoints, holding until each settles', () => {
     const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
     expect(plan.stepSequence).toEqual([
+      {
+        _tag: 'Navigation',
+        name: 'Loading patient',
+        action: {
+          _tag: 'Open',
+          source: {
+            _tag: 'Uri',
+            uri: 'https://r4.smarthealthit.org/Patient/8c0f46f4-dd7b-4a5f-bd35-f0f41a2f8882?_format=json',
+          },
+        },
+      },
+      {
+        _tag: 'AwaitPageSettled',
+        name: 'Waiting for patient to load',
+        timeout: Duration.seconds(30),
+      },
       {
         _tag: 'Navigation',
         name: 'Loading observations',
@@ -169,10 +179,6 @@ describe('scrapingPlan', () => {
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for observations to load',
-        pattern: UrlMatch.make({
-          segments: [UrlMatch.literal('Observation')],
-          end: 'mustHaveQuery',
-        }),
         timeout: Duration.seconds(30),
       },
     ])
@@ -200,7 +206,8 @@ describe('scrapingPlan', () => {
     // patientId is schema-constrained to [A-Za-z0-9.-], but the plan
     // applies encodeURIComponent defensively for values arriving through
     // an untyped path — pin that the encoding actually happens by feeding
-    // a value with URL-significant characters past the type.
+    // a value with URL-significant characters past the type. The Patient URL
+    // now rides the plan's first `Open` step.
     const plan = scrapingPlan(
       {
         _tag: 'fhir-r4',
@@ -209,9 +216,16 @@ describe('scrapingPlan', () => {
       },
       FIXED_RUN_ID
     )
-    expect(plan.firstPage).toEqual({
-      _tag: 'Uri',
-      uri: 'https://example.com/Patient/a%2Fb%20c?_format=json',
+    expect(plan.stepSequence[0]).toEqual({
+      _tag: 'Navigation',
+      name: 'Loading patient',
+      action: {
+        _tag: 'Open',
+        source: {
+          _tag: 'Uri',
+          uri: 'https://example.com/Patient/a%2Fb%20c?_format=json',
+        },
+      },
     })
   })
 })

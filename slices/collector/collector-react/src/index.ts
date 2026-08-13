@@ -30,7 +30,6 @@ export type {
   CollectorOutboundMessage,
   CollectorSender,
 } from './runtime/collector-sender-context.ts'
-export { useRequestSniffableWebView } from './runtime/use-request-sniffable-web-view.ts'
 
 export {
   useSyncRunner,

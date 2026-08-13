@@ -1,4 +1,8 @@
-import type { PageActionMessage, PageLoadedMessageBody } from 'browser-sniffer-core'
+import type {
+  PageActionMessage,
+  PageLoadedMessageBody,
+  PageRequestedMessageBody,
+} from 'browser-sniffer-core'
 
 import type {
   EnsureSnifferVisible as EnsureSnifferVisibleMessage,
@@ -40,18 +44,31 @@ type StepOutboundMessage =
 // ---------------------------------------------------------------------------
 
 /**
- * Everything that can drive the machine forward — nine inputs, in seven kinds:
+ * Everything that can drive the machine forward — eleven inputs, in eight kinds:
  *
- * - `PageLoaded` — the sole *external* event, forwarded verbatim from the
- *   bridge (its shape is `browser-sniffer-core`'s `PageLoadedMessageBody`,
- *   reused rather than re-declared).
+ * - `PageLoaded` / `PageRequested` — the *external* page events, forwarded
+ *   verbatim from the bridge (their shapes are `browser-sniffer-core`'s
+ *   `PageLoadedMessageBody` / `PageRequestedMessageBody`, reused rather than
+ *   re-declared). `PageLoaded` is the settled load; `PageRequested` is its
+ *   early sibling (fired at `DOMContentLoaded`), consumed only by a parked
+ *   `AwaitPageRequested` hold and ignored everywhere else.
+ * - `Start` — the *command* the runner injects **once**, at run start, to kick
+ *   off the run without waiting for a first `PageLoaded`. Only meaningful in the
+ *   start-up `AwaitingPageLoaded` state, where it drains the queue exactly as
+ *   that first settled `PageLoaded` would (the leading step is an `Open` — a
+ *   navigation that builds the sniffer webview on the real target URL and needs
+ *   no page in hand); a no-op everywhere else. It races the sniffer's own first
+ *   `PageLoaded`: whichever lands first drains, the other is inert. This is what
+ *   keeps a sniffer whose first page never settles (its web content process
+ *   dies, say) from stranding the run in `AwaitingPageLoaded`, which arms no
+ *   timer.
  * - `Stop` — the single *command*, which the run lifecycle's teardown (and its
- *   idle-timeout abandon) invokes to halt the machine (interrupt any pending
- *   timer). Modelling it as an input keeps the whole machine one transition
+ *   `abandonAllRequestSniffing` escape) invokes to halt the machine (interrupt
+ *   any pending timer). Modelling it as an input keeps the whole machine one transition
  *   table. There is no separate "reset vs fold" variant: teardown always
  *   *discards* the machine (a fresh one is built next run).
- * - `DelayTimerFired` / `UrlMatchTimeoutFired` / `UserDismissTimeoutFired` — the
- *   *internal* timer expiries.
+ * - `DelayTimerFired` / `UrlMatchTimeoutFired` / `UserDismissTimeoutFired` /
+ *   `DrainedGuardTimeoutFired` — the *internal* timer expiries.
  *   A forked daemon re-injects one of these (carrying the `generation` it was
  *   scheduled under) rather than committing a transition directly, so the
  *   transition stays the single source of truth. A fired timer whose
@@ -82,10 +99,20 @@ type StepOutboundMessage =
  */
 type InputMessage =
   | typeof PageLoadedMessageBody.Type
+  | typeof PageRequestedMessageBody.Type
+  | { readonly _tag: 'Start' }
   | { readonly _tag: 'Stop' }
   | { readonly _tag: 'DelayTimerFired'; readonly generation: number }
   | { readonly _tag: 'UrlMatchTimeoutFired'; readonly generation: number }
   | { readonly _tag: 'UserDismissTimeoutFired'; readonly generation: number }
+  /**
+   * The `Drained` guard elapsed: the queue has been empty for the plan's
+   * `drainedGuardTimeout` and the run still has not completed, which can only
+   * mean a sniffed request never reached a terminal event. Escalates to the
+   * lifecycle's `abandonAllRequestSniffing` so the stall is reported as a
+   * partial failure instead of hanging forever. See `onDrainedGuardTimeoutFired`.
+   */
+  | { readonly _tag: 'DrainedGuardTimeoutFired'; readonly generation: number }
   | { readonly _tag: 'StepsGenerated'; readonly steps: readonly Step[] }
   | { readonly _tag: 'NoMoreResultsExpected' }
   | { readonly _tag: 'UserDismissed' }
@@ -116,8 +143,8 @@ type InputMessage =
  *   `EnsureWindowVisible` step's request to re-present the sniffer webview),
  *   span-wrapped.
  * - `ScheduleDelayTimer` / `ScheduleUrlMatchTimeout` /
- *   `ScheduleUserDismissTimeout` — fork a daemon that sleeps then re-injects the
- *   matching `*Fired` input under `generation`.
+ *   `ScheduleUserDismissTimeout` / `ScheduleDrainedGuard` — fork a daemon that
+ *   sleeps then re-injects the matching `*Fired` input under `generation`.
  * - `CancelTimer` — interrupt the daemon registered under `generation`
  *   (the no-wasted-sleep optimisation; the generation guard alone would
  *   already make a fired-but-stale timer inert).
@@ -126,8 +153,16 @@ type InputMessage =
  *   whether requests have all settled and, if so, re-injects
  *   `NoMoreResultsExpected`). Forked, exactly like a timer, so it re-enters the
  *   machine's lock *after* this transition commits — no re-entrant deadlock.
- * - `WarnUrlMatchTimeout` / `WarnUserDismissTimeout` / `WarnSnifferDisposed` /
- *   `WarnDroppedPageLoaded` / `WarnDroppedSteps` — the WARN logs.
+ * - `DrainedGuardExpired` — the `Drained` guard elapsed. The handler forks the
+ *   injected `onDrainedGuardExpired` effect (wired to the lifecycle's
+ *   `abandonAllRequestSniffing`), which publishes every still-incomplete request
+ *   as a failure and closes the results stream. Forked for the same reason as
+ *   `RequestCompletionCheck`, and doubly so here: that effect calls
+ *   `stopAutomaticNavigation`, which dispatches `Stop` back into this machine.
+ * - `WarnUrlMatchTimeout` / `WarnUrlMatchAdvanced` / `WarnUserDismissTimeout` /
+ *   `WarnSnifferDisposed` / `WarnDroppedPageLoaded` / `WarnDroppedSteps` — the
+ *   WARN logs. `WarnUrlMatchTimeout` is the aborting expiry; `WarnUrlMatchAdvanced`
+ *   is its `continueOnTimeout: true` sibling that advanced past the unmatched page.
  *
  * Durations ride as `…Ms` numbers so the messages stay plain structs; the
  * handlers re-inflate via `Duration.millis`.
@@ -152,9 +187,17 @@ type SideEffectMessage =
       readonly generation: number
       readonly timeoutMs: number
     }
+  | {
+      readonly _tag: 'ScheduleDrainedGuard'
+      readonly generation: number
+      readonly timeoutMs: number
+    }
   | { readonly _tag: 'CancelTimer'; readonly generation: number }
   | { readonly _tag: 'RequestCompletionCheck' }
+  | { readonly _tag: 'DrainedGuardExpired' }
+  | { readonly _tag: 'WarnDrainedGuardExpired'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnUrlMatchTimeout'; readonly timeoutMs: number }
+  | { readonly _tag: 'WarnUrlMatchAdvanced'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnUserDismissTimeout'; readonly timeoutMs: number }
   | { readonly _tag: 'WarnSnifferDisposed' }
   | { readonly _tag: 'WarnDroppedPageLoaded'; readonly url: string }
@@ -183,10 +226,24 @@ const scheduleUserDismissTimeout = (generation: number, timeoutMs: number): Side
   generation,
   timeoutMs,
 })
+const scheduleDrainedGuard = (generation: number, timeoutMs: number): SideEffectMessage => ({
+  _tag: 'ScheduleDrainedGuard',
+  generation,
+  timeoutMs,
+})
 const cancelTimer = (generation: number): SideEffectMessage => ({ _tag: 'CancelTimer', generation })
 const requestCompletionCheck: SideEffectMessage = { _tag: 'RequestCompletionCheck' }
+const drainedGuardExpired: SideEffectMessage = { _tag: 'DrainedGuardExpired' }
+const warnDrainedGuardExpired = (timeoutMs: number): SideEffectMessage => ({
+  _tag: 'WarnDrainedGuardExpired',
+  timeoutMs,
+})
 const warnUrlMatchTimeout = (timeoutMs: number): SideEffectMessage => ({
   _tag: 'WarnUrlMatchTimeout',
+  timeoutMs,
+})
+const warnUrlMatchAdvanced = (timeoutMs: number): SideEffectMessage => ({
+  _tag: 'WarnUrlMatchAdvanced',
   timeoutMs,
 })
 const warnUserDismissTimeout = (timeoutMs: number): SideEffectMessage => ({
@@ -209,14 +266,18 @@ export {
   dispatchEnsureVisible,
   dispatchNavigation,
   dispatchSniffingComplete,
+  drainedGuardExpired,
   requestCompletionCheck,
   scheduleDelayTimer,
+  scheduleDrainedGuard,
   scheduleUrlMatchTimeout,
   scheduleUserDismissTimeout,
   setStepName,
+  warnDrainedGuardExpired,
   warnDroppedPageLoaded,
   warnDroppedSteps,
   warnSnifferDisposed,
+  warnUrlMatchAdvanced,
   warnUrlMatchTimeout,
   warnUserDismissTimeout,
 }

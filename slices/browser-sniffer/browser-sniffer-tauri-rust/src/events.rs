@@ -3,8 +3,9 @@
 //! single-channel/FIFO rationale live in [`shared_structures_rust::bridge`];
 //! this module only owns the per-crate tag literals and window labels.
 
-/// Web→host tag literals this crate dispatches on.
-pub const REQUEST_SNIFFABLE_WEBVIEW: &str = "RequestSniffableWebView";
+/// Web→host tag literals this crate dispatches on. `Open` both builds the
+/// sniffer webview (when absent) and navigates it thereafter — there is no
+/// separate mount tag.
 pub const OPEN: &str = "Open";
 pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 
@@ -28,6 +29,9 @@ pub const ENSURE_SNIFFER_VISIBLE: &str = "EnsureSnifferVisible";
 /// `browser-sniffer-core`'s `messages.ts` page→host set plus the `Log`
 /// console-shim tag; drift-guarded in `native_webview_bridge::tests`.
 pub const PAGE_LOADED: &str = "PageLoaded";
+/// Early page-arrival notification: emitted once per document at
+/// `DOMContentLoaded`, before (and even without) the settled `PAGE_LOADED`.
+pub const PAGE_REQUESTED: &str = "PageRequested";
 pub const RESPONSE_START: &str = "ResponseStart";
 pub const RESPONSE_DATA: &str = "ResponseData";
 pub const RESPONSE_FINISHED: &str = "ResponseFinished";

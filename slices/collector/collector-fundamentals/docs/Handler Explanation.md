@@ -167,6 +167,38 @@ the last few), **quiesced** (both gates met; stream closed = natural completion)
 > reaching `Drained`, keeping the run open while those requests start and are
 > tracked.
 
+### The drained guard: the only bound on Gate B
+
+A step hold's `timeout` bounds the **step queue** (Gate A) and nothing else. Once
+the queue drains, the machine is parked on no hold, so a sniffed request that
+emitted `ResponseStart` and never reached a terminal event leaves Gate B unmet
+with **no timer armed anywhere** — the stream never closes and the run hangs
+until the user cancels.
+
+The **drained guard** is the bound for exactly that window. The
+automatic-navigation machine arms it on entry to `Drained` under the plan's
+`ScrapingPlan.drainedGuardTimeout` (default 60 s) and cancels it the moment the
+queue re-awakens or the run completes. Its expiry drives
+`abandonAllRequestSniffing`, so a stalled request lands as a reported partial
+failure instead of a permanent hang.
+
+Two properties follow from _where_ it lives:
+
+- **It reads no state to know what happened.** Reaching the expiry in `Drained`
+  can only mean a request never terminated: had the incomplete-request map been
+  empty, the `RequestCompletionCheck` armed alongside the guard would have
+  injected `NoMoreResultsExpected` and the run would already be `Done`.
+- **It cannot fight a long hold.** Being scoped to `Drained` — rather than
+  rolling on activity, like the runner-side idle guard it replaced — it does not
+  exist while the machine is parked in `AwaitingUserDismiss` or
+  `AwaitingUrlMatch`. A 2 h `AwaitUserDismiss` and a multi-minute 2FA
+  `AwaitPageRequested` are both untouched by it.
+
+It is an ordinary generation-correlated timer (see
+[Timers are inputs](#timers-are-inputs-correlated-by-generation)), which is what
+makes it self-disarming: a `followUpSteps` re-awaken bumps the generation, so a
+guard armed before the generated work cannot fire against it.
+
 ### The lifecycle owns every end-path
 
 Termination lives in the run lifecycle rather than spread across the tracker, a
@@ -176,11 +208,11 @@ _whether any request is still incomplete_ (Gate B) through the injected
 `hasIncompleteSniffedRequests` — the tracker's map stays the single source of
 truth, so there is no shadow counter to drift.
 
-| End-path                    | publishes                     | closes the stream?            | trigger                                           |
-| --------------------------- | ----------------------------- | ----------------------------- | ------------------------------------------------- |
-| natural completion          | (results, via prior settles)  | once no request is incomplete | automatic-navigation machine's `SniffingComplete` |
-| `abandonAllRequestSniffing` | incomplete requests as `Left` | now                           | consumer's idle timeout                           |
-| `cancelAllRequestSniffing`  | nothing                       | no (consumer has gone)        | screen unmount                                    |
+| End-path                    | publishes                     | closes the stream?            | trigger                                             |
+| --------------------------- | ----------------------------- | ----------------------------- | --------------------------------------------------- |
+| natural completion          | (results, via prior settles)  | once no request is incomplete | automatic-navigation machine's `SniffingComplete`   |
+| `abandonAllRequestSniffing` | incomplete requests as `Left` | now                           | the machine's drained guard (`drainedGuardTimeout`) |
+| `cancelAllRequestSniffing`  | nothing                       | no (consumer has gone)        | screen unmount                                      |
 
 Completion is thus a property of the stream, not a predicate the consumer
 computes. `endRequestSniffingResultsUnlessMoreExpected` runs after each settle
@@ -200,14 +232,21 @@ consumer's drive loop simply drains until `take` reports it done.
   A url-match-timeout abort reaches `Done` with requests possibly still in flight,
   so `handleSniffingComplete` withholds the close then and lets the last settle's
   close-check do it. (The machines still share no state — the lifecycle mediates.)
-- **`abandonAllRequestSniffing`** is the idle-timeout escape. The consumer calls it
-  when its drive loop has been idle past its timeout (a stalled download whose
-  `ResponseData` chunks never produced a terminal): it `stopAutomaticNavigation`s
-  the machine first (so a parked `Delay`/URL-match timer can't leak), then the
-  tracker's `failIncompleteSniffedRequests` publishes every still-incomplete
-  request as a `Left` failure, then the lifecycle closes the stream _now_ — it
-  force-closes (bypassing Gate A) because at an idle timeout sniffing may not yet
-  be complete.
+- **`abandonAllRequestSniffing`** is the force-close mechanism for a stalled
+  run (a sniffed download whose `ResponseData` chunks never produced a terminal):
+  it `stopAutomaticNavigation`s the machine first (so a parked `Delay`/URL-match
+  timer can't leak), then the tracker's `failIncompleteSniffedRequests` publishes
+  every still-incomplete request as a `Left` failure, then the lifecycle closes
+  the stream _now_ — force-closing (bypassing Gate A) because sniffing may not yet
+  be complete. **It is driven by the automatic-navigation machine's drained
+  guard:** a timer armed on entry to `Drained` under the plan's
+  `drainedGuardTimeout` (default 60 s) and cancelled the moment the queue
+  re-awakens or the run completes. Its expiry can only mean the plan finished and
+  a sniffed request never terminated — the one hang a plan's step holds cannot
+  bound, since they bound Gate A and this is Gate B. Because the guard exists only
+  while the queue is empty, it cannot fire during a legitimately long hold such as
+  `AwaitUserDismiss`, which is what distinguishes it from the rolling runner-side
+  idle guard it replaced.
 - **`cancelAllRequestSniffing`** is the screen-unmount teardown. It runs
   `stopAutomaticNavigation` (interrupt the automatic-navigation machine's timer) then the tracker's
   `cancelIncompleteSniffedRequests` (send a `CancelSnifferRequest` to the host per
@@ -244,9 +283,12 @@ identity is **owner of a step queue** (seeded from `stepSequence`, grown by
 | Transition           | transition.ts           | pure `(state, input) → [state, effects]`       |
 | Runtime              | make.ts                 | serialized dispatch + timer registry           |
 
-The inputs are `PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
+The inputs are `Start` (the composition's one-shot start-up kick),
+`PageLoaded`, `Stop`, `DelayTimerFired`, `UrlMatchTimeoutFired`,
 `UserDismissTimeoutFired`, `StepsGenerated`, `NoMoreResultsExpected`,
-`UserDismissed`, and `SnifferDisposed`; the states are `AwaitingPageLoaded`,
+`UserDismissed`, `SnifferDisposed`, and `PageRequested` (the sniffer's early
+page-arrival notification, fired at `DOMContentLoaded` before settlement); the
+states are `AwaitingPageLoaded`,
 `DelayPending`, `AwaitingUrlMatch`, `AwaitingUserDismiss`, `Drained`, and `Done`.
 Because the queue lives in the state, the transition needs no `ScrapingPlan`
 closure — it names `SetStepName` / `DispatchNavigation` /
@@ -254,13 +296,31 @@ closure — it names `SetStepName` / `DispatchNavigation` /
 `CancelTimer` / `RequestCompletionCheck` / `Warn*` effects for the runtime to
 discharge.
 
-On the first `PageLoaded` the machine begins draining the queue front-to-back,
-and it keeps draining as far as it can each turn: a `Navigation` **dispatches its
-`action` and immediately advances** (a `Fill` / `Click` / `Open` never waits for
-a `PageLoaded`, so consecutive navigations dispatch back-to-back), a `Delay` arms
-a timer for its `duration` and rests, an `AwaitPageSettled` parks until a settled
-`PageLoaded` matches its `pattern` (or aborts on its `timeout`) — resuming the
-drain from the tail on a match — an `EnsureWindowVisible` dispatches an
+The machine begins draining the queue front-to-back, and the plan's first step is
+an `Open` that builds the sniffer webview directly on the real starting page —
+there is no separate `about:blank` mount. Two triggers leave the start-up state,
+whichever comes first: the runner fires a one-shot `Start` at run start (in
+`collector-react`'s `sync-run.ts`, right after registering the handler), and the
+sniffer's own first `PageLoaded` arrives once that first page settles. `Start` is
+what makes the run robust — the leading `Open` is a navigation that needs no page
+in hand, so the drain need not wait for a first settle that may never come (if
+the sniffer's web content process terminates before its first page settles,
+`AwaitingPageLoaded` arms no timer, so without `Start` the run would hang there
+indefinitely). Whichever trigger wins, the other is inert (the drain has already
+left `AwaitingPageLoaded`). It keeps draining as
+far as it can each turn: a `Navigation`
+**dispatches its `action` and immediately advances** (a `Fill` / `Click` / `Open`
+never waits for a `PageLoaded`, so consecutive navigations dispatch back-to-back),
+a `Delay` arms a timer for its `duration` and rests, an `AwaitPageSettled` parks
+until a settled `PageLoaded` matches its `pattern` (or, when it carries **no**
+`pattern`, until the _next_ settled load arrives — never satisfied by the page in
+hand, so it skips the prior page and holds for the freshly-opened one; or aborts
+on its `timeout`) — resuming the drain from the tail on a match — an `AwaitPageRequested`
+parks the same way but
+is released by a matching early `PageRequested` arrival _or_ a matching settled
+`PageLoaded` (settled implies arrived; the converse does not hold — a mere
+arrival never releases an `AwaitPageSettled`, and never starts the start-up
+drain), an `EnsureWindowVisible` dispatches an
 `EnsureSnifferVisible` show request and immediately advances (fire-and-advance,
 like a `Navigation`), and an empty queue transitions to `Drained`. A
 `StepsGenerated` input appends to the back of the queue (breadth-first), or from
@@ -274,8 +334,9 @@ to the sniffer chrome's subtitle so the running step is visible. A back-to-back
 seen — names on hold steps (or a `Navigation` gated by a following hold) are the
 ones a user reliably reads.
 There is **no implicit settle timer**: all waiting is an explicit `Delay`,
-`AwaitPageSettled`, or `AwaitUserDismiss` step, so `AwaitingPageLoaded` is a
-start-up-only resting state (nothing but `Stop` returns to it).
+`AwaitPageSettled`, `AwaitPageRequested`, or `AwaitUserDismiss` step, so
+`AwaitingPageLoaded` is a start-up-only resting state (nothing but `Stop`
+returns to it).
 
 An `AwaitUserDismiss` step parks in `AwaitingUserDismiss` under its own `timeout`.
 Three inputs resume from there, all onto the same path — **consume the hold and
@@ -290,11 +351,21 @@ own. Outside the hold, `UserDismissed` and `SnifferDisposed` are
 silent no-ops — both also occur during ordinary teardown, so neither may disturb
 a run that isn't waiting on one.
 
-Note the asymmetry with the other timed hold. An `AwaitPageSettled` that times out
-**aborts** the run (`Done` + `SniffingComplete`), because the page it needed never
-arrived and every step behind it is meaningless. An `AwaitUserDismiss` that ends
-merely **drains**, because the plan got as far as handing control to the user and
-whatever was sniffed is a valid result.
+Note the asymmetry with the other timed holds. An `AwaitPageSettled` or
+`AwaitPageRequested` that times out **aborts** the run by default (`Done` +
+`SniffingComplete`), because the page it needed never came and every step behind
+it is meaningless — unless the hold set `continueOnTimeout: true`, in which case a
+timeout instead **drains** the tail (the page was best-effort: e.g. a
+login/redirect page an already-authenticated session skips). An `AwaitUserDismiss`
+that ends always **drains**, because the plan got as far as handing control to the
+user and whatever was sniffed is a valid result.
+
+Both terminals write a fixed chrome label just before `SniffingComplete` — `'Done'`
+on clean completion, `'Timed out'` on an abort — so the sniffer subtitle reflects
+the terminal state instead of freezing on the last step's `name`. The host disposes
+the webview on `SniffingComplete`, so the `'Done'` label is short-lived (a clean
+finish tears the window down at once); the `'Timed out'` label is the one a user
+actually reads, since an aborted run leaves the window on screen.
 
 That difference is load-bearing rather than stylistic: the dismiss path is the one
 that can end with requests still in flight. The webview stays alive and keeps
@@ -302,9 +373,11 @@ sniffing them, so dispatching `SniffingComplete` at dismissal would hit
 `handleSniffingComplete` with a non-empty incomplete-request map — which closes
 nothing (see [Termination](#termination-the-run-lifecycle)) — and the results
 stream would never close. Draining instead defers to the ordinary gate, so a
-dismissal cannot outrun the requests it leaves behind. Because the hold waits on a
-person rather than the host, a plan using it should raise
-`ScrapingPlan.idleTimeout` above the step's `timeout`.
+dismissal cannot outrun the requests it leaves behind. This step's own `timeout`
+is the sole bound on the wait — there is no runner-side idle guard, and the
+drained guard is armed only in `Drained`, never while this hold is parked — so set
+it generously (this is the plan whose hold legitimately spans a long manual
+session).
 
 The **transition function is pure** — it never sends a message, forks a
 fiber, or logs; it only names the side-effect messages the runtime should
@@ -334,17 +407,29 @@ bumps or abandons the generation, so the superseded daemon's fire is
 dropped. This is the schema-free replacement for a fiber-identity check.
 A `CancelTimer` effect additionally interrupts the registered fiber (a
 `Ref<HashMap<generation, Fiber>>`) to save the wasted sleep, but the
-generation guard alone is what makes the machine correct.
+generation guard alone is what makes the machine correct — which is why it
+interrupts **fire-and-forget** (`Fiber.interruptFork`), never awaiting the
+fiber's exit (see the next section).
 
-### Why `dispatch` is not `uninterruptible`
+### Why `CancelTimer` interrupts fire-and-forget
 
-The `SynchronizedRef` lock already makes a transition and its `sendMessage`
-atomic, and a timer daemon removes itself from the registry _before_
-re-dispatching, so no `CancelTimer` can interrupt an in-flight commit.
-Wrapping the dispatch body in `Effect.uninterruptible` is therefore both
-unnecessary and actively harmful: `stopAutomaticNavigation` calls
-`Fiber.interrupt` on a timer fiber _while holding the lock_, and an
-uninterruptible region there deadlocks. Its absence is deliberate.
+`CancelTimer` runs inside the dispatch's `SynchronizedRef` lock, so it must
+**not** await the fiber it interrupts — `Fiber.interruptFork`, never
+`Fiber.interrupt`. Awaiting deadlocks the machine: the timer being cancelled may
+be blocked acquiring that _same_ lock (a timer that fired just as its hold was
+released), or its `withSpan` finalizer may not settle promptly while the lock is
+held — so the dispatch waits for the timer to exit while the timer waits for the
+dispatch to release the lock. `interruptFork` sends the interrupt and returns;
+the generation guard already makes any late `*Fired` a no-op, so the fiber
+needn't be gone before the transition commits.
+
+The dispatch body is likewise **not** wrapped in `Effect.uninterruptible`. The
+`SynchronizedRef` lock already makes a transition and its `sendMessage` atomic,
+and a timer daemon removes itself from the registry _before_ re-dispatching, so
+no `CancelTimer` can interrupt an in-flight commit — an uninterruptible region is
+unnecessary. It would also be harmful: `stopAutomaticNavigation` and every hold
+release interrupt timer fibers while holding the lock, which is a second way an
+uninterruptible region there would deadlock. Its absence is deliberate.
 
 ## See also
 

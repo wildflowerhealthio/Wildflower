@@ -49,7 +49,6 @@ const stepSequence = [{ _tag: 'Delay', name: 'wait' }] as const
 const plan = {
   name: 'Example',
   entityDefinitions: [entity],
-  firstPage: { _tag: 'Uri', uri: 'https://source.example/baseR4/Patient' },
   stepSequence,
   captureProvenance,
 }
@@ -95,7 +94,6 @@ describe('adoptSourceIdentity', () => {
 
   test('leaves every other plan field at its original reference', () => {
     const adopted = adoptSourceIdentity(SOURCE)(plan)
-    expect(adopted.firstPage).toBe(plan.firstPage)
     expect(adopted.stepSequence).toBe(plan.stepSequence)
     expect(adopted.captureProvenance).toBe(plan.captureProvenance)
     expect(adopted.name).toBe(plan.name)

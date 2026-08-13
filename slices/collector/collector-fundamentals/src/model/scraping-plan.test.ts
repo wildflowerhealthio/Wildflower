@@ -10,16 +10,11 @@ const openStep = (uri: string): Step.Step => ({
   action: { _tag: 'Open', source: { _tag: 'Uri', uri } },
 })
 
-const planWith = (
-  stepSequence: readonly Step.Step[],
-  idleTimeout?: Duration.DurationInput
-): ScrapingPlan.ScrapingPlan<never> =>
+const planWith = (stepSequence: readonly Step.Step[]): ScrapingPlan.ScrapingPlan<never> =>
   ScrapingPlan.make<never>({
     name: 'FreezeTestPlan',
     entityDefinitions: [],
-    firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
     stepSequence,
-    idleTimeout,
   })
 
 describe('ScrapingPlan.make', () => {
@@ -43,14 +38,10 @@ describe('ScrapingPlan.make', () => {
    * `Object.defineProperty`, which throws on a frozen object.
    */
   it('does not freeze Duration singletons reachable from the plan', () => {
-    const infinity = Duration.infinity
-    planWith(
-      [
-        { _tag: 'Delay', name: 'pause', duration: Duration.zero },
-        { _tag: 'AwaitUserDismiss', name: 'await dismiss', timeout: infinity },
-      ],
-      infinity
-    )
+    planWith([
+      { _tag: 'Delay', name: 'pause', duration: Duration.zero },
+      { _tag: 'AwaitUserDismiss', name: 'await dismiss', timeout: Duration.infinity },
+    ])
 
     expect(Object.isFrozen(Duration.infinity)).toBe(false)
     expect(Object.isFrozen(Duration.zero)).toBe(false)
@@ -84,7 +75,6 @@ describe('ScrapingPlan.make', () => {
     const plan = ScrapingPlan.make<never>({
       name: 'HookPlan',
       entityDefinitions: [],
-      firstPage: { _tag: 'Uri', uri: 'https://example.com/' },
       stepSequence: [],
       captureProvenance,
     })

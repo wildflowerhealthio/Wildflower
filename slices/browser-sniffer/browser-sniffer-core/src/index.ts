@@ -10,6 +10,8 @@ export {
   PageActionMessageBody,
   PageLoadedMessage,
   PageLoadedMessageBody,
+  PageRequestedMessage,
+  PageRequestedMessageBody,
   RequestErrorMessage,
   RequestErrorMessageBody,
   ResponseDataMessage,

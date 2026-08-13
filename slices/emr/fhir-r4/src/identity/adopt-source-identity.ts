@@ -141,7 +141,7 @@ const adoptEntity = (source: SourceIdentity, entity: AdoptableEntity): Adoptable
  * `slices/collector/docs/Source Identity Explanation.md`.
  *
  * Only `entityDefinitions` changes; every other plan field (`captureProvenance`,
- * `stepSequence`, `firstPage`, timeouts) passes through by reference. Within an
+ * `stepSequence`, timeouts) passes through by reference. Within an
  * entity only `parse` is wrapped, and only with `Effect.map`, so the error
  * channel is untouched and parses stay synchronously runnable.
  *

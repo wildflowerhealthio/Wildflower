@@ -46,6 +46,14 @@ interface HandlerContext {
    * current transition commits.
    */
   readonly onDrained: Effect.Effect<void, never, never>
+  /**
+   * Run (forked) when the drained guard elapses, wired to the lifecycle's
+   * `abandonAllRequestSniffing`. Forking is mandatory, not an optimisation: that
+   * effect calls `stopAutomaticNavigation`, which dispatches `Stop` back into
+   * this machine, so running it inline would re-enter the `SynchronizedRef` lock
+   * the requesting transition still holds.
+   */
+  readonly onDrainedGuardExpired: Effect.Effect<void, never, never>
   readonly dispatch: (message: InputMessage) => Effect.Effect<void, never, never>
   readonly registry: TimerRegistry
 }
@@ -169,6 +177,17 @@ const sideEffectHandlers = {
       spanAttributes: { [Telemetry.Sniffing.Attributes.UserDismissTimeoutMs]: msg.timeoutMs },
       fired: { _tag: 'UserDismissTimeoutFired', generation: msg.generation },
     }),
+  ScheduleDrainedGuard: (
+    msg: { readonly generation: number; readonly timeoutMs: number },
+    ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    scheduleTimerDaemon(ctx, {
+      generation: msg.generation,
+      duration: Duration.millis(msg.timeoutMs),
+      spanName: Telemetry.Sniffing.DrainedGuardWait.Span.Name,
+      spanAttributes: { [Telemetry.Sniffing.Attributes.DrainedGuardTimeoutMs]: msg.timeoutMs },
+      fired: { _tag: 'DrainedGuardTimeoutFired', generation: msg.generation },
+    }),
   CancelTimer: (
     msg: { readonly generation: number },
     ctx: HandlerContext
@@ -177,7 +196,16 @@ const sideEffectHandlers = {
       const registered = HashMap.get(yield* Ref.get(ctx.registry), msg.generation)
       if (Option.isSome(registered)) {
         yield* Ref.update(ctx.registry, HashMap.remove(msg.generation))
-        yield* Fiber.interrupt(registered.value)
+        // Interrupt WITHOUT awaiting the fiber's exit. `CancelTimer` runs inside
+        // the dispatch's `SynchronizedRef` lock; awaiting the interrupt
+        // (`Fiber.interrupt`) deadlocks the machine whenever the timer being
+        // cancelled can't finish interrupting promptly while that lock is held —
+        // e.g. a timer that fired as its hold was released is blocked acquiring
+        // the same lock, or its `withSpan` finalizer stalls. The generation guard
+        // in the transition already makes any late `*Fired` a no-op, so the fiber
+        // needn't be gone before we proceed. See the Handler Explanation
+        // § why dispatch is not uninterruptible.
+        yield* Fiber.interruptFork(registered.value)
       }
     }),
   RequestCompletionCheck: (
@@ -188,12 +216,33 @@ const sideEffectHandlers = {
     // re-enters the machine's lock *after* this transition commits, exactly like
     // a timer daemon — never re-entrant inside the held lock.
     Effect.asVoid(Effect.forkDaemon(ctx.onDrained)),
+  DrainedGuardExpired: (
+    _msg: { readonly _tag: 'DrainedGuardExpired' },
+    ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    // Forked for the reason given on `onDrainedGuardExpired`: it dispatches
+    // `Stop` back into this machine.
+    Effect.asVoid(Effect.forkDaemon(ctx.onDrainedGuardExpired)),
+  WarnDrainedGuardExpired: (
+    msg: { readonly timeoutMs: number },
+    _ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      `CollectorBridgeMessageHandler: the step queue drained ${msg.timeoutMs}ms ago but the run never completed — a sniffed request never reached a terminal event; abandoning it and reporting the run as a partial failure`
+    ),
   WarnUrlMatchTimeout: (
     msg: { readonly timeoutMs: number },
     _ctx: HandlerContext
   ): Effect.Effect<void, never, never> =>
     Effect.logWarning(
       `CollectorBridgeMessageHandler.PageLoaded: URL-match step timed out after ${msg.timeoutMs}ms with no matching PageLoaded; aborting via SniffingComplete`
+    ),
+  WarnUrlMatchAdvanced: (
+    msg: { readonly timeoutMs: number },
+    _ctx: HandlerContext
+  ): Effect.Effect<void, never, never> =>
+    Effect.logWarning(
+      `CollectorBridgeMessageHandler.PageLoaded: URL-match step timed out after ${msg.timeoutMs}ms with no matching page; advancing to the next step (continueOnTimeout: true)`
     ),
   WarnUserDismissTimeout: (
     msg: { readonly timeoutMs: number },
