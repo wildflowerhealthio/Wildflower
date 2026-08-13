@@ -22,6 +22,10 @@ const streamEitherArb = fc.array(eitherArb).map(Stream.fromIterable)
 
 For FHIR resources and Effect Schemas, use `Arbitrary.make(Schema)` instead.
 
+### Custom `Schema.declare` combinators need annotations first
+
+`Arbitrary.make` and schema-equality both walk the schema graph, and a `Schema.declare(...)` combinator derives neither unless it carries `arbitrary` + `equivalence` annotations: `Arbitrary.make` throws `MissingAnnotation`, and `Schema.equivalence` falls back to reference equality (a "not schema-equivalent … no visual difference" failure on identical values). If a property test that generates or compares through such a combinator fails inexplicably, annotate the combinator — see [Schema.declare combinators need annotations](../Effect/Patterns%20Reference.md#schemadeclare-combinators-need-arbitrary--equivalence-annotations) in the Effect Patterns Reference.
+
 ## Verified Mocks
 
 Use `vi.fn` implementations that embed their input in the output. This lets you assert provenance — that a specific output came from a specific input — without knowing what the input was ahead of time.

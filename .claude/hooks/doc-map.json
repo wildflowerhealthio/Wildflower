@@ -81,6 +81,15 @@
       ]
     },
     {
+      "id": "fhir-r4",
+      "tools": "any",
+      "pattern": "^slices/emr/fhir-r4/src/(data-types|resources)/",
+      "docs": [
+        "slices/emr/fhir-r4/docs/Consumer Gotchas Reference.md — keep the top-level interface re-exports in data-types/index.ts (consumers' `vp pack` breaks with TS2883 without them); uri/url fields decode to URL on typed resources",
+        "slices/emr/fhir-r4/docs/Client Capabilities Reference.md — record any deviation from the FHIR R4 spec here in the same change"
+      ]
+    },
+    {
       "id": "settings-ui",
       "tools": "any",
       "pattern": "(^|/)routes/.*settings|settings-fragment",

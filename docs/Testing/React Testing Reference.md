@@ -77,6 +77,14 @@ vi.mocked(usePlatformContext).mockReturnValue(
 
 The `createMockHub` helper provides sensible defaults for all Hub methods. Override only what you need for your test.
 
+## Form Validation Testing
+
+jsdom enforces HTML5 constraint validation, so an `<input type="url">` (also `type="email"`, `type="number"` with `min`/`step`, and anything with `pattern` or `required`) blocks form submission on an invalid value **before** your `onSubmit` handler runs. A test that types a malformed value expecting the component's own `Schema.decodeUnknownEither` `ParseError` to render inline fails confusingly: the handler never fires, no error state is set, and nothing renders.
+
+Worse, the `expect(onSubmit).not.toHaveBeenCalled()` half of such a test still **passes — for the wrong reason** (the platform blocked the submit, not your schema), so only the "and shows the error" half fails.
+
+To exercise the schema rather than the platform, pick a value the input's `type` accepts but the schema rejects — e.g. a well-formed `ftp://files.example.com` for a `type="url"` field whose schema forbids the scheme, rather than `not-a-url`.
+
 ## Testing Hooks with Effects
 
 Wrap state transitions in `act()`:
