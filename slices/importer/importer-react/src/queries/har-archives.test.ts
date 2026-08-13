@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
-import { DateTime, Effect, Layer, Schema } from 'effect'
+import { DateTime, Effect, Either, Layer, Schema } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
@@ -204,7 +204,11 @@ const failingHttpClientLayer = (): Layer.Layer<HttpClient.HttpClient> =>
 
 /** A runner carrying the SMART bearer token, over the given stub transport. */
 const runAuthedFor = (transport: Layer.Layer<HttpClient.HttpClient>): RunAuthed =>
-  buildSmartRouterContext({ serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN }, transport).runAuthed
+  // `SERVER_URL` is addressable, so this is always a `Right`; unwrap or throw.
+  Either.getOrThrowWith(
+    buildSmartRouterContext({ serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN }, transport),
+    (error) => error
+  ).runAuthed
 
 const runAuthedOver = (bodies: readonly unknown[]): RunAuthed =>
   runAuthedFor(stubHttpClientLayer(bodies))
