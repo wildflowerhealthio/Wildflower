@@ -1,8 +1,4 @@
-import {
-  CollectorDescriptor,
-  type EntityDefinition,
-  ScrapingPlan,
-} from 'collector-fundamentals/model'
+import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
@@ -11,9 +7,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { ObservationEntity } from './entities/observation-entity.ts'
-import { ObservationListEntity } from './entities/observation-list-entity.ts'
-import { PatientEntity } from './entities/patient-entity.ts'
+import { fhirR4EntityDefinitions } from './plan-entities.ts'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -153,11 +147,7 @@ const scrapingPlan = (
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
-    entityDefinitions: [
-      PatientEntity,
-      ObservationEntity,
-      ObservationListEntity,
-    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    entityDefinitions: fhirR4EntityDefinitions,
     captureProvenance,
     stepSequence: [
       // Open the Patient JSON document — the step that brings the sniffer up —
