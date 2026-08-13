@@ -1,7 +1,6 @@
-import { Effect, Option, type ParseResult } from 'effect'
+import { Array as Arr, Effect, Option, type ParseResult } from 'effect'
 
 import { Recognizer, Replay } from 'collector-fundamentals/replay'
-import type { FhirResource } from 'fhir-r4/resources'
 import { type ArchivedExchange, fromHarJson } from 'web-trace-core/har'
 
 import type { ImportParseFailure, ImportPreview } from './import-preview.ts'
@@ -51,25 +50,6 @@ const toReplayResponse = (exchange: ArchivedExchange): Replay.ReplayResponse => 
   body: exchange.body,
   bodyAbsent: exchange.bodyAbsent,
 })
-
-/**
- * Group a replay outcome's decoded resources by FHIR `resourceType`.
- *
- * @param batches - The resource-producing batches of a `ReplayOutcome`
- * @returns The resources keyed by `resourceType`, in first-seen order within
- *   each type
- */
-const groupByResourceType = (
-  batches: readonly Replay.ReplayBatch<FhirResource>[]
-): Readonly<Record<string, readonly FhirResource[]>> => {
-  const grouped: Record<string, FhirResource[]> = {}
-  for (const batch of batches) {
-    for (const resource of batch.resources) {
-      ;(grouped[resource.resourceType] ??= []).push(resource)
-    }
-  }
-  return grouped
-}
 
 /** Project the replay's parse failures onto the preview's display shape. */
 const toImportParseFailures = (
@@ -128,7 +108,10 @@ const previewClaimed = (
     _tag: 'Preview',
     collectorTag: collector.tag,
     rootUrls: distinctRoots(responses, collector.rootOf),
-    resourcesByType: groupByResourceType(outcome.batches),
+    resourcesByType: Arr.groupBy(
+      outcome.batches.flatMap((batch) => batch.resources),
+      (resource) => resource.resourceType
+    ),
     parseFailures: toImportParseFailures(outcome.parseFailures),
     unmatchedCount: outcome.unmatched.length,
     bodyAbsentCount: outcome.bodyAbsent.length,
@@ -165,4 +148,4 @@ const runHarImport = (harText: string): Effect.Effect<ImportPreview, ParseResult
     return yield* previewClaimed(claimed.value, responses)
   })
 
-export { groupByResourceType, runHarImport, toReplayResponse }
+export { runHarImport, toReplayResponse }

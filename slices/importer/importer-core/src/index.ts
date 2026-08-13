@@ -27,4 +27,4 @@ export {
   REGISTERED_COLLECTORS,
   type RegisteredCollector,
 } from './registered-collectors.ts'
-export { groupByResourceType, runHarImport, toReplayResponse } from './run-har-import.ts'
+export { runHarImport, toReplayResponse } from './run-har-import.ts'
