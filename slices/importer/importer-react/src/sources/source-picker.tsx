@@ -1,4 +1,4 @@
-import { DateTime, Either } from 'effect'
+import { DateTime, Effect } from 'effect'
 import { useRunAuthed } from 'fhir-r4-react'
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 
@@ -60,15 +60,18 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
 
-  const acceptFile = async (file: ReadableFile): Promise<void> => {
-    Either.match(await acceptLocalHar(file), {
-      onLeft: (message) => setError(message),
-      onRight: (picked) => {
-        setError(null)
-        onPick(picked)
-      },
-    })
-  }
+  const acceptFile = (file: ReadableFile): Promise<void> =>
+    Effect.runPromise(
+      acceptLocalHar(file).pipe(
+        Effect.match({
+          onFailure: (message) => setError(message),
+          onSuccess: (picked) => {
+            setError(null)
+            onPick(picked)
+          },
+        })
+      )
+    )
 
   const openPicker = (): void => fileInputRef.current?.click()
 
@@ -109,6 +112,16 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
       return (
         <p role="alert" className={styles.error}>
           The uploaded archives could not be loaded.
+        </p>
+      )
+    }
+    // `rows.length === 0` is also true on the very first fetch, so the pending
+    // state is checked first — otherwise the list would flash "none uploaded"
+    // before the server has answered.
+    if (archives.isPending) {
+      return (
+        <p role="status" className={styles.empty}>
+          Loading uploaded archives…
         </p>
       )
     }

@@ -1,8 +1,9 @@
-import { Either } from 'effect'
+import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { acceptLocalHar, REJECTION_MESSAGE, type ReadableFile } from './local-har.ts'
+import type { PickedHar } from './picked-har.ts'
 
 /**
  * `acceptLocalHar` is the gate every local pick passes: it reads the file and
@@ -32,10 +33,18 @@ const fileOf = (name: string, text: string): ReadableFile => ({
   text: (): Promise<string> => Promise.resolve(text),
 })
 
+/**
+ * Runs the validation effect into an `Either`, the way the picker runs it for
+ * its side effects — so the tests read the outcome as `Right` pick / `Left`
+ * rejection.
+ */
+const runAccept = (file: ReadableFile): Promise<Either.Either<PickedHar, string>> =>
+  Effect.runPromise(Effect.either(acceptLocalHar(file)))
+
 describe('acceptLocalHar', () => {
   it('should accept a valid HAR and carry its name and text onto a local pick', async () => {
     // Act
-    const result = await acceptLocalHar(fileOf('portal-session.har', VALID_HAR))
+    const result = await runAccept(fileOf('portal-session.har', VALID_HAR))
 
     // Assert
     if (Either.isLeft(result)) throw new Error('expected an accepted pick')
@@ -46,7 +55,7 @@ describe('acceptLocalHar', () => {
 
   it('should reject a file that is not JSON at all', async () => {
     // Act
-    const result = await acceptLocalHar(fileOf('notes.txt', 'this is not a HAR'))
+    const result = await runAccept(fileOf('notes.txt', 'this is not a HAR'))
 
     // Assert — rejected here, with a message about the format rather than a parser path
     if (Either.isRight(result)) throw new Error('expected a rejection')
@@ -55,7 +64,7 @@ describe('acceptLocalHar', () => {
 
   it('should reject JSON that is not a HAR', async () => {
     // Act — valid JSON, but nothing a HAR reader can use
-    const result = await acceptLocalHar(fileOf('data.json', JSON.stringify({ foo: 1 })))
+    const result = await runAccept(fileOf('data.json', JSON.stringify({ foo: 1 })))
 
     // Assert
     if (Either.isRight(result)) throw new Error('expected a rejection')
@@ -69,7 +78,7 @@ describe('acceptLocalHar', () => {
       fc.asyncProperty(
         fc.string({ minLength: 1 }).filter((n) => n.trim() !== ''),
         async (name) => {
-          const result = await acceptLocalHar(fileOf(name, VALID_HAR))
+          const result = await runAccept(fileOf(name, VALID_HAR))
           if (Either.isLeft(result)) throw new Error('expected an accepted pick')
           expect(result.right.fileName).toBe(name)
           expect(result.right.text).toBe(VALID_HAR)

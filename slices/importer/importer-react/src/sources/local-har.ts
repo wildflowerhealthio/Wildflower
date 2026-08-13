@@ -1,4 +1,3 @@
-import type { Either } from 'effect'
 import { Effect } from 'effect'
 import { fromHarJson } from 'web-trace-core/har'
 
@@ -49,29 +48,27 @@ interface ReadableFile {
  * Reads a local file and validates it as a HAR, before it is offered as a pick.
  *
  * @param file - The dropped or chosen file
- * @returns `Right` an accepted {@link PickedHar} carrying a `local` source, or
- *   `Left` the reason the file was rejected
+ * @returns A lazy `Effect` that yields the accepted {@link PickedHar} carrying a
+ *   `local` source, or fails with the reason the file was rejected
  *
  * @remarks
- * An `Either` rather than a bespoke `{ ok }` union: the validation is a parse
- * that either yields a value or names why it did not, which is exactly what
- * `Either` is, so the pipeline reads as one — `fromHarJson` succeeds into the
- * pick and its `ParseError` maps to {@link REJECTION_MESSAGE}. Validation goes
- * through `fromHarJson`, so a file that is not JSON and a file that is JSON but
- * not a HAR both fail here rather than downstream; the parse result itself is
- * discarded, because the picker hands on the *text* and the replay parses it
- * again when it runs. This is a gate, not the parse.
+ * An `Effect` rather than an already-run `Promise`: the validation is a parse
+ * that either yields a value or names why it did not — exactly the success/error
+ * channels an `Effect` carries — so the pipeline reads as one (`fromHarJson`
+ * succeeds into the pick, its `ParseError` maps to {@link REJECTION_MESSAGE}) and
+ * nothing runs until the caller runs it, where the pick's side effects belong.
+ * Validation goes through `fromHarJson`, so a file that is not JSON and a file
+ * that is JSON but not a HAR both fail here rather than downstream; the parse
+ * result itself is discarded, because the picker hands on the *text* and the
+ * replay parses it again when it runs. This is a gate, not the parse.
  */
-const acceptLocalHar = (file: ReadableFile): Promise<Either.Either<PickedHar, string>> =>
-  Effect.runPromise(
-    Effect.promise(() => file.text()).pipe(
-      Effect.flatMap((text) =>
-        fromHarJson(text).pipe(
-          Effect.as<PickedHar>({ fileName: file.name, text, source: LOCAL_SOURCE }),
-          Effect.mapError(() => REJECTION_MESSAGE)
-        )
-      ),
-      Effect.either
+const acceptLocalHar = (file: ReadableFile): Effect.Effect<PickedHar, string> =>
+  Effect.promise(() => file.text()).pipe(
+    Effect.flatMap((text) =>
+      fromHarJson(text).pipe(
+        Effect.as<PickedHar>({ fileName: file.name, text, source: LOCAL_SOURCE }),
+        Effect.mapError(() => REJECTION_MESSAGE)
+      )
     )
   )
 
