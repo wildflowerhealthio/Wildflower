@@ -283,6 +283,13 @@ impl TunnelDaemon {
         // revision still advances (the response reads it from the DB settings);
         // only the live supervisor is left untouched.
         //
+        // This early return must NOT touch the watched liveness: it returns
+        // before the `send_replace` below, so `settings_revision` stays at the
+        // live supervisor's value. The running supervisor's `set_state`
+        // supersession check (see [`set_state`]) drops updates whose revision
+        // doesn't match the watched one, so republishing the newer revision here
+        // would silently mute the live supervisor's own liveness transitions.
+        //
         // The relay comparison is the *full* `RelaySettings`, token included:
         // rotated credentials are a real change. The live supervisor is dialing
         // with the now-stale token, so it must re-dial with the new one — a
