@@ -1,4 +1,4 @@
-import { DateTime } from 'effect'
+import { DateTime, Either } from 'effect'
 import { useRunAuthed } from 'fhir-r4-react'
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 
@@ -61,13 +61,13 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
   const [dragActive, setDragActive] = useState(false)
 
   const acceptFile = async (file: ReadableFile): Promise<void> => {
-    const result = await acceptLocalHar(file)
-    if (result.ok) {
-      setError(null)
-      onPick(result.picked)
-    } else {
-      setError(result.message)
-    }
+    Either.match(await acceptLocalHar(file), {
+      onLeft: (message) => setError(message),
+      onRight: (picked) => {
+        setError(null)
+        onPick(picked)
+      },
+    })
   }
 
   const openPicker = (): void => fileInputRef.current?.click()
@@ -113,7 +113,7 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
       )
     }
     if (rows.length === 0) {
-      return <p className={styles.empty}>No HAR archives have been uploaded to this device.</p>
+      return <p className={styles.empty}>No HAR archives have been uploaded to the FHIR server.</p>
     }
     return (
       <ul className={styles.archiveList}>
@@ -163,7 +163,7 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
         </p>
       )}
       <div className={styles.server}>
-        <h3 className={styles.serverHeading}>Uploaded archives on this device</h3>
+        <h3 className={styles.serverHeading}>Uploaded archives on the FHIR server</h3>
         {renderArchiveList()}
         {archives.hasNextPage && (
           <button

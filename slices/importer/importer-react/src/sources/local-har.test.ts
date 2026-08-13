@@ -1,3 +1,4 @@
+import { Either } from 'effect'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -37,11 +38,10 @@ describe('acceptLocalHar', () => {
     const result = await acceptLocalHar(fileOf('portal-session.har', VALID_HAR))
 
     // Assert
-    expect(result.ok).toBe(true)
-    if (!result.ok) throw new Error('expected an accepted pick')
-    expect(result.picked.fileName).toBe('portal-session.har')
-    expect(result.picked.text).toBe(VALID_HAR)
-    expect(result.picked.source).toEqual({ _tag: 'local' })
+    if (Either.isLeft(result)) throw new Error('expected an accepted pick')
+    expect(result.right.fileName).toBe('portal-session.har')
+    expect(result.right.text).toBe(VALID_HAR)
+    expect(result.right.source).toEqual({ _tag: 'local' })
   })
 
   it('should reject a file that is not JSON at all', async () => {
@@ -49,9 +49,8 @@ describe('acceptLocalHar', () => {
     const result = await acceptLocalHar(fileOf('notes.txt', 'this is not a HAR'))
 
     // Assert — rejected here, with a message about the format rather than a parser path
-    expect(result.ok).toBe(false)
-    if (result.ok) throw new Error('expected a rejection')
-    expect(result.message).toBe(REJECTION_MESSAGE)
+    if (Either.isRight(result)) throw new Error('expected a rejection')
+    expect(result.left).toBe(REJECTION_MESSAGE)
   })
 
   it('should reject JSON that is not a HAR', async () => {
@@ -59,9 +58,8 @@ describe('acceptLocalHar', () => {
     const result = await acceptLocalHar(fileOf('data.json', JSON.stringify({ foo: 1 })))
 
     // Assert
-    expect(result.ok).toBe(false)
-    if (result.ok) throw new Error('expected a rejection')
-    expect(result.message).toBe(REJECTION_MESSAGE)
+    if (Either.isRight(result)) throw new Error('expected a rejection')
+    expect(result.left).toBe(REJECTION_MESSAGE)
   })
 
   it('should preserve any file name and the exact text of an accepted HAR', async () => {
@@ -72,10 +70,9 @@ describe('acceptLocalHar', () => {
         fc.string({ minLength: 1 }).filter((n) => n.trim() !== ''),
         async (name) => {
           const result = await acceptLocalHar(fileOf(name, VALID_HAR))
-          expect(result.ok).toBe(true)
-          if (!result.ok) throw new Error('expected an accepted pick')
-          expect(result.picked.fileName).toBe(name)
-          expect(result.picked.text).toBe(VALID_HAR)
+          if (Either.isLeft(result)) throw new Error('expected an accepted pick')
+          expect(result.right.fileName).toBe(name)
+          expect(result.right.text).toBe(VALID_HAR)
         }
       )
     )

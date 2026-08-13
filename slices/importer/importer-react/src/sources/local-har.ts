@@ -1,4 +1,5 @@
-import { Effect, Either } from 'effect'
+import type { Either } from 'effect'
+import { Effect } from 'effect'
 import { fromHarJson } from 'web-trace-core/har'
 
 import { LOCAL_SOURCE, type PickedHar } from './picked-har.ts'
@@ -29,11 +30,6 @@ import { LOCAL_SOURCE, type PickedHar } from './picked-har.ts'
 const REJECTION_MESSAGE =
   "That file isn't a valid HAR recording. A HAR is the JSON a browser's network panel exports."
 
-/** Either an accepted {@link PickedHar} or the reason the file was rejected. */
-type LocalHarResult =
-  | { readonly ok: true; readonly picked: PickedHar }
-  | { readonly ok: false; readonly message: string }
-
 /**
  * The minimal surface {@link acceptLocalHar} reads off a file.
  *
@@ -53,24 +49,30 @@ interface ReadableFile {
  * Reads a local file and validates it as a HAR, before it is offered as a pick.
  *
  * @param file - The dropped or chosen file
- * @returns An accepted {@link PickedHar} carrying a `local` source, or the reason
- *   the file was rejected
+ * @returns `Right` an accepted {@link PickedHar} carrying a `local` source, or
+ *   `Left` the reason the file was rejected
  *
  * @remarks
- * Validation goes through `fromHarJson`, so a file that is not JSON and a file
- * that is JSON but not a HAR both fail here rather than downstream. The parse
- * result itself is discarded — the picker hands on the *text*, and the replay
- * parses it again when it runs; this is a gate, not the parse.
+ * An `Either` rather than a bespoke `{ ok }` union: the validation is a parse
+ * that either yields a value or names why it did not, which is exactly what
+ * `Either` is, so the pipeline reads as one — `fromHarJson` succeeds into the
+ * pick and its `ParseError` maps to {@link REJECTION_MESSAGE}. Validation goes
+ * through `fromHarJson`, so a file that is not JSON and a file that is JSON but
+ * not a HAR both fail here rather than downstream; the parse result itself is
+ * discarded, because the picker hands on the *text* and the replay parses it
+ * again when it runs. This is a gate, not the parse.
  */
-const acceptLocalHar = (file: ReadableFile): Promise<LocalHarResult> =>
+const acceptLocalHar = (file: ReadableFile): Promise<Either.Either<PickedHar, string>> =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const text = yield* Effect.promise(() => file.text())
-      const parsed = yield* Effect.either(fromHarJson(text))
-      return Either.isRight(parsed)
-        ? ({ ok: true, picked: { fileName: file.name, text, source: LOCAL_SOURCE } } as const)
-        : ({ ok: false, message: REJECTION_MESSAGE } as const)
-    })
+    Effect.promise(() => file.text()).pipe(
+      Effect.flatMap((text) =>
+        fromHarJson(text).pipe(
+          Effect.as<PickedHar>({ fileName: file.name, text, source: LOCAL_SOURCE }),
+          Effect.mapError(() => REJECTION_MESSAGE)
+        )
+      ),
+      Effect.either
+    )
   )
 
-export { acceptLocalHar, type LocalHarResult, type ReadableFile, REJECTION_MESSAGE }
+export { acceptLocalHar, type ReadableFile, REJECTION_MESSAGE }

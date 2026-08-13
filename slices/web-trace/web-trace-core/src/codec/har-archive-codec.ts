@@ -1,4 +1,4 @@
-import { DateTime, Effect, Encoding, ParseResult, Schema } from 'effect'
+import { DateTime, Effect, Either, Encoding, ParseResult, Schema } from 'effect'
 import { DocumentReference } from 'fhir-r4/resources'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
@@ -160,31 +160,24 @@ const hasArchiveCoding = (concept: FhirR4.CodeableConcept | undefined): boolean 
  * The bytes are taken as they are — `hash` and `size` are a reader's dedupe
  * signal, not a checksum this decode re-derives over a multi-megabyte file.
  */
-const readEncodedArchive = (
-  wire: FhirR4.DocumentReference
-):
-  | { readonly ok: true; readonly value: unknown }
-  | { readonly ok: false; readonly reason: string } => {
+const readEncodedArchive = (wire: FhirR4.DocumentReference): Either.Either<unknown, string> => {
   if (!hasArchiveCoding(wire.type) || !(wire.category ?? []).some(hasArchiveCoding)) {
-    return { ok: false, reason: `Not a ${HAR_ARCHIVE_CODE} document` }
+    return Either.left(`Not a ${HAR_ARCHIVE_CODE} document`)
   }
 
   const attachment = wire.content?.[0]?.attachment
-  if (attachment === undefined) return { ok: false, reason: 'No content entry' }
-  if (attachment.data === undefined) return { ok: false, reason: 'Attachment carries no data' }
+  if (attachment === undefined) return Either.left('No content entry')
+  if (attachment.data === undefined) return Either.left('Attachment carries no data')
 
-  return {
-    ok: true,
-    value: {
-      id: wire.id,
-      fileName: attachment.title,
-      // `creation` is the upload instant this codec writes; `date` mirrors it so
-      // the resource is orderable by a plain FHIR search. Either will do, and an
-      // archive written by something else may carry only one.
-      uploadedAt: attachment.creation ?? wire.date,
-      bytes: attachment.data,
-    },
-  }
+  return Either.right({
+    id: wire.id,
+    fileName: attachment.title,
+    // `creation` is the upload instant this codec writes; `date` mirrors it so
+    // the resource is orderable by a plain FHIR search. Either will do, and an
+    // archive written by something else may carry only one.
+    uploadedAt: attachment.creation ?? wire.date,
+    bytes: attachment.data,
+  })
 }
 
 /**
@@ -212,14 +205,15 @@ const HarArchiveFromDocumentReference: Schema.Schema<HarArchive, DocumentReferen
       strict: true,
       decode: (resource, _options, ast) =>
         encodeResource(resource).pipe(
-          Effect.flatMap((wire) => {
-            const read = readEncodedArchive(wire)
-            return read.ok
-              ? decodeArchive(read.value)
-              : Effect.fail(
-                  new ParseResult.Type(ast, resource, `${wire.id ?? '<no id>'}: ${read.reason}`)
-                )
-          })
+          Effect.flatMap((wire) =>
+            Either.match(readEncodedArchive(wire), {
+              onLeft: (reason) =>
+                Effect.fail(
+                  new ParseResult.Type(ast, resource, `${wire.id ?? '<no id>'}: ${reason}`)
+                ),
+              onRight: (value) => decodeArchive(value),
+            })
+          )
         ),
       encode: (archive, _options, ast) =>
         sha256Base64(new Uint8Array(archive.bytes)).pipe(

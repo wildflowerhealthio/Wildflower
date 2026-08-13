@@ -29,12 +29,7 @@ export {
 export { HAR_ARCHIVES_QUERY_KEY, IMPORTER_QUERY_KEY } from './queries/keys.ts'
 export { nextPageToken, type PageLink } from './queries/page-token.ts'
 export { type UploadHarInput, useUploadHar } from './mutations/upload-har.ts'
-export {
-  acceptLocalHar,
-  type LocalHarResult,
-  type ReadableFile,
-  REJECTION_MESSAGE,
-} from './sources/local-har.ts'
+export { acceptLocalHar, type ReadableFile, REJECTION_MESSAGE } from './sources/local-har.ts'
 export {
   LOCAL_SOURCE,
   type PickedHar,
