@@ -77,18 +77,7 @@ const toImportParseFailures = (
 const distinctRoots = (
   responses: readonly Replay.ReplayResponse[],
   rootOf: (url: string) => Option.Option<string>
-): readonly string[] => {
-  const seen = new Set<string>()
-  const roots: string[] = []
-  for (const response of responses) {
-    const root = rootOf(response.url)
-    if (Option.isSome(root) && !seen.has(root.value)) {
-      seen.add(root.value)
-      roots.push(root.value)
-    }
-  }
-  return roots
-}
+): readonly string[] => Arr.dedupe(Arr.filterMap(responses, (response) => rootOf(response.url)))
 
 /**
  * Replay a claimed archive and fold the outcome into a `Preview`.

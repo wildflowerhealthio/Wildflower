@@ -40,8 +40,9 @@ package growing a second, prop-threaded way in.
 ## Traps
 
 - **Three of the traps that used to be listed here are the shared runtime's
-  now** — the `iss`-prefix reconciliation that **raises** rather than guessing,
-  the bearer token that rides only the requests the layer addressed, and the
+  now** — the `iss`-prefix reconciliation that returns a **`Left`** rather than
+  guessing, the bearer token that rides only the requests the layer addressed,
+  and the
   transport staying a parameter. They are unchanged, but they are enforced in
   `fhir-r4-react/smart`; the guardrail that spells all three out is in
   [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md). What is still this app's is
@@ -112,8 +113,9 @@ above `MIN_UPLOAD_PORT` (8082) so shipping it does not consume a low upload port
 
 ## Testing
 
-- The auth wiring in isolation — prefix derivation (including the raise), the
-  relative/absolute split, and that an absent token sets no header rather than a
+- The auth wiring in isolation — prefix derivation (including the `Left` on an
+  unaddressable `iss`), the relative/absolute split, and that an absent token
+  sets no header rather than a
   `Bearer` with nothing after it — is
   [`fhir-r4-react`'s `self-hosted-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.test.ts),
   moved there with the code it covers.
