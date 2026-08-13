@@ -474,7 +474,6 @@ mod tests {
         for tag in [
             events::SNIFFING_COMPLETE,
             events::OPEN,
-            events::REQUEST_SNIFFABLE_WEBVIEW,
             events::SET_SNIFFER_STATUS,
             events::ENSURE_SNIFFER_VISIBLE,
             // The two host-synthesized lifecycle tags: a page that could forge
@@ -560,7 +559,6 @@ mod tests {
         for tag in [
             events::SNIFFING_COMPLETE,
             events::OPEN,
-            events::REQUEST_SNIFFABLE_WEBVIEW,
             events::SET_SNIFFER_STATUS,
             events::ENSURE_SNIFFER_VISIBLE,
             events::USER_DISMISSED,

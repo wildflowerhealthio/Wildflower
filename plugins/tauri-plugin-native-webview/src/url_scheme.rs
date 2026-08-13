@@ -104,7 +104,9 @@ mod tests {
     #[test]
     fn parse_target_accepts_blank_and_http() {
         assert_eq!(
-            parse_target(BLANK_URL).expect("about:blank should parse").as_str(),
+            parse_target(BLANK_URL)
+                .expect("about:blank should parse")
+                .as_str(),
             BLANK_URL,
         );
         assert_eq!(
@@ -119,8 +121,16 @@ mod tests {
     fn parse_target_rejects_other_non_http_schemes() {
         // `about:blank` is the *only* non-http(s) target accepted — a sibling
         // `about:` URL or any other scheme still rejects.
-        for uri in ["about:srcdoc", "file:///etc/passwd", "data:text/html,x", "not a url"] {
-            assert!(parse_target(uri).is_err(), "{uri} should have been rejected");
+        for uri in [
+            "about:srcdoc",
+            "file:///etc/passwd",
+            "data:text/html,x",
+            "not a url",
+        ] {
+            assert!(
+                parse_target(uri).is_err(),
+                "{uri} should have been rejected"
+            );
         }
     }
 }

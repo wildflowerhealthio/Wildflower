@@ -154,7 +154,7 @@ describe('RexallCollectorDescriptor', () => {
 })
 
 describe('scrapingPlan', () => {
-  it('opens the letsbewell login page as its first step (off about:blank)', () => {
+  it('opens the letsbewell login page as its first step', () => {
     const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
     expect(plan.stepSequence[0]).toEqual({
       _tag: 'Navigation',
@@ -193,7 +193,7 @@ describe('scrapingPlan', () => {
         action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://letsbewell.ca/sign-in' } },
       },
       // The hold and the delay are a pair: the hold stops the delay racing the
-      // login page's network load (every run starts on `about:blank`), and the
+      // login page's network load, and the
       // delay still absorbs a form rendered after the page goes quiet.
       {
         _tag: 'AwaitPageSettled',

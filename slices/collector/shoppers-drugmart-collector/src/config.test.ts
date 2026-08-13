@@ -162,7 +162,7 @@ describe('ShoppersDrugMartCollectorDescriptor', () => {
 })
 
 describe('scrapingPlan', () => {
-  it('opens the mypharmacy login page as its first step (off about:blank)', () => {
+  it('opens the mypharmacy login page as its first step', () => {
     const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
     expect(plan.stepSequence[0]).toEqual({
       _tag: 'Navigation',

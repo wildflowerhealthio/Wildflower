@@ -142,10 +142,12 @@ const historyUrl = /:\/\/[^/]+\/api\/[^/]+\/prescription-history\/?\?(?:[^#]*&)?
  * `authorizingPrescription`.
  *
  * The latest fill of a prescription appears in both this feed and the
- * status feed; same `dispenseId` → same adopted id → an idempotent upsert. This
- * version is strictly richer (its own `din`, quantity, date, and dispensing
- * store), and write ordering within a run is not guaranteed, so last-write-wins
- * on the shared id is acceptable. A dispense with no `dispenseId` is
+ * status feed; same `dispenseId` → same adopted id → an idempotent upsert.
+ * Neither version subsumes the other — this one carries its own `din`,
+ * quantity, date and dispensing store, while the status feed's carries the
+ * `subject` the history payload has no `patientId` for — and write ordering
+ * within a run is not guaranteed, so last-write-wins on the shared id loses
+ * whichever fields the winning side omits. A dispense with no `dispenseId` is
  * dropped-and-counted via `Effect.logInfo`. {@link extractJson} normalizes the
  * body across raw-XHR intercepts and the mobile WebView's JSON-viewer wrap.
  */

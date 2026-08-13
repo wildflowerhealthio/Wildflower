@@ -97,8 +97,8 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
 
 /**
  * Build the FHIR R4 scraping plan for a configured patient on a
- * configured server. The sniffer is mounted on `about:blank`; the plan's first
- * `Open` step navigates it directly to `/Patient/:id?_format=json`. The
+ * configured server. The plan's first `Open` step builds the sniffer webview
+ * directly on `/Patient/:id?_format=json`. The
  * browser-sniffer's window-`load` handler snapshots the rendered document (the
  * browser's native JSON viewer wraps the response in `<pre>{json}</pre>`),
  * streams it through the standard `ResponseStart`/`Data`/`Finished` triple keyed
@@ -114,9 +114,8 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * keeps the run open until that page has actually loaded and settled — without
  * it the queue would drain the instant the `Open` dispatches and the run could
  * complete before the request is even tracked. The holds are **pattern-less**:
- * each waits for the *next* settle after its `Open` (skipping the `about:blank`
- * mount and the prior page), which is unambiguous because each `Open` targets a
- * fresh document. The FHIR endpoints are direct JSON documents (one request per
+ * each waits for the *next* settle after its `Open` (skipping the prior page),
+ * which is unambiguous because each `Open` targets a fresh document. The FHIR endpoints are direct JSON documents (one request per
  * page, no post-load XHR fan-out), so the hold on the settled page is
  * sufficient — no additional fixed `Delay` grace step is needed.
  * `entityDefinitions` are listed Patient → Observation → Bundle so
@@ -161,8 +160,8 @@ const scrapingPlan = (
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     captureProvenance,
     stepSequence: [
-      // Navigate off `about:blank` to the Patient JSON document, then hold until
-      // it settles before opening the Observation page.
+      // Open the Patient JSON document — the step that brings the sniffer up —
+      // then hold until it settles before opening the Observation page.
       {
         _tag: 'Navigation',
         name: 'Loading patient',

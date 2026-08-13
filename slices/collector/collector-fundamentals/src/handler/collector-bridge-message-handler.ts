@@ -61,7 +61,7 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
    * Start the automatic navigation: dispatch the plan's leading `Open` — which
    * builds the sniffer webview directly on the real target URL — without waiting
    * for its first `PageLoaded`. The runner fires this **once**, at run start
-   * (there is no separate `about:blank` mount), so a sniffer whose first page
+   * (that `Open` is the only mount), so a sniffer whose first page
    * never settles (its web content process dies, say) can't strand the run in
    * the automatic navigation's timer-less start-up state. See
    * {@link AutomaticNavigation.AutomaticNavigation.handleStart}.
@@ -130,7 +130,7 @@ const openUri = (step: Step.Step): string | undefined => {
  * **Dedup + cap live here, at the injection point**, so the pure transition table
  * stays free of run-history: generated steps are filtered (run-wide URI dedup of
  * `Open`s, seeded with the authored `Open` URIs — which include the run's first
- * navigation off `about:blank`; a `maxGeneratedSteps` cap) *before*
+ * navigation; a `maxGeneratedSteps` cap) *before*
  * `handleStepsGenerated` dispatches them, and dropped counts are WARN-logged.
  *
  * The three parts form a construction cycle — the tracker publishes into the
@@ -171,8 +171,8 @@ const make = <TResources>({
     // Run-wide crawler safety, applied to *generated* steps only (never the
     // authored sequence): dedup generated `Open`s by URI so a self-link or a
     // cycle terminates, and cap total generated steps. The visited-set is seeded
-    // with the authored `Open` URIs (which now include the run's first
-    // navigation off `about:blank`), so a generator can't re-open an
+    // with the authored `Open` URIs (which include the run's first
+    // navigation), so a generator can't re-open an
     // already-visited page.
     const maxGeneratedSteps =
       scrapingPlan.maxGeneratedSteps ?? ScrapingPlan.DEFAULT_MAX_GENERATED_STEPS

@@ -139,14 +139,14 @@ describe('FhirR4CollectorDescriptor', () => {
 })
 
 describe('scrapingPlan', () => {
-  // The sniffer mounts on `about:blank`; the plan's `Open` steps navigate it
+  // The plan's `Open` steps take the sniffer
   // directly to the FHIR JSON endpoints via `Uri` sources (the browser's native
   // viewer renders the response, which the sniffer snapshots). Each `Open` is
   // followed by a **pattern-less** `AwaitPageSettled` — "wait for the next
   // settle" — because each `Open` targets a fresh document, so no url pattern is
   // needed to disambiguate. A dropped `?_format=json` / mis-encoded
   // `subject:Patient` query, or a re-introduced settle `pattern`, would show here.
-  it('navigates off about:blank to the Patient then Observation endpoints, holding until each settles', () => {
+  it('opens the Patient then Observation endpoints, holding until each settles', () => {
     const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
     expect(plan.stepSequence).toEqual([
       {
@@ -207,7 +207,7 @@ describe('scrapingPlan', () => {
     // applies encodeURIComponent defensively for values arriving through
     // an untyped path — pin that the encoding actually happens by feeding
     // a value with URL-significant characters past the type. The Patient URL
-    // now rides the plan's first `Open` step (off `about:blank`).
+    // now rides the plan's first `Open` step.
     const plan = scrapingPlan(
       {
         _tag: 'fhir-r4',

@@ -22,7 +22,7 @@ const DATA_PLANE_EMIT_COMMAND = 'native_webview_data_plane_emit'
  * @remarks Desktop half of the control/data split: the content webview loads
  * arbitrary third-party content, so its capability withholds the bus `emit`
  * grant (no per-event-name scope — a hostile page could forge control tags like
- * `SniffingComplete` / `Open` / `RequestSniffableWebView`). The command is the
+ * `SniffingComplete` / `Open`). The command is the
  * only sanctioned page→host emit path and allowlists the inner `_tag`
  * host-side; inbound `PageAction` / `CancelSnifferRequest` can't be spoofed from
  * a page script. Wrapped by `makeFilteringEventBus` (FIFO + `Log` IPC-fallback

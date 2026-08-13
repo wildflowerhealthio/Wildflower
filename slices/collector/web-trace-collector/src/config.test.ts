@@ -110,7 +110,7 @@ describe('sessionIdFor', () => {
 })
 
 describe('scrapingPlan', () => {
-  it('opens the configured root URL as its first step (off about:blank)', () => {
+  it('opens the configured root URL as its first step', () => {
     const plan = scrapingPlan(
       { ...defaultConfig, rootUrl: 'https://portal.example.com/login' },
       'run-1'

@@ -191,9 +191,11 @@ leaves the prescriptions' `subject` references dangling, which the store tolerat
   `prescriptionNumber` as the reference's own `identifier`).
 - **Status/history dispense overlap.** The latest fill of a prescription appears
   in both the status feed and the history feed; same `dispenseId` → same adopted
-  id → an idempotent upsert. The history version is strictly richer, and write
-  ordering within a run is not guaranteed, so last-write-wins on the shared id is
-  acceptable.
+  id → an idempotent upsert. Neither version subsumes the other — the history
+  one carries its own `din`, quantity, date and dispensing store; the status one
+  carries the `subject` the history payload has no `patientId` for — and write
+  ordering within a run is not guaranteed, so last-write-wins on the shared id
+  loses whichever fields the winning side omits.
 - A **dispense with no `dispenseId`** (and a **patient with no `id`**) has no
   logical id to write under, so it is dropped-and-counted (`Effect.logInfo`)
   rather than silently skipped at the sink.

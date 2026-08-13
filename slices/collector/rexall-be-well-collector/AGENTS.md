@@ -264,8 +264,7 @@ and what it did not:
   The capture covers only the post-login XHRs.
 - **Login-page settle** — the leading `AwaitPageSettled`
   (`continueOnTimeout: true`) between the `Open` and the 2 s `Delay` assumes the
-  sign-in page surfaces a settled `PageLoaded`. It is there because every run now
-  starts on `about:blank`, which settles near-instantly: without it the `Delay`
+  sign-in page surfaces a settled `PageLoaded`. Without it the `Delay`
   would run _concurrently with_ the login page's network load rather than after
   it, and any load slower than 2 s left the `Fill` selectors matching nothing. The
   `Delay` is kept alongside it — settlement means "quiet DOM, no in-flight XHR",

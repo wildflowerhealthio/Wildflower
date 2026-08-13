@@ -877,8 +877,8 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   // the sniffer installs into an *already-loaded* document (`readyState` is
   // `'complete'`), that event has already fired and will not fire again, so arm
   // the watch off the current readyState instead. Defensive: the normal flow
-  // injects at document-start (the sniffer mounts on `about:blank`, then
-  // navigates), but a bfcache restore or a re-injection into a settled page can
+  // injects at document-start (the bootstrap is the webview's initialization
+  // script, so it runs before any page script), but a bfcache restore or a re-injection into a settled page can
   // land post-`load`, and a `load`-only arm would then never start —
   // `PageLoaded` would never emit and a pattern-less `AwaitPageSettled` hold
   // would hang until its timeout. Mirrors the `PageRequested` already-parsed

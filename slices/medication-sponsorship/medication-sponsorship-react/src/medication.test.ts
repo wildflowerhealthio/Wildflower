@@ -283,8 +283,10 @@ describe('medicationRequestToMedicationView', () => {
     expect(other.shoppersStoreUrl).toBeNull()
   })
 
-  test('falls back to validityPeriod.end for next fill when no supply duration is present', () => {
-    // Shoppers requests carry an explicit fill window but no expectedSupplyDuration.
+  test('does not treat validityPeriod.end as a next fill date', () => {
+    // `validityPeriod.end` is the *authorization* expiry in R4 — the last date
+    // the script may be dispensed against, not when the current supply runs
+    // out — so it must not surface as "next fill" on its own.
     const view = medicationRequestToMedicationView(
       decode({
         ...base,
@@ -295,10 +297,10 @@ describe('medicationRequestToMedicationView', () => {
       }),
       'fallback'
     )
-    expect(view.nextFillDate).toBe('2026-09-01T00:00:00.000Z')
+    expect(view.nextFillDate).toBeNull()
   })
 
-  test('prefers the computed supply-runout over validityPeriod.end when both are present', () => {
+  test('computes the supply-runout even when a validityPeriod is present', () => {
     const view = medicationRequestToMedicationView(
       decode({
         ...base,

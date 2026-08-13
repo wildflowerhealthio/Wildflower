@@ -40,8 +40,8 @@ config.rootUrl })` wrapping the plan factory's return, so every resource is
 
 ## The plan
 
-The sniffer mounts on `about:blank`; the plan's first `Open` step navigates it
-**directly to the FHIR JSON endpoint** (`…/Patient/:id?_format=json`) rather than
+The plan's first `Open` step brings the sniffer up
+**directly on the FHIR JSON endpoint** (`…/Patient/:id?_format=json`) rather than
 to a page that fetches it: the browser's native JSON viewer renders the response,
 the sniffer snapshots the document, and `extractJson` unwraps the `<pre>` before
 the entity decodes. A pattern-less `AwaitPageSettled` holds until that page

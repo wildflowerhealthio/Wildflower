@@ -11,7 +11,7 @@ import type { OpenMessage } from '../bridge.ts'
  * - `Open` (the collector bridge's `OpenMessage`): host-navigation. Carries a
  *   `WebViewSource`, so a slice's `stepSequence` can mix inline-HTML bootstraps
  *   and absolute `https://` URIs without a translation layer. The run's first
- *   step is an `Open` off the `about:blank` scaffold the host mounts. It is its
+ *   step is an `Open`, which is also what builds the sniffer webview. It is its
  *   own tag because the Tauri host *decodes* it to navigate the sniffer
  *   `WebviewWindow`.
  * - `PageAction` (`browser-sniffer-core`'s `PageActionMessage`): an in-page
@@ -101,8 +101,8 @@ interface DelayStep {
  * so it always parks and the first subsequent settled `PageLoaded` releases it.
  * Use it for the common case of a hold that waits on the page the immediately
  * preceding `Open` navigated to: there is no cross-host redirect to disambiguate,
- * and the page in hand is the *previous* one (at run start, the `about:blank`
- * scaffold the sniffer mounts on), which a pattern-less hold correctly skips. A
+ * and the page in hand is the *previous* one (at run start, none at all), which
+ * a pattern-less hold correctly skips. A
  * `pattern` is only needed when the awaited page differs from the one opened — a
  * login/redirect that lands on another host.
  *

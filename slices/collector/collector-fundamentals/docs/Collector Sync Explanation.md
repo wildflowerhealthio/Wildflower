@@ -123,7 +123,8 @@ call.
 
 `buildImportEffect` models the whole sync as one long, interruptible Effect on
 a single fiber. It builds the `CollectorBridgeMessageHandler`, registers it,
-dispatches `RequestSniffableWebView`, and then runs the **drive Stream**
+kicks the automatic-navigation machine (whose leading `Open` step is what
+brings the sniffer webview up), and then runs the **drive Stream**
 (`processSniffResultsFromMailbox`), folded into the `ImportSummary` by `collectImportSummary`.
 The handler publishes each settled outcome — a decoded batch (`Right`) or a
 sniff-level parse/transport failure (`Left`) — onto its own

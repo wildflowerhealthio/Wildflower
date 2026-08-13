@@ -11,8 +11,9 @@ import { Schema } from 'effect'
  *
  * A plan's navigation `Open` steps carry an {@link Any}; each chooses whether
  * to point at an external URL ({@link Uri}) or to ship an inline page
- * ({@link Html}). (The sniffer webview itself is always mounted on
- * `about:blank` by the host, so the *mount* message carries no source.)
+ * ({@link Html}). The leading `Open` is also what *builds* the sniffer webview
+ * — the host opens it fresh when absent — so there is no separate mount
+ * message and no placeholder page.
  *
  * The schemas are exported so the `Open` bridge wire schema in `bridge.ts` can
  * reuse them — keeping a single source of truth for the host-side type and the
@@ -22,7 +23,7 @@ import { Schema } from 'effect'
 /**
  * Refined string schema accepting only `http(s)://`-prefixed URIs. The
  * collector deliberately refuses `file://`, `javascript:`, `data:`,
- * etc., so a malformed `RequestSniffableWebView` message fails to
+ * etc., so a malformed `Open` message fails to
  * decode at the bridge boundary rather than reaching the host's
  * `<WebView>` props. Plain `http://` is permitted alongside `https://`
  * so a FHIR server reachable only over http (e.g. a local dev HAPI

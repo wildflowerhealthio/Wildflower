@@ -3,8 +3,9 @@
 //! single-channel/FIFO rationale live in [`shared_structures_rust::bridge`];
 //! this module only owns the per-crate tag literals and window labels.
 
-/// Web→host tag literals this crate dispatches on.
-pub const REQUEST_SNIFFABLE_WEBVIEW: &str = "RequestSniffableWebView";
+/// Web→host tag literals this crate dispatches on. `Open` both builds the
+/// sniffer webview (when absent) and navigates it thereafter — there is no
+/// separate mount tag.
 pub const OPEN: &str = "Open";
 pub const SNIFFING_COMPLETE: &str = "SniffingComplete";
 

@@ -186,8 +186,8 @@ const drainFrom = (
     // A settled page in hand satisfies either hold kind; a merely-requested one
     // satisfies only `AwaitPageRequested`. A *pattern-less* `AwaitPageSettled`
     // is never satisfied by the page in hand (it waits for the *next* settle),
-    // so it always parks — which is what makes it skip the `about:blank` mount
-    // (and any earlier page) and hold for the page the preceding `Open` opened.
+    // so it always parks — which is what makes it skip any earlier page and
+    // hold for the page the preceding `Open` opened.
     const satisfied =
       page !== undefined &&
       (page.settled || head._tag === 'AwaitPageRequested') &&

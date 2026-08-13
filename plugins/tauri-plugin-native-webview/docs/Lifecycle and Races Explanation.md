@@ -118,7 +118,7 @@ nothing for these lifecycle events.
 ## The dispose→open "switch-demo" race
 
 Switching demos fires, on one main-thread tick: `SniffingComplete` → `dispose()`
-→ `RequestSniffableWebView` → `open_url()`. The teardown a `dispose()` starts is
+→ `Open` → `open_url()`. The teardown a `dispose()` starts is
 **asynchronous** (it only enqueues the actual destroy — `WindowMessage::Close` on
 desktop, the dismiss animation/listener on mobile), so the same-tick `open_url()`
 would otherwise find a still-present-but-doomed instance and re-wire it, only for

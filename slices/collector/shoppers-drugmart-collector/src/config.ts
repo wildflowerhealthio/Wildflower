@@ -212,8 +212,8 @@ const captureProvenance = makeFhirProvenanceCapture('shoppers-drugmart')<FhirRes
  * GETs, and the `prescription-history` + `customers` GETs the history page
  * triggers). No API URL is ever `Open`ed directly.
  *
- * The sniffer mounts on `about:blank`; the `stepSequence` `Open`s the
- * `mypharmacy` login page, holds on a *patterned* `AwaitPageSettled` for the
+ * The `stepSequence` `Open`s the
+ * `mypharmacy` login page — the step that brings the sniffer up — holds on a *patterned* `AwaitPageSettled` for the
  * cross-host redirect to `accounts.pcid.ca` (a different host, so the url pattern
  * disambiguates), scripts the login (Fill email, Fill password, Click submit),
  * then **pauses on an `AwaitPageRequested` for the health dashboard** while the
@@ -272,7 +272,7 @@ const scrapingPlan = (
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     captureProvenance,
     stepSequence: [
-      // Navigate off `about:blank` to the `mypharmacy` login page.
+      // Open the `mypharmacy` login page; this first `Open` builds the sniffer.
       {
         _tag: 'Navigation',
         name: 'Opening login page',

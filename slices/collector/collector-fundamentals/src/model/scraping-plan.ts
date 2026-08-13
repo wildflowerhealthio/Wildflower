@@ -46,10 +46,10 @@ interface CaptureProvenanceResult<TResources> {
  *     whether to track the in-flight response (first `isFoundAt` match
  *     wins; non-matching responses are cancelled via `sendMessage`).
  *   - Drives the sniffer through a **breadth-first step queue** seeded with
- *     `stepSequence`. The host mounts the sniffer webview on `about:blank`; its
- *     near-instant settle is the first `PageLoaded`, which kicks off draining
- *     the queue front-to-back — so the plan's first step is an `Open` to the
- *     real starting page. Each `Navigation` step's `action` is dispatched and
+ *     `stepSequence`. The runner's one-shot `Start` kicks off draining the
+ *     queue front-to-back with no page in hand — so the plan's first step is an
+ *     `Open`, which is what *builds* the sniffer webview, on the real starting
+ *     page. Each `Navigation` step's `action` is dispatched and
  *     the drain immediately continues (a `Fill` / `Click` / `Open` never waits
  *     for a `PageLoaded`), a `Delay` step arms a timer for its `duration`, and
  *     an `AwaitPageSettled` step holds until a settled `PageLoaded` matches its
@@ -62,8 +62,8 @@ interface CaptureProvenanceResult<TResources> {
  *     naturally recursive. `maxGeneratedSteps` and run-wide URI dedup of
  *     generated `Open`s (see below) keep that fan-out terminating.
  *
- * The sniffer webview is always mounted on `about:blank` (the host takes no
- * per-plan starting page), so the run's very first navigation is an authored
+ * There is no placeholder mount: the host builds the sniffer webview on the
+ * first `Open` it receives, so the run's very first navigation is an authored
  * `Open` step at the head of `stepSequence`.
  *
  * - `name`: stable identifier for logs / UI.
@@ -72,8 +72,8 @@ interface CaptureProvenanceResult<TResources> {
  *   response URL; the first match wins.
  * - `stepSequence`: the *initial* contents of the navigation queue — an
  *   ordered list of `Step`s (`Navigation` actions and/or `Delay` pauses),
- *   beginning with the `Open` that navigates off `about:blank` to the real
- *   first page. An empty array completes as soon as `about:blank` settles.
+ *   beginning with the `Open` that opens the real first page. An empty array
+ *   completes as soon as the run starts — no page is ever opened.
  * - `maxGeneratedSteps`: per-run safety cap on steps produced by
  *   `followUpSteps` (default {@link DEFAULT_MAX_GENERATED_STEPS}). Generated
  *   steps beyond it are WARN-logged and dropped; the run continues. The

@@ -29,8 +29,9 @@ interface AccountListBodyProps {
 
 /**
  * Lists the remotes registered against `CollectorApi`. "Import Now"
- * sends `RequestSniffableWebView` to the host; on the embedded surface
- * the host opens a native sniffer modal. On standalone web the message
+ * starts a sync run, whose plan's leading `Open` asks the host to build the
+ * sniffer webview; on the embedded surface the host opens a native sniffer
+ * modal. On standalone web the message
  * warns-and-drops in the bridge transport, which is fine — the menu
  * stays visible so a Wildflower-on-phone deployment over an HTTP
  * tunnel can still hand off to the device.

@@ -142,8 +142,8 @@ const sessionIdFor = (config: InstanceConfig, runId: string): string => {
  *
  * @remarks
  * The run model everywhere else in this slice is *scripted*; this one is
- * *exploratory*. The sniffer mounts on `about:blank`, so the plan `Open`s the
- * configured root URL as its first step. A sequence that stopped there would
+ * *exploratory*. The plan `Open`s the configured root URL as its first step —
+ * the `Open` that brings the sniffer up. A sequence that stopped there would
  * complete the instant that page settled — before the user had clicked anything
  * — so completion is deferred to them by the trailing
  * `[EnsureWindowVisible, AwaitUserDismiss]`.
@@ -170,8 +170,8 @@ const scrapingPlan = (
     // `rexall-be-well-collector`.
     entityDefinitions: [entity] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     stepSequence: [
-      // Navigate off `about:blank` to the configured root URL, then hand the
-      // browser to the user.
+      // Open the configured root URL — the step that brings the sniffer up —
+      // then hand the browser to the user.
       {
         _tag: 'Navigation',
         name: 'Opening the browser',

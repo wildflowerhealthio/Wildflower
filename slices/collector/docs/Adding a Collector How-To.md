@@ -106,7 +106,7 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
   ScrapingPlan.make({
     name: 'FHIR R4',
     entityDefinitions: [PatientEntity, ObservationEntity, ObservationListEntity],
-    // The sniffer mounts on `about:blank`; the first step navigates off it.
+    // The first `Open` step is what builds the sniffer webview.
     stepSequence: [
       {
         _tag: 'Navigation',
@@ -119,9 +119,9 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
   })
 ```
 
-- There is **no `firstPage`**: the host always mounts the sniffer on
-  `about:blank`, so the run's first navigation is an authored `Open` step at the
-  head of `stepSequence` (followed by a hold — usually a pattern-less
+- There is **no `firstPage`**: the host builds the sniffer webview on the first
+  `Open` it receives, so the run's first navigation is an authored `Open` step at
+  the head of `stepSequence` (followed by a hold — usually a pattern-less
   `AwaitPageSettled` — since an `Open` dispatches and advances immediately).
 - **`stepSequence`** is the _initial_ contents of the navigation queue — a list
   of `Step`s, each a `Navigation` or a `Delay`:
@@ -140,8 +140,8 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
     start (and be tracked) before the queue drains and the run completes.
 - **`maxGeneratedSteps`** (default 500) caps steps produced by `followUpSteps`,
   and **`dedupeGeneratedOpenUris`** (default `true`) drops a generated `Open`
-  whose `Uri` was already visited (an authored `Open` — including the leading one
-  off `about:blank` — or an earlier generated `Open`). Together they terminate a
+  whose `Uri` was already visited (an authored `Open` — including the leading
+  one — or an earlier generated `Open`). Together they terminate a
   naturally-recursive crawl;
   both are adjustable per-plan.
 
@@ -372,8 +372,8 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 - **Entities** — `isFoundAt` matches the right URLs and _rejects_ the
   neighbours (the disjointness that step 2's ordering depends on); `parse`
   decodes a fixture and drops unusable entries.
-- **Scraping plan** — `stepSequence` (starting with the leading `Open` off
-  `about:blank`) holds the exact URLs (encoding, `?_format=json`, disjoint query
+- **Scraping plan** — `stepSequence` (starting with the leading `Open`) holds
+  the exact URLs (encoding, `?_format=json`, disjoint query
   patterns).
 - **Descriptor** — `resourcePersistenceRuntimeIfMatches` matches its own configs
   and returns `undefined` for foreign ones; `display` strings.

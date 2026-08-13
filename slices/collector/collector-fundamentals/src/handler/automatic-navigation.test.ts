@@ -49,10 +49,10 @@ describe('automatic-navigation.make', () => {
             stepSequence: [linkA, awaitSettled('gate'), linkB],
           })
 
-          // The composition fires `handleStart` right after asking the host to
-          // mount the sniffer. The leading `Open` is a navigation, so it drains
-          // with no page in hand and the run rests on the following hold — the
-          // machine never depends on `about:blank` producing a first settle.
+          // The composition fires `handleStart` right after registering the
+          // handler. The leading `Open` is a navigation, so it drains with no
+          // page in hand and the run rests on the following hold — the machine
+          // never depends on a first settle it did not ask for.
           yield* machine.handleStart
           expect(dispatched(sendMessage)).toEqual([linkA.action])
         })
@@ -84,10 +84,10 @@ describe('automatic-navigation.make', () => {
           })
 
           yield* machine.handleStart
-          // The `about:blank` mount later settles; that first `PageLoaded` (and a
+          // The opened page later settles; that first `PageLoaded` (and a
           // duplicate `Start`) must not re-run the leading `Open` — the machine
           // has already left `AwaitingPageLoaded`.
-          yield* machine.handlePageLoaded(pageLoaded('about:blank'))
+          yield* machine.handlePageLoaded(pageLoaded('https://example.com/a'))
           yield* machine.handleStart
           expect(dispatched(sendMessage)).toEqual([linkA.action])
         })
@@ -545,8 +545,8 @@ describe('automatic-navigation.make', () => {
             })
 
             // A pattern-less hold never matches the page in hand — it always waits
-            // for the *next* settle, which is what makes it skip the `about:blank`
-            // mount (and the prior page) after a leading `Open`.
+            // for the *next* settle, which is what makes it skip the prior page
+            // after a leading `Open`.
             yield* machine.handlePageLoaded(pageLoaded('https://example.com/login'))
             expect(dispatched(sendMessage)).toEqual([]) // parked, not satisfied in hand
 

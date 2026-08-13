@@ -231,7 +231,7 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
 - **`followUpSteps` generation is guarded at the injection point, not in the pure
   transition.** The composition (`collector-bridge-message-handler.ts`) dedups
   generated `Open`s by `Uri` (a run-wide visited-set seeded with the authored
-  `Open`s — which include the run's first navigation off `about:blank`) and caps
+  `Open`s — which include the run's first navigation) and caps
   total generated steps at `maxGeneratedSteps`
   (default 500) — both adjustable per-plan (`dedupeGeneratedOpenUris`,
   `maxGeneratedSteps`). Dropped steps WARN-log with counts. These two are the

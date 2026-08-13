@@ -15,29 +15,6 @@ import { Bridge } from 'effect-messaging-core'
 import { AnySchema as WebViewSourceSchema } from './model/web-view-source.ts'
 
 /**
- * Web → Host: the collector SPA asks the host to open a sniffer-enabled
- * WebView. The Tauri host (`browser-sniffer-tauri-rust`) creates the sniffer
- * `WebviewWindow` **mounted on `about:blank`** and forwards the resulting
- * sniffer events back through this same bridge's Host→Web channel.
- *
- * There is no starting-page `source`: the plan takes over from `about:blank`
- * with a leading `Open` step. `about:blank` settles almost immediately, which
- * is the first `PageLoaded` the automatic-navigation machine drains on.
- *
- * `linkedSpan` is the optional OpenTelemetry span context of the trace
- * active on the SPA when it asked for the sniffer. The host threads it
- * into the sniffer webview, which adds it as a span *link* on every
- * root span it opens (the initial-load span and each per-page span), so
- * the otherwise-independent sniffer traces point back at the collector's
- * sync trace. Omitted when no span was in scope at send time.
- */
-const RequestSniffableWebView = Schema.parseJson(
-  Schema.TaggedStruct('RequestSniffableWebView', {
-    linkedSpan: Schema.optional(Schema.Struct({ traceId: Schema.String, spanId: Schema.String })),
-  })
-)
-
-/**
  * Web → Host: the collector SPA decided the active sync is done (either
  * the expected resources have been collected or a heuristic timed out
  * after PageLoaded). The host closes the sniffer modal; the
@@ -48,9 +25,11 @@ const SniffingComplete = Schema.parseJson(Schema.TaggedStruct('SniffingComplete'
 
 /**
  * Web → Host: the collector SPA's handler decided the active sync's
- * next step is to navigate the sniffer webview to a fresh page — including
- * the run's very first navigation off the `about:blank` scaffold the host
- * mounts. `source` reuses the slice's `WebViewSource.AnySchema` —
+ * next step is to navigate the sniffer webview to a fresh page — including the
+ * run's very first navigation, which is what builds the sniffer webview: the
+ * host's `open_or_navigate` opens it fresh when absent, so there is no separate
+ * mount request and no placeholder page. `source` reuses the slice's
+ * `WebViewSource.AnySchema` —
  * `{ _tag: 'Uri', uri: 'https://…' }` for a remote page,
  * `{ _tag: 'Html', html: '…' }` for an inline scaffold. The page reload
  * re-injects the sniffer (idempotently keyed by
@@ -128,7 +107,6 @@ type CollectorBridge = Bridge.Bridge<
     SnifferDisposed: typeof SnifferDisposed
   },
   {
-    RequestSniffableWebView: typeof RequestSniffableWebView
     CancelSnifferRequest: typeof CancelSnifferRequestMessage
     SniffingComplete: typeof SniffingComplete
     Open: typeof OpenMessage
@@ -140,9 +118,9 @@ type CollectorBridge = Bridge.Bridge<
 
 /**
  * Slice-level bridge between the embedded collector SPA and the Tauri
- * host. Web→Host carries control signals (`RequestSniffableWebView`,
- * `CancelSnifferRequest`, `SniffingComplete`, `SetSnifferStatus`,
- * `EnsureSnifferVisible`) and script-driven navigation steps (`Open`,
+ * host. Web→Host carries control signals (`CancelSnifferRequest`,
+ * `SniffingComplete`, `SetSnifferStatus`, `EnsureSnifferVisible`) and
+ * script-driven navigation steps (`Open`,
  * `PageAction`); Host→Web carries the sniffer-event subset collector parses, the
  * `PageLoaded` / `PageRequested` notifications that drive the step machine's
  * holds (settled load / early DOMContentLoaded arrival), and the two sniffer
@@ -174,7 +152,6 @@ const CollectorBridge: CollectorBridge = Bridge.make({
     ['SnifferDisposed', SnifferDisposed],
   ] as const,
   webToHost: [
-    ['RequestSniffableWebView', RequestSniffableWebView],
     ['CancelSnifferRequest', CancelSnifferRequestMessage],
     ['SniffingComplete', SniffingComplete],
     ['Open', OpenMessage],
@@ -188,7 +165,6 @@ export {
   CollectorBridge,
   EnsureSnifferVisible,
   OpenMessage,
-  RequestSniffableWebView,
   SetSnifferStatus,
   SnifferDisposed,
   SniffingComplete,

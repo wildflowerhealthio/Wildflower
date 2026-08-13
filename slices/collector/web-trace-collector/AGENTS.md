@@ -104,8 +104,8 @@ artifact for designing a collector against a search API — are not captured.
   for legibility. Deriving the id from it alone collides on exactly the case a
   user is most likely to hit — recording the same flow twice.
 - **`[Open(rootUrl), EnsureWindowVisible, AwaitUserDismiss]` is the whole run
-  model.** The sniffer mounts on `about:blank`, so the plan `Open`s the configured
-  root URL first; a sequence that stopped there would complete the instant that
+  model.** The plan `Open`s the configured root URL first (the `Open` that brings
+  the sniffer up); a sequence that stopped there would complete the instant that
   page settled, before the user had clicked anything. `EnsureWindowVisible` puts
   the window on screen (best-effort — nothing acknowledges it); `AwaitUserDismiss`
   parks until the user closes it, then **drains** rather than completing, so

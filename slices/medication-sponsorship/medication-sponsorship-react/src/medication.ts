@@ -460,17 +460,6 @@ const nextFillDateOf = (
 }
 
 /**
- * The end of `dispenseRequest.validityPeriod` as an ISO instant, or `null` when
- * absent. Sources (e.g. Shoppers Drug Mart) that carry an explicit next-fill /
- * expiry date but no `expectedSupplyDuration` populate this, so it backs the
- * next-fill hint when {@link nextFillDateOf} can't compute one.
- */
-const validityPeriodEndOf = (
-  dispenseRequest: Option.Option<DispenseRequestValue>
-): string | null =>
-  Option.isNone(dispenseRequest) ? null : nonEmpty(dispenseRequest.value.validityPeriod?.end)
-
-/**
  * A coarse, human-readable distance from `nowMillis` (epoch ms) to an ISO
  * instant, for a next-fill hint: `"today"`, `"in 3 days"`, `"in 2 weeks"`,
  * `"in 5 months"` (and the past `"… ago"` forms). Rounds to whole days, then
@@ -539,9 +528,10 @@ interface MedicationView {
   /** carebook remaining-repeats `modifierExtension` (`valueDecimal`). */
   readonly repeatsAvailable: number | null
   /**
-   * Estimated next-fill date (ISO) — `authoredOn` + `expectedSupplyDuration`,
-   * falling back to `dispenseRequest.validityPeriod.end` for sources that carry
-   * an explicit next-fill / expiry date but no supply duration (e.g. Shoppers).
+   * Estimated next-fill date (ISO) — `authoredOn` + `expectedSupplyDuration`.
+   * `null` when either is missing: `dispenseRequest.validityPeriod.end` is the
+   * *authorization* expiry in R4, not a fill date, so it is deliberately not
+   * used as a fallback.
    */
   readonly nextFillDate: string | null
   /** Rexall store-locator URL when the request is sourced from a Rexall store. */
@@ -567,7 +557,7 @@ const medicationRequestToMedicationView = (
     note: noteOf(request),
     repeatsAllowed: repeats.allowed,
     repeatsAvailable: repeats.available,
-    nextFillDate: nextFillDateOf(request, dispenseRequest) ?? validityPeriodEndOf(dispenseRequest),
+    nextFillDate: nextFillDateOf(request, dispenseRequest),
     rexallStoreUrl: rexallStoreUrlOf(request),
     shoppersStoreUrl: shoppersStoreUrlOf(request),
   }

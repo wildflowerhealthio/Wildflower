@@ -85,16 +85,16 @@ const defaultConfig: InstanceConfig = {
  */
 const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
 
-/** The user-facing login page the plan `Open`s first (off `about:blank`). */
+/** The user-facing login page the plan `Open`s first. */
 const LOGIN_URL = 'https://letsbewell.ca/sign-in'
 
 /**
  * Machine-side cap on waiting for the login page itself to load and settle.
  * Best-effort (`continueOnTimeout: true`) — a login page that never settles is
  * still worth filling, and the post-login {@link LOGIN_TIMEOUT} hold is the real
- * gate on whether the login worked. Pattern-less is safe because the *preceding*
- * page (`about:blank`) has already settled, so the next settle cannot be a stale
- * one. See the AGENTS.md § login-page settle for why the hold and
+ * gate on whether the login worked. Pattern-less is safe because there is no
+ * preceding page at all — the `Open` before it is what builds the sniffer — so
+ * the next settle cannot be a stale one. See the AGENTS.md § login-page settle for why the hold and
  * {@link LOGIN_PAGE_DELAY} are both needed.
  */
 const LOGIN_PAGE_TIMEOUT = Duration.seconds(30)
@@ -168,8 +168,8 @@ const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
  * URL is ever `Open`ed directly**: the tunnel requests need auth/bearer headers
  * the Angular SPA injects, and crafting them is an explicit product constraint.
  *
- * The sniffer mounts on `about:blank`; the `stepSequence` `Open`s the login page,
- * scripts the login (Fill email, Fill password, Click submit), holds on a
+ * The `stepSequence` `Open`s the login page — the step that brings the sniffer
+ * up — scripts the login (Fill email, Fill password, Click submit), holds on a
  * *patterned* `AwaitPageSettled` for the post-login `app.letsbewell.ca` redirect
  * (a different host than the login page, so the url pattern disambiguates), then
  * `Open`s the prescriptions page, waits for *it* to settle with a *pattern-less*
@@ -216,10 +216,10 @@ const scrapingPlan = (
     ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
     captureProvenance,
     stepSequence: [
-      // Navigate off `about:blank` to the login page, then wait for *that page*
-      // to load and settle before pacing the form. Both steps are needed: the
-      // hold stops the delay from racing the page's network load (every run now
-      // starts on the near-instantly-settling `about:blank`), and the delay
+      // Open the login page — the step that builds the sniffer — then wait for
+      // *that page* to load and settle before pacing the form. Both steps are
+      // needed: the hold stops the delay from racing the page's network load,
+      // and the delay
       // still absorbs a form that renders after the page goes quiet — the login
       // DOM/selectors are best-guess, see #339.
       {
