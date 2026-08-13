@@ -27,10 +27,14 @@ The asymmetry is the tell: the same field reads as a `string` on a `contained` r
 When re-decoding an already-decoded resource (not raw wire) through a permissive local schema, either read `uri`/`url` fields as `Schema.Unknown`, or coerce both shapes to the string form:
 
 ```typescript
-const nullableUri = Schema.transform(Schema.Union(Schema.String, Schema.instanceOf(URL)), Schema.String, {
-  decode: (v) => (typeof v === 'string' ? v : v.href),
-  encode: (v) => v,
-})
+const nullableUri = Schema.transform(
+  Schema.Union(Schema.String, Schema.instanceOf(URL)),
+  Schema.String,
+  {
+    decode: (v) => (typeof v === 'string' ? v : v.href),
+    encode: (v) => v,
+  }
+)
 ```
 
 Worked case: `medication-sponsorship-react`'s `medication.ts` `MedicationRequest → MedicationView` adapter uses exactly this `nullableUri` on `Coding.system`, after a string-typed `Coding.system` silently disabled its DIN-from-coding and display-name fallbacks. The same asymmetry hit `dateTime` fields, which decode to an Effect `DateTime.Utc` on the typed top level (see that file's `nullableIsoDateTime`).
