@@ -15,9 +15,15 @@ Part of the offline FHIR HAR importer epic (#489).
   entities into an `ImportPreview`, and — as a separate, opt-in step — persist
   the previewed resources. No DOM, no `fs`, no React. See its
   [AGENTS.md](./importer-core/AGENTS.md).
+- **`importer-react`** — the browser UI adapter: `ImporterScreen`, the whole
+  preview-then-confirm flow a host app mounts. It picks a HAR (dropped, chosen, or
+  an archive already on the device's FHIR server), previews `runHarImport`'s
+  result writing nothing, and — only on an explicit confirm — uploads the archive
+  when the pick is local and persists the resources through `persistPreview`. See
+  its [AGENTS.md](./importer-react/AGENTS.md).
 
-Adapters (a React upload/preview screen, a host that provides the FHIR write
-client) sit above `importer-core` and drive it; they are not part of this ticket.
+A host that provides the FHIR write client and the authed runner sits above
+`importer-react` and mounts `ImporterScreen`.
 
 ## Why this slice exists
 
