@@ -177,6 +177,12 @@ If parallel workstreams do share a single checkout (and index), commit with an e
 
 Recovery, before pushing: `git reset --soft <base>`, `git restore --staged <the-other-workstream's-paths>`, then re-commit with an explicit `git commit -- <your-paths>` pathspec.
 
+### Git Hooks
+
+The `prepare` script installs the hooks via `vp config`, so a plain `git commit` runs real work — don't kill one that looks "hung". The **pre-commit** hook runs `vp run pack; vp staged`, where `vp staged` maps `*` → `vp check --fix`, `*.md` → `lint:docs`, `*.{rs,toml}` → `rust.sh pre-commit`. There is **no pre-push hook** — running tests before a push is the pusher's responsibility.
+
+`vp staged` runs its per-glob tasks concurrently and kills the survivors when one fails, so a failed commit whose summary reads `✖ Task killed: vp check --fix` names the **victim**, not the culprit. When Rust files are staged the real failure is usually `rust.sh pre-commit`'s `cargo fmt --check` printing "Diff in …" blocks further up the output; `vp check --fix` passing on its own while the commit keeps failing is the tell. Run `cargo fmt`, restage, and commit — and scroll up past the kill line for the actual diffs. Two adjacent gotchas: a standalone `vp check --fix` can reformat files after you staged them (restage before retrying), and a background `cargo check` run during a commit contends with the hook's `rust.sh` on the cargo target lock.
+
 ## CI/CD
 
 PRs run formatting, linting, type checking, and tests. Ensure `vp run ready` passes locally before opening a PR.
