@@ -191,17 +191,23 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   `resourcePersistenceRuntimeIfMatches` mints one uuid per dispatch, applies
   the factory to it, and seals both into the `ResourcePersistenceContext` — a
   runtime instance _is_ one run, by construction. A factory that needs a
-  per-run identity derives it from `runId` (the recorder's `sessionIdFor`,
-  the provenance hook's session prefix) instead of minting its own, because
-  a trace's resource id is derived from `(sessionId, requestId)` and a stable id
-  would silently upsert one run's traces over the previous run's. Consequence for
-  tests: per-collector suites deep-equal plans built with a fixed run id; only
-  `registry.test.ts`'s union-wide sweep still compares an identity
-  _projection_, because the recorder's recording entity closes over the
-  session id and two dispatches mint different ids. The `adoptSourceIdentity`
-  wrapper a production collector ends its factory with preserves this: it
-  memoizes one wrapped `parse` per `(source system, entity)`, so two plans built
-  from one config still name the same function.
+  per-run identity derives it from `runId` (e.g. `web-trace-collector`'s
+  `sessionIdFor`) instead of minting its own, because a trace's resource id is
+  derived from `(sessionId, requestId)` and a stable id would silently upsert
+  one run's traces over the previous run's. Consequence for tests: per-collector
+  suites deep-equal plans built with a fixed run id; only `collector-registry`'s
+  `registry.test.ts` union-wide sweep compares an identity _projection_ —
+  `name`, the leading `Open`'s URI, the step names (`_tag:name`), and the entity
+  names — rather than deep-equal. Two independent facts defeat deep equality
+  there, so even a fixed id would not save it: `web-trace-collector`'s recording
+  entity closes over a per-run session id, and a per-build entity factory mints a
+  fresh `parse` closure each time (`toEqual` compares functions by reference).
+  The projection still fails loudly on a mis-dispatch (a plan from the wrong
+  descriptor differs in all four fields) without asserting a purity the interface
+  never promised. The `adoptSourceIdentity` wrapper a production collector ends
+  its factory with is what keeps deep-equal working for the per-collector suites:
+  it memoizes one wrapped `parse` per `(source, entity)`, so two plans built from
+  one config still name the same function.
 - **Every `Step` carries a required `name`; the machine pushes it as a separate
   `SetSnifferStatus` control message, _not_ on the step's own action.** As the
   machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri
