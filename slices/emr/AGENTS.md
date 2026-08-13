@@ -17,10 +17,12 @@ FHIR R4 slice: pure wire schemas (Patient / Observation / Binary), the `HttpApi`
 ## Traps
 
 - **No drift guard exists between `fhir-r4`'s `HttpApi` and HFS's actual surface.** A snapshot pair does exist (`emr-rust/openapi/fhir-r4.openapi.json`, generated from the TS `fhir-r4` `HttpApi` and kept fresh by a TS-side test, and read on the Rust side by `emr_rust::openapi_spec` for the host's unified `/docs` page) — but it only guards the snapshot against the `HttpApi`, not against what HFS actually serves. If you change the `HttpApi` definition, verify HFS actually serves that shape (see the Client Capabilities Reference).
+- **Consuming `fhir-r4` from another package has two non-obvious traps** — building schemas from its datatype schemas can break `vp pack`'s `.d.ts` emit (TS2883) while `vp check` stays green, and `uri`/`url` fields on an already-decoded resource are `URL`s, not strings. Both are catalogued in the [Consumer Gotchas Reference](./fhir-r4/docs/Consumer%20Gotchas%20Reference.md); keep the top-level interface re-exports in `data-types/index.ts` when editing `fhir-r4`.
 - Complex datatypes self-register into the registry at module load (`registerDatatypeSchema` at the bottom of each datatype file). A `value[x]` slot whose datatype module hasn't been imported fails encode with `UnregisteredDatatype`. Import the registration barrel `fhir-r4/src/data-types/register-all.ts` (one side-effect import that loads every registrable module) instead of hand-listing modules per resource. `register-all.test.ts` asserts the barrel populates every registry slot, so a dropped or forgotten registration is a CI failure rather than a latent runtime one — but the barrel's imports are still bare side effects, so add the matching line whenever a new complex datatype module lands.
 
 ## References
 
 - [Packages Explanation](./docs/Packages%20Explanation.md) — why the packages split the way they do
 - [Client Capabilities Reference](./fhir-r4/docs/Client%20Capabilities%20Reference.md) — client-side (TS) gap catalogue
+- [Consumer Gotchas Reference](./fhir-r4/docs/Consumer%20Gotchas%20Reference.md) — traps for packages that reuse `fhir-r4` schemas or re-decode its resources
 - [emr-rust Capability Statement](./emr-rust/docs/Capability%20Statement.md) — server-side (HFS embedding) deltas from stock HFS

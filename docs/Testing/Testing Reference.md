@@ -56,6 +56,20 @@ Two concrete failures: PR #258 (endpoint returns 204, client decoded assuming 20
 
 New auth gates, token/consent checks, teardown/finalizer paths, and other security- or lifecycle-critical branches require a test that drives **that branch directly** — reviewers cite the CLAUDE.md rule ("New security-critical / lifecycle branches require direct coverage"). Incidental coverage through a happy-path test does not count.
 
+## Cross-Language (TS/Rust) Contract Tests
+
+When the same domain grammar is implemented twice — a pure TS `-core` package and a Rust `-rust` crate (e.g. `scopes-core` ↔ `scopes-rust`) — prose "mirrors the Rust side" doc comments do not stop drift. A shared fixture that **both** sides parse does. This is the [derive-both-sides principle](#dont-guard-drift-with-a-hardcoded-copy-of-the-thing-youre-guarding) applied across languages: the fixture is the single source, and each side is checked against it.
+
+Pattern:
+
+- Put the vector file at the **slice root**, above both packages: `slices/scopes/scope-test-vectors.json`.
+- Consume it from Rust in a `tests/*.rs` integration test with `include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../scope-test-vectors.json"))`, parsed as `serde_json::Value` — no derive, so no serde `derive`-feature question.
+- Consume it from TS with a plain `import vectors from '../../scope-test-vectors.json'` — this works outside the tsconfig `include` seed, and `resolveJsonModule` is on repo-wide.
+- Encode both **parse** cases (input → kind + canonical rendering) and **semantics** cases (`allowed`/`requested` → `covers`).
+- Where the two sides partition differently (TS splits `fhirV1`/`fhirV2`, Rust has one `FhirResource` variant), keep the finer-grained kind in the fixture and coarsen it in the Rust consumer's match.
+
+Gotcha: the root `vp check` formats JSON files too, so run `vp check --fix` after authoring or editing the fixture or the root check fails on formatting.
+
 ## Testing Effect Logging
 
 To assert on `Effect.logWarning`/`Effect.log` output, swap the default logger with a capturing one via `Logger.replace(Logger.defaultLogger, ...)` and provide it as a layer — this is the canonical pattern. `vi.spyOn(console, 'warn')` silently catches nothing, because once a layer overrides the logger, Effect's backend is no longer `console.warn`. The replacement propagates through `FiberRef` into forked dispatch fibers automatically, so there's no runtime-boundary seam to manage.

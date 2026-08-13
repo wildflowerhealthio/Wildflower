@@ -55,6 +55,29 @@ The sync setter can still call `Effect.runSync(SubscriptionRef.set(...))` for er
 
 When an HTTP response Schema uses `Schema.Literal(...)` for a field backed by a `State.SQLite.text()` column, `store.query(...)` won't type-check — the row's field is typed `string`, not the narrow union. Widen the response schema to `Schema.String` rather than projecting rows through a cast; the DB genuinely holds unconstrained strings.
 
+### `Schema.declare` combinators need `arbitrary` + `equivalence` annotations
+
+A `Schema.declare(...)`-based combinator (e.g. kitchen-sink's `OrNullAsOptional`/`OrNullAsUndefined`, fhir-r4's choice-slot null stub) derives nothing on its own: `Arbitrary.make` throws `MissingAnnotation`, and `Schema.equivalence` silently falls back to reference equality — so a schema-equality assertion reports "Values are not schema-equivalent … no visual difference" for structurally identical values. This stays hidden while tests generate and compare through plainer sibling schemas, then fails en masse the moment the declared combinator is the only schema tree (as it did porting the fhir-r4 tests onto the wire schemas).
+
+Ship both annotations from day one — declaration annotations receive the type-parameters' derived arbitraries/equivalences as arguments:
+
+```typescript
+Schema.declare(/* … */).annotations({
+  arbitrary: (inner) => (fc) => fc.oneof(fc.constant(null), inner(fc)),
+  equivalence: (inner) => (a, b) => (a === null || b === null ? a === b : inner(a, b)),
+})
+```
+
+Fix it on the combinator, not per call-site. Rule of thumb: any new `Schema.declare` that can appear inside a property-tested schema ships with `arbitrary` + `equivalence`. See [Property Testing Reference](../Testing/Property%20Testing%20Reference.md) for how these feed `Arbitrary.make` and schema-equality assertions.
+
+## Value equality: `Equal.equals` needs the class to implement `Equal`
+
+`Equal.equals(a, b)` never type-errors on a class that doesn't implement `Equal.Equal` — it falls back to reference equality, so two structurally identical instances compare `false`. A membership check like `draft.unknown.some(Equal.equals(scope))` then type-checks, reads as idiomatic, and always returns `false` (parsed instances are never reference-equal) — turning a toggle into an append-duplicates bug.
+
+Before using `Equal.equals` against a domain class, verify the class (or its base) implements `[Equal.symbol]`/`[Hash.symbol]`. When adding a new sibling variant to a family whose other members are value-comparable, implement `Equal`/`Hash` on it at the same time (compare `kind` + payload, mirroring the siblings). The fix belongs in the domain class, not at the call site — a serialize-and-compare workaround at the call site is the smell that the class is missing `Equal`.
+
+Real case: `scopes-core`'s `UnknownScope` was the one member of its scope family that shipped without `Equal` — its `KnownScope`, context (via the `Context` base), and resource-type siblings had it — so a draft-membership check over the `unknown` scopes silently never matched. It now implements `Equal`/`Hash` like the rest.
+
 ## `HttpApiClient` usage
 
 ### Client methods return `Effect`, not `Promise`

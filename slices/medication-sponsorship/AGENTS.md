@@ -26,6 +26,11 @@ programs (**innoviCares** and **RxHelp**) and groups them for display.
   If this convention changes, change it in the two decoders only.
 - Matching is deliberately fuzzy (normalized token containment). New match
   heuristics belong in `match.ts` with property tests.
+- The `MedicationRequest → MedicationView` adapter re-decodes an **already-decoded**
+  `fhir-r4` resource, so `uri`/`url` fields (`Coding.system`) arrive as `URL`s, not
+  strings — a `system: Schema.String` slot silently fails the whole concept. See the
+  [fhir-r4 Consumer Gotchas Reference](../emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md);
+  the adapter already coerces via `nullableUri`.
 
 ## References
 

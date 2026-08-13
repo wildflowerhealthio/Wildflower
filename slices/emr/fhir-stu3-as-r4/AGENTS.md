@@ -63,7 +63,8 @@ Relocated shared logic now lives in `fhir-r4`, not here: `Quantity.fromSimpleQua
   bundle factory) in the inferred types. `tsgo`'s `.d.ts` emit can only name those
   because `fhir-r4/data-types` re-exports them at the top level — keep those
   exports if you touch fhir-r4. `vp check` stays green when this leaks; only
-  `vp pack` catches it.
+  `vp pack` catches it. The producer-side rule and full catalogue are in the
+  [fhir-r4 Consumer Gotchas Reference](../fhir-r4/docs/Consumer%20Gotchas%20Reference.md).
 
 ## References
 
