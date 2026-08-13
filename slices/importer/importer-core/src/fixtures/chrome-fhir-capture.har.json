@@ -1,0 +1,176 @@
+{
+  "log": {
+    "version": "1.2",
+    "creator": { "name": "WebInspector", "version": "537.36" },
+    "pages": [
+      {
+        "startedDateTime": "2026-02-02T10:00:00.000Z",
+        "id": "page_1",
+        "title": "https://ehr.example.com/portal",
+        "pageTimings": { "onContentLoad": 812.4, "onLoad": 1503.7 }
+      }
+    ],
+    "entries": [
+      {
+        "_initiator": { "type": "parser" },
+        "_priority": "VeryHigh",
+        "_resourceType": "font",
+        "startedDateTime": "2026-02-02T10:00:00.100Z",
+        "time": 42.1,
+        "request": {
+          "method": "GET",
+          "url": "https://fonts.googleapis.com/css2?family=Inter",
+          "httpVersion": "http/2.0",
+          "headers": [{ "name": ":method", "value": "GET" }],
+          "queryString": [{ "name": "family", "value": "Inter" }],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "",
+          "httpVersion": "http/2.0",
+          "headers": [{ "name": "content-type", "value": "text/css" }],
+          "cookies": [],
+          "content": {
+            "size": 24,
+            "mimeType": "text/css",
+            "text": "@font-face{font:Inter;}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 24
+        },
+        "cache": {},
+        "timings": { "send": 0.1, "wait": 40.0, "receive": 2.0 },
+        "serverIPAddress": "142.250.72.10",
+        "connection": "1001"
+      },
+      {
+        "_initiator": { "type": "script" },
+        "_resourceType": "xhr",
+        "startedDateTime": "2026-02-02T10:00:00.200Z",
+        "time": 15.3,
+        "request": {
+          "method": "POST",
+          "url": "https://www.google-analytics.com/g/collect?v=2&tid=G-XYZ",
+          "httpVersion": "http/2.0",
+          "headers": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 204,
+          "statusText": "No Content",
+          "httpVersion": "http/2.0",
+          "headers": [],
+          "cookies": [],
+          "content": { "size": 0, "mimeType": "" },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "cache": {},
+        "timings": { "send": 0.2, "wait": 14.0, "receive": 1.1 }
+      },
+      {
+        "_initiator": { "type": "script" },
+        "_resourceType": "xhr",
+        "startedDateTime": "2026-02-02T10:00:01.000Z",
+        "time": 133.8,
+        "request": {
+          "method": "GET",
+          "url": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Patient/eXYZ123?_format=json",
+          "httpVersion": "http/2.0",
+          "headers": [{ "name": "accept", "value": "application/fhir+json" }],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "OK",
+          "httpVersion": "http/2.0",
+          "headers": [{ "name": "content-type", "value": "application/fhir+json" }],
+          "cookies": [],
+          "content": {
+            "size": 118,
+            "mimeType": "application/fhir+json",
+            "text": "{\"resourceType\":\"Patient\",\"id\":\"eXYZ123\",\"name\":[{\"family\":\"Smith\",\"given\":[\"Jane\"]}],\"gender\":\"female\"}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 118
+        },
+        "cache": {},
+        "timings": { "send": 0.3, "wait": 120.0, "receive": 13.5 }
+      },
+      {
+        "_initiator": { "type": "script" },
+        "_resourceType": "xhr",
+        "startedDateTime": "2026-02-02T10:00:01.400Z",
+        "time": 201.2,
+        "request": {
+          "method": "GET",
+          "url": "https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Observation?subject%3APatient=eXYZ123&_count=250&_format=json",
+          "httpVersion": "http/2.0",
+          "headers": [{ "name": "accept", "value": "application/fhir+json" }],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "OK",
+          "httpVersion": "http/2.0",
+          "headers": [{ "name": "content-type", "value": "application/fhir+json" }],
+          "cookies": [],
+          "content": {
+            "size": 372,
+            "mimeType": "application/fhir+json",
+            "text": "{\"resourceType\":\"Bundle\",\"type\":\"searchset\",\"total\":2,\"entry\":[{\"resource\":{\"resourceType\":\"Observation\",\"id\":\"obs-a\",\"status\":\"final\",\"code\":{\"text\":\"Body Weight\"}}},{\"resource\":{\"resourceType\":\"Observation\",\"id\":\"obs-b\",\"status\":\"final\",\"code\":{\"text\":\"Heart rate\"}}}]}"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 372
+        },
+        "cache": {},
+        "timings": { "send": 0.4, "wait": 180.0, "receive": 20.8 }
+      },
+      {
+        "_initiator": { "type": "parser" },
+        "_resourceType": "script",
+        "startedDateTime": "2026-02-02T10:00:01.900Z",
+        "time": 9.6,
+        "request": {
+          "method": "GET",
+          "url": "https://ehr.example.com/assets/app.7f3c.js",
+          "httpVersion": "http/2.0",
+          "headers": [],
+          "cookies": [],
+          "headersSize": -1,
+          "bodySize": 0
+        },
+        "response": {
+          "status": 200,
+          "statusText": "OK",
+          "httpVersion": "http/2.0",
+          "headers": [{ "name": "content-type", "value": "application/javascript" }],
+          "cookies": [],
+          "content": {
+            "size": 20,
+            "mimeType": "application/javascript",
+            "text": "console.log('app');"
+          },
+          "redirectURL": "",
+          "headersSize": -1,
+          "bodySize": 20
+        },
+        "cache": {},
+        "timings": { "send": 0.1, "wait": 8.0, "receive": 1.5 }
+      }
+    ]
+  }
+}
