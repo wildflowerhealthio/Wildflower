@@ -6,7 +6,7 @@ import {
   type UseInfiniteQueryResult,
 } from '@tanstack/react-query'
 import type { DateTime } from 'effect'
-import { Effect } from 'effect'
+import { Array as Arr, Effect, Option } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
@@ -123,17 +123,15 @@ interface HarArchivesQueryOptions {
 const rowsOf = (
   entries: readonly { readonly resource: DocumentReferenceType | null }[]
 ): readonly HarArchiveRow[] =>
-  entries.flatMap((entry): readonly HarArchiveRow[] => {
+  Arr.filterMap(entries, (entry): Option.Option<HarArchiveRow> => {
     const resource = entry.resource
-    if (resource === null || !isHarArchive(resource) || resource.id === null) return []
+    if (resource === null || !isHarArchive(resource) || resource.id === null) return Option.none()
     const attachment = resource.content[0]?.attachment
-    return [
-      {
-        id: resource.id,
-        title: attachment?.title ?? null,
-        creation: attachment?.creation ?? null,
-      },
-    ]
+    return Option.some({
+      id: resource.id,
+      title: attachment?.title ?? null,
+      creation: attachment?.creation ?? null,
+    })
   })
 
 /**
