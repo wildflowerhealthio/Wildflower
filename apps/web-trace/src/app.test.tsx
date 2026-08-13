@@ -1,7 +1,7 @@
 import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Effect, Layer } from 'effect'
+import { Effect, Either, Layer } from 'effect'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 import { traceExchangeToWire } from 'web-trace-core/codec'
@@ -61,7 +61,8 @@ const mount = (body: unknown): void => {
     { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
     serving(body)
   )
-  render(<TraceApp context={context} />)
+  if (Either.isLeft(context)) throw new Error(`expected a Right, got Left: ${context.left.message}`)
+  render(<TraceApp context={context.right} />)
 }
 
 describe('TraceApp', () => {

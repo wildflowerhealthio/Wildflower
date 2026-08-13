@@ -7,6 +7,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
+import { Either } from 'effect'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, readySmartClient } from 'fhir-r4-react/smart'
 import { useId, useEffect, useMemo, useState, type JSX } from 'react'
@@ -153,20 +154,25 @@ const App = (): JSX.Element => {
     readySmartClient()
       .then((client) => {
         if (cancelled) return
-        setState({
-          kind: 'ready',
-          // Plain `FetchHttpClient.layer`, not `telemetry-react`'s
-          // `webHttpClientLayer`: this app is registered `local_only = 1`, and
-          // the telemetry layer's OTLP exporter is exactly the kind of outbound
-          // request that claim rules out.
-          context: buildSmartRouterContext(
-            {
-              serverUrl: client.state.serverUrl,
-              accessToken: client.state.tokenResponse?.access_token,
-            },
-            FetchHttpClient.layer
-          ),
-        })
+        // Plain `FetchHttpClient.layer`, not `telemetry-react`'s
+        // `webHttpClientLayer`: this app is registered `local_only = 1`, and
+        // the telemetry layer's OTLP exporter is exactly the kind of outbound
+        // request that claim rules out.
+        const context = buildSmartRouterContext(
+          {
+            serverUrl: client.state.serverUrl,
+            accessToken: client.state.tokenResponse?.access_token,
+          },
+          FetchHttpClient.layer
+        )
+        // An unaddressable `iss` is a `Left`, surfaced as the same error state a
+        // failed handshake produces — carrying the `UnexpectedFhirBase` message.
+        setState(
+          Either.match(context, {
+            onLeft: (error): LoadState => ({ kind: 'error', message: error.message }),
+            onRight: (ready): LoadState => ({ kind: 'ready', context: ready }),
+          })
+        )
       })
       .catch((error: unknown) => {
         if (!cancelled) {
