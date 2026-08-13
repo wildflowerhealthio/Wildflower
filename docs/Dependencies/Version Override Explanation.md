@@ -44,7 +44,7 @@ To check for the split without a full build:
 grep -oE "@voidzero-dev/vite-plus-core@[0-9.]+" pnpm-lock.yaml | sort -u   # expect exactly one line
 ```
 
-Read `vitest`'s target from the `vp --version` output rather than guessing it.
+Read `vitest`'s target from the `vp --version` output rather than guessing it. Pin the **plain `vitest` package**, not an alias: the `@voidzero-dev/vite-plus-test` alias line ended at `0.1.24`, so pointing the override or catalog at a `^0.2.x` of it is unsatisfiable and `vp install` fails with `ERR_PNPM_NO_MATCHING_VERSION` — vite-plus 0.2.x depends on real `vitest`.
 
 Read `vite`'s target the same way: it must match the `@voidzero-dev/vite-plus-core` that the catalog's `vite-plus` itself depends on, **not** the newest core on npm. Pinning the override one patch behind that (e.g. core `0.2.8` against `vite-plus@0.2.9`) reproduces the split exactly as if it had not been re-pinned at all.
 
@@ -73,7 +73,9 @@ Periodic audit: every few releases of vite-plus / pnpm / Node, drop one override
 The workspace sets `nodeLinker: hoisted` in [pnpm-workspace.yaml](../../pnpm-workspace.yaml), flattening node_modules npm-style. Hoisting does not reduce how many versions exist — it only decides where copies land: one version wins the root `node_modules/<pkg>` slot and conflicting versions nest under their dependents. Two consequences:
 
 - Variant splits still happen, so overrides remain the mechanism for guaranteeing a single copy of a package across the workspace.
-- Whichever version wins the root slot is what module resolution (including TypeScript's) finds first. During the vite-plus 0.2 upgrade, an auto-installed real `vite@8` won the slot over the `@voidzero-dev/vite-plus-core` alias and broke typechecking in every vite config. Overrides don't rewrite **peer** resolution, so the fix was for each package hosting a vite plugin to declare `"vite": "catalog:"` itself, making the peer bind to the alias its own tree provides.
+- Whichever version wins the root slot is what module resolution (including TypeScript's) finds first. During the vite-plus 0.2 upgrade, an auto-installed real `vite@8` won the slot over the `@voidzero-dev/vite-plus-core` alias and broke typechecking in every vite config. Overrides don't rewrite **peer** resolution, so the fix was for each package hosting a vite plugin to declare `"vite": "catalog:"` itself, making the peer bind to the alias its own tree provides. Verify no real vite crept back in with `vp why -r vite` — the real `vite@x.y.z` should have **zero** dependents once every plugin peer binds to the alias.
+
+The `vite` override aliases to `@voidzero-dev/vite-plus-core`, which ships **no `vite` binary of its own**. A package script such as `"dev": "vite"` therefore only ever ran by accident — via a real `vite` that pnpm auto-installed as a peer, leaving a stale `node_modules/.bin/vite` symlink. Once the peers bind to the alias that symlink is gone, so scripts must invoke the toolchain through Vite+ (`vp dev` / `vp build` / `vp preview`), never bare `vite`.
 
 ## What we don't do
 
