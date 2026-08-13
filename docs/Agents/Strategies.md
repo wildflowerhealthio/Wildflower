@@ -179,6 +179,16 @@ Augmenting the global `Window` interface requires a module file, but adding `exp
 
 When proposing a new abstraction, list the concrete use cases _first_ and let the human name the concept _after_ seeing them. An early "Bootstrap" abstraction conflated four distinct concerns (window-globals, URL params, auth-token handoff, postMessage protocol); re-decomposing each case landed a cleaner "everything is Messages" framing. `AskUserQuestion` is most useful for naming and scoping after enumeration, not for a-priori category proposals.
 
+## Fresh-per-run identity and factory purity
+
+### Concentrate a "fresh per X" mint at the single seam where X is created
+
+When several components each mint a "fresh per X" identity (a run id, a session id), don't scatter the mint across every factory — find the one seam where X is created and mint there, widening each downstream factory to take the id as an input. The impurity concentrates into a single place, every factory becomes a deterministic function of its inputs, and the "one build = one run" invariant is enforced by construction (the seam seals the plan and its id together) rather than resting on an unenforced calling convention. Each impure factory you avoid also spares its tests from identity-projection workarounds (see below). The reworked collector provenance seams are the worked example — mechanics live in `slices/collector/AGENTS.md`.
+
+### Test-premise drift: structural equality can't stand in for identity once a factory gains per-run state
+
+A test that deep-equals a factory's output against a freshly-rebuilt reference ("structural equality stands in for identity — the factory is a pure function of config") silently breaks the moment that factory legitimately gains per-run state: two builds from the same config are now unequal by construction, and the assertion fails for a reason unrelated to what it meant to guard. Compare an **identity projection** instead — the name, key fields, step/entity names — which still fails loudly on a mis-dispatch without asserting a purity the interface never promised. Two things break the equality independently, so a fixed id alone won't rescue the deep-equal: the per-run value itself, and the fact that `toEqual` compares functions by reference, so any per-build closure (an entity's `parse`, a recorder) defeats it regardless. Keep function-valued plan fields as module-level singletons; reach for the projection only where a genuine per-build closure lives. Collector-registry specifics are in `slices/collector/AGENTS.md`.
+
 ## Rust
 
 ### Privatizing modules doubles as a dead-code detector

@@ -6,25 +6,6 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
-## Awaiting human promotion to Strategies.md
-
-The two entries below have had their concrete, slice-specific mechanics folded into the reference doc each names (`slices/collector/AGENTS.md`), so that doc stands complete on its own. What remains for each is a durable, cross-cutting principle destined for [Strategies.md](./Strategies.md) — which agents must not edit — kept here verbatim (only the entry heading demoted to `###`) so the human can promote both in one pass.
-
-- **Concentrate a "fresh per X" mint at the single seam where X is created**, so every downstream factory becomes a pure function of that id. _(Collector mechanics landed in `slices/collector/AGENTS.md`.)_
-- **Test-premise drift**: a "structural equality stands in for identity" test premise silently breaks once the compared factory gains per-run state — compare an identity projection instead. _(Collector-registry specifics landed in `slices/collector/AGENTS.md`.)_
-
-### Framework-minted per-run ids beat per-factory minting: sealing the id with the plan makes "one build = one run" structural
-
-**Discovered during**: claude/issue-439-collector-provenance — reworking PR #453's provenance seams after review
-**Learning**: The first cut had each collector's plan factory mint its own run/session uuid, which made three factories impure, forced three test files onto identity-projection comparisons, and rested "one plan build is one run" on an unenforced calling convention. Moving the mint to the single dispatch point (`resourcePersistenceRuntimeIfMatches`) and widening the factory to `(config, runId)` inverted all of that: the factories are deterministic given inputs, the invariant is enforced by construction (the runtime seals the plan and its id together), and tests deep-equal plans against a fixed id. The general shape: when several components each mint a "fresh per X" identity, look for the one seam where X is created and mint there — the impurity concentrates into one place and everything downstream becomes a pure function of the id. Two supporting facts made the test reverts work: `toEqual` compares functions by reference, so any function-valued plan field (entities, hooks) must be a **module-level singleton**, never built inside the factory; and a per-build entity **closure** (the recorder's) still defeats deep equality even with a fixed id, so the projection legitimately survives exactly there.
-**Suggested destination**: Strategies.md, or the plan-determinism trap in `slices/collector/AGENTS.md` (already updated on this branch)
-
-### A plan factory that is legitimately impure breaks a registry test that deep-equals plans
-
-**Discovered during**: claude/issue-436-draft-pr-2nu428 — `web-trace-collector` minting a session id per plan build
-**Learning**: `collector-registry`'s dispatch property test asserted `planFor(config)` deep-equals the descriptor's own `makeScrapingPlan(config)`, with the comment "the plan factory is per-config so structural equality stands in for identity". That premise held only while every collector's plan was a pure function of config. A recording collector must mint a fresh session id per _run_ (a config-derived id would make the second recording of a remote silently upsert over the first), and `makeScrapingPlan` is called exactly once per sync run — so the mint belongs there, and two builds from one config are unequal by construction. Two separate things break the equality, not one: the session id itself, and the fact that a per-build entity factory produces a fresh `parse` **closure** each time (`toEqual` compares functions by reference), so even a deterministic id would not have saved it. The fix is to compare an identity _projection_ — name, `firstPage`, step names, entity names — which still fails loudly on a mis-dispatch (a plan from the wrong descriptor differs in all four) without asserting a purity the interface never promised. Worth knowing before adding any collector whose plan carries per-run state.
-**Suggested destination**: Strategies.md (test-premise drift), or the `collector-registry` notes in `slices/collector/AGENTS.md`
-
 ## Workspace-wide `vp test` needs `vp run pack` first in a fresh container — unbuilt `dist/` fails hundreds of tests
 
 **Discovered during**: claude/fhir-r4-openapi-spec-ibzynx — a full `vp test` showed 438 failures that had nothing to do with the change
