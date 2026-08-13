@@ -17,12 +17,27 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'fhir-r4', rootUrl, patientId }`)
   with fast-check arbitraries, `defaultConfig` (the public SMART Health IT
   sandbox), the two-page `scrapingPlan`, and the `FhirR4CollectorDescriptor`.
+- `src/plan-entities.ts` — the `fhirR4EntityDefinitions` tuple (Patient,
+  Observation, Observation-list, in that order), the **single definition** both
+  the live plan and the offline surface adopt. Internal — deliberately not
+  re-exported from `src/index.ts`.
 - `src/entities/patient-entity.ts` — `…/Patient/<id>` → one R4 `Patient`.
 - `src/entities/observation-entity.ts` — `…/Observation/<id>` → one R4
   `Observation`.
 - `src/entities/observation-list-entity.ts` — `…/Observation?…` → the
   `Observation`s of a searchset `Bundle`, dropping-and-counting entries that
   carry no resource.
+- `src/offline.ts` — the **offline extraction surface** (barrelled through
+  `src/index.ts`), read by an archive importer with no live sniffer. Three
+  exports, all reading the same evidence the live collector does:
+  `offlineEntities(rootUrl)` (the shared tuple adopted to a root — deep-equal to
+  the live plan's `entityDefinitions`, same memoized `parse` closures, so a
+  resource re-keys identically either way; entities only, no plan/provenance),
+  `fhirR4Recognizer` (claims a response set when any URL matches an entity
+  pattern; specificity `50`, the Rexall > FHIR > web-trace middle rung), and
+  `inferFhirRootUrl(urls)` (the FHIR root the URLs were captured from — most
+  frequent wins, ties break earliest). This package owns "what a FHIR R4 root
+  is". See [Offline Surface](#offline-surface) below.
 - the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('fhir-r4')`,
   one module-level line in `src/config.ts`, stated as the plan's
   `captureProvenance`.
@@ -73,6 +88,39 @@ both link directions live in `web-trace-core`; this package only names itself.
   allowlist and 1 MiB cap are a _recording_ policy; a body that justifies a
   specific clinical resource _is_ the provenance, so storing its size and hash
   with no data would defeat the point.
+
+## Offline surface
+
+`src/offline.ts` is the counterpart to the live descriptor: the seam an archive
+importer drives when there is no sniffer to run a `scrapingPlan` against. It adds
+nothing to the live path — `scrapingPlan` and the descriptor are behaviorally
+untouched — and reuses, rather than copies, the collector's three entities.
+
+- **One tuple, two consumers.** `src/plan-entities.ts` holds
+  `fhirR4EntityDefinitions`; both `scrapingPlan`'s `entityDefinitions` and
+  `offlineEntities` adopt _that_ array, so a resource decodes and re-keys the
+  same whether it arrives through the sniffer or an archive. `offlineEntities(rootUrl)`
+  is `adoptSourceIdentity({ system: rootUrl, baseUrl: rootUrl })` over the tuple
+  — the same call `scrapingPlan` makes — so it deep-equals the live plan's
+  `entityDefinitions` (the memoized `parse` closures compared by identity, the
+  same equality the plan-identity test turns on). It returns the entities alone:
+  no plan, no `stepSequence`, no `captureProvenance` — offline replay navigates
+  nothing and its provenance is the source archive, not a per-response trace
+  (see the `collector-fundamentals/replay` guardrails).
+- **The recognizer reads URLs, not bodies.** `fhirR4Recognizer.claims` is true
+  when any response URL matches one of the three entities' `isFoundAt` — reusing
+  the entities' own patterns, so recognizer and entities can't disagree on what a
+  FHIR URL is. A single URL match claims; HTML portal traffic and arbitrary JSON
+  APIs carry no `/Patient` or `/Observation` resource path, so they decline. Its
+  `specificity` is `50`, the middle rung of the epic's intended **Rexall > FHIR >
+  web-trace** ranking (portal-specific above protocol-generic above catch-all
+  recorder); only the FHIR recognizer is registered this epic.
+- **This package owns "what a FHIR root is".** `inferFhirRootUrl(urls)` filters
+  to entity-matching URLs, derives each one's root (the prefix before its
+  `/Patient` or `/Observation` segment, base-path tolerant the same way
+  `UrlMatch` is), and returns the most frequent — ties breaking toward the
+  earliest-seen root. `Option.none()` when nothing matches; a claimed but
+  non-`http(s)` URL yields no root, since it could not be a configurable root.
 
 ## Traps
 
