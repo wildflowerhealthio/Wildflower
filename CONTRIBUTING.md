@@ -169,6 +169,14 @@ For shared libraries (React, etc.), use peer dependencies:
 5. Open a pull request
 6. Address review feedback
 
+### Parallel agents sharing one checkout
+
+Run parallel agents in **separate worktrees** — one branch each, one index each — via `.devcontainer/wf-worktree.sh new <branch> [<base>]` (see [Parallel Worktrees](./CLAUDE.md#parallel-worktrees-devcontainer) in CLAUDE.md). Isolated indexes make the hazard below impossible.
+
+If parallel workstreams do share a single checkout (and index), commit with an explicit pathspec every time: `git commit -- <your-paths>`. A bare `git add <paths> && git commit` commits the **whole index**, and `git commit -- <paths>` is the only form that restricts a commit to the listed paths. This matters because `git mv` **stages the rename immediately** (unlike content edits, which stay unstaged): a concurrent workstream's already-staged renames ride along in your commit even though you added no path under them. The committed tree then holds renamed files whose `mod` declarations — unstaged content edits — never made it in, so `HEAD` doesn't compile. The tell is renames from a crate you never touched showing up in your commit's file stat.
+
+Recovery, before pushing: `git reset --soft <base>`, `git restore --staged <the-other-workstream's-paths>`, then re-commit with an explicit `git commit -- <your-paths>` pathspec.
+
 ## CI/CD
 
 PRs run formatting, linting, type checking, and tests. Ensure `vp run ready` passes locally before opening a PR.
