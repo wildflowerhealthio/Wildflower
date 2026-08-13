@@ -30,14 +30,13 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
 - `src/offline.ts` — the **offline extraction surface** (barrelled through
   `src/index.ts`), read by an archive importer with no live sniffer. Three
   exports, all reading the same evidence the live collector does:
-  `offlineEntities(rootUrl)` (the shared tuple adopted to a root — deep-equal to
-  the live plan's `entityDefinitions`, same memoized `parse` closures, so a
-  resource re-keys identically either way; entities only, no plan/provenance),
-  `fhirR4Recognizer` (claims a response set when any URL matches an entity
-  pattern; specificity `50`, the Rexall > FHIR > web-trace middle rung), and
-  `inferFhirRootUrl(urls)` (the FHIR root the URLs were captured from — most
-  frequent wins, ties break earliest). This package owns "what a FHIR R4 root
-  is". See [Offline Surface](#offline-surface) below.
+  `offlineEntities` (the shared tuple's decode, keying each resource under the
+  root of the URL it arrived on — no single system inferred; entities only, no
+  plan/provenance), `fhirR4Recognizer` (claims a response set when any URL
+  matches an entity pattern; specificity `50`, the Rexall > FHIR > web-trace
+  middle rung), and `fhirRootOf(url)` (the per-URL root primitive both build on
+  — the prefix before a `/Patient`/`/Observation` segment). This package owns
+  "what a FHIR R4 root is". See [Offline Surface](#offline-surface) below.
 - the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('fhir-r4')`,
   one module-level line in `src/config.ts`, stated as the plan's
   `captureProvenance`.
@@ -96,17 +95,24 @@ importer drives when there is no sniffer to run a `scrapingPlan` against. It add
 nothing to the live path — `scrapingPlan` and the descriptor are behaviorally
 untouched — and reuses, rather than copies, the collector's three entities.
 
-- **One tuple, two consumers.** `src/plan-entities.ts` holds
-  `fhirR4EntityDefinitions`; both `scrapingPlan`'s `entityDefinitions` and
-  `offlineEntities` adopt _that_ array, so a resource decodes and re-keys the
-  same whether it arrives through the sniffer or an archive. `offlineEntities(rootUrl)`
-  is `adoptSourceIdentity({ system: rootUrl, baseUrl: rootUrl })` over the tuple
-  — the same call `scrapingPlan` makes — so it deep-equals the live plan's
-  `entityDefinitions` (the memoized `parse` closures compared by identity, the
-  same equality the plan-identity test turns on). It returns the entities alone:
-  no plan, no `stepSequence`, no `captureProvenance` — offline replay navigates
-  nothing and its provenance is the source archive, not a per-response trace
-  (see the `collector-fundamentals/replay` guardrails).
+- **One decode, keyed per URL.** `src/plan-entities.ts` holds
+  `fhirR4EntityDefinitions`, the single decode both `scrapingPlan` and
+  `offlineEntities` consume, so a resource decodes the same whether it arrives
+  through the sniffer or an archive. Only the identity differs: the live plan
+  keys every resource under one `config.rootUrl`; `offlineEntities` keys each
+  resource under the root of **the URL it arrived on** (`fhirRootOf(response.url)`,
+  applied per response via `fhir-r4/identity`'s `adoptResource`). The two
+  coincide for a capture from that server, so an offline id equals the live id
+  when the roots match — but a capture spanning two servers keys each server's
+  resources apart with no inference or voting. `offlineEntities` is a
+  module-level constant (identity is resolved per response inside `parse`), and
+  returns the entities alone — no plan, no `stepSequence`, no `captureProvenance`
+  (offline replay navigates nothing; its provenance is the source archive).
+- **Cross-server references dangle, by design.** A relative reference
+  (`Patient/x` on an `Observation`) is rewritten under that resource's _own_
+  root, so a same-server capture links up and a genuine cross-server reference
+  does not. That is FHIR-correct — cross-server references are meant to be
+  absolute — and no worse than the live path.
 - **The recognizer reads URLs, not bodies.** `fhirR4Recognizer.claims` is true
   when any response URL matches one of the three entities' `isFoundAt` — reusing
   the entities' own patterns, so recognizer and entities can't disagree on what a
@@ -115,12 +121,12 @@ untouched — and reuses, rather than copies, the collector's three entities.
   `specificity` is `50`, the middle rung of the epic's intended **Rexall > FHIR >
   web-trace** ranking (portal-specific above protocol-generic above catch-all
   recorder); only the FHIR recognizer is registered this epic.
-- **This package owns "what a FHIR root is".** `inferFhirRootUrl(urls)` filters
-  to entity-matching URLs, derives each one's root (the prefix before its
-  `/Patient` or `/Observation` segment, base-path tolerant the same way
-  `UrlMatch` is), and returns the most frequent — ties breaking toward the
-  earliest-seen root. `Option.none()` when nothing matches; a claimed but
-  non-`http(s)` URL yields no root, since it could not be a configurable root.
+- **This package owns "what a FHIR root is".** `fhirRootOf(url)` returns the
+  prefix before a URL's `/Patient` or `/Observation` segment (base-path tolerant
+  the same way `UrlMatch` is), or `Option.none()` when the URL names no FHIR
+  resource or is not `http(s)`. It is the per-URL identity `offlineEntities`
+  keys on, exposed so a downstream importer groups or labels by it rather than
+  re-deriving what a FHIR root is.
 
 ## Traps
 

@@ -9,7 +9,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import { InstanceConfig, scrapingPlan } from './config.ts'
-import { fhirR4Recognizer, inferFhirRootUrl, offlineEntities } from './offline.ts'
+import { fhirR4Recognizer, fhirRootOf, offlineEntities } from './offline.ts'
 
 /** The plan factory ignores its run id; a fixed one keeps builds comparable. */
 const FIXED_RUN_ID = 'test-run'
@@ -39,6 +39,18 @@ const entityNamed = (
   if (found === undefined) throw new Error(`no entity named ${name}`)
   return found
 }
+
+/** Parse `body` at `url` through the offline entity named `name`. */
+const parseOffline = (name: string, url: string, body: unknown): readonly FhirResource[] =>
+  Effect.runSync(
+    entityNamed(offlineEntities, name).parse(
+      makeRemoteResponse({
+        url,
+        headers: [['content-type', 'application/fhir+json']],
+        body: JSON.stringify(body),
+      })
+    )
+  )
 
 describe('fhirR4Recognizer', () => {
   it('is a middle-specificity recognizer named fhir-r4', () => {
@@ -116,105 +128,122 @@ describe('fhirR4Recognizer', () => {
 })
 
 describe('offlineEntities', () => {
-  it('returns the three entities in plan order', () => {
-    expect(offlineEntities('https://r4.example.org/baseR4').map((entity) => entity.name)).toEqual([
+  it('decodes through the shared tuple in plan order', () => {
+    expect(offlineEntities.map((entity) => entity.name)).toEqual([
       'PatientEntity',
       'ObservationEntity',
       'ObservationListEntity',
     ])
   })
 
-  it("mirrors the live plan's entityDefinitions for a rootUrl", () => {
-    const config = {
-      _tag: 'fhir-r4',
-      rootUrl: 'https://r4.example.org/baseR4',
-      patientId: 'pat-7',
-    } as const
-    // Same style as the plan-identity test: adopting the shared tuple through
-    // the same source yields entities that deep-equal the live plan's, the
-    // memoized `parse` closures compared by identity.
-    expect(offlineEntities(config.rootUrl)).toEqual(
-      scrapingPlan(config, FIXED_RUN_ID).entityDefinitions
+  it("keys a resource under its own URL's root", () => {
+    const root = 'https://r4.example.org/baseR4'
+    const [patient] = parseOffline('PatientEntity', `${root}/Patient/pat-7`, {
+      resourceType: 'Patient',
+      id: 'pat-7',
+    })
+    expect(patient?.id).toBe(localResourceId(root, 'Patient', 'pat-7'))
+  })
+
+  it('keys resources from different servers under their own roots, no shared system', () => {
+    const rootA = 'https://a.example.org/baseR4'
+    const rootB = 'https://b.example.org/fhir/R4'
+    const [fromA] = parseOffline('PatientEntity', `${rootA}/Patient/1`, {
+      resourceType: 'Patient',
+      id: '1',
+    })
+    const [fromB] = parseOffline('ObservationEntity', `${rootB}/Observation/2`, {
+      resourceType: 'Observation',
+      id: '2',
+      status: 'final',
+      code: { text: 'Weight' },
+    })
+    expect(fromA?.id).toBe(localResourceId(rootA, 'Patient', '1'))
+    expect(fromB?.id).toBe(localResourceId(rootB, 'Observation', '2'))
+  })
+
+  it("rewrites a relative reference under the referring resource's own root", () => {
+    const root = 'https://r4.example.org/baseR4'
+    const [observation] = parseOffline('ObservationEntity', `${root}/Observation/obs-1`, {
+      resourceType: 'Observation',
+      id: 'obs-1',
+      status: 'final',
+      code: { text: 'Weight' },
+      subject: { reference: 'Patient/pat-7' },
+    })
+    if (observation?.resourceType !== 'Observation') throw new Error('expected an Observation')
+    // The subject resolves to the id its Patient *would* adopt to under the same
+    // root — so a same-server capture links up, a cross-server one dangles.
+    expect(observation.subject?.reference).toBe(
+      `Patient/${localResourceId(root, 'Patient', 'pat-7')}`
     )
   })
 
-  test("property: reuses the live plan's entities for any configured rootUrl", () => {
+  it('matches the live plan when a resource is captured from its configured root', () => {
+    const rootUrl = 'https://r4.example.org/baseR4'
+    const body = { resourceType: 'Patient', id: 'pat-7' }
+    const [offlinePatient] = parseOffline('PatientEntity', `${rootUrl}/Patient/pat-7`, body)
+    const [livePatient] = Effect.runSync(
+      entityNamed(
+        scrapingPlan({ _tag: 'fhir-r4', rootUrl, patientId: 'pat-7' }, FIXED_RUN_ID)
+          .entityDefinitions,
+        'PatientEntity'
+      ).parse(
+        makeRemoteResponse({
+          url: `${rootUrl}/Patient/pat-7`,
+          headers: [['content-type', 'application/fhir+json']],
+          body: JSON.stringify(body),
+        })
+      )
+    )
+    expect(offlinePatient?.id).toBe(localResourceId(rootUrl, 'Patient', 'pat-7'))
+    expect(offlinePatient?.id).toBe(livePatient?.id)
+  })
+
+  test('property: keys any configured rootUrl under that same root', () => {
     fc.assert(
       fc.property(Arbitrary.make(InstanceConfig), (config) => {
-        expect(offlineEntities(config.rootUrl)).toEqual(
-          scrapingPlan(config, FIXED_RUN_ID).entityDefinitions
+        const [patient] = parseOffline(
+          'PatientEntity',
+          `${config.rootUrl}/Patient/${encodeURIComponent(config.patientId)}`,
+          { resourceType: 'Patient', id: config.patientId }
         )
+        expect(patient?.id).toBe(localResourceId(config.rootUrl, 'Patient', config.patientId))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
-
-  it('re-keys a parsed resource to the same local id as the live plan', () => {
-    const rootUrl = 'https://r4.example.org/baseR4'
-    const parsePatient = (
-      entities: readonly EntityDefinition.EntityDefinition<FhirResource>[]
-    ): FhirResource | undefined =>
-      Effect.runSync(
-        entityNamed(entities, 'PatientEntity').parse(
-          makeRemoteResponse({
-            url: `${rootUrl}/Patient/pat-7`,
-            headers: [['content-type', 'application/fhir+json']],
-            body: JSON.stringify({ resourceType: 'Patient', id: 'pat-7' }),
-          })
-        )
-      )[0]
-
-    const offlinePatient = parsePatient(offlineEntities(rootUrl))
-    const livePatient = parsePatient(
-      scrapingPlan({ _tag: 'fhir-r4', rootUrl, patientId: 'pat-7' }, FIXED_RUN_ID).entityDefinitions
-    )
-
-    expect(offlinePatient?.id).toBe(localResourceId(rootUrl, 'Patient', 'pat-7'))
-    expect(offlinePatient?.id).toBe(livePatient?.id)
-  })
 })
 
-describe('inferFhirRootUrl', () => {
-  it('infers the root from FHIR URLs, honoring a base path', () => {
-    const root = 'https://r4.example.org/baseR4'
-    expect(
-      inferFhirRootUrl([
-        `${root}/Patient/pat-7?_format=json`,
-        `${root}/Observation?subject%3APatient=pat-7&_count=250`,
-      ])
-    ).toEqual(Option.some(root))
+describe('fhirRootOf', () => {
+  it('reads the root off a Patient URL, honoring a base path', () => {
+    expect(fhirRootOf('https://r4.example.org/baseR4/Patient/pat-7?_format=json')).toEqual(
+      Option.some('https://r4.example.org/baseR4')
+    )
+  })
+
+  it('reads the root off an Observation resource and an Observation search', () => {
+    const root = 'https://hapi.fhir.org/baseR4'
+    expect(fhirRootOf(`${root}/Observation/obs-1`)).toEqual(Option.some(root))
+    expect(fhirRootOf(`${root}/Observation?subject%3APatient=1&_count=250`)).toEqual(
+      Option.some(root)
+    )
   })
 
   it('honors an Epic-style deep base path', () => {
     const root = 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4'
-    expect(inferFhirRootUrl([`${root}/Observation/obs-9`])).toEqual(Option.some(root))
+    expect(fhirRootOf(`${root}/Observation/obs-9`)).toEqual(Option.some(root))
   })
 
-  it('returns none when no URL names a FHIR resource', () => {
-    expect(
-      inferFhirRootUrl(['https://portal.example.com/login', 'https://api.example.com/users/1'])
-    ).toEqual(Option.none())
-    expect(inferFhirRootUrl([])).toEqual(Option.none())
-  })
-
-  it('picks the most frequent root when a capture disagrees', () => {
-    const a = 'https://a.example.org/baseR4'
-    const b = 'https://b.example.org/fhir'
-    expect(inferFhirRootUrl([`${a}/Patient/1`, `${b}/Patient/2`, `${a}/Observation/3`])).toEqual(
-      Option.some(a)
-    )
-  })
-
-  it('breaks a frequency tie toward the earliest-seen root', () => {
-    const a = 'https://a.example.org/baseR4'
-    const b = 'https://b.example.org/fhir'
-    expect(inferFhirRootUrl([`${b}/Patient/1`, `${a}/Patient/2`])).toEqual(Option.some(b))
-    expect(inferFhirRootUrl([`${a}/Patient/1`, `${b}/Patient/2`])).toEqual(Option.some(a))
+  it('is none for a URL that names no FHIR resource', () => {
+    expect(fhirRootOf('https://portal.example.com/login')).toEqual(Option.none())
+    expect(fhirRootOf('https://api.example.com/users/1')).toEqual(Option.none())
+    expect(fhirRootOf('https://example.com/Patients/1')).toEqual(Option.none())
   })
 
   /**
    * A rootUrl whose own path already carries a `Patient`/`Observation` segment
-   * makes inference self-ambiguous (the appended segment could be read as an
+   * makes root extraction ambiguous (the appended segment could be read as an
    * id under the earlier one) — a pathological base no real server uses. Filter
    * those out so the property tests the honest case.
    */
@@ -223,18 +252,18 @@ describe('inferFhirRootUrl', () => {
       .split('/')
       .some((segment) => segment === 'Patient' || segment === 'Observation')
 
-  test('property: recovers the generated root from entity-matching URLs built on it', () => {
+  test('property: recovers the generated root from a resource URL built on it', () => {
     fc.assert(
       fc.property(
         Arbitrary.make(InstanceConfig).filter((config) => !hasResourceSegment(config.rootUrl)),
         (config) => {
           const safeId = encodeURIComponent(config.patientId)
-          const urls = [
-            `${config.rootUrl}/Patient/${safeId}?_format=json`,
-            `${config.rootUrl}/Observation/obs-1`,
-            `${config.rootUrl}/Observation?subject%3APatient=${safeId}&_count=250`,
-          ]
-          expect(inferFhirRootUrl(urls)).toEqual(Option.some(config.rootUrl))
+          expect(fhirRootOf(`${config.rootUrl}/Patient/${safeId}?_format=json`)).toEqual(
+            Option.some(config.rootUrl)
+          )
+          expect(fhirRootOf(`${config.rootUrl}/Observation?subject%3APatient=${safeId}`)).toEqual(
+            Option.some(config.rootUrl)
+          )
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
