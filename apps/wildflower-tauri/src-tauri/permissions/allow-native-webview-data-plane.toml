@@ -14,7 +14,7 @@ SECURITY: this is granted to `native-webview-content` (untrusted remote
 content) *in place of* the bus `core:event:allow-emit` grant, not in
 addition to it. The whole point is that the page cannot emit on the
 `bridge` channel directly — if it could, it could forge control tags
-(`SniffingComplete` / `Open` / `RequestSniffableWebView`) that steer or
+(`SniffingComplete` / `Open`) that steer or
 prematurely end the trusted sniffer. The command's allowlist is the only
 sanctioned page→host emit path; do NOT re-add `core:event:allow-emit`
 (or `core:event:default`, which includes it) to that capability.

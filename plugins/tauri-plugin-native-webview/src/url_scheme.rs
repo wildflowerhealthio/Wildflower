@@ -6,6 +6,14 @@
 //! function and thread the parsed [`Url`] onward, so the scheme rule lives in a
 //! single place.
 //!
+//! There is a second, runtime reason an injected IPC-using script (the browser
+//! sniffer) needs a real `http(s)` origin: on desktop the content webview's Tauri
+//! IPC parses the request `Origin` header, and a **null-origin** page
+//! (`about:blank`, `data:`, `with_html`) makes every `native_webview_data_plane_emit`
+//! / `plugin:event|listen` call fail with `Origin header is not a valid URL`. So
+//! `about:blank` (below) is only ever a transient cookie-seed transit — never a
+//! page the sniffer is expected to talk from. See the plugin's `docs/Explanation.md`.
+//!
 //! Mirrors `shared_structures_tauri_rust::sandboxed_webview::resolve_http_url`;
 //! kept local so this self-contained plugin doesn't depend on an app-level slice
 //! adapter (the layering points the other way).

@@ -21,6 +21,10 @@ The data plane is host-mediated on **both** platforms: the content webview loads
 
 `CollectorBridge` re-exports `BrowserSnifferBridge`'s webToHost schemas as its own hostToWeb messages, so tag names line up across the multiplexed channel either way.
 
+## `WebViewSource` accepts only real `http(s)` targets
+
+`Open` carries a `WebViewSource`, and there is no way to hand the host a blank or inline starting page through it. `WebViewSource.Uri` is restricted to `http(s)://` on **both** sides — TS (`HttpUriString` in [`collector-fundamentals/src/model/web-view-source.ts`](../../collector/collector-fundamentals/src/model/web-view-source.ts)) and Rust (`resolve_source` in [`model/web_view_source.rs`](../browser-sniffer-tauri-rust/src/model/web_view_source.rs), which rejects a non-`http(s)` URI with `NonHttpUri`). The union's other variant, `Html`, is a **decode-and-drop placeholder**: `resolve_source` returns `HtmlNotSupported`, so the host renders no inline HTML today — the variant exists only to catch wire drift. `about:blank` is therefore **not** a mountable `WebViewSource`; it lives only inside the plugin ([`url_scheme.rs`](../../../plugins/tauri-plugin-native-webview/src/url_scheme.rs)'s `parse_target` / `BLANK_URL`) as the cookie-seed transit, never as an `Open` target. This is why the leading `Open` builds the sniffer directly on its real target rather than mounting a blank page first — and the plugin's content webview [needs a real `http(s)` origin to run its IPC at all](../../../plugins/tauri-plugin-native-webview/docs/Explanation.md).
+
 ## Why the plugin and not `WebviewWindow`
 
 The sniffer used to present the external URL in a Tauri `WebviewWindow`, drawing fake browser chrome in-page (`injectBrowserTopBar`) and exposing the **entire** `window.__TAURI__` IPC surface to whichever third-party origin loaded. The `tauri-plugin-native-webview` plugin replaces that:
