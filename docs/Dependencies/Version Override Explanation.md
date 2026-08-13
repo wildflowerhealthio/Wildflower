@@ -36,6 +36,8 @@ The `vite` and `vitest` overrides are pinned to exact versions that track `vite-
 
 Widening the catalog range does not help — an exact override outranks it, so `vp install` reports `Lockfile is up to date, resolution step is skipped` and nothing moves. Edit the override in the root [package.json](../../package.json).
 
+Diagnose in the right order: build before you lint. On an unbuilt workspace typecheck reads each package's `dist/*.d.ts` through its export map, so running `vp lint` first floods the output with `TS2307: Cannot find module '<workspace-pkg>'` that buries the real `TS2321`/`TS2769`. Run `vp run pack` first, then treat whatever survives as real.
+
 To check for the split without a full build:
 
 ```bash

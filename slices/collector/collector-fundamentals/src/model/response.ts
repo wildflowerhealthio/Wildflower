@@ -22,20 +22,31 @@ type RemoteResponseHeaders = readonly (readonly [string, string])[]
  * response is here — the tracker never pre-extracts a slice of it.
  *
  * `id` and `startedAt` serve a *capturing* entity, one that records the exchange
- * rather than decoding a payload out of it: `id` is the sniffer's per-request
- * correlation key, which makes a recorded exchange's storage id deterministic
- * without threading a counter through `parse`, and `startedAt` is the only
- * instant on the response the sniffer observes. A decoding entity ignores both.
+ * rather than decoding a payload out of it; a decoding entity ignores both. See
+ * the per-member notes for why each is on the response rather than re-derived.
  */
 class RemoteResponse {
   #chunks: Uint8Array[] = []
 
   constructor(
+    /**
+     * The sniffer's per-request correlation key — its identity for this
+     * exchange. A capturing entity keys stored records on it (e.g.
+     * `{sessionId}-{requestId}`) so a retried write is an idempotent upsert
+     * rather than a duplicate. Threading a counter through `parse` instead would
+     * re-derive an id the sniffer already assigned and lose that idempotency.
+     */
     public readonly id: typeof SnifferRequestId.Type,
     public readonly url: string,
     public readonly status: number,
     public readonly statusText: string,
     public readonly headers: RemoteResponseHeaders,
+    /**
+     * When the tracker observed `ResponseStart` — the only instant on the
+     * response the sniffer reports. `parse` runs at *settle*, so a capturing
+     * entity that reads its own clock there would label the response's end as
+     * its beginning; this carries the true start instant to that point.
+     */
     public readonly startedAt: DateTime.Utc
   ) {}
 
