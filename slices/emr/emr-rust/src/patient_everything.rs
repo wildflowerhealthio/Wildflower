@@ -15,6 +15,20 @@
 //! exactly as it would for a direct `GET /Patient/{id}` — a token that can't read
 //! the Patient gets the same `401`/`403` here, propagated verbatim.
 //!
+//! **In-process re-drive invariant:** HFS's router is wrapped by
+//! `helios-rest`'s `create_app_with_auth` in a `CompressionLayer` and content
+//! negotiation, but a delegated sub-response is consumed in-process (buffered
+//! and JSON-parsed, [`read_json`]), never sent over the wire. So the forwarded
+//! sub-request must drop the caller's content-negotiation headers — an
+//! `Accept-Encoding: gzip` would come back gzipped and a forwarded `Accept:
+//! application/fhir+xml` would come back XML, either of which fails the parse.
+//! [`delegate_get`] strips both and pins `Accept` to FHIR JSON so the body is
+//! always identity-encoded JSON. Generally: any in-process `oneshot` re-drive
+//! of a router carrying a compression/content-negotiation layer drops the
+//! hop-by-hop / negotiation headers (`Accept-Encoding` first) from the
+//! forwarded set; the real client's own headers are honored by the outer HTTP
+//! stack against our response.
+//!
 //! A related-resource search that fails (non-200 or an unreadable body) is
 //! logged and treated as *no matches* rather than aborting: only the primary
 //! Patient read is fatal. This keeps `$everything` useful for a partial-scope

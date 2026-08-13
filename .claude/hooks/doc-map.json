@@ -36,6 +36,15 @@
       ]
     },
     {
+      "id": "diesel-persistence",
+      "tools": "edit",
+      "pattern": "^slices/persistence/persistence-rust/src/|^slices/[^/]+/[^/]+-rust/src/db/",
+      "docs": [
+        "docs/Persistence/Diesel Persistence How-To.md — recipes for diesel column mappings (JSON/typed/nullable), in-memory test pools, namespaced migrations, and the store transaction seam",
+        "docs/Persistence/Shared Diesel Pool Explanation.md — the one-pool-per-file picture, write-contention trade-off, and per-slice migration namespacing"
+      ]
+    },
+    {
       "id": "bridge",
       "tools": "any",
       "pattern": "(^|/)bridge(-[a-z-]+)?\\.(ts|rs)$|effect-messaging",
@@ -54,12 +63,30 @@
       ]
     },
     {
+      "id": "native-webview-plugin",
+      "tools": "edit",
+      "pattern": "^plugins/tauri-plugin-native-webview/",
+      "docs": [
+        "plugins/tauri-plugin-native-webview/docs/Lifecycle and Races Explanation.md — the cross-platform lifecycle/race protocols the backends implement; note the macOS cookie-seed run-loop-pump deadlock (grep wry for `wait_for_blocking_operation` before calling a sync-looking API from main-thread-reachable code) and the presence-keyed cookie-boolean trap",
+        "plugins/tauri-plugin-native-webview/docs/Explanation.md — what the plugin is, its commands, and the desktop-vs-mobile presentation model"
+      ]
+    },
+    {
       "id": "effect-slice-core",
       "tools": "edit",
       "pattern": "^slices/[^/]+/[^/]+-core/src/.*\\.ts$",
       "docs": [
         "docs/Effect/Patterns Reference.md — repository pattern, generators, error wrappers, Layers",
         "slices/AGENTS.md — layering rules (-core is pure; adapters import -core, never the reverse)"
+      ]
+    },
+    {
+      "id": "fhir-r4",
+      "tools": "any",
+      "pattern": "^slices/emr/fhir-r4/src/(data-types|resources)/",
+      "docs": [
+        "slices/emr/fhir-r4/docs/Consumer Gotchas Reference.md — keep the top-level interface re-exports in data-types/index.ts (consumers' `vp pack` breaks with TS2883 without them); uri/url fields decode to URL on typed resources",
+        "slices/emr/fhir-r4/docs/Client Capabilities Reference.md — record any deviation from the FHIR R4 spec here in the same change"
       ]
     },
     {
@@ -76,6 +103,14 @@
       "pattern": "(^|/)package\\.json$",
       "docs": [
         "Run `vp install` after any package.json edit; for pnpm.overrides see docs/Dependencies/Version Override Explanation.md"
+      ]
+    },
+    {
+      "id": "pnpm-workspace",
+      "tools": "edit",
+      "pattern": "(^|/)pnpm-workspace\\.yaml$",
+      "docs": [
+        "docs/Dependencies/Version Override Explanation.md — the catalog here and `pnpm.overrides` in root package.json are one pin in two places; a `vite-plus` bump must re-pin the exact `vite` and `vitest` overrides too, or the two-`UserConfig` split returns (see § Re-pinning on a vite-plus bump)"
       ]
     }
   ]

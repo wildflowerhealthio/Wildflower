@@ -53,6 +53,16 @@ impl RelayClient for RatholeRelayClient {
             client: true,
             ..Default::default()
         };
+        // We build rathole with `default-features = false` (no `hot-reload`), so
+        // its config watcher is the stub that does nothing but await this
+        // shutdown channel. rathole's `run()` therefore ends — tearing down its
+        // control channel and logging `Unable to listen for shutdown signal:
+        // channel closed` from `client.run` — the instant `shutdown_tx` drops.
+        // That drop happens on graceful shutdown (below) OR whenever this
+        // `run_once` future is itself dropped on cancel. So that log line is a
+        // teardown *symptom*, not a fault: when a tunnel flaps, chase what
+        // cancelled `run_once` (a reconcile — see `domain::tunnel_daemon`), not
+        // the rathole error.
         let (shutdown_tx, shutdown_rx) = broadcast::channel(1);
         let run = rathole::run(cli, shutdown_rx);
         tokio::pin!(run);

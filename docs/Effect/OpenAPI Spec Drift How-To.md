@@ -115,6 +115,21 @@ defineSpecDriftTest({
   concrete `HttpApi`, so the shared TS factory must stay generic over the API's
   type parameters rather than narrowing its `clientApi` to `HttpApi.HttpApi.Any`
   — otherwise concrete slice APIs won't type-check against it.
+- **Opaque cross-boundary JSON: `#[schema(value_type = Value)]`, not
+  `Object`.** When a field carries a JSON payload whose schema the _other_ side
+  owns — e.g. `collector_remotes.config`, the tagged `CollectorConfig` union the
+  TS `collector-registry` defines and this crate stores verbatim
+  (`collector-rust/src/domain/remote.rs`) — annotate it `#[schema(value_type =
+Value)]`. That emits an empty schema `{}`, which the drift engine normalizes to
+  `any`: a wildcard that matches whatever the client declares, so widening the TS
+  union (a new collector) never breaks the gate. `value_type = Object` is **not**
+  equivalent — it emits `{"type":"object"}`, which normalizes to an object with
+  zero fields and drifts against the client's concrete union ("field on client,
+  MISSING from server"). This holds however the value is stored on the Rust side
+  (a plain `serde_json::Value` mapped to a TEXT column via
+  [`JsonText`](../Persistence/Diesel%20Persistence%20How-To.md#json-columns-map-a-serde_jsonvalue-through-a-text-newtype),
+  a `#[serde(transparent)]` newtype, …) — the wire shape is the raw inner value,
+  and `value_type = Value` documents exactly that opacity.
 
 ## Serving the merged spec at `/docs`
 

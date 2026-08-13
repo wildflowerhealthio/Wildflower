@@ -122,6 +122,8 @@ vp check             # Format + lint + typecheck
 vp install           # Install/sync dependencies (run after pulling or editing any package.json)
 ```
 
+On a fresh container the full test pass needs a build first: a workspace-wide `vp test` (or `vp run test:all`) resolves cross-package imports against the `default` (`dist/`) export condition, so an unbuilt workspace fails hundreds of tests that have nothing to do with your change — run `vp run pack` once first (a single package's suite run from its own directory is fine without one). The same trap catches a one-off `node script.ts` that imports a workspace package; run such a script as a temporary `*.test.ts` through `vp test` rather than `node` directly.
+
 ## CI gates and pre-PR parity
 
 `vp run ready` covers the TypeScript side of CI. The full gate set (see `.github/workflows/`):
@@ -140,7 +142,7 @@ Polyglot repo: a 15-member Cargo workspace (~207 `.rs` files) alongside the TS p
 
 `.devcontainer/postCreateCommand.sh` installs a **global** `vp` (latest/unpinned) then runs `vp install`. The workspace pins vite-plus lower via the catalog, so for `vp test` in jsdom packages use the workspace-local binary `node_modules/.bin/vp` — the global `vp`'s bundled vitest can't resolve jsdom. Re-run `vp install` after any `package.json` edit.
 
-Bootstrap installs but does **not** build, and typecheck resolves tests against the `default` (`dist/`) export condition — so a first `vp check` on an unpacked workspace reports errors that are only missing builds. `vp lint` is affected too (`lint.options.typeCheck` is on), and so is `vp run ready`, which runs `vp lint` four steps before it reaches `vp run pack`. Run `vp run pack` first (`vp run -F <pkg> build` for one package). A Claude PreToolUse hook (`.claude/hooks/pack-before-check-reminder.mjs`) holds the session's first typecheck to say so; retrying it proceeds.
+Bootstrap installs but does **not** build, and typecheck resolves tests against the `default` (`dist/`) export condition — so a first `vp check` on an unpacked workspace reports errors that are only missing builds. `vp lint` is affected too (`lint.options.typeCheck` is on), and so is `vp run ready`, which runs `vp lint` four steps before it reaches `vp run pack`. Run `vp run pack` first (`vp run -F <pkg> build` for one package). A Claude PreToolUse hook (`.claude/hooks/pack-before-check-reminder.mjs`) holds the session's first typecheck — and its first workspace-wide `vp test` / `vp run test:all`, which fails the same way — to say so; retrying it proceeds.
 
 ## Git hooks
 

@@ -99,11 +99,30 @@ Build required scopes with the typed constructors in `scopes-rust`
 than parsing strings — a typo is then a compile error, not a silent `Unknown`
 scope no token can cover.
 
+**Coverage never crosses the SMART v1-word / v2-letter grammars.** A required
+scope like `system/*.rs` (a letter bag) is covered by an owner's `system/*.cruds`
+(also a letter bag) but not by the v1 word `read`, and vice-versa — so keep a
+required scope in the grammar the covering grant uses (reach for the letter bag,
+not the `read` word). This bites anywhere scopes are compared across the two
+grammars, and the fix is always to widen to the alternate canonical form first:
+the token minter widens every granted scope to both forms in bulk with
+`scopes_rust::with_alternate_canonical_forms` before it mints, so a token covers
+regardless of the grammar the required scope is spelled in; and gatekeeper's
+owner-approval clamp (`ensure_approver_covers`, enforcing "an owner can't delegate
+more than they hold") widens each scope per-scope with
+`Scope::as_alternate_canonical_form` before its coverage check — clamping **only**
+resource scopes (`FhirResource` / `WildflowerResource`) so identity/session
+markers (`openid`, `offline_access`, `launch`) pass through unclamped rather than
+blocking a legitimate approval.
+
 **Register each capability** in the slice's grantable-scope list (gatekeeper's
 `grantable_admin_scopes`) if it keeps one: an enforced scope that never appears in
 the grantable vocabulary is a scope no client can ever be granted — a silent
 lock-out. Gatekeeper's registry-completeness test counts `impl` lines against the
-registry so a new capability that isn't registered fails the build.
+registry so a new capability that isn't registered fails the build. That registry
+function must be `pub fn`, not `pub(crate)` — a `pub use` re-export can't promote a
+`pub(crate)` item (E0364), and making it `pub` also silences the dead-code lint it
+would otherwise trip under `-D warnings` while nothing yet consumes it.
 
 ### 4. Take `Scoped<F>` in the handler
 
@@ -261,3 +280,6 @@ lets a guard test assert `domain/` never imports `crate::http`.
 - `slices/scopes/scope-capabilities-rust/src/lib.rs` — the machinery.
 - [Effect Patterns Reference](../Effect/Patterns%20Reference.md) — the repository
   pattern the capabilities delegate to.
+- [Splitting Rust Files How-To](../Rust/Splitting%20Rust%20Files%20How-To.md) —
+  keeping the source-guard tests here green when a guarded handler file is split
+  into a folder.

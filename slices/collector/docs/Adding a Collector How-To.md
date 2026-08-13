@@ -124,20 +124,30 @@ const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirRes
   the head of `stepSequence` (followed by a hold — usually a pattern-less
   `AwaitPageSettled` — since an `Open` dispatches and advances immediately).
 - **`stepSequence`** is the _initial_ contents of the navigation queue — a list
-  of `Step`s, each a `Navigation` or a `Delay`:
+  of `Step`s. A step is either a **`Navigation`** (the only kind that reaches the
+  wire) or one of the plan-only **holds** the FSM consumes (`Delay`,
+  `AwaitPageSettled`, `AwaitPageRequested`, `AwaitUserDismiss`,
+  `EnsureWindowVisible`):
   - A **`Navigation`** step's `action` is forwarded to the sniffer verbatim: an
     `Open` navigates the host webview; a `PageAction` (`Click` / `Fill`,
-    discriminated by inner `kind`) scripts an in-page interaction. It dispatches
-    as soon as the machine reaches it, on the gating `PageLoaded` — there is no
-    implicit settle delay. Its optional `advanceWhen` (`UrlMatch`) holds it until
-    a `PageLoaded` whose `url` matches — use it for login redirects that settle at
-    an unpredictable time. `advanceWhen` lives on the step wrapper, not the
-    action, so it never leaks onto the wire. An empty `stepSequence` completes as
-    soon as the first `PageLoaded`'s requests settle.
-  - A **`Delay`** step (`{ _tag: 'Delay', duration }`) pauses the queue for
-    `duration` before the next step. It never reaches the wire (the FSM consumes
-    it as a timer). Add a **trailing** `Delay` when post-load XHR fan-out must
-    start (and be tracked) before the queue drains and the run completes.
+    discriminated by inner `kind`) scripts an in-page interaction. It
+    **dispatches and advances immediately** — a `Navigation` never waits for a
+    `PageLoaded`, so consecutive ones dispatch back-to-back (a login is
+    `Fill` / `Fill` / `Click`). The step carries only `{ name, action }`: there is
+    no `advanceWhen` and nothing plan-only to strip, so a `Navigation` cannot leak
+    a non-wire field by construction. An empty `stepSequence` completes as soon as
+    the first page's requests settle.
+  - **A wait is its own step**, never a field on a `Navigation`. Use a **`Delay`**
+    (`{ _tag: 'Delay', duration }`) for a fixed pause; an **`AwaitPageSettled`** to
+    hold until a settled `PageLoaded` matches its `pattern` (or, with **no**
+    `pattern`, until the _next_ settled load — the idiom right after an `Open`); or
+    an **`AwaitPageRequested`** to hold until a matching page merely _arrives_ (the
+    sniffer's `PageRequested`, fired at `DOMContentLoaded`) — use it when the
+    awaited page may never satisfy the settle detector, e.g. a busy SPA behind a
+    2FA pause. Holds never reach the wire (the FSM consumes them as timers /
+    gates). Add a **trailing** `Delay` and/or `AwaitPageSettled` when post-load XHR
+    fan-out must start (and be tracked) before the queue drains and the run
+    completes.
 - **`maxGeneratedSteps`** (default 500) caps steps produced by `followUpSteps`,
   and **`dedupeGeneratedOpenUris`** (default `true`) drops a generated `Open`
   whose `Uri` was already visited (an authored `Open` — including the leading
