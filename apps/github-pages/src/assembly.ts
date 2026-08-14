@@ -47,6 +47,13 @@ export const siteSections: readonly SiteSection[] = [
     // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
     requiredFiles: ['index.html', 'launch.html'],
   },
+  {
+    packageName: 'wildflower-server-docs',
+    sourceDir: 'apps/wildflower-server-docs/dist',
+    destPath: 'wildflower-server-docs',
+    // A single-page console; the bundled assets hang off it.
+    requiredFiles: ['index.html'],
+  },
 ]
 
 /** A {@link SiteSection} resolved to absolute filesystem paths. */

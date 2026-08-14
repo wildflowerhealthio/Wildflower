@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Wildflower server docs</title>
+    <meta
+      name="description"
+      content="Interactive API reference for a running Wildflower server. Point it at your own server with ?server=."
+    />
+  </head>
+  <body>
+    <form id="server-form" class="server-bar">
+      <label class="server-bar__label" for="server-url">Wildflower server</label>
+      <input
+        id="server-url"
+        class="server-bar__input"
+        type="url"
+        name="server"
+        spellcheck="false"
+        autocomplete="url"
+        placeholder="http://127.0.0.1:8080"
+      />
+      <button class="server-bar__submit" type="submit">Use this server</button>
+      <p class="server-bar__hint">
+        Every request below is sent to this origin, straight from your browser — nothing is proxied.
+        The target is kept in the page URL, so a configured console can be shared as a link.
+      </p>
+    </form>
+    <div id="reference"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

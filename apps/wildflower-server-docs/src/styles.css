@@ -1,0 +1,68 @@
+/*
+ * The header bar above the Scalar reference. Scalar owns everything below it
+ * (and ships its own reset), so this file stays deliberately small: enough to
+ * pin a target-server bar to the top of the viewport and let the reference
+ * scroll under it.
+ */
+
+:root {
+  color-scheme: light dark;
+}
+
+body {
+  margin: 0;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+}
+
+.server-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid light-dark(#d8d8dd, #2a2a30);
+  background: light-dark(#ffffff, #16161a);
+  color: light-dark(#1a1a1f, #e8e8ee);
+  font-size: 0.9rem;
+}
+
+.server-bar__label {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.server-bar__input {
+  flex: 1 1 22rem;
+  min-width: 12rem;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid light-dark(#c8c8d0, #3a3a44);
+  border-radius: 0.35rem;
+  background: light-dark(#ffffff, #1f1f26);
+  color: inherit;
+  font: inherit;
+  font-family: ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+}
+
+.server-bar__submit {
+  padding: 0.35rem 0.9rem;
+  border: 1px solid light-dark(#c8c8d0, #3a3a44);
+  border-radius: 0.35rem;
+  background: light-dark(#f2f2f5, #26262e);
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.server-bar__hint {
+  flex-basis: 100%;
+  margin: 0;
+  color: light-dark(#5a5a66, #a0a0ae);
+  font-size: 0.8rem;
+}

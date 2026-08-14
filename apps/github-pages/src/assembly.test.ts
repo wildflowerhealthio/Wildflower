@@ -72,6 +72,14 @@ describe('site layout', () => {
     ])
   })
 
+  it('serves the server-docs console from /wildflower-server-docs', () => {
+    const [serverDocs] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-server-docs')])
+    expect(serverDocs?.to).toBe(join(outDir, 'wildflower-server-docs'))
+    expect(serverDocs?.requiredPaths).toEqual([
+      join(outDir, 'wildflower-server-docs', 'index.html'),
+    ])
+  })
+
   it('resolves every destination inside the output directory', () => {
     fc.assert(
       fc.property(fc.array(sectionArb), (sections) => {
@@ -133,6 +141,16 @@ describe('layout reconciliation with the packages it assembles', () => {
   it('points at the marketing build output that carries the CNAME', () => {
     expect(existsSync(join(repoRoot, 'apps', 'marketing-website', 'public', 'CNAME'))).toBe(true)
     expect(sectionFor('marketing-website').sourceDir).toBe('apps/marketing-website/dist')
+  })
+
+  it('reads the server-docs console from the default dist its config leaves alone', () => {
+    // The console declares no `build.outDir`, so Vite writes the package's
+    // default `dist/`. If it ever redirects its output, this fails rather than
+    // the deploy silently publishing a stale copy.
+    const configPath = join(repoRoot, 'apps', 'wildflower-server-docs', 'vite.config.ts')
+    const config = readFileSync(configPath, 'utf8')
+    expect(config).not.toMatch(/\boutDir\s*:/)
+    expect(sectionFor('wildflower-server-docs').sourceDir).toBe('apps/wildflower-server-docs/dist')
   })
 
   it('declares every assembled package as a workspace dependency', () => {

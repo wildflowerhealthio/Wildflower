@@ -4,10 +4,11 @@ Assembles everything published at <https://wildflower-health.io> into a single
 static artifact. It owns no UI of its own: each section is built by the package
 that owns it, and this package places those outputs at their public URLs.
 
-| URL                | Source package                                 |
-| ------------------ | ---------------------------------------------- |
-| `/`                | `marketing-website` (`apps/marketing-website`) |
-| `/medications-app` | `medications-app` (`apps/medications-app`)     |
+| URL                       | Source package                                           |
+| ------------------------- | -------------------------------------------------------- |
+| `/`                       | `marketing-website` (`apps/marketing-website`)           |
+| `/medications-app`        | `medications-app` (`apps/medications-app`)               |
+| `/wildflower-server-docs` | `wildflower-server-docs` (`apps/wildflower-server-docs`) |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 
@@ -20,7 +21,8 @@ workspace `devDependency` of this package, so the workspace's own build ordering
 package's build stages them. Doing that here keeps each app's own build config
 untouched — in particular the medications app keeps
 building into `slices/apps/self-hosted-apps/medication`, where it is also
-vendored as a Tauri resource. This package only copies from there.
+vendored as a Tauri resource. This package only copies from there. The
+server-docs console builds into its own `dist/` and is copied verbatim.
 
 The `CNAME` file (the custom domain) comes from `marketing-website`'s `public/`
 and lands at the root of the artifact, which is the only place GitHub Pages
@@ -35,8 +37,8 @@ vp test                        # unit tests for the layout
 ```
 
 `build` is `src/assemble.ts`, which refuses to write anything if the layout
-resolves outside `dist/`, copies the sections' build outputs into
-`dist/`, and fails if a required file (either `index.html`, the root `CNAME`, or
+resolves outside `dist/`, copies the sections' build outputs into `dist/`, and
+fails if a required file (a section's `index.html`, the root `CNAME`, or
 the medications app's `launch.html` SMART launch entry) is missing — a silently
 empty upstream build never gets published. Running it on its own expects the
 sections to have been built already; `vp run pack` guarantees that ordering.
