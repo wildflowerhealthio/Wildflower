@@ -12,9 +12,9 @@
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
     "marketing-website": "workspace:*",
+    "medications-app": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "wildflower-medication": "workspace:*"
+    "vite-plus": "catalog:"
   }
 }

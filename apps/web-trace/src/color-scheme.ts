@@ -11,7 +11,7 @@
  *
  * This is the standalone twin of `apps/wildflower-react`'s
  * `apply-color-scheme` / `add-os-color-scheme-listener` pair, copied from
- * `apps/medication`'s. A self-hosted bundle pulls in neither (it has no
+ * `apps/medications-app`'s. A self-hosted bundle pulls in neither (it has no
  * navigation bridge, and its router is a memory router with no routes of its
  * own), so the minimal logic lives here.
  */

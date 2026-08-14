@@ -63,8 +63,8 @@ describe('site layout', () => {
     expect(marketing?.requiredPaths).toContain(join(outDir, 'index.html'))
   })
 
-  it('serves the medication app from /medications-app with both SMART entries', () => {
-    const [medication] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-medication')])
+  it('serves the medications app from /medications-app with both SMART entries', () => {
+    const [medication] = resolveSections(repoRoot, outDir, [sectionFor('medications-app')])
     expect(medication?.to).toBe(join(outDir, 'medications-app'))
     expect(medication?.requiredPaths).toEqual([
       join(outDir, 'medications-app', 'index.html'),
@@ -118,16 +118,16 @@ describe('site layout', () => {
 })
 
 describe('layout reconciliation with the packages it assembles', () => {
-  it('reads the medication source dir from the medication app vite config', () => {
+  it('reads the medications source dir from the medications app vite config', () => {
     // Deriving the expected path from the config (rather than pinning a second
     // literal copy of it) is what makes this test able to fail if the
-    // medication app ever moves its build output.
-    const configPath = join(repoRoot, 'apps', 'medication', 'vite.config.ts')
+    // medications app ever moves its build output.
+    const configPath = join(repoRoot, 'apps', 'medications-app', 'vite.config.ts')
     const config = readFileSync(configPath, 'utf8')
     const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
     expect(declared).toBeDefined()
-    const expected = resolve(join(repoRoot, 'apps', 'medication'), declared ?? '')
-    expect(join(repoRoot, sectionFor('wildflower-medication').sourceDir)).toBe(expected)
+    const expected = resolve(join(repoRoot, 'apps', 'medications-app'), declared ?? '')
+    expect(join(repoRoot, sectionFor('medications-app').sourceDir)).toBe(expected)
   })
 
   it('points at the marketing build output that carries the CNAME', () => {

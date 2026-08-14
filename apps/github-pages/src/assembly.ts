@@ -38,8 +38,8 @@ export const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'CNAME'],
   },
   {
-    packageName: 'wildflower-medication',
-    // The medication app builds into the vendored self-hosted-apps tree (it
+    packageName: 'medications-app',
+    // The medications app builds into the vendored self-hosted-apps tree (it
     // also ships as a Tauri resource from there); this package consumes that
     // output rather than redirecting it.
     sourceDir: 'slices/apps/self-hosted-apps/medication',
