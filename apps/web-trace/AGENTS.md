@@ -1,6 +1,8 @@
 # AGENTS.md — apps/web-trace
 
-The Web Trace viewer, shipped as a self-hosted SMART-on-FHIR app. It wraps
+The Web Trace viewer, a SMART-on-FHIR app published to
+<https://wildflower-health.io/web-trace-app> and launched as a cloud app (with a
+self-hosted `web-trace-app-dev` row in debug builds — see below). It wraps
 [`web-trace-react`](../../slices/web-trace/web-trace-react/AGENTS.md) — the app
 itself holds no viewing logic, only the wiring a self-hosted origin needs.
 
@@ -21,10 +23,10 @@ properties that must survive is in
 
 Two facts about a self-hosted app drive everything in that runtime:
 
-- **It is served from its own origin** (`http://127.0.0.1:8091/` on device, a
-  tunnel subdomain through the front) — not the API's. The typed FHIR client
+- **It is served from its own origin** — the published site in production, the
+  vite dev server's loopback port in dev — never the API's. The typed FHIR client
   emits _relative_ paths (`/fhir-r4/DocumentReference`), which would resolve
-  against port 8091 and 404. So the layer prefixes them with the FHIR base the
+  against that origin and 404. So the layer prefixes them with the FHIR base the
   SMART handshake named.
 - **The API's `wf_auth` cookie is not sent cross-origin.** That cookie is what
   authenticates the host's own webview; a third-party origin gets none of it. So
@@ -53,9 +55,11 @@ package growing a second, prop-threaded way in.
   match that against the route tree, and any navigation would rewrite the URL
   the SMART handshake is still reading.
 - **Plain `FetchHttpClient.layer`, not `telemetry-react`'s
-  `webHttpClientLayer`.** The app is registered `local_only = 1`, and the
-  telemetry layer's OTLP exporter is exactly the kind of outbound request that
-  claim rules out.
+  `webHttpClientLayer`.** The app's `local_only` badge is off since the move to
+  the published site (its assets are remote now), but the property the badge
+  described — this app makes no outbound request of its own — is still worth
+  keeping, and the telemetry layer's OTLP exporter is exactly the kind of
+  outbound request it rules out.
 - **`build` is `vp build`, with no `tsc` step** (unlike `apps/medications-app`).
   The tsconfig sets `customConditions: ["source"]` so `tsc` and the bundler agree on
   which copy of `QueryClient` a slice's router context refers to — without it,
@@ -73,7 +77,7 @@ package growing a second, prop-threaded way in.
   slice.** Capture is lossless and this runs on the user's own device against
   their own data. Redaction belongs to the export boundary, and the button that
   reaches it is `RecordingsPanel`'s — this app adds no export surface, so the
-  `local_only = 1` claim has no code here to violate it.
+  no-outbound-requests property has no code here to violate it.
 - **The slice's panels own every level, including the exchange detail.** This app
   renders no viewing surface of its own and holds no selection state within a
   panel. It briefly did: the panel used to leave the detail to its host, and
@@ -104,25 +108,47 @@ package growing a second, prop-threaded way in.
 
 Two places, from the same build output:
 
-- **On device**, as the seeded self-hosted app below — `http://127.0.0.1:8091/`
-  or a tunnel subdomain, out of the vendored `self-hosted-apps/web-trace` tree
-  this app's `outDir` writes.
 - **On the published site**, at
   [`/web-trace-app`](https://wildflower-health.io/web-trace-app) — `github-pages`
-  copies that same directory into the Pages artifact
-  ([apps/github-pages/README.md](../github-pages/README.md)). Copying it is why
-  the `outDir` cannot move: it is the seeded row's `content_folder`.
+  copies the `outDir` into the Pages artifact
+  ([apps/github-pages/README.md](../github-pages/README.md)). This is the
+  **production** launch target: the `web-trace-app` registry row is a _cloud_ row
+  pointing at that URL.
+- **On device**, from the vendored `self-hosted-apps/web-trace` tree this app's
+  `outDir` writes — as the debug-only `web-trace-app-dev` row's fallback content
+  when the vite dev server is not running (see below).
 
-## Seeded registration
+## Registration
 
-The app is seeded by two migrations that must land together — an app
-registration whose `client_id` has no registered client cannot launch:
+The `web-trace-app` app row (a cloud row) and its OAuth client are seeded by
+migrations that must stay in lockstep — an app registration whose `client_id` has
+no registered client cannot launch:
 
-- `slices/apps/apps-rust/migrations/0004_seed_wildflower_web_trace_app/`
+- `slices/apps/apps-rust/migrations/0004_seed_wildflower_web_trace_app/` (the
+  original self-hosted seed) and
+  `0005_first_party_apps_to_cloud/` (the rename to `web-trace-app` + the flip to
+  a cloud row served from the published site)
 - `slices/gatekeeper/gatekeeper-rust/migrations/0005_seed_wildflower_web_trace_client/`
+  and `0006_rename_first_party_app_clients/`
 
-The `clientId` in `src/config.ts` must equal the app id in both. Port **8091**,
-above `MIN_UPLOAD_PORT` (8082) so shipping it does not consume a low upload port.
+`src/config.ts`'s `clientId` must equal the app id it is launched through, for
+both the production and the dev registration — the host's redirect resolver looks
+an app up by `client_id`.
+
+## Running the dev server
+
+```bash
+vp run -F wildflower-web-trace dev     # strictPort, from slices/apps/dev-app-ports.json
+```
+
+Debug builds of the host additionally seed a `web-trace-app-dev` **self-hosted**
+row on that port plus its own OAuth client (`apps-rust`'s `seed_dev_apps` /
+`gatekeeper-rust`'s `seed_dev_app_clients`), so the homescreen carries a "Web
+Trace (Dev)" tile that launches whatever is serving that port —
+the vite dev server when it is up, otherwise the host's copy of the vendored
+build. The port has a single source, `slices/apps/dev-app-ports.json`: the vite
+config reads it and `apps-rust` embeds it, so the dev server and the row cannot
+drift.
 
 ## Testing
 

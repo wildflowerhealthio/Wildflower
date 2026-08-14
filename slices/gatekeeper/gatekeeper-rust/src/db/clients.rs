@@ -193,7 +193,9 @@ mod tests {
     }
 
     /// Every SMART client is seeded by a migration (not Rust) — the sample apps by
-    /// `0003`, the shipped self-hosted apps by `0004` / `0005` — so a
+    /// `0003`, the two first-party apps by `0004` / `0005` (renamed and given
+    /// their published-site redirect by `0006`), and the server-docs API console
+    /// by `0007` — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -206,8 +208,9 @@ mod tests {
             "growth_chart",
             "my_web_app",
             "cc344727-6f90-496c-94fd-c7829aa9a51d",
-            "wildflower-medication",
-            "wildflower-web-trace",
+            "medications-app",
+            "web-trace-app",
+            "wildflower-server-docs",
         ] {
             let client = store
                 .client_by_id(client_id)
@@ -251,15 +254,26 @@ mod tests {
             ],
         );
 
-        // `wildflower-web-trace` (the Web Trace viewer) pins the two decisions in
-        // its seed: the single **app-relative** redirect, because the app's origin
-        // differs per launch (loopback vs tunnel) and isn't known at seed time; and
-        // a read-only `system/` resource scope, because trace `DocumentReference`s
-        // carry no `subject` and so aren't reachable through patient context.
-        let web_trace = store.client_by_id("wildflower-web-trace").unwrap().unwrap();
+        // `web-trace-app` (the Web Trace viewer) pins three decisions across its
+        // seed (`0005`) and the rename (`0006`): the **app-relative** redirect,
+        // kept because a self-hosted origin differs per launch (loopback vs
+        // tunnel) and isn't known at seed time; the **absolute** published-site
+        // redirect the app now actually launches from as a cloud app (a cloud
+        // app has no self-hosted row for the relative form to resolve against);
+        // and a read-only `system/` resource scope, because trace
+        // `DocumentReference`s carry no `subject` and so aren't reachable through
+        // patient context.
+        let web_trace = store.client_by_id("web-trace-app").unwrap().unwrap();
         assert_eq!(
             web_trace.redirect_uris,
-            vec![RegisteredRedirectUri::AppRelative("/".to_owned())],
+            vec![
+                RegisteredRedirectUri::AppRelative("/".to_owned()),
+                RegisteredRedirectUri::Absolute(
+                    "https://wildflower-health.io/web-trace-app/"
+                        .parse()
+                        .expect("a valid absolute redirect"),
+                ),
+            ],
         );
         assert_eq!(
             web_trace.allowed_scopes,
@@ -271,8 +285,87 @@ mod tests {
             ],
         );
 
-        // The old `medication_viewer` id is gone — replaced by `my_web_app`.
-        assert!(store.client_by_id("medication_viewer").unwrap().is_none());
+        // The old `medication_viewer` id is gone — replaced by `my_web_app`, and
+        // the pre-rename first-party ids are gone with `0006`.
+        for retired in [
+            "medication_viewer",
+            "wildflower-medication",
+            "wildflower-web-trace",
+        ] {
+            assert!(
+                store.client_by_id(retired).unwrap().is_none(),
+                "{retired} must no longer be registered",
+            );
+        }
+
+        // `medications-app` keeps its app-relative entry (for the debug-only
+        // self-hosted dev row) and gains the absolute published-site redirect it
+        // launches from as a cloud app.
+        let medications = store.client_by_id("medications-app").unwrap().unwrap();
+        assert_eq!(
+            medications.redirect_uris,
+            vec![
+                RegisteredRedirectUri::AppRelative("/".to_owned()),
+                RegisteredRedirectUri::Absolute(
+                    "https://wildflower-health.io/medications-app/"
+                        .parse()
+                        .expect("a valid absolute redirect"),
+                ),
+            ],
+        );
+
+        // The server-docs API console is a standalone-launch client, so it is
+        // registered with the MAXIMAL scope vocabulary and narrowed at consent
+        // (`grantable_scopes` clamps an approval to requested ∧ allowed). The
+        // three wildcards can't be collapsed further: `wildflower/launch` is a
+        // *known* scope no wildcard covers, and the FHIR and Wildflower resource
+        // grammars are disjoint.
+        let docs = store
+            .client_by_id("wildflower-server-docs")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            docs.redirect_uris,
+            vec![RegisteredRedirectUri::Absolute(
+                "https://wildflower-health.io/wildflower-server-docs/"
+                    .parse()
+                    .expect("a valid absolute redirect"),
+            )],
+        );
+        assert_eq!(
+            docs.allowed_scopes,
+            vec![
+                "openid".to_string(),
+                "profile".to_string(),
+                "fhirUser".to_string(),
+                "launch".to_string(),
+                "launch/patient".to_string(),
+                "offline_access".to_string(),
+                "wildflower/launch".to_string(),
+                "system/*.cruds".to_string(),
+                "wildflower/*.cruds".to_string(),
+            ],
+        );
+        // Every scope the console might request is genuinely covered by what it
+        // is allowed — the property the migration's comment claims, checked
+        // against the live grammar rather than by eye.
+        for requested in [
+            "patient/Observation.read",
+            "user/Patient.rs",
+            "system/*.read",
+            "system/MedicationRequest.cruds",
+            "wildflower/Grant.r",
+            "wildflower/Apps.cruds",
+            "wildflower/launch",
+            "offline_access",
+        ] {
+            assert!(
+                docs.allowed_scopes
+                    .iter()
+                    .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested)),
+                "the console's allowed scopes must cover {requested}",
+            );
+        }
     }
 
     /// Each of the client row's custom column mappings rejects an out-of-domain

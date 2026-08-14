@@ -91,6 +91,92 @@ fn ensure_first_party_client(
     Ok(())
 }
 
+/// The debug-only OAuth clients for the first-party apps' vite dev servers — the
+/// gatekeeper half of `apps_rust::seed_dev_apps`.
+///
+/// The two first-party apps now ship as **cloud** rows served from
+/// <https://wildflower-health.io> (apps migration `0005_first_party_apps_to_cloud`),
+/// whose clients register an *absolute* Pages redirect URI. A debug build also
+/// gets a self-hosted `<app>-dev` row pointing at the app's local vite dev server,
+/// and that row needs its own client: the app-relative `"/"` redirect resolves
+/// only through the host's [`SelfHostedRedirectResolver`](crate::SelfHostedRedirectResolver),
+/// which looks the app up **by `client_id`** and requires the row it finds to be
+/// self-hosted. So the dev client id must equal the dev app id — which is why
+/// these are separate clients rather than extra redirect entries on the
+/// production ones (adding `http://127.0.0.1:5190/` there would also mean
+/// registering a plaintext loopback redirect on a client that a public website
+/// uses).
+///
+/// Scopes mirror each app's production client exactly — a dev build of the app
+/// requests the same set (`apps/*/src/config.ts`).
+///
+/// Runtime rather than a migration for the same reason as the app rows:
+/// migrations run unconditionally, so a migration-seeded dev client would exist
+/// in release databases too. The whole function is `#[cfg(debug_assertions)]`, as
+/// is its single call site in the Tauri host.
+///
+/// Upserted (not insert-if-missing) so a definition change lands on the next boot
+/// — the same treatment [`ensure_first_party_client`] gets, and safe here because
+/// nothing but this code owns these two rows.
+///
+/// # Errors
+///
+/// Returns an error if the store cannot be opened/migrated or an upsert fails.
+#[cfg(debug_assertions)]
+pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
+    use crate::domain::client::RegisteredRedirectUri;
+
+    let store = SqliteGatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
+    let dev_clients = [
+        (
+            "medications-app-dev",
+            "Medications (Dev)",
+            [
+                "launch",
+                "openid",
+                "fhirUser",
+                "system/MedicationRequest.read",
+                "system/Medication.read",
+            ]
+            .as_slice(),
+        ),
+        (
+            "web-trace-app-dev",
+            "Web Trace (Dev)",
+            [
+                "launch",
+                "openid",
+                "fhirUser",
+                "system/DocumentReference.read",
+            ]
+            .as_slice(),
+        ),
+    ];
+    for (client_id, name, scopes) in dev_clients {
+        let client = Client {
+            client_id: client_id.to_string(),
+            name: name.to_string(),
+            kind: ClientKind::Public,
+            // App-relative: resolved against the dev app's own loopback origin at
+            // `/authorize` time, so the vite port lives in exactly one place (the
+            // apps dev seed) instead of being duplicated here.
+            redirect_uris: vec![RegisteredRedirectUri::AppRelative("/".to_string())],
+            allowed_scopes: scopes.iter().map(|s| (*s).to_string()).collect(),
+            allowed_grant_types: vec![
+                AllowedGrantType::AuthorizationCode,
+                AllowedGrantType::RefreshToken,
+            ],
+            secret_hash: None,
+            registered_at: Utc::now(),
+            disabled_at: None,
+        };
+        store
+            .upsert_client(&client)
+            .with_context(|| format!("seed dev client {client_id}"))?;
+    }
+    Ok(())
+}
+
 /// Failures while minting the host owner token at boot.
 #[derive(Debug, Error)]
 pub(crate) enum HostTokenError {

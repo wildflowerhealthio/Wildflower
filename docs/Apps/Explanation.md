@@ -37,12 +37,37 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   origin** (a loopback port, or the user's domain via subdomain dispatch). The
   isolated origin is what lets a Self-Hosted app make data-residence guarantees.
   A Self-Hosted app is either **seeded** (a Wildflower-shipped vendored build,
-  synced into app-data at host startup — Patient Browser) or **uploaded** (a
+  synced into app-data at host startup — Patient Browser, plus the debug-only
+  `…-dev` rows for the first-party apps) or **uploaded** (a
   user-supplied `.zip` extracted at runtime by the `wildflower/Apps.c`-gated
   `POST /self-hosted-apps` upload endpoint). Both serve the same way; they
   differ only in origin and removability (see the data model).
-- **Cloud** — assets served from a **remote** origin, reaching PHI back through
-  the tunnel. Growth Chart, Medication Viewer, and PRECISE-HBR are Cloud.
+- **Cloud** — assets served from a **remote** origin. Growth Chart, Medication
+  Viewer, and PRECISE-HBR are Cloud, and so are the two **first-party** apps,
+  Medications (`medications-app`) and Web Trace (`web-trace-app`), which are
+  published to <https://wildflower-health.io> by `apps/github-pages` and launched
+  from there (apps migration `0005_first_party_apps_to_cloud`). Serving the
+  deployed copy means a shipped app updates when the site deploys rather than
+  when the user installs a new desktop build.
+
+  A Cloud app reaches PHI through `{origin}` in its stored launch template, and
+  `requires_tunnel` decides which origin that is: set (the third-party apps,
+  which run in someone else's browser) it forces the tunnel up and substitutes
+  the tunnel's verified origin, so a launch fails `503` when the tunnel can't
+  come up; clear (the two first-party apps) it substitutes the **served** origin
+  — loopback for an on-device launch, the forwarded public origin for a remote
+  one — which is always something the caller can reach. The trade-off of the
+  move: with the assets remote, a launch of these two now needs the network even
+  on-device, and Web Trace can no longer claim `local_only` (its data still never
+  leaves the device; its assets are no longer local).
+
+  In **debug builds only** each first-party app additionally gets a self-hosted
+  `<id>-dev` row bound to that app's vite dev-server port (pinned once in
+  `slices/apps/dev-app-ports.json`, which both the vite config and the Rust seed
+  read), so a developer's local build is what the tile launches. Those
+  rows are a runtime seed (`apps-rust/src/dev_seed.rs`), never a migration —
+  migrations run unconditionally, so a migration-seeded dev row would exist in
+  release databases too.
 
 System vs Self-Hosted is about **origin isolation, not where the bytes shipped
 from**: Patient Browser ships inside the download yet is Self-Hosted (it gets its
@@ -148,10 +173,19 @@ gatekeeper's schema and impose a migration ordering across slice boundaries,
 violating the slice layering. So the column is a plain reference: the apps slice
 derives `isSmart` from its presence alone and never reads the `clients` table. The
 invariant — every seeded `client_id` corresponds to a seeded gatekeeper client —
-is held by keeping the two SQL seed migrations in lockstep (the seeded cloud
-apps' `client_id`s in the apps migration, the gatekeeper sample clients in
-gatekeeper migration `008`), each guarded by its own seed test, rather than by
-the database.
+is held by keeping the two slices' seeds in lockstep (the seeded apps'
+`client_id`s in the apps migrations, the matching clients in the gatekeeper
+ones — including the rename of both first-party apps, which moves `id` and
+`client_id` together across `apps` `0005` and `gatekeeper` `0006`), each guarded
+by its own seed test, rather than by the database.
+
+A **self-hosted** app's `client_id` additionally has to _equal_ its app id: the
+host resolves that kind of app's app-relative redirect URI by looking the app up
+by `client_id` (`self_hosted_redirect_resolver.rs`). A cloud app has no such
+resolution, so its client must register an **absolute** redirect URI — which is
+why the first-party clients gained
+`https://wildflower-health.io/<app>/` alongside the app-relative `"/"` they keep
+for their `…-dev` siblings.
 
 ## Auth posture and the remote trust boundary
 

@@ -151,8 +151,8 @@ async fn fresh_install_lists_the_default_set() {
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
-            "wildflower-medication",
-            "wildflower-web-trace",
+            "medications-app",
+            "web-trace-app",
         ],
     );
 }
@@ -346,8 +346,8 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         { "id": "growth-chart", "onHomescreen": true },
         { "id": "medication-viewer", "onHomescreen": true },
         { "id": "precise-hbr", "onHomescreen": true },
-        { "id": "wildflower-medication", "onHomescreen": true },
-        { "id": "wildflower-web-trace", "onHomescreen": true },
+        { "id": "medications-app", "onHomescreen": true },
+        { "id": "web-trace-app", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -370,8 +370,8 @@ async fn home_screen_reorders_and_disables_a_system_app() {
             "growth-chart",
             "medication-viewer",
             "precise-hbr",
-            "wildflower-medication",
-            "wildflower-web-trace",
+            "medications-app",
+            "web-trace-app",
         ],
     );
     let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();

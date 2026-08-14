@@ -45,11 +45,14 @@ const MIGRATION_NAMESPACE: &str = "gatekeeper";
 /// migrations managed (destructive rebaseline — see its header), `0002` creates
 /// the cross-kind `grants` VIEW over the two concrete grant tables (its own
 /// migration so it can be up/down'd independently), `0003` seeds the SMART
-/// sample-app clients, and `0004` / `0005` each register one shipped self-hosted
-/// SMART app's client (`wildflower-medication`, `wildflower-web-trace`) — one
-/// migration per app, matching the per-app seed migrations in the apps slice;
-/// because each migration runs only once per database, an upgrade neither
-/// re-drops nor re-seeds.
+/// sample-app clients, and `0004` / `0005` each register one first-party SMART
+/// app's client — one migration per app, matching the per-app seed migrations in
+/// the apps slice. `0006` renames those two (`wildflower-medication` →
+/// `medications-app`, `wildflower-web-trace` → `web-trace-app`, keeping the
+/// `client_id == app id` invariant the redirect resolver needs) and adds their
+/// published-site redirect URI now that they launch as cloud apps; `0007` seeds
+/// the server-docs API console's client. Because each migration runs only once
+/// per database, an upgrade neither re-drops nor re-seeds.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`GatekeeperStore`] port. Cheap to clone (the

@@ -1,12 +1,46 @@
 # self-hosted-apps
 
-Home for vendored FHIR app builds served from the device. Today that's three
-apps: [`patient-browser`][upstream], a third-party SMART-on-FHIR sample app;
-`medication`, the vendored build directory for the first-party Medications app,
-whose source lives in `apps/medications-app/`; and `web-trace`, the first-party
-Web Trace recordings viewer built from `apps/web-trace/`.
+Home for vendored FHIR app builds. Three directories live here, and they no
+longer all play the same role:
+
+| Directory         | Role                                                                                                                                                                                                   |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `patient-browser` | The only remaining **release** self-hosted app: a vendored build of the third-party [`patient-browser`][upstream] sample app, seeded by apps migration `0002` and served from its own loopback origin. |
+| `medication`      | Build output of `apps/medications-app`. **Source** for the published `/medications-app` section of the Pages site, and fallback content for the debug-only `medications-app-dev` row.                  |
+| `web-trace`       | Build output of `apps/web-trace`. Same arrangement for `/web-trace-app` and `web-trace-app-dev`.                                                                                                       |
 
 [upstream]: https://github.com/smart-on-fhir/patient-browser
+
+## Which mechanism still serves which directory
+
+The two first-party apps launch in production from the deployed site
+(<https://wildflower-health.io>), as **cloud** rows — apps migration
+`0005_first_party_apps_to_cloud`. Their build output stays here because two other
+consumers read it:
+
+1. `apps/github-pages` copies these directories into the published artifact (see
+   [that package's README](../../../apps/github-pages/README.md)); this is why
+   the two apps' vite `outDir`s cannot move.
+2. Debug builds seed a `<app>-dev` self-hosted row per app
+   (`apps-rust/src/dev_seed.rs`) whose `content_folder` is the directory here, so
+   the host can serve _something_ on the dev port when the vite dev server is not
+   running.
+
+The vendored-build **mechanism** therefore stays (patient-browser needs it, and
+so does the dev fallback), including the `bundle.resources` shipping of this
+whole directory in release builds — which is now partly dead weight: in a release
+build only `patient-browser/` is referenced by a row's `content_folder`. Removing
+the other two from the bundle would save space at the cost of a
+`bundle.resources` entry that no longer matches the directory, so they are left
+in for now; revisit if bundle size matters.
+
+**Fallback caveat (dev).** The fallback content a `<app>-dev` row serves is a
+_production_ build, which sends the production `clientId`
+(`import.meta.env.DEV` is false in a built bundle). Since the production client
+now registers only the absolute published-site redirect, a SMART handshake
+started from that fallback content cannot complete: the tile renders, auth
+fails. Run the vite dev server (which sends the `-dev` client id) for a working
+dev launch.
 
 This directory holds the **vendored builds** — one gitignored folder per app
 (e.g. `patient-browser/`), each containing the app's static files — plus these
@@ -55,7 +89,8 @@ is embedded at compile time), and other apps just get whatever's on disk.
 
 Populating that directory is no longer a hand-copy. Two install surfaces feed
 it (see below): the **vendored-build sync** places the shipped apps
-(patient-browser) there at host startup, and the **upload endpoint** extracts a
+(patient-browser, plus the two first-party builds used as dev fallback content)
+there at host startup, and the **upload endpoint** extracts a
 user-supplied `.zip` into a new `self-hosted-apps/<slug>/`. The committed
 template is always served regardless; the rest of an app's routes 404 until its
 directory holds the build.

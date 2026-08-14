@@ -333,6 +333,28 @@ async fn run_server(
     let diesel_pool =
         persistence_rust::open_pool(&db_path).context("failed to open diesel db pool")?;
 
+    // DEBUG BUILDS ONLY: the `…-dev` app rows pointing at the first-party apps'
+    // vite dev servers, plus their matching OAuth clients. The two first-party
+    // apps ship as cloud rows served from https://wildflower-health.io, which is
+    // the wrong target while developing them — these self-hosted siblings launch
+    // `http://127.0.0.1:<vite port>/` instead. They are a runtime seed rather than
+    // a migration precisely so they cannot exist in a release database (a
+    // migration runs unconditionally); both the seeds and this call site are
+    // `cfg(debug_assertions)`, so release builds contain no code that writes them.
+    // Run BEFORE `setup_apps` so the rows are in the catalogue it materializes for
+    // the startup listener binding below — a bind that fails because vite already
+    // holds the port is expected and tolerated (see `SelfHostedAppsService::start`).
+    // Best-effort: a failure only costs the dev tiles, never startup.
+    #[cfg(debug_assertions)]
+    {
+        if let Err(error) = apps_rust::seed_dev_apps(diesel_pool.clone()) {
+            tauri_plugin_log::log::warn!("failed to seed dev app rows: {error:#}");
+        }
+        if let Err(error) = gatekeeper_rust::seed_dev_app_clients(diesel_pool.clone()) {
+            tauri_plugin_log::log::warn!("failed to seed dev app OAuth clients: {error:#}");
+        }
+    }
+
     // Resolves a self-hosted app's `{port, subdomain}` for gatekeeper's
     // app-relative redirect matching (see `self_hosted_redirect_resolver`). Built
     // from the shared pool here so it is ready before the gatekeeper state; its

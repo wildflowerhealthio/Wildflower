@@ -179,9 +179,9 @@ raises that directly from its in-transaction id check (there's no granular typed
 insert error for self-hosted, unlike cloud's `CloudInsertError`). Every
 _uploaded_ self-hosted row's subdomain equals its id, so the id
 check subsumes the subdomain space; the `UNIQUE(subdomain)` column stays a
-backstop. The migration-seeded rows are the exception — `wildflower-medication`
-serves at `medication` — which is what makes the app id available as a seed's
-fallback subdomain (below).
+backstop. The seeded rows are the exception — the debug-only `medications-app-dev`
+row serves at `medication-dev` — which is what makes the app id available as a
+seed's fallback subdomain (below).
 
 ### Port allocation → lowest free, reused
 
@@ -196,9 +196,14 @@ not read as a `400`.
 
 ### A seed migration allocates around a collision rather than aborting
 
-The shipped self-hosted apps are seeded by migrations (`0003` for Medications,
+The shipped self-hosted apps were seeded by migrations (`0003` for Medications,
 `0004` for Web Trace) that name a port and a subdomain — 8090/`medication`,
-8091/`web-trace`. Both columns are `UNIQUE`, and an install that uploaded apps
+8091/`web-trace`. Both apps have since moved to cloud rows served from the
+published site (`0005_first_party_apps_to_cloud`), and the same collision
+handling now lives in the debug-only runtime seed for their `…-dev` rows
+(`apps-rust/src/dev_seed.rs`, ports from `slices/apps/dev-app-ports.json`) — the
+reasoning below is
+unchanged, and still applies verbatim to any future seeded self-hosted app. Both columns are `UNIQUE`, and an install that uploaded apps
 before upgrading into one of those migrations can already hold either value: ten
 uploads climb 8082..8091 lowest-first, and an app named "Web Trace" slugs to
 exactly `web-trace`. A literal there would abort the migration, and a failed
@@ -212,7 +217,7 @@ So each seed prefers its literal and falls back in SQL:
   the upload allocator: lowest-free exists to hold a delete →
   same-bundle-reinstall cycle on one origin, and a once-per-install seed has no
   such cycle.
-- **`subdomain` → the app id** (`wildflower-web-trace`). Free by construction
+- **`subdomain` → the app id** (e.g. `web-trace-app-dev`). Free by construction
   too: an uploaded row's subdomain is its slug, which is its id, so that
   subdomain being taken would mean an app of that id exists — which the
   registration insert would already have rejected on the primary key.
