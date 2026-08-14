@@ -14,7 +14,7 @@ type FooterLink = {
 }
 
 const PRODUCT_LINKS: readonly FooterLink[] = [
-  { label: 'How it works', href: '#how' },
+  { label: 'The apps', href: '#how' },
   { label: 'Privacy', href: '#privacy' },
   { label: 'Request invite', href: '#invite' },
 ]
@@ -77,8 +77,8 @@ function Footer(): JSX.Element {
             <span className={styles['site-footer__wordmark']}>Wildflower</span>
           </div>
           <p className={styles['site-footer__blurb']}>
-            A personal health record that runs securely on your phone — built on the open standard
-            behind modern health records — so your health record is finally{' '}
+            A personal health record that runs on your phone, and a collection of apps that read
+            from it — so your health record is finally{' '}
             <em className={styles['site-footer__em']}>yours.</em>
           </p>
         </div>

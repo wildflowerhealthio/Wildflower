@@ -22,7 +22,7 @@ function Header(): JSX.Element {
             className={`${styles['site-header__link']} ${styles['site-header__link--text']}`}
             href="#how"
           >
-            How it works
+            The apps
           </a>
           <a
             className={`${styles['site-header__link']} ${styles['site-header__link--text']}`}
@@ -30,7 +30,7 @@ function Header(): JSX.Element {
           >
             Privacy
           </a>
-          <a className={`button-1 outline ${styles['site-header__cta']}`} href="#invite">
+          <a className={`button button-1 outline ${styles['site-header__cta']}`} href="#invite">
             Request invite
           </a>
         </nav>

@@ -1,6 +1,6 @@
 .beta-form {
   display: flex;
-  gap: 10px;
+  gap: var(--space-4);
   width: 100%;
   max-width: var(--beta-form-width);
 }
@@ -15,9 +15,8 @@
   width: 100%;
 }
 
-/* Box/colour/hover/dark all come from tundra's `.button-4 .filled` (plum fill,
- * cream label, from the shared accent ramp); the form only keeps the label on
- * one line. */
+/* Box/colour/hover/dark all come from tundra's `.button-4 .filled`; the form
+ * only keeps the label on one line. */
 .beta-form__submit {
   white-space: nowrap;
 }
@@ -25,15 +24,15 @@
 .beta-form__success {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-4);
   width: 100%;
   max-width: var(--beta-form-width);
-  padding: 15px 18px;
+  padding: var(--space-6) var(--space-8);
   border: 1px solid var(--color-success-border);
-  border-radius: var(--radius-input);
-  background: var(--color-success-bg);
-  color: var(--color-success-text);
-  font-size: 15px;
+  border-radius: var(--input-border-radius);
+  background: var(--color-success-background);
+  color: var(--color-success-foreground);
+  font-size: var(--font-size-3);
 }
 
 .beta-form__success-dot {
@@ -41,7 +40,7 @@
   width: 8px;
   height: 8px;
   border-radius: var(--radius-pill);
-  background: var(--color-green);
+  background: var(--color-success);
 }
 
 /* Stack the field above a full-width button on phones. */

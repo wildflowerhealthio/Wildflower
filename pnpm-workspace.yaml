@@ -33,9 +33,6 @@ catalog:
   '@dnd-kit/utilities': ^3.2.2
   '@fontsource-variable/atkinson-hyperlegible-mono': ^5.3.0
   '@fontsource-variable/atkinson-hyperlegible-next': ^5.3.0
-  '@fontsource-variable/hanken-grotesk': ^5.3.0
-  '@fontsource-variable/newsreader': ^5.3.0
-  '@fontsource-variable/spline-sans-mono': ^5.3.0
   '@opentelemetry/api': 1.9.1
   '@opentelemetry/exporter-trace-otlp-http': ^0.221.0
   '@opentelemetry/resources': 2.10.0

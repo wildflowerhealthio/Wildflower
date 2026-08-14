@@ -8,15 +8,15 @@ type PhoneRow = {
   readonly id: string
   readonly label: string
   readonly source: string
-  readonly dot: 'magenta' | 'amber' | 'green'
+  readonly dot: 'accent' | 'neutral' | 'success'
 }
 
 const ROWS: readonly PhoneRow[] = [
-  { id: 'heart', label: 'Heart rate', source: 'Apple Watch', dot: 'magenta' },
-  { id: 'labs', label: 'Lab results', source: 'Quest', dot: 'amber' },
-  { id: 'sleep', label: 'Sleep', source: 'Oura', dot: 'green' },
-  { id: 'rx', label: 'Prescriptions', source: 'CVS', dot: 'magenta' },
-  { id: 'steps', label: 'Steps', source: 'iPhone', dot: 'amber' },
+  { id: 'rx', label: 'Prescriptions', source: 'Rexall', dot: 'accent' },
+  { id: 'rx-sdm', label: 'Prescriptions', source: 'Shoppers Drug Mart', dot: 'accent' },
+  { id: 'labs', label: 'Lab results', source: 'LifeLabs', dot: 'neutral' },
+  { id: 'heart', label: 'Heart rate', source: 'Apple Watch', dot: 'success' },
+  { id: 'steps', label: 'Steps', source: 'iPhone', dot: 'success' },
 ]
 
 /**
@@ -48,7 +48,7 @@ function PhoneMockup(): JSX.Element {
         </div>
         <div className={styles['phone__footer']}>
           <p className={styles['phone__footer-label']}>Shared with</p>
-          <p className={styles['phone__footer-value']}>3 apps · you control each</p>
+          <p className={styles['phone__footer-value']}>The apps you choose, one grant at a time</p>
         </div>
       </div>
     </div>

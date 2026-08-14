@@ -1,34 +1,57 @@
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { isSourceActive, isTypeActive, readsFor, RECORD_SOURCES } from './convergence.ts'
+import {
+  CONNECT_APPS,
+  isSourceActive,
+  isTypeActive,
+  readsFor,
+  RECORD_SOURCES,
+} from './convergence.ts'
 import type { AppId, ResourceType } from './convergence.ts'
 
-const APP_IDS: readonly AppId[] = ['refill', 'insights', 'schedule']
+const APP_IDS: readonly AppId[] = CONNECT_APPS.map((app) => app.id)
 const RESOURCE_TYPES: readonly ResourceType[] = [
   'prescriptions',
   'labresults',
   'labreq',
   'appointments',
+  'documents',
 ]
+
+describe('CONNECT_APPS', () => {
+  it('should only give an href to an app published on this domain', () => {
+    // Arrange / Act / Assert — a link is a promise the app is reachable, so
+    // only the "published" ones may carry one.
+    for (const app of CONNECT_APPS) {
+      expect(app.href === undefined).toBe(app.availability !== 'published')
+    }
+  })
+
+  it('should publish the Medications app at its assembled GitHub Pages path', () => {
+    // Arrange / Act / Assert — `apps/github-pages` stages medications-app at
+    // `/medications-app`, so that is the link the site has to emit.
+    expect(CONNECT_APPS.find((app) => app.id === 'medications')?.href).toBe('/medications-app')
+  })
+})
 
 describe('readsFor', () => {
   it('should return the resource types each app is granted to read', () => {
     // Arrange / Act / Assert
-    expect(readsFor('refill')).toEqual(['prescriptions'])
-    expect(readsFor('insights')).toEqual(['prescriptions', 'labresults'])
-    expect(readsFor('schedule')).toEqual(['labreq', 'appointments'])
+    expect(readsFor('medications')).toEqual(['prescriptions'])
+    expect(readsFor('webtrace')).toEqual(['documents'])
+    expect(readsFor('visits')).toEqual(['labreq', 'appointments', 'labresults'])
   })
 })
 
 describe('isTypeActive', () => {
   it('should activate exactly the chips the selected app reads', () => {
-    // Arrange — "Health insights" reads prescriptions + lab results only.
+    // Arrange — Medications reads prescriptions only.
     // Act / Assert
-    expect(isTypeActive('insights', 'prescriptions')).toBe(true)
-    expect(isTypeActive('insights', 'labresults')).toBe(true)
-    expect(isTypeActive('insights', 'labreq')).toBe(false)
-    expect(isTypeActive('insights', 'appointments')).toBe(false)
+    expect(isTypeActive('medications', 'prescriptions')).toBe(true)
+    expect(isTypeActive('medications', 'documents')).toBe(false)
+    expect(isTypeActive('medications', 'labresults')).toBe(false)
+    expect(isTypeActive('medications', 'appointments')).toBe(false)
   })
 
   it('should mark at least one resource type active for every app', () => {
@@ -60,16 +83,16 @@ describe('isTypeActive', () => {
 })
 
 describe('isSourceActive', () => {
-  it('should light the two pharmacies and the lab for the default "insights" app', () => {
-    expect(litSourceIds('insights')).toEqual(['rexall', 'shoppers', 'lifelabs'])
+  it('should light both pharmacies for the default "medications" app', () => {
+    expect(litSourceIds('medications')).toEqual(['rexall', 'shoppers'])
   })
 
-  it('should light only the two pharmacies for "refill"', () => {
-    expect(litSourceIds('refill')).toEqual(['rexall', 'shoppers'])
+  it('should light both pharmacies for "webtrace", whose imports produced the documents', () => {
+    expect(litSourceIds('webtrace')).toEqual(['rexall', 'shoppers'])
   })
 
-  it('should light the clinic and the lab for "schedule"', () => {
-    expect(litSourceIds('schedule')).toEqual(['okafor', 'lifelabs'])
+  it('should light the clinic and the lab for "visits"', () => {
+    expect(litSourceIds('visits')).toEqual(['okafor', 'lifelabs'])
   })
 
   it('should keep at least one source lit whichever app is selected', () => {

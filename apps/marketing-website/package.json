@@ -11,9 +11,8 @@
     "test": "vp test --passWithNoTests"
   },
   "dependencies": {
-    "@fontsource-variable/hanken-grotesk": "catalog:",
-    "@fontsource-variable/newsreader": "catalog:",
-    "@fontsource-variable/spline-sans-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-tundraish": "workspace:*",

@@ -1,133 +1,40 @@
 /*
- * Design tokens for the Wildflower Health landing page.
+ * Layout tokens for the Wildflower Health landing page.
  *
- * The site is built on **react-tundraish** as its design base (imported in
- * `main.tsx` before this file). react-tundraish now ships the app's
- * true-neutral / navy palette, so `warm-palette.css` (imported right after it,
- * before this file) re-pins the value-carrying tokens back to the site's warm
- * plum/cream brand — surface roles (`--color-canvas` / `-raised` / `-sunken` /
- * `-modal`), a warm neutral ramp (`--color-neutral-1..9`), the plum/rose accent
- * ramp (`--color-accent-1..9`), success + danger ramps, card and divider tokens
- * — for both schemes, keyed off `:root[data-color-scheme='dark']` (set from the
- * OS preference by `color-scheme.ts`).
+ * The site's colour, type, spacing, radius and dark-mode language all come
+ * from **react-tundraish** (imported in `main.tsx` before this file): the
+ * true-neutral surface ramp, the navy accent, Atkinson Hyperlegible as the one
+ * family, and the `--space-N` / `--font-size-N` / `--font-weight-N` /
+ * `--radius-N` ramps. Components read those tokens directly, so this file only
+ * declares the few page-composition values the design system has no concept of.
  *
- * This file therefore does two things:
- *   1. **Bridges** the site's own semantic token names (`--color-cream`,
- *      `--color-ink`, `--color-magenta`, …) onto react-tundraish's tokens, so
- *      the marketing components keep their vocabulary but read the shared
- *      palette and inherit dark mode for free — no `@media` flip lives here
- *      anymore. The handful of *inverse* regions (footer, header bar, phone
- *      bezel) that must stay dark in both schemes still re-pin their surface in
- *      their own module `@media (prefers-color-scheme: dark)` blocks.
- *   2. Declares the **site-specific** tokens react-tundraish has no concept of
- *      — the marketing layout rhythm, decorative shadows, and motion.
- *
- * Two layout relationships remain load-bearing:
- *   - `--header-height`: the sticky header's height. The Convergence app
- *     selector pins directly under it (`top: var(--header-height)`) and
- *     in-page anchors offset their scroll target by it.
+ * Two relationships are load-bearing:
+ *   - `--header-height`: the sticky header's height, which in-page anchors
+ *     offset their scroll target by (`scroll-margin-top`).
  *   - `--page-padding-x`: the single horizontal gutter every centered section
- *     reads; the mobile pill-rail bleed cancels it with a negative margin, so
- *     retuning the gutter once keeps the bleed exact.
+ *     reads, retuned once for phones below.
  */
 
 :root {
-  /* ---------------------------------------------------------------------------
-   * Bridge — site palette names → react-tundraish tokens.
-   * Each right-hand token already carries its light + dark value and flips via
-   * `data-color-scheme`, so these names flip too with no rule of their own.
-   * ------------------------------------------------------------------------ */
+  /* The editorial measure: wide enough for the two-column stages, narrow
+   * enough that body copy never runs past a readable line length. */
+  --content-max-width: 1080px;
+  --page-padding-x: var(--space-11);
 
-  /* Surfaces — sand/cream family → tundra surface roles. The page reads the
-   * paper tone (the lighter cream #f7ecdd, not the more-recessed canvas) so the
-   * marketing page keeps its original warm-cream ground. */
-  --color-cream: var(--color-background); /* page background (paper cream) */
-  --color-cream-raised: var(--color-raised); /* inputs, cards, app buttons (resting) */
-  --color-cream-alt: var(--color-modal); /* phone screen background */
-  --color-cream-band: var(--color-sunken); /* privacy band; resting chip background */
-
-  /* Text — ink family → warm neutral ramp (1 = ink, lightens with N). */
-  --color-ink: var(--color-neutral-1); /* primary text, dark surfaces, phone bezel */
-  --color-ink-70: var(--color-neutral-2); /* header nav text */
-  --color-warm-gray: var(--color-neutral-3); /* body copy */
-  --color-muted-gray: var(--color-neutral-5); /* captions, meta */
-  --color-chip-text: var(--color-chip-foreground); /* resting chip text */
-
-  /* The old magenta / plum / magenta-hover accent relics are gone — components
-   * read the shared plum/rose ramp (`--color-accent-4` rose for links &
-   * emphasis, `--color-accent-5` plum for active/selected fills) directly, and
-   * buttons read it through tundra's `.filled` / `.outline`. */
-
-  /* Functional — source dots and the success chip. */
-  --color-amber: #d99a2b; /* source dot (labs, steps) — decorative, mode-agnostic */
-  --color-green: var(--color-success); /* source dot (sleep); success dot */
-  --color-success-bg: var(--color-success-background);
-  --color-success-border: var(--color-success-border);
-  --color-success-text: var(--color-success-foreground);
-
-  /* Footer — an inverse (dark) surface in both schemes, so its light-on-dark
-   * text tokens stay fixed rather than tracking the neutral ramp. */
-  --color-footer-text: #e7d8c8; /* footer link text */
-  --color-footer-body: #b7a596; /* footer blurb */
-  --color-footer-label: #8c7a6c; /* footer column labels, bottom bar */
-  --color-footer-link-hover: #f3c8d9;
-
-  --color-selection: var(--color-accent-8); /* ::selection background (petal tint) */
-  --color-placeholder: var(--color-neutral-5); /* input placeholder */
-
-  /* Hairlines & borders → tundra divider / element-border tokens. */
-  --border-hairline: var(--color-divider);
-  --border-hairline-soft: var(--card-color-border);
-  --border-input: var(--element-color-border);
-  --border-app-card: var(--color-divider);
-  --border-footer: rgba(247, 236, 221, 0.12); /* footer inverse — fixed */
-
-  /* ---------------------------------------------------------------------------
-   * Site-specific tokens react-tundraish has no concept of.
-   * ------------------------------------------------------------------------ */
-
-  /* Type families — the same three the app loads; kept here so the site is
-   * self-contained even though react-tundraish names them identically. */
-  --font-serif: 'Newsreader Variable', 'Newsreader', Georgia, 'Times New Roman', serif;
-  --font-sans:
-    'Hanken Grotesk Variable', 'Hanken Grotesk', system-ui, -apple-system, 'Segoe UI', Roboto,
-    sans-serif;
-  --font-mono:
-    'Spline Sans Mono Variable', 'Spline Sans Mono', ui-monospace, 'SFMono-Regular', Consolas,
-    monospace;
-
-  /* Layout (shared / cancel-out; see file header). */
-  --content-max-width: 1140px;
-  --page-padding-x: 32px;
+  /* Header padding (--space-8, doubled) + the 34px brand mark + the 1px
+   * bottom hairline. */
   --header-height: 71px;
-  --beta-form-width: 450px; /* hero form max-width + CTA form-wrap width */
 
-  /* Radii — bridge the input/card radii onto tundra's element radii so controls
-   * match the app; the pill and logo radii stay site-specific. */
-  --radius-input: var(--input-border-radius); /* inputs, buttons */
-  --radius-card: var(--card-border-radius); /* record / large cards */
-  --radius-app-card: var(--radius-4); /* connectable app cards */
-  --radius-pill: 999px; /* chips, pills */
-  --radius-logo: 8px; /* app-icon logo */
+  /* Hero form and CTA form-wrap share one width so the two beta forms match. */
+  --beta-form-width: 28rem;
 
-  /* Shadows — decorative marketing elevation; deepen on the dark canvas via the
-   * inverse-region blocks where used. */
-  --shadow-phone: 0 28px 60px rgba(44, 33, 29, 0.22);
-  --shadow-app-selected: 0 8px 22px rgba(126, 42, 82, 0.24);
-  --shadow-row-selected: 0 3px 14px rgba(126, 42, 82, 0.13);
-
-  /* Transitions. */
-  --transition-ui: all 0.2s ease;
-  --transition-opacity: opacity 0.25s ease;
+  /* Fully-round ends — the pill affordances (app selector, header CTA, dots).
+   * Not a ramp step: it is "as round as it gets", not a size. */
+  --radius-pill: 999px;
 }
 
-/*
- * Mobile retunes the single gutter token. Every centered section and the
- * Convergence pill-rail bleed read `--page-padding-x`, so this one override
- * tightens the whole page and keeps the bleed cancelling exactly.
- */
 @media (max-width: 680px) {
   :root {
-    --page-padding-x: 24px;
+    --page-padding-x: var(--space-9);
   }
 }

@@ -1,8 +1,9 @@
 /*
- * Global, non-module styling: the reset, page surface, shared typography
- * defaults, and the one cross-form utility (`visually-hidden`). Everything
- * scoped to a component lives in that component's `*.module.css`; anything
- * that has to sit on `:root`, `body`, or a bare element selector lives here.
+ * Global, non-module styling: the handful of rules that have to sit on
+ * `:root`, `body`, or a bare element selector. react-tundraish's `reset.css`
+ * already zeroes margins, sets the body family and colour, and pins the
+ * surfaces, so only the page's own additions live here. Everything scoped to a
+ * component lives in that component's `*.module.css`.
  */
 
 *,
@@ -15,43 +16,21 @@ html {
   scroll-behavior: smooth;
 }
 
-html,
-body {
-  margin: 0;
-  padding: 0;
-}
-
+/*
+ * The page reads on the raised "paper" surface rather than the recessed canvas
+ * the app uses — a document, not an app shell. Both tokens flip with
+ * `:root[data-color-scheme='dark']`.
+ */
 body {
   min-height: 100vh;
-  background: var(--color-cream);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 1.5;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
+  background: var(--color-background);
+  font-size: var(--font-size-4);
+  line-height: var(--line-height-5);
 }
 
 ::selection {
-  background: var(--color-selection);
-  color: var(--color-ink);
-}
-
-input::placeholder {
-  color: var(--color-placeholder);
-}
-
-h1,
-h2,
-h3 {
-  margin: 0;
-  font-family: var(--font-serif);
-  font-weight: 400;
-}
-
-p {
-  margin: 0;
+  background: var(--color-accent-9);
+  color: var(--color-foreground);
 }
 
 a {
@@ -59,30 +38,13 @@ a {
 }
 
 /*
- * Shared card surface — the "raised paper tile" the marketing sections group
- * content in, drawn from react-tundraish's card tokens so the site's cards
- * match the app's (and flip with the shared dark theme). Apply `.card` and let
- * the component keep only its own padding / layout.
+ * Shared card surface — the raised tile the marketing sections group content
+ * in, drawn from react-tundraish's card tokens so the site's cards match the
+ * app's. Apply `.card` and let the component keep only its own padding.
  */
 .card {
   background: var(--card-color-background);
   border: 1px solid var(--card-color-border);
   border-radius: var(--card-border-radius);
   box-shadow: var(--card-box-shadow);
-}
-
-/*
- * Accessible label hidden from sight (both beta forms use it so the email
- * field has a real `<label>` instead of placeholder-only labelling).
- */
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
 }

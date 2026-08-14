@@ -12,17 +12,17 @@ const GUARANTEES: readonly Guarantee[] = [
   {
     id: 'on-device',
     title: 'On-device',
-    body: 'Your records are stored and served directly from your phone. Our relay lets the apps and people you choose to connect, but we never see your data ourselves.',
+    body: 'Your records are stored and served directly from your phone. Our relay lets the apps and people you choose connect to it, but we never see your data ourselves.',
   },
   {
     id: 'standards',
     title: 'Open standards',
-    body: 'Built on the Fast Healthcare Interoperability Resources (FHIR R4) standard — the same one mandated by the U.S. Office of the National Coordinator for Health IT.',
+    body: 'Built on Fast Healthcare Interoperability Resources (FHIR R4) — the same standard modern EHRs speak, so your record fits the rest of health care without a translation layer.',
   },
   {
     id: 'per-app',
     title: 'Per-app control',
-    body: 'Choose exactly which apps and individuals can access what. For many, your data never leaves your device.',
+    body: 'Each app in the collection asks for the resource types it needs, and nothing else. You grant them one at a time, and you can take a grant back.',
   },
 ]
 

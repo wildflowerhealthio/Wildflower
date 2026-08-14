@@ -12,17 +12,17 @@ const STEPS: readonly Step[] = [
   {
     num: '01',
     title: 'Collect',
-    body: 'If you can read it on your phone, Wildflower can keep it — portals, labs, pharmacies, wearables, all in one place.',
+    body: 'If you can read it on your phone, Wildflower can keep it — pharmacies, labs, portals, wearables.',
   },
   {
     num: '02',
     title: 'Store',
-    body: 'All your information in the same format hospitals rely on — so all your records fit together.',
+    body: 'On your device, in the same format hospital systems use, so every source fits together.',
   },
   {
     num: '03',
     title: 'Serve',
-    body: 'Put your whole record to work — fill a script, book a visit, get a second opinion — without starting from scratch each time.',
+    body: 'The apps read from your record instead of starting over — a prescription, a visit, a second opinion.',
   },
 ]
 
