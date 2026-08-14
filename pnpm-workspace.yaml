@@ -50,6 +50,9 @@ catalog:
   '@sentry/node': 10.69.0
   '@sentry/opentelemetry': 10.69.0
   '@sentry/react': 10.69.0
+  # The Scalar API reference, vendored through npm (never the CDN script) so the
+  # static server-docs console at /wildflower-server-docs ships self-contained.
+  '@scalar/api-reference': ^1.65.1
   '@tanstack/react-query': ^5.101.4
   '@tanstack/react-router': ^1.170.25
   '@tanstack/router-plugin': ^1.168.29

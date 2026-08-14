@@ -54,6 +54,7 @@ export default defineConfig({
       'apps/web-trace/vite.config.ts',
       'apps/marketing-website/vite.config.ts',
       'apps/wildflower-react/vite.config.ts',
+      'apps/wildflower-server-docs/vite.config.ts',
       'global/effect-messaging/effect-messaging-core/vite.config.ts',
       'global/effect-messaging/effect-messaging-react/vite.config.ts',
       'global/kitchen-sink/vite.config.ts',

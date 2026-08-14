@@ -1,21 +1,23 @@
 {
-  "name": "github-pages",
+  "name": "wildflower-server-docs",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node ./src/assemble.ts",
+    "build": "tsc && vp build",
     "check": "vp check",
+    "dev": "vp dev",
+    "preview": "vp preview",
     "test": "vp test"
+  },
+  "dependencies": {
+    "@scalar/api-reference": "catalog:"
   },
   "devDependencies": {
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "marketing-website": "workspace:*",
-    "medications-app": "workspace:*",
-    "typescript": "catalog:",
+    "typescript": "~7.0.2",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "wildflower-server-docs": "workspace:*"
+    "vite-plus": "catalog:"
   }
 }
