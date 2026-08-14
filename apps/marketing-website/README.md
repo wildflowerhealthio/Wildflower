@@ -1,4 +1,4 @@
-# website
+# marketing-website
 
 The Wildflower Health marketing landing page — a standalone React + Vite
 single-page site. Warm, editorial, vintage-botanical; not the clinical app UI.
@@ -43,10 +43,10 @@ vp build    # production build to dist/
 ## Deployment
 
 `.github/workflows/deploy-website.yml` builds and publishes the site to GitHub
-Pages on pushes to `main` that touch `apps/website/**`. It is served at the
-custom domain in `public/CNAME` (`wildflower-health.io`). The Vite `base` is
-relative (`./`) so the same build also works from the project URL while the
-domain's DNS propagates.
+Pages on pushes to `main` that touch `apps/marketing-website/**`. It is served
+at the custom domain in `public/CNAME` (`wildflower-health.io`). The Vite
+`base` is relative (`./`) so the same build also works from the project URL
+while the domain's DNS propagates.
 
 One-time setup: repo Settings → Pages → Source = "GitHub Actions", then set the
 custom domain to `wildflower-health.io`.
