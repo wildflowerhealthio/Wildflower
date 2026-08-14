@@ -49,6 +49,18 @@ const siteSections: readonly SiteSection[] = [
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
+    packageName: 'wildflower-importer',
+    // Same arrangement as the medications app: the importer builds into the
+    // vendored self-hosted-apps tree (where it also ships as a Tauri resource),
+    // and this package consumes that output rather than redirecting it. The
+    // folder is `importer` — the `content_folder` its seed migration records —
+    // while the published path is `/importer-app`.
+    sourceDir: 'slices/apps/self-hosted-apps/importer',
+    destPath: 'importer-app',
+    // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
+    requiredFiles: ['index.html', 'launch.html'],
+  },
+  {
     packageName: 'wildflower-server-docs',
     sourceDir: 'apps/wildflower-server-docs/dist',
     destPath: 'wildflower-server-docs',

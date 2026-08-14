@@ -72,6 +72,15 @@ describe('site layout', () => {
     ])
   })
 
+  it('serves the importer app from /importer-app with both SMART entries', () => {
+    const [importer] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-importer')])
+    expect(importer?.to).toBe(join(outDir, 'importer-app'))
+    expect(importer?.requiredPaths).toEqual([
+      join(outDir, 'importer-app', 'index.html'),
+      join(outDir, 'importer-app', 'launch.html'),
+    ])
+  })
+
   it('serves the server-docs console from /wildflower-server-docs', () => {
     const [serverDocs] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-server-docs')])
     expect(serverDocs?.to).toBe(join(outDir, 'wildflower-server-docs'))
@@ -173,6 +182,19 @@ describe('layout reconciliation with the packages it assembles', () => {
     // The entries the config names are real files in the app, so the build
     // genuinely produces the required outputs.
     for (const entry of entries) expect(existsSync(join(appDir, entry))).toBe(true)
+  })
+
+  it('reads the importer source dir from the importer app vite config', () => {
+    // Same derivation as the medications app above, and for the same reason:
+    // the section has to follow the app if it ever moves its build output. The
+    // app folder is `apps/importer-web`; the package (and the section's
+    // `packageName`) is `wildflower-importer`.
+    const configPath = join(repoRoot, 'apps', 'importer-web', 'vite.config.ts')
+    const config = readFileSync(configPath, 'utf8')
+    const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
+    expect(declared).toBeDefined()
+    const expected = resolve(join(repoRoot, 'apps', 'importer-web'), declared ?? '')
+    expect(join(repoRoot, sectionFor('wildflower-importer').sourceDir)).toBe(expected)
   })
 
   it('points at the marketing build output that carries the CNAME', () => {

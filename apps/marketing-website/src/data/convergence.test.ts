@@ -33,12 +33,20 @@ describe('CONNECT_APPS', () => {
     // `/medications-app`, so that is the link the site has to emit.
     expect(CONNECT_APPS.find((app) => app.id === 'medications')?.href).toBe('/medications-app')
   })
+
+  it('should publish the Importer at its assembled GitHub Pages path', () => {
+    // Arrange / Act / Assert — `apps/github-pages` stages the importer app's
+    // build (`wildflower-importer`, from `apps/importer-web`) at
+    // `/importer-app`, so that is the link the site has to emit.
+    expect(CONNECT_APPS.find((app) => app.id === 'importer')?.href).toBe('/importer-app')
+  })
 })
 
 describe('readsFor', () => {
   it('should return the resource types each app is granted to read', () => {
     // Arrange / Act / Assert
     expect(readsFor('medications')).toEqual(['prescriptions'])
+    expect(readsFor('importer')).toEqual(['documents'])
     expect(readsFor('webtrace')).toEqual(['documents'])
     expect(readsFor('visits')).toEqual(['labreq', 'appointments', 'labresults'])
   })
@@ -89,6 +97,10 @@ describe('isSourceActive', () => {
 
   it('should light both pharmacies for "webtrace", whose imports produced the documents', () => {
     expect(litSourceIds('webtrace')).toEqual(['rexall', 'shoppers'])
+  })
+
+  it('should light both pharmacies for "importer", which reads those same archives', () => {
+    expect(litSourceIds('importer')).toEqual(['rexall', 'shoppers'])
   })
 
   it('should light the clinic and the lab for "visits"', () => {

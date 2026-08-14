@@ -17,7 +17,7 @@
 type ResourceType = 'prescriptions' | 'labresults' | 'labreq' | 'appointments' | 'documents'
 
 /** The apps shown in the collection. */
-type AppId = 'medications' | 'webtrace' | 'visits'
+type AppId = 'medications' | 'importer' | 'webtrace' | 'visits'
 
 /** How far along an app is — shown on its card so nothing reads as shipped that isn't. */
 type Availability = 'published' | 'in-app' | 'concept'
@@ -65,6 +65,15 @@ const CONNECT_APPS: readonly ConnectApp[] = [
     availability: 'published',
     href: '/medications-app',
     reads: ['prescriptions'],
+  },
+  {
+    id: 'importer',
+    title: 'Importer',
+    pitch:
+      'Import FHIR records from a captured browsing session. Point it at a HAR file — one Wildflower recorded while you were signed in to a portal or a pharmacy site, or one you exported yourself — and it shows you exactly which records it found and what it would write before it writes anything. Nothing is saved until you confirm, and everything it does save is stamped with the archive it came from.',
+    availability: 'published',
+    href: '/importer-app',
+    reads: ['documents'],
   },
   {
     id: 'webtrace',
