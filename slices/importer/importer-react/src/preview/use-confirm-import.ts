@@ -107,7 +107,8 @@ const useConfirmImport = (): ConfirmImport => {
 
   const confirm = useCallback(
     ({ picked, preview }: ConfirmInput): void => {
-      const ticket = ++latest.current
+      latest.current += 1
+      const ticket = latest.current
       setState({ _tag: 'confirming' })
       void (async (): Promise<void> => {
         try {

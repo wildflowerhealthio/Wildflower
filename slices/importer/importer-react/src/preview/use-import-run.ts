@@ -74,7 +74,8 @@ const useImportRun = (): ImportRun => {
 
   const run = useCallback(
     (picked: PickedHar): void => {
-      const ticket = ++latest.current
+      latest.current += 1
+      const ticket = latest.current
       setState({ _tag: 'reading' })
       // `Effect.either` moves the sole `ParseError` onto the value channel, so the
       // runner resolves rather than rejects and the two outcomes are one branch.
