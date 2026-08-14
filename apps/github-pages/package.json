@@ -1,0 +1,20 @@
+{
+  "name": "github-pages",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node ./src/assemble.ts",
+    "check": "vp check",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "marketing-website": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:",
+    "wildflower-medication": "workspace:*"
+  }
+}

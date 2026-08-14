@@ -1,22 +1,20 @@
-name: Deploy Website
+name: Deploy GitHub Pages
 
-# Builds the marketing site (apps/marketing-website) and publishes it to GitHub Pages.
-# Runs on pushes to main that touch the site (or this workflow) and on manual
-# dispatch.
+# Builds the published static site (apps/github-pages, which assembles the
+# marketing site at / and the medication app at /medications-app) and publishes
+# it to GitHub Pages. Runs on every push to main and on manual dispatch: the
+# assembled apps depend on much of the workspace, so a path filter would only
+# ever be wrong about which changes can alter the published site.
 #
 # Prerequisites (one-time, in repo Settings → Pages):
 #   - Source: "GitHub Actions".
 #   - Custom domain: wildflower-health.io. The CNAME file in
-#     apps/marketing-website/public carries that domain into the build output so the
-#     setting survives each deploy.
+#     apps/marketing-website/public carries that domain into the marketing build,
+#     which the assembly step copies to the root of the uploaded artifact — the
+#     only place GitHub Pages reads it from — so the setting survives each deploy.
 on:
   push:
     branches: [main]
-    paths:
-      - 'apps/marketing-website/**'
-      - 'pnpm-lock.yaml'
-      - 'pnpm-workspace.yaml'
-      - '.github/workflows/deploy-website.yml'
   workflow_dispatch:
 
 # Least privilege for the build; the deploy job needs pages + id-token to
@@ -51,16 +49,18 @@ jobs:
       - name: Install dependencies
         run: vp install
 
-      # Runs the package's "build" script (tsc typecheck + `vp build`), which
-      # emits the static site — including the copied public/CNAME — to dist/.
-      - name: Build website
-        run: vp run build
-        working-directory: apps/marketing-website
+      # The workspace build: `vp run pack` is `vp run --cache -r build`, which
+      # runs in workspace dependency order, so each assembled section builds
+      # before github-pages (it depends on them) runs its own build — the
+      # assemble step that stages the sections, including the CNAME, into
+      # apps/github-pages/dist.
+      - name: Build site
+        run: vp run pack
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: apps/marketing-website/dist
+          path: apps/github-pages/dist
 
   deploy:
     name: Deploy
