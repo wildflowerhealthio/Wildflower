@@ -80,6 +80,15 @@ describe('site layout', () => {
     ])
   })
 
+  it('serves the web trace app from /web-trace-app with both SMART entries', () => {
+    const [webTrace] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-web-trace')])
+    expect(webTrace?.to).toBe(join(outDir, 'web-trace-app'))
+    expect(webTrace?.requiredPaths).toEqual([
+      join(outDir, 'web-trace-app', 'index.html'),
+      join(outDir, 'web-trace-app', 'launch.html'),
+    ])
+  })
+
   it('resolves every destination inside the output directory', () => {
     fc.assert(
       fc.property(fc.array(sectionArb), (sections) => {
@@ -136,6 +145,34 @@ describe('layout reconciliation with the packages it assembles', () => {
     expect(declared).toBeDefined()
     const expected = resolve(join(repoRoot, 'apps', 'medications-app'), declared ?? '')
     expect(join(repoRoot, sectionFor('medications-app').sourceDir)).toBe(expected)
+  })
+
+  it('reads the web trace source dir from the web trace app vite config', () => {
+    // Same reasoning as the medications case: derive the path rather than
+    // pinning a second literal copy, so this fails if the app moves its output.
+    const configPath = join(repoRoot, 'apps', 'web-trace', 'vite.config.ts')
+    const config = readFileSync(configPath, 'utf8')
+    const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
+    expect(declared).toBeDefined()
+    const expected = resolve(join(repoRoot, 'apps', 'web-trace'), declared ?? '')
+    expect(join(repoRoot, sectionFor('wildflower-web-trace').sourceDir)).toBe(expected)
+  })
+
+  it('requires exactly the HTML entries the web trace app builds', () => {
+    // The app declares its entries explicitly, so the required files can be
+    // reconciled against them: adding or dropping a SMART entry there without
+    // updating the layout fails here instead of publishing a section whose
+    // launch endpoint 404s.
+    const appDir = join(repoRoot, 'apps', 'web-trace')
+    const config = readFileSync(join(appDir, 'vite.config.ts'), 'utf8')
+    const entries = [...config.matchAll(/'\.\/([\w-]+\.html)'/g)].map(([, file]) => file ?? '')
+    expect(entries.length).toBeGreaterThan(0)
+    expect([...sectionFor('wildflower-web-trace').requiredFiles].toSorted()).toEqual(
+      entries.toSorted()
+    )
+    // The entries the config names are real files in the app, so the build
+    // genuinely produces the required outputs.
+    for (const entry of entries) expect(existsSync(join(appDir, entry))).toBe(true)
   })
 
   it('points at the marketing build output that carries the CNAME', () => {

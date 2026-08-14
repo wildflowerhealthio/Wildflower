@@ -54,6 +54,16 @@ export const siteSections: readonly SiteSection[] = [
     // A single-page console; the bundled assets hang off it.
     requiredFiles: ['index.html'],
   },
+  {
+    packageName: 'wildflower-web-trace',
+    // Same arrangement as the medications app: the Web Trace app builds into
+    // the vendored self-hosted-apps tree it ships from as a Tauri resource, and
+    // this package copies that output rather than redirecting it.
+    sourceDir: 'slices/apps/self-hosted-apps/web-trace',
+    destPath: 'web-trace-app',
+    // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
+    requiredFiles: ['index.html', 'launch.html'],
+  },
 ]
 
 /** A {@link SiteSection} resolved to absolute filesystem paths. */

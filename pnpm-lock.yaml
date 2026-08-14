@@ -252,6 +252,9 @@ importers:
       wildflower-server-docs:
         specifier: workspace:*
         version: link:../wildflower-server-docs
+      wildflower-web-trace:
+        specifier: workspace:*
+        version: link:../web-trace
 
   apps/marketing-website:
     dependencies:
