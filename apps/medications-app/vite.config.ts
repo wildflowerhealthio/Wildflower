@@ -20,6 +20,12 @@ export default defineConfig({
     // maps the whole `slices/apps/self-hosted-apps/` dir into `bundle.resources`)
     // and the host's `sync_vendored_self_hosted_apps` seeds it into app-data on
     // startup. The folder is gitignored like every other vendored build.
+    //
+    // The trailing segment is deliberately `medication`, not the package name
+    // `medications-app`: it is the `content_folder` of the seeded app row
+    // (`apps-rust` migration `0003_seed_wildflower_medication_app`) and the
+    // path baked into the Tauri `bundle.resources`, so it can only change
+    // alongside a migration.
     outDir: '../../slices/apps/self-hosted-apps/medication',
     emptyOutDir: true,
     rolldownOptions: {

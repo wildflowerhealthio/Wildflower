@@ -2,9 +2,9 @@
 
 Home for vendored FHIR app builds served from the device. Today that's three
 apps: [`patient-browser`][upstream], a third-party SMART-on-FHIR sample app;
-`medication`, the first-party Medications app built from `apps/medication/`; and
-`web-trace`, the first-party Web Trace recordings viewer built from
-`apps/web-trace/`.
+`medication`, the vendored build directory for the first-party Medications app,
+whose source lives in `apps/medications-app/`; and `web-trace`, the first-party
+Web Trace recordings viewer built from `apps/web-trace/`.
 
 [upstream]: https://github.com/smart-on-fhir/patient-browser
 

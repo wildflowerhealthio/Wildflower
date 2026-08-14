@@ -35,7 +35,7 @@ vp install
 
 This is a pnpm + Vite+ workspace (a polyglot repo — TS packages plus a Cargo workspace). Top-level directories:
 
-- **`apps/`** — User-facing applications: `marketing-website`, `medication` (the SMART-on-FHIR medication app), `github-pages` (assembles the marketing site and the medication app into the published GitHub Pages artifact), `wildflower-react` (SPA in the Tauri webview), `wildflower-tauri` (Tauri host, Rust in `src-tauri`), `wildflower-relay` (Rust tunnel relay)
+- **`apps/`** — User-facing applications: `marketing-website`, `medications-app` (the SMART-on-FHIR medications app), `github-pages` (assembles the marketing site and the medications app into the published GitHub Pages artifact), `wildflower-react` (SPA in the Tauri webview), `wildflower-tauri` (Tauri host, Rust in `src-tauri`), `wildflower-relay` (Rust tunnel relay)
 - **`global/`** — Project-agnostic shared utilities, copy-pastable to other projects
 - **`slices/`** — Vertical product slices (`apps`, `browser-sniffer`, `collector`, `databases`, `emr`, `gatekeeper`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`). Each is a `<name>-core` plus optional platform adapters (`-react`, `-rust`, `-tauri`/`-tauri-rust`, `-node`, `-web`); a few are Rust-only
 - **`plugins/`** — Tauri plugins (`tauri-plugin-native-webview`)

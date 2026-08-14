@@ -4,8 +4,8 @@ The Web Trace viewer, shipped as a self-hosted SMART-on-FHIR app. It wraps
 [`web-trace-react`](../../slices/web-trace/web-trace-react/AGENTS.md) — the app
 itself holds no viewing logic, only the wiring a self-hosted origin needs.
 
-`apps/medication` is the template for the bundle shape (two HTML entries, a
-relative `base`, a build straight into the vendored `self-hosted-apps` tree).
+`apps/medications-app` is the template for the bundle shape (two HTML entries,
+a relative `base`, a build straight into the vendored `self-hosted-apps` tree).
 What is _not_ shared with it is the auth wiring below.
 
 ## Why this app has a router and a bearer token
@@ -56,8 +56,8 @@ package growing a second, prop-threaded way in.
   `webHttpClientLayer`.** The app is registered `local_only = 1`, and the
   telemetry layer's OTLP exporter is exactly the kind of outbound request that
   claim rules out.
-- **`build` is `vp build`, with no `tsc` step** (unlike `apps/medication`). The
-  tsconfig sets `customConditions: ["source"]` so `tsc` and the bundler agree on
+- **`build` is `vp build`, with no `tsc` step** (unlike `apps/medications-app`).
+  The tsconfig sets `customConditions: ["source"]` so `tsc` and the bundler agree on
   which copy of `QueryClient` a slice's router context refers to — without it,
   threading that context into `QueryClientProvider` does not typecheck against
   the rolled-up `dist/*.d.ts`. But under that condition a package-local `tsc`

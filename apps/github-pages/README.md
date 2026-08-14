@@ -7,7 +7,7 @@ that owns it, and this package places those outputs at their public URLs.
 | URL                | Source package                                 |
 | ------------------ | ---------------------------------------------- |
 | `/`                | `marketing-website` (`apps/marketing-website`) |
-| `/medications-app` | `wildflower-medication` (`apps/medication`)    |
+| `/medications-app` | `medications-app` (`apps/medications-app`)     |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 
@@ -17,8 +17,8 @@ GitHub Pages publishes exactly one artifact per site, so everything served from
 the domain has to be staged into one directory tree. Each assembled section is a
 workspace `devDependency` of this package, so the workspace's own build ordering
 (`vp run pack`, i.e. `vp run --cache -r build`) builds every section before this
-package's build stages them. Doing that here keeps each
-app's own build config untouched — in particular the medication app keeps
+package's build stages them. Doing that here keeps each app's own build config
+untouched — in particular the medications app keeps
 building into `slices/apps/self-hosted-apps/medication`, where it is also
 vendored as a Tauri resource. This package only copies from there.
 
@@ -37,7 +37,7 @@ vp test                        # unit tests for the layout
 `build` is `src/assemble.ts`, which refuses to write anything if the layout
 resolves outside `dist/`, copies the sections' build outputs into
 `dist/`, and fails if a required file (either `index.html`, the root `CNAME`, or
-the medication app's `launch.html` SMART launch entry) is missing — a silently
+the medications app's `launch.html` SMART launch entry) is missing — a silently
 empty upstream build never gets published. Running it on its own expects the
 sections to have been built already; `vp run pack` guarantees that ordering.
 
