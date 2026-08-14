@@ -35,7 +35,7 @@ vp install
 
 This is a pnpm + Vite+ workspace (a polyglot repo — TS packages plus a Cargo workspace). Top-level directories:
 
-- **`apps/`** — User-facing applications: `website`, `wildflower-react` (SPA in the Tauri webview), `wildflower-tauri` (Tauri host, Rust in `src-tauri`), `wildflower-relay` (Rust tunnel relay)
+- **`apps/`** — User-facing applications: `marketing-website`, `wildflower-react` (SPA in the Tauri webview), `wildflower-tauri` (Tauri host, Rust in `src-tauri`), `wildflower-relay` (Rust tunnel relay)
 - **`global/`** — Project-agnostic shared utilities, copy-pastable to other projects
 - **`slices/`** — Vertical product slices (`apps`, `browser-sniffer`, `collector`, `databases`, `emr`, `gatekeeper`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`). Each is a `<name>-core` plus optional platform adapters (`-react`, `-rust`, `-tauri`/`-tauri-rust`, `-node`, `-web`); a few are Rust-only
 - **`plugins/`** — Tauri plugins (`tauri-plugin-native-webview`)
@@ -52,7 +52,7 @@ See [slices/AGENTS.md](./slices/AGENTS.md) for the slice layering rules.
 All workflow runs through `vp`:
 
 ```bash
-vp run dev           # Start EVERY package's dev server in parallel (not just website)
+vp run dev           # Start EVERY package's dev server in parallel (not just marketing-website)
 vp run ready         # fmt + lint + lint:comments + lint:docs + pack + test:all — full pre-PR check
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run test:all      # Run the full Vitest test pass

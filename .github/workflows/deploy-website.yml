@@ -1,19 +1,19 @@
 name: Deploy Website
 
-# Builds the marketing site (apps/website) and publishes it to GitHub Pages.
+# Builds the marketing site (apps/marketing-website) and publishes it to GitHub Pages.
 # Runs on pushes to main that touch the site (or this workflow) and on manual
 # dispatch.
 #
 # Prerequisites (one-time, in repo Settings → Pages):
 #   - Source: "GitHub Actions".
 #   - Custom domain: wildflower-health.io. The CNAME file in
-#     apps/website/public carries that domain into the build output so the
+#     apps/marketing-website/public carries that domain into the build output so the
 #     setting survives each deploy.
 on:
   push:
     branches: [main]
     paths:
-      - 'apps/website/**'
+      - 'apps/marketing-website/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/deploy-website.yml'
@@ -55,12 +55,12 @@ jobs:
       # emits the static site — including the copied public/CNAME — to dist/.
       - name: Build website
         run: vp run build
-        working-directory: apps/website
+        working-directory: apps/marketing-website
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v5
         with:
-          path: apps/website/dist
+          path: apps/marketing-website/dist
 
   deploy:
     name: Deploy

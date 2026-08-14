@@ -112,7 +112,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 ## Commands
 
 ```bash
-vp run dev           # Start EVERY package's dev server in parallel (vp run -r --parallel dev), not just website
+vp run dev           # Start EVERY package's dev server in parallel (vp run -r --parallel dev), not just marketing-website
 vp run ready         # fmt + lint + lint:comments + lint:docs + pack + test:all — full pre-PR check (≈ CI's TS-side gates)
 vp test              # Run Vitest across all packages (Vitest projects mode wired in root vite.config.ts)
 vp run test:all      # Run the full Vitest test pass

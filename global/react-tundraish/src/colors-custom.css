@@ -29,10 +29,10 @@
  * hue) and the same navy identity, stepped lighter so accent-as-text stays
  * legible on the dark canvas.
  *
- * NOTE: the marketing website (`apps/website`) shares react-tundraish as its
+ * NOTE: the marketing website (`apps/marketing-website`) shares react-tundraish as its
  * design base but keeps its own warm plum/serif brand — it re-pins the
  * value-carrying tokens below (neutrals, accent, surfaces, status, card/chip)
- * in `apps/website/src/styles/warm-palette.css`, imported after this file. Keep
+ * in `apps/marketing-website/src/styles/warm-palette.css`, imported after this file. Keep
  * those two in sync when adding a new value-carrying token here.
  *
  * The tundra-css colour ramps this palette does *not* actively use (orange /

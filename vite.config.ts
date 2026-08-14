@@ -51,7 +51,7 @@ export default defineConfig({
     projects: [
       'apps/medication/vite.config.ts',
       'apps/web-trace/vite.config.ts',
-      'apps/website/vite.config.ts',
+      'apps/marketing-website/vite.config.ts',
       'apps/wildflower-react/vite.config.ts',
       'global/effect-messaging/effect-messaging-core/vite.config.ts',
       'global/effect-messaging/effect-messaging-react/vite.config.ts',
