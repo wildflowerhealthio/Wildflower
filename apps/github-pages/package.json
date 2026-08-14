@@ -16,6 +16,7 @@
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:",
-    "wildflower-server-docs": "workspace:*"
+    "wildflower-server-docs": "workspace:*",
+    "wildflower-web-trace": "workspace:*"
   }
 }

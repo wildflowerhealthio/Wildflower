@@ -100,6 +100,19 @@ package growing a second, prop-threaded way in.
   control surfaces as a test failure rather than as a silent overlap —
   `app.test.tsx` asserts the absence directly.
 
+## Where the bundle is served
+
+Two places, from the same build output:
+
+- **On device**, as the seeded self-hosted app below — `http://127.0.0.1:8091/`
+  or a tunnel subdomain, out of the vendored `self-hosted-apps/web-trace` tree
+  this app's `outDir` writes.
+- **On the published site**, at
+  [`/web-trace-app`](https://wildflower-health.io/web-trace-app) — `github-pages`
+  copies that same directory into the Pages artifact
+  ([apps/github-pages/README.md](../github-pages/README.md)). Copying it is why
+  the `outDir` cannot move: it is the seeded row's `content_folder`.
+
 ## Seeded registration
 
 The app is seeded by two migrations that must land together — an app

@@ -1,9 +1,10 @@
 name: Deploy GitHub Pages
 
 # Builds the published static site (apps/github-pages, which assembles the
-# marketing site at /, the medications app at /medications-app and the
-# server-docs API console at /wildflower-server-docs) and publishes it to GitHub
-# Pages. Runs on every push to main and on manual dispatch: the assembled apps
+# marketing site at /, the medications app at /medications-app, the server-docs
+# API console at /wildflower-server-docs and the Web Trace app at /web-trace-app)
+# and publishes it to GitHub Pages.
+# Runs on every push to main and on manual dispatch: the assembled apps
 # depend on much of the workspace, so a path filter would only ever be wrong
 # about which changes can alter the published site.
 #
