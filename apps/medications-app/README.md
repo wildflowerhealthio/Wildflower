@@ -46,7 +46,11 @@ vp run -F medications-app dev     # strictPort, from slices/apps/dev-app-ports.j
 Debug builds of the host additionally seed a `medications-app-dev` **self-hosted**
 row on that port plus its own OAuth client (`apps-rust`'s `seed_dev_apps` /
 `gatekeeper-rust`'s `seed_dev_app_clients`), so the homescreen carries a
-"Medications (Dev)" tile that launches whatever is serving
-that port — the vite dev server when it is up, otherwise the
-host's copy of the vendored build. The port is pinned in both `vite.config.ts`
-and the dev seed; changing it means changing both.
+"Medications (Dev)" tile that launches whatever is serving that port — the vite
+dev server when it is up, otherwise the host's copy of the vendored build. The
+port has a single source, `slices/apps/dev-app-ports.json`: the vite config reads
+it and `apps-rust` embeds it, so the dev server and the row cannot drift.
+
+The seed only ever writes rows it owns. If an app you uploaded already holds the
+`medications-app-dev` id, the seed logs a warning and leaves it untouched rather
+than adopting it — you get no dev tile until that app is renamed.

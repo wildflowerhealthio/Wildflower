@@ -35,8 +35,8 @@
 //! served by vite.
 
 use anyhow::Context;
-use diesel::sql_types::{Integer, Text};
-use diesel::{RunQueryDsl, SqliteConnection};
+use diesel::sql_types::{BigInt, Integer, Text};
+use diesel::{QueryableByName, RunQueryDsl, SqliteConnection};
 use persistence_rust::DieselPool;
 
 use crate::db::SqliteAppsStore;
@@ -129,6 +129,11 @@ fn dev_apps() -> [DevApp; 2] {
 /// rather than fatal: the insert falls back to `MAX(port) + 1` (as the seed
 /// migrations do), and the reconcile skips a value it cannot take.
 ///
+/// **Only rows this seed owns are ever written.** A debug build can be opened
+/// against a real user's database, so an id already held by something else — a
+/// user's uploaded app, an app of another kind — is left strictly alone and
+/// logged, never adopted (see [`DevRowOwnership`]).
+///
 /// Opens its own [`SqliteAppsStore`] so the apps migrations are applied first —
 /// callers may run this before `setup_apps`, and must, if the host is to bind
 /// listeners for the dev rows (the catalogue `setup_apps` hands back is read
@@ -150,13 +155,87 @@ pub fn seed_dev_apps(pool: DieselPool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Insert-if-missing then reconcile a single [`DevApp`]. Split out so each row is
-/// its own unit of work — a collision on one dev app never blocks the other.
+/// What the database currently holds under a dev app's id — the ownership check
+/// every write below is gated on.
+///
+/// A debug build can be pointed at a real user's database, so "the id is free, or
+/// the row under it is one I wrote" has to be established before anything is
+/// rewritten. The marker is the payload's `seeded` flag: this seed writes
+/// `seeded = 1`, and the upload path writes `seeded = 0` unconditionally
+/// (`db::self_hosted_apps::insert_self_hosted_app`), so a `seeded = 1`
+/// self-hosted payload under a dev id can only have come from here.
+#[derive(Debug, PartialEq, Eq)]
+enum DevRowOwnership {
+    /// No registration holds this id — free to seed.
+    Absent,
+    /// A registration holds it AND its payload is a `seeded = 1` self-hosted row:
+    /// a row this seed wrote on an earlier boot, safe to reconcile.
+    Ours,
+    /// Something else holds the id — a user upload (`seeded = 0`), an app of
+    /// another kind, or a registration whose payload is missing. Left strictly
+    /// alone.
+    Foreign,
+}
+
+/// Counts behind [`DevRowOwnership`], read in one statement so the two halves
+/// can't be read either side of a concurrent write.
+#[derive(QueryableByName)]
+struct OwnershipCounts {
+    #[diesel(sql_type = BigInt)]
+    registrations: i64,
+    #[diesel(sql_type = BigInt)]
+    seeded_configurations: i64,
+}
+
+/// Classify what is stored under `id` (see [`DevRowOwnership`]).
+fn ownership(conn: &mut SqliteConnection, id: &str) -> anyhow::Result<DevRowOwnership> {
+    let counts: OwnershipCounts = diesel::sql_query(
+        "SELECT (SELECT COUNT(*) FROM app_registrations WHERE id = ?) AS registrations, \
+                (SELECT COUNT(*) FROM self_hosted_app_configurations WHERE id = ? AND seeded = 1) \
+                    AS seeded_configurations",
+    )
+    .bind::<Text, _>(id)
+    .bind::<Text, _>(id)
+    .get_result(conn)
+    .context("read dev app ownership")?;
+    Ok(match (counts.registrations, counts.seeded_configurations) {
+        (0, _) => DevRowOwnership::Absent,
+        (_, 0) => DevRowOwnership::Foreign,
+        _ => DevRowOwnership::Ours,
+    })
+}
+
+/// Insert-if-missing then reconcile a single [`DevApp`] — but only when this seed
+/// owns the id (see [`DevRowOwnership`]). Split out so each row is its own unit of
+/// work: a collision on one dev app never blocks the other.
 fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
-    // The registration. `position` appends at the tail (`MAX + 1`) exactly like
-    // the seed migrations, so it can't collide with the UNIQUE column; an
-    // existing row is left in place, which is what keeps a developer's
-    // drag-to-reorder from being undone on the next boot.
+    match ownership(conn, app.id)? {
+        // Someone else's row. Adopting it would silently rewrite a user's app —
+        // its kind, its `client_id`, its name, and its serving origin — so skip
+        // loudly instead. The developer either renames their app or lives without
+        // that dev tile.
+        DevRowOwnership::Foreign => {
+            tracing::warn!(
+                app = %app.id,
+                "an app already exists under this dev id and was not written by the dev seed; \
+                 leaving it untouched (no dev tile for this app)",
+            );
+            return Ok(());
+        }
+        DevRowOwnership::Absent => insert(conn, app)?,
+        DevRowOwnership::Ours => {}
+    }
+
+    // Every statement below is additionally scoped to a `seeded = 1` payload, so
+    // it stays a no-op against a foreign row even if it is ever reached without
+    // the check above.
+    reconcile(conn, app)
+}
+
+/// Write both halves of a fresh dev app: the registration, then its payload.
+fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
+    // `position` appends at the tail (`MAX + 1`) exactly like the seed
+    // migrations, so it can't collide with the UNIQUE column.
     diesel::sql_query(
         "INSERT INTO app_registrations \
              (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) \
@@ -172,28 +251,14 @@ fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     .execute(conn)
     .context("insert dev registration")?;
 
-    // Reconcile the display fields (and the kind/client_id invariants) without
-    // touching placement.
-    diesel::sql_query(
-        "UPDATE app_registrations \
-            SET kind = 'self-hosted', name = ?, subtitle = ?, local_only = 0, \
-                client_id = ?, requires_tunnel = 0 \
-          WHERE id = ?",
-    )
-    .bind::<Text, _>(app.name)
-    .bind::<Text, _>(app.subtitle)
-    .bind::<Text, _>(app.id)
-    .bind::<Text, _>(app.id)
-    .execute(conn)
-    .context("reconcile dev registration")?;
-
-    // The self-hosted payload. Both `port` and `subdomain` are UNIQUE, and an
+    // The self-hosted payload, marked `seeded = 1` — the ownership marker every
+    // later write keys on. Both `port` and `subdomain` are UNIQUE, and an
     // uploaded app can already hold either, so the insert falls back the way the
     // seed migrations do: `MAX(port) + 1` (free by construction) and the app id
     // (free by construction — an upload's subdomain is its id, and the id is
-    // taken by this very row). A fallback moves the dev app's origin, so the
-    // vite server would no longer be the thing serving it; the reconcile below
-    // pulls it back onto the pinned port as soon as the port frees up.
+    // taken by this very row). A fallback moves the dev app's origin, so the vite
+    // server would no longer be the thing serving it; the reconcile pulls it back
+    // onto the pinned port as soon as the port frees up.
     diesel::sql_query(
         "INSERT INTO self_hosted_app_configurations \
              (id, port, content_folder, subdomain, seeded, launch_path) \
@@ -221,15 +286,37 @@ fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     .bind::<Text, _>(app.id)
     .execute(conn)
     .context("insert dev self-hosted configuration")?;
+    Ok(())
+}
 
-    // Reconcile the payload back onto the pinned topology — but only the parts
-    // that are actually free. The `id <> ?` guards make this a no-op when the row
-    // already holds the pinned values (the ordinary restart), and skip the write
-    // rather than fail when another app holds the port or subdomain.
+/// Pull an already-owned dev row back onto the values [`dev_apps`] declares.
+///
+/// Placement (`position` / `on_homescreen`) is deliberately never rewritten —
+/// that belongs to `PUT /home-screen`, so a developer's reorder survives a
+/// restart. Every statement carries the `seeded = 1` ownership predicate, and the
+/// topology writes additionally skip (rather than fail on) a port or subdomain
+/// another app holds; the reclaim happens on a later boot once it frees up.
+fn reconcile(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
+    diesel::sql_query(
+        "UPDATE app_registrations \
+            SET kind = 'self-hosted', name = ?, subtitle = ?, local_only = 0, \
+                client_id = ?, requires_tunnel = 0 \
+          WHERE id = ? \
+            AND EXISTS (SELECT 1 FROM self_hosted_app_configurations \
+                         WHERE id = ? AND seeded = 1)",
+    )
+    .bind::<Text, _>(app.name)
+    .bind::<Text, _>(app.subtitle)
+    .bind::<Text, _>(app.id)
+    .bind::<Text, _>(app.id)
+    .bind::<Text, _>(app.id)
+    .execute(conn)
+    .context("reconcile dev registration")?;
+
     diesel::sql_query(
         "UPDATE self_hosted_app_configurations \
-            SET content_folder = ?, launch_path = ?, seeded = 1 \
-          WHERE id = ?",
+            SET content_folder = ?, launch_path = ? \
+          WHERE id = ? AND seeded = 1",
     )
     .bind::<Text, _>(app.content_folder)
     .bind::<Text, _>(DEV_LAUNCH_PATH)
@@ -240,7 +327,7 @@ fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "UPDATE self_hosted_app_configurations \
             SET port = ? \
-          WHERE id = ? \
+          WHERE id = ? AND seeded = 1 \
             AND NOT EXISTS (SELECT 1 FROM self_hosted_app_configurations WHERE port = ? AND id <> ?)",
     )
     .bind::<Integer, _>(app.port)
@@ -253,7 +340,7 @@ fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "UPDATE self_hosted_app_configurations \
             SET subdomain = ? \
-          WHERE id = ? \
+          WHERE id = ? AND seeded = 1 \
             AND NOT EXISTS (SELECT 1 FROM self_hosted_app_configurations WHERE subdomain = ? AND id <> ?)",
     )
     .bind::<Text, _>(app.subdomain)
@@ -380,6 +467,95 @@ mod tests {
         let (_, other) = dev_self_hosted(&store, "web-trace-app-dev");
         assert_eq!(i32::from(other.port), dev_apps()[1].port);
         assert_eq!(other.subdomain, "web-trace-dev");
+    }
+
+    /// A debug build can be opened against a real user's database. An app the
+    /// user uploaded under a dev id is NOT this seed's row (an upload always
+    /// writes `seeded = 0`), so the seed must leave every one of its columns
+    /// alone — kind, client_id, name, and its serving origin — rather than
+    /// adopting and rewriting it.
+    #[test]
+    fn never_adopts_a_user_row_that_already_holds_a_dev_id() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let store = SqliteAppsStore::new(pool.clone()).unwrap();
+        let mut conn = pool.get().unwrap();
+        // An upload that slugged to exactly the dev id (`seeded = 0`).
+        diesel::sql_query(
+            "INSERT INTO app_registrations \
+                 (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) \
+             VALUES ('medications-app-dev', 'self-hosted', 100, 0, 'My Meds', 'Mine', 1, NULL, 0)",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        diesel::sql_query(
+            "INSERT INTO self_hosted_app_configurations \
+                 (id, port, content_folder, subdomain, seeded, launch_path) \
+             VALUES ('medications-app-dev', 9001, 'my-meds', 'medications-app-dev', 0, NULL)",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        drop(conn);
+
+        seed_dev_apps(pool.clone()).unwrap();
+
+        let (registration, config) = dev_self_hosted(&store, "medications-app-dev");
+        assert_eq!(registration.name, "My Meds", "the user's name must survive");
+        assert_eq!(registration.subtitle.as_deref(), Some("Mine"));
+        assert!(registration.local_only, "the user's flags must survive");
+        assert!(!registration.on_homescreen, "placement must survive");
+        assert_eq!(
+            registration.client_id, None,
+            "the seed must not attach its client_id to a user's app",
+        );
+        assert_eq!(
+            (i32::from(config.port), config.content_folder.as_str()),
+            (9001, "my-meds"),
+            "the user's serving origin and content must survive",
+        );
+        assert!(!config.seeded, "a user row stays user-owned");
+        assert_eq!(config.launch_path, None);
+
+        // A second boot must be just as inert, and the sibling dev app is
+        // unaffected by its neighbour's collision.
+        seed_dev_apps(pool).unwrap();
+        let (again, _) = dev_self_hosted(&store, "medications-app-dev");
+        assert_eq!(again.name, "My Meds");
+        let (_, sibling) = dev_self_hosted(&store, "web-trace-app-dev");
+        assert_eq!(i32::from(sibling.port), dev_apps()[1].port);
+    }
+
+    /// The same protection for a *cloud* app squatting a dev id: the payload the
+    /// ownership check looks for isn't there, so the seed writes nothing at all —
+    /// in particular it does not staple a self-hosted payload onto a cloud row.
+    #[test]
+    fn never_adopts_an_app_of_another_kind_under_a_dev_id() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let store = SqliteAppsStore::new(pool.clone()).unwrap();
+        let mut conn = pool.get().unwrap();
+        diesel::sql_query(
+            "INSERT INTO app_registrations \
+                 (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) \
+             VALUES ('web-trace-app-dev', 'cloud', 100, 1, 'Someone Elses', NULL, 0, NULL, 1)",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        diesel::sql_query(
+            "INSERT INTO cloud_app_configurations (id, url) \
+             VALUES ('web-trace-app-dev', 'https://example.test/launch')",
+        )
+        .execute(&mut conn)
+        .unwrap();
+        drop(conn);
+
+        seed_dev_apps(pool).unwrap();
+
+        let (registration, configuration) = store.find_app("web-trace-app-dev").unwrap().unwrap();
+        assert_eq!(registration.name, "Someone Elses");
+        assert!(
+            matches!(configuration, AppConfiguration::Cloud(_)),
+            "the seed must not turn a cloud app into a self-hosted one",
+        );
+        assert!(registration.requires_tunnel, "its flags must survive");
     }
 
     #[test]

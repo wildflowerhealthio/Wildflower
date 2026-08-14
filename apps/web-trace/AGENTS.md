@@ -150,6 +150,10 @@ build. The port has a single source, `slices/apps/dev-app-ports.json`: the vite
 config reads it and `apps-rust` embeds it, so the dev server and the row cannot
 drift.
 
+The seed only ever writes rows it owns. If an app you uploaded already holds the
+`web-trace-app-dev` id, the seed logs a warning and leaves it untouched rather
+than adopting it — you get no dev tile until that app is renamed.
+
 ## Testing
 
 - The auth wiring in isolation — prefix derivation (including the `Left` on an
