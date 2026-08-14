@@ -1973,6 +1973,9 @@ importers:
       fhir-r4-react:
         specifier: workspace:*
         version: link:../../emr/fhir-r4-react
+      importer-core:
+        specifier: workspace:*
+        version: link:../importer-core
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1

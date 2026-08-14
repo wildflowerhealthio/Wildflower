@@ -41,18 +41,30 @@ interface PickedHar {
 const LOCAL_SOURCE: PickedHarSource = { _tag: 'local' }
 
 /**
- * The `DocumentReference/<id>` reference for a server-held archive.
+ * The `DocumentReference/<id>` reference for a HAR archive by logical id.
  *
  * @param id - The archive `DocumentReference`'s logical id
- * @returns The literal FHIR reference string a `server` source carries
+ * @returns The literal FHIR reference string, `DocumentReference/<id>`
  *
  * @remarks
- * Spelled in one place so the `server` source and any consumer that resolves the
- * reference back to an id agree on the form.
+ * Spelled in one place so the `server` source, the `meta.source` stamp a confirm
+ * writes for a freshly-uploaded local archive, and any consumer that resolves the
+ * reference back to an id all agree on the form. A `server` pick already carries
+ * this reference; a `local` pick has none until its bytes are uploaded, at which
+ * point the confirm step mints the archive's id and turns it into a reference the
+ * same way here.
+ */
+const harArchiveReference = (id: string): string => `DocumentReference/${id}`
+
+/**
+ * The `server` {@link PickedHarSource} for a server-held archive by id.
+ *
+ * @param id - The archive `DocumentReference`'s logical id
+ * @returns A `server` source carrying its {@link harArchiveReference}
  */
 const serverSource = (id: string): PickedHarSource => ({
   _tag: 'server',
-  reference: `DocumentReference/${id}`,
+  reference: harArchiveReference(id),
 })
 
-export { LOCAL_SOURCE, type PickedHar, type PickedHarSource, serverSource }
+export { harArchiveReference, LOCAL_SOURCE, type PickedHar, type PickedHarSource, serverSource }

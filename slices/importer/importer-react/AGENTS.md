@@ -1,37 +1,52 @@
 # AGENTS.md — slices/importer/importer-react
 
-The browser UI adapter of the importer slice: the source picker that turns any of
-three inputs — a file dropped on the zone, a file chosen through the OS picker, or
-a HAR archive already uploaded to the device's own FHIR server — into one
-`PickedHar` the rest of the importer replays. Plus the upload that puts a local
-HAR onto the device as an archive `DocumentReference`.
+The browser UI adapter of the importer slice: the whole preview-then-confirm
+flow. `ImporterScreen` is the one surface a host app mounts — pick a HAR (dropped,
+chosen, or an archive already on the device's FHIR server), preview exactly what
+would be written, confirm once to write it (uploading the archive first when the
+pick is local), and read the results.
 
 ## Layering
 
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../AGENTS.md): it depends on its sources, never the reverse.
-It depends on `web-trace-core` (the HAR archive codec under `/codec` and the HAR
-parser under `/har`), `fhir-r4` (the typed client), and `fhir-r4-react` (the
-authed runner and the slice runtime layer).
+It depends on `importer-core` (the read/write pipeline — `runHarImport`,
+`persistPreview`), `web-trace-core` (the HAR archive codec under `/codec` and the
+HAR parser under `/har`), `fhir-r4` (the typed client and `ResourceWriteFailure`),
+and `fhir-r4-react` (the authed runner and the slice runtime layer).
 
-**It does not depend on `importer-core`.** This package was built parallel with
-the core, so the picker's job ends at a `PickedHar` — the seam the rest of the
-importer consumes — and nothing here imports the core. If a later change wants to
-hand the core more than a `PickedHar`, widen that type; do not reach into the
-core from a component.
+The seam between this package and the core is narrow: the read half hands back an
+`ImportPreview` and the write half takes a `Preview` + a source reference. This
+package owns the flow and the rendering; the core owns detect/replay/persist. If a
+component needs more than those two functions expose, widen the core's surface
+rather than reaching around it.
 
-**Presentation and interaction only.** Nothing here parses HAR or encodes an
-archive. The parser (`fromHarJson`) and the archive codec
-(`harArchiveToDocumentReference` / `harArchiveFromDocumentReference`) are
-`web-trace-core`'s; this package drives them and reimplements neither.
+**Presentation and interaction only.** Nothing here parses HAR, encodes an
+archive, replays entities, or writes resources. The parser (`fromHarJson`), the
+archive codec, the replay/fold (`runHarImport`), and the write sink
+(`persistPreview` → `fhir-r4`'s `persistResources`) all live below this package;
+it drives them and reimplements none.
 
 ## Module layout
 
+- **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
+  router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
+  `useConfirmImport` → `ImportResults`. A cancel or "import another" discards and
+  returns to the picker.
+- **`src/preview/`** — the read half and its view. `use-import-run.ts` runs
+  `runHarImport` (via `useRunAuthed`) and holds the `ImportPreview`;
+  `use-confirm-import.ts` is the opt-in write action (upload-then-persist);
+  `preview-panel.tsx` renders every read outcome distinctly and gates the confirm
+  affordance.
+- **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold
+  (`collectImportSummary` semantics: any failure ⇒ partial); `import-results.tsx`
+  renders the written/failed tally and the provenance link.
 - **`src/sources/`** — the picker. `picked-har.ts` is the vocabulary
-  (`PickedHar`, and the `local` / `server` `PickedHarSource`); `local-har.ts` is
+  (`PickedHar`, the `local` / `server` `PickedHarSource`, and `harArchiveReference`
+  — the one spelling of a `DocumentReference/<id>` reference); `local-har.ts` is
   the pure "read a local file and validate it as a HAR" gate; `source-picker.tsx`
-  is the surface that composes the drop-and-pick zone, the file input it opens,
-  and the server archive list.
+  composes the drop-and-pick zone, the file input it opens, and the server archive
+  list.
 - **`src/queries/`** — the reads. `har-archives.ts` is the paged
   `DocumentReference` search pinned to the HAR-archive category, plus
   `fetchHarArchive` — the one-archive fetch-and-decode a row selection runs;
@@ -43,6 +58,25 @@ archive. The parser (`fromHarJson`) and the archive codec
 
 ## Traps
 
+- **The read half writes nothing, and the split is the whole product.** Reaching a
+  preview issues no writes — `runHarImport` requires no services and is run for its
+  data only. Every write is behind the one explicit confirm. A test pins this on
+  the wire (zero writes to reach a preview); do not add a write to the read path
+  (e.g. an "auto-upload on pick") that would collapse the opt-in seam.
+- **Confirm ordering is fixed: archive create, then resource writes.** A `local`
+  pick's archive is uploaded first (`useUploadHar`) and the reference it mints is
+  stamped onto every resource's `meta.source`; only then does `persistPreview` run.
+  A `server` pick uploads nothing and links to the document it was fetched from.
+  Sequencing matters — a resource must never be written pointing at an archive that
+  is not there yet — so the upload's `mutateAsync` is awaited before the persist
+  begins. `persistPreview` never throws, so the only rejection a confirm surfaces
+  is the upload's; write failures come back as data and fold into `partial`.
+- **The confirm affordance is gated on there being something to write.**
+  `PreviewPanel` shows the confirm button only for a claimed `Preview` with at
+  least one resource; a `NoCollectorClaims` and a claimed-but-empty preview offer
+  only a way back. The screen still narrows `ImportPreview` to `Preview` before
+  calling `useConfirmImport` — the gate is the affordance, the narrowing is the
+  type-safety.
 - **A HAR archive and a web trace share a code system and nothing else, and the
   disjointness is load-bearing.** The archive list searches `category` for
   `` `${WEB_TRACE_CODE_SYSTEM}|har-archive` `` (`HAR_ARCHIVE_CATEGORY_TOKEN`,
@@ -123,12 +157,37 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   list — mounted alongside — refetches on invalidation and the new archive appears
   as an observed fact rather than a spy. It also asserts two uploads of the same
   bytes produce two distinct ids.
+- `importer-screen.test.tsx` is the end-to-end one: it replaces only the router
+  seam and drives the whole flow over a recording stub `HttpClient`, reading one
+  ordered write log back. It pins the opt-in seam (zero writes to reach a preview),
+  the confirm ordering (the archive create lands before the first resource write,
+  every resource write carries `meta.source`), the server-source case (no archive
+  create, links to the fetched document), the partial-failure fold (a stubbed 503
+  on Observation writes yields the `partial` result listing them), and cancel
+  (discards with no writes).
+- **`importer-screen.test.tsx` re-wraps `TextEncoder` output through the ambient
+  `Uint8Array`.** The confirm's local-upload path encodes the HAR text to bytes,
+  and jsdom's `TextEncoder` hands back a `Uint8Array` from a realm the archive
+  codec's `Uint8ArrayFromSelf` schema rejects on `instanceof` (the same trap the
+  picker test dodges by hand-building wires). A browser has one realm, so the test
+  stubs `TextEncoder` with a subclass that re-wraps its output through
+  `new Uint8Array(...)` — reproducing the real single-realm behaviour rather than
+  the jsdom artifact. The production encode stays `new TextEncoder().encode(text)`.
+- `preview/preview-panel.test.tsx` drives the pure panel by props — no router — and
+  pins that each read outcome (no-collector, claimed-but-empty, parse-failure, and
+  a healthy preview) renders to its own role/text and that the confirm appears only
+  when there is something to write. `results/import-outcome.test.ts` is the
+  property test for the fold: `written = attempted − failures`, and any failure ⇒
+  partial.
 
 ## References
 
+- [slices/importer AGENTS.md](../AGENTS.md) — why the slice exists, its guardrails,
+  and the detect→replay→preview→persist pipeline this package's flow drives.
+- [importer-core AGENTS.md](../importer-core/AGENTS.md) — the read/write halves
+  (`runHarImport`, `persistPreview`) this package mounts a UI over.
 - [slices AGENTS.md](../../AGENTS.md) — the slice layering rules this package
-  follows. The `slices/importer/AGENTS.md` slice-family doc is owned by the
-  importer-core ticket and is intentionally not linked here until it lands.
+  follows.
 - [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the HAR
   archive codec and the HAR parser this package drives, and the disjointness of
   traces and archives.
