@@ -6,14 +6,26 @@
  * with no avoidable dependencies. It is a standard algorithm pinned to the
  * RFC's own known-answer vector in the tests beside this file — the same
  * treatment `kitchen-sink`'s FNV implementation gets — so "matches the spec" is
- * asserted, not asserted-by-comment. (`gatekeeper-core`'s `internal/pkce.ts` is
- * the Effect-flavoured twin used inside the app tree; it is not exported from
- * that package, and importing `effect` into a static page to reach it would cost
- * more than the ten lines below.)
+ * asserted, not asserted-by-comment.
  *
- * Both entry points take their crypto as an argument, so the tests drive them
- * with fixed bytes and the browser passes `window.crypto`.
+ * The digest is a `Promise`, so {@link codeChallengeS256} is an `Effect` that
+ * fails with {@link PkceUnavailable} — the same shape `web-trace-core`'s
+ * `hmac.ts` gives the one other Web Crypto dependency in the repo. The random
+ * values stay plain functions of an injected source: they cannot fail, and the
+ * source is what tests substitute.
  */
+
+import { Data, Effect } from 'effect'
+
+/**
+ * Raised when Web Crypto will not produce an S256 challenge — an insecure
+ * origin (browsers gate `crypto.subtle` on secure contexts) or a runtime
+ * without it. Not recoverable by retrying, and fatal to sign-in: this console
+ * does not fall back to a `plain` challenge.
+ */
+export class PkceUnavailable extends Data.TaggedError('PkceUnavailable')<{
+  readonly reason: string
+}> {}
 
 /** The slice of Web Crypto this module needs. */
 export interface RandomBytesSource {
@@ -58,10 +70,17 @@ export const createState = (random: RandomBytesSource): string => randomBase64Ur
  * `plain` challenge is no protection at all, and `gatekeeper-rust`'s authorize
  * endpoint rejects it anyway.
  */
-export const codeChallengeS256 = async (
+export const codeChallengeS256 = (
   verifier: string,
   subtle: DigestSource
-): Promise<string> => {
-  const digest = await subtle.digest('SHA-256', new TextEncoder().encode(verifier))
-  return base64UrlEncode(new Uint8Array(digest))
-}
+): Effect.Effect<string, PkceUnavailable> =>
+  Effect.tryPromise({
+    try: async () =>
+      base64UrlEncode(new Uint8Array(await subtle.digest('SHA-256', encoder.encode(verifier)))),
+    catch: (cause) =>
+      new PkceUnavailable({
+        reason: `This browser could not compute a PKCE challenge: ${String(cause)}`,
+      }),
+  })
+
+const encoder = new TextEncoder()

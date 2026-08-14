@@ -99,6 +99,13 @@ The client is registered by
 `slices/gatekeeper/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`;
 `src/smart-client.ts` is the browser-side reading of that row, and must match it.
 
+Every fallible step of that is typed: the pure validation (discovery metadata,
+the `state` round trip, the token response) returns an `Either` with a tagged
+error on the left, the async edges (the discovery fetch, the PKCE digest, the
+token POST) are `Effect`s failing with the same errors, and "this page load is
+not a return leg" is an `Option`, not a failure. `main.ts` is the only place an
+Effect is run: one handler renders any error's `reason` on the status line.
+
 Scalar's own OAuth2 support is deliberately **not** used. It authorizes
 per-document, so a six-slice console would ask the reader to sign in six times;
 it drives the flow through a popup whose location it polls, which would boot a

@@ -1,4 +1,5 @@
 import { createApiReference } from '@scalar/api-reference'
+import { Effect, Option } from 'effect'
 
 import '@scalar/api-reference/style.css'
 import './styles.css'
@@ -6,7 +7,13 @@ import './styles.css'
 import { searchWithoutAuthorizationResponse } from './authorization-flow.ts'
 import { consoleConfiguration } from './configuration.ts'
 import { searchWithServerUrl, serverUrlFromSearch } from './server-target.ts'
-import { beginSignIn, completeSignIn, type Session, type SignInEnvironment } from './sign-in.ts'
+import {
+  beginSignIn,
+  completeSignIn,
+  type Session,
+  type SignInEnvironment,
+  type SignInError,
+} from './sign-in.ts'
 import { REGISTERED_REDIRECT_URI, signInAvailability } from './smart-client.ts'
 
 /**
@@ -17,7 +24,10 @@ import { REGISTERED_REDIRECT_URI, signInAvailability } from './smart-client.ts'
  *
  * DOM and history wiring only — the `?server=` parsing, the spec transforms, the
  * Scalar configuration and both halves of the OAuth flow are pure or injectable
- * functions in their own modules, where they are unit-tested.
+ * functions in their own modules, where they are unit-tested. This file is also
+ * the **one** place an Effect is run: `sign-in.ts` hands back `Effect`s whose
+ * failures are tagged errors, and each `runSignInEffect` call below turns one
+ * into a rendered status line.
  */
 
 /** Look up a required element, narrowing to the concrete DOM class. */
@@ -68,6 +78,31 @@ const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'):
   statusLine.textContent = message ?? ''
   statusLine.hidden = message === undefined
   statusLine.classList.toggle('server-bar__status--problem', kind === 'problem')
+}
+
+/**
+ * The single boundary where a sign-in `Effect` is run.
+ *
+ * Both halves of the flow fail with a {@link SignInError}, and every variant of
+ * it carries a `reason` written for a reader, so one handler renders them all:
+ * the message goes on the status line and the button comes back for another
+ * try. `Effect.match` folds both channels away, so the promise never rejects.
+ */
+const runSignInEffect = <A>(
+  effect: Effect.Effect<A, SignInError>,
+  onSuccess: (value: A) => void
+): void => {
+  void Effect.runPromise(
+    effect.pipe(
+      Effect.match({
+        onSuccess,
+        onFailure: (error: SignInError) => {
+          signInButton.disabled = !availability.available
+          showStatus(error.reason, 'problem')
+        },
+      })
+    )
+  )
 }
 
 /**
@@ -153,13 +188,8 @@ signInButton.addEventListener('click', () => {
   }
   signInButton.disabled = true
   showStatus(`Asking ${serverUrl} how to sign in…`)
-  void beginSignIn(serverUrl, signInEnvironment).then((result) => {
-    if (result.kind === 'failed') {
-      signInButton.disabled = false
-      showStatus(result.problem, 'problem')
-      return
-    }
-    window.location.assign(result.url)
+  runSignInEffect(beginSignIn(serverUrl, signInEnvironment), (authorizationUrl) => {
+    window.location.assign(authorizationUrl)
   })
 })
 
@@ -185,13 +215,9 @@ renderAuthControls(initialServerUrl)
 // A return leg from `/oauth/authorize` looks like any other load until the query
 // string is read, so every load asks. `?server=` is restored from the pending
 // record rather than the URL: the registered redirect URI carries no query.
-void completeSignIn(window.location.search, signInEnvironment).then((result) => {
-  if (result.kind === 'none') return
+runSignInEffect(completeSignIn(window.location.search, signInEnvironment), (result) => {
+  if (Option.isNone(result)) return
   clearAuthorizationResponseFromUrl()
-  if (result.kind === 'failed') {
-    showStatus(result.problem, 'problem')
-    return
-  }
-  session = result.session
-  applyServerUrl(result.session.serverUrl)
+  session = result.value
+  applyServerUrl(result.value.serverUrl)
 })

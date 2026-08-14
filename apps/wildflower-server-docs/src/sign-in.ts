@@ -1,25 +1,37 @@
 /**
- * The two halves of a sign-in, each written as one function over an injected
+ * The two halves of a sign-in, each written as one `Effect` over an injected
  * environment: {@link beginSignIn} discovers the target's OAuth endpoints and
  * builds the URL to leave for, {@link completeSignIn} picks the flow back up
  * when the browser comes back and redeems the code.
  *
- * Neither navigates and neither touches the DOM — `beginSignIn` *returns* the
+ * Neither navigates and neither touches the DOM — `beginSignIn` *yields* the
  * URL for `main.ts` to assign — so both are drivable from tests with a stub
  * fetch, fixed random bytes and a plain object standing in for
  * `sessionStorage`.
  *
+ * ## The error channel
+ *
+ * Every way a sign-in can fail is a tagged error in {@link SignInError}, raised
+ * where it happens: {@link PkceUnavailable} and {@link DiscoveryFailed} from the
+ * modules that own those steps, {@link PendingRequestUnusable} from the storage
+ * round trip here, {@link AuthorizationRejected} and
+ * {@link TokenExchangeFailed} from the flow's pure validation. Nothing throws
+ * and nothing returns an ad-hoc `{ ok }` union; `main.ts` runs the Effect at the
+ * one boundary and renders `error.reason` on the header bar's status line.
+ *
  * ## Token custody
  *
- * The access token is returned to the caller and never written anywhere by this
- * module: no `localStorage`, no `sessionStorage`, no cookie. The console is a
- * public page and the token it obtains can be admin-capable, so it lives in one
- * `let` in `main.ts` and dies with the tab — the same in-memory-only policy
+ * The access token is the Effect's success value and is never written anywhere
+ * by this module: no `localStorage`, no `sessionStorage`, no cookie. The console
+ * is a public page and the token it obtains can be admin-capable, so it lives in
+ * one `let` in `main.ts` and dies with the tab — the same in-memory-only policy
  * `makeEmbeddedAuthStateStore` follows for the same reason
  * (`slices/gatekeeper/docs/Auth Token Storage Explanation.md`). The only thing
  * that does reach `sessionStorage` is the pending record — no credential, and
  * deleted the instant the console returns, before the code is even redeemed.
  */
+
+import { Data, Effect, Either, Option } from 'effect'
 
 import {
   authorizationRedirectOutcome,
@@ -31,11 +43,31 @@ import {
   serializePendingAuthorization,
   tokenRequestBody,
   type AccessGrant,
+  type AuthorizationRejected,
+  type PendingAuthorization,
+  type TokenExchangeFailed,
 } from './authorization-flow.ts'
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
-import type { DigestSource, RandomBytesSource } from './pkce.ts'
+import type { DigestSource, PkceUnavailable, RandomBytesSource } from './pkce.ts'
 import { CLIENT_ID, requestedScopeParameter } from './smart-client.ts'
-import { discoverSmartEndpoints } from './smart-discovery.ts'
+import { discoverSmartEndpoints, type DiscoveryFailed } from './smart-discovery.ts'
+
+/**
+ * Raised when the browser will not carry the pending request across the
+ * redirect (Safari's private mode throws on `setItem`), or when the token
+ * endpoint cannot be reached to redeem the code.
+ */
+export class PendingRequestUnusable extends Data.TaggedError('PendingRequestUnusable')<{
+  readonly reason: string
+}> {}
+
+/** Everything a sign-in can fail with, whichever half it fails in. */
+export type SignInError =
+  | DiscoveryFailed
+  | PkceUnavailable
+  | PendingRequestUnusable
+  | AuthorizationRejected
+  | TokenExchangeFailed
 
 /** The `sessionStorage`-shaped slice the flow needs. */
 export interface PendingStore {
@@ -56,72 +88,55 @@ export interface SignInEnvironment {
   readonly pageIsSecure: boolean
 }
 
-/** Where {@link beginSignIn} got to. */
-export type BeginSignInResult =
-  | { readonly kind: 'redirect'; readonly url: string }
-  | { readonly kind: 'failed'; readonly problem: string }
-
 /**
  * Start a sign-in against `serverUrl`: discover its endpoints, mint the PKCE
- * pair and the `state`, stash what the return leg needs, and hand back the
+ * pair and the `state`, stash what the return leg needs, and yield the
  * authorization URL to navigate to.
  *
- * The pending record is written **before** the URL is returned, so a caller
+ * The pending record is written **before** the URL is yielded, so a caller
  * cannot navigate away from a flow whose verifier was never saved.
  */
-export const beginSignIn = async (
+export const beginSignIn = (
   serverUrl: string,
   environment: SignInEnvironment
-): Promise<BeginSignInResult> => {
-  const discovery = await discoverSmartEndpoints(serverUrl, {
-    fetch: environment.fetch,
-    pageIsSecure: environment.pageIsSecure,
-  })
-  if (!discovery.ok) return { kind: 'failed', problem: discovery.problem }
+): Effect.Effect<string, SignInError> =>
+  Effect.gen(function* () {
+    const endpoints = yield* discoverSmartEndpoints(serverUrl, {
+      fetch: environment.fetch,
+      pageIsSecure: environment.pageIsSecure,
+    })
+    const codeVerifier = createCodeVerifier(environment.random)
+    const state = createState(environment.random)
+    const codeChallenge = yield* codeChallengeS256(codeVerifier, environment.subtle)
 
-  const codeVerifier = createCodeVerifier(environment.random)
-  const state = createState(environment.random)
-  let codeChallenge: string
-  try {
-    codeChallenge = await codeChallengeS256(codeVerifier, environment.subtle)
-  } catch {
-    return {
-      kind: 'failed',
-      problem: 'This browser cannot compute a PKCE challenge, so sign-in is not available here.',
-    }
-  }
+    yield* Effect.try({
+      try: () =>
+        environment.store.setItem(
+          PENDING_AUTHORIZATION_KEY,
+          serializePendingAuthorization({
+            state,
+            codeVerifier,
+            serverUrl,
+            tokenEndpoint: endpoints.tokenEndpoint,
+          })
+        ),
+      catch: () =>
+        new PendingRequestUnusable({
+          reason:
+            'This browser would not let the page remember the sign-in request ' +
+            '(session storage is blocked), so it cannot be completed.',
+        }),
+    })
 
-  try {
-    environment.store.setItem(
-      PENDING_AUTHORIZATION_KEY,
-      serializePendingAuthorization({
-        state,
-        codeVerifier,
-        serverUrl,
-        tokenEndpoint: discovery.endpoints.tokenEndpoint,
-      })
-    )
-  } catch {
-    return {
-      kind: 'failed',
-      problem:
-        'This browser would not let the page remember the sign-in request ' +
-        '(session storage is blocked), so it cannot be completed.',
-    }
-  }
-
-  return {
-    kind: 'redirect',
-    url: authorizationRequestUrl(discovery.endpoints.authorizationEndpoint, {
+    return authorizationRequestUrl(endpoints.authorizationEndpoint, {
       clientId: CLIENT_ID,
       redirectUri: environment.redirectUri,
       scope: requestedScopeParameter(),
       state,
       codeChallenge,
       audience: fhirAudienceFor(serverUrl),
-    }),
-  }
-}
+    })
+  })
 
 /** A signed-in session: an in-memory token and what it is good for. */
 export interface Session {
@@ -133,68 +148,81 @@ export interface Session {
   readonly expiresInSeconds: number | undefined
 }
 
-/** Where {@link completeSignIn} got to. */
-export type CompleteSignInResult =
-  /** This page load was not a return from the authorization server. */
-  | { readonly kind: 'none' }
-  | { readonly kind: 'signed-in'; readonly session: Session }
-  | { readonly kind: 'failed'; readonly problem: string }
-
 /**
- * Finish a sign-in from the query string the console came back on.
+ * Finish a sign-in from the query string the console came back on: `None` when
+ * this page load is not a return from the authorization server (the common
+ * case), a {@link Session} when it is and the code redeemed.
  *
- * The pending record is removed as the **first** thing after it is read,
- * whatever happens next: it is single-use, and a stale one left behind would
- * make a later stray `?code=` look legitimate.
+ * The pending record is single-use: it is dropped as soon as this page load is
+ * known to be a return leg — before the code is redeemed, and on the rejected
+ * paths too, so a discarded flow cannot leave a record behind that makes a later
+ * stray `?code=` look legitimate.
  */
-export const completeSignIn = async (
+export const completeSignIn = (
   search: string,
   environment: SignInEnvironment
-): Promise<CompleteSignInResult> => {
-  let stored: string | null = null
-  try {
-    stored = environment.store.getItem(PENDING_AUTHORIZATION_KEY)
-  } catch {
-    stored = null
-  }
-  const outcome = authorizationRedirectOutcome(search, parsePendingAuthorization(stored))
-  if (outcome.kind === 'none') return { kind: 'none' }
-  try {
-    environment.store.removeItem(PENDING_AUTHORIZATION_KEY)
-  } catch {
-    // A storage that refuses removal cannot be helped, and the flow is already
-    // past the point where the record mattered.
-  }
-  if (outcome.kind === 'failed') return { kind: 'failed', problem: outcome.problem }
+): Effect.Effect<Option.Option<Session>, SignInError> =>
+  Effect.gen(function* () {
+    const stored = readPendingRecord(environment.store)
+    const outcome = authorizationRedirectOutcome(search, stored)
+    const isReturnLeg = Either.isLeft(outcome) || Option.isSome(outcome.right)
+    if (isReturnLeg) yield* Effect.sync(() => forgetPendingRecord(environment.store))
+    const returning = yield* outcome
+    if (Option.isNone(returning)) return Option.none()
+    const { code, pending } = returning.value
 
-  let response: Response
-  try {
-    response = await environment.fetch(outcome.pending.tokenEndpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-      body: tokenRequestBody({
-        code: outcome.code,
-        codeVerifier: outcome.pending.codeVerifier,
-        redirectUri: environment.redirectUri,
-        clientId: CLIENT_ID,
-      }),
+    const response = yield* Effect.tryPromise({
+      try: () =>
+        environment.fetch(pending.tokenEndpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            Accept: 'application/json',
+          },
+          body: tokenRequestBody({
+            code,
+            codeVerifier: pending.codeVerifier,
+            redirectUri: environment.redirectUri,
+            clientId: CLIENT_ID,
+          }),
+        }),
+      catch: () =>
+        new PendingRequestUnusable({
+          reason: `Could not reach the token endpoint at ${pending.tokenEndpoint}.`,
+        }),
     })
-  } catch {
-    return {
-      kind: 'failed',
-      problem: `Could not reach the token endpoint at ${outcome.pending.tokenEndpoint}.`,
-    }
-  }
+    const body = yield* Effect.tryPromise({
+      try: (): Promise<unknown> => response.json(),
+      catch: () =>
+        new PendingRequestUnusable({ reason: 'The token endpoint did not answer with JSON.' }),
+    })
+    const grant = yield* parseTokenResponse(body)
+    return Option.some(sessionFrom(grant, pending.serverUrl))
+  })
 
-  let body: unknown
+/**
+ * The pending record `store` holds, if any. A storage that refuses to be read
+ * is indistinguishable from an empty one here, and neither is an error: it only
+ * means this page load cannot be a return leg.
+ */
+const readPendingRecord = (store: PendingStore): Option.Option<PendingAuthorization> => {
   try {
-    body = await response.json()
+    return parsePendingAuthorization(store.getItem(PENDING_AUTHORIZATION_KEY))
   } catch {
-    return { kind: 'failed', problem: 'The token endpoint did not answer with JSON.' }
+    return Option.none()
   }
-  const parsed = parseTokenResponse(body)
-  if (!parsed.ok) return { kind: 'failed', problem: parsed.problem }
-  return { kind: 'signed-in', session: sessionFrom(parsed.grant, outcome.pending.serverUrl) }
+}
+
+/**
+ * Drop the pending record. A storage that refuses removal cannot be helped, and
+ * the flow is already past the point where the record mattered.
+ */
+const forgetPendingRecord = (store: PendingStore): void => {
+  try {
+    store.removeItem(PENDING_AUTHORIZATION_KEY)
+  } catch {
+    // Deliberately ignored; see the doc comment.
+  }
 }
 
 /** The session a `grant` for `serverUrl` becomes. */

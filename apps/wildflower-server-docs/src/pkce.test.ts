@@ -1,3 +1,4 @@
+import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -99,7 +100,7 @@ describe('codeChallengeS256', () => {
     const verifier = 'dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk'
 
     // Act
-    const challenge = await codeChallengeS256(verifier, webCrypto.subtle)
+    const challenge = await Effect.runPromise(codeChallengeS256(verifier, webCrypto.subtle))
 
     // Assert
     expect(challenge).toBe('E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM')
@@ -109,7 +110,7 @@ describe('codeChallengeS256', () => {
     await fc.assert(
       fc.asyncProperty(fc.string({ minLength: 43, maxLength: 128 }), async (verifier) => {
         // Act
-        const challenge = await codeChallengeS256(verifier, webCrypto.subtle)
+        const challenge = await Effect.runPromise(codeChallengeS256(verifier, webCrypto.subtle))
 
         // Assert
         expect(challenge).toHaveLength(43)
@@ -123,13 +124,33 @@ describe('codeChallengeS256', () => {
     await fc.assert(
       fc.asyncProperty(fc.string(), async (verifier) => {
         // Act
-        const first = await codeChallengeS256(verifier, webCrypto.subtle)
-        const second = await codeChallengeS256(verifier, webCrypto.subtle)
+        const first = await Effect.runPromise(codeChallengeS256(verifier, webCrypto.subtle))
+        const second = await Effect.runPromise(codeChallengeS256(verifier, webCrypto.subtle))
 
         // Assert
         expect(first).toBe(second)
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
+  })
+})
+
+describe('codeChallengeS256 when Web Crypto refuses', () => {
+  it('fails with PkceUnavailable rather than rejecting', async () => {
+    // Arrange — an insecure origin is the realistic cause: `crypto.subtle` is
+    // absent, so the digest never resolves.
+    const refusingSubtle = {
+      digest: (): Promise<ArrayBuffer> => Promise.reject(new Error('crypto.subtle is undefined')),
+    }
+
+    // Act
+    const result = await Effect.runPromise(
+      Effect.either(codeChallengeS256('a-verifier', refusingSubtle))
+    )
+
+    // Assert
+    if (Either.isRight(result)) throw new Error('expected the digest failure to surface')
+    expect(result.left._tag).toBe('PkceUnavailable')
+    expect(result.left.reason).toContain('PKCE challenge')
   })
 })

@@ -7,7 +7,30 @@
  * those — so every rule the flow depends on (state must match, a token response
  * must actually carry a bearer token, the authorization parameters must be
  * scrubbed from the URL afterwards) is unit-testable.
+ *
+ * Every fallible step is an `Either` with a tagged error on the left, and
+ * "there is no sign-in in progress" is an `Option`, not a failure — so
+ * `sign-in.ts` can `yield*` all of it into one Effect and the two cases stay
+ * distinguishable at the end.
  */
+
+import { Data, Either, Option } from 'effect'
+
+/**
+ * Raised when a returning authorization cannot be completed: the server refused
+ * it, or the response does not match the request this tab made.
+ */
+export class AuthorizationRejected extends Data.TaggedError('AuthorizationRejected')<{
+  readonly reason: string
+}> {}
+
+/**
+ * Raised when the token endpoint's answer is not a grant this console can use —
+ * an RFC 6749 §5.2 error body, a missing token, or a token type it cannot send.
+ */
+export class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
+  readonly reason: string
+}> {}
 
 /**
  * What the console must remember across the redirect to the authorization
@@ -37,42 +60,39 @@ export const serializePendingAuthorization = (pending: PendingAuthorization): st
   JSON.stringify(pending)
 
 /**
- * `raw` read back as a pending record, or `undefined` when it is absent or not
- * one. Every field is required and must be a non-empty string: a half-written
- * record cannot complete a sign-in, and treating it as one would send a request
- * with `undefined` in it.
+ * `raw` read back as a pending record, or `None` when it is absent or not one.
+ *
+ * Every field is required and must be a non-empty string: a half-written record
+ * cannot complete a sign-in, and treating it as one would send a request with
+ * `undefined` in it. Absence is not an error here — most page loads have no
+ * record — so the caller decides whether a missing one matters.
  */
-export const parsePendingAuthorization = (raw: string | null): PendingAuthorization | undefined => {
-  if (raw === null) return undefined
+export const parsePendingAuthorization = (
+  raw: string | null
+): Option.Option<PendingAuthorization> => {
+  if (raw === null) return Option.none()
   let parsed: unknown
   try {
     parsed = JSON.parse(raw)
   } catch {
-    return undefined
+    return Option.none()
   }
-  if (!isRecord(parsed)) return undefined
-  const state = nonEmptyString(parsed.state)
-  const codeVerifier = nonEmptyString(parsed.codeVerifier)
-  const serverUrl = nonEmptyString(parsed.serverUrl)
-  const tokenEndpoint = nonEmptyString(parsed.tokenEndpoint)
-  if (
-    state === undefined ||
-    codeVerifier === undefined ||
-    serverUrl === undefined ||
-    tokenEndpoint === undefined
-  ) {
-    return undefined
-  }
-  return { state, codeVerifier, serverUrl, tokenEndpoint }
+  if (!isRecord(parsed)) return Option.none()
+  return Option.all({
+    state: nonEmptyString(parsed.state),
+    codeVerifier: nonEmptyString(parsed.codeVerifier),
+    serverUrl: nonEmptyString(parsed.serverUrl),
+    tokenEndpoint: nonEmptyString(parsed.tokenEndpoint),
+  })
 }
 
 /** Whether `value` is a plain JSON object (and so safe to read fields off). */
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
-/** `value` when it is a non-empty string, else `undefined`. */
-const nonEmptyString = (value: unknown): string | undefined =>
-  typeof value === 'string' && value !== '' ? value : undefined
+/** `value` when it is a non-empty string. */
+const nonEmptyString = (value: unknown): Option.Option<string> =>
+  typeof value === 'string' && value !== '' ? Option.some(value) : Option.none()
 
 /** Everything the authorization request carries beyond the endpoint itself. */
 export interface AuthorizationRequestParameters {
@@ -114,17 +134,17 @@ export const authorizationRequestUrl = (
 /** The FHIR base of `serverUrl` — the `aud` a standalone launch names. */
 export const fhirAudienceFor = (serverUrl: string): string => `${serverUrl}/fhir-r4`
 
-/** What a page load's query string means for a sign-in in progress. */
-export type RedirectOutcome =
-  /** Not a return from the authorization server; an ordinary page load. */
-  | { readonly kind: 'none' }
-  /** A code to redeem, already checked against the stashed `state`. */
-  | { readonly kind: 'code'; readonly code: string; readonly pending: PendingAuthorization }
-  /** The flow came back, but cannot be completed. */
-  | { readonly kind: 'failed'; readonly problem: string }
+/** A code that passed the `state` check, with the request it belongs to. */
+export interface RedeemableCode {
+  readonly code: string
+  readonly pending: PendingAuthorization
+}
 
 /**
- * Read `search` as the tail end of an authorization-code flow.
+ * Read `search` as the tail end of an authorization-code flow: `None` when this
+ * is an ordinary page load, a {@link RedeemableCode} when a code came back for
+ * the request this tab made, and an {@link AuthorizationRejected} when it came
+ * back but cannot be completed.
  *
  * The `state` check is the CSRF gate (RFC 6749 §10.12) and it is deliberately
  * strict: a `code` with no stashed record, or with one whose `state` differs, is
@@ -132,37 +152,39 @@ export type RedirectOutcome =
  */
 export const authorizationRedirectOutcome = (
   search: string,
-  pending: PendingAuthorization | undefined
-): RedirectOutcome => {
+  pending: Option.Option<PendingAuthorization>
+): Either.Either<Option.Option<RedeemableCode>, AuthorizationRejected> => {
   const params = new URLSearchParams(search)
   const error = params.get('error')
   const code = params.get('code')
-  if (error === null && code === null) return { kind: 'none' }
-  const state = params.get('state')
+  if (error === null && code === null) return Either.right(Option.none())
   if (error !== null) {
     const description = params.get('error_description')
-    return {
-      kind: 'failed',
-      problem: `The server refused the sign-in: ${error}${description === null ? '' : ` (${description})`}.`,
-    }
+    return Either.left(
+      new AuthorizationRejected({
+        reason: `The server refused the sign-in: ${error}${description === null ? '' : ` (${description})`}.`,
+      })
+    )
   }
-  if (pending === undefined) {
-    return {
-      kind: 'failed',
-      problem:
-        'This page received an authorization code it did not ask for, or the ' +
-        'browser dropped the request it belongs to. Sign in again.',
-    }
+  if (Option.isNone(pending)) {
+    return Either.left(
+      new AuthorizationRejected({
+        reason:
+          'This page received an authorization code it did not ask for, or the ' +
+          'browser dropped the request it belongs to. Sign in again.',
+      })
+    )
   }
-  if (state !== pending.state) {
-    return {
-      kind: 'failed',
-      problem: 'The sign-in came back with the wrong state parameter, so it was discarded.',
-    }
+  if (params.get('state') !== pending.value.state) {
+    return Either.left(
+      new AuthorizationRejected({
+        reason: 'The sign-in came back with the wrong state parameter, so it was discarded.',
+      })
+    )
   }
   // `code === null` is unreachable: one of `error`/`code` is non-null to get
   // past the early return, and `error` is handled above.
-  return { kind: 'code', code: code ?? '', pending }
+  return Either.right(Option.some({ code: code ?? '', pending: pending.value }))
 }
 
 /** The authorization-response parameters, which must not linger in the URL. */
@@ -222,39 +244,42 @@ export interface AccessGrant {
  */
 export const parseTokenResponse = (
   body: unknown
-):
-  | { readonly ok: true; readonly grant: AccessGrant }
-  | { readonly ok: false; readonly problem: string } => {
+): Either.Either<AccessGrant, TokenExchangeFailed> => {
   if (!isRecord(body)) {
-    return { ok: false, problem: 'The token endpoint did not answer with a JSON object.' }
+    return Either.left(
+      new TokenExchangeFailed({ reason: 'The token endpoint did not answer with a JSON object.' })
+    )
   }
-  const record = body
-  if (typeof record.error === 'string') {
-    const description = record.error_description
-    return {
-      ok: false,
-      problem: `The token request was rejected: ${record.error}${
-        typeof description === 'string' ? ` (${description})` : ''
-      }.`,
-    }
+  if (typeof body.error === 'string') {
+    const description = body.error_description
+    return Either.left(
+      new TokenExchangeFailed({
+        reason: `The token request was rejected: ${body.error}${
+          typeof description === 'string' ? ` (${description})` : ''
+        }.`,
+      })
+    )
   }
-  const accessToken = record.access_token
+  const accessToken = body.access_token
   if (typeof accessToken !== 'string' || accessToken === '') {
-    return { ok: false, problem: 'The token endpoint returned no access token.' }
+    return Either.left(
+      new TokenExchangeFailed({ reason: 'The token endpoint returned no access token.' })
+    )
   }
-  const tokenType = record.token_type
+  const tokenType = body.token_type
   if (typeof tokenType !== 'string' || tokenType.toLowerCase() !== 'bearer') {
-    return { ok: false, problem: 'The token endpoint returned a token this console cannot send.' }
+    return Either.left(
+      new TokenExchangeFailed({
+        reason: 'The token endpoint returned a token this console cannot send.',
+      })
+    )
   }
-  return {
-    ok: true,
-    grant: {
-      accessToken,
-      scope: typeof record.scope === 'string' ? record.scope : '',
-      expiresInSeconds:
-        typeof record.expires_in === 'number' && Number.isFinite(record.expires_in)
-          ? record.expires_in
-          : undefined,
-    },
-  }
+  return Either.right({
+    accessToken,
+    scope: typeof body.scope === 'string' ? body.scope : '',
+    expiresInSeconds:
+      typeof body.expires_in === 'number' && Number.isFinite(body.expires_in)
+        ? body.expires_in
+        : undefined,
+  })
 }

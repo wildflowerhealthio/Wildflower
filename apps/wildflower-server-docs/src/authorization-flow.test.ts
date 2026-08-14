@@ -1,3 +1,4 @@
+import { Either, Option } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -38,15 +39,15 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
         const parsed = parsePendingAuthorization(serializePendingAuthorization(pending))
 
         // Assert
-        expect(parsed).toEqual(pending)
+        expect(parsed).toEqual(Option.some(pending))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
-  it('reads an absent record as no record', () => {
+  it('reads an absent record as None, which is not a failure', () => {
     // Act / Assert
-    expect(parsePendingAuthorization(null)).toBeUndefined()
+    expect(parsePendingAuthorization(null)).toEqual(Option.none())
   })
 
   it('refuses a record missing any field the exchange needs', () => {
@@ -60,7 +61,7 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
           delete partial[dropped]
 
           // Act / Assert
-          expect(parsePendingAuthorization(JSON.stringify(partial))).toBeUndefined()
+          expect(parsePendingAuthorization(JSON.stringify(partial))).toEqual(Option.none())
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -79,8 +80,8 @@ describe('serializePendingAuthorization / parsePendingAuthorization', () => {
           const parsed = parsePendingAuthorization(raw)
 
           // Assert — only a complete record parses, and this arbitrary makes none.
-          if (parsed !== undefined) {
-            expect(Object.keys(parsed).toSorted()).toEqual([
+          if (Option.isSome(parsed)) {
+            expect(Object.keys(parsed.value).toSorted()).toEqual([
               'codeVerifier',
               'serverUrl',
               'state',
@@ -155,11 +156,11 @@ describe('authorizationRedirectOutcome', () => {
         // Act
         const outcome = authorizationRedirectOutcome(
           `?server=${encodeURIComponent(serverUrl)}`,
-          pendingRecord
+          Option.some(pendingRecord)
         )
 
         // Assert
-        expect(outcome).toEqual({ kind: 'none' })
+        expect(outcome).toEqual(Either.right(Option.none()))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -169,11 +170,11 @@ describe('authorizationRedirectOutcome', () => {
     // Act
     const outcome = authorizationRedirectOutcome(
       `?code=abc123&state=${pendingRecord.state}`,
-      pendingRecord
+      Option.some(pendingRecord)
     )
 
     // Assert
-    expect(outcome).toEqual({ kind: 'code', code: 'abc123', pending: pendingRecord })
+    expect(outcome).toEqual(Either.right(Option.some({ code: 'abc123', pending: pendingRecord })))
   })
 
   it('never redeems a code whose state differs from the stashed one', () => {
@@ -184,11 +185,11 @@ describe('authorizationRedirectOutcome', () => {
           // Act
           const outcome = authorizationRedirectOutcome(
             `?code=abc123&state=${encodeURIComponent(state)}`,
-            pendingRecord
+            Option.some(pendingRecord)
           )
 
           // Assert
-          expect(outcome.kind).toBe('failed')
+          expect(Either.isLeft(outcome)).toBe(true)
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -201,11 +202,11 @@ describe('authorizationRedirectOutcome', () => {
         // Act
         const outcome = authorizationRedirectOutcome(
           `?code=${encodeURIComponent(code)}&state=${encodeURIComponent(state)}`,
-          undefined
+          Option.none()
         )
 
         // Assert
-        expect(outcome.kind).toBe('failed')
+        expect(Either.isLeft(outcome)).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -215,13 +216,14 @@ describe('authorizationRedirectOutcome', () => {
     // Act
     const outcome = authorizationRedirectOutcome(
       '?error=access_denied&error_description=Owner%20declined&state=x',
-      pendingRecord
+      Option.some(pendingRecord)
     )
 
     // Assert
-    if (outcome.kind !== 'failed') throw new Error('expected the refusal to be surfaced')
-    expect(outcome.problem).toContain('access_denied')
-    expect(outcome.problem).toContain('Owner declined')
+    if (Either.isRight(outcome)) throw new Error('expected the refusal to be surfaced')
+    expect(outcome.left._tag).toBe('AuthorizationRejected')
+    expect(outcome.left.reason).toContain('access_denied')
+    expect(outcome.left.reason).toContain('Owner declined')
   })
 })
 
@@ -300,14 +302,13 @@ describe('parseTokenResponse', () => {
     })
 
     // Assert
-    expect(result).toEqual({
-      ok: true,
-      grant: {
+    expect(result).toEqual(
+      Either.right({
         accessToken: 'header.payload.signature',
         scope: 'openid system/*.cruds',
         expiresInSeconds: 3600,
-      },
-    })
+      })
+    )
   })
 
   it('keeps no refresh token, because nothing outlives the tab to use one', () => {
@@ -321,8 +322,8 @@ describe('parseTokenResponse', () => {
     })
 
     // Assert
-    if (!result.ok) throw new Error(result.problem)
-    expect(JSON.stringify(result.grant)).not.toContain('the-refresh-token')
+    if (Either.isLeft(result)) throw new Error(result.left.reason)
+    expect(JSON.stringify(result.right)).not.toContain('the-refresh-token')
   })
 
   it('surfaces an RFC 6749 §5.2 error body', () => {
@@ -333,8 +334,9 @@ describe('parseTokenResponse', () => {
     })
 
     // Assert
-    if (result.ok) throw new Error('expected the error body to be refused')
-    expect(result.problem).toContain('invalid_grant')
+    if (Either.isRight(result)) throw new Error('expected the error body to be refused')
+    expect(result.left._tag).toBe('TokenExchangeFailed')
+    expect(result.left.reason).toContain('invalid_grant')
   })
 
   it('refuses a response with no access token', () => {
@@ -351,7 +353,7 @@ describe('parseTokenResponse', () => {
         ),
         (body) => {
           // Act / Assert
-          expect(parseTokenResponse(body).ok).toBe(false)
+          expect(Either.isLeft(parseTokenResponse(body))).toBe(true)
         }
       ),
       { numRuns: numRunsFor({ base: 30 }) }
@@ -367,7 +369,7 @@ describe('parseTokenResponse', () => {
           const result = parseTokenResponse({ access_token: 'a-token', token_type: tokenType })
 
           // Assert
-          expect(result.ok).toBe(false)
+          expect(Either.isLeft(result)).toBe(true)
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }

@@ -11,9 +11,19 @@
  * served on. Those advertised URLs are what the console uses; it never assumes
  * `/oauth/authorize` sits at the target's root.
  *
- * Everything here is pure except {@link discoverSmartEndpoints}, which takes its
- * `fetch` as an argument.
+ * The validation is pure and returns an `Either`; the fetch is the async edge
+ * and returns an `Effect` failing with {@link DiscoveryFailed}. Every failure a
+ * reader can actually hit — target that is not a Wildflower server, server
+ * down, blocked by CORS or mixed content — arrives as that one tagged error,
+ * whose `reason` the header bar renders verbatim.
  */
+
+import { Data, Effect, Either } from 'effect'
+
+/** Raised when the chosen target cannot be signed in to, with the reason why. */
+export class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
+  readonly reason: string
+}> {}
 
 /** The discovery document's path, relative to the SMART `iss` base. */
 export const SMART_CONFIGURATION_PATH = '/fhir-r4/.well-known/smart-configuration'
@@ -27,14 +37,6 @@ export interface SmartEndpoints {
   readonly authorizationEndpoint: string
   readonly tokenEndpoint: string
 }
-
-/**
- * Discovery either yields both endpoints or explains, in words a reader can act
- * on, why this target cannot be signed in to.
- */
-export type DiscoveryResult =
-  | { readonly ok: true; readonly endpoints: SmartEndpoints }
-  | { readonly ok: false; readonly problem: string }
 
 /**
  * Hosts a browser treats as potentially trustworthy over plain `http:`
@@ -96,65 +98,68 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
 export const smartEndpointsFrom = (
   document: unknown,
   options: { readonly pageIsSecure: boolean }
-): DiscoveryResult => {
+): Either.Either<SmartEndpoints, DiscoveryFailed> => {
   if (!isRecord(document)) {
-    return { ok: false, problem: 'The server’s SMART configuration is not a JSON object.' }
+    return Either.left(
+      new DiscoveryFailed({ reason: 'The server’s SMART configuration is not a JSON object.' })
+    )
   }
   const authorizationEndpoint = usableEndpointUrl(document.authorization_endpoint, options)
   const tokenEndpoint = usableEndpointUrl(document.token_endpoint, options)
   if (authorizationEndpoint === undefined || tokenEndpoint === undefined) {
-    return {
-      ok: false,
-      problem:
-        'The server’s SMART configuration does not advertise a usable ' +
-        'authorization_endpoint and token_endpoint over https (or loopback).',
-    }
+    return Either.left(
+      new DiscoveryFailed({
+        reason:
+          'The server’s SMART configuration does not advertise a usable ' +
+          'authorization_endpoint and token_endpoint over https (or loopback).',
+      })
+    )
   }
   const methods = document.code_challenge_methods_supported
   if (Array.isArray(methods) && !methods.includes('S256')) {
-    return {
-      ok: false,
-      problem: 'The server does not support PKCE with S256, which sign-in needs.',
-    }
+    return Either.left(
+      new DiscoveryFailed({
+        reason: 'The server does not support PKCE with S256, which sign-in needs.',
+      })
+    )
   }
-  return { ok: true, endpoints: { authorizationEndpoint, tokenEndpoint } }
+  return Either.right({ authorizationEndpoint, tokenEndpoint })
 }
 
 /**
  * Fetch and validate `serverUrl`'s SMART configuration.
  *
- * Every failure mode a reader can actually hit — target that is not a Wildflower
- * server, server down, blocked by CORS or mixed-content — surfaces as an
- * `ok: false` problem string rather than a rejection, because the header bar
- * renders it verbatim.
+ * The three ways the request itself can fail — unreachable, error status,
+ * non-JSON body — each become a {@link DiscoveryFailed} naming the URL, and the
+ * body is then handed to {@link smartEndpointsFrom}, whose `Either` is lifted
+ * into the same failure channel.
  */
-export const discoverSmartEndpoints = async (
+export const discoverSmartEndpoints = (
   serverUrl: string,
   options: { readonly fetch: typeof globalThis.fetch; readonly pageIsSecure: boolean }
-): Promise<DiscoveryResult> => {
-  const url = smartConfigurationUrl(serverUrl)
-  let response: Response
-  try {
-    response = await options.fetch(url, { headers: { Accept: 'application/json' } })
-  } catch {
-    // A network-level failure is indistinguishable from a CORS rejection to the
-    // page, so name both possibilities instead of guessing.
-    return {
-      ok: false,
-      problem: `Could not reach ${url}. The server may be down, or the browser may have blocked the request.`,
+): Effect.Effect<SmartEndpoints, DiscoveryFailed> =>
+  Effect.gen(function* () {
+    const url = smartConfigurationUrl(serverUrl)
+    const response = yield* Effect.tryPromise({
+      try: () => options.fetch(url, { headers: { Accept: 'application/json' } }),
+      // A network-level failure is indistinguishable from a CORS rejection to
+      // the page, so name both possibilities instead of guessing.
+      catch: () =>
+        new DiscoveryFailed({
+          reason: `Could not reach ${url}. The server may be down, or the browser may have blocked the request.`,
+        }),
+    })
+    if (!response.ok) {
+      return yield* new DiscoveryFailed({
+        reason: `${url} answered ${String(response.status)}. Is this a Wildflower server?`,
+      })
     }
-  }
-  if (!response.ok) {
-    return {
-      ok: false,
-      problem: `${url} answered ${String(response.status)}. Is this a Wildflower server?`,
-    }
-  }
-  let document: unknown
-  try {
-    document = await response.json()
-  } catch {
-    return { ok: false, problem: `${url} did not answer with JSON. Is this a Wildflower server?` }
-  }
-  return smartEndpointsFrom(document, { pageIsSecure: options.pageIsSecure })
-}
+    const document = yield* Effect.tryPromise({
+      try: (): Promise<unknown> => response.json(),
+      catch: () =>
+        new DiscoveryFailed({
+          reason: `${url} did not answer with JSON. Is this a Wildflower server?`,
+        }),
+    })
+    return yield* smartEndpointsFrom(document, { pageIsSecure: options.pageIsSecure })
+  })

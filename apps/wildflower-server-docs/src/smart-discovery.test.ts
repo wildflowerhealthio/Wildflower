@@ -1,3 +1,4 @@
+import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -133,13 +134,12 @@ describe('smartEndpointsFrom', () => {
     const result = smartEndpointsFrom(document, onSecurePage)
 
     // Assert
-    expect(result).toEqual({
-      ok: true,
-      endpoints: {
+    expect(result).toEqual(
+      Either.right({
         authorizationEndpoint: 'https://ruth.wildflowerhealth.io/oauth/authorize',
         tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
-      },
-    })
+      })
+    )
   })
 
   it('reports a document that advertises no usable endpoints', () => {
@@ -156,7 +156,7 @@ describe('smartEndpointsFrom', () => {
           const result = smartEndpointsFrom(document, onSecurePage)
 
           // Assert
-          expect(result.ok).toBe(false)
+          expect(Either.isLeft(result)).toBe(true)
         }
       ),
       { numRuns: numRunsFor({ base: 30 }) }
@@ -172,7 +172,7 @@ describe('smartEndpointsFrom', () => {
           const result = smartEndpointsFrom(document, onSecurePage)
 
           // Assert
-          expect(result.ok).toBe(false)
+          expect(Either.isLeft(result)).toBe(true)
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -190,8 +190,9 @@ describe('smartEndpointsFrom', () => {
     const result = smartEndpointsFrom(document, onSecurePage)
 
     // Assert
-    if (result.ok) throw new Error('expected a plain-only server to be refused')
-    expect(result.problem).toContain('S256')
+    if (Either.isRight(result)) throw new Error('expected a plain-only server to be refused')
+    expect(result.left._tag).toBe('DiscoveryFailed')
+    expect(result.left.reason).toContain('S256')
   })
 
   it('accepts a document that says nothing about PKCE methods', () => {
@@ -203,7 +204,7 @@ describe('smartEndpointsFrom', () => {
     const result = smartEndpointsFrom(document, onSecurePage)
 
     // Assert
-    expect(result.ok).toBe(true)
+    expect(Either.isRight(result)).toBe(true)
   })
 })
 
@@ -217,16 +218,18 @@ describe('discoverSmartEndpoints', () => {
     })
 
     // Act
-    const result = await discoverSmartEndpoints('https://ruth.wildflowerhealth.io', {
-      fetch: fetchStub,
-      pageIsSecure: true,
-    })
+    const result = await runToEither(
+      discoverSmartEndpoints('https://ruth.wildflowerhealth.io', {
+        fetch: fetchStub,
+        pageIsSecure: true,
+      })
+    )
 
     // Assert
     expect(requested).toEqual([
       'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration',
     ])
-    expect(result.ok).toBe(true)
+    expect(Either.isRight(result)).toBe(true)
   })
 
   it('reports an unreachable server rather than throwing', async () => {
@@ -236,14 +239,14 @@ describe('discoverSmartEndpoints', () => {
     })
 
     // Act
-    const result = await discoverSmartEndpoints('https://down.test', {
-      fetch: fetchStub,
-      pageIsSecure: true,
-    })
+    const result = await runToEither(
+      discoverSmartEndpoints('https://down.test', { fetch: fetchStub, pageIsSecure: true })
+    )
 
     // Assert
-    if (result.ok) throw new Error('expected an unreachable server to be reported')
-    expect(result.problem).toContain('https://down.test')
+    if (Either.isRight(result)) throw new Error('expected an unreachable server to be reported')
+    expect(result.left._tag).toBe('DiscoveryFailed')
+    expect(result.left.reason).toContain('https://down.test')
   })
 
   it('reports a target that answers with an error status', async () => {
@@ -253,14 +256,16 @@ describe('discoverSmartEndpoints', () => {
         const fetchStub = respondingWith(() => new Response('nope', { status }))
 
         // Act
-        const result = await discoverSmartEndpoints('https://not-wildflower.test', {
-          fetch: fetchStub,
-          pageIsSecure: true,
-        })
+        const result = await runToEither(
+          discoverSmartEndpoints('https://not-wildflower.test', {
+            fetch: fetchStub,
+            pageIsSecure: true,
+          })
+        )
 
         // Assert
-        if (result.ok) throw new Error('expected an error status to be reported')
-        expect(result.problem).toContain(String(status))
+        if (Either.isRight(result)) throw new Error('expected an error status to be reported')
+        expect(result.left.reason).toContain(String(status))
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
@@ -271,17 +276,23 @@ describe('discoverSmartEndpoints', () => {
     const fetchStub = respondingWith(() => new Response('<html>hello</html>', { status: 200 }))
 
     // Act
-    const result = await discoverSmartEndpoints('https://marketing-site.test', {
-      fetch: fetchStub,
-      pageIsSecure: true,
-    })
+    const result = await runToEither(
+      discoverSmartEndpoints('https://marketing-site.test', {
+        fetch: fetchStub,
+        pageIsSecure: true,
+      })
+    )
 
     // Assert
-    expect(result.ok).toBe(false)
+    expect(Either.isLeft(result)).toBe(true)
   })
 })
 
 // Helpers
+
+/** Run a discovery Effect to its `Either`, so both channels are assertable. */
+const runToEither = <A, E>(effect: Effect.Effect<A, E>): Promise<Either.Either<A, E>> =>
+  Effect.runPromise(Effect.either(effect))
 
 /** A `fetch` stub built from a per-URL responder. */
 const respondingWith =

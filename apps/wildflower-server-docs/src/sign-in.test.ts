@@ -1,3 +1,4 @@
+import { Effect, Either, Option } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -26,11 +27,11 @@ describe('beginSignIn', () => {
     const environment = testEnvironment({ store, fetch: discoveryOnly() })
 
     // Act
-    const result = await beginSignIn(SERVER, environment)
+    const result = await runToEither(beginSignIn(SERVER, environment))
 
     // Assert
-    if (result.kind !== 'redirect') throw new Error(result.problem)
-    const url = new URL(result.url)
+    if (Either.isLeft(result)) throw new Error(result.left.reason)
+    const url = new URL(result.right)
     expect(url.origin + url.pathname).toBe(`${SERVER}/oauth/authorize`)
     expect(url.searchParams.get('client_id')).toBe('wildflower-server-docs')
     expect(url.searchParams.get('redirect_uri')).toBe(REGISTERED_REDIRECT_URI)
@@ -45,15 +46,16 @@ describe('beginSignIn', () => {
     const environment = testEnvironment({ store, fetch: discoveryOnly() })
 
     // Act
-    const result = await beginSignIn(SERVER, environment)
+    const result = await runToEither(beginSignIn(SERVER, environment))
 
     // Assert
-    if (result.kind !== 'redirect') throw new Error(result.problem)
-    const pending = parsePendingAuthorization(store.getItem(PENDING_AUTHORIZATION_KEY))
-    if (pending === undefined) throw new Error('nothing was stashed')
-    const url = new URL(result.url)
+    if (Either.isLeft(result)) throw new Error(result.left.reason)
+    const stashed = parsePendingAuthorization(store.getItem(PENDING_AUTHORIZATION_KEY))
+    if (Option.isNone(stashed)) throw new Error('nothing was stashed')
+    const pending = stashed.value
+    const url = new URL(result.right)
     expect(url.searchParams.get('code_challenge')).toBe(
-      await codeChallengeS256(pending.codeVerifier, globalThis.crypto.subtle)
+      await Effect.runPromise(codeChallengeS256(pending.codeVerifier, globalThis.crypto.subtle))
     )
     expect(url.searchParams.get('state')).toBe(pending.state)
     expect(pending.tokenEndpoint).toBe(`${SERVER}/oauth/token`)
@@ -66,8 +68,12 @@ describe('beginSignIn', () => {
     const second = memoryStore()
 
     // Act
-    await beginSignIn(SERVER, testEnvironment({ store: first, fetch: discoveryOnly() }))
-    await beginSignIn(SERVER, testEnvironment({ store: second, fetch: discoveryOnly() }))
+    await runToEither(
+      beginSignIn(SERVER, testEnvironment({ store: first, fetch: discoveryOnly() }))
+    )
+    await runToEither(
+      beginSignIn(SERVER, testEnvironment({ store: second, fetch: discoveryOnly() }))
+    )
 
     // Assert
     expect(first.getItem(PENDING_AUTHORIZATION_KEY)).not.toBe(
@@ -84,10 +90,11 @@ describe('beginSignIn', () => {
     })
 
     // Act
-    const result = await beginSignIn(SERVER, environment)
+    const result = await runToEither(beginSignIn(SERVER, environment))
 
     // Assert
-    expect(result.kind).toBe('failed')
+    if (Either.isRight(result)) throw new Error('expected discovery to fail the sign-in')
+    expect(result.left._tag).toBe('DiscoveryFailed')
     expect(store.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
   })
 
@@ -102,11 +109,14 @@ describe('beginSignIn', () => {
     }
 
     // Act
-    const result = await beginSignIn(SERVER, testEnvironment({ store, fetch: discoveryOnly() }))
+    const result = await runToEither(
+      beginSignIn(SERVER, testEnvironment({ store, fetch: discoveryOnly() }))
+    )
 
     // Assert
-    if (result.kind !== 'failed') throw new Error('expected the blocked storage to fail sign-in')
-    expect(result.problem).toContain('session storage')
+    if (Either.isRight(result)) throw new Error('expected the blocked storage to fail sign-in')
+    expect(result.left._tag).toBe('PendingRequestUnusable')
+    expect(result.left.reason).toContain('session storage')
   })
 })
 
@@ -117,12 +127,15 @@ describe('completeSignIn', () => {
     store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(stashedRequest()))
 
     // Act
-    const result = await completeSignIn('?server=https%3A%2F%2Fx.test', {
-      ...testEnvironment({ store, fetch: refusingFetch }),
-    })
+    const result = await runToEither(
+      completeSignIn(
+        '?server=https%3A%2F%2Fx.test',
+        testEnvironment({ store, fetch: refusingFetch })
+      )
+    )
 
     // Assert
-    expect(result).toEqual({ kind: 'none' })
+    expect(result).toEqual(Either.right(Option.none()))
     expect(store.getItem(PENDING_AUTHORIZATION_KEY)).not.toBeNull()
   })
 
@@ -145,21 +158,24 @@ describe('completeSignIn', () => {
     }
 
     // Act
-    const result = await completeSignIn(
-      `?code=the-code&state=${pending.state}`,
-      testEnvironment({ store, fetch: fetchStub })
+    const result = await runToEither(
+      completeSignIn(
+        `?code=the-code&state=${pending.state}`,
+        testEnvironment({ store, fetch: fetchStub })
+      )
     )
 
     // Assert
-    expect(result).toEqual({
-      kind: 'signed-in',
-      session: {
-        accessToken: 'header.payload.signature',
-        scope: 'openid system/*.cruds',
-        serverUrl: SERVER,
-        expiresInSeconds: 3600,
-      },
-    })
+    expect(result).toEqual(
+      Either.right(
+        Option.some({
+          accessToken: 'header.payload.signature',
+          scope: 'openid system/*.cruds',
+          serverUrl: SERVER,
+          expiresInSeconds: 3600,
+        })
+      )
+    )
     const sent = new URLSearchParams(bodies[0])
     expect(sent.get('code_verifier')).toBe(pending.codeVerifier)
     expect(sent.get('redirect_uri')).toBe(REGISTERED_REDIRECT_URI)
@@ -182,9 +198,11 @@ describe('completeSignIn', () => {
             Promise.resolve(jsonResponse({ access_token: accessToken, token_type: 'Bearer' }))
 
           // Act
-          await completeSignIn(
-            `?code=the-code&state=${pending.state}`,
-            testEnvironment({ store, fetch: fetchStub })
+          await runToEither(
+            completeSignIn(
+              `?code=the-code&state=${pending.state}`,
+              testEnvironment({ store, fetch: fetchStub })
+            )
           )
 
           // Assert
@@ -196,6 +214,8 @@ describe('completeSignIn', () => {
   })
 
   it('consumes the pending record whatever the outcome', async () => {
+    // A record left behind would make a later stray `?code=` look legitimate,
+    // so a discarded flow must clear it just as a redeemed one does.
     await fc.assert(
       fc.asyncProperty(fc.boolean(), async (succeeds) => {
         // Arrange
@@ -212,9 +232,11 @@ describe('completeSignIn', () => {
           )
 
         // Act
-        await completeSignIn(
-          `?code=the-code&state=${pending.state}`,
-          testEnvironment({ store, fetch: fetchStub })
+        await runToEither(
+          completeSignIn(
+            `?code=the-code&state=${pending.state}`,
+            testEnvironment({ store, fetch: fetchStub })
+          )
         )
 
         // Assert
@@ -222,6 +244,24 @@ describe('completeSignIn', () => {
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )
+  })
+
+  it('clears the pending record when the server refuses the authorization', async () => {
+    // Arrange
+    const store = memoryStore()
+    store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(stashedRequest()))
+
+    // Act
+    const result = await runToEither(
+      completeSignIn(
+        '?error=access_denied&state=a-stashed-state',
+        testEnvironment({ store, fetch: refusingFetch })
+      )
+    )
+
+    // Assert
+    expect(Either.isLeft(result)).toBe(true)
+    expect(store.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
   })
 
   it('never redeems a code whose state does not match the stashed one', async () => {
@@ -239,14 +279,17 @@ describe('completeSignIn', () => {
           }
 
           // Act
-          const result = await completeSignIn(
-            `?code=the-code&state=${encodeURIComponent(state)}`,
-            testEnvironment({ store, fetch: fetchStub })
+          const result = await runToEither(
+            completeSignIn(
+              `?code=the-code&state=${encodeURIComponent(state)}`,
+              testEnvironment({ store, fetch: fetchStub })
+            )
           )
 
           // Assert — the code is never carried to the token endpoint at all.
           expect(requests).toEqual([])
-          expect(result.kind).toBe('failed')
+          if (Either.isRight(result)) throw new Error('expected the state mismatch to fail')
+          expect(result.left._tag).toBe('AuthorizationRejected')
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -264,14 +307,17 @@ describe('completeSignIn', () => {
       )
 
     // Act
-    const result = await completeSignIn(
-      `?code=stale&state=${pending.state}`,
-      testEnvironment({ store, fetch: fetchStub })
+    const result = await runToEither(
+      completeSignIn(
+        `?code=stale&state=${pending.state}`,
+        testEnvironment({ store, fetch: fetchStub })
+      )
     )
 
     // Assert
-    if (result.kind !== 'failed') throw new Error('expected the rejected grant to fail sign-in')
-    expect(result.problem).toContain('invalid_grant')
+    if (Either.isRight(result)) throw new Error('expected the rejected grant to fail sign-in')
+    expect(result.left._tag).toBe('TokenExchangeFailed')
+    expect(result.left.reason).toContain('invalid_grant')
   })
 
   it('reports an unreachable token endpoint rather than throwing', async () => {
@@ -281,19 +327,28 @@ describe('completeSignIn', () => {
     store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(pending))
 
     // Act
-    const result = await completeSignIn(
-      `?code=the-code&state=${pending.state}`,
-      testEnvironment({ store, fetch: () => Promise.reject(new TypeError('Failed to fetch')) })
+    const result = await runToEither(
+      completeSignIn(
+        `?code=the-code&state=${pending.state}`,
+        testEnvironment({ store, fetch: () => Promise.reject(new TypeError('Failed to fetch')) })
+      )
     )
 
     // Assert
-    if (result.kind !== 'failed')
-      throw new Error('expected the unreachable endpoint to fail sign-in')
-    expect(result.problem).toContain(pending.tokenEndpoint)
+    if (Either.isRight(result)) throw new Error('expected the unreachable endpoint to fail sign-in')
+    expect(result.left._tag).toBe('PendingRequestUnusable')
+    expect(result.left.reason).toContain(pending.tokenEndpoint)
   })
 })
 
 // Helpers
+
+/**
+ * Run a sign-in Effect to its `Either`, so the tagged error is assertable
+ * instead of being thrown out of the test.
+ */
+const runToEither = <A, E>(effect: Effect.Effect<A, E>): Promise<Either.Either<A, E>> =>
+  Effect.runPromise(Effect.either(effect))
 
 /** A `sessionStorage`-shaped store backed by a map, plus a peek at everything in it. */
 const memoryStore = (): PendingStore & { contents(): string } => {
