@@ -5,23 +5,22 @@ import { PhoneMockup } from './phone-mockup.tsx'
 import styles from './hero.module.css'
 
 /**
- * The opening pitch: eyebrow, headline (with the magenta-italic turn on
- * "None of them is yours."), supporting copy, the first beta form, and the
- * CSS phone mockup. Collapses to a single centered column at \<=920px.
+ * The opening pitch: eyebrow, headline (with the accent-italic turn on "put it
+ * to work"), supporting copy, the first beta form, and the CSS phone mockup.
+ * Collapses to a single centered column at \<=920px.
  */
 function Hero(): JSX.Element {
   return (
     <section className={styles['hero']}>
       <div className={styles['hero__content']}>
-        <p className={styles['hero__eyebrow']}>How many things do you log in to for your health?</p>
+        <p className={styles['hero__eyebrow']}>A personal health record, and its apps</p>
         <h1 className={styles['hero__title']}>
-          Do your personal health records actually feel <em>personal?</em>
+          Your health record on your phone — and a collection of apps that <em>put it to work.</em>
         </h1>
         <p className={styles['hero__lede']}>
-          Doctors, labs, and pharmacies all have apps and websites, but they don't tell the whole
-          story. Wildflower is a personal health record built on the same open standards as hospital
-          EHRs. It makes it easy to see all your health data in one place, share it with the people
-          you trust, and take control of your health.
+          Wildflower gathers your prescriptions, labs and visits into one record you hold, in the
+          same format hospital systems already speak. Around it sits a growing collection of focused
+          apps — each does one job well, each works on its own, and each reads only what you grant.
         </p>
         <BetaForm variant="hero" />
         <p className={styles['hero__fineprint']}>

@@ -1,10 +1,13 @@
+/* The device shell is a fixed physical object, so its dimensions and bezel
+ * radii are literal rather than ramp steps. The bezel takes the ink neutral,
+ * which flips to a light frame in dark mode along with everything else. */
 .phone {
   width: 296px;
   height: 594px;
-  padding: 11px;
+  padding: var(--space-5);
   border-radius: 46px;
-  background: var(--color-ink);
-  box-shadow: var(--shadow-phone);
+  background: var(--color-neutral-1);
+  box-shadow: 0 28px 60px rgb(0 0 0 / 18%);
 }
 
 .phone__screen {
@@ -13,37 +16,37 @@
   height: 100%;
   border-radius: 36px;
   overflow: hidden;
-  background: var(--color-cream-alt);
+  background: var(--color-modal);
+  color: var(--color-foreground);
 }
 
 .phone__body {
-  padding: 28px 22px 18px;
+  padding: var(--space-10) var(--space-9) var(--space-8);
 }
 
 .phone__brand {
   display: flex;
   align-items: center;
-  gap: 9px;
-  margin-bottom: 24px;
+  gap: var(--space-4);
+  margin-bottom: var(--space-10);
 }
 
 .phone__brand-name {
-  font-family: var(--font-serif);
-  font-size: 19px;
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-3);
 }
 
 .phone__label {
-  margin-bottom: 8px;
-  color: var(--color-accent-4);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.16em;
+  margin-bottom: var(--space-4);
+  color: var(--app-accent-text);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-4);
   text-transform: uppercase;
 }
 
 .phone__list {
   list-style: none;
-  margin: 0;
   padding: 0;
 }
 
@@ -51,8 +54,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 0;
-  border-bottom: 1px solid var(--border-hairline-soft);
+  gap: var(--space-5);
+  padding: var(--space-6) 0;
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .phone__row:last-child {
@@ -62,8 +66,8 @@
 .phone__source {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 15px;
+  gap: var(--space-4);
+  font-size: var(--font-size-3);
 }
 
 .phone__dot {
@@ -73,22 +77,21 @@
   border-radius: var(--radius-pill);
 }
 
-.phone__dot--magenta {
-  background: var(--color-accent-4);
+.phone__dot--accent {
+  background: var(--color-accent);
 }
 
-.phone__dot--amber {
-  background: var(--color-amber);
+.phone__dot--success {
+  background: var(--color-success);
 }
 
-.phone__dot--green {
-  background: var(--color-green);
+.phone__dot--neutral {
+  background: var(--color-neutral-5);
 }
 
 .phone__origin {
-  color: var(--color-muted-gray);
-  font-family: var(--font-mono);
-  font-size: 13px;
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
 }
 
 .phone__footer {
@@ -96,33 +99,18 @@
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 18px 22px;
-  background: var(--color-ink);
-  color: var(--color-cream);
+  padding: var(--space-8) var(--space-9);
+  background: var(--color-sunken);
+  border-top: 1px solid var(--color-divider);
 }
 
 .phone__footer-label {
-  margin-bottom: 3px;
-  /* One-off warm taupe for the mock UI label. */
-  color: #d8c8b8;
-  font-size: 13px;
+  margin-bottom: var(--space-1);
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
 }
 
 .phone__footer-value {
-  font-family: var(--font-serif);
-  font-size: 18px;
-}
-
-/* Dark mode — the phone is a dark device in both schemes: keep the bezel and
- * tab bar dark (rather than following the flipped `--color-ink`), and let the
- * screen adopt the dark surface/text tokens like the rest of the page. */
-@media (prefers-color-scheme: dark) {
-  .phone {
-    background: #0e0b09;
-  }
-
-  .phone__footer {
-    background: #14100d;
-    color: var(--color-ink);
-  }
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
 }

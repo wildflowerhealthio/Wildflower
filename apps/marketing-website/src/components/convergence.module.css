@@ -1,106 +1,97 @@
 .convergence {
-  border-top: 1px solid var(--border-hairline-soft);
+  border-top: 1px solid var(--color-divider);
   scroll-margin-top: var(--header-height);
 }
 
 .convergence__inner {
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: 64px var(--page-padding-x);
+  padding: var(--space-14) var(--page-padding-x);
 }
 
 .convergence__head {
-  margin-bottom: 42px;
-  text-align: center;
+  max-width: 40ch;
+  margin-bottom: var(--space-13);
 }
 
 .convergence__title {
-  max-width: 720px;
-  margin: 0 auto 18px;
-  font-size: 42px;
-  line-height: 1.08;
+  margin-bottom: var(--space-7);
+  font-size: var(--font-size-8);
+  font-weight: var(--font-weight-3);
+  line-height: var(--line-height-2);
+  letter-spacing: var(--letter-spacing-2);
 }
 
 .convergence__title em {
-  color: var(--color-accent-4);
-  font-style: italic;
+  color: var(--app-accent-text);
 }
 
 .convergence__lede {
-  max-width: 600px;
-  margin: 0 auto;
-  color: var(--color-warm-gray);
-  font-size: 16.5px;
-  line-height: 1.6;
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-5);
 }
 
 .convergence__grid {
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 36px;
+  grid-template-columns: 1.05fr 0.95fr;
+  gap: var(--space-12);
   align-items: start;
 }
 
 .convergence__footnote {
-  margin-top: 32px;
-  color: var(--color-muted-gray);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  letter-spacing: 0.06em;
-  text-align: center;
+  margin-top: var(--space-12);
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
 }
 
-/* --- Standardized record card --- */
+/* --- The record --- */
 /* Surface/border/radius/shadow come from the shared `.card` utility; the record
  * only owns its inner padding. */
 .record {
-  padding: 24px;
+  padding: var(--space-10);
 }
 
 .record__header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  gap: var(--space-5);
+  margin-bottom: var(--space-2);
 }
 
 .record__brand {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: var(--space-5);
 }
 
 .record__title {
-  font-family: var(--font-serif);
-  font-size: 20px;
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
 }
 
-.record__count {
-  color: var(--color-muted-gray);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.record__count,
+.record__sub {
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
 }
 
 .record__sub {
-  margin-bottom: 6px;
-  color: var(--color-muted-gray);
-  font-size: 13px;
+  margin-bottom: var(--space-4);
 }
 
 .record__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 16px 2px;
-  border-top: 1px solid var(--border-hairline);
-  transition: var(--transition-opacity);
+  gap: var(--space-7);
+  padding: var(--space-7) 0;
+  border-top: 1px solid var(--color-divider);
+  transition: opacity 0.25s ease;
 }
 
 .record__row:last-child {
-  border-bottom: 1px solid var(--border-hairline);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .record__row--dim {
@@ -110,224 +101,114 @@
 .record__source {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-1);
 }
 
 .record__source-name {
-  font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-2);
 }
 
 .record__source-category {
-  color: var(--color-muted-gray);
-  font-family: var(--font-mono);
-  font-size: 11px;
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
 }
 
 .record__chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 7px;
+  gap: var(--space-3);
   justify-content: flex-end;
 }
 
 .chip {
-  padding: 7px 12px;
+  padding: var(--space-3) var(--space-5);
   border-radius: var(--radius-pill);
-  background: var(--color-cream-band);
-  color: var(--color-chip-text);
-  font-size: 13px;
-  transition: var(--transition-ui);
+  background: var(--color-chip-background);
+  color: var(--color-chip-foreground);
+  font-size: var(--font-size-2);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
 }
 
-/* Selected = the accent fill with a cream label, the same treatment tundra's
- * filled buttons use (plum in light, the warm gold in dark). */
+/* Selected chips take the accent fill with its on-accent label — the same
+ * treatment tundra's filled buttons use, so light and dark both hold. */
 .chip--active {
-  background: var(--color-accent-5);
-  color: var(--color-raised);
+  background: var(--color-accent);
+  color: var(--color-on-accent);
 }
 
-/* --- Connectable apps --- */
+/* --- The collection --- */
 .apps {
   min-width: 0;
 }
 
 .apps__label {
-  margin-bottom: 6px;
-  color: var(--color-accent-4);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  letter-spacing: 0.16em;
+  margin-bottom: var(--space-5);
+  color: var(--app-accent-text);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-4);
   text-transform: uppercase;
 }
 
-.apps__sub {
-  margin-bottom: 16px;
-  color: var(--color-warm-gray);
-  font-size: 14px;
-  line-height: 1.5;
+.apps__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
 }
 
-.app-card {
-  display: block;
-  width: 100%;
-  margin-bottom: 12px;
-  border: 1px solid var(--border-app-card);
-  border-radius: var(--radius-app-card);
-  padding: 18px 20px;
-  background: var(--color-cream-raised);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  text-align: left;
-  cursor: pointer;
-  transition: var(--transition-ui);
+/* Shape only — size, colour, border and hover all come from tundra's
+ * `.button-2 .outline` / `.filled`, which the selected pill swaps between. */
+.app-pill {
+  border-radius: var(--radius-pill);
 }
 
-.app-card--active {
-  border: 1.5px solid var(--color-accent-5);
-  background: var(--color-accent-5);
-  color: var(--color-raised);
-  box-shadow: var(--shadow-app-selected);
+.apps__detail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-5);
+  margin-top: var(--space-9);
 }
 
-.app-card__title {
-  display: block;
-  margin-bottom: 5px;
-  font-family: var(--font-serif);
-  font-size: 20px;
+.apps__availability {
+  color: var(--app-accent-text);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-4);
+  text-transform: uppercase;
 }
 
-.app-card__pitch {
-  display: block;
-  font-size: 14px;
-  line-height: 1.5;
-  opacity: 0.72;
-}
-
-.app-card--active .app-card__pitch {
-  opacity: 0.78;
-}
-
-.app-card__reads {
-  display: block;
-  margin-top: 10px;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  opacity: 0.6;
-}
-
-.app-card--active .app-card__reads {
-  opacity: 0.7;
-}
-
-/* Shown only when stacked: the selected app's pitch under the pill rail. */
 .apps__pitch {
-  display: none;
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-4);
 }
 
-/*
- * Tablet and below — Convergence pattern "A": the apps become a sticky
- * selector pinned under the header, above a live record. The card list
- * turns into a single horizontally scrolling row of pills that bleeds to
- * the screen edges by cancelling the section gutter, and the selected
- * app's pitch moves to its own line beneath the rail.
- */
+.apps__reads {
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
+}
+
+.apps__link {
+  border-radius: var(--radius-pill);
+  text-decoration: none;
+}
+
 @media (max-width: 920px) {
   .convergence__grid {
     grid-template-columns: 1fr;
-    gap: 0;
-  }
-
-  .record {
-    order: 2;
+    gap: var(--space-12);
   }
 
   .apps {
-    order: 1;
-    position: sticky;
-    top: var(--header-height);
-    z-index: 20;
-    margin-bottom: 8px;
-    padding: 10px 0 16px;
-    background: var(--color-cream);
-    border-bottom: 1px solid var(--border-hairline);
-  }
-
-  .apps__sub {
-    display: none;
-  }
-
-  .apps__list {
-    display: flex;
-    flex-wrap: nowrap;
-    gap: 8px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-    /* Bleed past the section gutter, then re-add it as inner padding so the
-       first/last pills still line up with the content. */
-    margin-inline: calc(-1 * var(--page-padding-x));
-    padding-inline: var(--page-padding-x);
-  }
-
-  .apps__list::-webkit-scrollbar {
-    display: none;
-  }
-
-  .app-card {
-    display: inline-flex;
-    align-items: center;
-    flex: 0 0 auto;
-    width: auto;
-    margin-bottom: 0;
-    border-radius: var(--radius-pill);
-    padding: 9px 15px;
-    white-space: nowrap;
-    box-shadow: none;
-  }
-
-  .app-card--active {
-    box-shadow: none;
-  }
-
-  .app-card__title {
-    margin-bottom: 0;
-    font-size: 14.5px;
-    white-space: nowrap;
-  }
-
-  .app-card__pitch,
-  .app-card__reads {
-    display: none;
-  }
-
-  .apps__pitch {
-    display: block;
-    margin-top: 14px;
-    color: var(--color-warm-gray);
-    font-size: 14.5px;
-    line-height: 1.5;
+    order: -1;
   }
 }
 
 @media (max-width: 680px) {
   .convergence__inner {
-    padding-top: 48px;
-    padding-bottom: 48px;
-  }
-
-  .convergence__title {
-    font-size: 30px;
-  }
-}
-
-/* Dark mode — keep the cream label on the accent fill (the `--color-raised`
- * label flips dark on its own, so re-pin it), mirroring tundra's filled
- * buttons. The accent-5 background flips with the shared theme on its own. */
-@media (prefers-color-scheme: dark) {
-  .chip--active,
-  .app-card--active {
-    color: #fbf4e9;
+    padding-block: var(--space-13);
   }
 }

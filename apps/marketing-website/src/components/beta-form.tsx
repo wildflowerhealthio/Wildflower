@@ -55,7 +55,7 @@ function BetaForm({ variant }: { readonly variant: BetaFormVariant }): JSX.Eleme
   return (
     <form className={styles['beta-form']} onSubmit={handleSubmit} noValidate>
       <div className={styles['beta-form__field']}>
-        <label className="visually-hidden" htmlFor={inputId}>
+        <label className="sr-only" htmlFor={inputId}>
           Email address
         </label>
         <input

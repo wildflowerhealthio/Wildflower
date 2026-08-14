@@ -1,6 +1,8 @@
+/* The footer closes the page on the recessed surface rather than inverting to
+ * a dark slab, so it flips with the shared theme like everything else. */
 .site-footer {
-  background: var(--color-ink);
-  color: var(--color-footer-text);
+  background: var(--color-sunken);
+  border-top: 1px solid var(--color-divider);
 }
 
 .site-footer__top {
@@ -8,106 +10,87 @@
   align-items: flex-start;
   justify-content: space-between;
   flex-wrap: wrap;
-  gap: 40px;
+  gap: var(--space-12);
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: 48px var(--page-padding-x);
+  padding: var(--space-13) var(--page-padding-x);
 }
 
 .site-footer__brand-col {
-  max-width: 320px;
+  max-width: 34ch;
 }
 
 .site-footer__brand {
   display: flex;
   align-items: center;
-  gap: 11px;
-  margin-bottom: 14px;
+  gap: var(--space-5);
+  margin-bottom: var(--space-6);
 }
 
 .site-footer__wordmark {
-  color: var(--color-cream);
-  font-family: var(--font-serif);
-  font-size: 21px;
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
 }
 
 .site-footer__blurb {
-  color: var(--color-footer-body);
-  font-size: 14px;
-  line-height: 1.55;
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-3);
 }
 
 .site-footer__em {
-  color: inherit;
-  font-family: var(--font-serif);
-  font-style: italic;
+  color: var(--app-accent-text);
 }
 
 .site-footer__cols {
   display: flex;
   flex-wrap: wrap;
-  gap: 64px;
+  gap: var(--space-14);
 }
 
 .site-footer__col {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-4);
 }
 
 .site-footer__col-label {
-  margin-bottom: 2px;
-  color: var(--color-footer-label);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.16em;
+  margin-bottom: var(--space-1);
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-4);
   text-transform: uppercase;
 }
 
 .site-footer__link {
-  color: var(--color-footer-text);
-  font-size: 14.5px;
+  font-size: var(--font-size-3);
   text-decoration: none;
-  transition: var(--transition-ui);
+  transition: color 0.2s ease;
 }
 
 .site-footer__link:hover {
-  color: var(--color-footer-link-hover);
+  color: var(--app-accent-text);
 }
 
 .site-footer__bottom-wrap {
-  border-top: 1px solid var(--border-footer);
+  border-top: 1px solid var(--color-divider);
 }
 
 .site-footer__bottom {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
+  gap: var(--space-9);
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: 18px var(--page-padding-x);
-  color: var(--color-footer-label);
-  font-family: var(--font-mono);
-  font-size: 13px;
+  padding: var(--space-8) var(--page-padding-x);
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-2);
 }
 
 @media (max-width: 680px) {
   .site-footer__top {
     flex-direction: column;
-    gap: 28px;
-  }
-}
-
-/* Dark mode — the footer is an inverse (dark) surface in both schemes, so it
- * keeps a deep dark fill with light text rather than following the flipped
- * `--color-ink` / `--color-cream` page tokens. */
-@media (prefers-color-scheme: dark) {
-  .site-footer {
-    background: #14100d;
-  }
-
-  .site-footer__wordmark {
-    color: var(--color-ink);
+    gap: var(--space-10);
   }
 }

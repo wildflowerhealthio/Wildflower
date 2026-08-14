@@ -2,10 +2,11 @@
   position: sticky;
   top: 0;
   z-index: 50;
-  /* Cream at 86% so the page tints through the blur. One-off, so literal. */
-  background: rgba(247, 236, 221, 0.86);
+  /* The page surface at 86% so the content tints through the blur. Both
+   * schemes' surfaces are opaque tokens, so the alpha is applied here. */
+  background: color-mix(in srgb, var(--color-background) 86%, transparent);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid var(--border-hairline-soft);
+  border-bottom: 1px solid var(--color-divider);
 }
 
 .site-header__inner {
@@ -14,59 +15,48 @@
   justify-content: space-between;
   max-width: var(--content-max-width);
   margin: 0 auto;
-  /* 18px + 18px + 34px logo + 1px border = 71px = --header-height. */
-  padding: 18px var(--page-padding-x);
+  /* 18px + 18px + 34px brand mark + 1px border = 71px = --header-height. */
+  padding: var(--space-8) var(--page-padding-x);
 }
 
 .site-header__brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-5);
   text-decoration: none;
-  color: inherit;
 }
 
 .site-header__wordmark {
-  font-family: var(--font-serif);
-  font-size: 22px;
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-3);
 }
 
 .site-header__nav {
   display: flex;
   align-items: center;
-  gap: 32px;
-  color: var(--color-ink-70);
-  font-size: 14.5px;
+  gap: var(--space-11);
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-3);
 }
 
 .site-header__link {
   text-decoration: none;
-  transition: var(--transition-ui);
+  transition: color 0.2s ease;
 }
 
 .site-header__link:hover {
-  color: var(--color-accent-4);
+  color: var(--app-accent-text);
 }
 
-/* Colour, border, hover + dark all come from tundra's `.button-1 .outline`
- * (plum text/border from the shared accent ramp); the header only keeps the
- * marketing pill shape and its compact label size. */
+/* Colour, border, size and hover all come from tundra's `.button .button-1
+ * .outline`; the header only keeps the pill shape. */
 .site-header__cta {
   border-radius: var(--radius-pill);
-  font-size: 13.5px;
   text-decoration: none;
 }
 
 @media (max-width: 680px) {
   .site-header__link--text {
     display: none;
-  }
-}
-
-/* Dark mode — the translucent bar is a one-off literal cream, so flip it to a
- * dark tint here. (The CTA's own dark colours come from tundra's outline.) */
-@media (prefers-color-scheme: dark) {
-  .site-header {
-    background: rgba(26, 21, 18, 0.86);
   }
 }

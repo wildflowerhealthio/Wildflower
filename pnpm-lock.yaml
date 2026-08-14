@@ -24,15 +24,6 @@ catalogs:
     '@fontsource-variable/atkinson-hyperlegible-next':
       specifier: ^5.3.0
       version: 5.3.0
-    '@fontsource-variable/hanken-grotesk':
-      specifier: ^5.3.0
-      version: 5.3.0
-    '@fontsource-variable/newsreader':
-      specifier: ^5.3.0
-      version: 5.3.0
-    '@fontsource-variable/spline-sans-mono':
-      specifier: ^5.3.0
-      version: 5.3.0
     '@opentelemetry/exporter-trace-otlp-http':
       specifier: ^0.221.0
       version: 0.221.0
@@ -264,13 +255,10 @@ importers:
 
   apps/marketing-website:
     dependencies:
-      '@fontsource-variable/hanken-grotesk':
+      '@fontsource-variable/atkinson-hyperlegible-mono':
         specifier: 'catalog:'
         version: 5.3.0
-      '@fontsource-variable/newsreader':
-        specifier: 'catalog:'
-        version: 5.3.0
-      '@fontsource-variable/spline-sans-mono':
+      '@fontsource-variable/atkinson-hyperlegible-next':
         specifier: 'catalog:'
         version: 5.3.0
       react:
@@ -3591,15 +3579,6 @@ packages:
 
   '@fontsource-variable/atkinson-hyperlegible-next@5.3.0':
     resolution: {integrity: sha512-UnLzNUy1RWoLDfydAatP4NaRm99X/WbQEph7q/PymJnCFIOOwKOx3pBmp5ys8trO0dM+CKGuJgeZP9fAR4mQpA==}
-
-  '@fontsource-variable/hanken-grotesk@5.3.0':
-    resolution: {integrity: sha512-DOd0FqL+3cH2dfNy0JtSq9tUfxBz5mLmHMjTU0DOr3E9Zo6wxuatCl53DIPNrSPgCsnuKyM739BTIG5glCLirw==}
-
-  '@fontsource-variable/newsreader@5.3.0':
-    resolution: {integrity: sha512-rrzYi43qMpbzwuFtf9OkWH8sxAPVPcQQQEwXpPtwaKYeJ8yVg5aLs5kawmo1f2Q1t1M38TLmEKCkGVDsYwgdFw==}
-
-  '@fontsource-variable/spline-sans-mono@5.3.0':
-    resolution: {integrity: sha512-dH/qBj/MCE4ObiuCwlA9X1o3AftMO9dwfFgoRVYjy6VCPYkpWAlEtK/RjeyICgsR8rW763IAQARskVgShBY5JA==}
 
   '@headlessui/tailwindcss@0.2.2':
     resolution: {integrity: sha512-xNe42KjdyA4kfUKLLPGzME9zkH7Q3rOZ5huFihWNWOQFxnItxPB3/67yBI8/qBfY8nwBRx5GHn4VprsoluVMGw==}
@@ -10087,12 +10066,6 @@ snapshots:
   '@fontsource-variable/atkinson-hyperlegible-mono@5.3.0': {}
 
   '@fontsource-variable/atkinson-hyperlegible-next@5.3.0': {}
-
-  '@fontsource-variable/hanken-grotesk@5.3.0': {}
-
-  '@fontsource-variable/newsreader@5.3.0': {}
-
-  '@fontsource-variable/spline-sans-mono@5.3.0': {}
 
   '@headlessui/tailwindcss@0.2.2(tailwindcss@4.3.3)':
     dependencies:
