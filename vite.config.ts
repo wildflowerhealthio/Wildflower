@@ -49,6 +49,7 @@ export default defineConfig({
     // settings (e.g. `environment: 'jsdom'` in react-tundraish) instead of
     // running everything under a single root config.
     projects: [
+      'apps/github-pages/vite.config.ts',
       'apps/medication/vite.config.ts',
       'apps/web-trace/vite.config.ts',
       'apps/marketing-website/vite.config.ts',
