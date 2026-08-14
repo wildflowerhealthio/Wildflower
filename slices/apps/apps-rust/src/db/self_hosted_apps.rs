@@ -135,9 +135,10 @@ pub(super) fn insert_self_hosted_app(
         // can't race a concurrent insert. A name-derived id clash is a client-fixable
         // `400 InvalidName`. (Every *uploaded* self-hosted row's subdomain equals its
         // id, so the global id space subsumes the subdomain space; the
-        // `UNIQUE(subdomain)` column stays a backstop. The seeded rows are the
-        // exception — `wildflower-medication` serves at `medication` — and their
-        // migrations lean on that: the id is a seed's fallback subdomain.)
+        // `UNIQUE(subdomain)` column stays a backstop. The seeded/dev rows are the
+        // exception — patient-browser aside, the debug-only `medications-app-dev`
+        // serves at `medication-dev` — and their seeds lean on that: the id is a
+        // seed's fallback subdomain.)
         if id_taken(conn, &registration.id)? {
             return Err(AppsError::InvalidName {
                 message: "an app with this name already exists".to_owned(),

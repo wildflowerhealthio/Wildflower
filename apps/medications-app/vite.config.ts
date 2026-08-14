@@ -1,7 +1,32 @@
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite-plus'
 
 import base from '../../vite.config.base.ts'
+
+// SINGLE SOURCE OF TRUTH: `slices/apps/dev-app-ports.json` pins the port this
+// dev server binds to. `apps-rust` embeds the same file (`src/dev_seed.rs`) to
+// seed the debug-only `medications-app-dev` self-hosted row, whose loopback origin
+// the homescreen tile launches — so the row and this server cannot drift. Read
+// at config-eval time (Node), like the Tauri app reads
+// `tauri-shared-config.json`.
+const devPortsPath = fileURLToPath(new URL('../../slices/apps/dev-app-ports.json', import.meta.url))
+
+const isDevPorts = (value: unknown): value is { 'medications-app-dev': number } =>
+  typeof value === 'object' &&
+  value !== null &&
+  'medications-app-dev' in value &&
+  typeof value['medications-app-dev'] === 'number'
+
+const parsedDevPorts: unknown = JSON.parse(readFileSync(devPortsPath, 'utf8'))
+if (!isDevPorts(parsedDevPorts)) {
+  throw new Error(
+    `dev-app-ports.json must declare a number "medications-app-dev" (at ${devPortsPath})`
+  )
+}
+const devPort = parsedDevPorts['medications-app-dev']
 
 /**
  * A SMART-on-FHIR app served as a self-hosted bundle. Two HTML entries:
@@ -14,6 +39,15 @@ export default defineConfig({
   ...base,
   base: './',
   plugins: [react()],
+  server: {
+    // Pinned to the shared dev-port file (above), and `strictPort` so vite fails
+    // loudly rather than drifting onto the next free port: the homescreen's
+    // "Medications (Dev)" tile launches that port's `/launch.html`, which a moved dev
+    // server would leave serving the stale vendored build instead. Run with
+    // `vp run -F medications-app dev`.
+    port: devPort,
+    strictPort: true,
+  },
   build: {
     // Build straight into the vendored self-hosted-apps tree so the bundle
     // ships as a Tauri resource (`wildflower-tauri/src-tauri/tauri.conf.json`
@@ -22,10 +56,11 @@ export default defineConfig({
     // startup. The folder is gitignored like every other vendored build.
     //
     // The trailing segment is deliberately `medication`, not the package name
-    // `medications-app`: it is the `content_folder` of the seeded app row
-    // (`apps-rust` migration `0003_seed_wildflower_medication_app`) and the
-    // path baked into the Tauri `bundle.resources`, so it can only change
-    // alongside a migration.
+    // `medications-app`: it is the directory `apps/github-pages` copies to
+    // `/medications-app` on the published site, the `content_folder` of the
+    // debug-only `medications-app-dev` row (`apps-rust`'s `seed_dev_apps`), and
+    // the path baked into the Tauri `bundle.resources`, so it can only change
+    // alongside those.
     outDir: '../../slices/apps/self-hosted-apps/medication',
     emptyOutDir: true,
     rolldownOptions: {

@@ -30,10 +30,13 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// Migration `0001` builds the `app_registrations` table and its three
 /// configuration tables; `0002` seeds the default registry (kept separate so the
 /// schema and the shipped data version independently); `0003` and `0004` each
-/// append one shipped self-hosted SMART app (`wildflower-medication`,
-/// `wildflower-web-trace`) — one migration per app, so which apps ship versions
-/// independently of both the schema and the baseline set. Because each migration
-/// runs only once per database, a user-deleted seed stays deleted across upgrades.
+/// append one shipped first-party SMART app — one migration per app, so which
+/// apps ship versions independently of both the schema and the baseline set; and
+/// `0005` renames those two to `medications-app` / `web-trace-app` and turns them
+/// into CLOUD rows served from the published GitHub Pages site. Because each
+/// migration runs only once per database, a user-deleted seed stays deleted
+/// across upgrades. The debug-only `…-dev` self-hosted siblings are deliberately
+/// NOT migrations — see `apps-rust/src/dev_seed.rs`.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`AppsStore`] port — serves the registrations plus
@@ -180,7 +183,7 @@ impl AppsStore for SqliteAppsStore {
 mod tests {
     use diesel::migration::{Migration, MigrationSource, MigrationVersion};
     use diesel::prelude::*;
-    use diesel::sql_types::{Integer, Text};
+    use diesel::sql_types::{BigInt, Integer, Text};
     use diesel::sqlite::{Sqlite, SqliteConnection};
     use diesel::{sql_query, QueryableByName};
 
@@ -249,8 +252,8 @@ mod tests {
                 "growth-chart",
                 "medication-viewer",
                 "precise-hbr",
-                "wildflower-medication",
-                "wildflower-web-trace",
+                "medications-app",
+                "web-trace-app",
             ],
         );
     }
@@ -309,22 +312,87 @@ mod tests {
             .expect("the seeded self-hosted row must exist")
     }
 
-    /// With nothing in the way, each seed lands on the literal origin it documents
-    /// — the fallback expressions below must not move a fresh install.
+    /// The launch template a cloud row was seeded/migrated onto.
+    #[derive(QueryableByName)]
+    struct CloudTarget {
+        #[diesel(sql_type = Text)]
+        url: String,
+    }
+
+    /// After 0005 the two first-party apps are CLOUD rows pointing at the
+    /// published GitHub Pages site, under their renamed ids, and their
+    /// self-hosted payloads are gone. Patient Browser is untouched — it is still
+    /// the one seeded self-hosted app, on the port 0002 documents.
     #[test]
-    fn seeded_self_hosted_apps_land_on_their_documented_ports() {
+    fn first_party_apps_are_cloud_rows_on_the_published_site() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let mut conn = store.pool().get().unwrap();
-        let medication = origin_of(&mut conn, "wildflower-medication");
+
+        for (id, url) in [
+            (
+                "medications-app",
+                "https://wildflower-health.io/medications-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+            ),
+            (
+                "web-trace-app",
+                "https://wildflower-health.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+            ),
+        ] {
+            let (registration, configuration) = store
+                .find_app(id)
+                .unwrap()
+                .unwrap_or_else(|| panic!("{id} must exist under its renamed id"));
+            assert!(
+                matches!(configuration, AppConfiguration::Cloud(_)),
+                "{id} must be a cloud app",
+            );
+            // The client_id must track the id: the host's self-hosted redirect
+            // resolver looks an app up by client_id.
+            assert_eq!(registration.client_id.as_deref(), Some(id));
+            assert!(
+                !registration.requires_tunnel,
+                "{id} reaches the LOCAL origin's FHIR API through `iss={{origin}}`, so a \
+                 loopback launch must not be forced through the tunnel",
+            );
+            let target: CloudTarget =
+                sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+                    .bind::<Text, _>(id)
+                    .get_result(&mut conn)
+                    .expect("the cloud configuration row must exist");
+            assert_eq!(target.url, url);
+            let leftovers: i64 = sql_query(
+                "SELECT COUNT(*) AS count FROM self_hosted_app_configurations WHERE id = ?",
+            )
+            .bind::<Text, _>(id)
+            .get_result::<RowCount>(&mut conn)
+            .expect("count must read")
+            .count;
+            assert_eq!(leftovers, 0, "{id}'s self-hosted payload must be gone");
+        }
+
+        // The old ids are fully retired.
+        for old in ["wildflower-medication", "wildflower-web-trace"] {
+            assert!(store.find_app(old).unwrap().is_none(), "{old} must be gone");
+        }
+
+        // Web Trace can no longer claim local-only: its assets come from the
+        // published site now.
+        let (web_trace, _) = store.find_app("web-trace-app").unwrap().unwrap();
+        assert!(!web_trace.local_only);
+
+        // Patient Browser is untouched by 0005.
+        let patient_browser = origin_of(&mut conn, "patient-browser");
         assert_eq!(
-            (medication.port, medication.subdomain.as_str()),
-            (8090, "medication")
+            (patient_browser.port, patient_browser.subdomain.as_str()),
+            (8081, "patient-browser"),
         );
-        let web_trace = origin_of(&mut conn, "wildflower-web-trace");
-        assert_eq!(
-            (web_trace.port, web_trace.subdomain.as_str()),
-            (8091, "web-trace")
-        );
+    }
+
+    /// A bare `COUNT(*)` result.
+    #[derive(QueryableByName)]
+    struct RowCount {
+        #[diesel(sql_type = BigInt)]
+        count: i64,
     }
 
     /// `port` and `subdomain` are UNIQUE, so an install that uploaded an app onto
@@ -344,8 +412,15 @@ mod tests {
         .unwrap();
         occupy(&mut conn, "web-trace", 8091);
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("0004 must apply over the collision, not abort the migration run");
+        // Stops at 0004 deliberately: 0005 moves this app to a cloud row and drops
+        // the self-hosted payload, so the fallback under test is only observable
+        // at the version that wrote it.
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0004"),
+        )
+        .expect("0004 must apply over the collision, not abort the migration run");
 
         let seeded = origin_of(&mut conn, "wildflower-web-trace");
         assert_eq!(seeded.port, 8092, "the next port above every allocated one");
@@ -373,8 +448,13 @@ mod tests {
         .unwrap();
         occupy(&mut conn, "medication", 8090);
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
-            .expect("0003 must apply over the collision, not abort the migration run");
+        // Stops at 0004 for the same reason as the test above.
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0004"),
+        )
+        .expect("0003 must apply over the collision, not abort the migration run");
 
         let medication = origin_of(&mut conn, "wildflower-medication");
         assert_eq!(

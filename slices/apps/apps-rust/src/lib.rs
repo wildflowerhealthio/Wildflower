@@ -60,6 +60,12 @@
 
 pub mod config;
 pub mod db;
+// Debug builds only: the runtime seed for the `…-dev` rows that point at the
+// first-party apps' vite dev servers. Gated here (not merely at the call site) so
+// a release build contains no code that could write those ids — see the module
+// docs for why they can't be a migration.
+#[cfg(debug_assertions)]
+mod dev_seed;
 pub mod domain;
 pub mod http;
 mod id_utils;
@@ -95,6 +101,8 @@ pub use domain::{AppConfiguration, AppRegistration, AppsStore, SelfHostedAppConf
 pub use http::openapi_spec;
 pub use live_bindings::state::AppsState;
 
+#[cfg(debug_assertions)]
+pub use dev_seed::seed_dev_apps;
 pub use seed::sync_vendored_self_hosted_apps;
 pub use self_hosted_apps_service::SelfHostedAppsService;
 pub use shared_structures_rust::OnDeviceWebviewHandle;

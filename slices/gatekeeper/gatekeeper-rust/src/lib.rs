@@ -44,6 +44,11 @@ use tokio::time::{interval, MissedTickBehavior};
 
 pub use config::GatekeeperConfig;
 pub use db::SqliteGatekeeperStore;
+// Debug builds only: the OAuth clients for the first-party apps' vite dev servers
+// (the gatekeeper half of `apps_rust::seed_dev_apps`). Gated so a release build
+// contains no code that could write them.
+#[cfg(debug_assertions)]
+pub use seeding::seed_dev_app_clients;
 // The persistence port traits, re-exported so out-of-crate callers (e.g. the
 // integration test) can bring the store methods into scope on the concrete
 // `SqliteGatekeeperStore` adapter. `GatekeeperStore` is the transaction seam
