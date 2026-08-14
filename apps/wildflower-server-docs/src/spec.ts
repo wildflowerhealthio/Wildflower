@@ -63,7 +63,8 @@ export const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
           scheme: 'bearer',
           description:
             'The access token the host issues. Loopback callers on the device are ' +
-            'trusted without one; every forwarded caller needs it.',
+            'trusted without one; every forwarded caller needs it. Signing in from ' +
+            'the header bar fills this field with a freshly issued token.',
         },
       },
     },

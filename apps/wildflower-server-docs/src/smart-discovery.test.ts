@@ -1,0 +1,299 @@
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
+import { describe, expect, it } from 'vite-plus/test'
+
+import {
+  discoverSmartEndpoints,
+  SMART_CONFIGURATION_PATH,
+  smartConfigurationUrl,
+  smartEndpointsFrom,
+  usableEndpointUrl,
+} from './smart-discovery.ts'
+
+/**
+ * A discovery document shaped like the one `emr-rust`'s
+ * `build_smart_configuration` serves, trimmed to the fields this console reads.
+ */
+const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> => ({
+  issuer: 'https://wildflowerhealth.io',
+  jwks_uri: `${origin}/.well-known/jwks.json`,
+  authorization_endpoint: `${origin}/oauth/authorize`,
+  token_endpoint: `${origin}/oauth/token`,
+  grant_types_supported: ['authorization_code', 'client_credentials'],
+  response_types_supported: ['code'],
+  code_challenge_methods_supported: ['S256'],
+})
+
+const onSecurePage = { pageIsSecure: true }
+
+describe('smartConfigurationUrl', () => {
+  it('appends the SMART well-known path to the canonical target', () => {
+    // Act / Assert
+    expect(smartConfigurationUrl('https://ruth.wildflowerhealth.io')).toBe(
+      'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration'
+    )
+    expect(smartConfigurationUrl('http://127.0.0.1:8080')).toBe(
+      `http://127.0.0.1:8080${SMART_CONFIGURATION_PATH}`
+    )
+  })
+})
+
+describe('usableEndpointUrl', () => {
+  it('accepts an absolute https endpoint', () => {
+    // Act / Assert
+    expect(usableEndpointUrl('https://example.test/oauth/authorize', onSecurePage)).toBe(
+      'https://example.test/oauth/authorize'
+    )
+  })
+
+  it('accepts a loopback http endpoint even from the published https console', () => {
+    // A desktop host serves its API on loopback, which browsers treat as
+    // potentially trustworthy — the same exception the console's own requests
+    // rely on.
+    expect(usableEndpointUrl('http://127.0.0.1:8080/oauth/token', onSecurePage)).toBe(
+      'http://127.0.0.1:8080/oauth/token'
+    )
+    expect(usableEndpointUrl('http://localhost:8080/oauth/token', onSecurePage)).toBe(
+      'http://localhost:8080/oauth/token'
+    )
+  })
+
+  it('rejects a plain-http endpoint on a remote host while the page is secure', () => {
+    fc.assert(
+      fc.property(fc.domain(), (host) => {
+        // Act
+        const result = usableEndpointUrl(`http://${host}/oauth/token`, onSecurePage)
+
+        // Assert
+        expect(result).toBeUndefined()
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('accepts the same plain-http endpoint when the console itself is not secure', () => {
+    // Act / Assert
+    expect(usableEndpointUrl('http://server.test/oauth/token', { pageIsSecure: false })).toBe(
+      'http://server.test/oauth/token'
+    )
+  })
+
+  it('rejects anything that is not an absolute http(s) URL', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(
+          'javascript:alert(1)',
+          'data:text/html,x',
+          '//example.test/oauth/token',
+          '/oauth/token',
+          'example.test/oauth/token',
+          'ftp://example.test/token',
+          'wss://example.test/token',
+          '',
+          '   '
+        ),
+        (candidate) => {
+          // Act / Assert
+          expect(usableEndpointUrl(candidate, onSecurePage)).toBeUndefined()
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('rejects a non-string value', () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(fc.integer(), fc.boolean(), fc.constant(null), fc.constant(undefined)),
+        (candidate) => {
+          // Act / Assert
+          expect(usableEndpointUrl(candidate, onSecurePage)).toBeUndefined()
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  it('rejects an endpoint carrying credentials or a fragment', () => {
+    // Credentials would ride into the address bar on redirect; a fragment would
+    // strand the query parameters the authorize URL appends.
+    expect(
+      usableEndpointUrl('https://user:pw@example.test/authorize', onSecurePage)
+    ).toBeUndefined()
+    expect(usableEndpointUrl('https://example.test/authorize#here', onSecurePage)).toBeUndefined()
+  })
+})
+
+describe('smartEndpointsFrom', () => {
+  it('reads both endpoints out of a Wildflower discovery document', () => {
+    // Arrange
+    const document = wildflowerDiscoveryDocument('https://ruth.wildflowerhealth.io')
+
+    // Act
+    const result = smartEndpointsFrom(document, onSecurePage)
+
+    // Assert
+    expect(result).toEqual({
+      ok: true,
+      endpoints: {
+        authorizationEndpoint: 'https://ruth.wildflowerhealth.io/oauth/authorize',
+        tokenEndpoint: 'https://ruth.wildflowerhealth.io/oauth/token',
+      },
+    })
+  })
+
+  it('reports a document that advertises no usable endpoints', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom<Record<string, unknown>>(
+          {},
+          { authorization_endpoint: 'https://example.test/authorize' },
+          { token_endpoint: 'https://example.test/token' },
+          { authorization_endpoint: 'not a url', token_endpoint: 'https://example.test/token' }
+        ),
+        (document) => {
+          // Act
+          const result = smartEndpointsFrom(document, onSecurePage)
+
+          // Assert
+          expect(result.ok).toBe(false)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('reports a body that is not a JSON object at all', () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(fc.string(), fc.integer(), fc.constant(null), fc.array(fc.jsonValue())),
+        (document) => {
+          // Act
+          const result = smartEndpointsFrom(document, onSecurePage)
+
+          // Assert
+          expect(result.ok).toBe(false)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('refuses a server that advertises PKCE without S256', () => {
+    // Arrange
+    const document = {
+      ...wildflowerDiscoveryDocument('https://example.test'),
+      code_challenge_methods_supported: ['plain'],
+    }
+
+    // Act
+    const result = smartEndpointsFrom(document, onSecurePage)
+
+    // Assert
+    if (result.ok) throw new Error('expected a plain-only server to be refused')
+    expect(result.problem).toContain('S256')
+  })
+
+  it('accepts a document that says nothing about PKCE methods', () => {
+    // Arrange
+    const { code_challenge_methods_supported: _omitted, ...document } =
+      wildflowerDiscoveryDocument('https://example.test')
+
+    // Act
+    const result = smartEndpointsFrom(document, onSecurePage)
+
+    // Assert
+    expect(result.ok).toBe(true)
+  })
+})
+
+describe('discoverSmartEndpoints', () => {
+  it('fetches the well-known document from the chosen server', async () => {
+    // Arrange
+    const requested: string[] = []
+    const fetchStub = respondingWith((url) => {
+      requested.push(url)
+      return jsonResponse(wildflowerDiscoveryDocument('https://ruth.wildflowerhealth.io'))
+    })
+
+    // Act
+    const result = await discoverSmartEndpoints('https://ruth.wildflowerhealth.io', {
+      fetch: fetchStub,
+      pageIsSecure: true,
+    })
+
+    // Assert
+    expect(requested).toEqual([
+      'https://ruth.wildflowerhealth.io/fhir-r4/.well-known/smart-configuration',
+    ])
+    expect(result.ok).toBe(true)
+  })
+
+  it('reports an unreachable server rather than throwing', async () => {
+    // Arrange
+    const fetchStub = respondingWith(() => {
+      throw new TypeError('Failed to fetch')
+    })
+
+    // Act
+    const result = await discoverSmartEndpoints('https://down.test', {
+      fetch: fetchStub,
+      pageIsSecure: true,
+    })
+
+    // Assert
+    if (result.ok) throw new Error('expected an unreachable server to be reported')
+    expect(result.problem).toContain('https://down.test')
+  })
+
+  it('reports a target that answers with an error status', async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.integer({ min: 400, max: 599 }), async (status) => {
+        // Arrange
+        const fetchStub = respondingWith(() => new Response('nope', { status }))
+
+        // Act
+        const result = await discoverSmartEndpoints('https://not-wildflower.test', {
+          fetch: fetchStub,
+          pageIsSecure: true,
+        })
+
+        // Assert
+        if (result.ok) throw new Error('expected an error status to be reported')
+        expect(result.problem).toContain(String(status))
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  it('reports a target that answers with something other than JSON', async () => {
+    // Arrange
+    const fetchStub = respondingWith(() => new Response('<html>hello</html>', { status: 200 }))
+
+    // Act
+    const result = await discoverSmartEndpoints('https://marketing-site.test', {
+      fetch: fetchStub,
+      pageIsSecure: true,
+    })
+
+    // Assert
+    expect(result.ok).toBe(false)
+  })
+})
+
+// Helpers
+
+/** A `fetch` stub built from a per-URL responder. */
+const respondingWith =
+  (respond: (url: string) => Response): typeof globalThis.fetch =>
+  (input) =>
+    Promise.resolve(
+      respond(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
+    )
+
+/** A 200 JSON response carrying `body`. */
+const jsonResponse = (body: unknown): Response =>
+  new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  })

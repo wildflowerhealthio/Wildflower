@@ -60,9 +60,29 @@ body {
   cursor: pointer;
 }
 
+.server-bar__submit[disabled] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .server-bar__hint {
   flex-basis: 100%;
   margin: 0;
   color: light-dark(#5a5a66, #a0a0ae);
   font-size: 0.8rem;
+}
+
+/*
+ * Sign-in state and sign-in failures share one line: both answer "can this
+ * console send an authorised request right now?".
+ */
+.server-bar__status {
+  flex-basis: 100%;
+  margin: 0;
+  color: light-dark(#2c5f2c, #8fd08f);
+  font-size: 0.8rem;
+}
+
+.server-bar__status--problem {
+  color: light-dark(#8c2f2f, #f0a0a0);
 }

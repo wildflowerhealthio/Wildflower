@@ -52,6 +52,32 @@ describe('consoleConfiguration', () => {
     }
   })
 
+  it('never lets Scalar persist the access token to local storage', () => {
+    // Scalar's persistence plugin writes the whole auth block, token included,
+    // when this is on. The console holds its token in memory only.
+    expect(configuration.persistAuth).toBe(false)
+  })
+
+  it('offers an empty bearer field when nobody has signed in', () => {
+    expect(configuration.authentication).toEqual({
+      preferredSecurityScheme: BEARER_SCHEME_NAME,
+      securitySchemes: { [BEARER_SCHEME_NAME]: { token: '' } },
+    })
+  })
+
+  it('prefills the shared bearer field with the signed-in token', () => {
+    // One `authentication` block beside the sources, so a single sign-in reaches
+    // all six documents rather than being re-entered per slice.
+    const signedIn = consoleConfiguration('https://example-tunnel-origin', {
+      prefersDarkMode: false,
+      accessToken: 'header.payload.signature',
+    })
+    expect(signedIn.authentication.securitySchemes[BEARER_SCHEME_NAME].token).toBe(
+      'header.payload.signature'
+    )
+    expect(signedIn.sources).toHaveLength(6)
+  })
+
   it('follows the reader’s colour-scheme preference', () => {
     expect(consoleConfiguration('http://127.0.0.1:8080', { prefersDarkMode: true }).darkMode).toBe(
       true
