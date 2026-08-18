@@ -44,15 +44,15 @@ catalog:
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
   # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-node/web).
-  '@sentry/node': 10.69.0
-  '@sentry/opentelemetry': 10.69.0
-  '@sentry/react': 10.69.0
+  '@sentry/node': 10.70.0
+  '@sentry/opentelemetry': 10.70.0
+  '@sentry/react': 10.70.0
   # The Scalar API reference, vendored through npm (never the CDN script) so the
   # static server-docs console at /wildflower-server-docs ships self-contained.
   '@scalar/api-reference': ^1.65.1
   '@tanstack/react-query': ^5.101.4
-  '@tanstack/react-router': ^1.170.25
-  '@tanstack/router-plugin': ^1.168.29
+  '@tanstack/react-router': ^1.170.29
+  '@tanstack/router-plugin': ^1.168.32
   '@tanstack/virtual-file-routes': ^1.162.0
   '@tauri-apps/api': ^2
   '@tauri-apps/plugin-fs': ~2.5.1
