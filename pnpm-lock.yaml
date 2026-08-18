@@ -112,8 +112,8 @@ catalogs:
       specifier: ^2.0.0
       version: 2.0.0
     jose:
-      specifier: ^6.2.8
-      version: 6.2.8
+      specifier: ^6.2.9
+      version: 6.2.9
     jsdom:
       specifier: ^30.0.1
       version: 30.0.1
@@ -1780,7 +1780,7 @@ importers:
         version: 3.23.2
       jose:
         specifier: 'catalog:'
-        version: 6.2.8
+        version: 6.2.9
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -6909,8 +6909,8 @@ packages:
   jose@4.15.9:
     resolution: {integrity: sha512-1vUQX+IdDMVPj4k8kOxgUqlcK518yluMuGZwqlr44FS1ppZB/5GWh4rZG89erpOBOJjU/OBsnCVFfapsRz6nEA==}
 
-  jose@6.2.8:
-    resolution: {integrity: sha512-Bsdjwm3Qsd/P0jR+BHDe3LytDfY7WBq2HmCCLIwuVRHMuEC9ae7/R474GIUdF1NgCyZjzVo/A9DOiOBtXq8ZoQ==}
+  jose@6.2.9:
+    resolution: {integrity: sha512-XrchZOFZUl/T3vTwRe8XK+cJrGtMF4th1ARnDfwbBXFKThGhlsxEE4Zu03AD/bjJSt/9jT/mxrOCkJWOg77aPA==}
 
   js-base64@3.9.1:
     resolution: {integrity: sha512-U73qptcvf/HIOauFOmqT3a0mDUp0MYlfd15oqoe9kqZt5XhiXVb+HG09sLvI9PQ9tZIBFS4nlErai8zbWazP0g==}
@@ -13534,7 +13534,7 @@ snapshots:
 
   jose@4.15.9: {}
 
-  jose@6.2.8: {}
+  jose@6.2.9: {}
 
   js-base64@3.9.1: {}
 
