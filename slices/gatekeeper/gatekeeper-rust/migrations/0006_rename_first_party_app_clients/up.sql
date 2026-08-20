@@ -41,12 +41,6 @@ UPDATE clients
  WHERE client_id = 'wildflower-web-trace'
    AND NOT EXISTS (SELECT 1 FROM clients WHERE client_id = 'web-trace-app');
 
-UPDATE clients
-   SET client_id = 'wildflower-server-docs',
-       redirect_uris = '["/","https://wildflowerhealth.io/wildflower-server-docs/"]'
- WHERE client_id = 'wildflower-server-docs'
-   AND NOT EXISTS (SELECT 1 FROM clients WHERE client_id = 'wildflower-server-docs');
-
 -- Everything issued under the OLD client ids is dropped rather than repointed.
 -- `client_id` is a plain column on each of these tables (no FK), so a rename
 -- would otherwise leave standing consents, live codes, and refresh-token families

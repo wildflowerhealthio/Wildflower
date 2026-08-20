@@ -264,6 +264,33 @@ describe('completeSignIn', () => {
     expect(store.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
   })
 
+  it('routes the redirect-outcome Either through the Effect error channel', async () => {
+    // `completeSignIn` yields `authorizationRedirectOutcome`'s `Either` straight
+    // into its `Effect.gen`. Effect makes an `Either` yieldable, so a `Left` must
+    // arrive on the Effect's error channel — surfaced as the tagged error, not
+    // thrown and not swallowed. The whole flow's error handling rests on that, so
+    // pin it directly rather than only inferring it from the state-mismatch case.
+    // Arrange — a server-refused return is the cleanest Left: no pending record
+    // or state setup is needed to reach it.
+    const store = memoryStore()
+    store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(stashedRequest()))
+
+    // Act
+    const result = await runToEither(
+      completeSignIn(
+        '?error=access_denied&error_description=Owner%20said%20no',
+        testEnvironment({ store, fetch: refusingFetch })
+      )
+    )
+
+    // Assert
+    if (Either.isRight(result))
+      throw new Error('expected the rejected authorization to fail sign-in')
+    expect(result.left._tag).toBe('AuthorizationRejected')
+    expect(result.left.reason).toContain('access_denied')
+    expect(result.left.reason).toContain('Owner said no')
+  })
+
   it('never redeems a code whose state does not match the stashed one', async () => {
     await fc.assert(
       fc.asyncProperty(

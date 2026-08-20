@@ -6,7 +6,7 @@ import base from '../../vite.config.base.ts'
 
 // SINGLE SOURCE OF TRUTH: `slices/apps/dev-app-ports.json` pins the port this
 // dev server binds to. `apps-rust` embeds the same file (`src/dev_seed.rs`) to
-// seed the debug-only `web-trace-app-dev` self-hosted row, whose loopback origin
+// seed the debug-only `web-server-docs-dev` self-hosted row, whose loopback origin
 // the homescreen tile launches — so the row and this server cannot drift. Read
 // at config-eval time (Node), like the Tauri app reads
 // `tauri-shared-config.json`.
