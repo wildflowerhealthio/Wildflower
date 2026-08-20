@@ -7,7 +7,11 @@ export default defineConfig({
     dts: { tsgo: true },
     platform: 'neutral',
     exports: false,
-    entry: { index: 'src/index.ts', 'smart/index': 'src/smart/index.ts' },
+    entry: {
+      index: 'src/index.ts',
+      'smart/index': 'src/smart/index.ts',
+      'connect/index': 'src/connect/index.ts',
+    },
   },
   test: {
     ...base.test,
