@@ -20,7 +20,9 @@ type RouterContext = BaseRouterContext.RouterContextWith<FhirR4ResourcesHttpApiC
 /**
  * The FHIR R4 resources slice's client layer, ready for the app to merge
  * into its composed `runtimeLayer` over `BaseRouterContext.RuntimeLayer`
- * (`HttpClient`). Tokenless — see {@link buildFhirR4ResourcesClientLayer}.
+ * (`HttpClient`). Tokenless, and it emits base-relative FHIR paths — the
+ * provider names the base by handing it an addressed `HttpClient`. See
+ * {@link buildFhirR4ResourcesClientLayer}.
  */
 const sliceRuntimeLayer: Layer.Layer<
   FhirR4ResourcesHttpApiClient,

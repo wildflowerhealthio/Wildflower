@@ -7,7 +7,6 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { Either } from 'effect'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, readySmartClient } from 'fhir-r4-react/smart'
 import { useId, useEffect, useMemo, useState, type JSX } from 'react'
@@ -158,6 +157,10 @@ const App = (): JSX.Element => {
         // `webHttpClientLayer`: this app is registered `local_only = 1`, and
         // the telemetry layer's OTLP exporter is exactly the kind of outbound
         // request that claim rules out.
+        //
+        // The handshake's `serverUrl` is the FHIR base verbatim — the typed
+        // client emits base-relative paths, so there is no prefix to reconcile
+        // and no failure arm here beyond the handshake's own.
         const context = buildSmartRouterContext(
           {
             serverUrl: client.state.serverUrl,
@@ -165,14 +168,7 @@ const App = (): JSX.Element => {
           },
           FetchHttpClient.layer
         )
-        // An unaddressable `iss` is a `Left`, surfaced as the same error state a
-        // failed handshake produces — carrying the `UnexpectedFhirBase` message.
-        setState(
-          Either.match(context, {
-            onLeft: (error): LoadState => ({ kind: 'error', message: error.message }),
-            onRight: (ready): LoadState => ({ kind: 'ready', context: ready }),
-          })
-        )
+        setState({ kind: 'ready', context })
       })
       .catch((error: unknown) => {
         if (!cancelled) {

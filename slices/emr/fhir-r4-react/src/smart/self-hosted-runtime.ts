@@ -1,7 +1,6 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
-import { Duration, Effect, Either, Layer, pipe } from 'effect'
-import { FhirResourcesApiPrefix } from 'fhir-r4/http-api-definition'
+import { Duration, Effect, Layer, pipe } from 'effect'
 
 import {
   sliceRuntimeLayer,
@@ -20,59 +19,15 @@ import {
  * has to name a `fhirclient` type.
  */
 interface SmartSession {
-  /** The SMART `iss` — the FHIR server base, e.g. `https://host/fhir-r4`. */
+  /**
+   * The FHIR server base the handshake named — an EHR launch's `iss`, or the
+   * server a standalone launch was pointed at (e.g.
+   * `https://launch.smarthealthit.org/v/r4/fhir`). Used verbatim as the base for
+   * the typed client's relative paths; only trailing slashes are trimmed.
+   */
   readonly serverUrl: string
   /** The bearer token from the token exchange, or `undefined` for an open server. */
   readonly accessToken: string | undefined
-}
-
-/**
- * The `iss` did not name a FHIR base the typed client can address.
- *
- * @remarks
- * Carried in the error channel rather than papered over. The typed client's own
- * paths already carry the `/fhir-r4` prefix (see {@link apiBaseUrlFromIss}), so
- * an `iss` without it has no correct prefix to derive — every request would go
- * somewhere plausible and wrong, and the failure would surface as a 404 with no
- * explanation. An `Error` subclass so a caller that unwraps the `Left` at the UI
- * still gets a `message` to render.
- */
-class UnexpectedFhirBase extends Error {
-  // Declared and assigned rather than a constructor parameter property:
-  // `erasableSyntaxOnly` rejects the shorthand.
-  readonly iss: string
-
-  constructor(iss: string) {
-    super(
-      `SMART iss ${iss} does not end in ${FhirResourcesApiPrefix}, so this app cannot address it`
-    )
-    this.name = 'UnexpectedFhirBase'
-    this.iss = iss
-  }
-}
-
-/**
- * The origin-and-path prefix to put in front of the typed client's request URLs,
- * derived from the SMART `iss`.
- *
- * @remarks
- * The launch template hands the app `iss={origin}/fhir-r4`, while
- * `FhirResourcesApi` already prefixes every endpoint path with `/fhir-r4`.
- * Prepending the `iss` verbatim would produce `{origin}/fhir-r4/fhir-r4/…`, so
- * the suffix is removed here — the one place the two halves are reconciled.
- *
- * A trailing slash is tolerated (`{origin}/fhir-r4/`); anything else yields a
- * `Left` of {@link UnexpectedFhirBase} rather than guessing at an origin.
- *
- * @param iss - The SMART issuer, i.e. `client.state.serverUrl`
- * @returns The prefix (no trailing slash) as a `Right`, or a `Left` of
- *   {@link UnexpectedFhirBase} when `iss` does not end in the API's own prefix
- */
-const apiBaseUrlFromIss = (iss: string): Either.Either<string, UnexpectedFhirBase> => {
-  const trimmed = iss.replace(/\/+$/u, '')
-  return trimmed.endsWith(FhirResourcesApiPrefix)
-    ? Either.right(trimmed.slice(0, -FhirResourcesApiPrefix.length))
-    : Either.left(new UnexpectedFhirBase(iss))
 }
 
 /** True when `url` leads with a scheme, per RFC 3986's `scheme` production. */
@@ -84,11 +39,16 @@ const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test
  *
  * @remarks
  * Both halves are needed because a self-hosted app is served from its **own**
- * origin (`http://127.0.0.1:8091/` on device), not the API's. Left alone, the
- * typed client's relative `/fhir-r4/…` paths would resolve against the app's
- * origin, and the API's `wf_auth` cookie — which is what authenticates the
- * host's own webview — is not sent cross-origin. So this app authenticates the
- * way any third-party SMART app does: with the token it was granted.
+ * origin (`http://127.0.0.1:8091/` on device, an app's own site in the cloud),
+ * not the FHIR server's. Left alone, the typed client's relative `/Patient…`
+ * paths would resolve against the app's origin, and no cookie authenticates the
+ * app cross-origin. So this app authenticates the way any third-party SMART app
+ * does: with the token it was granted.
+ *
+ * The base is `session.serverUrl` verbatim — the typed client no longer bakes in
+ * Wildflower's `/fhir-r4` mount path, so whatever server the handshake named is
+ * the base, prepended as-is (trailing slashes trimmed). The typed client emits
+ * base-relative paths like `/Patient`, which become `{serverUrl}/Patient`.
  *
  * The prefix is applied to *relative* URLs only. Prepending it to an
  * already-absolute URL yields `http://host…http://…`, which `fetch` then
@@ -109,30 +69,28 @@ const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/iu.test
  *
  * @param session - The FHIR base and bearer token from the SMART handshake
  * @param transport - The underlying `HttpClient` this wraps
- * @returns The wrapped layer as a `Right`, or a `Left` of
- *   {@link UnexpectedFhirBase} when `session.serverUrl` is not addressable
+ * @returns The wrapped layer
  */
 const smartHttpClientLayer = (
   session: SmartSession,
   transport: Layer.Layer<HttpClient.HttpClient>
-): Either.Either<Layer.Layer<HttpClient.HttpClient>, UnexpectedFhirBase> => {
+): Layer.Layer<HttpClient.HttpClient> => {
   const { accessToken } = session
-  return Either.map(apiBaseUrlFromIss(session.serverUrl), (baseUrl) =>
-    Layer.effect(
-      HttpClient.HttpClient,
-      Effect.map(HttpClient.HttpClient, (client) =>
-        client.pipe(
-          HttpClient.mapRequest((request) => {
-            if (hasAbsoluteScheme(request.url)) return request
-            const addressed = HttpClientRequest.prependUrl(baseUrl)(request)
-            return accessToken === undefined
-              ? addressed
-              : HttpClientRequest.bearerToken(accessToken)(addressed)
-          })
-        )
+  const baseUrl = session.serverUrl.replace(/\/+$/u, '')
+  return Layer.effect(
+    HttpClient.HttpClient,
+    Effect.map(HttpClient.HttpClient, (client) =>
+      client.pipe(
+        HttpClient.mapRequest((request) => {
+          if (hasAbsoluteScheme(request.url)) return request
+          const addressed = HttpClientRequest.prependUrl(baseUrl)(request)
+          return accessToken === undefined
+            ? addressed
+            : HttpClientRequest.bearerToken(accessToken)(addressed)
+        })
       )
-    ).pipe(Layer.provide(transport))
-  )
+    )
+  ).pipe(Layer.provide(transport))
 }
 
 /**
@@ -157,41 +115,33 @@ const smartHttpClientLayer = (
  *
  * @param session - The FHIR base and bearer token from the SMART handshake
  * @param transport - The underlying `HttpClient` every read goes out over
- * @returns A router context ready for `createRouter`'s `context` as a `Right`,
- *   or a `Left` of {@link UnexpectedFhirBase} when `session.serverUrl` is not
- *   addressable
+ * @returns A router context ready for `createRouter`'s `context`
  */
 const buildSmartRouterContext = (
   session: SmartSession,
   transport: Layer.Layer<HttpClient.HttpClient>
-): Either.Either<RouterContext, UnexpectedFhirBase> =>
-  Either.map(smartHttpClientLayer(session, transport), (httpLayer) => {
-    const runtimeLayer: RuntimeLayer = Layer.provideMerge(sliceRuntimeLayer, httpLayer)
-    const runAuthed: RunAuthed = (effect, options) =>
-      Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
-    return {
-      // In-memory only, no persister: what a self-hosted app reads is the data
-      // already on the device, and the app is the surface that reads it — a
-      // second on-disk copy of it, outside the store, buys nothing.
-      queryClient: new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: pipe(5, Duration.minutes, Duration.toMillis),
-            gcTime: pipe(30, Duration.minutes, Duration.toMillis),
-            refetchOnWindowFocus: false,
-          },
+): RouterContext => {
+  const httpLayer = smartHttpClientLayer(session, transport)
+  const runtimeLayer: RuntimeLayer = Layer.provideMerge(sliceRuntimeLayer, httpLayer)
+  const runAuthed: RunAuthed = (effect, options) =>
+    Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
+  return {
+    // In-memory only, no persister: what a self-hosted app reads is the data
+    // already on the device, and the app is the surface that reads it — a
+    // second on-disk copy of it, outside the store, buys nothing.
+    queryClient: new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: pipe(5, Duration.minutes, Duration.toMillis),
+          gcTime: pipe(30, Duration.minutes, Duration.toMillis),
+          refetchOnWindowFocus: false,
         },
-      }),
-      runAuthed,
-      runtimeLayer,
-      awaitAuthReady: () => Promise.resolve(),
-    }
-  })
-
-export {
-  apiBaseUrlFromIss,
-  buildSmartRouterContext,
-  smartHttpClientLayer,
-  UnexpectedFhirBase,
-  type SmartSession,
+      },
+    }),
+    runAuthed,
+    runtimeLayer,
+    awaitAuthReady: () => Promise.resolve(),
+  }
 }
+
+export { buildSmartRouterContext, smartHttpClientLayer, type SmartSession }

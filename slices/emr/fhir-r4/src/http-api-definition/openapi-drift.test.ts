@@ -20,7 +20,7 @@ import * as fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { OpenApi } from '@effect/platform'
 import { describe, expect, it } from 'vite-plus/test'
-import { FhirResourcesApi } from './index.ts'
+import { FhirResourcesApi, FhirResourcesApiPrefix } from './index.ts'
 
 const snapshotUrl = new URL('../../../emr-rust/openapi/fhir-r4.openapi.json', import.meta.url)
 
@@ -95,6 +95,19 @@ function generateFhirR4OpenApiSpec(): Spec {
   // into the loose `Spec` shape used only for the transforms below.
   // oxlint-disable-next-line typescript/no-unsafe-assignment
   const spec: Spec = JSON.parse(JSON.stringify(OpenApi.fromApi(FhirResourcesApi)))
+
+  // The HttpApi no longer bakes in the mount prefix — the typed client emits
+  // base-relative paths so it can address arbitrary FHIR servers. Re-apply the
+  // prefix here so the committed snapshot embedded by `emr-rust` for the host's
+  // `/docs` page keeps showing the mounted `/fhir-r4/…` paths, byte-identical to
+  // before the de-prefix. `Object.entries`/`fromEntries` preserve insertion
+  // order, so generation order (asserted below) is unchanged.
+  spec.paths = Object.fromEntries(
+    Object.entries(spec.paths).map(([path, operations]) => [
+      `${FhirResourcesApiPrefix}${path}`,
+      operations,
+    ])
+  )
 
   spec.info = {
     title: 'FHIR R4 (HFS)',

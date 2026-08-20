@@ -5,6 +5,7 @@ import { CollectorRouterContext } from 'collector-react'
 import { DatabasesRouterContext } from 'databases-react'
 import { Duration, Effect, Layer, pipe, Schedule } from 'effect'
 import { FhirR4ResourcesRouterContext } from 'fhir-r4-react'
+import { FhirResourcesApiPrefix } from 'fhir-r4/http-api-definition'
 import { GatekeeperRouterContext } from 'gatekeeper-react'
 import { unwrapFiberFailure } from 'kitchen-sink'
 import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
@@ -12,6 +13,7 @@ import type { BaseRouterContext } from 'shared-structures-react'
 import { TunnelRouterContext } from 'tunnel-react'
 
 import { webTelemetryLayerFromEnv } from 'telemetry-web'
+import { prependApiBaseUrl } from './bridges/prepend-api-base-url.ts'
 import type { ReactTransport } from './bridges/transport-context.ts'
 
 type SliceServices =
@@ -238,7 +240,18 @@ const buildRunAuthed = (
       AppsRouterContext.sliceRuntimeLayer,
       GatekeeperRouterContext.sliceRuntimeLayer,
       CollectorRouterContext.sliceRuntimeLayer,
-      FhirR4ResourcesRouterContext.sliceRuntimeLayer,
+      // The FHIR slice's typed client emits base-relative paths (`/Patient`) now
+      // that `FhirResourcesApi` no longer bakes in the mount prefix — so it needs
+      // an *addressed* transport that re-applies `/fhir-r4`, while every other
+      // slice keeps the shared `baseRuntimeLayer` transport. Requests flow:
+      // client `/Patient` → this wrapper `/fhir-r4/Patient` (still relative) →
+      // `httpClientLayer` (which in Tauri prepends the API origin) →
+      // `{origin}/fhir-r4/Patient`. The credentialed-fetch tag is read from the
+      // request-time fiber (which `runAuthed` provides `runtimeLayer` to), so the
+      // `wf_auth` cookie still rides these reads despite the separate transport.
+      FhirR4ResourcesRouterContext.sliceRuntimeLayer.pipe(
+        Layer.provide(prependApiBaseUrl(httpClientLayer, FhirResourcesApiPrefix))
+      ),
       DatabasesRouterContext.sliceRuntimeLayer
     ),
     baseRuntimeLayer
