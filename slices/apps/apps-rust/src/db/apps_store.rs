@@ -206,7 +206,7 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 8, "exactly the eight seeded default apps");
+        assert_eq!(row_count, 9, "exactly the nine seeded default apps");
     }
 
     /// The `app_registrations` primary key gives global id uniqueness across kinds
@@ -254,6 +254,7 @@ mod tests {
                 "precise-hbr",
                 "medications-app",
                 "web-trace-app",
+                "web-server-docs",
             ],
         );
     }
@@ -350,9 +351,9 @@ mod tests {
             // resolver looks an app up by client_id.
             assert_eq!(registration.client_id.as_deref(), Some(id));
             assert!(
-                !registration.requires_tunnel,
-                "{id} reaches the LOCAL origin's FHIR API through `iss={{origin}}`, so a \
-                 loopback launch must not be forced through the tunnel",
+                registration.requires_tunnel,
+                "{id} is launched from the published site, so its `iss={{origin}}` FHIR \
+                 target must resolve through the tunnel's verified origin",
             );
             let target: CloudTarget =
                 sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
