@@ -1,7 +1,7 @@
 # wildflower-server-docs
 
 The static API console published at
-<https://wildflower-health.io/wildflower-server-docs>: an interactive
+<https://wildflowerhealth.io/wildflower-server-docs>: an interactive
 [Scalar](https://scalar.com) reference for the Wildflower server's HTTP API,
 pointed at whichever running server the reader chooses.
 
@@ -134,7 +134,7 @@ the server returns is discarded: there is no session to refresh into.
 ### Sign-in only works on the published console
 
 The seeded client registers exactly one redirect URI —
-`https://wildflower-health.io/wildflower-server-docs/` — and `/oauth/authorize`
+`https://wildflowerhealth.io/wildflower-server-docs/` — and `/oauth/authorize`
 matches it by exact string equality. A copy served from anywhere else (`vp run
 -F wildflower-server-docs dev`, a preview build, a fork's Pages site) therefore
 cannot complete the flow, so the button is disabled there with the reason on the

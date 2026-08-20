@@ -12,7 +12,7 @@ Both places come from the same build output (`outDir`
 `vite.config.ts`):
 
 - **On the published site**, at
-  [`/medications-app`](https://wildflower-health.io/medications-app) —
+  [`/medications-app`](https://wildflowerhealth.io/medications-app) —
   `github-pages` copies that directory into the Pages artifact
   ([../github-pages/README.md](../github-pages/README.md)). This is the
   **production** launch target: the `medications-app` registry row is a _cloud_

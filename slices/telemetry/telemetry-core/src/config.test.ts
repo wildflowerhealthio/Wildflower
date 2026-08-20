@@ -11,7 +11,7 @@ describe('configFromEnv', () => {
         environment: 'development',
         release: '',
         tracesSampleRate: 1.0,
-        profilesSampleRate: 0,
+        profileSessionSampleRate: 0,
       },
       otel: {
         serviceName: 'wildflower',
@@ -43,7 +43,7 @@ describe('configFromEnv', () => {
           environment: 'staging',
           release: 'v1.2.3',
           tracesSampleRate: 0.5,
-          profilesSampleRate: 0.25,
+          profileSessionSampleRate: 0.25,
         },
         otel: {
           serviceName: 'svc',
@@ -72,7 +72,7 @@ describe('configFromEnv', () => {
       SENTRY_PROFILES_SAMPLE_RATE: '-1',
     })
     expect(cfg.sentry.tracesSampleRate).toBe(0)
-    expect(cfg.sentry.profilesSampleRate).toBe(-1)
+    expect(cfg.sentry.profileSessionSampleRate).toBe(-1)
   })
 
   test.each([

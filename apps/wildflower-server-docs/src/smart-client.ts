@@ -14,7 +14,7 @@
  */
 
 /** The `client_id` the seeded row registers. */
-export const CLIENT_ID = 'wildflower-server-docs'
+const CLIENT_ID = 'wildflower-server-docs'
 
 /**
  * The single redirect URI the seeded row registers — the published console's
@@ -25,7 +25,7 @@ export const CLIENT_ID = 'wildflower-server-docs'
  * in the pending-authorization record rather than in the URL (see
  * `authorization-flow.ts`).
  */
-export const REGISTERED_REDIRECT_URI = 'https://wildflower-health.io/wildflower-server-docs/'
+const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/wildflower-server-docs/'
 
 /**
  * The scopes the console asks for: the whole ceiling the seeded row allows.
@@ -37,7 +37,7 @@ export const REGISTERED_REDIRECT_URI = 'https://wildflower-health.io/wildflower-
  * migration's own comment says so). Requesting less would silently break the
  * "send request" button on surfaces the reader is entitled to.
  */
-export const REQUESTED_SCOPES: readonly string[] = [
+const REQUESTED_SCOPES: readonly string[] = [
   'openid',
   'profile',
   'fhirUser',
@@ -50,7 +50,7 @@ export const REQUESTED_SCOPES: readonly string[] = [
 ]
 
 /** The space-delimited `scope` parameter form of {@link REQUESTED_SCOPES}. */
-export const requestedScopeParameter = (): string => REQUESTED_SCOPES.join(' ')
+const requestedScopeParameter = (): string => REQUESTED_SCOPES.join(' ')
 
 /**
  * Whether the console can complete a sign-in from `href`, and why not when it
@@ -67,7 +67,7 @@ export const requestedScopeParameter = (): string => REQUESTED_SCOPES.join(' ')
  * `/wildflower-server-docs` and `/wildflower-server-docs/` — the same page,
  * before and after the host's canonicalising redirect — both count.
  */
-export const signInAvailability = (
+const signInAvailability = (
   href: string
 ): { readonly available: true } | { readonly available: false; readonly reason: string } => {
   const registered = new URL(REGISTERED_REDIRECT_URI)
@@ -88,4 +88,12 @@ export const signInAvailability = (
       'the one redirect URI this client is registered for. Paste a token into a ' +
       'request’s Authorization field instead.',
   }
+}
+
+export {
+  CLIENT_ID,
+  REGISTERED_REDIRECT_URI,
+  REQUESTED_SCOPES,
+  requestedScopeParameter,
+  signInAvailability,
 }

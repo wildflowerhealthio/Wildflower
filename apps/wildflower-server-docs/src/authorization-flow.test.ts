@@ -101,7 +101,7 @@ describe('authorizationRequestUrl', () => {
     const url = new URL(
       authorizationRequestUrl('https://ruth.wildflowerhealth.io/oauth/authorize', {
         clientId: 'wildflower-server-docs',
-        redirectUri: 'https://wildflower-health.io/wildflower-server-docs/',
+        redirectUri: 'https://wildflowerhealth.io/wildflower-server-docs/',
         scope: 'openid system/*.cruds',
         state: 'state-value',
         codeChallenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
@@ -114,7 +114,7 @@ describe('authorizationRequestUrl', () => {
     expect(Object.fromEntries(url.searchParams)).toEqual({
       response_type: 'code',
       client_id: 'wildflower-server-docs',
-      redirect_uri: 'https://wildflower-health.io/wildflower-server-docs/',
+      redirect_uri: 'https://wildflowerhealth.io/wildflower-server-docs/',
       scope: 'openid system/*.cruds',
       state: 'state-value',
       code_challenge: 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
@@ -128,7 +128,7 @@ describe('authorizationRequestUrl', () => {
     const url = new URL(
       authorizationRequestUrl('https://example.test/authorize?tenant=acme', {
         clientId: 'wildflower-server-docs',
-        redirectUri: 'https://wildflower-health.io/wildflower-server-docs/',
+        redirectUri: 'https://wildflowerhealth.io/wildflower-server-docs/',
         scope: 'openid',
         state: 's',
         codeChallenge: 'c',
@@ -275,7 +275,7 @@ describe('tokenRequestBody', () => {
       tokenRequestBody({
         code: 'the-code',
         codeVerifier: 'the-verifier',
-        redirectUri: 'https://wildflower-health.io/wildflower-server-docs/',
+        redirectUri: 'https://wildflowerhealth.io/wildflower-server-docs/',
         clientId: 'wildflower-server-docs',
       })
     )
@@ -284,7 +284,7 @@ describe('tokenRequestBody', () => {
     expect(Object.fromEntries(body)).toEqual({
       grant_type: 'authorization_code',
       code: 'the-code',
-      redirect_uri: 'https://wildflower-health.io/wildflower-server-docs/',
+      redirect_uri: 'https://wildflowerhealth.io/wildflower-server-docs/',
       client_id: 'wildflower-server-docs',
       code_verifier: 'the-verifier',
     })

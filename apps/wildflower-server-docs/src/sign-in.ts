@@ -57,12 +57,12 @@ import { discoverSmartEndpoints, type DiscoveryFailed } from './smart-discovery.
  * redirect (Safari's private mode throws on `setItem`), or when the token
  * endpoint cannot be reached to redeem the code.
  */
-export class PendingRequestUnusable extends Data.TaggedError('PendingRequestUnusable')<{
+class PendingRequestUnusable extends Data.TaggedError('PendingRequestUnusable')<{
   readonly reason: string
 }> {}
 
 /** Everything a sign-in can fail with, whichever half it fails in. */
-export type SignInError =
+type SignInError =
   | DiscoveryFailed
   | PkceUnavailable
   | PendingRequestUnusable
@@ -70,14 +70,14 @@ export type SignInError =
   | TokenExchangeFailed
 
 /** The `sessionStorage`-shaped slice the flow needs. */
-export interface PendingStore {
+interface PendingStore {
   getItem(key: string): string | null
   setItem(key: string, value: string): void
   removeItem(key: string): void
 }
 
 /** Everything impure the flow depends on, supplied by the caller. */
-export interface SignInEnvironment {
+interface SignInEnvironment {
   readonly fetch: typeof globalThis.fetch
   readonly random: RandomBytesSource
   readonly subtle: DigestSource
@@ -96,7 +96,7 @@ export interface SignInEnvironment {
  * The pending record is written **before** the URL is yielded, so a caller
  * cannot navigate away from a flow whose verifier was never saved.
  */
-export const beginSignIn = (
+const beginSignIn = (
   serverUrl: string,
   environment: SignInEnvironment
 ): Effect.Effect<string, SignInError> =>
@@ -139,7 +139,7 @@ export const beginSignIn = (
   })
 
 /** A signed-in session: an in-memory token and what it is good for. */
-export interface Session {
+interface Session {
   readonly accessToken: string
   /** The scopes the Owner actually granted. */
   readonly scope: string
@@ -158,7 +158,7 @@ export interface Session {
  * paths too, so a discarded flow cannot leave a record behind that makes a later
  * stray `?code=` look legitimate.
  */
-export const completeSignIn = (
+const completeSignIn = (
   search: string,
   environment: SignInEnvironment
 ): Effect.Effect<Option.Option<Session>, SignInError> =>
@@ -232,3 +232,6 @@ const sessionFrom = (grant: AccessGrant, serverUrl: string): Session => ({
   serverUrl,
   expiresInSeconds: grant.expiresInSeconds,
 })
+
+export { PendingRequestUnusable, beginSignIn, completeSignIn }
+export type { SignInError, PendingStore, SignInEnvironment, Session }

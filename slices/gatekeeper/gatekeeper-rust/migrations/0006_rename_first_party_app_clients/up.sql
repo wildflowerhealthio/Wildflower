@@ -6,7 +6,7 @@
 --
 -- The gatekeeper half of apps migration `0005_first_party_apps_to_cloud`, which
 -- renames the matching `app_registrations` rows (id AND `client_id`) and flips
--- them to cloud rows served from <https://wildflower-health.io>. The two ids MUST
+-- them to cloud rows served from <https://wildflowerhealth.io>. The two ids MUST
 -- stay equal: the host's self-hosted redirect resolver looks an app up by
 -- `client_id`, so an app-relative redirect entry only ever resolves for a client
 -- whose id is also an app id.
@@ -18,7 +18,7 @@
 --     *cloud* row) it resolves to nothing and matches nothing. It is kept for the
 --     debug-only `medications-app-dev` / `web-trace-app-dev` self-hosted rows'
 --     sibling clients and for a `down`-migrated install.
---   * the absolute Pages URL — `https://wildflower-health.io/medications-app/`
+--   * the absolute Pages URL — `https://wildflowerhealth.io/medications-app/`
 --     (resp. `/web-trace-app/`). A cloud app's redirect can only be absolute:
 --     the app-relative form needs a self-hosted row to resolve against. Each
 --     app's `launch.html` computes its redirect URI from `window.location`, so
@@ -31,15 +31,21 @@
 -- the migration run (and with it the whole gatekeeper store open).
 UPDATE clients
    SET client_id = 'medications-app',
-       redirect_uris = '["/","https://wildflower-health.io/medications-app/"]'
+       redirect_uris = '["/","https://wildflowerhealth.io/medications-app/"]'
  WHERE client_id = 'wildflower-medication'
    AND NOT EXISTS (SELECT 1 FROM clients WHERE client_id = 'medications-app');
 
 UPDATE clients
    SET client_id = 'web-trace-app',
-       redirect_uris = '["/","https://wildflower-health.io/web-trace-app/"]'
+       redirect_uris = '["/","https://wildflowerhealth.io/web-trace-app/"]'
  WHERE client_id = 'wildflower-web-trace'
    AND NOT EXISTS (SELECT 1 FROM clients WHERE client_id = 'web-trace-app');
+
+UPDATE clients
+   SET client_id = 'wildflower-server-docs',
+       redirect_uris = '["/","https://wildflowerhealth.io/wildflower-server-docs/"]'
+ WHERE client_id = 'wildflower-server-docs'
+   AND NOT EXISTS (SELECT 1 FROM clients WHERE client_id = 'wildflower-server-docs');
 
 -- Everything issued under the OLD client ids is dropped rather than repointed.
 -- `client_id` is a plain column on each of these tables (no FK), so a rename

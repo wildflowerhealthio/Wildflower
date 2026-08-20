@@ -1,4 +1,4 @@
-import { Effect, Either } from 'effect'
+import { Effect, Either, Match } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -294,13 +294,20 @@ describe('discoverSmartEndpoints', () => {
 const runToEither = <A, E>(effect: Effect.Effect<A, E>): Promise<Either.Either<A, E>> =>
   Effect.runPromise(Effect.either(effect))
 
+/** The URL a `fetch` argument names, in any of the three forms it can take. */
+const requestUrl = Match.type<RequestInfo | URL>().pipe(
+  Match.withReturnType<string>(),
+  Match.when(Match.string, (s) => s),
+  Match.when({ href: Match.string }, (u) => u.href),
+  Match.when({ url: Match.string }, (r) => r.url),
+  Match.exhaustive
+)
+
 /** A `fetch` stub built from a per-URL responder. */
 const respondingWith =
   (respond: (url: string) => Response): typeof globalThis.fetch =>
   (input) =>
-    Promise.resolve(
-      respond(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url)
-    )
+    Promise.resolve(respond(requestUrl(input)))
 
 /** A 200 JSON response carrying `body`. */
 const jsonResponse = (body: unknown): Response =>

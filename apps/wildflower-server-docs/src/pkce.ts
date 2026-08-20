@@ -23,29 +23,29 @@ import { Data, Effect } from 'effect'
  * without it. Not recoverable by retrying, and fatal to sign-in: this console
  * does not fall back to a `plain` challenge.
  */
-export class PkceUnavailable extends Data.TaggedError('PkceUnavailable')<{
+class PkceUnavailable extends Data.TaggedError('PkceUnavailable')<{
   readonly reason: string
 }> {}
 
 /** The slice of Web Crypto this module needs. */
-export interface RandomBytesSource {
+interface RandomBytesSource {
   getRandomValues(array: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer>
 }
 
 /** The slice of `crypto.subtle` this module needs. */
-export interface DigestSource {
+interface DigestSource {
   digest(algorithm: 'SHA-256', data: BufferSource): Promise<ArrayBuffer>
 }
 
 /** `bytes` in unpadded base64url (RFC 4648 §5), the encoding PKCE uses. */
-export const base64UrlEncode = (bytes: Uint8Array): string => {
+const base64UrlEncode = (bytes: Uint8Array): string => {
   let binary = ''
   for (const byte of bytes) binary += String.fromCharCode(byte)
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
 }
 
 /** `byteLength` random bytes, base64url-encoded. */
-export const randomBase64Url = (byteLength: number, random: RandomBytesSource): string =>
+const randomBase64Url = (byteLength: number, random: RandomBytesSource): string =>
   base64UrlEncode(random.getRandomValues(new Uint8Array(byteLength)))
 
 /**
@@ -53,14 +53,14 @@ export const randomBase64Url = (byteLength: number, random: RandomBytesSource): 
  * characters — the shortest length RFC 7636 §4.1 allows, and the length
  * `gatekeeper-rust` validates against.
  */
-export const createCodeVerifier = (random: RandomBytesSource): string => randomBase64Url(32, random)
+const createCodeVerifier = (random: RandomBytesSource): string => randomBase64Url(32, random)
 
 /**
  * A fresh `state`: 16 random bytes. Its job is CSRF protection on the way back
  * — the console compares it to the value it stashed before redirecting — so it
  * only has to be unguessable, not long.
  */
-export const createState = (random: RandomBytesSource): string => randomBase64Url(16, random)
+const createState = (random: RandomBytesSource): string => randomBase64Url(16, random)
 
 /**
  * The S256 `code_challenge` for `verifier`: base64url(SHA-256(ASCII(verifier))).
@@ -70,7 +70,7 @@ export const createState = (random: RandomBytesSource): string => randomBase64Ur
  * `plain` challenge is no protection at all, and `gatekeeper-rust`'s authorize
  * endpoint rejects it anyway.
  */
-export const codeChallengeS256 = (
+const codeChallengeS256 = (
   verifier: string,
   subtle: DigestSource
 ): Effect.Effect<string, PkceUnavailable> =>
@@ -84,3 +84,13 @@ export const codeChallengeS256 = (
   })
 
 const encoder = new TextEncoder()
+
+export {
+  PkceUnavailable,
+  base64UrlEncode,
+  randomBase64Url,
+  createCodeVerifier,
+  createState,
+  codeChallengeS256,
+}
+export type { RandomBytesSource, DigestSource }

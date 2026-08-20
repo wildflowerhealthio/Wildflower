@@ -1,5 +1,5 @@
 -- Seed the OAuth client for the server-docs API console — the Scalar-based
--- console published at <https://wildflower-health.io/wildflower-server-docs>
+-- console published at <https://wildflowerhealth.io/wildflower-server-docs>
 -- (`apps/wildflower-server-docs`, assembled by `apps/github-pages`). A public
 -- PKCE client: it is a static browser page, so it can keep no secret and
 -- `secret_hash` stays NULL. Same pattern and column formats as
@@ -51,7 +51,7 @@ VALUES
         'wildflower-server-docs',
         'Wildflower Server API Console',
         'public',
-        '["https://wildflower-health.io/wildflower-server-docs/"]',
+        '["https://wildflowerhealth.io/wildflower-server-docs/"]',
         '["openid","profile","fhirUser","launch","launch/patient","offline_access","wildflower/launch","system/*.cruds","wildflower/*.cruds"]',
         '["authorization_code","refresh_token"]',
         NULL,

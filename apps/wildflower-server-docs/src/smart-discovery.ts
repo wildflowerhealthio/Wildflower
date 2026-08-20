@@ -21,19 +21,19 @@
 import { Data, Effect, Either } from 'effect'
 
 /** Raised when the chosen target cannot be signed in to, with the reason why. */
-export class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
+class DiscoveryFailed extends Data.TaggedError('DiscoveryFailed')<{
   readonly reason: string
 }> {}
 
 /** The discovery document's path, relative to the SMART `iss` base. */
-export const SMART_CONFIGURATION_PATH = '/fhir-r4/.well-known/smart-configuration'
+const SMART_CONFIGURATION_PATH = '/fhir-r4/.well-known/smart-configuration'
 
 /** The discovery URL for `serverUrl` (already canonical: no trailing slash). */
-export const smartConfigurationUrl = (serverUrl: string): string =>
+const smartConfigurationUrl = (serverUrl: string): string =>
   `${serverUrl}${SMART_CONFIGURATION_PATH}`
 
 /** The two endpoints the authorization-code flow needs. */
-export interface SmartEndpoints {
+interface SmartEndpoints {
   readonly authorizationEndpoint: string
   readonly tokenEndpoint: string
 }
@@ -62,7 +62,7 @@ const isLoopbackHost = (hostname: string): boolean =>
  * itself is on a secure page — a downgrade the browser would block anyway, and
  * which would put an access token on the wire in the clear.
  */
-export const usableEndpointUrl = (
+const usableEndpointUrl = (
   candidate: unknown,
   options: { readonly pageIsSecure: boolean }
 ): string | undefined => {
@@ -95,7 +95,7 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
  * mandates it) and failing here says so plainly; a document that omits the
  * field is given the benefit of the doubt rather than blocked on a hint.
  */
-export const smartEndpointsFrom = (
+const smartEndpointsFrom = (
   document: unknown,
   options: { readonly pageIsSecure: boolean }
 ): Either.Either<SmartEndpoints, DiscoveryFailed> => {
@@ -134,7 +134,7 @@ export const smartEndpointsFrom = (
  * body is then handed to {@link smartEndpointsFrom}, whose `Either` is lifted
  * into the same failure channel.
  */
-export const discoverSmartEndpoints = (
+const discoverSmartEndpoints = (
   serverUrl: string,
   options: { readonly fetch: typeof globalThis.fetch; readonly pageIsSecure: boolean }
 ): Effect.Effect<SmartEndpoints, DiscoveryFailed> =>
@@ -163,3 +163,13 @@ export const discoverSmartEndpoints = (
     })
     return yield* smartEndpointsFrom(document, { pageIsSecure: options.pageIsSecure })
   })
+
+export {
+  DiscoveryFailed,
+  SMART_CONFIGURATION_PATH,
+  smartConfigurationUrl,
+  usableEndpointUrl,
+  smartEndpointsFrom,
+  discoverSmartEndpoints,
+}
+export type { SmartEndpoints }

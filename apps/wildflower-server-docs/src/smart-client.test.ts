@@ -16,7 +16,7 @@ describe('the seeded client registration', () => {
     // matches the redirect URI by exact string equality and clamps the request
     // to `allowed_scopes`, so drift here fails the flow outright.
     expect(CLIENT_ID).toBe('wildflower-server-docs')
-    expect(REGISTERED_REDIRECT_URI).toBe('https://wildflower-health.io/wildflower-server-docs/')
+    expect(REGISTERED_REDIRECT_URI).toBe('https://wildflowerhealth.io/wildflower-server-docs/')
     expect([...REQUESTED_SCOPES]).toEqual([
       'openid',
       'profile',
@@ -46,7 +46,7 @@ describe('signInAvailability', () => {
 
   it('offers sign-in whether or not the path carries its trailing slash', () => {
     // Act / Assert
-    expect(signInAvailability('https://wildflower-health.io/wildflower-server-docs')).toEqual({
+    expect(signInAvailability('https://wildflowerhealth.io/wildflower-server-docs')).toEqual({
       available: true,
     })
   })
@@ -56,7 +56,7 @@ describe('signInAvailability', () => {
     // decide whether the server would honour the redirect.
     expect(
       signInAvailability(
-        'https://wildflower-health.io/wildflower-server-docs/?server=https%3A%2F%2Fx.test#tag/apps'
+        'https://wildflowerhealth.io/wildflower-server-docs/?server=https%3A%2F%2Fx.test#tag/apps'
       )
     ).toEqual({ available: true })
   })
@@ -67,8 +67,8 @@ describe('signInAvailability', () => {
         fc.constantFrom(
           'http://localhost:5173/',
           'http://127.0.0.1:4173/wildflower-server-docs/',
-          'https://wildflower-health.io/',
-          'https://wildflower-health.io/wildflower-server-docs-preview/',
+          'https://wildflowerhealth.io/',
+          'https://wildflowerhealth.io/wildflower-server-docs-preview/',
           'https://fork.github.io/wildflower-server-docs/',
           'https://evil.test/wildflower-server-docs/'
         ),

@@ -2,7 +2,7 @@
 //! apps' local vite dev servers.
 //!
 //! The two first-party apps (Medications, Web Trace) ship as **cloud** rows
-//! served from <https://wildflower-health.io> (apps migration
+//! served from <https://wildflowerhealth.io> (apps migration
 //! `0005_first_party_apps_to_cloud`). That is the right production target and the
 //! wrong development one: a developer editing `apps/medications-app` wants the
 //! homescreen tile to open the vite dev server they are running, not the last
@@ -86,6 +86,8 @@ struct DevAppPorts {
     medications_app_dev: i32,
     #[serde(rename = "web-trace-app-dev")]
     web_trace_app_dev: i32,
+    #[serde(rename = "web-server-docs-dev")]
+    web_server_docs_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -96,7 +98,7 @@ struct DevAppPorts {
 /// a compile-time-embedded, version-controlled file, so a failure here is a
 /// broken build, not a runtime condition, and only ever reachable in a debug
 /// build.
-fn dev_apps() -> [DevApp; 2] {
+fn dev_apps() -> [DevApp; 3] {
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
@@ -115,6 +117,14 @@ fn dev_apps() -> [DevApp; 2] {
             port: ports.web_trace_app_dev,
             subdomain: "web-trace-dev",
             content_folder: "web-trace",
+        },
+        DevApp {
+            id: "web-server-docs-dev",
+            name: "Server Docs (Dev)",
+            subtitle: "Local vite dev server for apps/web-server-docs",
+            port: ports.web_server_docs_dev,
+            subdomain: "web-server-docs",
+            content_folder: "web-server-docs",
         },
     ]
 }

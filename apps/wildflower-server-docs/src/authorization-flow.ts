@@ -20,7 +20,7 @@ import { Data, Either, Option } from 'effect'
  * Raised when a returning authorization cannot be completed: the server refused
  * it, or the response does not match the request this tab made.
  */
-export class AuthorizationRejected extends Data.TaggedError('AuthorizationRejected')<{
+class AuthorizationRejected extends Data.TaggedError('AuthorizationRejected')<{
   readonly reason: string
 }> {}
 
@@ -28,7 +28,7 @@ export class AuthorizationRejected extends Data.TaggedError('AuthorizationReject
  * Raised when the token endpoint's answer is not a grant this console can use —
  * an RFC 6749 §5.2 error body, a missing token, or a token type it cannot send.
  */
-export class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
+class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
   readonly reason: string
 }> {}
 
@@ -45,7 +45,7 @@ export class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')
  * the console returns. The access token itself never goes near storage — see
  * `slices/gatekeeper/docs/Auth Token Storage Explanation.md`.
  */
-export interface PendingAuthorization {
+interface PendingAuthorization {
   readonly state: string
   readonly codeVerifier: string
   readonly serverUrl: string
@@ -53,10 +53,10 @@ export interface PendingAuthorization {
 }
 
 /** The `sessionStorage` key the pending record lives at. */
-export const PENDING_AUTHORIZATION_KEY = 'wildflower-server-docs.pending-authorization'
+const PENDING_AUTHORIZATION_KEY = 'wildflower-server-docs.pending-authorization'
 
 /** The pending record as the string form stored under {@link PENDING_AUTHORIZATION_KEY}. */
-export const serializePendingAuthorization = (pending: PendingAuthorization): string =>
+const serializePendingAuthorization = (pending: PendingAuthorization): string =>
   JSON.stringify(pending)
 
 /**
@@ -67,9 +67,7 @@ export const serializePendingAuthorization = (pending: PendingAuthorization): st
  * `undefined` in it. Absence is not an error here — most page loads have no
  * record — so the caller decides whether a missing one matters.
  */
-export const parsePendingAuthorization = (
-  raw: string | null
-): Option.Option<PendingAuthorization> => {
+const parsePendingAuthorization = (raw: string | null): Option.Option<PendingAuthorization> => {
   if (raw === null) return Option.none()
   let parsed: unknown
   try {
@@ -95,7 +93,7 @@ const nonEmptyString = (value: unknown): Option.Option<string> =>
   typeof value === 'string' && value !== '' ? Option.some(value) : Option.none()
 
 /** Everything the authorization request carries beyond the endpoint itself. */
-export interface AuthorizationRequestParameters {
+interface AuthorizationRequestParameters {
   readonly clientId: string
   readonly redirectUri: string
   readonly scope: string
@@ -115,7 +113,7 @@ export interface AuthorizationRequestParameters {
  * Parameters are appended to whatever the discovery document advertised, so an
  * `authorization_endpoint` that already carries a query keeps it.
  */
-export const authorizationRequestUrl = (
+const authorizationRequestUrl = (
   authorizationEndpoint: string,
   parameters: AuthorizationRequestParameters
 ): string => {
@@ -132,10 +130,10 @@ export const authorizationRequestUrl = (
 }
 
 /** The FHIR base of `serverUrl` — the `aud` a standalone launch names. */
-export const fhirAudienceFor = (serverUrl: string): string => `${serverUrl}/fhir-r4`
+const fhirAudienceFor = (serverUrl: string): string => `${serverUrl}/fhir-r4`
 
 /** A code that passed the `state` check, with the request it belongs to. */
-export interface RedeemableCode {
+interface RedeemableCode {
   readonly code: string
   readonly pending: PendingAuthorization
 }
@@ -150,7 +148,7 @@ export interface RedeemableCode {
  * strict: a `code` with no stashed record, or with one whose `state` differs, is
  * a failure, never something to redeem anyway.
  */
-export const authorizationRedirectOutcome = (
+const authorizationRedirectOutcome = (
   search: string,
   pending: Option.Option<PendingAuthorization>
 ): Either.Either<Option.Option<RedeemableCode>, AuthorizationRejected> => {
@@ -199,7 +197,7 @@ const AUTHORIZATION_RESPONSE_PARAMS = ['code', 'state', 'error', 'error_descript
  * and in any referrer — so the console scrubs it either way. The result includes
  * the leading `?` unless it is empty.
  */
-export const searchWithoutAuthorizationResponse = (search: string): string => {
+const searchWithoutAuthorizationResponse = (search: string): string => {
   const params = new URLSearchParams(search)
   for (const name of AUTHORIZATION_RESPONSE_PARAMS) params.delete(name)
   const query = params.toString()
@@ -211,7 +209,7 @@ export const searchWithoutAuthorizationResponse = (search: string): string => {
  * §4.1.3 + RFC 7636 §4.5). No client secret: this is a public client, and PKCE
  * is what binds the redemption to the browser that started the flow.
  */
-export const tokenRequestBody = (input: {
+const tokenRequestBody = (input: {
   readonly code: string
   readonly codeVerifier: string
   readonly redirectUri: string
@@ -226,7 +224,7 @@ export const tokenRequestBody = (input: {
   }).toString()
 
 /** A usable token response, reduced to what the console keeps. */
-export interface AccessGrant {
+interface AccessGrant {
   readonly accessToken: string
   /** The scopes actually granted — the Owner's narrowing, not what was asked. */
   readonly scope: string
@@ -242,9 +240,7 @@ export interface AccessGrant {
  * the console keeps no credential past the tab, so there is nothing for it to
  * refresh into.
  */
-export const parseTokenResponse = (
-  body: unknown
-): Either.Either<AccessGrant, TokenExchangeFailed> => {
+const parseTokenResponse = (body: unknown): Either.Either<AccessGrant, TokenExchangeFailed> => {
   if (!isRecord(body)) {
     return Either.left(
       new TokenExchangeFailed({ reason: 'The token endpoint did not answer with a JSON object.' })
@@ -283,3 +279,18 @@ export const parseTokenResponse = (
         : undefined,
   })
 }
+
+export {
+  AuthorizationRejected,
+  TokenExchangeFailed,
+  PENDING_AUTHORIZATION_KEY,
+  serializePendingAuthorization,
+  parsePendingAuthorization,
+  authorizationRequestUrl,
+  fhirAudienceFor,
+  authorizationRedirectOutcome,
+  searchWithoutAuthorizationResponse,
+  tokenRequestBody,
+  parseTokenResponse,
+}
+export type { PendingAuthorization, AuthorizationRequestParameters, RedeemableCode, AccessGrant }

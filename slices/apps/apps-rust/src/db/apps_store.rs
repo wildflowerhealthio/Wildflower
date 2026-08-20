@@ -331,11 +331,11 @@ mod tests {
         for (id, url) in [
             (
                 "medications-app",
-                "https://wildflower-health.io/medications-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+                "https://wildflowerhealth.io/medications-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
             ),
             (
                 "web-trace-app",
-                "https://wildflower-health.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+                "https://wildflowerhealth.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
             ),
         ] {
             let (registration, configuration) = store

@@ -9,7 +9,7 @@ import { BEARER_SCHEME_NAME, preparedSpec, type OpenApiDocument } from './spec.t
  */
 
 /** One entry of Scalar's multi-source sidebar: a slice and its document. */
-export interface ScalarSource {
+interface ScalarSource {
   title: string
   slug: string
   content: OpenApiDocument
@@ -24,13 +24,13 @@ export interface ScalarSource {
  * sources rather than inside them, so one signed-in token reaches all six
  * documents at once.
  */
-export interface ConsoleAuthentication {
+interface ConsoleAuthentication {
   preferredSecurityScheme: typeof BEARER_SCHEME_NAME
   securitySchemes: Record<typeof BEARER_SCHEME_NAME, { token: string }>
 }
 
 /** The subset of Scalar's configuration this console sets. */
-export interface ConsoleConfiguration {
+interface ConsoleConfiguration {
   sources: ScalarSource[]
   /**
    * Empty on purpose. Scalar's `web` layout otherwise defaults to routing
@@ -63,7 +63,7 @@ export interface ConsoleConfiguration {
  * has signed in can send an authorised request without pasting anything. Signed
  * out it is empty, and the field is theirs to fill by hand.
  */
-export const consoleConfiguration = (
+const consoleConfiguration = (
   serverUrl: string,
   options: { readonly prefersDarkMode: boolean; readonly accessToken?: string }
 ): ConsoleConfiguration => ({
@@ -83,3 +83,6 @@ export const consoleConfiguration = (
     securitySchemes: { [BEARER_SCHEME_NAME]: { token: options.accessToken ?? '' } },
   },
 })
+
+export { consoleConfiguration }
+export type { ScalarSource, ConsoleAuthentication, ConsoleConfiguration }

@@ -45,7 +45,7 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
 - **Cloud** — assets served from a **remote** origin. Growth Chart, Medication
   Viewer, and PRECISE-HBR are Cloud, and so are the two **first-party** apps,
   Medications (`medications-app`) and Web Trace (`web-trace-app`), which are
-  published to <https://wildflower-health.io> by `apps/github-pages` and launched
+  published to <https://wildflowerhealth.io> by `apps/github-pages` and launched
   from there (apps migration `0005_first_party_apps_to_cloud`). Serving the
   deployed copy means a shipped app updates when the site deploys rather than
   when the user installs a new desktop build.
@@ -184,7 +184,7 @@ host resolves that kind of app's app-relative redirect URI by looking the app up
 by `client_id` (`self_hosted_redirect_resolver.rs`). A cloud app has no such
 resolution, so its client must register an **absolute** redirect URI — which is
 why the first-party clients gained
-`https://wildflower-health.io/<app>/` alongside the app-relative `"/"` they keep
+`https://wildflowerhealth.io/<app>/` alongside the app-relative `"/"` they keep
 for their `…-dev` siblings.
 
 ## Auth posture and the remote trust boundary

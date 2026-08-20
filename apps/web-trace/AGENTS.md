@@ -1,7 +1,7 @@
 # AGENTS.md — apps/web-trace
 
 The Web Trace viewer, a SMART-on-FHIR app published to
-<https://wildflower-health.io/web-trace-app> and launched as a cloud app (with a
+<https://wildflowerhealth.io/web-trace-app> and launched as a cloud app (with a
 self-hosted `web-trace-app-dev` row in debug builds — see below). It wraps
 [`web-trace-react`](../../slices/web-trace/web-trace-react/AGENTS.md) — the app
 itself holds no viewing logic, only the wiring a self-hosted origin needs.
@@ -109,7 +109,7 @@ package growing a second, prop-threaded way in.
 Two places, from the same build output:
 
 - **On the published site**, at
-  [`/web-trace-app`](https://wildflower-health.io/web-trace-app) — `github-pages`
+  [`/web-trace-app`](https://wildflowerhealth.io/web-trace-app) — `github-pages`
   copies the `outDir` into the Pages artifact
   ([apps/github-pages/README.md](../github-pages/README.md)). This is the
   **production** launch target: the `web-trace-app` registry row is a _cloud_ row

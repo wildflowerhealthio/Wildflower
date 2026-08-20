@@ -3,8 +3,8 @@
 -- identifiers to match the published URLs.
 --
 -- WHY CLOUD. Both apps are now built and published by `apps/github-pages` to
--- <https://wildflower-health.io/medications-app/> and
--- <https://wildflower-health.io/web-trace-app/>. Serving the deployed copy means
+-- <https://wildflowerhealth.io/medications-app/> and
+-- <https://wildflowerhealth.io/web-trace-app/>. Serving the deployed copy means
 -- a shipped app updates when the site deploys, not when the user installs a new
 -- desktop build, so the bundled-and-synced copy is no longer the launch target.
 -- (The vendored builds under `slices/apps/self-hosted-apps/{medication,web-trace}`
@@ -39,7 +39,7 @@
 -- on-device launch fail with `503 LaunchUnavailable`.
 --
 -- `local_only` for Web Trace drops from 1 to 0: the badge claims "runs entirely
--- on this device", and an app whose assets are fetched from wildflower-health.io
+-- on this device", and an app whose assets are fetched from wildflowerhealth.io
 -- cannot claim it. (Its data still never leaves the device — the app reads the
 -- local FHIR endpoint — but the assets are remote. Accepted trade-off.)
 --
@@ -59,7 +59,7 @@ UPDATE app_registrations
    SET id = 'medications-app',
        client_id = 'medications-app',
        kind = 'cloud',
-       requires_tunnel = 0
+       requires_tunnel = 1
  WHERE id = 'wildflower-medication'
    AND NOT EXISTS (SELECT 1 FROM app_registrations WHERE id = 'medications-app');
 
@@ -68,9 +68,21 @@ UPDATE app_registrations
        client_id = 'web-trace-app',
        kind = 'cloud',
        local_only = 0,
-       requires_tunnel = 0
+       requires_tunnel = 1
  WHERE id = 'wildflower-web-trace'
    AND NOT EXISTS (SELECT 1 FROM app_registrations WHERE id = 'web-trace-app');
+
+
+INSERT OR REPLACE INTO app_registrations (id, client_id, name, subtitle, on_homescreen, kind, local_only, requires_tunnel, position)
+   VALUES ('web-server-docs',
+           'web-server-docs',
+           'Server Docs (web)',
+           'View the server documentation in your browser.',
+           1,
+           'cloud',
+           0,
+           1,
+           (SELECT COALESCE(MAX(position), -1) + 1 FROM app_registrations));
 
 -- The cloud launch templates. Both apps' `launch.html` is the SMART EHR-launch
 -- endpoint (`{launch}` + `iss` are read off the URL by fhirclient), the same
@@ -80,10 +92,15 @@ UPDATE app_registrations
 -- writes only when the registration it references is actually there.
 INSERT OR REPLACE INTO cloud_app_configurations (id, url)
 SELECT 'medications-app',
-       'https://wildflower-health.io/medications-app/launch.html?launch={launch}&iss={origin}/fhir-r4'
+       'https://wildflowerhealth.io/medications-app/launch.html?launch={launch}&iss={origin}/fhir-r4'
  WHERE EXISTS (SELECT 1 FROM app_registrations WHERE id = 'medications-app' AND kind = 'cloud');
 
 INSERT OR REPLACE INTO cloud_app_configurations (id, url)
 SELECT 'web-trace-app',
-       'https://wildflower-health.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4'
+       'https://wildflowerhealth.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4'
  WHERE EXISTS (SELECT 1 FROM app_registrations WHERE id = 'web-trace-app' AND kind = 'cloud');
+
+INSERT OR REPLACE INTO cloud_app_configurations (id, url)
+SELECT 'web-server-docs',
+       'https://wildflowerhealth.io/wildflower-server-docs?launch={launch}&iss={origin}'
+ WHERE EXISTS (SELECT 1 FROM app_registrations WHERE id = 'web-server-docs' AND kind = 'cloud');

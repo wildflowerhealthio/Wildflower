@@ -1,4 +1,4 @@
-import { Effect, Either, Option } from 'effect'
+import { Effect, Either, Match, Option } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -409,8 +409,13 @@ const refusingFetch: typeof globalThis.fetch = (input) => {
 }
 
 /** The URL a `fetch` argument names, in any of the three forms it can take. */
-const requestUrl = (input: RequestInfo | URL): string =>
-  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+const requestUrl = Match.type<RequestInfo | URL>().pipe(
+  Match.withReturnType<string>(),
+  Match.when(Match.string, (s) => s),
+  Match.when({ href: Match.string }, (u) => u.href),
+  Match.when({ url: Match.string }, (r) => r.url),
+  Match.exhaustive
+)
 
 /** A 200 JSON response carrying `body`. */
 const jsonResponse = (body: unknown): Response =>

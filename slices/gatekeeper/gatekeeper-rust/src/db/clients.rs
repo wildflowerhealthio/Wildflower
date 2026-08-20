@@ -269,7 +269,7 @@ mod tests {
             vec![
                 RegisteredRedirectUri::AppRelative("/".to_owned()),
                 RegisteredRedirectUri::Absolute(
-                    "https://wildflower-health.io/web-trace-app/"
+                    "https://wildflowerhealth.io/web-trace-app/"
                         .parse()
                         .expect("a valid absolute redirect"),
                 ),
@@ -307,7 +307,7 @@ mod tests {
             vec![
                 RegisteredRedirectUri::AppRelative("/".to_owned()),
                 RegisteredRedirectUri::Absolute(
-                    "https://wildflower-health.io/medications-app/"
+                    "https://wildflowerhealth.io/medications-app/"
                         .parse()
                         .expect("a valid absolute redirect"),
                 ),
@@ -327,7 +327,7 @@ mod tests {
         assert_eq!(
             docs.redirect_uris,
             vec![RegisteredRedirectUri::Absolute(
-                "https://wildflower-health.io/wildflower-server-docs/"
+                "https://wildflowerhealth.io/wildflower-server-docs/"
                     .parse()
                     .expect("a valid absolute redirect"),
             )],
