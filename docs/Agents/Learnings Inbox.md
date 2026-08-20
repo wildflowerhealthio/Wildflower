@@ -43,3 +43,18 @@ self-hosted. Flipping an app to `kind = cloud` therefore silently breaks its
 app-relative redirect — it resolves to nothing and matches no request (fail-closed,
 so it looks like a rejected `redirect_uri` rather than a config error). A cloud app
 needs an absolute redirect URI registered instead.
+
+## Wrapping one slice's `HttpClient` separately still keeps the request-time credentialed-fetch tag
+
+`apps/wildflower-react`'s `router-context.ts` now gives the FHIR slice its **own**
+addressed transport (`prependApiBaseUrl(httpClientLayer, FhirResourcesApiPrefix)`,
+so the de-prefixed typed client's `/Patient` becomes `/fhir-r4/Patient`) while every
+other slice shares the base transport. That looked like it might drop the `wf_auth`
+cookie, because `credentialedFetchLayer` (`FetchHttpClient.RequestInit` = `{ credentials: 'include' }`)
+is not in the FHIR sub-layer's build scope. It doesn't: `FetchHttpClient` reads that
+tag from the **request-time fiber context**, not at layer build, and `runAuthed`
+provides the whole composed `runtimeLayer` (which still merges `credentialedFetchLayer`)
+to every effect it runs — so the cookie rides the FHIR reads regardless of which
+transport layer constructed the client. When splitting a shared `HttpClient` per
+consumer, check whether the behaviour you care about is a build-time or a
+request-time concern before assuming the split loses it.

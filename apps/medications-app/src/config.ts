@@ -35,3 +35,21 @@ export const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'medications-app-dev' : 'medications-app',
   scope: 'launch openid fhirUser system/MedicationRequest.read system/Medication.read',
 }
+
+/**
+ * SMART registration for the **standalone** connect flow (`connect.html` →
+ * `ConnectMenu`), where the user picks the FHIR server rather than the EHR
+ * naming it. Same `clientId` selection as {@link smartConfig} — the standalone
+ * launch runs through the same registered client, so its redirect URI (the app
+ * root) still resolves.
+ *
+ * The scopes match {@link smartConfig}'s. Note the bare `launch` scope is
+ * formally EHR-context-only per the SMART App Launch IG (a standalone launch has
+ * no EHR context to launch into); sandboxes such as SmartHealthIT tolerate it,
+ * and it is kept here deliberately per the app's scope set. If a server rejects
+ * the authorize request over it, dropping `launch` is the first thing to try.
+ */
+export const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+  clientId: import.meta.env.DEV ? 'medications-app-dev' : 'medications-app',
+  scope: 'launch openid fhirUser system/MedicationRequest.read system/Medication.read',
+}

@@ -63,12 +63,13 @@ describe('site layout', () => {
     expect(marketing?.requiredPaths).toContain(join(outDir, 'index.html'))
   })
 
-  it('serves the medications app from /medications-app with both SMART entries', () => {
+  it('serves the medications app from /medications-app with all three SMART entries', () => {
     const [medication] = resolveSections(repoRoot, outDir, [sectionFor('medications-app')])
     expect(medication?.to).toBe(join(outDir, 'medications-app'))
     expect(medication?.requiredPaths).toEqual([
       join(outDir, 'medications-app', 'index.html'),
       join(outDir, 'medications-app', 'launch.html'),
+      join(outDir, 'medications-app', 'connect.html'),
     ])
   })
 
@@ -80,12 +81,13 @@ describe('site layout', () => {
     ])
   })
 
-  it('serves the web trace app from /web-trace-app with both SMART entries', () => {
+  it('serves the web trace app from /web-trace-app with all three SMART entries', () => {
     const [webTrace] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-web-trace')])
     expect(webTrace?.to).toBe(join(outDir, 'web-trace-app'))
     expect(webTrace?.requiredPaths).toEqual([
       join(outDir, 'web-trace-app', 'index.html'),
       join(outDir, 'web-trace-app', 'launch.html'),
+      join(outDir, 'web-trace-app', 'connect.html'),
     ])
   })
 

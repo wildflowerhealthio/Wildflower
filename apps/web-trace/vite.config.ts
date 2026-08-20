@@ -61,6 +61,7 @@ export default defineConfig({
       input: {
         main: './index.html',
         launch: './launch.html',
+        connect: './connect.html',
       },
     },
   },

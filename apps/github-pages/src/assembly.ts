@@ -44,8 +44,9 @@ const siteSections: readonly SiteSection[] = [
     // output rather than redirecting it.
     sourceDir: 'slices/apps/self-hosted-apps/medication',
     destPath: 'medications-app',
-    // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
-    requiredFiles: ['index.html', 'launch.html'],
+    // Three entries: the EHR launch endpoint, the redirect target, and the
+    // standalone connect menu.
+    requiredFiles: ['index.html', 'launch.html', 'connect.html'],
   },
   {
     packageName: 'wildflower-server-docs',
@@ -61,8 +62,9 @@ const siteSections: readonly SiteSection[] = [
     // this package copies that output rather than redirecting it.
     sourceDir: 'slices/apps/self-hosted-apps/web-trace',
     destPath: 'web-trace-app',
-    // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
-    requiredFiles: ['index.html', 'launch.html'],
+    // Three entries: the EHR launch endpoint, the redirect target, and the
+    // standalone connect menu.
+    requiredFiles: ['index.html', 'launch.html', 'connect.html'],
   },
 ]
 
