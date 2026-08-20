@@ -2,7 +2,7 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { DateTime, Effect, Either, Layer, Schema } from 'effect'
+import { DateTime, Effect, Layer, Schema } from 'effect'
 import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
@@ -319,10 +319,9 @@ const serveArchives = (config: {
       return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(wire)))
     })
   )
-  // `SERVER_URL` is addressable, so this is always a `Right`; unwrap or throw.
-  currentRunAuthed = Either.getOrThrowWith(
-    buildSmartRouterContext({ serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN }, httpLayer),
-    (error) => error
+  currentRunAuthed = buildSmartRouterContext(
+    { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
+    httpLayer
   ).runAuthed
 }
 

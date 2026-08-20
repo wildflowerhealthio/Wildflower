@@ -42,10 +42,10 @@ package growing a second, prop-threaded way in.
 ## Traps
 
 - **Three of the traps that used to be listed here are the shared runtime's
-  now** — the `iss`-prefix reconciliation that returns a **`Left`** rather than
-  guessing, the bearer token that rides only the requests the layer addressed,
-  and the
-  transport staying a parameter. They are unchanged, but they are enforced in
+  now** — the typed client emits base-relative FHIR paths and the provider names
+  the base (here: `client.state.serverUrl` prepended verbatim, no `iss` parsing
+  and no `Left`), the bearer token that rides only the requests the layer
+  addressed, and the transport staying a parameter. They are enforced in
   `fhir-r4-react/smart`; the guardrail that spells all three out is in
   [slices/emr/AGENTS.md](../../slices/emr/AGENTS.md). What is still this app's is
   that `app.tsx` names the real transport, and `app.test.tsx` pins what goes on
@@ -156,8 +156,8 @@ than adopting it — you get no dev tile until that app is renamed.
 
 ## Testing
 
-- The auth wiring in isolation — prefix derivation (including the `Left` on an
-  unaddressable `iss`), the relative/absolute split, and that an absent token
+- The auth wiring in isolation — the verbatim base prepend (a property over
+  arbitrary server bases), the relative/absolute split, and that an absent token
   sets no header rather than a
   `Bearer` with nothing after it — is
   [`fhir-r4-react`'s `self-hosted-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.test.ts),

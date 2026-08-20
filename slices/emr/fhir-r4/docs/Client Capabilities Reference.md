@@ -10,6 +10,16 @@ Each entry is a place where the client deviates from, narrows, or postpones the 
 
 The `HttpApi` definition and the schemas here are hand-synchronized with what HFS actually serves at `/fhir-r4/*`. There is no OpenAPI-snapshot or CapabilityStatement-based drift test (deliberate, for now): `emr-rust` mounts HFS's router wholesale, so there is nothing to annotate with `utoipa` on the Rust side. If the two sides diverge, nothing fails automatically — changes to either side need a manual cross-check.
 
+## The `HttpApi` is base-relative; the mount prefix is re-applied by consumers
+
+`FhirResourcesApi` no longer carries `.prefix('/fhir-r4')`. The typed client emits **base-relative** paths (`/Patient`, `/DocumentReference/{id}`), so it can be pointed at any FHIR server — Wildflower's host, a SMART sandbox, an arbitrary open R4 base. Naming the base is the **consumer's** job:
+
+- **Host app wiring** (`apps/wildflower-react`'s `router-context.ts`) re-applies `FhirResourcesApiPrefix` (`/fhir-r4`, still exported here) by wrapping the FHIR slice's `HttpClient` with `prependApiBaseUrl(httpClientLayer, FhirResourcesApiPrefix)`, so the host webview's reads still resolve to `{origin}/fhir-r4/…`.
+- **OpenAPI generation** (`http-api-definition/openapi-drift.test.ts`) re-applies the same prefix to every `spec.paths` key after `OpenApi.fromApi`, so the committed `emr-rust/openapi/fhir-r4.openapi.json` — embedded by `emr_rust::openapi_spec` for the host's `/docs` page — keeps showing the mounted `/fhir-r4/…` paths, byte-identical to before the de-prefix.
+- **Self-hosted SMART apps** (`fhir-r4-react/smart`'s `smartHttpClientLayer`) prepend the `iss`/picked server URL verbatim.
+
+The `/fhir-r4` mount path itself is unchanged on the server side — only where it is applied on the client side moved.
+
 ## Choice element XOR not enforced
 
 FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Extension.value[x]`, `MedicationRequest.medication[x]`, `MedicationRequest.reported[x]`, `MedicationRequest.substitution.allowed[x]`, `MedicationDispense.medication[x]`, `MedicationDispense.statusReason[x]`, `Dosage.asNeeded[x]`, `Dosage.doseAndRate.dose[x]`, `Dosage.doseAndRate.rate[x]`) are mutex by spec — only one variant may be set at a time. Our schemas declare every variant as an independent optional field (via `choiceElementSetPassthroughFields(prefix, variants)`, or — for the `Dosage.doseAndRate` `dose[x]`/`rate[x]` slots whose `SimpleQuantity` type is named `…Quantity` on the wire — as explicit `doseRange`/`doseQuantity`/`rateRatio`/`rateRange`/`rateQuantity` fields). A payload setting both `deceasedBoolean` and `deceasedDateTime`, or both `medicationCodeableConcept` and `medicationReference`, will validate.

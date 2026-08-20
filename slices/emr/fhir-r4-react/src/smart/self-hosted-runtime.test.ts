@@ -1,21 +1,14 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { Effect, Either, Layer } from 'effect'
+import { Effect, Layer } from 'effect'
 import fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
-  apiBaseUrlFromIss,
   buildSmartRouterContext,
   smartHttpClientLayer,
-  UnexpectedFhirBase,
   type SmartSession,
 } from './self-hosted-runtime.ts'
-
-/** Unwrap a `Right`, or fail the test naming the `Left` it got instead. */
-const rightOf = <A>(either: Either.Either<A, UnexpectedFhirBase>): A => {
-  if (Either.isLeft(either)) throw new Error(`expected a Right, got Left: ${either.left.message}`)
-  return either.right
-}
 
 /**
  * Drive one request through a layer and hand back what actually went on the
@@ -38,57 +31,50 @@ const sendThrough = (
       const client = yield* HttpClient.HttpClient
       yield* client.execute(request)
       return captured ?? { url: '(never sent)', authorization: undefined }
-    }).pipe(Effect.provide(rightOf(smartHttpClientLayer(session, stub))))
+    }).pipe(Effect.provide(smartHttpClientLayer(session, stub)))
   )
 }
-
-describe('apiBaseUrlFromIss', () => {
-  test('strips the API prefix the typed client re-adds', () => {
-    expect(rightOf(apiBaseUrlFromIss('http://127.0.0.1:8080/fhir-r4'))).toBe(
-      'http://127.0.0.1:8080'
-    )
-  })
-
-  test('tolerates a trailing slash on the iss', () => {
-    expect(rightOf(apiBaseUrlFromIss('https://device.example/fhir-r4/'))).toBe(
-      'https://device.example'
-    )
-  })
-
-  test('keeps a subpath deployment intact', () => {
-    expect(rightOf(apiBaseUrlFromIss('https://example.test/wildflower/fhir-r4'))).toBe(
-      'https://example.test/wildflower'
-    )
-  })
-
-  // The whole point of failing rather than guessing: a guessed prefix would send
-  // every request somewhere plausible and wrong, surfacing as an unexplained 404.
-  test('returns a Left rather than guessing when the iss names another FHIR base', () => {
-    const result = apiBaseUrlFromIss('https://ehr.example/r4')
-    if (Either.isRight(result)) throw new Error('expected a Left')
-    expect(result.left).toBeInstanceOf(UnexpectedFhirBase)
-  })
-
-  test('round-trips: prefixing the result with the API prefix reproduces the iss', () => {
-    fc.assert(
-      fc.property(
-        fc.webUrl({ withQueryParameters: false, withFragments: false }),
-        (origin: string) => {
-          const base = origin.replace(/\/+$/u, '')
-          expect(rightOf(apiBaseUrlFromIss(`${base}/fhir-r4`))).toBe(base)
-        }
-      )
-    )
-  })
-})
 
 describe('smartHttpClientLayer', () => {
   const session = { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' }
 
   test('addresses a relative client path at the FHIR server and attaches the token', async () => {
-    const sent = await sendThrough(session, HttpClientRequest.get('/fhir-r4/DocumentReference'))
+    const sent = await sendThrough(session, HttpClientRequest.get('/DocumentReference'))
     expect(sent.url).toBe('http://127.0.0.1:8080/fhir-r4/DocumentReference')
     expect(sent.authorization).toBe('Bearer tok-123')
+  })
+
+  // The client no longer bakes in `/fhir-r4`, so the base is now whatever server
+  // the handshake named — a sandbox base with its own subpath, an EHR's `iss`,
+  // anything. It is prepended verbatim (trailing slashes trimmed) rather than
+  // parsed, so any of these addresses correctly.
+  test('prepends an arbitrary server base verbatim', async () => {
+    const sent = await sendThrough(
+      { serverUrl: 'https://launch.smarthealthit.org/v/r4/fhir', accessToken: undefined },
+      HttpClientRequest.get('/Patient')
+    )
+    expect(sent.url).toBe('https://launch.smarthealthit.org/v/r4/fhir/Patient')
+  })
+
+  test('property: any server base is prepended verbatim to a relative path', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.webUrl({ withQueryParameters: false, withFragments: false }),
+        fc.nat({ max: 3 }),
+        async (origin: string, extraSlashes: number) => {
+          const base = origin.replace(/\/+$/u, '')
+          // A trailing-slash-carrying `serverUrl` must address identically: only
+          // trailing slashes are trimmed, nothing else about the base is touched.
+          const serverUrl = `${base}${'/'.repeat(extraSlashes)}`
+          const sent = await sendThrough(
+            { serverUrl, accessToken: undefined },
+            HttpClientRequest.get('/Patient')
+          )
+          expect(sent.url).toBe(`${base}/Patient`)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
   })
 
   // Prepending to an absolute URL yields `http://a…http://b…`, which `fetch`
@@ -101,7 +87,7 @@ describe('smartHttpClientLayer', () => {
   test('sets no Authorization header at all when there is no token', async () => {
     const sent = await sendThrough(
       { ...session, accessToken: undefined },
-      HttpClientRequest.get('/fhir-r4/DocumentReference')
+      HttpClientRequest.get('/DocumentReference')
     )
     expect(sent.authorization).toBeUndefined()
   })
@@ -124,31 +110,18 @@ const deadTransport = Layer.succeed(
 
 describe('buildSmartRouterContext', () => {
   test('runAuthed runs an effect against the built runtime', async () => {
-    const context = rightOf(
-      buildSmartRouterContext(
-        { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' },
-        deadTransport
-      )
+    const context = buildSmartRouterContext(
+      { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' },
+      deadTransport
     )
     await expect(context.runAuthed(Effect.succeed(42))).resolves.toBe(42)
   })
 
   test('awaitAuthReady resolves — the handshake is already complete', async () => {
-    const context = rightOf(
-      buildSmartRouterContext(
-        { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' },
-        deadTransport
-      )
-    )
-    await expect(context.awaitAuthReady()).resolves.toBeUndefined()
-  })
-
-  test('an unaddressable iss is a Left at build time, not a failure at first read', () => {
-    const result = buildSmartRouterContext(
-      { serverUrl: 'https://ehr.example/r4', accessToken: 'tok' },
+    const context = buildSmartRouterContext(
+      { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' },
       deadTransport
     )
-    if (Either.isRight(result)) throw new Error('expected a Left')
-    expect(result.left).toBeInstanceOf(UnexpectedFhirBase)
+    await expect(context.awaitAuthReady()).resolves.toBeUndefined()
   })
 })
