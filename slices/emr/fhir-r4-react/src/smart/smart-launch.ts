@@ -43,6 +43,33 @@ const authorizeSmartLaunch = async (config: SmartLaunchConfig): Promise<void> =>
 }
 
 /**
+ * Configuration for connecting to an **open** FHIR server — one whose
+ * `.well-known/smart-configuration` names no authorization endpoint (or serves
+ * no config at all). There is no OAuth handshake: fhirclient redirects straight
+ * to the redirect target, which `readySmartClient` then completes into a client
+ * with `state.serverUrl` set and no `tokenResponse.access_token`.
+ */
+interface OpenServerConfig {
+  /** The FHIR server base to connect to, used with no `Authorization` header. */
+  readonly fhirServiceUrl: string
+  readonly redirectUri: string
+}
+
+/**
+ * Begin an open-server connection. `oauth2.authorize({ fhirServiceUrl })` skips
+ * discovery and the code/token exchange entirely and redirects straight to
+ * `redirectUri`, so — like {@link authorizeSmartLaunch} — the returned promise
+ * usually never resolves because the page navigates away.
+ */
+const authorizeOpenServer = async (config: OpenServerConfig): Promise<void> => {
+  const FHIR = await loadFhir()
+  await FHIR.oauth2.authorize({
+    fhirServiceUrl: config.fhirServiceUrl,
+    redirectUri: config.redirectUri,
+  })
+}
+
+/**
  * Complete the SMART handshake on the redirect page: exchanges the auth code
  * for tokens and resolves to a ready {@link Client}.
  */
@@ -51,4 +78,10 @@ const readySmartClient = async (): Promise<Client> => {
   return FHIR.oauth2.ready()
 }
 
-export { authorizeSmartLaunch, readySmartClient, type SmartLaunchConfig }
+export {
+  authorizeOpenServer,
+  authorizeSmartLaunch,
+  readySmartClient,
+  type OpenServerConfig,
+  type SmartLaunchConfig,
+}
