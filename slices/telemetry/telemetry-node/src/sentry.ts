@@ -23,7 +23,7 @@ const initSentryNode = (config: TelemetryConfig): boolean => {
     environment: config.sentry.environment,
     release: resolveRelease(config.sentry.release),
     tracesSampleRate: config.sentry.tracesSampleRate,
-    profilesSampleRate: config.sentry.profilesSampleRate,
+    profileSessionSampleRate: config.sentry.profileSessionSampleRate,
     debug: config.debug,
     skipOpenTelemetrySetup: true,
     registerEsmLoaderHooks: false,

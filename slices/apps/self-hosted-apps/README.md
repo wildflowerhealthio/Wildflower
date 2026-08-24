@@ -14,7 +14,7 @@ longer all play the same role:
 ## Which mechanism still serves which directory
 
 The two first-party apps launch in production from the deployed site
-(<https://wildflower-health.io>), as **cloud** rows — apps migration
+(<https://wildflowerhealth.io>), as **cloud** rows — apps migration
 `0005_first_party_apps_to_cloud`. Their build output stays here because two other
 consumers read it:
 

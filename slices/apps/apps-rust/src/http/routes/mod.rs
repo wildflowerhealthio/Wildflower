@@ -387,6 +387,7 @@ mod tests {
                 "precise-hbr",
                 "medications-app",
                 "web-trace-app",
+                "web-server-docs",
             ],
         );
     }
@@ -1272,6 +1273,7 @@ mod tests {
             ("patient-browser", true),
             ("medications-app", true),
             ("web-trace-app", true),
+            ("web-server-docs", true),
         ];
         let (status, body) = send(&st, put_json("/home-screen", home_screen_body(&ordered))).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -1293,6 +1295,7 @@ mod tests {
                 "patient-browser",
                 "medications-app",
                 "web-trace-app",
+                "web-server-docs",
             ],
         );
         let api_docs = body

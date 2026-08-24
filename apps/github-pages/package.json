@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node ./src/assemble.ts",
     "check": "vp check",
+    "dev": "vp preview",
     "test": "vp test"
   },
   "devDependencies": {

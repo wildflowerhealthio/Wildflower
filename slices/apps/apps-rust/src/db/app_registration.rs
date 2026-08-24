@@ -151,7 +151,7 @@ mod tests {
     // The port trait is in scope so the concrete adapter's methods resolve.
     use crate::domain::{AppKind, AppsStore};
 
-    /// The migration seeds the full default set: 8 registrations in display order
+    /// The migration seeds the full default set: 9 registrations in display order
     /// with the right kind.
     #[test]
     fn migration_seeds_the_default_registry() {
@@ -169,6 +169,7 @@ mod tests {
                 "precise-hbr",
                 "medications-app",
                 "web-trace-app",
+                "web-server-docs",
             ],
             "seeded apps must come back in position order",
         );
@@ -219,6 +220,7 @@ mod tests {
             ("patient-browser".to_owned(), true),
             ("medications-app".to_owned(), true),
             ("web-trace-app".to_owned(), true),
+            ("web-server-docs".to_owned(), true),
         ];
         let updated = store
             .replace_placements(&entries)

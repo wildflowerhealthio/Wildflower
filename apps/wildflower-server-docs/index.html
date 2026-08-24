@@ -22,10 +22,12 @@
         placeholder="http://127.0.0.1:8080"
       />
       <button class="server-bar__submit" type="submit">Use this server</button>
+      <button id="sign-in" class="server-bar__submit" type="button">Sign in</button>
       <p class="server-bar__hint">
         Every request below is sent to this origin, straight from your browser — nothing is proxied.
         The target is kept in the page URL, so a configured console can be shared as a link.
       </p>
+      <p id="auth-status" class="server-bar__status" hidden></p>
     </form>
     <div id="reference"></div>
     <script type="module" src="/src/main.ts"></script>

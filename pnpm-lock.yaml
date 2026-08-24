@@ -604,6 +604,9 @@ importers:
       '@scalar/api-reference':
         specifier: 'catalog:'
         version: 1.65.1(tailwindcss@4.3.3)(typescript@5.9.3)(zod@4.4.3)
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
     devDependencies:
       fast-check:
         specifier: 'catalog:'

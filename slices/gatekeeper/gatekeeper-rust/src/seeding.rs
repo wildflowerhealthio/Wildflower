@@ -95,7 +95,7 @@ fn ensure_first_party_client(
 /// gatekeeper half of `apps_rust::seed_dev_apps`.
 ///
 /// The two first-party apps now ship as **cloud** rows served from
-/// <https://wildflower-health.io> (apps migration `0005_first_party_apps_to_cloud`),
+/// <https://wildflowerhealth.io> (apps migration `0005_first_party_apps_to_cloud`),
 /// whose clients register an *absolute* Pages redirect URI. A debug build also
 /// gets a self-hosted `<app>-dev` row pointing at the app's local vite dev server,
 /// and that row needs its own client: the app-relative `"/"` redirect resolves

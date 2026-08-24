@@ -17,14 +17,14 @@
  * beyond "JSON object": these transforms only add root keys, and modelling the
  * whole of OpenAPI here would buy nothing.
  */
-export type OpenApiDocument = Readonly<Record<string, unknown>>
+type OpenApiDocument = Readonly<Record<string, unknown>>
 
 /**
  * The name of the security scheme {@link withBearerAuth} injects. Matches
  * nothing in the snapshots — it exists only so the reference UI renders a token
  * field.
  */
-export const BEARER_SCHEME_NAME = 'bearerAuth'
+const BEARER_SCHEME_NAME = 'bearerAuth'
 
 /** Whether `value` is a plain JSON object (and so safe to spread as one). */
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
@@ -34,7 +34,7 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
  * `spec` with its server list replaced by the single `serverUrl`, so every
  * operation's "try it" request goes to the server the reader chose.
  */
-export const withServer = (spec: OpenApiDocument, serverUrl: string): OpenApiDocument => ({
+const withServer = (spec: OpenApiDocument, serverUrl: string): OpenApiDocument => ({
   ...spec,
   servers: [{ url: serverUrl }],
 })
@@ -48,7 +48,7 @@ export const withServer = (spec: OpenApiDocument, serverUrl: string): OpenApiDoc
  * field, so a reader with a token can send a request that is actually
  * authorised. Any scheme the snapshot already declares is preserved.
  */
-export const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
+const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
   const components = isRecord(spec.components) ? spec.components : {}
   const securitySchemes = isRecord(components.securitySchemes) ? components.securitySchemes : {}
 
@@ -63,7 +63,8 @@ export const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
           scheme: 'bearer',
           description:
             'The access token the host issues. Loopback callers on the device are ' +
-            'trusted without one; every forwarded caller needs it.',
+            'trusted without one; every forwarded caller needs it. Signing in from ' +
+            'the header bar fills this field with a freshly issued token.',
         },
       },
     },
@@ -75,5 +76,8 @@ export const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
  * A snapshot made sendable: pointed at `serverUrl` and offering a bearer token
  * field. Composition of {@link withServer} and {@link withBearerAuth}.
  */
-export const preparedSpec = (spec: OpenApiDocument, serverUrl: string): OpenApiDocument =>
+const preparedSpec = (spec: OpenApiDocument, serverUrl: string): OpenApiDocument =>
   withBearerAuth(withServer(spec, serverUrl))
+
+export { BEARER_SCHEME_NAME, withServer, withBearerAuth, preparedSpec }
+export type { OpenApiDocument }

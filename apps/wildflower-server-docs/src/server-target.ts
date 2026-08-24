@@ -16,14 +16,14 @@ import { HOST_LOOPBACK_ORIGIN } from './host-defaults.ts'
 /**
  * The query parameter carrying the API origin the request client targets.
  */
-export const SERVER_QUERY_PARAM = 'server'
+const SERVER_QUERY_PARAM = 'server'
 
 /**
  * The target assumed when the URL carries no usable `?server=`: the loopback
  * origin the desktop host's embedded API server binds, read from the shared
  * Tauri config rather than restated here (see `host-defaults.ts`).
  */
-export const DEFAULT_SERVER_URL = HOST_LOOPBACK_ORIGIN
+const DEFAULT_SERVER_URL = HOST_LOOPBACK_ORIGIN
 
 /**
  * The canonical form of `candidate` as an API origin, or `undefined` when it is
@@ -39,7 +39,7 @@ export const DEFAULT_SERVER_URL = HOST_LOOPBACK_ORIGIN
  * trailing slash from the path, so the result concatenates cleanly with the
  * leading-slash paths in an OpenAPI document.
  */
-export const normalizeServerUrl = (candidate: string): string | undefined => {
+const normalizeServerUrl = (candidate: string): string | undefined => {
   let url: URL
   try {
     // No base argument: a relative or protocol-relative input has nothing to
@@ -62,7 +62,7 @@ export const normalizeServerUrl = (candidate: string): string | undefined => {
  * Falls back to {@link DEFAULT_SERVER_URL} when the parameter is absent, empty
  * or rejected by {@link normalizeServerUrl}.
  */
-export const serverUrlFromSearch = (search: string): string => {
+const serverUrlFromSearch = (search: string): string => {
   const raw = new URLSearchParams(search).get(SERVER_QUERY_PARAM)
   if (raw === null) return DEFAULT_SERVER_URL
   return normalizeServerUrl(raw) ?? DEFAULT_SERVER_URL
@@ -74,7 +74,7 @@ export const serverUrlFromSearch = (search: string): string => {
  * instead of writing a value the next load would ignore. The result includes
  * the leading `?` unless it is empty.
  */
-export const searchWithServerUrl = (search: string, serverUrl: string): string => {
+const searchWithServerUrl = (search: string, serverUrl: string): string => {
   const params = new URLSearchParams(search)
   const normalized = normalizeServerUrl(serverUrl)
   if (normalized === undefined) {
@@ -84,4 +84,12 @@ export const searchWithServerUrl = (search: string, serverUrl: string): string =
   }
   const query = params.toString()
   return query === '' ? '' : `?${query}`
+}
+
+export {
+  SERVER_QUERY_PARAM,
+  DEFAULT_SERVER_URL,
+  normalizeServerUrl,
+  serverUrlFromSearch,
+  searchWithServerUrl,
 }

@@ -11,7 +11,8 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@scalar/api-reference": "catalog:"
+    "@scalar/api-reference": "catalog:",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "fast-check": "catalog:",

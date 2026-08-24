@@ -5,7 +5,7 @@ import { join, relative, sep } from 'node:path'
  * site. The build of each section is owned by its own package; this package
  * only places the outputs at their public URLs.
  */
-export interface SiteSection {
+interface SiteSection {
   /** Workspace package whose `build` script produces {@link sourceDir}. */
   readonly packageName: string
   /** Repo-root-relative directory holding that package's build output. */
@@ -24,11 +24,11 @@ export interface SiteSection {
 }
 
 /**
- * The published layout of https://wildflower-health.io.
+ * The published layout of https://wildflowerhealth.io.
  *
  * `docs/` (generated HTML documentation) joins this list in a later change.
  */
-export const siteSections: readonly SiteSection[] = [
+const siteSections: readonly SiteSection[] = [
   {
     packageName: 'marketing-website',
     sourceDir: 'apps/marketing-website/dist',
@@ -67,7 +67,7 @@ export const siteSections: readonly SiteSection[] = [
 ]
 
 /** A {@link SiteSection} resolved to absolute filesystem paths. */
-export interface ResolvedSection {
+interface ResolvedSection {
   readonly packageName: string
   /** Absolute directory to copy from. */
   readonly from: string
@@ -81,7 +81,7 @@ export interface ResolvedSection {
  * Resolve the site layout against a repo checkout and an output directory.
  * Pure: no filesystem access, so the layout can be asserted in tests.
  */
-export const resolveSections = (
+const resolveSections = (
   repoRoot: string,
   outDir: string,
   sections: readonly SiteSection[] = siteSections
@@ -100,7 +100,7 @@ export const resolveSections = (
  * Absolute paths that the resolved layout promises but that `exists` reports
  * as absent. An empty result means the assembled site is publishable.
  */
-export const missingRequiredPaths = (
+const missingRequiredPaths = (
   sections: readonly ResolvedSection[],
   exists: (path: string) => boolean
 ): readonly string[] => sections.flatMap((s) => s.requiredPaths.filter((p) => !exists(p)))
@@ -110,7 +110,7 @@ export const missingRequiredPaths = (
  * invariant every destination in the layout has to satisfy so assembly can
  * never write outside the output directory.
  */
-export const isWithin = (parent: string, child: string): boolean => {
+const isWithin = (parent: string, child: string): boolean => {
   const rel = relative(parent, child)
   return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..')
 }
@@ -121,10 +121,10 @@ export const isWithin = (parent: string, child: string): boolean => {
  * checks this before it writes anything, so a layout with a traversing
  * `destPath` or `requiredFiles` entry fails instead of writing outside `dist/`.
  */
-export const escapingPaths = (
-  outDir: string,
-  sections: readonly ResolvedSection[]
-): readonly string[] =>
+const escapingPaths = (outDir: string, sections: readonly ResolvedSection[]): readonly string[] =>
   sections.flatMap((section) =>
     [section.to, ...section.requiredPaths].filter((path) => !isWithin(outDir, path))
   )
+
+export { siteSections, resolveSections, missingRequiredPaths, isWithin, escapingPaths }
+export type { SiteSection, ResolvedSection }

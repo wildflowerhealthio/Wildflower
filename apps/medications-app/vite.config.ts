@@ -47,6 +47,7 @@ export default defineConfig({
     // `vp run -F medications-app dev`.
     port: devPort,
     strictPort: true,
+    host: '0.0.0.0',
   },
   build: {
     // Build straight into the vendored self-hosted-apps tree so the bundle

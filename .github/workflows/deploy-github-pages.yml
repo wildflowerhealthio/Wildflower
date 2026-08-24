@@ -10,7 +10,7 @@ name: Deploy GitHub Pages
 #
 # Prerequisites (one-time, in repo Settings → Pages):
 #   - Source: "GitHub Actions".
-#   - Custom domain: wildflower-health.io. The CNAME file in
+#   - Custom domain: wildflowerhealth.io. The CNAME file in
 #     apps/marketing-website/public carries that domain into the marketing build,
 #     which the assembly step copies to the root of the uploaded artifact — the
 #     only place GitHub Pages reads it from — so the setting survives each deploy.

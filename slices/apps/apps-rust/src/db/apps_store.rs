@@ -206,7 +206,7 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 8, "exactly the eight seeded default apps");
+        assert_eq!(row_count, 9, "exactly the nine seeded default apps");
     }
 
     /// The `app_registrations` primary key gives global id uniqueness across kinds
@@ -254,6 +254,7 @@ mod tests {
                 "precise-hbr",
                 "medications-app",
                 "web-trace-app",
+                "web-server-docs",
             ],
         );
     }
@@ -331,11 +332,11 @@ mod tests {
         for (id, url) in [
             (
                 "medications-app",
-                "https://wildflower-health.io/medications-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+                "https://wildflowerhealth.io/medications-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
             ),
             (
                 "web-trace-app",
-                "https://wildflower-health.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+                "https://wildflowerhealth.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
             ),
         ] {
             let (registration, configuration) = store
@@ -350,9 +351,9 @@ mod tests {
             // resolver looks an app up by client_id.
             assert_eq!(registration.client_id.as_deref(), Some(id));
             assert!(
-                !registration.requires_tunnel,
-                "{id} reaches the LOCAL origin's FHIR API through `iss={{origin}}`, so a \
-                 loopback launch must not be forced through the tunnel",
+                registration.requires_tunnel,
+                "{id} is launched from the published site, so its `iss={{origin}}` FHIR \
+                 target must resolve through the tunnel's verified origin",
             );
             let target: CloudTarget =
                 sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
@@ -385,6 +386,47 @@ mod tests {
         assert_eq!(
             (patient_browser.port, patient_browser.subdomain.as_str()),
             (8081, "patient-browser"),
+        );
+    }
+
+    /// The server-docs console is a cloud row that takes only `{origin}`, handed
+    /// to it through its `?server=` contract. Unlike the SMART launchers it is not
+    /// given a `{launch}` nonce (it signs in standalone), so the seeded template
+    /// must carry neither `{launch}` nor `iss` — the mismatch that would otherwise
+    /// leave the tile pointed at the loopback default is what this pins.
+    #[test]
+    fn server_docs_console_is_a_cloud_row_targeted_by_server_param() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+
+        let (registration, configuration) = store
+            .find_app("web-server-docs")
+            .unwrap()
+            .expect("web-server-docs must exist");
+        assert!(
+            matches!(configuration, AppConfiguration::Cloud(_)),
+            "web-server-docs must be a cloud app",
+        );
+        // client_id tracks id, as every registration does.
+        assert_eq!(registration.client_id.as_deref(), Some("web-server-docs"));
+        assert!(
+            registration.requires_tunnel,
+            "the console fetches from `{{origin}}`, which must resolve through the \
+             tunnel's verified HTTPS origin",
+        );
+
+        let target: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+                .bind::<Text, _>("web-server-docs")
+                .get_result(&mut conn)
+                .expect("the cloud configuration row must exist");
+        assert_eq!(
+            target.url,
+            "https://wildflowerhealth.io/wildflower-server-docs/?server={origin}",
+        );
+        assert!(
+            !target.url.contains("{launch}") && !target.url.contains("iss="),
+            "the console reads `?server=`, not a SMART `{{launch}}`/`iss` launch",
         );
     }
 

@@ -153,6 +153,7 @@ async fn fresh_install_lists_the_default_set() {
             "precise-hbr",
             "medications-app",
             "web-trace-app",
+            "web-server-docs",
         ],
     );
 }
@@ -348,6 +349,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         { "id": "precise-hbr", "onHomescreen": true },
         { "id": "medications-app", "onHomescreen": true },
         { "id": "web-trace-app", "onHomescreen": true },
+        { "id": "web-server-docs", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -372,6 +374,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
             "precise-hbr",
             "medications-app",
             "web-trace-app",
+            "web-server-docs",
         ],
     );
     let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();

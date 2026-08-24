@@ -3,7 +3,7 @@ interface SentryRuntimeConfig {
   readonly environment: string
   readonly release: string
   readonly tracesSampleRate: number
-  readonly profilesSampleRate: number
+  readonly profileSessionSampleRate: number
 }
 
 interface OtelRuntimeConfig {
@@ -59,7 +59,10 @@ const configFromEnv = (
       environment: env[`${p}SENTRY_ENVIRONMENT`] ?? 'development',
       release: env[`${p}SENTRY_RELEASE`] ?? '',
       tracesSampleRate: parseNumber(env[`${p}SENTRY_TRACES_SAMPLE_RATE`], 1.0),
-      profilesSampleRate: parseNumber(env[`${p}SENTRY_PROFILES_SAMPLE_RATE`], 0),
+      profileSessionSampleRate: parseNumber(
+        env[`${p}SENTRY_PROFILE_SESSION_SAMPLE_RATE`],
+        parseNumber(env[`${p}SENTRY_PROFILES_SAMPLE_RATE`], 0)
+      ),
     },
     otel: {
       serviceName: env[`${p}OTEL_SERVICE_NAME`] ?? 'wildflower',

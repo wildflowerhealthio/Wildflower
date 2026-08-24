@@ -1,6 +1,6 @@
 # github-pages
 
-Assembles everything published at <https://wildflower-health.io> into a single
+Assembles everything published at <https://wildflowerhealth.io> into a single
 static artifact. It owns no UI of its own: each section is built by the package
 that owns it, and this package places those outputs at their public URLs.
 

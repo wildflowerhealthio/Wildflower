@@ -62,10 +62,10 @@ vp build    # production build to dist/
 This site is the root (`/`) of the published GitHub Pages artifact assembled by
 `apps/github-pages`, which `.github/workflows/deploy-github-pages.yml` builds
 and publishes on pushes to `main` that touch any assembled section. It is
-served at the custom domain in `public/CNAME` (`wildflower-health.io`) — the
+served at the custom domain in `public/CNAME` (`wildflowerhealth.io`) — the
 assembly copies that file to the artifact root. The Vite `base` is relative
 (`./`) so the same build also works from the project URL while the domain's DNS
 propagates.
 
 One-time setup: repo Settings → Pages → Source = "GitHub Actions", then set the
-custom domain to `wildflower-health.io`.
+custom domain to `wildflowerhealth.io`.
