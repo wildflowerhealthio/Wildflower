@@ -7,6 +7,7 @@ import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
   fhirAudienceFor,
+  isAuthorizationResponse,
   parsePendingAuthorization,
   parseTokenResponse,
   searchWithoutAuthorizationResponse,
@@ -265,6 +266,57 @@ describe('searchWithoutAuthorizationResponse', () => {
   it('reduces an emptied query to the empty string, not a bare ?', () => {
     // Act / Assert
     expect(searchWithoutAuthorizationResponse('?code=abc&state=xyz')).toBe('')
+  })
+})
+
+describe('isAuthorizationResponse', () => {
+  it('recognises each response parameter as a return leg', () => {
+    // Act / Assert — a code, or a bare state, or an error is all a return leg.
+    expect(isAuthorizationResponse('?code=abc&state=xyz')).toBe(true)
+    expect(isAuthorizationResponse('?state=xyz')).toBe(true)
+    expect(isAuthorizationResponse('?error=access_denied')).toBe(true)
+  })
+
+  it('does not mistake an ordinary configured load for a return leg', () => {
+    // Act / Assert — `?server=` alone, or nothing, is not a return.
+    expect(isAuthorizationResponse('?server=https%3A%2F%2Fruth.wildflowerhealth.io')).toBe(false)
+    expect(isAuthorizationResponse('')).toBe(false)
+  })
+
+  it('is true as soon as any one response parameter is present', () => {
+    fc.assert(
+      fc.property(
+        fc.dictionary(fc.string({ minLength: 1 }), fc.string()),
+        fc.constantFrom('code', 'state', 'error', 'error_description'),
+        fc.string(),
+        (extras, name, value) => {
+          // Arrange
+          const params = new URLSearchParams(extras)
+          params.set(name, value)
+
+          // Act / Assert
+          expect(isAuthorizationResponse(`?${params.toString()}`)).toBe(true)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('is false for a query carrying no response parameter', () => {
+    const RESPONSE_NAMES = new Set(['code', 'state', 'error', 'error_description'])
+    fc.assert(
+      fc.property(
+        fc.dictionary(
+          fc.string({ minLength: 1 }).filter((key) => !RESPONSE_NAMES.has(key)),
+          fc.string()
+        ),
+        (extras) => {
+          // Act / Assert
+          expect(isAuthorizationResponse(`?${new URLSearchParams(extras).toString()}`)).toBe(false)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 

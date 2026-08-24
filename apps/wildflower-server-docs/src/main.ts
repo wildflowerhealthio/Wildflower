@@ -4,7 +4,10 @@ import { Effect, Option } from 'effect'
 import '@scalar/api-reference/style.css'
 import './styles.css'
 
-import { searchWithoutAuthorizationResponse } from './authorization-flow.ts'
+import {
+  isAuthorizationResponse,
+  searchWithoutAuthorizationResponse,
+} from './authorization-flow.ts'
 import { consoleConfiguration } from './configuration.ts'
 import { searchWithServerUrl, serverUrlFromSearch } from './server-target.ts'
 import {
@@ -86,11 +89,15 @@ const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'):
  * Both halves of the flow fail with a {@link SignInError}, and every variant of
  * it carries a `reason` written for a reader, so one handler renders them all:
  * the message goes on the status line and the button comes back for another
- * try. `Effect.match` folds both channels away, so the promise never rejects.
+ * try. `Effect.match` folds both channels away, so the promise never rejects. An
+ * optional `onFailure` runs after that shared handling, for a caller that must
+ * still do something itself when its effect fails (the return leg mounts the
+ * reference against the default target there, since success never will).
  */
 const runSignInEffect = <A>(
   effect: Effect.Effect<A, SignInError>,
-  onSuccess: (value: A) => void
+  onSuccess: (value: A) => void,
+  onFailure?: (error: SignInError) => void
 ): void => {
   void Effect.runPromise(
     effect.pipe(
@@ -99,6 +106,7 @@ const runSignInEffect = <A>(
         onFailure: (error: SignInError) => {
           signInButton.disabled = !availability.available
           showStatus(error.reason, 'problem')
+          onFailure?.(error)
         },
       })
     )
@@ -154,6 +162,49 @@ const renderAuthControls = (serverUrl: string): void => {
 }
 
 /**
+ * The pending expiry-notice timer, or `undefined` when none is armed. Held so a
+ * sign-out or a replacing sign-in can cancel a notice that no longer applies.
+ */
+let expiryTimer: ReturnType<typeof setTimeout> | undefined
+
+/** Cancel any armed expiry notice. */
+const cancelExpiryNotice = (): void => {
+  if (expiryTimer !== undefined) {
+    clearTimeout(expiryTimer)
+    expiryTimer = undefined
+  }
+}
+
+/**
+ * Arm a notice for when `current`'s token lapses. The console holds the token in
+ * memory only and does not refresh it, so an expired one would just 401 every
+ * request it was prefilled into — silently. When the lifetime the server reported
+ * runs out, the honest thing is to drop the now-useless session and tell the
+ * reader to sign in again; the identity check keeps a stale timer from clearing a
+ * session that has since been replaced. A token with no reported lifetime gets no
+ * timer (nothing to count down).
+ */
+const scheduleExpiryNotice = (current: Session): void => {
+  cancelExpiryNotice()
+  if (current.expiresInSeconds === undefined) return
+  expiryTimer = setTimeout(
+    () => {
+      expiryTimer = undefined
+      if (session !== current) return
+      session = undefined
+      const serverUrl = serverUrlFromSearch(window.location.search)
+      render(serverUrl)
+      renderAuthControls(serverUrl)
+      showStatus(
+        `The access token from ${current.serverUrl} has expired. Sign in again to keep sending authorised requests.`,
+        'problem'
+      )
+    },
+    Math.max(0, current.expiresInSeconds * 1000)
+  )
+}
+
+/**
  * Point the console at `candidate`, writing the canonical value back into both
  * the URL (so the configured console stays shareable) and the input, then
  * re-rendering. An unusable candidate falls back to the default target, exactly
@@ -180,6 +231,7 @@ serverForm.addEventListener('submit', (event) => {
 signInButton.addEventListener('click', () => {
   const serverUrl = serverUrlFromSearch(window.location.search)
   if (session !== undefined) {
+    cancelExpiryNotice()
     session = undefined
     render(serverUrl)
     renderAuthControls(serverUrl)
@@ -207,17 +259,43 @@ const clearAuthorizationResponseFromUrl = (): void => {
   )
 }
 
-const initialServerUrl = serverUrlFromSearch(window.location.search)
+const returnSearch = window.location.search
+const returningFromAuthorization = isAuthorizationResponse(returnSearch)
+
+const initialServerUrl = serverUrlFromSearch(returnSearch)
 serverInput.value = initialServerUrl
-render(initialServerUrl)
 renderAuthControls(initialServerUrl)
+
+// Mount the reference now on an ordinary load. On a return leg, defer it: a
+// successful sign-in re-targets the reference at the signed-in server, so mounting
+// the multi-megabyte Scalar bundle against the loopback default first would only
+// be torn down and rebuilt. Each way the return resolves below mounts it exactly
+// once — `applyServerUrl` on success, `render` on a failed or empty return.
+if (!returningFromAuthorization) render(initialServerUrl)
 
 // A return leg from `/oauth/authorize` looks like any other load until the query
 // string is read, so every load asks. `?server=` is restored from the pending
 // record rather than the URL: the registered redirect URI carries no query.
-runSignInEffect(completeSignIn(window.location.search, signInEnvironment), (result) => {
-  if (Option.isNone(result)) return
-  clearAuthorizationResponseFromUrl()
-  session = result.value
-  applyServerUrl(result.value.serverUrl)
-})
+runSignInEffect(
+  completeSignIn(returnSearch, signInEnvironment),
+  (result) => {
+    if (Option.isNone(result)) {
+      if (returningFromAuthorization) render(initialServerUrl)
+      return
+    }
+    session = result.value
+    scheduleExpiryNotice(result.value)
+    applyServerUrl(result.value.serverUrl)
+  },
+  () => {
+    if (returningFromAuthorization) render(initialServerUrl)
+  }
+)
+
+// Scrub the authorization response from the address bar on every return leg,
+// success or failure alike: `completeSignIn` has already captured `returnSearch`,
+// so the single-use code/state (or error) no longer needs to sit in the URL,
+// where a reload, the referrer or a copied link would carry it on. Safe to do
+// synchronously — the token exchange redeems the code from the captured string,
+// not from the live URL.
+if (returningFromAuthorization) clearAuthorizationResponseFromUrl()

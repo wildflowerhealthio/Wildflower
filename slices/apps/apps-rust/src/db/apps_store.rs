@@ -389,6 +389,47 @@ mod tests {
         );
     }
 
+    /// The server-docs console is a cloud row that takes only `{origin}`, handed
+    /// to it through its `?server=` contract. Unlike the SMART launchers it is not
+    /// given a `{launch}` nonce (it signs in standalone), so the seeded template
+    /// must carry neither `{launch}` nor `iss` — the mismatch that would otherwise
+    /// leave the tile pointed at the loopback default is what this pins.
+    #[test]
+    fn server_docs_console_is_a_cloud_row_targeted_by_server_param() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+
+        let (registration, configuration) = store
+            .find_app("web-server-docs")
+            .unwrap()
+            .expect("web-server-docs must exist");
+        assert!(
+            matches!(configuration, AppConfiguration::Cloud(_)),
+            "web-server-docs must be a cloud app",
+        );
+        // client_id tracks id, as every registration does.
+        assert_eq!(registration.client_id.as_deref(), Some("web-server-docs"));
+        assert!(
+            registration.requires_tunnel,
+            "the console fetches from `{{origin}}`, which must resolve through the \
+             tunnel's verified HTTPS origin",
+        );
+
+        let target: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+                .bind::<Text, _>("web-server-docs")
+                .get_result(&mut conn)
+                .expect("the cloud configuration row must exist");
+        assert_eq!(
+            target.url,
+            "https://wildflowerhealth.io/wildflower-server-docs/?server={origin}",
+        );
+        assert!(
+            !target.url.contains("{launch}") && !target.url.contains("iss="),
+            "the console reads `?server=`, not a SMART `{{launch}}`/`iss` launch",
+        );
+    }
+
     /// A bare `COUNT(*)` result.
     #[derive(QueryableByName)]
     struct RowCount {

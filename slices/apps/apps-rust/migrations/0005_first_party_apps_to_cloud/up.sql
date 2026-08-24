@@ -91,10 +91,11 @@ INSERT OR REPLACE INTO app_registrations (id, client_id, name, subtitle, on_home
            1,
            (SELECT COALESCE(MAX(position), -1) + 1 FROM app_registrations));
 
--- The cloud launch templates. Both apps' `launch.html` is the SMART EHR-launch
--- endpoint (`{launch}` + `iss` are read off the URL by fhirclient), the same
--- shape their former `self_hosted_app_configurations.launch_path` carried —
--- absolute now instead of relative to the app's own on-device origin.
+-- The cloud launch templates. The two first-party apps' `launch.html` is the
+-- SMART EHR-launch endpoint (`{launch}` + `iss` are read off the URL by
+-- fhirclient), the same shape their former
+-- `self_hosted_app_configurations.launch_path` carried — absolute now instead of
+-- relative to the app's own on-device origin.
 -- `INSERT OR REPLACE` + the `EXISTS` guard keep this idempotent and FK-safe: it
 -- writes only when the registration it references is actually there.
 INSERT OR REPLACE INTO cloud_app_configurations (id, url)
@@ -107,7 +108,17 @@ SELECT 'web-trace-app',
        'https://wildflowerhealth.io/web-trace-app/launch.html?launch={launch}&iss={origin}/fhir-r4'
  WHERE EXISTS (SELECT 1 FROM app_registrations WHERE id = 'web-trace-app' AND kind = 'cloud');
 
+-- The server-docs console is NOT a SMART EHR-launch app: it is a static Scalar
+-- reference that targets whichever running server the reader points it at via its
+-- own `?server=` contract (`apps/wildflower-server-docs/src/server-target.ts`),
+-- and it signs in standalone as the `wildflower-server-docs` PKCE client (seeded
+-- by gatekeeper `0007`) rather than being handed a host-minted `{launch}` nonce.
+-- So it takes `{origin}` alone, as `?server={origin}` — no `{launch}`, no `iss`.
+-- The console appends `/fhir-r4` itself, so `{origin}` here is the bare origin.
+-- `requires_tunnel = 1` still applies: `{origin}` must be an HTTPS origin the
+-- reader's browser can reach (see the WHY CLOUD note above). The path carries the
+-- trailing slash so it matches the client's one registered redirect URI exactly.
 INSERT OR REPLACE INTO cloud_app_configurations (id, url)
 SELECT 'web-server-docs',
-       'https://wildflowerhealth.io/wildflower-server-docs?launch={launch}&iss={origin}'
+       'https://wildflowerhealth.io/wildflower-server-docs/?server={origin}'
  WHERE EXISTS (SELECT 1 FROM app_registrations WHERE id = 'web-server-docs' AND kind = 'cloud');

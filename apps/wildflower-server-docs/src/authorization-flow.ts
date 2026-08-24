@@ -189,6 +189,19 @@ const authorizationRedirectOutcome = (
 const AUTHORIZATION_RESPONSE_PARAMS = ['code', 'state', 'error', 'error_description'] as const
 
 /**
+ * Whether `search` carries an authorization response — the marker of a return leg
+ * from `/oauth/authorize`, whichever way it turns out.
+ *
+ * `main.ts` uses it to decide the two things that must happen on *every* return,
+ * not just a successful one: defer mounting the reference until the sign-in
+ * resolves, and scrub the response out of the address bar afterwards.
+ */
+const isAuthorizationResponse = (search: string): boolean => {
+  const params = new URLSearchParams(search)
+  return AUTHORIZATION_RESPONSE_PARAMS.some((name) => params.has(name))
+}
+
+/**
  * `search` with the authorization response stripped out, keeping everything else
  * (notably `?server=`).
  *
@@ -290,6 +303,7 @@ export {
   fhirAudienceFor,
   authorizationRedirectOutcome,
   searchWithoutAuthorizationResponse,
+  isAuthorizationResponse,
   tokenRequestBody,
   parseTokenResponse,
 }
