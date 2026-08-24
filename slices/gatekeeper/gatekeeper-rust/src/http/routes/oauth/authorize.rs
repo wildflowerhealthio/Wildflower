@@ -323,7 +323,7 @@ fn validate_redirect_url(
         tracing::warn!(
             client_id = %params.client_id,
             redirect_uri = %params.redirect_uri,
-            client = format!("{:?}", client),
+            registered_redirect_uris = ?client.redirect_uris,
             "redirect_uri not allowed for this client"
         );
         return Err(AuthorizeError::LocalPage(
