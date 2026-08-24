@@ -31,9 +31,10 @@ const devPort = parsedDevPorts['medications-app-dev']
 /**
  * A SMART-on-FHIR app served as a self-hosted bundle. Two HTML entries:
  * `launch.html` (the EHR launch endpoint — kicks off the OAuth2 authorize
- * redirect) and `index.html` (the OAuth redirect target that completes the
- * handshake and renders the app). A relative `base` so the built assets resolve
- * from whatever subdomain / path the self-hosted app is served at.
+ * redirect) and `index.html` (the app root — the OAuth redirect target that
+ * completes the handshake and renders the app when a callback is in the URL, and
+ * the standalone connect menu otherwise). A relative `base` so the built assets
+ * resolve from whatever subdomain / path the self-hosted app is served at.
  */
 export default defineConfig({
   ...base,

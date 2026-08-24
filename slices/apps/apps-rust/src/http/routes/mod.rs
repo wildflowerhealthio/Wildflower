@@ -879,7 +879,7 @@ mod tests {
         let st = state();
         let mut conn = st.store.pool().get().unwrap();
         diesel::sql_query(
-            "UPDATE cloud_app_configurations SET url = 'http://evil.example.com' WHERE id = 'growth-chart'",
+            "UPDATE cloud_app_configurations SET url = 'javascript:alert(1)' WHERE id = 'growth-chart'",
         )
         .execute(&mut conn)
         .unwrap();

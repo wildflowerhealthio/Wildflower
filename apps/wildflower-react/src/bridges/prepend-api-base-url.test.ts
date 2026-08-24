@@ -2,17 +2,7 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { Effect, Layer } from 'effect'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
-// `app-query-runtime.ts` imports `webHttpClientLayer` from
-// 'telemetry-react' at module scope, and that layer's construction
-// eagerly installs the global OTel context manager and inits Sentry
-// (see Learnings Inbox). `prependApiBaseUrl` never touches it — stub
-// the module so this focused test stays side-effect-free.
-vi.mock('telemetry-react', async () => {
-  const { Layer: LayerActual } = await import('effect')
-  return { webHttpClientLayer: LayerActual.empty }
-})
-
-import { prependApiBaseUrl } from './app-query-runtime.ts'
+import { prependApiBaseUrl } from './prepend-api-base-url.ts'
 
 describe('prependApiBaseUrl', () => {
   test('prefixes a relative request path with the base URL', async () => {

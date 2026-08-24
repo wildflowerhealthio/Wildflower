@@ -6,10 +6,10 @@
 //! open-redirect / XSS surface a launch-time check alone can't cover stays
 //! closed:
 //!
-//!   * [`AppUrl::External`] — an absolute `https://` URL (an off-device
-//!     target). It may embed `{origin}` / `{launch}` placeholders (e.g. a
-//!     SMART-on-FHIR `iss=` query value) that [`AppUrl::to_url_with_params`]
-//!     substitutes at launch.
+//!   * [`AppUrl::External`] — an absolute `http://` or `https://` URL (an
+//!     off-device target). It may embed `{origin}` / `{launch}` placeholders
+//!     (e.g. a SMART-on-FHIR `iss=` query value) that
+//!     [`AppUrl::to_url_with_params`] substitutes at launch.
 //!   * [`AppUrl::OriginRelative`] — an on-device target resolved against the
 //!     served origin. It carries everything that follows the origin: a leading
 //!     `/path`, `?query`, `#fragment`, or nothing (the bare origin). Both a
@@ -18,11 +18,10 @@
 //!     query/fragment-only or bare-origin target round-trips back through
 //!     [`str::parse`].
 //!
-//! Rejected on parse: `http://` (no TLS), `javascript:`, `data:`, `file:`, a
-//! protocol-relative `//authority` (open redirect), and an `{origin}` followed
-//! by anything other than a path/query/fragment boundary — so
-//! `{origin}@evil.com` / `{origin}.evil.com` can't widen the authority
-//! off-device.
+//! Rejected on parse: `javascript:`, `data:`, `file:`, a protocol-relative
+//! `//authority` (open redirect), and an `{origin}` followed by anything other
+//! than a path/query/fragment boundary — so `{origin}@evil.com` /
+//! `{origin}.evil.com` can't widen the authority off-device.
 
 use std::fmt;
 use std::str::FromStr;
@@ -36,12 +35,11 @@ use serde::{Deserialize, Serialize};
 #[serde(into = "String", try_from = "String")]
 pub enum AppUrl {
     /// An absolute URL the launch flow passes through verbatim (after any
-    /// `{origin}` / `{launch}` substitution). Parsed from `https://` strings
-    /// only — `http://` is rejected by [`FromStr`] (no-TLS / open-redirect
-    /// protection) — so an `External` is always a validated, off-device
-    /// `https://` target. (Self-hosted apps don't use this variant: they render
-    /// their loopback / subdomain launch URL on demand in the launch handler and
-    /// carry no `AppUrl` at all. Cloud apps carry one as their stored template.)
+    /// `{origin}` / `{launch}` substitution). Parsed from `http://` and
+    /// `https://` strings, so an `External` is always an absolute, off-device
+    /// target. (Self-hosted apps don't use this variant: they render their
+    /// loopback / subdomain launch URL on demand in the launch handler and carry
+    /// no `AppUrl` at all. Cloud apps carry one as their stored template.)
     External(String),
     /// An on-device target — the part that follows the served origin (a leading
     /// `/path`, `?query`, `#fragment`, or empty for the bare origin).
@@ -62,8 +60,8 @@ pub struct LaunchParams<'a> {
 pub enum AppUrlError {
     /// Empty string.
     Empty,
-    /// Shape doesn't match `https://`, an origin-relative `/path`, or an
-    /// `{origin}…` template.
+    /// Shape doesn't match `http://` / `https://`, an origin-relative `/path`,
+    /// or an `{origin}…` template.
     Invalid,
 }
 
@@ -72,7 +70,7 @@ impl fmt::Display for AppUrlError {
         match self {
             AppUrlError::Empty => f.write_str("url must not be empty"),
             AppUrlError::Invalid => f.write_str(
-                "url must be https://, an origin-relative /path, or start with the {origin} placeholder",
+                "url must be http://, https://, an origin-relative /path, or start with the {origin} placeholder",
             ),
         }
     }
@@ -112,7 +110,7 @@ impl FromStr for AppUrl {
         if value.starts_with('/') && !value.starts_with("//") {
             return Ok(AppUrl::OriginRelative(value.to_owned()));
         }
-        if value.starts_with("https://") {
+        if value.starts_with("https://") || value.starts_with("http://") {
             return Ok(AppUrl::External(value.to_owned()));
         }
         Err(AppUrlError::Invalid)
@@ -187,10 +185,15 @@ mod tests {
     }
 
     #[test]
-    fn parses_https_origin_relative_and_origin_placeholder() {
+    fn parses_absolute_origin_relative_and_origin_placeholder() {
         assert_eq!(
             "https://example.com/x".parse(),
             Ok(AppUrl::External("https://example.com/x".to_owned())),
+        );
+        // `http://` is an accepted absolute target too (TLS is not required).
+        assert_eq!(
+            "http://example.com/x".parse(),
+            Ok(AppUrl::External("http://example.com/x".to_owned())),
         );
         // A plain `/path` and the `{origin}/path` placeholder form both parse
         // to the same origin-relative suffix.
@@ -236,11 +239,6 @@ mod tests {
         // protocol-relative authority is an open redirect
         assert_eq!(
             "//evil.example.com/x".parse::<AppUrl>(),
-            Err(AppUrlError::Invalid)
-        );
-        // plaintext http (no TLS)
-        assert_eq!(
-            "http://example.com/".parse::<AppUrl>(),
             Err(AppUrlError::Invalid)
         );
         for scheme in [

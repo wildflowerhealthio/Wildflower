@@ -188,13 +188,14 @@ mod tests {
     }
 
     /// A stored cloud `url` that no longer parses surfaces as a typed read error
-    /// (the `AppUrlColumn` deserialize), not a silent unsafe value.
+    /// (the `AppUrlColumn` deserialize), not a silent unsafe value. A
+    /// `javascript:` scheme is one such rejected shape (an XSS redirect target).
     #[test]
     fn find_app_rejects_an_unparseable_stored_url() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let mut conn = store.pool().get().unwrap();
         diesel::sql_query(
-            "UPDATE cloud_app_configurations SET url = 'http://evil.example.com' WHERE id = 'growth-chart'",
+            "UPDATE cloud_app_configurations SET url = 'javascript:alert(1)' WHERE id = 'growth-chart'",
         )
         .execute(&mut conn)
         .unwrap();

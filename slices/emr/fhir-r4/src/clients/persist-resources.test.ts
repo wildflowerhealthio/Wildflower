@@ -36,7 +36,8 @@ import { UnsupportedFhirResourceTypeError } from './upsert-resource.ts'
  * its descriptor's `persistResources`. Two concerns:
  *
  * - **Routing**: each resource type reaches *its* client group's `Update`
- *   endpoint (a `PUT /fhir-r4/<Type>/<id>`), keyed on the resource's id. Driven
+ *   endpoint (a `PUT /<Type>/<id>`, base-relative — the client no longer bakes
+ *   in the `/fhir-r4` mount prefix), keyed on the resource's id. Driven
  *   over the real `FhirR4ResourcesHttpApiClient` layer against a recording stub
  *   `HttpClient` — cast-free. (The `switch` itself lives in `upsertResource`;
  *   this pins that a batch reaches it correctly.)
@@ -54,13 +55,13 @@ import { UnsupportedFhirResourceTypeError } from './upsert-resource.ts'
 
 describe('persistResources', () => {
   for (const { resourceType, make } of cases) {
-    it(`routes ${resourceType} to PUT /fhir-r4/${resourceType}/<id>`, async () => {
+    it(`routes ${resourceType} to PUT /${resourceType}/<id>`, async () => {
       const id = `${resourceType}-1`
       const { records, failures } = await runPersist([make(id)])
       expect(failures).toEqual([])
       expect(records).toHaveLength(1)
       expect(records[0]?.method).toBe('PUT')
-      expect(records[0]?.url).toContain(`/fhir-r4/${resourceType}/${id}`)
+      expect(records[0]?.url).toContain(`/${resourceType}/${id}`)
     })
   }
 
@@ -242,7 +243,7 @@ const capturingTracer = (
  * `defineSliceHttpClient` deliberately sets no `baseUrl` — endpoint paths are
  * absolute-path relative, resolved against the browser's origin at runtime. This
  * suite runs under node, where there is no ambient origin and a bare
- * `/fhir-r4/...` is an `InvalidUrl`, so the origin is supplied here. Naming it
+ * base-relative `/<Type>/...` is an `InvalidUrl`, so the origin is supplied here. Naming it
  * is also what keeps the routing assertions honest: they check the path this
  * test put on the wire, not one a test environment happened to imply.
  */

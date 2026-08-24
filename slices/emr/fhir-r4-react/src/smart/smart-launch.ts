@@ -43,6 +43,33 @@ const authorizeSmartLaunch = async (config: SmartLaunchConfig): Promise<void> =>
 }
 
 /**
+ * Configuration for connecting to an **open** FHIR server — one whose
+ * `.well-known/smart-configuration` names no authorization endpoint (or serves
+ * no config at all). There is no OAuth handshake: fhirclient redirects straight
+ * to the redirect target, which `readySmartClient` then completes into a client
+ * with `state.serverUrl` set and no `tokenResponse.access_token`.
+ */
+interface OpenServerConfig {
+  /** The FHIR server base to connect to, used with no `Authorization` header. */
+  readonly fhirServiceUrl: string
+  readonly redirectUri: string
+}
+
+/**
+ * Begin an open-server connection. `oauth2.authorize({ fhirServiceUrl })` skips
+ * discovery and the code/token exchange entirely and redirects straight to
+ * `redirectUri`, so — like {@link authorizeSmartLaunch} — the returned promise
+ * usually never resolves because the page navigates away.
+ */
+const authorizeOpenServer = async (config: OpenServerConfig): Promise<void> => {
+  const FHIR = await loadFhir()
+  await FHIR.oauth2.authorize({
+    fhirServiceUrl: config.fhirServiceUrl,
+    redirectUri: config.redirectUri,
+  })
+}
+
+/**
  * Complete the SMART handshake on the redirect page: exchanges the auth code
  * for tokens and resolves to a ready {@link Client}.
  */
@@ -51,4 +78,36 @@ const readySmartClient = async (): Promise<Client> => {
   return FHIR.oauth2.ready()
 }
 
-export { authorizeSmartLaunch, readySmartClient, type SmartLaunchConfig }
+/**
+ * Whether `search` is a SMART/OAuth redirect the app should complete with
+ * {@link readySmartClient} (rather than showing the connect menu).
+ *
+ * @remarks
+ * The app root serves both a fresh visit (no query → show the connect menu) and
+ * the OAuth redirect target (has a callback → run the app). `code` marks a SMART
+ * return and `state` an open-server one; either means there is a handshake to
+ * complete.
+ *
+ * An `error=…` return is excluded deliberately: an OAuth error still carries
+ * `state`, so without this the app would try to complete a handshake that failed
+ * (a denied or expired authorization). Excluding it routes those back to the
+ * connect menu to retry instead.
+ *
+ * `search` is a parameter (default `window.location.search`) so the decision can
+ * be exercised without a window — the same transport-is-a-parameter style as the
+ * rest of `smart/`.
+ */
+const shouldCompleteSmartLaunch = (search: string = window.location.search): boolean => {
+  const params = new URLSearchParams(search)
+  if (params.has('error')) return false
+  return params.has('code') || params.has('state')
+}
+
+export {
+  authorizeOpenServer,
+  authorizeSmartLaunch,
+  readySmartClient,
+  shouldCompleteSmartLaunch,
+  type OpenServerConfig,
+  type SmartLaunchConfig,
+}

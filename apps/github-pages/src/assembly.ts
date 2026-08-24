@@ -44,7 +44,8 @@ const siteSections: readonly SiteSection[] = [
     // output rather than redirecting it.
     sourceDir: 'slices/apps/self-hosted-apps/medication',
     destPath: 'medications-app',
-    // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
+    // Two entries: the EHR launch endpoint and the app root (the redirect target,
+    // which also serves the standalone connect menu on a bare visit).
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
@@ -61,7 +62,8 @@ const siteSections: readonly SiteSection[] = [
     // this package copies that output rather than redirecting it.
     sourceDir: 'slices/apps/self-hosted-apps/web-trace',
     destPath: 'web-trace-app',
-    // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
+    // Two entries: the EHR launch endpoint and the app root (the redirect target,
+    // which also serves the standalone connect menu on a bare visit).
     requiredFiles: ['index.html', 'launch.html'],
   },
 ]
@@ -126,5 +128,12 @@ const escapingPaths = (outDir: string, sections: readonly ResolvedSection[]): re
     [section.to, ...section.requiredPaths].filter((path) => !isWithin(outDir, path))
   )
 
-export { siteSections, resolveSections, missingRequiredPaths, isWithin, escapingPaths }
-export type { SiteSection, ResolvedSection }
+export {
+  escapingPaths,
+  isWithin,
+  missingRequiredPaths,
+  resolveSections,
+  siteSections,
+  type ResolvedSection,
+  type SiteSection,
+}

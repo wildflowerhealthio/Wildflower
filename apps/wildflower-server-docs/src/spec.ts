@@ -79,5 +79,4 @@ const withBearerAuth = (spec: OpenApiDocument): OpenApiDocument => {
 const preparedSpec = (spec: OpenApiDocument, serverUrl: string): OpenApiDocument =>
   withBearerAuth(withServer(spec, serverUrl))
 
-export { BEARER_SCHEME_NAME, withServer, withBearerAuth, preparedSpec }
-export type { OpenApiDocument }
+export { BEARER_SCHEME_NAME, preparedSpec, withBearerAuth, withServer, type OpenApiDocument }

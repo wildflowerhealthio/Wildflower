@@ -87,9 +87,9 @@ const searchWithServerUrl = (search: string, serverUrl: string): string => {
 }
 
 export {
-  SERVER_QUERY_PARAM,
   DEFAULT_SERVER_URL,
   normalizeServerUrl,
-  serverUrlFromSearch,
   searchWithServerUrl,
+  SERVER_QUERY_PARAM,
+  serverUrlFromSearch,
 }
