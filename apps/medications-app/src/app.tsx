@@ -1,5 +1,9 @@
-import { skipToken, useQuery } from '@tanstack/react-query'
-import { fetchMedicationRequests, useSmartHandshake } from 'fhir-r4-react/smart'
+import { skipToken, useInfiniteQuery } from '@tanstack/react-query'
+import {
+  fetchMedicationRequestPage,
+  type MedicationRequestCursor,
+  useSmartHandshake,
+} from 'fhir-r4-react/smart'
 import type { Province } from 'medication-sponsorship-core'
 import {
   MedicationsView,
@@ -7,7 +11,7 @@ import {
   ProvincePicker,
 } from 'medication-sponsorship-react'
 import type { JSX } from 'react'
-import { useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { catalogs } from './catalogs.ts'
 import styles from './app.module.css'
@@ -19,47 +23,94 @@ const ErrorLine = ({ error }: { readonly error: unknown }): JSX.Element => (
   </p>
 )
 
+// The first page is opened with no patient in context; `fetchMedicationRequestPage`
+// then reads across every patient the granted scopes expose (see its `null` case).
+const initialCursor: MedicationRequestCursor = { patientId: null }
+
 /**
  * The redirect-target app: completes the SMART handshake, loads the patient's
- * MedicationRequests, and renders them grouped by sponsorship program with a
- * province filter.
+ * MedicationRequests a page at a time, and renders them grouped by sponsorship
+ * program with a province filter.
  *
  * @remarks
  * Both async legs are TanStack Queries on the page's shared client: the token
  * exchange (`useSmartHandshake`, keyed and deduped so StrictMode's double-mount
- * exchanges the single-use code once) and the MedicationRequest read that
- * follows it. The read is `skipToken`-gated on the handshake resolving, which
+ * exchanges the single-use code once) and the paged MedicationRequest read that
+ * follows it. The read is a `useInfiniteQuery` whose cursor is the server's
+ * `next`-link URL; a bottom-of-list sentinel observed by an `IntersectionObserver`
+ * pulls the next page as it scrolls into view, so pages load on demand instead of
+ * all at once. The read is `skipToken`-gated on the handshake resolving, which
  * also narrows `client` to defined inside the query function — no non-null
- * assertion.
+ * assertion. Pages arrive newest-authored first (server `_sort`), so appending
+ * each one never reorders rows already on screen.
  */
 export const App = (): JSX.Element => {
   const [province, setProvince] = useState<Province>('ON')
   const handshake = useSmartHandshake()
   const client = handshake.kind === 'ready' ? handshake.client : undefined
 
-  const medications = useQuery({
+  const medications = useInfiniteQuery({
     queryKey: ['medications'],
-    // `client.patient.id` is `null` under a `system/` launch (no patient
-    // context); `fetchMedicationRequests` then reads across every patient the
-    // granted scopes expose rather than failing.
+    // `pageParam` is annotated because the `skipToken` ternary blocks TanStack
+    // from inferring the page-param type through it, which would otherwise narrow
+    // it to only the first cursor variant.
     queryFn:
       client === undefined
         ? skipToken
-        : async () =>
-            medicationRequestsToMedicationViews(await fetchMedicationRequests(client, null)),
+        : ({ pageParam }: { readonly pageParam: MedicationRequestCursor }) =>
+            fetchMedicationRequestPage(client, pageParam),
+    initialPageParam: initialCursor,
+    getNextPageParam: (lastPage): MedicationRequestCursor | undefined =>
+      lastPage.nextPageUrl === null ? undefined : { pageUrl: lastPage.nextPageUrl },
   })
 
-  // Either leg can fail — the token exchange or the read that follows it.
-  // Surface whichever did; loading covers both the exchange and the read.
+  const { fetchNextPage, hasNextPage, isFetchingNextPage } = medications
+
+  // Auto-load the next page when the bottom sentinel scrolls into view. The
+  // effect only builds an observer while there is a next page, so a fully-loaded
+  // (or gated) list never touches `IntersectionObserver`.
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const node = sentinelRef.current
+    if (node === null || !hasNextPage) return undefined
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage) {
+        void fetchNextPage()
+      }
+    })
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // `data` (and its `pages`) keeps a stable reference between renders unless a
+  // page is added, so the mapping only re-runs when the loaded set actually grows.
+  const views = useMemo(
+    () =>
+      medicationRequestsToMedicationViews(
+        (medications.data?.pages ?? []).flatMap((page) => page.items)
+      ),
+    [medications.data]
+  )
+  const hasPages = (medications.data?.pages.length ?? 0) > 0
+
+  // Either leg can fail — the token exchange or the read that follows it. Surface
+  // whichever did; loading covers both the exchange and the first page. A failure
+  // while fetching a *later* page keeps the rows already loaded and shows an inline
+  // line rather than discarding them.
   const body = ((): JSX.Element => {
     if (handshake.kind === 'error') return <ErrorLine error={handshake.error} />
-    if (medications.isError) return <ErrorLine error={medications.error} />
-    if (medications.isSuccess) {
-      return (
-        <MedicationsView medications={medications.data} province={province} catalogs={catalogs} />
-      )
-    }
-    return <p className={styles.status}>Loading medications…</p>
+    if (medications.isError && !hasPages) return <ErrorLine error={medications.error} />
+    if (!hasPages) return <p className={styles.status}>Loading medications…</p>
+    return (
+      <>
+        <MedicationsView medications={views} province={province} catalogs={catalogs} />
+        {isFetchingNextPage && <p className={styles.status}>Loading more…</p>}
+        {medications.isFetchNextPageError && <ErrorLine error={medications.error} />}
+        {hasNextPage && <div ref={sentinelRef} aria-hidden="true" />}
+      </>
+    )
   })()
 
   return (

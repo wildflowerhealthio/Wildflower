@@ -3,7 +3,7 @@ import { MedicationRequest } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { fetchMedicationRequests } from './medication-requests.ts'
+import { fetchMedicationRequestPage } from './medication-requests.ts'
 
 // A minimal, fully-specified MedicationRequest (mirrors the shell in the
 // fhir-r4 resource test), encoded to valid FHIR wire so the fetch can decode
@@ -63,16 +63,25 @@ const sampleMedicationRequest: typeof MedicationRequest.Schema.Type = {
 
 const sampleWire: unknown = Schema.encodeSync(MedicationRequest.Schema)(sampleMedicationRequest)
 
+/** Build a searchset Bundle wrapping `resources`, with an optional `next` link. */
+const bundle = (resources: readonly unknown[], nextUrl?: string): unknown => ({
+  resourceType: 'Bundle',
+  type: 'searchset',
+  entry: resources.map((resource) => ({ resource })),
+  link: [
+    { relation: 'self', url: 'https://fhir.example/MedicationRequest' },
+    ...(nextUrl === undefined ? [] : [{ relation: 'next', url: nextUrl }]),
+  ],
+})
+
 // A stub fhirclient `Client` that records the query it was asked for and
-// returns a fixed flat list. Only `request` is exercised, so the rest of the
-// large `Client` surface is elided with a test-only cast.
-const stubClient = (
-  response: readonly unknown[]
-): { readonly client: Client; readonly queries: string[] } => {
+// returns a fixed bundle. Only `request` is exercised, so the rest of the large
+// `Client` surface is elided with a test-only cast.
+const stubClient = (response: unknown): { readonly client: Client; readonly queries: string[] } => {
   const queries: string[] = []
   // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
   const client = {
-    request: (query: string): Promise<readonly unknown[]> => {
+    request: (query: string): Promise<unknown> => {
       queries.push(query)
       return Promise.resolve(response)
     },
@@ -81,30 +90,67 @@ const stubClient = (
   return { client, queries }
 }
 
-describe('fetchMedicationRequests', () => {
-  test('scopes the query to the patient when a patientId is given', async () => {
-    const { client, queries } = stubClient([])
+describe('fetchMedicationRequestPage', () => {
+  test('scopes the first-page query to the patient, newest-authored first', async () => {
+    const { client, queries } = stubClient(bundle([]))
 
-    await fetchMedicationRequests(client, 'pat/1')
+    await fetchMedicationRequestPage(client, { patientId: 'pat/1' })
 
-    // The patientId is URL-encoded into the `patient=` search parameter.
-    expect(queries).toEqual(['MedicationRequest?patient=pat%2F1'])
+    // The patientId is URL-encoded into the `patient=` search parameter, and the
+    // page is sorted server-side so scroll paging can append without reordering.
+    expect(queries).toEqual(['MedicationRequest?patient=pat%2F1&_sort=-authoredon'])
   })
 
   test('reads every MedicationRequest when no patient is in context (system launch)', async () => {
-    const { client, queries } = stubClient([])
+    const { client, queries } = stubClient(bundle([]))
 
-    await fetchMedicationRequests(client, null)
+    await fetchMedicationRequestPage(client, { patientId: null })
 
-    expect(queries).toEqual(['MedicationRequest'])
+    expect(queries).toEqual(['MedicationRequest?_sort=-authoredon'])
+  })
+
+  test('requests a later page by its cursor URL verbatim', async () => {
+    const { client, queries } = stubClient(bundle([]))
+    const pageUrl = 'https://fhir.example/MedicationRequest?_getpages=abc&_getpagesoffset=20'
+
+    await fetchMedicationRequestPage(client, { pageUrl })
+
+    // The server's own `next` link is used as-is — no re-derivation of scope/sort.
+    expect(queries).toEqual([pageUrl])
   })
 
   test('decodes returned resources and drops undecodable entries', async () => {
-    const { client } = stubClient([sampleWire, { malformed: true }])
+    const { client } = stubClient(bundle([sampleWire, { malformed: true }]))
 
-    const requests = await fetchMedicationRequests(client, null)
+    const page = await fetchMedicationRequestPage(client, { patientId: null })
 
-    expect(requests).toHaveLength(1)
-    expect(requests[0]?.id).toBe('medreq-id')
+    expect(page.items).toHaveLength(1)
+    expect(page.items[0]?.id).toBe('medreq-id')
+  })
+
+  test('reports the next-page cursor from the bundle `next` link', async () => {
+    const nextUrl = 'https://fhir.example/MedicationRequest?_getpages=abc&_getpagesoffset=20'
+    const { client } = stubClient(bundle([sampleWire], nextUrl))
+
+    const page = await fetchMedicationRequestPage(client, { patientId: null })
+
+    expect(page.nextPageUrl).toBe(nextUrl)
+  })
+
+  test('reports no cursor on the last page (no `next` link)', async () => {
+    const { client } = stubClient(bundle([sampleWire]))
+
+    const page = await fetchMedicationRequestPage(client, { patientId: null })
+
+    expect(page.nextPageUrl).toBeNull()
+  })
+
+  test('yields an empty last page when the response is not a bundle', async () => {
+    const { client } = stubClient('not a bundle')
+
+    const page = await fetchMedicationRequestPage(client, { patientId: null })
+
+    expect(page.items).toEqual([])
+    expect(page.nextPageUrl).toBeNull()
   })
 })

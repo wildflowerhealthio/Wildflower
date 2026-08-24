@@ -15,7 +15,12 @@ export {
   type StandaloneLaunchConfig,
 } from './standalone-launch.ts'
 
-export { fetchMedicationRequests, type MedicationRequestResource } from './medication-requests.ts'
+export {
+  fetchMedicationRequestPage,
+  type MedicationRequestCursor,
+  type MedicationRequestPage,
+  type MedicationRequestResource,
+} from './medication-requests.ts'
 
 export {
   buildSmartQueryClient,
