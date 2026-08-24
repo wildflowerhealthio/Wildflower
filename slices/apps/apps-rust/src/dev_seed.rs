@@ -121,7 +121,7 @@ fn dev_apps() -> [DevApp; 3] {
         DevApp {
             id: "web-server-docs-dev",
             name: "Server Docs (Dev)",
-            subtitle: "Local vite dev server for apps/web-server-docs",
+            subtitle: "Local vite dev server for apps/wildflower-server-docs",
             port: ports.web_server_docs_dev,
             subdomain: "web-server-docs",
             content_folder: "web-server-docs",
