@@ -2,6 +2,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { Match } from 'effect'
 import {
   detectSmartSupport,
   normalizeServerUrl,
@@ -28,8 +29,13 @@ beforeEach(() => {
 // Helpers
 
 /** The URL string of a `fetch` first argument, in each of its three shapes. */
-const urlOf = (input: RequestInfo | URL): string =>
-  typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+const urlOf = Match.type<RequestInfo | URL>().pipe(
+  Match.withReturnType<string>(),
+  Match.when({ href: Match.string }, (url) => url.href),
+  Match.when({ url: Match.string }, (req) => req.url),
+  Match.when(Match.string, (str) => str),
+  Match.exhaustive
+)
 
 /** A `fetch` stub that records each URL it was called with and answers `body`. */
 const fetchReturning = (body: Response, seenUrls: string[] = []): typeof fetch =>

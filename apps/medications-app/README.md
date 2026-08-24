@@ -2,8 +2,9 @@
 
 The first-party Medications SMART-on-FHIR app: two HTML entries, `launch.html`
 (the EHR launch endpoint that starts the OAuth2 authorize redirect) and
-`index.html` (the redirect target that completes the handshake and renders the
-app).
+`index.html` (the app root — the redirect target that completes the handshake
+and renders the app when a callback is in the URL, and the standalone connect
+menu, where the user picks a FHIR server, on a bare visit).
 
 ## Where the bundle is served
 

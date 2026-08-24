@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type JSX } from 'react'
+import { useState, type JSX, type SubmitEvent } from 'react'
 import { ErrorBanner, TextField } from 'react-tundraish'
 
 import { normalizeServerUrl, startStandaloneLaunch } from '../smart/standalone-launch.ts'
@@ -79,7 +79,7 @@ const ConnectMenu = ({
       })
   }
 
-  const onSubmit = (event: FormEvent<HTMLFormElement>): void => {
+  const onSubmit = (event: SubmitEvent<HTMLFormElement>): void => {
     event.preventDefault()
     const normalized = normalizeServerUrl(url)
     if (normalized === undefined) {

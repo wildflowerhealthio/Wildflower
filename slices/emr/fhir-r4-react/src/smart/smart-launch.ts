@@ -78,10 +78,36 @@ const readySmartClient = async (): Promise<Client> => {
   return FHIR.oauth2.ready()
 }
 
+/**
+ * Whether `search` is a SMART/OAuth redirect the app should complete with
+ * {@link readySmartClient} (rather than showing the connect menu).
+ *
+ * @remarks
+ * The app root serves both a fresh visit (no query → show the connect menu) and
+ * the OAuth redirect target (has a callback → run the app). `code` marks a SMART
+ * return and `state` an open-server one; either means there is a handshake to
+ * complete.
+ *
+ * An `error=…` return is excluded deliberately: an OAuth error still carries
+ * `state`, so without this the app would try to complete a handshake that failed
+ * (a denied or expired authorization). Excluding it routes those back to the
+ * connect menu to retry instead.
+ *
+ * `search` is a parameter (default `window.location.search`) so the decision can
+ * be exercised without a window — the same transport-is-a-parameter style as the
+ * rest of `smart/`.
+ */
+const shouldCompleteSmartLaunch = (search: string = window.location.search): boolean => {
+  const params = new URLSearchParams(search)
+  if (params.has('error')) return false
+  return params.has('code') || params.has('state')
+}
+
 export {
   authorizeOpenServer,
   authorizeSmartLaunch,
   readySmartClient,
+  shouldCompleteSmartLaunch,
   type OpenServerConfig,
   type SmartLaunchConfig,
 }

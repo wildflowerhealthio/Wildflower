@@ -3,7 +3,11 @@ import type Client from 'fhirclient/lib/Client'
 import { numRunsFor } from 'kitchen-sink/test'
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { authorizeSmartLaunch, readySmartClient } from './smart-launch.ts'
+import {
+  authorizeSmartLaunch,
+  readySmartClient,
+  shouldCompleteSmartLaunch,
+} from './smart-launch.ts'
 
 // `smart-launch.ts` loads fhirclient lazily (`(await import('fhirclient')).default`)
 // and drives `.oauth2`, so the module boundary is where we stub. Only `authorize`
@@ -105,7 +109,94 @@ describe('readySmartClient', () => {
   })
 })
 
+describe('shouldCompleteSmartLaunch', () => {
+  it('should run the app on a SMART return (code + state)', () => {
+    // Act / Assert — the redirect target completes this handshake.
+    expect(shouldCompleteSmartLaunch('?code=abc&state=xyz')).toBe(true)
+  })
+
+  it('should run the app on an open-server return (state, no code)', () => {
+    // Act / Assert — an open-server launch redirects back with only `state`.
+    expect(shouldCompleteSmartLaunch('?state=xyz')).toBe(true)
+  })
+
+  it('should show the connect menu on a bare visit', () => {
+    // Act / Assert — no callback params → nothing to complete.
+    expect(shouldCompleteSmartLaunch('')).toBe(false)
+  })
+
+  it('should show the connect menu when the query carries only unrelated params', () => {
+    // Act / Assert
+    expect(shouldCompleteSmartLaunch('?utm_source=email')).toBe(false)
+  })
+
+  it('should show the connect menu on an OAuth error return, despite its state', () => {
+    // Act / Assert — a denied/expired auth carries `state` but must not be
+    // completed; it routes back to the menu to retry.
+    expect(shouldCompleteSmartLaunch('?error=access_denied&state=xyz')).toBe(false)
+  })
+
+  it('should run the app whenever code or state is present and error is absent', () => {
+    fc.assert(
+      fc.property(
+        fc.subarray(['code', 'state'], { minLength: 1 }),
+        fc.string(),
+        fc.string(),
+        nonCallbackParams(),
+        (present, codeValue, stateValue, noise) => {
+          // Arrange — at least one of code/state, plus arbitrary unrelated params.
+          const params = { ...noise }
+          if (present.includes('code')) params['code'] = codeValue
+          if (present.includes('state')) params['state'] = stateValue
+
+          // Act / Assert
+          expect(shouldCompleteSmartLaunch(searchFrom(params))).toBe(true)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should never run the app when an error param is present', () => {
+    fc.assert(
+      fc.property(fc.string(), fc.dictionary(fc.string(), fc.string()), (errorValue, others) => {
+        // Arrange — an `error` return, regardless of any code/state alongside it.
+        const params = { ...others, error: errorValue }
+
+        // Act / Assert
+        expect(shouldCompleteSmartLaunch(searchFrom(params))).toBe(false)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should never run the app without code or state', () => {
+    fc.assert(
+      fc.property(nonCallbackParams(), (noise) => {
+        // Act / Assert — no code/state/error at all → the connect menu.
+        expect(shouldCompleteSmartLaunch(searchFrom(noise))).toBe(false)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
 // Helpers
+
+/** The three params `shouldCompleteSmartLaunch` keys off, excluded from noise. */
+const CALLBACK_PARAMS = ['code', 'state', 'error']
+
+/** A query string built from `params`, leading `?` included. */
+const searchFrom = (params: Record<string, string>): string =>
+  `?${new URLSearchParams(params).toString()}`
+
+/** Arbitrary query params that are never `code`, `state`, or `error`. */
+const nonCallbackParams = (): fc.Arbitrary<Record<string, string>> =>
+  fc.dictionary(fc.string(), fc.string()).map((dict) => {
+    const copy = { ...dict }
+    for (const key of CALLBACK_PARAMS) delete copy[key]
+    return copy
+  })
 
 /** The options object `authorize` was called with on its first (only) invocation. */
 const authorizeArg = (): Record<string, unknown> => {

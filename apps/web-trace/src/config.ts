@@ -33,15 +33,16 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * `iss` / `launch` are read from the launch URL by fhirclient, so they are not
  * set here; `redirectUri` is computed at launch time from the current origin.
  */
-export const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'web-trace-app-dev' : 'web-trace-app',
   scope: 'launch openid fhirUser system/DocumentReference.read',
 }
 
 /**
- * SMART registration for the **standalone** connect flow (`connect.html` →
- * `ConnectMenu`), where the user picks the FHIR server rather than the EHR
- * naming it. Same `clientId` selection as {@link smartConfig} — the standalone
+ * SMART registration for the **standalone** connect flow (the `ConnectMenu` the
+ * app root renders when the URL carries no OAuth callback), where the user picks
+ * the FHIR server rather than the EHR naming it. Same `clientId` selection as
+ * {@link smartConfig} — the standalone
  * launch runs through the same registered client, so its redirect URI (the app
  * root) still resolves.
  *
@@ -52,7 +53,9 @@ export const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
  * server rejects the authorize request over it, dropping `launch` is the first
  * thing to try.
  */
-export const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
+const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'web-trace-app-dev' : 'web-trace-app',
   scope: 'launch openid fhirUser system/DocumentReference.read',
 }
+
+export { smartConfig, standaloneSmartConfig }

@@ -2,6 +2,7 @@ export {
   authorizeOpenServer,
   authorizeSmartLaunch,
   readySmartClient,
+  shouldCompleteSmartLaunch,
   type OpenServerConfig,
   type SmartLaunchConfig,
 } from './smart-launch.ts'

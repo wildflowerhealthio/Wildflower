@@ -84,5 +84,9 @@ const consoleConfiguration = (
   },
 })
 
-export { consoleConfiguration }
-export type { ScalarSource, ConsoleAuthentication, ConsoleConfiguration }
+export {
+  consoleConfiguration,
+  type ConsoleAuthentication,
+  type ConsoleConfiguration,
+  type ScalarSource,
+}

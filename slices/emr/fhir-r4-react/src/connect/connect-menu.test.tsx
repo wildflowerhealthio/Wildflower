@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type * as StandaloneLaunch from '../smart/standalone-launch.ts'
 import { ConnectMenu } from './connect-menu.tsx'
+import { DEFAULT_SERVER_PRESETS } from './server-presets.ts'
 
 // Stub only the launch seam; keep the real `normalizeServerUrl` so the
 // validation path under test is the production one, not a mock.
@@ -35,17 +36,21 @@ describe('ConnectMenu', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    // Both defaults render.
-    expect(screen.getByRole('button', { name: 'Local' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'SmartHealthit.org R4 Demo' })).toBeDefined()
+    // A button for every default preset (assertions derive from the presets
+    // themselves, so editing the list never silently outdates this test).
+    for (const preset of DEFAULT_SERVER_PRESETS) {
+      expect(screen.getByRole('button', { name: preset.label })).toBeDefined()
+    }
 
-    // Act
-    await user.click(screen.getByRole('button', { name: 'SmartHealthit.org R4 Demo' }))
+    // Act — pick a non-Local preset and launch against exactly its URL.
+    const picked = DEFAULT_SERVER_PRESETS.at(1)
+    if (picked === undefined) throw new Error('expected a second default preset to click')
+    await user.click(screen.getByRole('button', { name: picked.label }))
 
     // Assert — the picked preset's URL is the iss, with the app's client/scope.
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
     expect(startStandaloneLaunchMock).toHaveBeenCalledWith({
-      iss: 'https://launch.smarthealthit.org/v/r4/fhir',
+      iss: picked.url,
       clientId: 'medications-app',
       scope: 'launch openid fhirUser',
       redirectUri: 'https://app.example/',
