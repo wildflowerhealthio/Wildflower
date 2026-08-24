@@ -5,6 +5,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
+  buildSmartQueryClient,
   buildSmartRouterContext,
   smartHttpClientLayer,
   type SmartSession,
@@ -123,5 +124,25 @@ describe('buildSmartRouterContext', () => {
       deadTransport
     )
     await expect(context.awaitAuthReady()).resolves.toBeUndefined()
+  })
+
+  // The app provides one QueryClient at its root (where the handshake runs) and
+  // hands that same instance in here, so the exchange query and every app query
+  // share a cache. The context must carry the handed-in client verbatim.
+  test('carries the QueryClient it is handed rather than making a second one', () => {
+    const queryClient = buildSmartQueryClient()
+    const context = buildSmartRouterContext(
+      { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' },
+      deadTransport,
+      queryClient
+    )
+    expect(context.queryClient).toBe(queryClient)
+  })
+
+  test('defaults to a fresh QueryClient when the caller hands none', () => {
+    const session = { serverUrl: 'http://127.0.0.1:8080/fhir-r4', accessToken: 'tok-123' }
+    const first = buildSmartRouterContext(session, deadTransport)
+    const second = buildSmartRouterContext(session, deadTransport)
+    expect(first.queryClient).not.toBe(second.queryClient)
   })
 })

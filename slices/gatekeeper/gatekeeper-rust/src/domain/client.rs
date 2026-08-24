@@ -196,6 +196,10 @@ mod registered_redirect_uri_tests {
             RegisteredRedirectUri::parse("https://app.example/cb").unwrap(),
             RegisteredRedirectUri::Absolute(Url::parse("https://app.example/cb").unwrap())
         );
+        assert_eq!(
+            RegisteredRedirectUri::parse("http://app.example/cb").unwrap(),
+            RegisteredRedirectUri::Absolute(Url::parse("http://app.example/cb").unwrap())
+        );
     }
 
     /// A protocol-relative `//host` string is neither a path we resolve nor a

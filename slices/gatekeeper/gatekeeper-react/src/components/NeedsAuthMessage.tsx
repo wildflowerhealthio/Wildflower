@@ -38,7 +38,7 @@ type DeviceFlowState =
 const DEVICE_GRANT_TYPE = 'urn:ietf:params:oauth:grant-type:device_code'
 
 /** The first-party client's allowed scopes when the host context carries none (standalone/web). */
-const DEFAULT_ALLOWED_SCOPES = 'system/*.cruds wildflower/*.cruds'
+const DEFAULT_ALLOWED_SCOPES = 'system/*.cruds wildflower/*.cruds wildflower/launch'
 
 /**
  * The happy-path request to start from when there is no session to carry over:

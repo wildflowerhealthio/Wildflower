@@ -15,7 +15,7 @@ const AppUrlSchema = Schema.String.pipe(
     if (value.startsWith('{origin}')) return true
     if (value.startsWith('/') && !value.startsWith('//')) return true
     if (value.startsWith('https://')) return true
-    return 'url must be https://, an origin-relative /path, or start with the {origin} placeholder'
+    return 'url must be http://, https://, an origin-relative /path, or start with the {origin} placeholder'
   })
 )
 

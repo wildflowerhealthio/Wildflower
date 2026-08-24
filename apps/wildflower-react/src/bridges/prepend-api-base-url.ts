@@ -22,10 +22,10 @@ import { Effect, Layer } from 'effect'
  *
  * @remarks
  * Lives in its own module — rather than beside `buildAppQueryRuntime` in
- * `app-query-runtime.ts` — because `router-context.ts` also imports it (to
+ * `app-query-runtime.ts` — because `runtime-layer.ts` also imports it (to
  * address the FHIR slice's client at `/fhir-r4` now that the typed client emits
  * base-relative paths), and `app-query-runtime.ts` imports *from*
- * `router-context.ts`. Keeping the helper here breaks that would-be cycle.
+ * `runtime-layer.ts`. Keeping the helper here breaks that would-be cycle.
  */
 // URL is absolute when it leads with a scheme (`http:`, `https:`, `tauri:`, …).
 // Matches RFC 3986's `scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )` so the

@@ -18,7 +18,10 @@ export {
 export { fetchMedicationRequests, type MedicationRequestResource } from './medication-requests.ts'
 
 export {
+  buildSmartQueryClient,
   buildSmartRouterContext,
   smartHttpClientLayer,
   type SmartSession,
 } from './self-hosted-runtime.ts'
+
+export { useSmartHandshake, type SmartHandshake } from './use-smart-handshake.ts'

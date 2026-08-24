@@ -133,12 +133,14 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             "Medications (Dev)",
             [
                 "launch",
+                "launch/patient",
                 "openid",
                 "fhirUser",
                 "system/MedicationRequest.rs",
                 "system/Medication.rs",
             ]
             .as_slice(),
+            5190,
         ),
         (
             "web-trace-app-dev",
@@ -147,12 +149,15 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
                 "launch",
                 "openid",
                 "fhirUser",
-                "system/DocumentReference.read",
+                "system/DocumentReference.rs",
             ]
             .as_slice(),
+            5191,
         ),
     ];
-    for (client_id, name, scopes) in dev_clients {
+    for (client_id, name, scopes, port) in dev_clients {
+        use url::Url;
+
         let client = Client {
             client_id: client_id.to_string(),
             name: name.to_string(),
@@ -160,7 +165,12 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // App-relative: resolved against the dev app's own loopback origin at
             // `/authorize` time, so the vite port lives in exactly one place (the
             // apps dev seed) instead of being duplicated here.
-            redirect_uris: vec![RegisteredRedirectUri::AppRelative("/".to_string())],
+            redirect_uris: vec![
+                RegisteredRedirectUri::AppRelative("/".to_string()),
+                RegisteredRedirectUri::Absolute(
+                    Url::parse(&format!("http://localhost:{}/", port)).unwrap(),
+                ),
+            ],
             allowed_scopes: scopes.iter().map(|s| (*s).to_string()).collect(),
             allowed_grant_types: vec![
                 AllowedGrantType::AuthorizationCode,

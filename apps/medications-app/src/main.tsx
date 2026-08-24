@@ -1,5 +1,6 @@
+import { QueryClientProvider } from '@tanstack/react-query'
 import { ConnectMenu } from 'fhir-r4-react/connect'
-import { shouldCompleteSmartLaunch } from 'fhir-r4-react/smart'
+import { buildSmartQueryClient, shouldCompleteSmartLaunch } from 'fhir-r4-react/smart'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -29,19 +30,27 @@ startColorSchemeSync()
 // URL so it works at whatever subdomain the self-hosted bundle is served from.
 const redirectUri = new URL('.', window.location.href).href
 
+// One QueryClient for the whole page: `App` completes the SMART handshake and
+// loads the MedicationRequests as queries on it (via `useSmartHandshake`), so
+// both share one cache and the single-use code is exchanged exactly once even
+// under StrictMode's double-mount.
+const queryClient = buildSmartQueryClient()
+
 const container = document.getElementById('root')
 if (container !== null) {
   createRoot(container).render(
     <StrictMode>
-      {shouldCompleteSmartLaunch() ? (
-        <App />
-      ) : (
-        <ConnectMenu
-          clientId={standaloneSmartConfig.clientId}
-          scope={standaloneSmartConfig.scope}
-          redirectUri={redirectUri}
-        />
-      )}
+      <QueryClientProvider client={queryClient}>
+        {shouldCompleteSmartLaunch() ? (
+          <App />
+        ) : (
+          <ConnectMenu
+            clientId={standaloneSmartConfig.clientId}
+            scope={standaloneSmartConfig.scope}
+            redirectUri={redirectUri}
+          />
+        )}
+      </QueryClientProvider>
     </StrictMode>
   )
 }

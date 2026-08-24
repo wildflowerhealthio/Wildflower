@@ -94,6 +94,31 @@ const smartHttpClientLayer = (
 }
 
 /**
+ * The `QueryClient` a self-hosted SMART app runs on.
+ *
+ * @remarks
+ * In-memory only, no persister: what a self-hosted app reads is the data
+ * already on the device, and the app is the surface that reads it — a second
+ * on-disk copy of it, outside the store, buys nothing. `refetchOnWindowFocus` is
+ * off because a self-hosted viewer has nothing that goes stale on focus.
+ *
+ * Exported so the app can build the client **once**, provide it at the tree root
+ * (where {@link useSmartHandshake} runs the token exchange, before any router
+ * context exists), and hand that same instance to {@link buildSmartRouterContext}
+ * — one client for the handshake query and every app query alike.
+ */
+const buildSmartQueryClient = (): QueryClient =>
+  new QueryClient({
+    defaultOptions: {
+      queries: {
+        staleTime: pipe(5, Duration.minutes, Duration.toMillis),
+        gcTime: pipe(30, Duration.minutes, Duration.toMillis),
+        refetchOnWindowFocus: false,
+      },
+    },
+  })
+
+/**
  * The router context the app threads into its router, built from a completed
  * SMART handshake.
  *
@@ -101,6 +126,12 @@ const smartHttpClientLayer = (
  * The transport is a parameter for the same reason
  * {@link smartHttpClientLayer}'s is: the app's whole tree can then be mounted
  * over a stub in a test. The app passes `FetchHttpClient.layer`.
+ *
+ * `queryClient` is a parameter (default a fresh {@link buildSmartQueryClient})
+ * so the app can hand in the same client it provided at the tree root — the one
+ * {@link useSmartHandshake} completed the exchange on — rather than the context
+ * carrying a second, disconnected client. The default keeps callers that only
+ * read `runAuthed` (importer/collector tests) unchanged.
  *
  * `awaitAuthReady` resolves immediately: the shared shape carries it for host
  * apps whose route guards wait on a token that arrives asynchronously, and by
@@ -115,33 +146,25 @@ const smartHttpClientLayer = (
  *
  * @param session - The FHIR base and bearer token from the SMART handshake
  * @param transport - The underlying `HttpClient` every read goes out over
+ * @param queryClient - The `QueryClient` the context carries; defaults to a
+ *   fresh {@link buildSmartQueryClient}
  * @returns A router context ready for `createRouter`'s `context`
  */
 const buildSmartRouterContext = (
   session: SmartSession,
-  transport: Layer.Layer<HttpClient.HttpClient>
+  transport: Layer.Layer<HttpClient.HttpClient>,
+  queryClient: QueryClient = buildSmartQueryClient()
 ): RouterContext => {
   const httpLayer = smartHttpClientLayer(session, transport)
   const runtimeLayer: RuntimeLayer = Layer.provideMerge(sliceRuntimeLayer, httpLayer)
   const runAuthed: RunAuthed = (effect, options) =>
     Effect.runPromise(Effect.provide(effect, runtimeLayer), options)
   return {
-    // In-memory only, no persister: what a self-hosted app reads is the data
-    // already on the device, and the app is the surface that reads it — a
-    // second on-disk copy of it, outside the store, buys nothing.
-    queryClient: new QueryClient({
-      defaultOptions: {
-        queries: {
-          staleTime: pipe(5, Duration.minutes, Duration.toMillis),
-          gcTime: pipe(30, Duration.minutes, Duration.toMillis),
-          refetchOnWindowFocus: false,
-        },
-      },
-    }),
+    queryClient,
     runAuthed,
     runtimeLayer,
     awaitAuthReady: () => Promise.resolve(),
   }
 }
 
-export { buildSmartRouterContext, smartHttpClientLayer, type SmartSession }
+export { buildSmartQueryClient, buildSmartRouterContext, smartHttpClientLayer, type SmartSession }

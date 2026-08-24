@@ -1,5 +1,5 @@
 import { FetchHttpClient } from '@effect/platform'
-import { QueryClientProvider } from '@tanstack/react-query'
+import { QueryClientProvider, useQueryClient } from '@tanstack/react-query'
 import {
   createMemoryHistory,
   createRootRouteWithContext,
@@ -8,8 +8,8 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
-import { buildSmartRouterContext, readySmartClient } from 'fhir-r4-react/smart'
-import { useId, useEffect, useMemo, useState, type JSX } from 'react'
+import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
+import { useId, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageLoading } from 'react-tundraish'
 import { DocumentsPanel, RecordingsPanel } from 'web-trace-react'
@@ -129,11 +129,6 @@ const TraceApp = ({ context }: TraceAppProps): JSX.Element => {
   )
 }
 
-type LoadState =
-  | { readonly kind: 'connecting' }
-  | { readonly kind: 'error'; readonly message: string }
-  | { readonly kind: 'ready'; readonly context: RouterContext }
-
 /**
  * The redirect-target app: completes the SMART handshake, then mounts the
  * recordings viewer against the FHIR server it was granted a token for.
@@ -144,54 +139,52 @@ type LoadState =
  * handshake produces. So a failed handshake renders as a failed handshake and
  * the viewer never mounts, rather than mounting and issuing unauthenticated
  * reads that all 401.
+ *
+ * The exchange runs through {@link useSmartHandshake} rather than a raw
+ * `useEffect` so it fires exactly once — a bare effect double-POSTs the
+ * single-use authorization code under `React.StrictMode`. The page's one
+ * `QueryClient` (from `main.tsx`, read here with `useQueryClient`) is handed to
+ * the router context so the handshake and every viewer read share a cache.
  */
 const App = (): JSX.Element => {
-  const [state, setState] = useState<LoadState>({ kind: 'connecting' })
+  const queryClient = useQueryClient()
+  const handshake = useSmartHandshake()
 
-  useEffect(() => {
-    let cancelled = false
-    readySmartClient()
-      .then((client) => {
-        if (cancelled) return
-        // Plain `FetchHttpClient.layer`, not `telemetry-react`'s
-        // `webHttpClientLayer`: this app is registered `local_only = 1`, and
-        // the telemetry layer's OTLP exporter is exactly the kind of outbound
-        // request that claim rules out.
-        //
-        // The handshake's `serverUrl` is the FHIR base verbatim — the typed
-        // client emits base-relative paths, so there is no prefix to reconcile
-        // and no failure arm here beyond the handshake's own.
-        const context = buildSmartRouterContext(
-          {
-            serverUrl: client.state.serverUrl,
-            accessToken: client.state.tokenResponse?.access_token,
-          },
-          FetchHttpClient.layer
-        )
-        setState({ kind: 'ready', context })
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setState({
-            kind: 'error',
-            message: error instanceof Error ? error.message : String(error),
-          })
-        }
-      })
-    return (): void => {
-      cancelled = true
-    }
-  }, [])
+  // Memoised on the (stable) resolved client so a re-render neither rebuilds the
+  // context nor, through `TraceApp`'s own memo, the router beneath it.
+  //
+  // Plain `FetchHttpClient.layer`, not `telemetry-react`'s `webHttpClientLayer`:
+  // this app is registered `local_only = 1`, and the telemetry layer's OTLP
+  // exporter is exactly the kind of outbound request that claim rules out. The
+  // handshake's `serverUrl` is the FHIR base verbatim — the typed client emits
+  // base-relative paths, so there is no prefix to reconcile and no failure arm
+  // here beyond the handshake's own.
+  const client = handshake.kind === 'ready' ? handshake.client : undefined
+  const context = useMemo<RouterContext | undefined>(
+    () =>
+      client === undefined
+        ? undefined
+        : buildSmartRouterContext(
+            {
+              serverUrl: client.state.serverUrl,
+              accessToken: client.state.tokenResponse?.access_token,
+            },
+            FetchHttpClient.layer,
+            queryClient
+          ),
+    [client, queryClient]
+  )
 
   return (
     <main className={styles['app']}>
-      {state.kind === 'connecting' && <PageLoading message="Connecting…" />}
-      {state.kind === 'error' && (
+      {handshake.kind === 'connecting' && <PageLoading message="Connecting…" />}
+      {handshake.kind === 'error' && (
         <p className={styles['error']}>
-          Could not connect to this device&rsquo;s FHIR server: {state.message}
+          Could not connect to this device&rsquo;s FHIR server:{' '}
+          {handshake.error instanceof Error ? handshake.error.message : String(handshake.error)}
         </p>
       )}
-      {state.kind === 'ready' && <TraceApp context={state.context} />}
+      {context !== undefined && <TraceApp context={context} />}
     </main>
   )
 }

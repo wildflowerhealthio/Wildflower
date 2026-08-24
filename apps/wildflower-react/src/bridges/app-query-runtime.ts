@@ -1,12 +1,9 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { webHttpClientLayer } from 'telemetry-react'
 
-import {
-  buildQueryClient,
-  buildRunAuthed,
-  type RunAuthed,
-  type RuntimeLayer,
-} from '../router-context.ts'
+import { buildQueryClient } from '../query-client.ts'
+import type { RunAuthed, RuntimeLayer } from '../router-context.ts'
+import { buildRunAuthed } from '../runtime-layer.ts'
 import { prependApiBaseUrl } from './prepend-api-base-url.ts'
 
 /**

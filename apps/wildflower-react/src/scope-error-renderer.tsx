@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react'
 
-import { insufficientScopeFromFailure } from './router-context.ts'
+import { insufficientScopeFromFailure } from './auth-errors.ts'
 import { ScopeErrorSurface } from './scope-error-surface.tsx'
 
 /**

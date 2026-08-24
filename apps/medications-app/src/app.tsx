@@ -1,59 +1,66 @@
-import type { JSX } from 'react'
-import { useEffect, useState } from 'react'
-
-import { fetchMedicationRequests, readySmartClient } from 'fhir-r4-react/smart'
+import { skipToken, useQuery } from '@tanstack/react-query'
+import { fetchMedicationRequests, useSmartHandshake } from 'fhir-r4-react/smart'
 import type { Province } from 'medication-sponsorship-core'
 import {
   MedicationsView,
-  type MedicationView,
   medicationRequestsToMedicationViews,
   ProvincePicker,
 } from 'medication-sponsorship-react'
+import type { JSX } from 'react'
+import { useState } from 'react'
 
 import { catalogs } from './catalogs.ts'
 import styles from './app.module.css'
 
-type LoadState =
-  | { readonly kind: 'loading' }
-  | { readonly kind: 'error'; readonly message: string }
-  | { readonly kind: 'ready'; readonly medications: readonly MedicationView[] }
-
-const loadMedications = async (): Promise<readonly MedicationView[]> => {
-  const client = await readySmartClient()
-  // `client.patient.id` is `null` under a `system/` launch (no patient context);
-  // `fetchMedicationRequests` then reads across every patient the granted scopes
-  // expose rather than failing.
-  const requests = await fetchMedicationRequests(client, null)
-  return medicationRequestsToMedicationViews(requests)
-}
+/** The load-failure line, shown for a failed token exchange or a failed read. */
+const ErrorLine = ({ error }: { readonly error: unknown }): JSX.Element => (
+  <p className={styles.error}>
+    Could not load medications: {error instanceof Error ? error.message : String(error)}
+  </p>
+)
 
 /**
  * The redirect-target app: completes the SMART handshake, loads the patient's
  * MedicationRequests, and renders them grouped by sponsorship program with a
  * province filter.
+ *
+ * @remarks
+ * Both async legs are TanStack Queries on the page's shared client: the token
+ * exchange (`useSmartHandshake`, keyed and deduped so StrictMode's double-mount
+ * exchanges the single-use code once) and the MedicationRequest read that
+ * follows it. The read is `skipToken`-gated on the handshake resolving, which
+ * also narrows `client` to defined inside the query function — no non-null
+ * assertion.
  */
 export const App = (): JSX.Element => {
-  const [state, setState] = useState<LoadState>({ kind: 'loading' })
   const [province, setProvince] = useState<Province>('ON')
+  const handshake = useSmartHandshake()
+  const client = handshake.kind === 'ready' ? handshake.client : undefined
 
-  useEffect(() => {
-    let cancelled = false
-    loadMedications()
-      .then((medications) => {
-        if (!cancelled) setState({ kind: 'ready', medications })
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) {
-          setState({
-            kind: 'error',
-            message: error instanceof Error ? error.message : String(error),
-          })
-        }
-      })
-    return () => {
-      cancelled = true
+  const medications = useQuery({
+    queryKey: ['medications'],
+    // `client.patient.id` is `null` under a `system/` launch (no patient
+    // context); `fetchMedicationRequests` then reads across every patient the
+    // granted scopes expose rather than failing.
+    queryFn:
+      client === undefined
+        ? skipToken
+        : async () =>
+            medicationRequestsToMedicationViews(await fetchMedicationRequests(client, null)),
+  })
+
+  // Either leg can fail — the token exchange or the read that follows it.
+  // Surface whichever did; loading covers both the exchange and the read.
+  const body = ((): JSX.Element => {
+    if (handshake.kind === 'error') return <ErrorLine error={handshake.error} />
+    if (medications.isError) return <ErrorLine error={medications.error} />
+    if (medications.isSuccess) {
+      return (
+        <MedicationsView medications={medications.data} province={province} catalogs={catalogs} />
+      )
     }
-  }, [])
+    return <p className={styles.status}>Loading medications…</p>
+  })()
 
   return (
     <main className={styles.app}>
@@ -61,13 +68,7 @@ export const App = (): JSX.Element => {
         <h1 className="text-heading-3">Medications</h1>
         <ProvincePicker value={province} onChange={setProvince} />
       </header>
-      {state.kind === 'loading' && <p className={styles.status}>Loading medications…</p>}
-      {state.kind === 'error' && (
-        <p className={styles.error}>Could not load medications: {state.message}</p>
-      )}
-      {state.kind === 'ready' && (
-        <MedicationsView medications={state.medications} province={province} catalogs={catalogs} />
-      )}
+      {body}
     </main>
   )
 }

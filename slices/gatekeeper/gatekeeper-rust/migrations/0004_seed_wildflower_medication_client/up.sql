@@ -25,7 +25,7 @@ VALUES
         'Medications',
         'public',
         '["/"]',
-        '["launch","openid","fhirUser","system/MedicationRequest.rs","system/Medication.rs"]',
+        '["launch","launch/patient","openid","fhirUser","system/MedicationRequest.rs","system/Medication.rs"]',
         '["authorization_code","refresh_token"]',
         NULL,
         '2024-01-01 00:00:00+00:00',

@@ -72,7 +72,7 @@ impl fmt::Display for AppUrlError {
         match self {
             AppUrlError::Empty => f.write_str("url must not be empty"),
             AppUrlError::Invalid => f.write_str(
-                "url must be https://, an origin-relative /path, or start with the {origin} placeholder",
+                "url must be http://, https://, an origin-relative /path, or start with the {origin} placeholder",
             ),
         }
     }
@@ -112,7 +112,7 @@ impl FromStr for AppUrl {
         if value.starts_with('/') && !value.starts_with("//") {
             return Ok(AppUrl::OriginRelative(value.to_owned()));
         }
-        if value.starts_with("https://") {
+        if value.starts_with("https://") || value.starts_with("http://") {
             return Ok(AppUrl::External(value.to_owned()));
         }
         Err(AppUrlError::Invalid)

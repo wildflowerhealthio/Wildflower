@@ -320,6 +320,12 @@ fn validate_redirect_url(
             .is_some_and(|resolved| resolved == parsed_redirect)
     });
     if !matches {
+        tracing::warn!(
+            client_id = %params.client_id,
+            redirect_uri = %params.redirect_uri,
+            client = format!("{:?}", client),
+            "redirect_uri not allowed for this client"
+        );
         return Err(AuthorizeError::LocalPage(
             OAuthErrorKind::RedirectUriNotAllowed,
         ));
