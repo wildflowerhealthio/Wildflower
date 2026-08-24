@@ -33,7 +33,7 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  */
 export const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'medications-app-dev' : 'medications-app',
-  scope: 'launch openid fhirUser system/MedicationRequest.read system/Medication.read',
+  scope: 'launch openid fhirUser system/MedicationRequest.rs system/Medication.rs',
 }
 
 /**
@@ -51,5 +51,5 @@ export const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
  */
 export const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'medications-app-dev' : 'medications-app',
-  scope: 'launch openid fhirUser system/MedicationRequest.read system/Medication.read',
+  scope: 'launch launch/patient openid fhirUser system/MedicationRequest.rs system/Medication.rs',
 }

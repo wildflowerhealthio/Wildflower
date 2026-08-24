@@ -135,8 +135,8 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
                 "launch",
                 "openid",
                 "fhirUser",
-                "system/MedicationRequest.read",
-                "system/Medication.read",
+                "system/MedicationRequest.rs",
+                "system/Medication.rs",
             ]
             .as_slice(),
         ),

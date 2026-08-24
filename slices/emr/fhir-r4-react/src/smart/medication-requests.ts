@@ -24,7 +24,7 @@ const fetchMedicationRequests = async (
     patientId === null
       ? 'MedicationRequest'
       : `MedicationRequest?patient=${encodeURIComponent(patientId)}`
-  const response = await client.request<unknown>(query, { flat: true, pageLimit: 0 })
+  const response = await client.request<unknown>(query, { flat: true, pageLimit: 3 })
   const items: readonly unknown[] = Array.isArray(response) ? response : []
   return items.flatMap((item) => {
     const decoded = decodeMedicationRequest(item)

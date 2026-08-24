@@ -15,7 +15,18 @@ interface ServerPreset {
  */
 const DEFAULT_SERVER_PRESETS: readonly ServerPreset[] = [
   { label: 'Local', url: 'http://127.0.0.1:8080/fhir-r4' },
-  { label: 'SmartHealthit.org R4 Demo', url: 'https://launch.smarthealthit.org/v/r4/fhir' },
+  {
+    label: 'SmartHealthit.org R4 Patient Login',
+    url: 'https://launch.smarthealthit.org/v/r4/sim/WzMsIjZiMjIzZjg5LWU3MjYtNDRkYS04MWFkLTAzZDMwZmM2MTI1NCIsImR0ci1wcmFjdC0yIiwiQVVUTyIsMSwwLDAsIiIsIiIsIiIsIiIsIiIsIiIsIiIsMCwyLCIiXQ/fhir',
+  },
+  {
+    label: "SmartHealthit.org R4 Provider's Patient",
+    url: 'https://launch.smarthealthit.org/v/r4/sim/WzIsIjZiMjIzZjg5LWU3MjYtNDRkYS04MWFkLTAzZDMwZmM2MTI1NCIsImR0ci1wcmFjdC0yIiwiQVVUTyIsMSwwLDAsIiIsIiIsIiIsIiIsIiIsIiIsIiIsMCwyLCIiXQ/fhir',
+  },
+  {
+    label: 'SmartHealthit.org R4 Provider Login',
+    url: 'https://launch.smarthealthit.org/v/r4/sim/WzIsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMiwiIl0/fhir',
+  },
 ]
 
 export { DEFAULT_SERVER_PRESETS, type ServerPreset }
