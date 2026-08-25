@@ -34,8 +34,11 @@ before adding one.
   `*-client-collector`.
 - **`*-client-collector`** (`fhir-r4-client-collector`, …) — one
   `CollectorDescriptor` per import site: config schema + arbitraries, scraping
-  plan, entities, display strings, persist sink, and the collector's own
-  `ConfigForm`. Depends on `collector-fundamentals` only — never on
+  plan, display strings, persist sink, and the collector's own `ConfigForm`.
+  The entities a collector decodes with live in its sibling **importer
+  project** under `slices/importer/` (`fhir-r4-importer` is the worked
+  example), shared with the archive importer; the collector depends on
+  `collector-fundamentals` and its importer project — never on
   `collector-react`. Three today:
   [`fhir-r4-client-collector`](./fhir-r4-client-collector/AGENTS.md),
   [`rexall-be-well-collector`](./rexall-be-well-collector/AGENTS.md) (which also

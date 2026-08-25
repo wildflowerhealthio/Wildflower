@@ -9,7 +9,7 @@ A `-core` package following the rule in [slices/AGENTS.md](../../AGENTS.md):
 adapters depend on it, it depends on no adapter. Its accepted imports are exactly
 four: `web-trace-core` (the HAR codec and `withMetaSource`),
 `collector-fundamentals/replay` (the offline runner and the recognizer),
-`fhir-r4-client-collector` (the FHIR R4 offline surface), and `fhir-r4`
+`fhir-r4-importer` (the FHIR R4 offline surface), and `fhir-r4`
 (resources and the persist sink). It re-derives none of them.
 
 Auto-picked-up by the root `slices/**/vite.config.ts` Vitest glob — no root
@@ -24,9 +24,11 @@ config edit. Node/neutral test env (not jsdom); the package touches no DOM.
 - **`src/registered-collectors.ts`** — the **closed, compile-time**
   `REGISTERED_COLLECTORS` list, the offline mirror of `collector-registry`'s
   `descriptors`. Each `RegisteredCollector` extends `Recognizer` with the
-  collector's `tag`, its `offlineEntities`, and `rootOf` (the per-URL root
-  reader, `fhir-r4-client-collector`'s `fhirRootOf`). Only `fhir-r4` is
-  registered.
+  collector's `tag`, its `offlineEntitiesFor` (a factory over the per-archive
+  `ArchiveContext`, so a collector whose identity is per-archive — web-trace's
+  session id — can derive it; archive-independent collectors return their
+  module-level constant), and `rootOf` (the per-URL root reader,
+  `fhir-r4-importer`'s `fhirRootOf`). Only `fhir-r4` is registered.
 - **`src/run-har-import.ts`** — the read half. `runHarImport(harText)` decodes
   the archive (`fromHarJson`), maps its `ArchivedExchange`es to the structural
   `ReplayResponse`s the runner reads, resolves the claiming collector
@@ -52,8 +54,8 @@ sourceRef` via `web-trace-core`'s `withMetaSource`, and writes them through
    two packages meet.
 3. **Detect.** `Recognizer.resolve(REGISTERED_COLLECTORS, responses)` picks the
    most specific claiming collector. None → `NoCollectorClaims`.
-4. **Replay.** `Replay.replayEntities(collector.offlineEntities, responses)` →
-   the four-way `ReplayOutcome`.
+4. **Replay.** `Replay.replayEntities(collector.offlineEntitiesFor({ harText }),
+responses)` → the four-way `ReplayOutcome`.
 5. **Fold.** Batches group by `resourceType`; `unmatched`, `parseFailures`, and
    `bodyAbsent` become counts (and, for parse failures, `{ url, error }` data).
    `collector.rootOf` folded over every response URL yields `rootUrls` — the
@@ -121,8 +123,8 @@ retry backoff on `TestClock`.
 - [slices/collector/AGENTS.md](../../collector/AGENTS.md) — `collector-fundamentals`'s
   `./replay` (`Replay.replayEntities` and `Recognizer.resolve`), the offline
   runner this drives.
-- [fhir-r4-client-collector AGENTS.md](../../collector/fhir-r4-client-collector/AGENTS.md)
-  — the offline surface (`offlineEntities`, `fhirR4Recognizer`, `fhirRootOf`).
+- [fhir-r4-importer AGENTS.md](../fhir-r4-importer/AGENTS.md) — the offline
+  surface (`offlineEntities`, `fhirR4Recognizer`, `fhirRootOf`).
 - [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the HAR
   codec and `withMetaSource`.
 - [slices/emr/AGENTS.md](../../emr/AGENTS.md) — `fhir-r4`'s `persistResources`

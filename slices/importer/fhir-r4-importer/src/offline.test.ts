@@ -1,18 +1,16 @@
 import type { EntityDefinition } from 'collector-fundamentals/model'
 import type { Replay } from 'collector-fundamentals/replay'
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
-import { Arbitrary, DateTime, Effect, Option } from 'effect'
-import * as fc from 'fast-check'
+import { DateTime, Effect, Option } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import { numRunsFor } from 'kitchen-sink/test'
-import { describe, expect, it, test } from 'vite-plus/test'
+import { describe, expect, it } from 'vite-plus/test'
 
-import { InstanceConfig, scrapingPlan } from './config.ts'
 import { fhirR4Recognizer, fhirRootOf, offlineEntities } from './offline.ts'
 
-/** The plan factory ignores its run id; a fixed one keeps builds comparable. */
-const FIXED_RUN_ID = 'test-run'
+// The properties that generate URLs from a live `InstanceConfig` — and the
+// offline-vs-live id parity test — live in `fhir-r4-client-collector`'s
+// `offline-parity.test.ts`, next to the config they depend on.
 
 const utf8 = new TextEncoder()
 
@@ -110,21 +108,6 @@ describe('fhirR4Recognizer', () => {
   it('declines an empty capture', () => {
     expect(fhirR4Recognizer.claims([])).toBe(false)
   })
-
-  test("property: claims any capture containing the plan's configured URLs", () => {
-    fc.assert(
-      fc.property(Arbitrary.make(InstanceConfig), (config) => {
-        const safeId = encodeURIComponent(config.patientId)
-        expect(
-          fhirR4Recognizer.claims([
-            replay(`${config.rootUrl}/Patient/${safeId}?_format=json`),
-            replay(`${config.rootUrl}/Observation?subject%3APatient=${safeId}`),
-          ])
-        ).toBe(true)
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
 })
 
 describe('offlineEntities', () => {
@@ -178,41 +161,6 @@ describe('offlineEntities', () => {
       `Patient/${localResourceId(root, 'Patient', 'pat-7')}`
     )
   })
-
-  it('matches the live plan when a resource is captured from its configured root', () => {
-    const rootUrl = 'https://r4.example.org/baseR4'
-    const body = { resourceType: 'Patient', id: 'pat-7' }
-    const [offlinePatient] = parseOffline('PatientEntity', `${rootUrl}/Patient/pat-7`, body)
-    const [livePatient] = Effect.runSync(
-      entityNamed(
-        scrapingPlan({ _tag: 'fhir-r4', rootUrl, patientId: 'pat-7' }, FIXED_RUN_ID)
-          .entityDefinitions,
-        'PatientEntity'
-      ).parse(
-        makeRemoteResponse({
-          url: `${rootUrl}/Patient/pat-7`,
-          headers: [['content-type', 'application/fhir+json']],
-          body: JSON.stringify(body),
-        })
-      )
-    )
-    expect(offlinePatient?.id).toBe(localResourceId(rootUrl, 'Patient', 'pat-7'))
-    expect(offlinePatient?.id).toBe(livePatient?.id)
-  })
-
-  test('property: keys any configured rootUrl under that same root', () => {
-    fc.assert(
-      fc.property(Arbitrary.make(InstanceConfig), (config) => {
-        const [patient] = parseOffline(
-          'PatientEntity',
-          `${config.rootUrl}/Patient/${encodeURIComponent(config.patientId)}`,
-          { resourceType: 'Patient', id: config.patientId }
-        )
-        expect(patient?.id).toBe(localResourceId(config.rootUrl, 'Patient', config.patientId))
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
 })
 
 describe('fhirRootOf', () => {
@@ -239,34 +187,5 @@ describe('fhirRootOf', () => {
     expect(fhirRootOf('https://portal.example.com/login')).toEqual(Option.none())
     expect(fhirRootOf('https://api.example.com/users/1')).toEqual(Option.none())
     expect(fhirRootOf('https://example.com/Patients/1')).toEqual(Option.none())
-  })
-
-  /**
-   * A rootUrl whose own path already carries a `Patient`/`Observation` segment
-   * makes root extraction ambiguous (the appended segment could be read as an
-   * id under the earlier one) — a pathological base no real server uses. Filter
-   * those out so the property tests the honest case.
-   */
-  const hasResourceSegment = (rootUrl: string): boolean =>
-    new URL(rootUrl).pathname
-      .split('/')
-      .some((segment) => segment === 'Patient' || segment === 'Observation')
-
-  test('property: recovers the generated root from a resource URL built on it', () => {
-    fc.assert(
-      fc.property(
-        Arbitrary.make(InstanceConfig).filter((config) => !hasResourceSegment(config.rootUrl)),
-        (config) => {
-          const safeId = encodeURIComponent(config.patientId)
-          expect(fhirRootOf(`${config.rootUrl}/Patient/${safeId}?_format=json`)).toEqual(
-            Option.some(config.rootUrl)
-          )
-          expect(fhirRootOf(`${config.rootUrl}/Observation?subject%3APatient=${safeId}`)).toEqual(
-            Option.some(config.rootUrl)
-          )
-        }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
   })
 })
