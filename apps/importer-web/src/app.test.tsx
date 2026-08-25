@@ -295,13 +295,6 @@ const archiveWire = (archive: ServerArchive): unknown => {
   }
 }
 
-const searchset = (resources: readonly unknown[]): unknown => ({
-  resourceType: 'Bundle',
-  type: 'searchset',
-  entry: resources.map((resource) => ({ resource })),
-  link: [],
-})
-
 const jsonResponse = (body: unknown): Response =>
   new Response(JSON.stringify(body), {
     status: 200,
@@ -334,7 +327,7 @@ const recordingServer = (archives: readonly ServerArchive[]): Layer.Layer<HttpCl
         return Effect.succeed(
           HttpClientResponse.fromWeb(
             request,
-            jsonResponse(searchset(archives.map((archive) => archiveWire(archive))))
+            jsonResponse(searchsetOf(...archives.map((archive) => archiveWire(archive))))
           )
         )
       }

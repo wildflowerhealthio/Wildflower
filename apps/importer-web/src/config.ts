@@ -42,7 +42,11 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * authorize step. Nothing enforces that across the TS/Rust boundary, so the
  * pairing is pinned here, in the migration's own comment, and in
  * [AGENTS.md](../AGENTS.md); the Rust assertion in `gatekeeper-rust`'s
- * `clients.rs` mirrors it on the other side.
+ * `clients.rs` mirrors it on the other side. A **dev** build authorizes against
+ * `importer-app-dev` instead (the `clientId` selected above), whose
+ * `allowed_scopes` live in `gatekeeper-rust`'s `seed_dev_app_clients` and carry
+ * this same set — widen that copy in step too, or `/authorize` fails only under
+ * `vp run -F wildflower-importer dev`.
  *
  * `iss` / `launch` are read from the launch URL by fhirclient, so they are not
  * set here; `redirectUri` is computed at launch time from the current origin.

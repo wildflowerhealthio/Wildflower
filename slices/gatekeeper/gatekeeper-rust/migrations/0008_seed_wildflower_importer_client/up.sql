@@ -44,6 +44,9 @@
 -- single source to derive both from), so the pairing is held by mirrors: that
 -- file's doc comment, this comment, `apps/importer-web/AGENTS.md`, and the exact
 -- vector asserted in `db/clients.rs`'s `migrations_seed_the_smart_app_clients`.
+-- The debug-only `importer-app-dev` client (`seeding.rs`'s
+-- `seed_dev_app_clients`, seeded at runtime rather than by a migration) that a
+-- DEV build authorizes against carries this same set — widen it in step too.
 --
 -- `INSERT OR IGNORE` so an install that somehow already has a client under this
 -- id is a no-op rather than a PK conflict that would abort the migration run (and
