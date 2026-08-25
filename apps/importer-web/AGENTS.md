@@ -95,9 +95,9 @@ system/DocumentReference.write system/Patient.write system/Observation.write
   one, change all four. A **dev** build authorizes against the sibling
   `importer-app-dev` client instead (`gatekeeper-rust`'s `seed_dev_app_clients`,
   see [Seeded registration](#seeded-registration) below), which carries the same
-  set — widen it in step too, or `/authorize` fails only under `vp run -F
-wildflower-importer dev`. Do **not** invent a parity test that hand-copies the list
-  a third time — that is the self-referential drift guard [Review
+  set — widen it in step too, or `/authorize` fails only in a vite dev build. Do
+  **not** invent a parity test that hand-copies the list a third time — that is
+  the self-referential drift guard [Review
   Standards](../../docs/Agents/Review%20Standards%20Reference.md) names.
 
 ## Traps
