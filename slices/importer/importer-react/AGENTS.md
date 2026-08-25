@@ -1,10 +1,12 @@
 # AGENTS.md — slices/importer/importer-react
 
 The browser UI adapter of the importer slice: the whole preview-then-confirm
-flow. `ImporterScreen` is the one surface a host app mounts — pick a HAR (dropped,
-chosen, or an archive already on the device's FHIR server), preview exactly what
-would be written, confirm once to write it (uploading the archive first when the
-pick is local), and read the results.
+flow. `ImporterScreen` is the one surface a host app mounts — pick one or more
+HARs (local files dropped or chosen, or a single archive already on the device's
+FHIR server), preview exactly what every file would write in one combined view,
+confirm once to write the whole batch (uploading each local file's archive first),
+and read the per-file results. Local picking is a **batch**; the server list is
+single-select.
 
 ## Layering
 
@@ -34,13 +36,18 @@ it drives them and reimplements none.
   `useConfirmImport` → `ImportResults`. A cancel or "import another" discards and
   returns to the picker.
 - **`src/preview/`** — the read half and its view. `use-import-run.ts` runs
-  `runHarImport` (via `useRunAuthed`) and holds the `ImportPreview`;
-  `use-confirm-import.ts` is the opt-in write action (upload-then-persist);
-  `preview-panel.tsx` renders every read outcome distinctly and gates the confirm
-  affordance.
-- **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold
-  (`collectImportSummary` semantics: any failure ⇒ partial); `import-results.tsx`
-  renders the written/failed tally and the provenance link.
+  `runHarImport` (via `useRunAuthed`) once per picked file and holds the batch of
+  `ReadEntry`s (each a `read` preview or an `unreadable` file);
+  `use-confirm-import.ts` is the opt-in write action, per file, best-effort
+  (upload-then-persist each writable file, one file's failure never stopping the
+  rest); `preview-panel.tsx` renders every file's outcome under one shared confirm
+  and gates that confirm on any file having something to write.
+- **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
+  per-file `ImportOutcome` and the `FileImportResult`/`BatchOutcome` aggregate
+  (`summarizeBatch`, `isPartialBatch`), all on `collectImportSummary` semantics
+  (any failure ⇒ partial); `import-results.tsx` renders a per-file breakdown —
+  writes with their provenance link, failed uploads with their cause, and
+  skipped files — under one aggregate tally.
 - **`src/sources/`** — the picker. `picked-har.ts` is the vocabulary
   (`PickedHar`, the `local` / `server` `PickedHarSource`, and `harArchiveReference`
   — the one spelling of a `DocumentReference/<id>` reference); `local-har.ts` is
@@ -63,20 +70,35 @@ it drives them and reimplements none.
   data only. Every write is behind the one explicit confirm. A test pins this on
   the wire (zero writes to reach a preview); do not add a write to the read path
   (e.g. an "auto-upload on pick") that would collapse the opt-in seam.
-- **Confirm ordering is fixed: archive create, then resource writes.** A `local`
-  pick's archive is uploaded first (`useUploadHar`) and the reference it mints is
-  stamped onto every resource's `meta.source`; only then does `persistPreview` run.
-  A `server` pick uploads nothing and links to the document it was fetched from.
-  Sequencing matters — a resource must never be written pointing at an archive that
-  is not there yet — so the upload's `mutateAsync` is awaited before the persist
-  begins. `persistPreview` never throws, so the only rejection a confirm surfaces
-  is the upload's; write failures come back as data and fold into `partial`.
-- **The confirm affordance is gated on there being something to write.**
-  `PreviewPanel` shows the confirm button only for a claimed `Preview` with at
-  least one resource; a `NoCollectorClaims` and a claimed-but-empty preview offer
-  only a way back. The screen still narrows `ImportPreview` to `Preview` before
-  calling `useConfirmImport` — the gate is the affordance, the narrowing is the
-  type-safety.
+- **Confirm ordering is fixed per file: archive create, then that file's resource
+  writes.** A `local` pick's archive is uploaded first (`useUploadHar`) and the
+  reference it mints is stamped onto every resource from _that file_; only then
+  does `persistPreview` run for it. A `server` pick uploads nothing and links to
+  the document it was fetched from. Sequencing matters — a resource must never be
+  written pointing at an archive that is not there yet — so each file's upload
+  is `flatMap`ped before its persist, inside `importOneFile`. The whole batch is
+  one Effect (`Effect.forEach` at unbounded concurrency, `Match`-dispatched per
+  file) run through `runAuthed`; cross-file interleaving is fine because each
+  resource is stamped with its own file's reference. The upload crosses a TanStack
+  mutation, so its `FiberFailure` rejection is `Cause.squash`ed back to the typed
+  FHIR-client error before it is stored on the `uploadFailed` result — which is
+  what lets the results view render a `ParseError`'s schema tree in full.
+- **The batch is best-effort, and provenance stays per-file.** One file's upload
+  failure is caught and recorded as its own `FileImportResult` (`uploadFailed`,
+  carrying the cause) — the remaining files still import, the multi-file echo of
+  `persistPreview` returning per-resource failures as data. A file with nothing to
+  write (no collector, recognized-but-empty, or unreadable) is `skipped`, never a
+  failure. `isPartialBatch` lifts `collectImportSummary` to the batch: any
+  upload failure or any per-resource failure makes the whole batch partial; a
+  `skipped` file alone does not. There is **no** whole-flow `errored` state — an
+  upload failure is a row in the results, and its cause is surfaced there (the
+  FHIR server's own response), not swallowed behind "Try again".
+- **The confirm affordance is gated on the batch having something to write.**
+  `PreviewPanel` shows the single confirm button only when at least one file is a
+  claimed `Preview` with resources; files that are `NoCollectorClaims`,
+  claimed-but-empty, or unreadable render their own row but add nothing to write.
+  `useConfirmImport` re-checks each file (skipping the non-writable ones) — the
+  gate is the affordance, the per-file check is the safety.
 - **A HAR archive and a web trace share a code system and nothing else, and the
   disjointness is load-bearing.** The archive list searches `category` for
   `` `${WEB_TRACE_CODE_SYSTEM}|har-archive` `` (`HAR_ARCHIVE_CATEGORY_TOKEN`,
@@ -84,12 +106,15 @@ it drives them and reimplements none.
   writes), and `rowsOf` still guards each entry with `isHarArchive`. The
   web-trace viewer lists traces; this lists archives; `isWebTrace` and
   `isHarArchive` never both hold. The list must never surface a trace.
-- **The picker validates a local file through the real HAR parser, not a second
-  check.** `acceptLocalHar` runs `web-trace-core`'s `fromHarJson`, so a file the
-  picker accepts is a file a replay can parse, and a file that is not JSON and a
-  file that is JSON-but-not-HAR both fail _at the picker_, next to the control the
-  user just used, rather than three steps downstream. The parse result is
-  discarded — this is a gate, and the replay parses the text again when it runs.
+- **The picker validates each local file through the real HAR parser, not a
+  second check.** `acceptLocalHar` runs `web-trace-core`'s `fromHarJson`, so a
+  file the picker accepts is a file a replay can parse, and a file that is not
+  JSON and a file that is JSON-but-not-HAR both fail _at the picker_, next to the
+  control the user just used. In a batch the accepted files are handed on together
+  and the rejected ones are named in the notice; a **lone** rejected file with
+  nothing accepted keeps its full parser detail instead (`describeRejection`) —
+  the case a user is debugging one file. The parse result is discarded — this is a
+  gate, and the replay parses the text again when it runs.
 - **`page-token.ts` is a copy of `web-trace-react`'s, deliberately.** The two
   slices page the same FHIR server the same way, but the importer must not depend
   on the web-trace viewer to do it — an adapter reaching into another adapter is
@@ -162,9 +187,12 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   ordered write log back. It pins the opt-in seam (zero writes to reach a preview),
   the confirm ordering (the archive create lands before the first resource write,
   every resource write carries `meta.source`), the server-source case (no archive
-  create, links to the fetched document), the partial-failure fold (a stubbed 503
-  on Observation writes yields the `partial` result listing them), and cancel
-  (discards with no writes).
+  create, links to the fetched document), the multi-file batch (two files chosen
+  at once import as one confirm, each resource stamped with its own file's
+  archive), the per-file upload failure (a stubbed 503 on the `DocumentReference`
+  upload yields a partial result naming the file and surfacing the cause, with no
+  resource written), the partial-write fold (a stubbed 503 on Observation writes
+  yields the `partial` result listing them), and cancel (discards with no writes).
 - **`importer-screen.test.tsx` re-wraps `TextEncoder` output through the ambient
   `Uint8Array`.** The confirm's local-upload path encodes the HAR text to bytes,
   and jsdom's `TextEncoder` hands back a `Uint8Array` from a realm the archive
@@ -174,11 +202,14 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   `new Uint8Array(...)` — reproducing the real single-realm behaviour rather than
   the jsdom artifact. The production encode stays `new TextEncoder().encode(text)`.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router — and
-  pins that each read outcome (no-collector, claimed-but-empty, parse-failure, and
-  a healthy preview) renders to its own role/text and that the confirm appears only
-  when there is something to write. `results/import-outcome.test.ts` is the
-  property test for the fold: `written = attempted − failures`, and any failure ⇒
-  partial.
+  pins that each file's outcome (no-collector, claimed-but-empty, parse-failure,
+  unreadable, and a healthy preview) renders to its own role/text, that a mixed
+  batch sums to one confirm over every file's section, and that the confirm appears
+  only when at least one file has something to write. `results/import-outcome.test.ts`
+  is the property/example test for the folds: per file, `written = attempted −
+failures` and any failure ⇒ partial; per batch, `summarizeBatch` sums the files
+  and `isPartialBatch` treats an upload failure or a partial write as partial while
+  a skipped file is not.
 
 ## References
 

@@ -1,0 +1,31 @@
+/*
+ * App shell. Colours and spacing read from the Tundra design tokens
+ * (`--color-*`, `--space-*`) that `tundra-css` + `react-tundraish` define
+ * globally; the body font/canvas/foreground come from tundra's reset and the
+ * page title uses tundra's built-in `text-heading-3` class, so this file only
+ * lays out the shell.
+ *
+ * There is nothing here for the import flow itself: `importer-react` ships its
+ * own modules for the picker, the preview and the results. The shell stays as
+ * wide as the Web Trace viewer's — the preview lists resource references, which
+ * read badly when wrapped.
+ */
+.app {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: var(--space-9) var(--space-7) var(--space-13);
+}
+
+.header {
+  margin-bottom: var(--space-9);
+}
+
+.subtitle {
+  margin-top: var(--space-3);
+  color: var(--color-neutral-5);
+}
+
+.error {
+  font-size: var(--font-size-3);
+  color: var(--color-red-3);
+}

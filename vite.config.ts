@@ -50,6 +50,7 @@ export default defineConfig({
     // running everything under a single root config.
     projects: [
       'apps/github-pages/vite.config.ts',
+      'apps/importer-web/vite.config.ts',
       'apps/medications-app/vite.config.ts',
       'apps/web-trace/vite.config.ts',
       'apps/marketing-website/vite.config.ts',

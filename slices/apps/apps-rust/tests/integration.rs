@@ -154,6 +154,7 @@ async fn fresh_install_lists_the_default_set() {
             "medications-app",
             "web-trace-app",
             "web-server-docs",
+            "importer-app",
         ],
     );
 }
@@ -350,6 +351,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         { "id": "medications-app", "onHomescreen": true },
         { "id": "web-trace-app", "onHomescreen": true },
         { "id": "web-server-docs", "onHomescreen": true },
+        { "id": "importer-app", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -375,6 +377,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
             "medications-app",
             "web-trace-app",
             "web-server-docs",
+            "importer-app",
         ],
     );
     let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();

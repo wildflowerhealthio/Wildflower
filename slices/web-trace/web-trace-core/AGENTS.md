@@ -273,6 +273,18 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   for content the browser discarded; both parse to empty bytes _plus_ the flag.
   A consumer that reads `body.length === 0` as "the response was empty" is
   reading a gap in the archive as data.
+- **A base64 body that will not decode degrades to `bodyAbsent`; it does not fail
+  the archive.** `encoding: base64` is spec-required to mean `text` is RFC 4648
+  base64, and it does for Chrome and for our own exports. Firefox breaks it: it
+  tags _every_ response `encoding: base64`, but for a binary body it only kept as
+  a lossy UTF-8 string (a chrome-fetched favicon) it writes that mangled string —
+  NUL bytes and U+FFFD, not base64 — under the label. Those bytes are already
+  destroyed at export, so `readBody` reads an undecodable base64 body as absent
+  rather than rejecting the whole file over one unreadable favicon and losing the
+  clinical entries with it. This is the **only** malformation that degrades:
+  invalid JSON, JSON that is not a HAR, and a missing `status` still fail the
+  parse. The decode of `ArchivedSessionFromHar` therefore cannot fail once `Har`
+  has parsed, which is why it is a plain `ParseResult.succeed`.
 - **`ArchivedExchange` is a shape, not a dependency — same trick as
   `CapturedResponse`.** Its field names (`id`, `url`, `status`, `statusText`,
   `headers`, `startedAt`) are the ones a captured response carries, so a replay

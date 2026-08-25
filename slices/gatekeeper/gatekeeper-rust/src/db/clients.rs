@@ -194,8 +194,8 @@ mod tests {
 
     /// Every SMART client is seeded by a migration (not Rust) — the sample apps by
     /// `0003`, the two first-party apps by `0004` / `0005` (renamed and given
-    /// their published-site redirect by `0006`), and the server-docs API console
-    /// by `0007` — so a
+    /// their published-site redirect by `0006`), the server-docs API console by
+    /// `0007`, and the Importer by `0008` — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -211,6 +211,7 @@ mod tests {
             "medications-app",
             "web-trace-app",
             "wildflower-server-docs",
+            "importer-app",
         ] {
             let client = store
                 .client_by_id(client_id)
@@ -366,6 +367,40 @@ mod tests {
                 "the console's allowed scopes must cover {requested}",
             );
         }
+        // `importer-app` (the Importer) is a cloud client like `medications-app`
+        // and `web-trace-app`: the app-relative `"/"` for the debug-only
+        // self-hosted dev row, plus the absolute published-site redirect it
+        // launches from as a cloud app (seeded by `0008`). It is the one seeded
+        // SMART client whose scopes **carry writes**: importing persists what a
+        // captured session contained. This vector must stay element-for-element
+        // equal to the `scope` string in `apps/importer-web/src/config.ts` —
+        // nothing spans the TS/Rust boundary to check it, so this assertion is the
+        // Rust-side mirror of that pin, and a scope added on one side alone fails
+        // `/authorize` on a real device.
+        let importer = store.client_by_id("importer-app").unwrap().unwrap();
+        assert_eq!(
+            importer.redirect_uris,
+            vec![
+                RegisteredRedirectUri::AppRelative("/".to_owned()),
+                RegisteredRedirectUri::Absolute(
+                    "https://wildflowerhealth.io/importer-app/"
+                        .parse()
+                        .expect("a valid absolute redirect"),
+                ),
+            ],
+        );
+        assert_eq!(
+            importer.allowed_scopes,
+            vec![
+                "launch".to_string(),
+                "openid".to_string(),
+                "fhirUser".to_string(),
+                "system/DocumentReference.rs".to_string(),
+                "system/DocumentReference.u".to_string(),
+                "system/Patient.u".to_string(),
+                "system/Observation.u".to_string(),
+            ],
+        );
     }
 
     /// Each of the client row's custom column mappings rejects an out-of-domain

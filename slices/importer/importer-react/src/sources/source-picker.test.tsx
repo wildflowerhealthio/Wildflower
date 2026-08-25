@@ -73,7 +73,9 @@ describe('SourcePicker', () => {
       harTextById: { 'archive-1': VALID_HAR },
     })
     const picks: Array<{ fileName: string; text: string; source: unknown }> = []
-    render(<SourcePicker onPick={(picked) => picks.push(picked)} />, { wrapper: withQueryClient })
+    render(<SourcePicker onPick={(chosen) => picks.push(...chosen)} />, {
+      wrapper: withQueryClient,
+    })
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /portal-session\.har/ })).toBeDefined()
     })
@@ -112,7 +114,7 @@ describe('SourcePicker', () => {
       harTextById: { 'archive-1': VALID_HAR },
     })
     let picked: { text: string; source: unknown } | undefined
-    render(<SourcePicker onPick={(one) => (picked = one)} />, { wrapper: withQueryClient })
+    render(<SourcePicker onPick={(chosen) => (picked = chosen[0])} />, { wrapper: withQueryClient })
 
     // Assert — the row shows the title and the upload date
     await waitFor(() => {
@@ -171,7 +173,7 @@ describe('SourcePicker', () => {
     // Assert — a real button (so keyboard-activatable) with an accessible name,
     // inside a labeled region, and a named file input drop is an enhancement over
     const region = screen.getByRole('region', { name: 'HAR source' })
-    const button = screen.getByRole('button', { name: /Choose a HAR file, or drop one here/ })
+    const button = screen.getByRole('button', { name: /Choose HAR files, or drop them here/ })
     expect(region).toBeDefined()
     expect(button.tagName).toBe('BUTTON')
     expect(screen.getByLabelText('HAR file')).toBeDefined()
@@ -181,19 +183,67 @@ describe('SourcePicker', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const picks: unknown[] = []
-    render(<SourcePicker onPick={(picked) => picks.push(picked)} />, { wrapper: withQueryClient })
+    render(<SourcePicker onPick={(chosen) => picks.push(...chosen)} />, {
+      wrapper: withQueryClient,
+    })
 
     // Act — a text file, not a HAR
     fireEvent.drop(zone(), {
       dataTransfer: dataTransferOf(new File(['not a har'], 'notes.txt', { type: 'text/plain' })),
     })
 
-    // Assert — the failure lands here, next to the control, and nothing is picked
+    // Assert — the failure lands here, next to the control, and nothing is picked.
+    // `exact: false`: the notice now leads with REJECTION_MESSAGE and appends the
+    // parser's own detail line, so the lead is a substring rather than the whole.
     await waitFor(() => {
-      expect(screen.getByText(REJECTION_MESSAGE)).toBeDefined()
+      expect(screen.getByText(REJECTION_MESSAGE, { exact: false })).toBeDefined()
     })
     expect(screen.getByRole('alert')).toBeDefined()
     expect(picks).toHaveLength(0)
+  })
+
+  it('should pick several chosen files at once as one batch', async () => {
+    // Arrange
+    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    const calls: string[][] = []
+    render(<SourcePicker onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))} />, {
+      wrapper: withQueryClient,
+    })
+
+    // Act — two HAR files chosen in one dialog
+    await userEvent.upload(screen.getByLabelText('HAR file'), [
+      harFile('one.har'),
+      harFile('two.har'),
+    ])
+
+    // Assert — a single onPick carrying both files, in order
+    await waitFor(() => {
+      expect(calls).toHaveLength(1)
+    })
+    expect(calls[0]).toEqual(['one.har', 'two.har'])
+  })
+
+  it('should pick the valid files in a mixed drop and name the ones that were not HARs', async () => {
+    // Arrange
+    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    const picks: string[] = []
+    render(<SourcePicker onPick={(chosen) => picks.push(...chosen.map((one) => one.fileName))} />, {
+      wrapper: withQueryClient,
+    })
+
+    // Act — one real HAR and one text file, dropped together
+    fireEvent.drop(zone(), {
+      dataTransfer: dataTransferOf(
+        harFile('good.har'),
+        new File(['not a har'], 'notes.txt', { type: 'text/plain' })
+      ),
+    })
+
+    // Assert — the valid file is picked; the rejected one is named in the notice
+    await waitFor(() => {
+      expect(picks).toEqual(['good.har'])
+    })
+    expect(screen.getByRole('alert').textContent).toMatch(/notes\.txt/)
   })
 })
 
@@ -207,17 +257,19 @@ const harFile = (name: string): File => new File([VALID_HAR], name, { type: 'app
 
 /** The drop-and-pick zone button. */
 const zone = (): HTMLElement =>
-  screen.getByRole('button', { name: /Choose a HAR file, or drop one here/ })
+  screen.getByRole('button', { name: /Choose HAR files, or drop them here/ })
 
 /**
- * A `DataTransfer`-like carrying one file, enough for a synthesized `drop`.
+ * A `DataTransfer`-like carrying one or more files, enough for a synthesized
+ * `drop`.
  *
  * @remarks
  * jsdom's `DataTransfer` does not populate `files` from `items.add`, so the drop
- * handler is fed a plain object exposing exactly the `files.item(0)` it reads.
+ * handler is fed a plain object whose `files` is the array `Array.from` reads —
+ * a real drop of several files reaches the batch path the same way.
  */
-const dataTransferOf = (file: File): { readonly files: Pick<FileList, 'item'> } => ({
-  files: { item: (index: number): File | null => (index === 0 ? file : null) },
+const dataTransferOf = (...files: readonly File[]): { readonly files: readonly File[] } => ({
+  files,
 })
 
 /** One archive `DocumentReference` wire, decodable and rowable. */

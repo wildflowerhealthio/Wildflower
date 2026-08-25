@@ -1,9 +1,10 @@
 import type { JSX } from 'react'
 
 import type { FhirResource } from 'fhir-r4/resources'
-import type { ImportPreview, Preview } from 'importer-core'
+import type { Preview } from 'importer-core'
 
 import { previewResourceCount } from '../results/import-outcome.ts'
+import type { ReadEntry } from './use-import-run.ts'
 import styles from './preview-panel.module.css'
 
 /**
@@ -11,8 +12,9 @@ import styles from './preview-panel.module.css'
  * touches the server, so confirming is an informed, opt-in act.
  *
  * @remarks
- * Every outcome of the read half renders honestly and distinctly — there is no
- * empty screen:
+ * A pick is a *batch* of one or more files, each read independently, and this
+ * panel renders them together under one confirm. Every file's outcome renders
+ * honestly and distinctly — there is no empty section:
  *
  * - **No collector claimed** (`NoCollectorClaims`) — a plain "nothing here is
  *   recognized" state naming how many entries were read, so a browser's HAR of a
@@ -25,22 +27,26 @@ import styles from './preview-panel.module.css'
  *   detected collector shown for transparency (not editable — the recognition is
  *   zero-config), and honest notices for unmatched entries, absent bodies, and
  *   responses that matched a pattern but failed to decode.
+ * - **Unreadable** — a file that did not parse as a HAR at all, reported against
+ *   its own name rather than sinking the batch.
  *
- * The confirm action appears only when there is something to write; the other
- * states offer only a way back. Confirming here does not write — it calls
- * `onConfirm`, and the confirm step (upload-then-persist) is what writes.
+ * The single confirm action appears only when at least one file has something to
+ * write, and it opts into writing *every* writable file; the other states offer
+ * only a way back. Confirming here does not write — it calls `onConfirm`, and the
+ * confirm step (upload-then-persist, per file) is what writes.
  *
  * @packageDocumentation
  */
 
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
-  /** The preview to render — either outcome of the read half. */
-  readonly preview: ImportPreview
+  /** Every picked file's read outcome, rendered together under one confirm. */
+  readonly entries: readonly ReadEntry[]
   /**
-   * Called when the user confirms an import. Fires only for a claimed preview
-   * that has at least one resource to write; the panel gates the affordance, so a
-   * caller can treat this as "the user opted in to writing these resources".
+   * Called when the user confirms the batch. Fires only when at least one file
+   * has a claimed preview with resources to write; the panel gates the
+   * affordance, so a caller can treat this as "the user opted in to writing the
+   * batch".
    */
   readonly onConfirm: () => void
   /** Called when the user discards the preview without writing. */
@@ -49,14 +55,14 @@ interface PreviewPanelProps {
   readonly confirming: boolean
 }
 
-/** Heading for the no-collector state — a whole-archive "not recognized". */
-const NO_COLLECTOR_HEADING = 'No collector recognized this archive'
+/** Heading for a batch with nothing to write — no file was recognized, or all were empty. */
+const NOTHING_TO_IMPORT_HEADING = 'Nothing to import'
 
-/** Heading for a claimed-but-empty preview — recognized, but nothing to import. */
-const NOTHING_TO_IMPORT_HEADING = 'Nothing in this archive to import'
-
-/** Heading for a claimed preview that has resources to write. */
+/** Heading for a batch that has resources to write. */
 const PREVIEW_HEADING = 'Ready to import'
+
+/** Message for a file that did not parse as a HAR at all. */
+const UNREADABLE_FILE_MESSAGE = 'This file could not be read as a HAR.'
 
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
@@ -99,9 +105,9 @@ const ResourceTypeSection = ({
   readonly resources: readonly FhirResource[]
 }): JSX.Element => (
   <section className={styles.typeSection} aria-label={`${resourceType} resources`}>
-    <h3 className={styles.typeHeading}>
+    <h4 className={styles.typeHeading}>
       {resourceType} <span className={styles.typeCount}>({resources.length})</span>
-    </h3>
+    </h4>
     <ul className={styles.resourceList}>
       {resources.map((resource) => (
         // Resources are re-keyed under their source root before a preview, so an
@@ -145,7 +151,65 @@ const PreviewNotices = ({ preview }: { readonly preview: Preview }): JSX.Element
   </div>
 )
 
-/** The action row shared by every state: confirm (when writable) and cancel. */
+/** One claimed preview's content: recognition, the resources it would write, and its notices. */
+const ClaimedBody = ({ preview }: { readonly preview: Preview }): JSX.Element => {
+  const resourceTypes = Object.entries(preview.resourcesByType)
+  if (previewResourceCount(preview) === 0) {
+    return (
+      <>
+        <p role="status" className={styles.emptyMessage}>
+          {`The ${preview.collectorTag} collector recognized this archive, but matched no resources to import.`}
+        </p>
+        <RecognitionSummary preview={preview} />
+        <PreviewNotices preview={preview} />
+      </>
+    )
+  }
+  return (
+    <>
+      <RecognitionSummary preview={preview} />
+      <div className={styles.typeSections}>
+        {resourceTypes.map(([resourceType, resources]) => (
+          <ResourceTypeSection
+            key={resourceType}
+            resourceType={resourceType}
+            resources={resources}
+          />
+        ))}
+      </div>
+      <PreviewNotices preview={preview} />
+    </>
+  )
+}
+
+/** One file's body: unreadable, no-collector, or the claimed preview's content. */
+const FileBody = ({ entry }: { readonly entry: ReadEntry }): JSX.Element => {
+  if (entry._tag === 'unreadable') {
+    return (
+      <p role="alert" className={styles.emptyMessage}>
+        {UNREADABLE_FILE_MESSAGE}
+      </p>
+    )
+  }
+  if (entry.preview._tag === 'NoCollectorClaims') {
+    return (
+      <p role="status" className={styles.emptyMessage}>
+        {`${entriesRead(entry.preview.totalEntries)}, but no registered collector recognized any of them.`}
+      </p>
+    )
+  }
+  return <ClaimedBody preview={entry.preview} />
+}
+
+/** One file's whole outcome, under its own name — the unit the batch is built from. */
+const FileSection = ({ entry }: { readonly entry: ReadEntry }): JSX.Element => (
+  <section className={styles.fileSection} aria-label={entry.picked.fileName}>
+    <h3 className={styles.fileHeading}>{entry.picked.fileName}</h3>
+    <FileBody entry={entry} />
+  </section>
+)
+
+/** The single action row for the whole batch: confirm (when anything is writable) and cancel. */
 const PreviewActions = ({
   writableCount,
   onConfirm,
@@ -169,70 +233,43 @@ const PreviewActions = ({
   </div>
 )
 
+/** The resources a batch of read entries would write, summed across its files. */
+const writableCountOf = (entries: readonly ReadEntry[]): number =>
+  entries.reduce(
+    (total, entry) =>
+      entry._tag === 'read' && entry.preview._tag === 'Preview'
+        ? total + previewResourceCount(entry.preview)
+        : total,
+    0
+  )
+
 /**
- * The preview surface. Renders the read half's outcome and, when there is
- * something to write, the single confirm action that opts into writing it.
+ * The preview surface. Renders every picked file's read outcome and, when at
+ * least one has something to write, the single confirm action that opts into
+ * writing the whole batch.
  */
 const PreviewPanel = ({
-  preview,
+  entries,
   onConfirm,
   onCancel,
   confirming,
 }: PreviewPanelProps): JSX.Element => {
-  if (preview._tag === 'NoCollectorClaims') {
-    return (
-      <section aria-label="Import preview" className={styles.panel}>
-        <h2 className={styles.heading}>{NO_COLLECTOR_HEADING}</h2>
-        <p role="status" className={styles.emptyMessage}>
-          {entriesRead(preview.totalEntries)}, but no registered collector recognized any of them.
-        </p>
-        <PreviewActions
-          writableCount={0}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-          confirming={confirming}
-        />
-      </section>
-    )
-  }
-
-  const writableCount = previewResourceCount(preview)
-  const resourceTypes = Object.entries(preview.resourcesByType)
-
-  if (writableCount === 0) {
-    return (
-      <section aria-label="Import preview" className={styles.panel}>
-        <h2 className={styles.heading}>{NOTHING_TO_IMPORT_HEADING}</h2>
-        <p role="status" className={styles.emptyMessage}>
-          The {preview.collectorTag} collector recognized this archive, but matched no resources to
-          import.
-        </p>
-        <RecognitionSummary preview={preview} />
-        <PreviewNotices preview={preview} />
-        <PreviewActions
-          writableCount={0}
-          onConfirm={onConfirm}
-          onCancel={onCancel}
-          confirming={confirming}
-        />
-      </section>
-    )
-  }
-
+  const writableCount = writableCountOf(entries)
   return (
     <section aria-label="Import preview" className={styles.panel}>
-      <h2 className={styles.heading}>{PREVIEW_HEADING}</h2>
-      <RecognitionSummary preview={preview} />
-      <div className={styles.typeSections}>
-        {resourceTypes.map(([resourceType, resources]) => (
-          <ResourceTypeSection
-            key={resourceType}
-            resourceType={resourceType}
-            resources={resources}
-          />
+      <h2 className={styles.heading}>
+        {writableCount > 0 ? PREVIEW_HEADING : NOTHING_TO_IMPORT_HEADING}
+      </h2>
+      {entries.length > 1 && writableCount > 0 && (
+        <p role="status" className={styles.batchSummary}>
+          {`${writableCount} ${plural(writableCount, 'resource')} across ${entries.length} files`}
+        </p>
+      )}
+      <div className={styles.fileSections}>
+        {entries.map((entry) => (
+          <FileSection key={entry.id} entry={entry} />
         ))}
       </div>
-      <PreviewNotices preview={preview} />
       <PreviewActions
         writableCount={writableCount}
         onConfirm={onConfirm}
@@ -244,9 +281,9 @@ const PreviewPanel = ({
 }
 
 export {
-  NO_COLLECTOR_HEADING,
   NOTHING_TO_IMPORT_HEADING,
   PREVIEW_HEADING,
   PreviewPanel,
   type PreviewPanelProps,
+  UNREADABLE_FILE_MESSAGE,
 }

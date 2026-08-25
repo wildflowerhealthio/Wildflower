@@ -14,6 +14,39 @@
   color: var(--color-neutral-9);
 }
 
+.batchSummary {
+  margin: 0;
+  color: var(--color-neutral-4);
+}
+
+/* The files in a batch, stacked and separated so each reads as its own unit. */
+.fileSections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.fileSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+/* The first file needs no divider above it — the heading already opens the list. */
+.fileSection:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.fileHeading {
+  margin: 0;
+  font-size: var(--font-size-3);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
 .recognition {
   display: flex;
   flex-direction: column;
