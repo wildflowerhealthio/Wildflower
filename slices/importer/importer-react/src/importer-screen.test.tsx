@@ -187,6 +187,69 @@ describe('ImporterScreen', () => {
     expect(screen.getByRole('status').textContent).toMatch(/Wrote 1 of 3/)
   })
 
+  it("surfaces a file's upload failure cause and writes none of its resources", async () => {
+    // Arrange — the store rejects the archive `DocumentReference` upload, so the
+    // file's whole write fails before any resource is stamped.
+    currentRunAuthed = routingServer({
+      failWrite: (request) => request.url.includes('/DocumentReference/'),
+    })
+    const { container } = render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — pick locally, then confirm
+    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+
+    // Assert — a partial result naming the failed file and showing the underlying
+    // cause rather than hiding it, and the failed archive means no resource wrote.
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
+    })
+    expect(screen.getByText(/its archive could not be uploaded/i)).toBeDefined()
+    const detail = container.querySelector('pre')
+    expect((detail?.textContent ?? '').length).toBeGreaterThan(0)
+    expect(writes().some(isResourceWrite)).toBe(false)
+  })
+
+  it('imports several files at once as one batch, each stamped with its own archive', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — choose two recognized HARs in one dialog, preview them together
+    await userEvent.upload(screen.getByLabelText('HAR file'), [
+      harFile('session-a.har'),
+      harFile('session-b.har'),
+    ])
+    await waitFor(() => {
+      // Two files × three resources previewed under one confirm.
+      expect(screen.getByRole('button', { name: /Import 6 resources/ })).toBeDefined()
+    })
+    expect(writes()).toHaveLength(0)
+
+    // Confirm the whole batch
+    await userEvent.click(screen.getByRole('button', { name: /Import 6 resources/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+
+    // Assert — one archive per file, six resources, each pointing at one of the
+    // two fresh archives.
+    const archiveIds = writes()
+      .filter((write) => write.url.includes('/DocumentReference/'))
+      .map((write) => idFromUrl(write.url))
+    expect(new Set(archiveIds).size).toBe(2)
+    const sources = writes()
+      .filter(isResourceWrite)
+      .map((write) => metaSourceOf(write.body))
+    expect(sources).toHaveLength(6)
+    for (const source of sources) {
+      expect(archiveIds.map((id) => `DocumentReference/${id}`)).toContain(source)
+    }
+  })
+
   it('discards the preview with no writes when the user cancels', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
@@ -288,6 +351,11 @@ const writes = (): readonly RecordedRequest[] =>
 /** Whether a write is a FHIR resource write (a Patient or Observation), not the archive. */
 const isResourceWrite = (write: RecordedRequest): boolean =>
   write.url.includes('/Patient/') || write.url.includes('/Observation/')
+
+/** The `meta.source` a written resource carries, decoded rather than read off `any`. */
+const MetaSourceWire = Schema.Struct({ meta: Schema.Struct({ source: Schema.String }) })
+const metaSourceOf = (body: string): string =>
+  Schema.decodeUnknownSync(MetaSourceWire)(JSON.parse(body)).meta.source
 
 /** The last path segment of a request URL — a resource's logical id on a PUT/GetById. */
 const idFromUrl = (url: string): string => {

@@ -5,7 +5,14 @@ import { type FhirResource, Patient } from 'fhir-r4/resources'
 import type { Preview } from 'importer-core'
 import { describe, expect, it, test } from 'vite-plus/test'
 
-import { importOutcome, isPartialOutcome, previewResourceCount } from './import-outcome.ts'
+import {
+  type FileImportResult,
+  importOutcome,
+  isPartialBatch,
+  isPartialOutcome,
+  previewResourceCount,
+  summarizeBatch,
+} from './import-outcome.ts'
 
 /**
  * The pure fold from a written preview + its failures to the results tally. The
@@ -55,7 +62,61 @@ describe('importOutcome', () => {
   })
 })
 
+/**
+ * The batch fold across a whole set of files. The `collectImportSummary`
+ * semantics lift to the batch: any file whose upload failed or whose resources
+ * partly failed makes the whole batch partial, while `skipped` files (nothing to
+ * write) never do; the summary sums written/attempted and counts imported vs.
+ * total files.
+ */
+describe('summarizeBatch and isPartialBatch', () => {
+  it('sums written and attempted, and counts imported against total files', () => {
+    const batch: FileImportResult[] = [
+      imported('a', 3, 0),
+      imported('b', 2, 1),
+      { _tag: 'uploadFailed', id: 'c', fileName: 'c.har', error: new Error('boom') },
+      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'no-collector' },
+    ]
+    const summary = summarizeBatch(batch)
+    expect(summary.written).toBe(4) // 3 + 1
+    expect(summary.attempted).toBe(5) // 3 + 2
+    expect(summary.importedFiles).toBe(2)
+    expect(summary.totalFiles).toBe(4)
+  })
+
+  it('is partial when any file upload-failed or wrote partially, complete otherwise', () => {
+    expect(isPartialBatch([imported('a', 3, 0)])).toBe(false)
+    // A skipped file alone is not a failure — it is the multi-file echo of
+    // NoCollectorClaims being data.
+    expect(
+      isPartialBatch([
+        imported('a', 3, 0),
+        { _tag: 'skipped', id: 'b', fileName: 'b.har', reason: 'nothing' },
+      ])
+    ).toBe(false)
+    expect(isPartialBatch([imported('a', 3, 1)])).toBe(true)
+    expect(
+      isPartialBatch([
+        imported('a', 3, 0),
+        { _tag: 'uploadFailed', id: 'b', fileName: 'b.har', error: new Error('boom') },
+      ])
+    ).toBe(true)
+  })
+})
+
 // Helpers
+
+/** An `imported` file result writing `resourceCount` resources with `failureCount` failures. */
+const imported = (id: string, resourceCount: number, failureCount: number): FileImportResult => ({
+  _tag: 'imported',
+  id,
+  fileName: `${id}.har`,
+  outcome: importOutcome(
+    previewWith(resourceCount),
+    `DocumentReference/${id}`,
+    failuresOf(failureCount)
+  ),
+})
 
 /** A schema-valid `Patient` with a known id; only its count and identity matter here. */
 const patient = (id: string): FhirResource =>

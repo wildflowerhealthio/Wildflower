@@ -75,7 +75,13 @@ function buildDomainResourceHttpApiGroup<
     .add(
       HttpApiEndpoint.put('Update', `/:id`)
         .setPath(Schema.Struct({ id: Schema.String }))
+        // A FHIR `PUT` to a new id *creates*, and the server answers `201 Created`
+        // rather than `200 OK` (the importer's archive upload mints a fresh uuid,
+        // so it is always a create). Both are success and both return the stored
+        // resource, so the client accepts either; without the `201` the client
+        // rejects a successful create as an unexpected-status decode error.
         .addSuccess(fhirSchemaWithId)
+        .addSuccess(fhirSchemaWithId, { status: 201 })
         .setPayload(fhirSchemaWithId)
         .addError(HttpApiError.ServiceUnavailable)
     )

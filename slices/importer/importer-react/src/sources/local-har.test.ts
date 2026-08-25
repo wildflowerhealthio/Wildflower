@@ -53,22 +53,53 @@ describe('acceptLocalHar', () => {
     expect(result.right.source).toEqual({ _tag: 'local' })
   })
 
-  it('should reject a file that is not JSON at all', async () => {
+  it('should reject a file that is not JSON at all, leading with the format sentence', async () => {
     // Act
     const result = await runAccept(fileOf('notes.txt', 'this is not a HAR'))
 
-    // Assert — rejected here, with a message about the format rather than a parser path
+    // Assert — the plain-language lead comes first, then the parser's own reason
     if (Either.isRight(result)) throw new Error('expected a rejection')
-    expect(result.left).toBe(REJECTION_MESSAGE)
+    expect(result.left.startsWith(REJECTION_MESSAGE)).toBe(true)
+    expect(result.left).toContain('Details:')
   })
 
-  it('should reject JSON that is not a HAR', async () => {
+  it('should reject JSON that is not a HAR, naming the field the parser missed', async () => {
     // Act — valid JSON, but nothing a HAR reader can use
     const result = await runAccept(fileOf('data.json', JSON.stringify({ foo: 1 })))
 
+    // Assert — the detail line points at `log`, the top-level field a HAR must carry
+    if (Either.isRight(result)) throw new Error('expected a rejection')
+    expect(result.left.startsWith(REJECTION_MESSAGE)).toBe(true)
+    expect(result.left).toContain('Details:')
+    expect(result.left).toContain('log')
+  })
+
+  it('should point at the entry and field a HAR-shaped file tripped on', async () => {
+    // A file that *is* a HAR but wrote one field in a shape this reader rejects —
+    // the case worth debugging (a foreign export, say). The detail names the path
+    // rather than stopping at "not the right kind of file".
+    const badStatus = JSON.stringify({
+      log: {
+        version: '1.2',
+        creator: { name: 'Firefox', version: '140' },
+        entries: [
+          {
+            startedDateTime: '2026-08-13T10:00:00.000Z',
+            request: { method: 'GET', url: 'https://portal.example.org/api/v2/patients' },
+            response: { status: 'ok', content: { size: 0, mimeType: 'application/json' } },
+          },
+        ],
+      },
+    })
+
+    // Act
+    const result = await runAccept(fileOf('firefox.har', badStatus))
+
     // Assert
     if (Either.isRight(result)) throw new Error('expected a rejection')
-    expect(result.left).toBe(REJECTION_MESSAGE)
+    expect(result.left.startsWith(REJECTION_MESSAGE)).toBe(true)
+    expect(result.left).toContain('entries')
+    expect(result.left).toContain('status')
   })
 
   it('should preserve any file name and the exact text of an accepted HAR', async () => {

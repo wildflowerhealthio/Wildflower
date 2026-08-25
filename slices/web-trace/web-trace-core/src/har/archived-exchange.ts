@@ -81,34 +81,48 @@ type ArchivedSession = typeof ArchivedSession.Type
 
 const utf8 = new TextEncoder()
 
-/** What one entry's `content` holds, or why it could not be read. */
-const bytesOf = (body: HarBody): Either.Either<Uint8Array, string> => {
+/**
+ * The bytes an entry's `content` holds, and whether it stored a body at all.
+ *
+ * @remarks
+ * A base64 body that will not decode does not fail the read — it reads as an
+ * absent body, the same fact `HarNoBody` carries. Firefox tags every response
+ * `encoding: base64`, but for a binary body it only kept as a lossy UTF-8 string
+ * it writes that mangled string under the label rather than RFC 4648 base64 (a
+ * favicon comes through as its raw ICO bytes riddled with U+FFFD). Those
+ * bytes are already destroyed at the source, so there is nothing to recover;
+ * failing here would reject a whole archive over one unreadable favicon and lose
+ * the readable entries alongside it — and a degraded body surfaces downstream as
+ * a `bodyAbsent` count either way. Every other malformation — invalid JSON, JSON
+ * that is not a HAR, a missing `status` — still fails the parse; only an
+ * undecodable base64 body degrades.
+ */
+const readBody = (body: HarBody): { readonly bytes: Uint8Array; readonly absent: boolean } => {
   if (body._tag === 'HarNoBody') {
-    return Either.right(new Uint8Array(0))
+    return { bytes: new Uint8Array(0), absent: true }
   }
   if (body._tag === 'HarTextBody') {
-    return Either.right(utf8.encode(body.text))
+    return { bytes: utf8.encode(body.text), absent: false }
   }
-  return Either.mapLeft(
-    Encoding.decodeBase64(body.text),
-    (failure) => `content.text is not valid base64: ${failure.message}`
-  )
+  return Either.match(Encoding.decodeBase64(body.text), {
+    onLeft: () => ({ bytes: new Uint8Array(0), absent: true }),
+    onRight: (bytes) => ({ bytes, absent: false }),
+  })
 }
 
-const exchangeOf = (
-  entry: HarEntry,
-  index: number
-): Either.Either<typeof ArchivedExchange.Encoded, string> =>
-  Either.map(bytesOf(entry.response.content.body), (body) => ({
+const exchangeOf = (entry: HarEntry, index: number): typeof ArchivedExchange.Encoded => {
+  const { bytes, absent } = readBody(entry.response.content.body)
+  return {
     id: `${ARCHIVED_EXCHANGE_ID_PREFIX}${index}`,
     url: entry.request.url,
     status: entry.response.status,
     statusText: entry.response.statusText,
     headers: entry.response.headers,
     startedAt: entry.startedDateTime,
-    body,
-    bodyAbsent: entry.response.content.body._tag === 'HarNoBody',
-  }))
+    body: bytes,
+    bodyAbsent: absent,
+  }
+}
 
 const entryOf = (exchange: ArchivedExchange): typeof HarEntry.Type => ({
   startedDateTime: exchange.startedAt,
@@ -162,18 +176,14 @@ const entryOf = (exchange: ArchivedExchange): typeof HarEntry.Type => ({
  */
 const ArchivedSessionFromHar = Schema.transformOrFail(Har, ArchivedSession, {
   strict: true,
-  decode: (archive, _options, ast) =>
-    Either.map(
-      Either.all(
-        archive.log.entries.map((entry, index) =>
-          Either.mapLeft(
-            exchangeOf(entry, index),
-            (message) => new ParseResult.Type(ast, archive, `entry ${index}: ${message}`)
-          )
-        )
-      ),
-      (exchanges) => ({ version: archive.log.version, exchanges })
-    ),
+  // Reading an entry cannot fail — a body that will not decode degrades to
+  // absent (see `readBody`) rather than failing the archive — so the decode
+  // always succeeds once `Har` itself has parsed.
+  decode: (archive) =>
+    ParseResult.succeed({
+      version: archive.log.version,
+      exchanges: archive.log.entries.map((entry, index) => exchangeOf(entry, index)),
+    }),
   encode: (session) =>
     ParseResult.succeed({
       log: {
@@ -197,8 +207,11 @@ const ArchivedSessionFromHarJson = Schema.parseJson(ArchivedSessionFromHar).anno
  * Reads a `.har` file's text.
  *
  * @remarks
- * Invalid JSON, well-formed JSON that is not a HAR, and a body that claims
- * base64 and is not all fail as a `ParseError` — nothing here throws.
+ * Invalid JSON and well-formed JSON that is not a HAR fail as a `ParseError`;
+ * nothing here throws. A body that claims `base64` but will not decode does not
+ * fail — it reads as an absent body, because a foreign export (Firefox) writes a
+ * binary body's mangled string under `encoding: base64` and those bytes cannot
+ * be recovered. See `readBody`.
  */
 const fromHarJson = Schema.decodeUnknown(ArchivedSessionFromHarJson)
 

@@ -15,26 +15,36 @@
  *
  * @packageDocumentation
  */
-export { ImporterScreen, READING_MESSAGE, UNREADABLE_MESSAGE } from './importer-screen.tsx'
+export { ImporterScreen, READING_MESSAGE } from './importer-screen.tsx'
 export {
-  NO_COLLECTOR_HEADING,
   NOTHING_TO_IMPORT_HEADING,
   PREVIEW_HEADING,
   PreviewPanel,
   type PreviewPanelProps,
+  UNREADABLE_FILE_MESSAGE,
 } from './preview/preview-panel.tsx'
 export {
   type ConfirmImport,
-  type ConfirmInput,
   type ConfirmState,
   useConfirmImport,
 } from './preview/use-confirm-import.ts'
-export { type ImportRun, type ImportRunState, useImportRun } from './preview/use-import-run.ts'
 export {
+  type ImportRun,
+  type ImportRunState,
+  type ReadEntry,
+  useImportRun,
+} from './preview/use-import-run.ts'
+export {
+  type BatchOutcome,
+  type BatchSummary,
+  type FileImportResult,
   type ImportOutcome,
   importOutcome,
+  isPartialBatch,
   isPartialOutcome,
   previewResourceCount,
+  type SkipReason,
+  summarizeBatch,
 } from './results/import-outcome.ts'
 export {
   COMPLETE_HEADING,

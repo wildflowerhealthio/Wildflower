@@ -46,7 +46,10 @@
 
 .error {
   margin: 0;
-  color: var(--color-neutral-9);
+  color: var(--color-neutral-2);
+  /* The local-file rejection appends a `Details:` line the parser wrote; keep
+     its newline a line break rather than collapsing it to a space. */
+  white-space: pre-line;
 }
 
 .server {

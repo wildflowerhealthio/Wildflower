@@ -76,4 +76,118 @@ const importOutcome = (
  */
 const isPartialOutcome = (outcome: ImportOutcome): boolean => outcome.failures.length > 0
 
-export { type ImportOutcome, importOutcome, isPartialOutcome, previewResourceCount }
+/**
+ * Why a file in a batch contributed no written resources without that being a
+ * failure.
+ *
+ * @remarks
+ * The read half's two non-writing outcomes, plus the rare unreadable file: a
+ * `no-collector` file was recognized by nobody, a `nothing` file was recognized
+ * but matched no resources, and an `unreadable` file did not parse as a HAR at
+ * all. None is a failure — they are the multi-file echo of `NoCollectorClaims`
+ * being data, not an error — but each is reported so a reader knows why a file
+ * they picked wrote nothing.
+ */
+type SkipReason = 'no-collector' | 'nothing' | 'unreadable'
+
+/**
+ * What a single file in a confirmed batch resolved to.
+ *
+ * @remarks
+ * Best-effort per the batch semantics: one file's failure never stops the rest,
+ * so every file lands on exactly one of these. `imported` carries the file's own
+ * {@link ImportOutcome} (which may itself be partial — some of its resources
+ * failed to write); `uploadFailed` is the terminal case for a file whose archive
+ * `DocumentReference` could not be uploaded, so none of its resources were
+ * written and none could be stamped; `skipped` is a file that had nothing to
+ * write. `fileName` names the file in every case, and `id` is the picked file's
+ * stable identity, carried from its `ReadEntry` for a React `key` since two files
+ * in a batch can share a name.
+ */
+type FileImportResult =
+  | {
+      readonly _tag: 'imported'
+      readonly id: string
+      readonly fileName: string
+      readonly outcome: ImportOutcome
+    }
+  | {
+      readonly _tag: 'uploadFailed'
+      readonly id: string
+      readonly fileName: string
+      readonly error: unknown
+    }
+  | {
+      readonly _tag: 'skipped'
+      readonly id: string
+      readonly fileName: string
+      readonly reason: SkipReason
+    }
+
+/** A confirmed batch: one {@link FileImportResult} per file the user confirmed. */
+type BatchOutcome = readonly FileImportResult[]
+
+/** The aggregate tally a results view reads across a whole {@link BatchOutcome}. */
+interface BatchSummary {
+  /** Resources written across every file. */
+  readonly written: number
+  /** Resources attempted across every `imported` file. */
+  readonly attempted: number
+  /** Files whose archive uploaded and whose resources were persisted (whole or partial). */
+  readonly importedFiles: number
+  /** Every file the user confirmed, whatever its result. */
+  readonly totalFiles: number
+}
+
+/**
+ * Sum a {@link BatchOutcome} into its aggregate {@link BatchSummary}.
+ *
+ * @param batch - Every file's result
+ * @returns The written/attempted totals and the file counts the summary row shows
+ */
+const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
+  batch.reduce<BatchSummary>(
+    (summary, result) =>
+      result._tag === 'imported'
+        ? {
+            written: summary.written + result.outcome.written,
+            attempted: summary.attempted + result.outcome.attempted,
+            importedFiles: summary.importedFiles + 1,
+            totalFiles: summary.totalFiles + 1,
+          }
+        : { ...summary, totalFiles: summary.totalFiles + 1 },
+    { written: 0, attempted: 0, importedFiles: 0, totalFiles: 0 }
+  )
+
+/**
+ * Whether a confirmed batch is a partial import.
+ *
+ * @param batch - Every file's result
+ * @returns `true` when any file's upload failed or any resource failed to write
+ *
+ * @remarks
+ * The `collectImportSummary` semantics, lifted to the batch: **any** failure —
+ * a file whose archive would not upload, or a single resource the store
+ * rejected — makes the whole batch partial. A `skipped` file is not a failure
+ * (it is the multi-file echo of `NoCollectorClaims` being data), so it does not
+ * make a batch partial on its own.
+ */
+const isPartialBatch = (batch: BatchOutcome): boolean =>
+  batch.some(
+    (result) =>
+      result._tag === 'uploadFailed' ||
+      (result._tag === 'imported' && isPartialOutcome(result.outcome))
+  )
+
+export {
+  type BatchOutcome,
+  type BatchSummary,
+  type FileImportResult,
+  type ImportOutcome,
+  importOutcome,
+  isPartialBatch,
+  isPartialOutcome,
+  previewResourceCount,
+  type SkipReason,
+  summarizeBatch,
+}

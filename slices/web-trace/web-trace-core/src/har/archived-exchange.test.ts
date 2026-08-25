@@ -115,6 +115,43 @@ describe('reading an archive', () => {
     expect(exchanges[0]?.bodyAbsent).toBe(false)
   })
 
+  test('a base64 body that will not decode reads as absent, and the rest of the archive still reads', () => {
+    // Firefox tags every response `encoding: base64`, but for a binary body it
+    // only kept as a lossy UTF-8 string it writes that mangled string under the
+    // label rather than RFC 4648 base64 — a favicon comes through as its raw ICO
+    // bytes riddled with U+FFFD. Those bytes are unrecoverable, so the entry
+    // reads as body-absent rather than failing the whole file; the readable
+    // entries — here entry 0's valid base64 — still come through.
+    const { exchanges } = read(
+      JSON.stringify({
+        log: {
+          entries: [
+            {
+              startedDateTime: '2026-05-04T15:22:31.204Z',
+              request: { url: 'https://r4.smarthealthit.org/Patient/1' },
+              response: { status: 200, content: { text: 'aGk=', encoding: 'base64' } },
+            },
+            {
+              startedDateTime: '2026-05-04T15:22:31.205Z',
+              request: { url: 'https://r4.smarthealthit.org/favicon.ico' },
+              // The ICO header as raw bytes with a replacement char, the way
+              // Firefox writes it: NUL bytes and U+FFFD are not the base64 alphabet.
+              response: {
+                status: 200,
+                content: { text: '\u0000\u0000\u0001\u0000\uFFFD', encoding: 'base64' },
+              },
+            },
+          ],
+        },
+      })
+    )
+    expect(exchanges).toHaveLength(2)
+    expect(exchanges[0]?.body).toEqual(utf8.encode('hi'))
+    expect(exchanges[0]?.bodyAbsent).toBe(false)
+    expect(exchanges[1]?.bodyAbsent).toBe(true)
+    expect(exchanges[1]?.body).toEqual(new Uint8Array(0))
+  })
+
   test('a plain-text body is UTF-8 encoded, multi-byte characters included', () => {
     const text = '{"name":"Ada Löveläce","note":"⚕"}'
     const { exchanges } = read(
@@ -341,10 +378,6 @@ describe('bad input fails as a ParseError, never as a throw', () => {
       'a response with no status',
       '{"log":{"entries":[{"startedDateTime":"2026-05-04T15:22:31.204Z","request":{"url":"u"},"response":{"statusText":"OK","headers":[],"content":{}}}]}}',
     ],
-    [
-      'a body that claims base64 and is not',
-      harEntry({ content: { text: 'not base64!!', encoding: 'base64' } }),
-    ],
   ]
 
   for (const [name, json] of cases) {
@@ -352,25 +385,6 @@ describe('bad input fails as a ParseError, never as a throw', () => {
       expect(Either.isLeft(attempt(json))).toBe(true)
     })
   }
-
-  test('the base64 failure names the entry it came from', () => {
-    const result = attempt(
-      JSON.stringify({
-        log: {
-          entries: [0, 1].map((index) => ({
-            startedDateTime: '2026-05-04T15:22:31.204Z',
-            request: { url: 'u' },
-            response: {
-              status: 200,
-              content: { text: index === 0 ? 'aGk=' : 'not base64!!', encoding: 'base64' },
-            },
-          })),
-        },
-      })
-    )
-    expect(Either.isLeft(result)).toBe(true)
-    expect(String(Either.isLeft(result) ? result.left : '')).toContain('entry 1')
-  })
 
   test('a foreign version label is read, not enforced', () => {
     const { version, exchanges } = read(

@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, ParseResult } from 'effect'
 import { fromHarJson } from 'web-trace-core/har'
 
 import { LOCAL_SOURCE, type PickedHar } from './picked-har.ts'
@@ -19,15 +19,52 @@ import { LOCAL_SOURCE, type PickedHar } from './picked-har.ts'
  */
 
 /**
- * The message shown when a dropped or chosen file is not a HAR.
+ * The lead sentence shown when a dropped or chosen file is not a HAR.
  *
  * @remarks
- * Names the format rather than echoing the parser's `ParseError`, whose text is
- * a schema path a user cannot act on. The distinction the user can act on is
- * "this is not the right kind of file", so that is what it says.
+ * Names the format in plain language — the distinction a user who picked the
+ * wrong file can act on. {@link describeRejection} follows it with the parser's
+ * own reason, so a file that *is* a HAR but trips one field (the case worth
+ * debugging) says which field rather than stopping at "not the right kind of
+ * file".
  */
 const REJECTION_MESSAGE =
   "That file isn't a valid HAR recording. A HAR is the JSON a browser's network panel exports."
+
+/**
+ * Renders the parser's first complaint as a one-line `path — message`, the way
+ * the rejection notice appends it.
+ *
+ * @remarks
+ * `ArrayFormatter` over `TreeFormatter`: it yields the failing *leaves* with
+ * their paths already split, so the first one is `log.entries.3.response.status`
+ * rather than an indented tree the notice would have to flatten. An empty path
+ * (invalid JSON fails at the root) renders as the bare message. Returns `''`
+ * when the error carries no issue, so {@link describeRejection} can fall back to
+ * the lead sentence alone.
+ */
+const parseDetail = (error: ParseResult.ParseError): string => {
+  const [first] = ParseResult.ArrayFormatter.formatErrorSync(error)
+  if (first === undefined) return ''
+  const path = first.path.map(String).join('.')
+  return path === '' ? first.message : `${path} — ${first.message}`
+}
+
+/**
+ * The full rejection notice: the lead sentence, and the parser's own reason
+ * under a `Details:` line when it has one.
+ *
+ * @remarks
+ * The detail is the raw parser path and message, not a rewrite of it — enough
+ * to point at the field a foreign export (a Firefox recording, say) wrote in a
+ * shape this reader does not accept. It is exposed on purpose; the lead sentence
+ * stays first so a user who simply picked the wrong file still reads plain
+ * language before the schema path.
+ */
+const describeRejection = (error: ParseResult.ParseError): string => {
+  const detail = parseDetail(error)
+  return detail === '' ? REJECTION_MESSAGE : `${REJECTION_MESSAGE}\n\nDetails: ${detail}`
+}
 
 /**
  * The minimal surface {@link acceptLocalHar} reads off a file.
@@ -55,8 +92,9 @@ interface ReadableFile {
  * An `Effect` rather than an already-run `Promise`: the validation is a parse
  * that either yields a value or names why it did not — exactly the success/error
  * channels an `Effect` carries — so the pipeline reads as one (`fromHarJson`
- * succeeds into the pick, its `ParseError` maps to {@link REJECTION_MESSAGE}) and
- * nothing runs until the caller runs it, where the pick's side effects belong.
+ * succeeds into the pick, its `ParseError` is described by
+ * {@link describeRejection}) and nothing runs until the caller runs it, where
+ * the pick's side effects belong.
  * Validation goes through `fromHarJson`, so a file that is not JSON and a file
  * that is JSON but not a HAR both fail here rather than downstream; the parse
  * result itself is discarded, because the picker hands on the *text* and the
@@ -67,9 +105,9 @@ const acceptLocalHar = (file: ReadableFile): Effect.Effect<PickedHar, string> =>
     Effect.flatMap((text) =>
       fromHarJson(text).pipe(
         Effect.as<PickedHar>({ fileName: file.name, text, source: LOCAL_SOURCE }),
-        Effect.mapError(() => REJECTION_MESSAGE)
+        Effect.mapError(describeRejection)
       )
     )
   )
 
-export { acceptLocalHar, type ReadableFile, REJECTION_MESSAGE }
+export { acceptLocalHar, describeRejection, type ReadableFile, REJECTION_MESSAGE }

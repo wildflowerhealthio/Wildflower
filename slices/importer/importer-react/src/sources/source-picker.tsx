@@ -1,4 +1,4 @@
-import { DateTime, Effect } from 'effect'
+import { Array as Arr, DateTime, Effect } from 'effect'
 import { useRunAuthed } from 'fhir-r4-react'
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 
@@ -31,13 +31,17 @@ import styles from './source-picker.module.css'
 /** Props for {@link SourcePicker}. */
 interface SourcePickerProps {
   /**
-   * Called with the chosen HAR once a source resolves to one.
+   * Called with the chosen HARs once a source resolves to at least one.
    *
    * @remarks
-   * Fires for every accepted pick — a re-pick replaces the previous one. The
-   * picker holds no selection of its own; the caller owns what happens next.
+   * Local picking is a batch — the OS dialog allows several files and a drop can
+   * carry many — so this takes a list, previewed and confirmed together. A server
+   * archive is picked one at a time and arrives as a single-element list. Fires
+   * only when at least one file was accepted; a re-pick replaces the previous
+   * batch. The picker holds no selection of its own; the caller owns what happens
+   * next.
    */
-  readonly onPick: (picked: PickedHar) => void
+  readonly onPick: (picks: readonly PickedHar[]) => void
 }
 
 /** How a `null` upload instant reads in a row. */
@@ -50,6 +54,40 @@ const UNTITLED_LABEL = 'Untitled HAR archive'
 const SERVER_READ_ERROR = 'That archive could not be read from the server.'
 
 /**
+ * The notice for files a batch pick rejected, naming them.
+ *
+ * @param names - The rejected files' names
+ * @returns A one-line summary listing the rejected files
+ *
+ * @remarks
+ * Names rather than parser detail: in a batch, *which* files were not HARs is the
+ * actionable fact. A single rejected file with nothing accepted keeps its full
+ * parser detail instead — that is the case a user is debugging one file.
+ */
+const rejectedNotice = (names: readonly string[]): string =>
+  `${names.length} ${names.length === 1 ? 'file was not a valid HAR' : 'files were not valid HARs'}: ${names.join(', ')}`
+
+/** One rejected file, its name and the parser's reason. */
+interface RejectedFile {
+  readonly name: string
+  readonly message: string
+}
+
+/**
+ * The picker error to show after a batch validates, or `null` for a clean batch.
+ *
+ * @remarks
+ * A single rejected file with nothing accepted keeps its full parser detail —
+ * the case a user is debugging one file; a mix reports the rejected names, since
+ * _which_ files were not HARs is the actionable fact there.
+ */
+const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): string | null => {
+  if (rejected.length === 0) return null
+  if (acceptedCount === 0 && rejected.length === 1) return rejected[0]?.message ?? null
+  return rejectedNotice(rejected.map((one) => one.name))
+}
+
+/**
  * The picker: a drop-and-pick zone, the file input it opens, a rejection notice,
  * and the server archive list.
  */
@@ -60,15 +98,25 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
 
-  const acceptFile = (file: ReadableFile): Promise<void> =>
+  // Validate every picked file through the HAR parser concurrently, then split
+  // the outcomes with `Array.separate`: accepted picks are handed on as a batch,
+  // rejected ones reported. A lone rejected file keeps its full parser detail
+  // (the case worth debugging); a mix reports names.
+  const acceptFiles = (files: readonly ReadableFile[]): Promise<void> =>
     Effect.runPromise(
-      acceptLocalHar(file).pipe(
-        Effect.match({
-          onFailure: (message) => setError(message),
-          onSuccess: (picked) => {
-            setError(null)
-            onPick(picked)
-          },
+      Effect.forEach(
+        files,
+        (file) =>
+          acceptLocalHar(file).pipe(
+            Effect.mapError((message) => ({ name: file.name, message })),
+            Effect.either
+          ),
+        { concurrency: 'unbounded' }
+      ).pipe(
+        Effect.map((results) => {
+          const [rejected, accepted] = Arr.separate(results)
+          setError(pickerError(rejected, accepted.length))
+          if (accepted.length > 0) onPick(accepted)
         })
       )
     )
@@ -76,18 +124,18 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
   const openPicker = (): void => fileInputRef.current?.click()
 
   const onFileInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const file = event.target.files?.[0]
+    const files = Array.from(event.target.files ?? [])
     // Reset the input so choosing the same file twice in a row still fires a
     // change — the browser suppresses it otherwise.
     event.target.value = ''
-    if (file !== undefined) void acceptFile(file)
+    if (files.length > 0) void acceptFiles(files)
   }
 
   const onDrop = (event: DragEvent<HTMLButtonElement>): void => {
     event.preventDefault()
     setDragActive(false)
-    const file = event.dataTransfer.files.item(0)
-    if (file !== null) void acceptFile(file)
+    const files = Array.from(event.dataTransfer.files)
+    if (files.length > 0) void acceptFiles(files)
   }
 
   const onDragOver = (event: DragEvent<HTMLButtonElement>): void => {
@@ -99,7 +147,7 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
     try {
       const picked = await fetchHarArchive(runAuthed, id)
       setError(null)
-      onPick(picked)
+      onPick([picked])
     } catch {
       setError(SERVER_READ_ERROR)
     }
@@ -160,13 +208,14 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
         onDragOver={onDragOver}
         onDragLeave={() => setDragActive(false)}
       >
-        Choose a HAR file, or drop one here
+        Choose HAR files, or drop them here
       </button>
       <input
         ref={fileInputRef}
         type="file"
         accept=".har,application/json"
         aria-label="HAR file"
+        multiple
         className={styles.fileInput}
         onChange={onFileInputChange}
       />

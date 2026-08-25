@@ -943,6 +943,175 @@
               }
             }
           },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Patient",
+                  "description": "Demographics and other administrative information about an individual or animal receiving care or other health-related services.",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Patient"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "Whether this patient record is in active use."
+                    },
+                    "address": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An address for the individual. Patient may have multiple addresses with different uses or applicable periods."
+                    },
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The date of birth for the individual."
+                    },
+                    "communication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A language which may be used to communicate with the patient about his or her health."
+                    },
+                    "contact": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact party (e.g. guardian, partner, friend) for the patient."
+                    },
+                    "deceasedBoolean": {
+                      "type": "boolean",
+                      "description": "Indicates if the individual is deceased or not."
+                    },
+                    "deceasedDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Indicates if the individual is deceased or not."
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "other",
+                        "unknown"
+                      ],
+                      "description": "Administrative gender - the gender that the patient is considered to have."
+                    },
+                    "generalPractitioner": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Patient's nominated care provider. May be a primary care provider, a patient nominated care manager, or organization."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An identifier for this patient."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Link to another patient resource that concerns the same actual patient."
+                    },
+                    "managingOrganization": {
+                      "type": "object",
+                      "description": "Organization that is the custodian of the patient record. There is only one managing organization for a specific patient record."
+                    },
+                    "maritalStatus": {
+                      "type": "object",
+                      "description": "This field contains a patient's most recent marital (civil) status."
+                    },
+                    "multipleBirthBoolean": {
+                      "type": "boolean",
+                      "description": "Indicates whether the patient is part of a multiple (boolean) birth."
+                    },
+                    "multipleBirthInteger": {
+                      "type": "integer",
+                      "description": "Indicates the actual birth order when the patient is part of a multiple birth."
+                    },
+                    "name": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A name associated with the individual. A patient may have multiple names with different uses or applicable periods."
+                    },
+                    "photo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Image of the patient."
+                    },
+                    "telecom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact detail (e.g. a telephone number or an email address) by which the individual may be contacted."
+                    }
+                  }
+                }
+              }
+            }
+          },
           "503": {
             "description": "ServiceUnavailable"
           }
@@ -1823,6 +1992,59 @@
         "security": [],
         "responses": {
           "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Binary",
+                  "description": "A resource that represents the data of a single raw artifact as digital content accessible in its native format. A Binary resource can contain any content, whether text, image, pdf, zip archive, etc.",
+                  "required": [
+                    "resourceType",
+                    "contentType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Binary"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "contentType": {
+                      "type": "string",
+                      "description": "MimeType of the binary content represented as a standard MimeType (BCP 13)."
+                    },
+                    "data": {
+                      "type": "string",
+                      "description": "The actual content, base64 encoded. If the content type is itself base64 encoding, then this will be base64 encoded twice."
+                    },
+                    "securityContext": {
+                      "type": "object",
+                      "description": "A reference to a resource that provides guides, context or identifies the access rules that should be applied to the binary."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
             "description": "Success",
             "content": {
               "application/json": {
@@ -3037,6 +3259,256 @@
         "security": [],
         "responses": {
           "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Observation",
+                  "description": "Measurements and simple assertions made about a patient, device or other subject.",
+                  "required": [
+                    "resourceType",
+                    "code",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Observation"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A plan, proposal or order that is fulfilled in whole or in part by this event."
+                    },
+                    "bodySite": {
+                      "type": "object",
+                      "description": "Indicates the site on the subject's body where the observation was made."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the general type of observation being made."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "Describes what was observed. Sometimes this is called the observation 'name'."
+                    },
+                    "component": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Some observations have multiple component observations. These component observations are expressed as separate code value pairs that share the same attributes."
+                    },
+                    "dataAbsentReason": {
+                      "type": "object",
+                      "description": "Provides a reason why the expected value in the element Observation.value[x] is missing."
+                    },
+                    "derivedFrom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The target resource that represents a measurement from which this observation value is derived."
+                    },
+                    "device": {
+                      "type": "object",
+                      "description": "The device used to generate the observation data."
+                    },
+                    "effectiveDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The time or time-period the observed value is asserted as being true. At least a date should be present unless this observation is a historical report."
+                    },
+                    "effectivePeriod": {
+                      "type": "object"
+                    },
+                    "effectiveTiming": {
+                      "type": "object"
+                    },
+                    "effectiveInstant": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event (e.g. a patient and healthcare provider interaction) during which this observation is made."
+                    },
+                    "focus": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The actual focus of an observation when it is not the patient of record representing something or someone associated with the patient such as a spouse, parent, fetus, or donor."
+                    },
+                    "hasMember": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "This observation is a group observation (e.g. a battery, a panel of tests, a set of vital sign measurements) that includes the target as a member of the group."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A unique identifier assigned to this observation."
+                    },
+                    "interpretation": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A categorical assessment of an observation value."
+                    },
+                    "issued": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date and time this version of the observation was made available to providers, typically after the results have been reviewed and verified."
+                    },
+                    "method": {
+                      "type": "object",
+                      "description": "Indicates the mechanism used to perform the observation."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Comments about the observation or the results."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A larger event of which this particular Observation is a component or step."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who was responsible for asserting the observed value as \"true\"."
+                    },
+                    "referenceRange": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Guidance on how to interpret the value by comparison to a normal or recommended range."
+                    },
+                    "specimen": {
+                      "type": "object",
+                      "description": "The specimen that was used when this observation was made."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "corrected",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the result value."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The patient, or group of patients, location, or device this observation is about and into whose or what record the observation is placed."
+                    },
+                    "valueQuantity": {
+                      "type": "object",
+                      "description": "The information determined as a result of making the observation, if the information has a simple value."
+                    },
+                    "valueCodeableConcept": {
+                      "type": "object"
+                    },
+                    "valueString": {
+                      "type": "string"
+                    },
+                    "valueBoolean": {
+                      "type": "boolean"
+                    },
+                    "valueInteger": {
+                      "type": "integer"
+                    },
+                    "valueRange": {
+                      "type": "object"
+                    },
+                    "valueRatio": {
+                      "type": "object"
+                    },
+                    "valueSampledData": {
+                      "type": "object"
+                    },
+                    "valueTime": {
+                      "type": "string",
+                      "format": "time"
+                    },
+                    "valueDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "valuePeriod": {
+                      "type": "object"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
             "description": "Success",
             "content": {
               "application/json": {
@@ -4954,6 +5426,271 @@
               }
             }
           },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "MedicationRequest",
+                  "description": "An order or request for both supply of the medication and the instructions for administration of the medication to a patient.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "MedicationRequest"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "External ids for this request."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "active",
+                        "on-hold",
+                        "cancelled",
+                        "completed",
+                        "entered-in-error",
+                        "stopped",
+                        "draft",
+                        "unknown"
+                      ],
+                      "description": "A code specifying the current state of the order."
+                    },
+                    "statusReason": {
+                      "type": "object",
+                      "description": "Captures the reason for the current state of the MedicationRequest."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "order",
+                        "original-order",
+                        "reflex-order",
+                        "filler-order",
+                        "instance-order",
+                        "option"
+                      ],
+                      "description": "Whether the request is a proposal, plan, or an original order."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates the type of medication request."
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "routine",
+                        "urgent",
+                        "asap",
+                        "stat"
+                      ],
+                      "description": "Indicates how quickly the Medication Request should be addressed."
+                    },
+                    "doNotPerform": {
+                      "type": "boolean",
+                      "description": "If true indicates that the provider is asking for the medication request not to occur."
+                    },
+                    "reportedBoolean": {
+                      "type": "boolean",
+                      "description": "Reported rather than primary record."
+                    },
+                    "reportedReference": {
+                      "type": "object"
+                    },
+                    "medicationCodeableConcept": {
+                      "type": "object",
+                      "description": "Identifies the medication being requested."
+                    },
+                    "medicationReference": {
+                      "type": "object"
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who or group medication request is for."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "Encounter created as part of encounter/admission/stay."
+                    },
+                    "supportingInformation": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Information to support ordering of the medication."
+                    },
+                    "authoredOn": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When request was initially authored."
+                    },
+                    "requester": {
+                      "type": "object",
+                      "description": "Who/What requested the Request."
+                    },
+                    "performer": {
+                      "type": "object",
+                      "description": "Intended performer of administration."
+                    },
+                    "performerType": {
+                      "type": "object",
+                      "description": "Desired kind of performer of the medication administration."
+                    },
+                    "recorder": {
+                      "type": "object",
+                      "description": "Person who entered the request."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Reason or indication for ordering or not ordering the medication."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Condition or observation that supports why the prescription is being written."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Instantiates FHIR protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      },
+                      "description": "Instantiates external protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "What request fulfills."
+                    },
+                    "groupIdentifier": {
+                      "type": "object",
+                      "description": "Composite request this is part of."
+                    },
+                    "courseOfTherapyType": {
+                      "type": "object",
+                      "description": "Overall pattern of medication administration."
+                    },
+                    "insurance": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Associated insurance coverage."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Information about the prescription."
+                    },
+                    "dosageInstruction": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "How the medication should be taken."
+                    },
+                    "dispenseRequest": {
+                      "type": "object",
+                      "description": "Medication supply authorization."
+                    },
+                    "substitution": {
+                      "type": "object",
+                      "description": "Any restrictions on medication substitution."
+                    },
+                    "priorPrescription": {
+                      "type": "object",
+                      "description": "An order/prescription that is being replaced."
+                    },
+                    "detectedIssue": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Clinical Issue with action."
+                    },
+                    "eventHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of events of interest in the lifecycle."
+                    }
+                  }
+                }
+              }
+            }
+          },
           "503": {
             "description": "ServiceUnavailable"
           }
@@ -6409,6 +7146,214 @@
               }
             }
           },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "MedicationDispense",
+                  "description": "Indicates that a medication product is to be or has been dispensed for a named person/patient.",
+                  "required": [
+                    "resourceType",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "MedicationDispense"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "External identifier."
+                    },
+                    "partOf": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Event that dispense is part of."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "preparation",
+                        "in-progress",
+                        "cancelled",
+                        "on-hold",
+                        "completed",
+                        "entered-in-error",
+                        "stopped",
+                        "declined",
+                        "unknown"
+                      ],
+                      "description": "A code specifying the state of the set of dispense events."
+                    },
+                    "statusReasonCodeableConcept": {
+                      "type": "object",
+                      "description": "Why a dispense was not performed."
+                    },
+                    "statusReasonReference": {
+                      "type": "object"
+                    },
+                    "category": {
+                      "type": "object",
+                      "description": "Type of medication dispense."
+                    },
+                    "medicationCodeableConcept": {
+                      "type": "object",
+                      "description": "What medication was supplied."
+                    },
+                    "medicationReference": {
+                      "type": "object"
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who the dispense is for."
+                    },
+                    "context": {
+                      "type": "object",
+                      "description": "Encounter / Episode associated with event."
+                    },
+                    "supportingInformation": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Information that supports the dispensing of the medication."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who performed event."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "Where the dispense occurred."
+                    },
+                    "authorizingPrescription": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Medication order that authorizes the dispense."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "Trial fill, partial fill, emergency fill, etc."
+                    },
+                    "quantity": {
+                      "type": "object",
+                      "description": "Amount dispensed."
+                    },
+                    "daysSupply": {
+                      "type": "object",
+                      "description": "Amount of medication expressed as a timing amount."
+                    },
+                    "whenPrepared": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When product was packaged and reviewed."
+                    },
+                    "whenHandedOver": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When product was given out."
+                    },
+                    "destination": {
+                      "type": "object",
+                      "description": "Where the medication was sent."
+                    },
+                    "receiver": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who collected the medication."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Information about the dispense."
+                    },
+                    "dosageInstruction": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "How the medication is to be used by the patient or administered by the caregiver."
+                    },
+                    "substitution": {
+                      "type": "object",
+                      "description": "Whether a substitution was performed on the dispense."
+                    },
+                    "detectedIssue": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Clinical issue with action."
+                    },
+                    "eventHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of relevant lifecycle events."
+                    }
+                  }
+                }
+              }
+            }
+          },
           "503": {
             "description": "ServiceUnavailable"
           }
@@ -7503,6 +8448,164 @@
         "security": [],
         "responses": {
           "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "DocumentReference",
+                  "description": "A reference to a document of any kind for any purpose. Provides metadata about the document so that the document can be discovered and managed.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "content"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "DocumentReference"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "masterIdentifier": {
+                      "type": "object",
+                      "description": "Master Version Specific Identifier."
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Other identifiers for the document."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "current",
+                        "superseded",
+                        "entered-in-error"
+                      ],
+                      "description": "The status of this document reference."
+                    },
+                    "docStatus": {
+                      "type": "string",
+                      "enum": [
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "entered-in-error"
+                      ],
+                      "description": "The status of the underlying document."
+                    },
+                    "type": {
+                      "type": "object",
+                      "description": "Kind of document (LOINC if possible)."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Categorization of document."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "Who/what is the subject of the document."
+                    },
+                    "date": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When this document reference was created."
+                    },
+                    "author": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who and/or what authored the document."
+                    },
+                    "authenticator": {
+                      "type": "object",
+                      "description": "Who/what authenticated the document."
+                    },
+                    "custodian": {
+                      "type": "object",
+                      "description": "Organization which maintains the document."
+                    },
+                    "relatesTo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Relationships to other documents."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "Human-readable description."
+                    },
+                    "securityLabel": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Document security-tags."
+                    },
+                    "content": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Document referenced."
+                    },
+                    "context": {
+                      "type": "object",
+                      "description": "Clinical context of document."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
             "description": "Success",
             "content": {
               "application/json": {

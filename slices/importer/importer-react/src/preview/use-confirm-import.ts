@@ -1,98 +1,155 @@
+import { Cause, Effect, Match, Runtime } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
+import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import { persistPreview, type Preview } from 'importer-core'
 
 import { useUploadHar } from '../mutations/upload-har.ts'
-import { importOutcome, type ImportOutcome, isPartialOutcome } from '../results/import-outcome.ts'
+import {
+  type BatchOutcome,
+  type FileImportResult,
+  importOutcome,
+  previewResourceCount,
+  type SkipReason,
+} from '../results/import-outcome.ts'
 import { harArchiveReference, type PickedHar } from '../sources/picked-har.ts'
+import type { ReadEntry } from './use-import-run.ts'
 
 /**
- * The opt-in write half of the flow, as one imperative action: upload the HAR
- * archive if the pick is local, then persist the previewed resources, each
- * stamped with the archive it came from.
+ * The opt-in write half of the flow, as one imperative action over a batch:
+ * for every file that has resources to write, upload its HAR archive if the pick
+ * is local, then persist that file's previewed resources, each stamped with the
+ * archive it came from.
  *
  * @remarks
  * This is the seam the preview-then-confirm promise rests on — nothing here runs
- * until the user confirms a preview they have seen. The order is fixed and
- * load-bearing:
+ * until the user confirms a batch they have seen. Each file is handled
+ * independently and the order within a file is fixed and load-bearing:
  *
  * 1. **Secure provenance.** A `local` pick has bytes the server has never seen,
  *    so its archive is uploaded first (`useUploadHar`, a fresh uuid per the epic
  *    decision) and the reference the upload mints becomes the `meta.source` every
- *    written resource carries. A `server` pick already names the archive it was
- *    fetched from, so it skips the upload entirely and links to that document.
- * 2. **Write the resources.** `persistPreview` runs only after the archive
- *    reference exists, so the archive create always lands before the first
- *    resource write and no resource is ever written pointing at an archive that
- *    is not there yet.
+ *    resource from _that file_ carries. A `server` pick already names the archive
+ *    it was fetched from, so it skips the upload and links to that document.
+ * 2. **Write the resources.** `persistPreview` runs only after the file's archive
+ *    reference exists, so the archive create lands before the first resource write
+ *    and no resource ever points at an archive that is not there yet.
  *
- * `persistPreview` returns its failures as data and never throws, so the only
- * rejection this can surface is the upload's (a `local` pick whose archive PUT
- * failed) — folded into an `errored` state. Failures that come back as data fold
- * into `partial` under the `collectImportSummary` semantics: any failure at all
- * makes the whole import partial.
+ * The whole batch is one Effect run through `runAuthed`: `Effect.forEach` maps
+ * each file to a `FileImportResult`, `Match` dispatches the file's kind, and each
+ * file's failure is caught into an `uploadFailed` result so one file never stops
+ * the rest (the multi-file echo of `persistPreview` returning per-resource
+ * failures as data). Files with nothing to write (recognized by no collector,
+ * recognized but empty, or unreadable) are `skipped` and never touch the server.
  *
  * @packageDocumentation
  */
 
 /**
- * The lifecycle of one confirm, mapped onto the results the screen renders.
+ * The lifecycle of one confirmed batch.
  *
  * @remarks
- * `complete` and `partial` both carry the full {@link ImportOutcome}; they differ
- * only in whether any resource failed to write, which is the one bit the results
- * view branches on. `errored` carries the upload's rejection cause — the write
- * itself cannot reach this state.
+ * `done` carries the whole {@link BatchOutcome} — every file's result — and the
+ * results view derives the complete-or-partial framing from it. There is no
+ * separate error state: a file's upload failure is a per-file result, not a
+ * batch-wide abort, so the flow always resolves to `done` once started.
  */
 type ConfirmState =
   | { readonly _tag: 'idle' }
   | { readonly _tag: 'confirming' }
-  | { readonly _tag: 'complete'; readonly outcome: ImportOutcome }
-  | { readonly _tag: 'partial'; readonly outcome: ImportOutcome }
-  | { readonly _tag: 'errored'; readonly error: unknown }
-
-/** What a confirm needs: the picked HAR and the claimed preview it produced. */
-interface ConfirmInput {
-  readonly picked: PickedHar
-  readonly preview: Preview
-}
+  | { readonly _tag: 'done'; readonly batch: BatchOutcome }
 
 /** Imperative surface the screen drives the confirm through. */
 interface ConfirmImport {
   readonly state: ConfirmState
-  /** Run the upload-then-persist action for a confirmed preview. */
-  readonly confirm: (input: ConfirmInput) => void
+  /** Run the per-file upload-then-persist action for every read entry in the batch. */
+  readonly confirm: (entries: readonly ReadEntry[]) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
 
 /**
- * The archive reference a confirm writes against: a `server` pick's own
+ * The archive reference a file's resources write against: a `server` pick's own
  * reference, or the reference minted by uploading a `local` pick's bytes.
  *
  * @remarks
- * A `local` pick's bytes are encoded from its text at the call site — the upload
- * takes bytes, not text, so the stored archive is verbatim and its attachment
- * hash means something. A `server` pick uploads nothing and links to the document
- * it was fetched from.
+ * The upload crosses a TanStack mutation, so its rejection is a `FiberFailure`
+ * that hides the real error behind a summary. `Cause.squash` unwraps it back to
+ * the typed failure the FHIR client raised — a `ResponseError` or a `ParseError`
+ * — so {@link importOneFile}'s catch keeps something the results view can render
+ * in full rather than a flattened one-liner. A `local` pick's bytes are encoded
+ * from its text here: the upload takes bytes, not text, so the stored archive is
+ * verbatim and its attachment hash means something.
  */
 const secureSourceRef = (
   picked: PickedHar,
   uploadHar: ReturnType<typeof useUploadHar>
-): Promise<string> => {
-  if (picked.source._tag === 'server') return Promise.resolve(picked.source.reference)
-  return uploadHar
-    .mutateAsync({ fileName: picked.fileName, bytes: new TextEncoder().encode(picked.text) })
-    .then((id) => harArchiveReference(id))
+): Effect.Effect<string, unknown> => {
+  if (picked.source._tag === 'server') return Effect.succeed(picked.source.reference)
+  return Effect.tryPromise({
+    try: () =>
+      uploadHar.mutateAsync({
+        fileName: picked.fileName,
+        bytes: new TextEncoder().encode(picked.text),
+      }),
+    catch: (error) =>
+      Runtime.isFiberFailure(error) ? Cause.squash(error[Runtime.FiberFailureCauseId]) : error,
+  }).pipe(Effect.map(harArchiveReference))
 }
 
 /**
- * Drives a single confirmed import — upload (if local) then persist — as an
- * imperative action, mapping its lifecycle onto {@link ConfirmState}. The authed
- * runner and the upload mutation both come from router context via
- * `fhir-r4-react`, so mount this inside the host app's router and
- * `QueryClientProvider`.
+ * Run one read entry to its {@link FileImportResult}: skip a file with nothing to
+ * write, otherwise upload its archive and persist its resources. Best-effort — a
+ * failed upload is caught into an `uploadFailed` result, never a raised error.
+ */
+const importOneFile = (
+  entry: ReadEntry,
+  uploadHar: ReturnType<typeof useUploadHar>
+): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
+  const { id, picked } = entry
+  const fileName = picked.fileName
+  const skip = (reason: SkipReason): Effect.Effect<FileImportResult> =>
+    Effect.succeed({ _tag: 'skipped', id, fileName, reason })
+  const write = (
+    preview: Preview
+  ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> =>
+    secureSourceRef(picked, uploadHar).pipe(
+      Effect.flatMap((sourceRef) =>
+        persistPreview(preview, sourceRef).pipe(
+          Effect.map((failures): FileImportResult => ({
+            _tag: 'imported',
+            id,
+            fileName,
+            outcome: importOutcome(preview, sourceRef, failures),
+          }))
+        )
+      ),
+      Effect.catchAll((error) =>
+        Effect.succeed<FileImportResult>({ _tag: 'uploadFailed', id, fileName, error })
+      )
+    )
+  return Match.value(entry).pipe(
+    Match.tag('unreadable', () => skip('unreadable')),
+    Match.tag('read', ({ preview }) =>
+      Match.value(preview).pipe(
+        Match.tag('NoCollectorClaims', () => skip('no-collector')),
+        Match.tag('Preview', (claimed) =>
+          previewResourceCount(claimed) === 0 ? skip('nothing') : write(claimed)
+        ),
+        Match.exhaustive
+      )
+    ),
+    Match.exhaustive
+  )
+}
+
+/**
+ * Drives a single confirmed batch — for each file, upload (if local) then
+ * persist — as one Effect run through `runAuthed`, mapping its per-file lifecycle
+ * onto a {@link BatchOutcome}. The authed runner and the upload mutation both come
+ * from router context via `fhir-r4-react`, so mount this inside the host app's
+ * router and `QueryClientProvider`.
  *
  * @returns The confirm surface: its `state`, the `confirm` trigger, and a `reset`
  *   back to `idle`
@@ -106,24 +163,17 @@ const useConfirmImport = (): ConfirmImport => {
   const latest = useRef(0)
 
   const confirm = useCallback(
-    ({ picked, preview }: ConfirmInput): void => {
+    (entries: readonly ReadEntry[]): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
-      void (async (): Promise<void> => {
-        try {
-          const sourceRef = await secureSourceRef(picked, uploadHar)
-          const failures = await runAuthed(persistPreview(preview, sourceRef))
-          if (latest.current !== ticket) return
-          const outcome = importOutcome(preview, sourceRef, failures)
-          setState(
-            isPartialOutcome(outcome) ? { _tag: 'partial', outcome } : { _tag: 'complete', outcome }
-          )
-        } catch (error) {
-          if (latest.current !== ticket) return
-          setState({ _tag: 'errored', error })
-        }
-      })()
+      const batch = Effect.forEach(entries, (entry) => importOneFile(entry, uploadHar), {
+        concurrency: 'unbounded',
+      })
+      void runAuthed(batch).then((results) => {
+        if (latest.current !== ticket) return
+        setState({ _tag: 'done', batch: results })
+      })
     },
     [runAuthed, uploadHar]
   )
@@ -136,4 +186,4 @@ const useConfirmImport = (): ConfirmImport => {
   return { state, confirm, reset }
 }
 
-export { type ConfirmImport, type ConfirmInput, type ConfirmState, useConfirmImport }
+export { type ConfirmImport, type ConfirmState, useConfirmImport }

@@ -23,7 +23,27 @@
 
 .error {
   margin: 0;
-  color: var(--color-neutral-9);
+  color: var(--color-neutral-2);
+}
+
+/*
+ * The failed upload's underlying cause — the FHIR server's own response. Kept
+ * monospace and wrapping, and allowed to scroll rather than stretch the layout,
+ * since it is a diagnostic a user reads or copies, not prose.
+ */
+.detail {
+  margin: 0;
+  max-width: 100%;
+  max-height: 12rem;
+  overflow: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-2);
+  background: var(--color-neutral-12);
+  color: var(--color-neutral-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 .back {
