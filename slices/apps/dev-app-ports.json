@@ -2,5 +2,6 @@
   "_comment": "SINGLE SOURCE OF TRUTH for the loopback ports the first-party apps' vite dev servers bind to. BOTH languages derive from this file: Rust embeds it at compile time (`apps-rust/src/dev_seed.rs`, which seeds the debug-only `<app>-dev` self-hosted rows on these ports), and each app's `vite.config.ts` reads it at config-eval time to set `server.port` (with `strictPort`, so a taken port fails loudly instead of drifting off the row's value). Keys are the dev app ids. Change a value here and both sides follow.",
   "medications-app-dev": 5190,
   "web-trace-app-dev": 5191,
-  "web-server-docs-dev": 5192
+  "web-server-docs-dev": 5192,
+  "importer-app-dev": 5193
 }

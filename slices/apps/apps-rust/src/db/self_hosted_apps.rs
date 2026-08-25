@@ -281,15 +281,15 @@ mod tests {
 
     /// An inserted upload lands at the lowest free upload port (8082 — the seeded
     /// self-hosted apps sit at 8081, 8090, and 8091, all outside the start of the
-    /// 8082+ climb), and appends at the next position (after the nine seeded rows
-    /// → 9), non-seeded.
+    /// 8082+ climb), and appends at the next position (after the ten seeded rows
+    /// → 10), non-seeded.
     #[test]
     fn insert_self_hosted_allocates_the_next_port_and_position() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let (registration, config) = insert_upload(&store, "My App", "my-app");
         assert_eq!(registration.id, "my-app");
         assert_eq!(registration.name, "My App");
-        assert_eq!(registration.position, 9);
+        assert_eq!(registration.position, 10);
         assert!(registration.local_only);
         assert!(registration.on_homescreen);
         assert_eq!(registration.kind, AppKind::SelfHosted);
@@ -303,7 +303,7 @@ mod tests {
 
         let (registration2, config2) = insert_upload(&store, "Other", "other");
         assert_eq!(config2.port, 8083);
-        assert_eq!(registration2.position, 10);
+        assert_eq!(registration2.position, 11);
     }
 
     /// A `launch_path` supplied at insert round-trips through both the insert

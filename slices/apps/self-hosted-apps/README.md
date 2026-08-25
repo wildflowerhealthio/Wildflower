@@ -1,6 +1,6 @@
 # self-hosted-apps
 
-Home for vendored FHIR app builds. Three directories live here, and they no
+Home for vendored FHIR app builds. Four directories live here, and they no
 longer all play the same role:
 
 | Directory         | Role                                                                                                                                                                                                   |
@@ -8,19 +8,21 @@ longer all play the same role:
 | `patient-browser` | The only remaining **release** self-hosted app: a vendored build of the third-party [`patient-browser`][upstream] sample app, seeded by apps migration `0002` and served from its own loopback origin. |
 | `medication`      | Build output of `apps/medications-app`. **Source** for the published `/medications-app` section of the Pages site, and fallback content for the debug-only `medications-app-dev` row.                  |
 | `web-trace`       | Build output of `apps/web-trace`. Same arrangement for `/web-trace-app` and `web-trace-app-dev`.                                                                                                       |
+| `importer`        | Build output of `apps/importer-web`. Same arrangement for `/importer-app` and `importer-app-dev` — the one shipped app that **writes** to the FHIR base its SMART launch named.                        |
 
 [upstream]: https://github.com/smart-on-fhir/patient-browser
 
 ## Which mechanism still serves which directory
 
-The two first-party apps launch in production from the deployed site
-(<https://wildflowerhealth.io>), as **cloud** rows — apps migration
-`0005_first_party_apps_to_cloud`. Their build output stays here because two other
-consumers read it:
+The three first-party apps launch in production from the deployed site
+(<https://wildflowerhealth.io>), as **cloud** rows — apps migrations
+`0005_first_party_apps_to_cloud` (Medications, Web Trace) and
+`0006_seed_wildflower_importer_app` (Importer). Their build output stays here
+because two other consumers read it:
 
 1. `apps/github-pages` copies these directories into the published artifact (see
    [that package's README](../../../apps/github-pages/README.md)); this is why
-   the two apps' vite `outDir`s cannot move.
+   the three apps' vite `outDir`s cannot move.
 2. Debug builds seed a `<app>-dev` self-hosted row per app
    (`apps-rust/src/dev_seed.rs`) whose `content_folder` is the directory here, so
    the host can serve _something_ on the dev port when the vite dev server is not
@@ -30,7 +32,7 @@ The vendored-build **mechanism** therefore stays (patient-browser needs it, and
 so does the dev fallback), including the `bundle.resources` shipping of this
 whole directory in release builds — which is now partly dead weight: in a release
 build only `patient-browser/` is referenced by a row's `content_folder`. Removing
-the other two from the bundle would save space at the cost of a
+the other three from the bundle would save space at the cost of a
 `bundle.resources` entry that no longer matches the directory, so they are left
 in for now; revisit if bundle size matters.
 

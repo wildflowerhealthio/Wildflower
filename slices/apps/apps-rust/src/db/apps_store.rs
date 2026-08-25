@@ -31,12 +31,14 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// configuration tables; `0002` seeds the default registry (kept separate so the
 /// schema and the shipped data version independently); `0003` and `0004` each
 /// append one shipped first-party SMART app — one migration per app, so which
-/// apps ship versions independently of both the schema and the baseline set; and
+/// apps ship versions independently of both the schema and the baseline set;
 /// `0005` renames those two to `medications-app` / `web-trace-app` and turns them
-/// into CLOUD rows served from the published GitHub Pages site. Because each
-/// migration runs only once per database, a user-deleted seed stays deleted
-/// across upgrades. The debug-only `…-dev` self-hosted siblings are deliberately
-/// NOT migrations — see `apps-rust/src/dev_seed.rs`.
+/// into CLOUD rows served from the published GitHub Pages site (adding the
+/// server-docs console); and `0006` appends the Importer as a third first-party
+/// CLOUD app served from the same site. Because each migration runs only once per
+/// database, a user-deleted seed stays deleted across upgrades. The debug-only
+/// `…-dev` self-hosted siblings are deliberately NOT migrations — see
+/// `apps-rust/src/dev_seed.rs`.
 const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 
 /// The `SQLite` adapter for the [`AppsStore`] port — serves the registrations plus
@@ -206,7 +208,7 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 9, "exactly the nine seeded default apps");
+        assert_eq!(row_count, 10, "exactly the ten seeded default apps");
     }
 
     /// The `app_registrations` primary key gives global id uniqueness across kinds
@@ -255,6 +257,7 @@ mod tests {
                 "medications-app",
                 "web-trace-app",
                 "web-server-docs",
+                "importer-app",
             ],
         );
     }
@@ -427,6 +430,45 @@ mod tests {
         assert!(
             !target.url.contains("{launch}") && !target.url.contains("iss="),
             "the console reads `?server=`, not a SMART `{{launch}}`/`iss` launch",
+        );
+    }
+
+    /// The Importer ships as a first-party CLOUD row (apps migration `0006`),
+    /// launched from its published Pages copy — a SMART EHR launch, unlike the
+    /// server-docs console's `?server=` target.
+    #[test]
+    fn importer_is_a_cloud_row_launched_from_the_published_site() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+
+        let (registration, configuration) = store
+            .find_app("importer-app")
+            .unwrap()
+            .expect("importer-app must exist");
+        assert!(
+            matches!(configuration, AppConfiguration::Cloud(_)),
+            "importer-app must be a cloud app",
+        );
+        // client_id tracks id, as every registration does.
+        assert_eq!(registration.client_id.as_deref(), Some("importer-app"));
+        assert!(
+            !registration.local_only,
+            "the importer's assets are served from wildflowerhealth.io",
+        );
+        assert!(
+            registration.requires_tunnel,
+            "the published page's `iss={{origin}}` fetch must resolve through the \
+             tunnel's verified HTTPS origin",
+        );
+
+        let target: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+                .bind::<Text, _>("importer-app")
+                .get_result(&mut conn)
+                .expect("the cloud configuration row must exist");
+        assert_eq!(
+            target.url,
+            "https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
         );
     }
 

@@ -88,6 +88,8 @@ struct DevAppPorts {
     web_trace_app_dev: i32,
     #[serde(rename = "web-server-docs-dev")]
     web_server_docs_dev: i32,
+    #[serde(rename = "importer-app-dev")]
+    importer_app_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -98,7 +100,7 @@ struct DevAppPorts {
 /// a compile-time-embedded, version-controlled file, so a failure here is a
 /// broken build, not a runtime condition, and only ever reachable in a debug
 /// build.
-fn dev_apps() -> [DevApp; 3] {
+fn dev_apps() -> [DevApp; 4] {
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
@@ -125,6 +127,14 @@ fn dev_apps() -> [DevApp; 3] {
             port: ports.web_server_docs_dev,
             subdomain: "web-server-docs",
             content_folder: "web-server-docs",
+        },
+        DevApp {
+            id: "importer-app-dev",
+            name: "Importer (Dev)",
+            subtitle: "Local vite dev server for apps/importer-web",
+            port: ports.importer_app_dev,
+            subdomain: "importer-dev",
+            content_folder: "importer",
         },
     ]
 }
@@ -384,7 +394,7 @@ mod tests {
     }
 
     #[test]
-    fn seeds_both_dev_rows_on_their_pinned_topology() {
+    fn seeds_all_dev_rows_on_their_pinned_topology() {
         let pool = persistence_rust::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
@@ -410,7 +420,7 @@ mod tests {
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
-        for id in ["medications-app", "web-trace-app"] {
+        for id in ["medications-app", "web-trace-app", "importer-app"] {
             let (registration, config) = store.find_app(id).unwrap().expect("migrated cloud row");
             assert!(
                 matches!(config, AppConfiguration::Cloud(_)),

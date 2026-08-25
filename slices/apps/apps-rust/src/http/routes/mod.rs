@@ -388,6 +388,7 @@ mod tests {
                 "medications-app",
                 "web-trace-app",
                 "web-server-docs",
+                "importer-app",
             ],
         );
     }
@@ -1274,6 +1275,7 @@ mod tests {
             ("medications-app", true),
             ("web-trace-app", true),
             ("web-server-docs", true),
+            ("importer-app", true),
         ];
         let (status, body) = send(&st, put_json("/home-screen", home_screen_body(&ordered))).await;
         assert_eq!(status, StatusCode::OK, "body: {body}");
@@ -1296,6 +1298,7 @@ mod tests {
                 "medications-app",
                 "web-trace-app",
                 "web-server-docs",
+                "importer-app",
             ],
         );
         let api_docs = body

@@ -117,7 +117,7 @@ fn ensure_first_party_client(
 ///
 /// Upserted (not insert-if-missing) so a definition change lands on the next boot
 /// — the same treatment [`ensure_first_party_client`] gets, and safe here because
-/// nothing but this code owns these two rows.
+/// nothing but this code owns these rows.
 ///
 /// # Errors
 ///
@@ -153,6 +153,24 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ]
             .as_slice(),
             5191,
+        ),
+        (
+            "importer-app-dev",
+            "Importer (Dev)",
+            // Mirrors the production `importer-app` client's write-carrying set
+            // (`apps/importer-web/src/config.ts`) — a dev build requests the same
+            // scopes, and unlike the two viewers above the Importer writes.
+            [
+                "launch",
+                "openid",
+                "fhirUser",
+                "system/DocumentReference.read",
+                "system/DocumentReference.write",
+                "system/Patient.write",
+                "system/Observation.write",
+            ]
+            .as_slice(),
+            5193,
         ),
     ];
     for (client_id, name, scopes, port) in dev_clients {
