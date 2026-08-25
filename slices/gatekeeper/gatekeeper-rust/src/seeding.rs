@@ -91,6 +91,33 @@ fn ensure_first_party_client(
     Ok(())
 }
 
+/// The shared dev-port file, embedded at compile time — the single source of
+/// truth for the first-party apps' vite dev-server ports across the TS ⇄ Rust
+/// boundary. `apps-rust`'s `dev_seed.rs` embeds this same file to seed the
+/// matching `<app>-dev` app rows, and each app's `vite.config.ts` reads it for
+/// `server.port` (+ `strictPort`), so a client's loopback redirect below points
+/// at exactly the port the row and the dev server agree on. A literal here would
+/// let that redirect silently drift off the shared value.
+#[cfg(debug_assertions)]
+const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../apps/dev-app-ports.json"
+));
+
+/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the three first-party
+/// apps that register an OAuth client. The file also carries `web-server-docs-dev`,
+/// which is not a SMART app and so has no client here; serde ignores it.
+#[cfg(debug_assertions)]
+#[derive(serde::Deserialize)]
+struct DevAppPorts {
+    #[serde(rename = "medications-app-dev")]
+    medications_app_dev: u16,
+    #[serde(rename = "web-trace-app-dev")]
+    web_trace_app_dev: u16,
+    #[serde(rename = "importer-app-dev")]
+    importer_app_dev: u16,
+}
+
 /// The debug-only OAuth clients for the first-party apps' vite dev servers — the
 /// gatekeeper half of `apps_rust::seed_dev_apps`.
 ///
@@ -103,9 +130,9 @@ fn ensure_first_party_client(
 /// which looks the app up **by `client_id`** and requires the row it finds to be
 /// self-hosted. So the dev client id must equal the dev app id — which is why
 /// these are separate clients rather than extra redirect entries on the
-/// production ones (adding `http://127.0.0.1:5190/` there would also mean
-/// registering a plaintext loopback redirect on a client that a public website
-/// uses).
+/// production ones (adding a `http://127.0.0.1:<port>/` loopback redirect there
+/// would also mean registering a plaintext redirect on a client that a public
+/// website uses).
 ///
 /// Scopes mirror each app's production client exactly — a dev build of the app
 /// requests the same set (`apps/*/src/config.ts`).
@@ -127,6 +154,10 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
     use crate::domain::client::RegisteredRedirectUri;
 
     let store = SqliteGatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
+    // Ports come from the shared dev-port file, not literals — see
+    // [`DEV_APP_PORTS_JSON`].
+    let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
+        .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     let dev_clients = [
         (
             "medications-app-dev",
@@ -140,7 +171,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
                 "system/Medication.rs",
             ]
             .as_slice(),
-            5190,
+            ports.medications_app_dev,
         ),
         (
             "web-trace-app-dev",
@@ -152,7 +183,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
                 "system/DocumentReference.rs",
             ]
             .as_slice(),
-            5191,
+            ports.web_trace_app_dev,
         ),
         (
             "importer-app-dev",
@@ -160,17 +191,21 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             // Mirrors the production `importer-app` client's write-carrying set
             // (`apps/importer-web/src/config.ts`) — a dev build requests the same
             // scopes, and unlike the two viewers above the Importer writes.
+            // SMART v2 letters, tightened to the interactions issued:
+            // `DocumentReference.rs` (read + search) and `.u` (PUT
+            // update-as-create) on each written type — no create/`.c` or
+            // delete/`.d` are ever sent.
             [
                 "launch",
                 "openid",
                 "fhirUser",
-                "system/DocumentReference.read",
-                "system/DocumentReference.write",
-                "system/Patient.write",
-                "system/Observation.write",
+                "system/DocumentReference.rs",
+                "system/DocumentReference.u",
+                "system/Patient.u",
+                "system/Observation.u",
             ]
             .as_slice(),
-            5193,
+            ports.importer_app_dev,
         ),
     ];
     for (client_id, name, scopes, port) in dev_clients {
@@ -181,8 +216,10 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             name: name.to_string(),
             kind: ClientKind::Public,
             // App-relative: resolved against the dev app's own loopback origin at
-            // `/authorize` time, so the vite port lives in exactly one place (the
-            // apps dev seed) instead of being duplicated here.
+            // `/authorize` time. The absolute entry's port comes from the shared
+            // `dev-app-ports.json` (above), the same file the apps dev seed and
+            // each `vite.config.ts` read — so it is never a literal duplicated
+            // here.
             redirect_uris: vec![
                 RegisteredRedirectUri::AppRelative("/".to_string()),
                 RegisteredRedirectUri::Absolute(

@@ -29,13 +29,19 @@
 -- `allowed_scopes` mirrors what the app requests, and unlike the Medications and
 -- Web Trace viewers' it **carries writes**: importing means persisting what a
 -- captured session contained. The set is exactly what the flow produces today —
--- the HAR archive `DocumentReference` the confirm step uploads (read back to list
--- previously uploaded archives, written to create a new one), plus the `Patient`
--- and `Observation` resources the registered `fhir-r4` collector replays out of a
--- capture. `system/` rather than `patient/` because a HAR archive carries no
--- `subject`: it records a browsing session, not a clinical fact about a person,
--- so it is unreachable through patient context and a `patient/` scope would match
--- nothing.
+-- the HAR archive `DocumentReference` the confirm step uploads, plus the
+-- `Patient` and `Observation` resources the registered `fhir-r4` collector
+-- replays out of a capture. `system/` rather than `patient/` because a HAR
+-- archive carries no `subject`: it records a browsing session, not a clinical
+-- fact about a person, so it is unreachable through patient context and a
+-- `patient/` scope would match nothing.
+--
+-- SMART v2 letter granularity, tightened to the interactions actually issued
+-- (not the mechanical v1 `.read`/`.write` expansion): `DocumentReference.rs`
+-- (read + search — the app searches for existing archives and reads one back by
+-- id), and `.u` on each written type (every write is a
+-- `PUT /{type}/{client-minted-uuid}` update-as-create; no `POST` create `.c` and
+-- no `DELETE` `.d` are ever issued, so those letters are withheld).
 --
 -- This array MUST equal the space-separated `scope` string in
 -- `apps/importer-web/src/config.ts`, element for element and in the same order —
@@ -59,7 +65,7 @@ VALUES
         'Importer',
         'public',
         '["/","https://wildflowerhealth.io/importer-app/"]',
-        '["launch","openid","fhirUser","system/DocumentReference.read","system/DocumentReference.write","system/Patient.write","system/Observation.write"]',
+        '["launch","openid","fhirUser","system/DocumentReference.rs","system/DocumentReference.u","system/Patient.u","system/Observation.u"]',
         '["authorization_code","refresh_token"]',
         NULL,
         '2024-01-01 00:00:00+00:00',

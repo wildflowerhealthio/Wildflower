@@ -17,6 +17,22 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * unreachable through patient context and a `patient/` scope would match
  * nothing.
  *
+ * The scopes are **SMART v2 letter granularity**, tightened to exactly the FHIR
+ * interactions the flow issues (never the mechanical v1 `.read`/`.write`
+ * expansion):
+ *
+ * - `system/DocumentReference.rs` — read + search. The app **searches** the
+ *   server for existing HAR archives (`DocumentReference.SearchByGet`) and reads
+ *   one back by id when the user picks a server-held archive.
+ * - `system/DocumentReference.u`, `system/Patient.u`, `system/Observation.u` —
+ *   update only. Every write is a `PUT /{type}/{client-minted-uuid}` (the
+ *   `.Update` endpoint / `fhir-r4`'s `upsertResource`), i.e. update-as-create:
+ *   the app never issues a `POST` create (`.c`) or a `DELETE` (`.d`), so those
+ *   letters are deliberately withheld. A server that gates update-as-create on
+ *   `create` would reject these — negotiating scopes from the server's advertised
+ *   capabilities is the dynamic-scope follow-up, not something to widen for
+ *   pre-emptively here.
+ *
  * `clientId` depends on how this build is being served, because the two ways it
  * is served are two different registrations:
  *
@@ -54,7 +70,7 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
 const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'importer-app-dev' : 'importer-app',
   scope:
-    'launch openid fhirUser system/DocumentReference.read system/DocumentReference.write system/Patient.write system/Observation.write',
+    'launch openid fhirUser system/DocumentReference.rs system/DocumentReference.u system/Patient.u system/Observation.u',
 }
 
 /**
@@ -75,7 +91,7 @@ const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
 const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'importer-app-dev' : 'importer-app',
   scope:
-    'launch openid fhirUser system/DocumentReference.read system/DocumentReference.write system/Patient.write system/Observation.write',
+    'launch openid fhirUser system/DocumentReference.rs system/DocumentReference.u system/Patient.u system/Observation.u',
 }
 
 export { smartConfig, standaloneSmartConfig }

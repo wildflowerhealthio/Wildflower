@@ -395,10 +395,10 @@ mod tests {
                 "launch".to_string(),
                 "openid".to_string(),
                 "fhirUser".to_string(),
-                "system/DocumentReference.read".to_string(),
-                "system/DocumentReference.write".to_string(),
-                "system/Patient.write".to_string(),
-                "system/Observation.write".to_string(),
+                "system/DocumentReference.rs".to_string(),
+                "system/DocumentReference.u".to_string(),
+                "system/Patient.u".to_string(),
+                "system/Observation.u".to_string(),
             ],
         );
     }

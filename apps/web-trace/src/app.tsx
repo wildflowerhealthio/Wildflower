@@ -180,7 +180,7 @@ const App = (): JSX.Element => {
       {handshake.kind === 'connecting' && <PageLoading message="Connecting…" />}
       {handshake.kind === 'error' && (
         <p className={styles['error']}>
-          Could not connect to this device&rsquo;s FHIR server:{' '}
+          Could not connect to the FHIR server:{' '}
           {handshake.error instanceof Error ? handshake.error.message : String(handshake.error)}
         </p>
       )}

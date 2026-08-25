@@ -275,7 +275,7 @@ importers:
         version: 5.101.4(react@19.2.8)
       '@tanstack/react-router':
         specifier: 'catalog:'
-        version: 1.170.27(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+        version: 1.170.32(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -318,7 +318,7 @@ importers:
         version: 16.3.2(@testing-library/dom@10.4.1)(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@testing-library/user-event':
         specifier: 'catalog:'
-        version: 14.6.4(@testing-library/dom@10.4.1)
+        version: 14.6.6(@testing-library/dom@10.4.1)
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
@@ -327,7 +327,7 @@ importers:
         version: 19.2.4(@types/react@19.2.18)
       '@vitejs/plugin-react':
         specifier: 'catalog:'
-        version: 6.0.5(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(babel-plugin-react-compiler@1.0.0)
+        version: 6.1.0(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(babel-plugin-react-compiler@1.0.0)
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2

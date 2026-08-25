@@ -71,9 +71,15 @@ completion path serves both.
 `src/config.ts` requests (in both `smartConfig` and `standaloneSmartConfig`):
 
 ```text
-launch openid fhirUser system/DocumentReference.read
-system/DocumentReference.write system/Patient.write system/Observation.write
+launch openid fhirUser system/DocumentReference.rs
+system/DocumentReference.u system/Patient.u system/Observation.u
 ```
+
+SMART v2 letter granularity, tightened to the interactions the flow issues (not
+the mechanical v1 `.read`/`.write` expansion): `DocumentReference.rs` = read +
+search (it searches for existing archives and reads one back by id); `.u` =
+update on each written type (every write is a `PUT /{type}/{uuid}`
+update-as-create — no `POST` create `.c`, no `DELETE` `.d`).
 
 - **Why writes at all.** Importing means persisting what a captured session
   contained. The write set is exactly what the flow produces today: the archive
