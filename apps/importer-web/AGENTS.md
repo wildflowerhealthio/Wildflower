@@ -84,7 +84,7 @@ update-as-create — no `POST` create `.c`, no `DELETE` `.d`).
 - **Why writes at all.** Importing means persisting what a captured session
   contained. The write set is exactly what the flow produces today: the archive
   `DocumentReference` the confirm step uploads, plus the `Patient` and
-  `Observation` resources the registered `fhir-r4` collector replays out of a
+  `Observation` resources the registered `fhir-r4` importer extracts out of a
   capture. Widen it alongside a new collector or entity, never ahead of one.
 - **Why `system/` and not `patient/`.** A HAR archive carries no `subject` — it
   records a browsing session, not a clinical fact about a person — so it is

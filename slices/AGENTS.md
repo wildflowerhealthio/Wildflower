@@ -21,7 +21,7 @@ Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `f
 
 Current slices: `apps`, `browser-sniffer`, `collector`, `databases`, `emr`, `gatekeeper`, `importer`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`, `web-trace`. Verify with `ls slices/` — this list can go stale.
 
-`importer` is the archive-driven counterpart of `collector`: it reads an uploaded `.har` file, detects which collector understands it, and replays the collector's offline entities into a previewed set of FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
+`importer` is a standalone offering: it owns the vocabulary of importing (`importer-fundamentals`: entities, recognition, extraction) plus the per-source importer projects, reads an uploaded `.har` file, detects which registered importer claims it, and extracts a previewed set of FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md). The `collector` slice builds on it: a live collector layers navigation and persistence on top of an importer project's entities.
 
 `web-trace` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace/AGENTS.md](./web-trace/AGENTS.md). Its `web-trace-core` sits below both a collector and a React app (`web-trace-react`, the on-device viewer), which is why it is a slice of its own rather than a package inside either. The collector that consumes it, [`web-trace-collector`](./collector/web-trace-collector/AGENTS.md), lives in the `collector` slice — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
 
