@@ -7,7 +7,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { fhirR4EntityDefinitions } from './plan-entities.ts'
+import { fhirR4EntityDefinitions } from 'fhir-r4-importer'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host

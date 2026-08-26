@@ -1400,6 +1400,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      fhir-r4-importer:
+        specifier: workspace:*
+        version: link:../../importer/fhir-r4-importer
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -1999,6 +2002,36 @@ importers:
         specifier: 'catalog:'
         version: 0.2.9(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
 
+  slices/importer/fhir-r4-importer:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260707.2
+      collector-fundamentals:
+        specifier: workspace:*
+        version: link:../../collector/collector-fundamentals
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.9(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(yaml@2.9.0)
+
   slices/importer/importer-core:
     devDependencies:
       '@effect/platform':
@@ -2025,9 +2058,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
-      fhir-r4-client-collector:
+      fhir-r4-importer:
         specifier: workspace:*
-        version: link:../../collector/fhir-r4-client-collector
+        version: link:../fhir-r4-importer
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink

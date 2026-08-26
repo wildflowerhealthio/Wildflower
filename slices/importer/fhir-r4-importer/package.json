@@ -1,13 +1,13 @@
 {
-  "name": "importer-core",
+  "name": "fhir-r4-importer",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure core of the importer slice: read a HAR archive, detect which registered collector understands it, replay its offline entities into a preview, and — as a separate opt-in step — persist the previewed resources. No DOM, no fs, no React.",
+  "description": "The FHIR R4 importer project: the Patient / Observation / Observation-list entities shared by the live collector plan and the archive importer, plus the offline surface (offlineEntities, fhirR4Recognizer, fhirRootOf) an archive import replays with. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/importer/importer-core"
+    "directory": "slices/importer/fhir-r4-importer"
   },
   "files": [
     "dist"
@@ -27,26 +27,20 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "browser-sniffer-core": "workspace:*",
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
-    "fhir-r4-importer": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
-    "fhir-r4-importer": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "kitchen-sink": "workspace:*"
   }
 }

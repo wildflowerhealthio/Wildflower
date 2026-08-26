@@ -14,9 +14,15 @@ that depends on `collector-fundamentals` only.
 
 ## What you're building
 
+A collector's **entities** (and, when it supports archive import, its offline
+surface) live in a sibling **importer project** under `slices/importer/` —
+`fhir-r4-importer` is the worked example — so the browser-driving collector and
+the archive importer share one decode. The collector package depends on its
+importer project, never the reverse.
+
 | Piece           | Where                                       | Contract                                                       |
 | --------------- | ------------------------------------------- | -------------------------------------------------------------- |
-| Entities        | `*-client-collector/src/entities/`          | `EntityDefinition.make` — recognize + parse one response shape |
+| Entities        | `slices/importer/*-importer/src/entities/`  | `EntityDefinition.make` — recognize + parse one response shape |
 | Config          | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
 | Scraping plan   | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — steps (leading `Open`), entities         |
 | Persist sink    | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |

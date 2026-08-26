@@ -23,6 +23,7 @@ export type {
 } from './import-preview.ts'
 export { persistPreview } from './persist-preview.ts'
 export {
+  type ArchiveContext,
   fhirR4Registered,
   REGISTERED_COLLECTORS,
   type RegisteredCollector,

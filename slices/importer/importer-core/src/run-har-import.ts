@@ -4,7 +4,11 @@ import { Recognizer, Replay } from 'collector-fundamentals/replay'
 import { type ArchivedExchange, fromHarJson } from 'web-trace-core/har'
 
 import type { ImportParseFailure, ImportPreview } from './import-preview.ts'
-import { REGISTERED_COLLECTORS, type RegisteredCollector } from './registered-collectors.ts'
+import {
+  type ArchiveContext,
+  REGISTERED_COLLECTORS,
+  type RegisteredCollector,
+} from './registered-collectors.ts'
 
 /**
  * Detect, replay, and preview a HAR archive — the read half of the import flow,
@@ -61,7 +65,7 @@ const toImportParseFailures = (
  * The distinct source roots a claimed archive reached, in first-seen order.
  *
  * @param responses - The archive's responses, in input order
- * @param rootOf - The collector's per-URL root reader (`fhir-r4-client-collector`'s
+ * @param rootOf - The collector's per-URL root reader (`fhir-r4-importer`'s
  *   `fhirRootOf`)
  * @returns Every distinct root some response's URL named, de-duplicated but
  *   otherwise untouched — no single root chosen, no voting
@@ -91,21 +95,25 @@ const distinctRoots = (
  */
 const previewClaimed = (
   collector: RegisteredCollector,
-  responses: readonly Replay.ReplayResponse[]
+  responses: readonly Replay.ReplayResponse[],
+  archive: ArchiveContext
 ): Effect.Effect<ImportPreview> =>
-  Effect.map(Replay.replayEntities(collector.offlineEntities, responses), (outcome) => ({
-    _tag: 'Preview',
-    collectorTag: collector.tag,
-    rootUrls: distinctRoots(responses, collector.rootOf),
-    resourcesByType: Arr.groupBy(
-      outcome.batches.flatMap((batch) => batch.resources),
-      (resource) => resource.resourceType
-    ),
-    parseFailures: toImportParseFailures(outcome.parseFailures),
-    unmatchedCount: outcome.unmatched.length,
-    bodyAbsentCount: outcome.bodyAbsent.length,
-    totalEntries: responses.length,
-  }))
+  Effect.map(
+    Replay.replayEntities(collector.offlineEntitiesFor(archive), responses),
+    (outcome) => ({
+      _tag: 'Preview',
+      collectorTag: collector.tag,
+      rootUrls: distinctRoots(responses, collector.rootOf),
+      resourcesByType: Arr.groupBy(
+        outcome.batches.flatMap((batch) => batch.resources),
+        (resource) => resource.resourceType
+      ),
+      parseFailures: toImportParseFailures(outcome.parseFailures),
+      unmatchedCount: outcome.unmatched.length,
+      bodyAbsentCount: outcome.bodyAbsent.length,
+      totalEntries: responses.length,
+    })
+  )
 
 /**
  * Read a `.har` file's text into an import preview.
@@ -134,7 +142,7 @@ const runHarImport = (harText: string): Effect.Effect<ImportPreview, ParseResult
     if (Option.isNone(claimed)) {
       return { _tag: 'NoCollectorClaims', totalEntries: responses.length }
     }
-    return yield* previewClaimed(claimed.value, responses)
+    return yield* previewClaimed(claimed.value, responses, { harText })
   })
 
 export { runHarImport, toReplayResponse }
