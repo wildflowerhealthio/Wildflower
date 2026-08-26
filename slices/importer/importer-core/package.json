@@ -2,7 +2,7 @@
   "name": "importer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure core of the importer slice: read a HAR archive, detect which registered collector understands it, replay its offline entities into a preview, and — as a separate opt-in step — persist the previewed resources. No DOM, no fs, no React.",
+  "description": "Pure core of the importer slice: read a HAR archive, detect which registered importer claims it, run its entities into a preview, and — as a separate opt-in step — persist the previewed resources. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -30,22 +30,21 @@
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "browser-sniffer-core": "workspace:*",
-    "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-importer": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"
   },
   "peerDependencies": {
-    "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-importer": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "web-trace-core": "workspace:*"
   }

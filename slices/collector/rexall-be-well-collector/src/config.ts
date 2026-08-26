@@ -1,13 +1,10 @@
-import {
-  CollectorDescriptor,
-  type EntityDefinition,
-  ScrapingPlan,
-} from 'collector-fundamentals/model'
+import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
+import type { EntityDefinition } from 'importer-fundamentals'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 

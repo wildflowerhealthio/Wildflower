@@ -1,5 +1,5 @@
-import type { EntityDefinition } from 'collector-fundamentals/model'
 import type { FhirResource } from 'fhir-r4/resources'
+import type { EntityDefinition } from 'importer-fundamentals'
 
 import { ObservationEntity } from './entities/observation-entity.ts'
 import { ObservationListEntity } from './entities/observation-list-entity.ts'
@@ -10,10 +10,10 @@ import { PatientEntity } from './entities/patient-entity.ts'
  * Observation-list — as the single definition every consumer shares.
  *
  * @remarks
- * Both the live scraping plan's `entityDefinitions` (`./config.ts`) and the
- * offline `offlineEntities` surface (`./offline.ts`) adopt *this* tuple, so a
- * resource decodes identically whether it arrives through the sniffer or an
- * archive — the reuse the offline-surface ticket turns on. It lives in its own
+ * Both the importer's `fhirR4ImporterEntities` (`./importer-entities.ts`) and
+ * the live scraping plan's `entityDefinitions` (`fhir-r4-client-collector`'s
+ * `config.ts`) adopt *this* tuple, so a resource decodes identically whether
+ * it arrives through an archive or a sniffer. It lives in its own
  * module, rather than inline in the plan, so both consumers name the same
  * array without either importing the other's larger surface, and so the
  * reference the two share is unambiguous.

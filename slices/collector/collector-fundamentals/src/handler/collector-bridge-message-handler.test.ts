@@ -6,13 +6,13 @@ import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { OpenMessage } from 'collector-fundamentals/bridge'
 import {
-  EntityDefinition,
+  CollectorEntityDefinition,
   ScrapingPlan,
   type Step,
-  UrlMatch,
   WebViewSource,
 } from 'collector-fundamentals/model'
 import type { TransportAdapter } from 'effect-messaging-core'
+import { UrlMatch } from 'importer-fundamentals'
 
 import {
   adapterLayer,
@@ -388,7 +388,7 @@ const dispatched = (
  */
 const makeGeneratingHandler = (opts: {
   readonly sendMessage: SendMessage
-  readonly followUpSteps: EntityDefinition.EntityDefinition<Person>['followUpSteps']
+  readonly followUpSteps: CollectorEntityDefinition.CollectorEntityDefinition<Person>['followUpSteps']
   readonly maxGeneratedSteps?: number
 }): CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<Person> =>
   Effect.runSync(
@@ -396,7 +396,7 @@ const makeGeneratingHandler = (opts: {
       scrapingPlan: ScrapingPlan.make<Person>({
         name: 'GeneratingPlan',
         entityDefinitions: [
-          EntityDefinition.make<Person>({
+          CollectorEntityDefinition.make<Person>({
             name: 'PersonEntity',
             isFoundAt: (url) => /\/people\//.test(url),
             parse: (response) =>

@@ -18,9 +18,9 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
   with fast-check arbitraries, `defaultConfig` (the public SMART Health IT
   sandbox), the two-page `scrapingPlan`, and the `FhirR4CollectorDescriptor`.
   The plan decodes through `fhir-r4-importer`'s `fhirR4EntityDefinitions`
-  tuple — the entities themselves (and the offline surface an archive importer
-  replays) live in that package, the shared **importer project** this collector
-  builds its live plan from. See
+  tuple — the entities themselves (and the importer surface an archive import
+  runs, `fhirR4Importer`) live in that package, the **importer project** this
+  collector builds its live plan from. See
   [fhir-r4-importer AGENTS.md](../../importer/fhir-r4-importer/AGENTS.md).
 - the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('fhir-r4')`,
   one module-level line in `src/config.ts`, stated as the plan's
@@ -33,10 +33,11 @@ config.rootUrl })` wrapping the plan factory's return, so every resource is
   [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 - `src/fhir-r4-config-form.tsx` (+ `.module.css`) — the rootUrl/patientId
   `ConfigFormProps` form `collector-react` registers.
-- `src/offline-parity.test.ts` — pins that a resource captured from its
-  configured root carries the byte-identical id live and offline (the tests
-  that need `InstanceConfig`/`scrapingPlan`; the offline surface's own
-  behaviour is pinned in `fhir-r4-importer`).
+- `src/importer-parity.test.ts` — pins that a resource captured from its
+  configured root carries the byte-identical id through the live plan and
+  through the importer's entities (the tests that need
+  `InstanceConfig`/`scrapingPlan`; the importer surface's own behaviour is
+  pinned in `fhir-r4-importer`).
 - `src/index.ts` — the barrel the registry and the React adapter import from.
 
 ## The plan
@@ -75,18 +76,19 @@ both link directions live in `web-trace-core`; this package only names itself.
   specific clinical resource _is_ the provenance, so storing its size and hash
   with no data would defeat the point.
 
-## Offline surface
+## Importer surface
 
 Lives in [`fhir-r4-importer`](../../importer/fhir-r4-importer/AGENTS.md)
-(`slices/importer`), together with the entities: `offlineEntities` (keying each
-resource under the root of the URL it arrived on), `fhirR4Recognizer`
-(specificity `50`), and `fhirRootOf` (the per-URL root primitive — that package
-owns "what a FHIR root is"). The live plan here and the offline surface there
+(`slices/importer`), together with the entities: `fhirR4ImporterEntities`
+(keying each resource under the root of the URL it arrived on),
+`fhirR4Recognizer` (specificity `50`), `fhirRootOf` (the per-URL root
+primitive — that package owns "what a FHIR root is"), and the assembled
+`fhirR4Importer` value. The live plan here and the importer surface there
 consume the **same** `fhirR4EntityDefinitions` tuple, so a resource decodes
 identically through the sniffer and through an archive; only the identity
-source differs (the live plan keys under `config.rootUrl`, offline keys under
-each response's own root), and `offline-parity.test.ts` in this package pins
-that the two coincide for a capture from the configured server.
+source differs (the live plan keys under `config.rootUrl`, the importer keys
+under each response's own root), and `importer-parity.test.ts` in this package
+pins that the two coincide for a capture from the configured server.
 
 ## Traps
 

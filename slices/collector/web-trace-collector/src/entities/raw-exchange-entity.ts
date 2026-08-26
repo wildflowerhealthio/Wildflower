@@ -1,5 +1,5 @@
-import { EntityDefinition } from 'collector-fundamentals/model'
 import { DateTime, Effect, ParseResult } from 'effect'
+import { EntityDefinition } from 'importer-fundamentals'
 import { TraceExchange } from 'web-trace-core'
 import { type DocumentReferenceType, toDocumentReference } from 'web-trace-core/codec'
 import { toExchangeFields } from 'web-trace-core/provenance'

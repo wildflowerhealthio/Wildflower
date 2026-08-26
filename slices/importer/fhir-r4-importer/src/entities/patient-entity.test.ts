@@ -3,16 +3,16 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { Response } from 'collector-fundamentals/model'
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import type { Patient } from 'fhir-r4/resources'
+import type { ImportableResponse } from 'importer-fundamentals'
+import { makeImportableResponse } from 'importer-fundamentals/test-helpers'
 
 import { PatientEntity } from './patient-entity.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
-const makeResponse = (body: string): Response.RemoteResponse =>
-  makeRemoteResponse({
+const makeResponse = (body: string): ImportableResponse.ImportableResponse =>
+  makeImportableResponse({
     url: 'https://example.com/Patient/1',
     headers: [['content-type', 'application/fhir+json']],
     body,
@@ -32,7 +32,7 @@ const wrappedHtml = (rawJson: string): string => {
 
 /** Run `parse` (now Effect-returning) and convert to an Either for the `expectRight/LeftToEqual` helpers. */
 const runParse = (
-  r: Response.RemoteResponse
+  r: ImportableResponse.ImportableResponse
 ): Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(PatientEntity.parse(r)))
 

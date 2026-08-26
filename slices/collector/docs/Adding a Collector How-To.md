@@ -14,11 +14,11 @@ that depends on `collector-fundamentals` only.
 
 ## What you're building
 
-A collector's **entities** (and, when it supports archive import, its offline
-surface) live in a sibling **importer project** under `slices/importer/` —
-`fhir-r4-importer` is the worked example — so the browser-driving collector and
-the archive importer share one decode. The collector package depends on its
-importer project, never the reverse.
+A source's decode lives in its **importer project** under `slices/importer/` —
+`fhir-r4-importer` is the worked example — as `EntityDefinition`s (and, when
+the source supports archive import, an assembled `Importer.Importer` value).
+The collector package layers browser-driving navigation and persistence on top
+of those entities; it depends on its importer project, never the reverse.
 
 | Piece           | Where                                       | Contract                                                       |
 | --------------- | ------------------------------------------- | -------------------------------------------------------------- |
@@ -48,7 +48,7 @@ Run `vp install` after adding the package so the workspace picks it up.
 
 ## 2. Define entities
 
-An `EntityDefinition` (`collector-fundamentals/model`) is a recipe the handler
+An `EntityDefinition` (`importer-fundamentals`) is a recipe the routing loop
 uses to _recognize_ a response by URL and _decode_ it to resources:
 
 ```ts
@@ -74,7 +74,9 @@ const PatientEntity = EntityDefinition.make({
   `Either`, so an entity can `Effect.logInfo` dropped entries. Emit `[]` for a
   resource you can't use (e.g. a null id) rather than failing. `parse` stays a
   **pure decode** — it never emits navigation.
-- **`followUpSteps` (optional) is the reactive-crawl seam.** A pure, synchronous
+- **`followUpSteps` (optional) is the reactive-crawl seam**, added by
+  `collector-fundamentals`' `CollectorEntityDefinition` (an entity that crawls
+  is built with `CollectorEntityDefinition.make` instead). A pure, synchronous
   `(resources, response) => Step[]`: every time this entity's `parse` succeeds,
   the returned steps are appended to the back of the navigation queue (open every
   page a parsed list/table links, resolving relative links against

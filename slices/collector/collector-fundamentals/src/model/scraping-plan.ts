@@ -1,6 +1,6 @@
 import { Duration, type Effect } from 'effect'
-import type * as EntityDefinition from './entity-definition.ts'
-import type { RemoteResponse } from './response.ts'
+import type * as CollectorEntityDefinition from './collector-entity-definition.ts'
+import type { RemoteResponse } from './remote-response.ts'
 import type * as Step from './step.ts'
 
 /** Default {@link ScrapingPlan.maxGeneratedSteps} when a plan omits it. */
@@ -93,13 +93,13 @@ interface CaptureProvenanceResult<TResources> {
  */
 interface ScrapingPlan<TResources> {
   readonly name: string
-  readonly entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[]
+  readonly entityDefinitions: readonly CollectorEntityDefinition.CollectorEntityDefinition<TResources>[]
   readonly stepSequence: readonly Step.Step[]
   readonly maxGeneratedSteps?: number
   readonly dedupeGeneratedOpenUris?: boolean
   readonly drainedGuardTimeout?: Duration.Duration
   // Declared as a *method* signature, not a `readonly` arrow property, for the
-  // same reason as `EntityDefinition.followUpSteps`: `produced` puts
+  // same reason as `CollectorEntityDefinition.followUpSteps`: `produced` puts
   // `TResources` in a parameter (contravariant) position, which would make
   // `ScrapingPlan` invariant in `TResources` and break the
   // `ScrapingPlan<Resources>` → `ScrapingPlan<unknown>` widening the

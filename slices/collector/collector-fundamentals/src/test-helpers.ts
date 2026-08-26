@@ -1,7 +1,7 @@
-import { DateTime, Effect, Schema } from 'effect'
+import { DateTime } from 'effect'
+import type { ImportableResponse } from 'importer-fundamentals'
 
-import * as EntityDefinition from './model/entity-definition.ts'
-import { RemoteResponse, type RemoteResponseHeaders } from './model/response.ts'
+import { RemoteResponse } from './model/remote-response.ts'
 
 /**
  * Fields a test wants to vary on a {@link RemoteResponse}; everything omitted
@@ -12,7 +12,7 @@ interface RemoteResponseOverrides {
   readonly url?: string
   readonly status?: number
   readonly statusText?: string
-  readonly headers?: RemoteResponseHeaders
+  readonly headers?: ImportableResponse.Headers
   /** The observed response-start instant. Fixed by default, so tests stay deterministic. */
   readonly startedAt?: DateTime.Utc
   /** Body bytes. A `string` is UTF-8 encoded; pass a `Uint8Array` for a non-UTF-8 body. */
@@ -35,7 +35,9 @@ const DEFAULT_STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
  * Six positional constructor arguments is a lot to restate at every call site,
  * and most tests care about one or two of them. Chunk *boundaries* are the one
  * thing this hides — a test about multi-chunk accumulation should call
- * `appendChunk` itself.
+ * `appendChunk` itself. For a plain `ImportableResponse` with no chunk
+ * machinery, use `importer-fundamentals/test-helpers`' `makeImportableResponse`
+ * instead.
  */
 const makeRemoteResponse = (overrides: RemoteResponseOverrides = {}): RemoteResponse => {
   const response = new RemoteResponse(
@@ -53,35 +55,5 @@ const makeRemoteResponse = (overrides: RemoteResponseOverrides = {}): RemoteResp
   return response
 }
 
-/**
- * Two reusable test entities for `entity-definition.test.ts` and
- * `collector-bridge-message-handler.test.ts`. Mirror the shape a real
- * entity (e.g. `PatientEntity`) takes — a value built via
- * `EntityDefinition.make`, no inheritance.
- */
-
-const SimpleSchema = Schema.Struct({
-  name: Schema.String,
-  age: Schema.Number,
-})
-
-const SimpleEntity: EntityDefinition.EntityDefinition<typeof SimpleSchema.Type> =
-  EntityDefinition.make({
-    name: 'SimpleEntity',
-    isFoundAt: (url) => /\/people\/\d+$/.test(url),
-    parse: (response) =>
-      Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => [data]),
-  })
-
-const AnotherSchema = Schema.Struct({ id: Schema.String })
-
-const AnotherEntity: EntityDefinition.EntityDefinition<typeof AnotherSchema.Type> =
-  EntityDefinition.make({
-    name: 'AnotherEntity',
-    isFoundAt: (url) => /\/items\//.test(url),
-    parse: (response) =>
-      Effect.map(Schema.decode(Schema.parseJson(AnotherSchema))(response.text()), (data) => [data]),
-  })
-
-export { AnotherEntity, DEFAULT_STARTED_AT, makeRemoteResponse, SimpleEntity }
+export { DEFAULT_STARTED_AT, makeRemoteResponse }
 export type { RemoteResponseOverrides }

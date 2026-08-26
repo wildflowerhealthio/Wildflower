@@ -12,21 +12,21 @@ single-select.
 
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../AGENTS.md): it depends on its sources, never the reverse.
-It depends on `importer-core` (the read/write pipeline — `runHarImport`,
-`persistPreview`), `web-trace-core` (the HAR archive codec under `/codec` and the
+It depends on `importer-core` (the read/write pipeline — `HarImport.run`,
+`ImportPreview.persist`), `web-trace-core` (the HAR archive codec under `/codec` and the
 HAR parser under `/har`), `fhir-r4` (the typed client and `ResourceWriteFailure`),
 and `fhir-r4-react` (the authed runner and the slice runtime layer).
 
 The seam between this package and the core is narrow: the read half hands back an
 `ImportPreview` and the write half takes a `Preview` + a source reference. This
-package owns the flow and the rendering; the core owns detect/replay/persist. If a
+package owns the flow and the rendering; the core owns detect/extract/persist. If a
 component needs more than those two functions expose, widen the core's surface
 rather than reaching around it.
 
 **Presentation and interaction only.** Nothing here parses HAR, encodes an
-archive, replays entities, or writes resources. The parser (`fromHarJson`), the
-archive codec, the replay/fold (`runHarImport`), and the write sink
-(`persistPreview` → `fhir-r4`'s `persistResources`) all live below this package;
+archive, runs entities, or writes resources. The parser (`fromHarJson`), the
+archive codec, the extract/fold (`HarImport.run`), and the write sink
+(`ImportPreview.persist` → `fhir-r4`'s `persistResources`) all live below this package;
 it drives them and reimplements none.
 
 ## Module layout
@@ -36,7 +36,7 @@ it drives them and reimplements none.
   `useConfirmImport` → `ImportResults`. A cancel or "import another" discards and
   returns to the picker.
 - **`src/preview/`** — the read half and its view. `use-import-run.ts` runs
-  `runHarImport` (via `useRunAuthed`) once per picked file and holds the batch of
+  `HarImport.run` (via `useRunAuthed`) once per picked file and holds the batch of
   `ReadEntry`s (each a `read` preview or an `unreadable` file);
   `use-confirm-import.ts` is the opt-in write action, per file, best-effort
   (upload-then-persist each writable file, one file's failure never stopping the
@@ -66,14 +66,14 @@ it drives them and reimplements none.
 ## Traps
 
 - **The read half writes nothing, and the split is the whole product.** Reaching a
-  preview issues no writes — `runHarImport` requires no services and is run for its
+  preview issues no writes — `HarImport.run` requires no services and is run for its
   data only. Every write is behind the one explicit confirm. A test pins this on
   the wire (zero writes to reach a preview); do not add a write to the read path
   (e.g. an "auto-upload on pick") that would collapse the opt-in seam.
 - **Confirm ordering is fixed per file: archive create, then that file's resource
   writes.** A `local` pick's archive is uploaded first (`useUploadHar`) and the
   reference it mints is stamped onto every resource from _that file_; only then
-  does `persistPreview` run for it. A `server` pick uploads nothing and links to
+  does `ImportPreview.persist` run for it. A `server` pick uploads nothing and links to
   the document it was fetched from. Sequencing matters — a resource must never be
   written pointing at an archive that is not there yet — so each file's upload
   is `flatMap`ped before its persist, inside `importOneFile`. The whole batch is
@@ -86,8 +86,8 @@ it drives them and reimplements none.
 - **The batch is best-effort, and provenance stays per-file.** One file's upload
   failure is caught and recorded as its own `FileImportResult` (`uploadFailed`,
   carrying the cause) — the remaining files still import, the multi-file echo of
-  `persistPreview` returning per-resource failures as data. A file with nothing to
-  write (no collector, recognized-but-empty, or unreadable) is `skipped`, never a
+  `ImportPreview.persist` returning per-resource failures as data. A file with nothing to
+  write (no importer, recognized-but-empty, or unreadable) is `skipped`, never a
   failure. `isPartialBatch` lifts `collectImportSummary` to the batch: any
   upload failure or any per-resource failure makes the whole batch partial; a
   `skipped` file alone does not. There is **no** whole-flow `errored` state — an
@@ -95,7 +95,7 @@ it drives them and reimplements none.
   FHIR server's own response), not swallowed behind "Try again".
 - **The confirm affordance is gated on the batch having something to write.**
   `PreviewPanel` shows the single confirm button only when at least one file is a
-  claimed `Preview` with resources; files that are `NoCollectorClaims`,
+  claimed `Preview` with resources; files that are `NoImporterClaims`,
   claimed-but-empty, or unreadable render their own row but add nothing to write.
   `useConfirmImport` re-checks each file (skipping the non-writable ones) — the
   gate is the affordance, the per-file check is the safety.
@@ -108,13 +108,13 @@ it drives them and reimplements none.
   `isHarArchive` never both hold. The list must never surface a trace.
 - **The picker validates each local file through the real HAR parser, not a
   second check.** `acceptLocalHar` runs `web-trace-core`'s `fromHarJson`, so a
-  file the picker accepts is a file a replay can parse, and a file that is not
+  file the picker accepts is a file an extraction can parse, and a file that is not
   JSON and a file that is JSON-but-not-HAR both fail _at the picker_, next to the
   control the user just used. In a batch the accepted files are handed on together
   and the rejected ones are named in the notice; a **lone** rejected file with
   nothing accepted keeps its full parser detail instead (`describeRejection`) —
   the case a user is debugging one file. The parse result is discarded — this is a
-  gate, and the replay parses the text again when it runs.
+  gate, and the extraction parses the text again when it runs.
 - **`page-token.ts` is a copy of `web-trace-react`'s, deliberately.** The two
   slices page the same FHIR server the same way, but the importer must not depend
   on the web-trace viewer to do it — an adapter reaching into another adapter is
@@ -202,7 +202,7 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   `new Uint8Array(...)` — reproducing the real single-realm behaviour rather than
   the jsdom artifact. The production encode stays `new TextEncoder().encode(text)`.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router — and
-  pins that each file's outcome (no-collector, claimed-but-empty, parse-failure,
+  pins that each file's outcome (no-importer, claimed-but-empty, parse-failure,
   unreadable, and a healthy preview) renders to its own role/text, that a mixed
   batch sums to one confirm over every file's section, and that the confirm appears
   only when at least one file has something to write. `results/import-outcome.test.ts`
@@ -214,9 +214,9 @@ failures` and any failure ⇒ partial; per batch, `summarizeBatch` sums the file
 ## References
 
 - [slices/importer AGENTS.md](../AGENTS.md) — why the slice exists, its guardrails,
-  and the detect→replay→preview→persist pipeline this package's flow drives.
+  and the detect→extract→preview→persist pipeline this package's flow drives.
 - [importer-core AGENTS.md](../importer-core/AGENTS.md) — the read/write halves
-  (`runHarImport`, `persistPreview`) this package mounts a UI over.
+  (`HarImport.run`, `ImportPreview.persist`) this package mounts a UI over.
 - [slices AGENTS.md](../../AGENTS.md) — the slice layering rules this package
   follows.
 - [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the HAR

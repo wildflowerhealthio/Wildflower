@@ -13,14 +13,14 @@ type AdoptableParse = (
  * adopted.
  *
  * @remarks
- * Structural rather than `collector-fundamentals`' `EntityDefinition`: this
+ * Structural rather than `importer-fundamentals`' `EntityDefinition`: this
  * package sits below the collector slice and cannot import it — the same
  * precedent `web-trace-core`'s `CapturedResponse` sets.
  *
  * `parse` is declared with method syntax so its parameter is checked
  * bivariantly, which is what lets a concrete entity typed against the
  * collector's own `RemoteResponse` satisfy an `unknown` here. The trick is
- * `collector-fundamentals`' own, used on `EntityDefinition.followUpSteps` for
+ * `collector-fundamentals`' own, used on `CollectorEntityDefinition.followUpSteps` for
  * the same reason.
  */
 interface AdoptableEntity {

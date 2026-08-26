@@ -1,23 +1,23 @@
-import type { EntityDefinition } from 'collector-fundamentals/model'
-import type { Replay } from 'collector-fundamentals/replay'
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, DateTime, Effect, Option } from 'effect'
 import * as fc from 'fast-check'
-import { fhirR4Recognizer, fhirRootOf, offlineEntities } from 'fhir-r4-importer'
+import { fhirR4ImporterEntities, fhirR4Recognizer, fhirRootOf } from 'fhir-r4-importer'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
+import type { EntityDefinition, Extraction } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { InstanceConfig, scrapingPlan } from './config.ts'
 
 /**
- * Parity between this collector's live plan and `fhir-r4-importer`'s offline
+ * Parity between this collector's live plan and `fhir-r4-importer`'s importer
  * surface: the two consume the same entity tuple, and a resource captured from
  * its configured root must carry the byte-identical id either way. These tests
  * live here, not in `fhir-r4-importer`, because they are the only ones that
- * need the live `InstanceConfig`/`scrapingPlan` — the offline surface's own
- * behaviour is pinned in that package's `offline.test.ts`.
+ * need the live `InstanceConfig`/`scrapingPlan` — the importer surface's own
+ * behaviour is pinned in that package's `recognizer.test.ts` and
+ * `importer-entities.test.ts`.
  */
 
 /** The plan factory ignores its run id; a fixed one keeps builds comparable. */
@@ -26,10 +26,10 @@ const FIXED_RUN_ID = 'test-run'
 const utf8 = new TextEncoder()
 
 /**
- * A minimal {@link Replay.ReplayResponse} for the recognizer, which reads only
+ * A minimal {@link Extraction.Input} for the recognizer, which reads only
  * `url` — everything else is filler the shape requires.
  */
-const replay = (url: string, body = '{}'): Replay.ReplayResponse => ({
+const input = (url: string, body = '{}'): Extraction.Input => ({
   id: `req:${url}`,
   url,
   status: 200,
@@ -49,10 +49,10 @@ const entityNamed = (
   return found
 }
 
-/** Parse `body` at `url` through the offline entity named `name`. */
-const parseOffline = (name: string, url: string, body: unknown): readonly FhirResource[] =>
+/** Parse `body` at `url` through the importer entity named `name`. */
+const parseImporter = (name: string, url: string, body: unknown): readonly FhirResource[] =>
   Effect.runSync(
-    entityNamed(offlineEntities, name).parse(
+    entityNamed(fhirR4ImporterEntities, name).parse(
       makeRemoteResponse({
         url,
         headers: [['content-type', 'application/fhir+json']],
@@ -68,8 +68,8 @@ describe('fhirR4Recognizer against the live config', () => {
         const safeId = encodeURIComponent(config.patientId)
         expect(
           fhirR4Recognizer.claims([
-            replay(`${config.rootUrl}/Patient/${safeId}?_format=json`),
-            replay(`${config.rootUrl}/Observation?subject%3APatient=${safeId}`),
+            input(`${config.rootUrl}/Patient/${safeId}?_format=json`),
+            input(`${config.rootUrl}/Observation?subject%3APatient=${safeId}`),
           ])
         ).toBe(true)
       }),
@@ -78,11 +78,11 @@ describe('fhirR4Recognizer against the live config', () => {
   })
 })
 
-describe('offlineEntities against the live plan', () => {
+describe('fhirR4ImporterEntities against the live plan', () => {
   test('matches the live plan when a resource is captured from its configured root', () => {
     const rootUrl = 'https://r4.example.org/baseR4'
     const body = { resourceType: 'Patient', id: 'pat-7' }
-    const [offlinePatient] = parseOffline('PatientEntity', `${rootUrl}/Patient/pat-7`, body)
+    const [importedPatient] = parseImporter('PatientEntity', `${rootUrl}/Patient/pat-7`, body)
     const [livePatient] = Effect.runSync(
       entityNamed(
         scrapingPlan({ _tag: 'fhir-r4', rootUrl, patientId: 'pat-7' }, FIXED_RUN_ID)
@@ -96,14 +96,14 @@ describe('offlineEntities against the live plan', () => {
         })
       )
     )
-    expect(offlinePatient?.id).toBe(localResourceId(rootUrl, 'Patient', 'pat-7'))
-    expect(offlinePatient?.id).toBe(livePatient?.id)
+    expect(importedPatient?.id).toBe(localResourceId(rootUrl, 'Patient', 'pat-7'))
+    expect(importedPatient?.id).toBe(livePatient?.id)
   })
 
   test('property: keys any configured rootUrl under that same root', () => {
     fc.assert(
       fc.property(Arbitrary.make(InstanceConfig), (config) => {
-        const [patient] = parseOffline(
+        const [patient] = parseImporter(
           'PatientEntity',
           `${config.rootUrl}/Patient/${encodeURIComponent(config.patientId)}`,
           { resourceType: 'Patient', id: config.patientId }

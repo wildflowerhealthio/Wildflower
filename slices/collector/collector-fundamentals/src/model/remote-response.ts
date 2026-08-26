@@ -1,19 +1,11 @@
-import type { SnifferRequestId } from 'browser-sniffer-core'
 import type { DateTime } from 'effect'
-
-/**
- * Ordered `(name, value)` header pairs as received on the wire. HTTP
- * allows the same header name to appear repeatedly (`Set-Cookie` is
- * the canonical case); preserving the array shape keeps the response
- * lossless. Consumers that want lookup by name should use
- * `headersGet(this.headers, 'set-cookie')` (case-insensitive) or
- * fold into a `Map<string, string[]>`.
- */
-type RemoteResponseHeaders = readonly (readonly [string, string])[]
+import type { ImportableResponse } from 'importer-fundamentals'
 
 /**
  * One in-flight (then settled) sniffed response, as an `EntityDefinition.parse`
- * sees it.
+ * sees it — the live implementation of
+ * {@link ImportableResponse.ImportableResponse}, accumulating body chunks as
+ * the sniffer streams them in.
  *
  * @remarks
  * The constructor mirrors the sniffer's `ResponseStart` wire body field-for-field
@@ -21,26 +13,30 @@ type RemoteResponseHeaders = readonly (readonly [string, string])[]
  * instant the tracker observed that event. Everything an entity may know about a
  * response is here — the tracker never pre-extracts a slice of it.
  *
+ * `implements` is the compile-time pin that live and archive-driven `parse`
+ * see the same surface: an entity written against `ImportableResponse` decodes
+ * a sniffed response and an archived one identically.
+ *
  * `id` and `startedAt` serve a *capturing* entity, one that records the exchange
  * rather than decoding a payload out of it; a decoding entity ignores both. See
  * the per-member notes for why each is on the response rather than re-derived.
  */
-class RemoteResponse {
+class RemoteResponse implements ImportableResponse.ImportableResponse {
   #chunks: Uint8Array[] = []
 
   constructor(
     /**
-     * The sniffer's per-request correlation key — its identity for this
-     * exchange. A capturing entity keys stored records on it (e.g.
+     * The per-request correlation key the sniffer assigned — its identity for
+     * this exchange. A capturing entity keys stored records on it (e.g.
      * `{sessionId}-{requestId}`) so a retried write is an idempotent upsert
      * rather than a duplicate. Threading a counter through `parse` instead would
      * re-derive an id the sniffer already assigned and lose that idempotency.
      */
-    public readonly id: typeof SnifferRequestId.Type,
+    public readonly id: string,
     public readonly url: string,
     public readonly status: number,
     public readonly statusText: string,
-    public readonly headers: RemoteResponseHeaders,
+    public readonly headers: ImportableResponse.Headers,
     /**
      * When the tracker observed `ResponseStart` — the only instant on the
      * response the sniffer reports. `parse` runs at *settle*, so a capturing
@@ -107,4 +103,3 @@ class RemoteResponse {
 }
 
 export { RemoteResponse }
-export type { RemoteResponseHeaders }

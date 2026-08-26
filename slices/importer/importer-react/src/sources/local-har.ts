@@ -8,7 +8,7 @@ import { LOCAL_SOURCE, type PickedHar } from './picked-har.ts'
  * *at the picker*, before it becomes the importer's problem.
  *
  * @remarks
- * A local file is validated the same way a replay will read it — through
+ * A local file is validated the same way an extraction will read it — through
  * `web-trace-core`'s `fromHarJson`, the one HAR parser in the codebase — rather
  * than a second, weaker check here. So a file the picker accepts is a file the
  * importer can parse, and a rejection carries the reason back to the control the
@@ -98,7 +98,7 @@ interface ReadableFile {
  * Validation goes through `fromHarJson`, so a file that is not JSON and a file
  * that is JSON but not a HAR both fail here rather than downstream; the parse
  * result itself is discarded, because the picker hands on the *text* and the
- * replay parses it again when it runs. This is a gate, not the parse.
+ * extraction parses it again when it runs. This is a gate, not the parse.
  */
 const acceptLocalHar = (file: ReadableFile): Effect.Effect<PickedHar, string> =>
   Effect.promise(() => file.text()).pipe(

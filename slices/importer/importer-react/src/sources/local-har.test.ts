@@ -8,7 +8,7 @@ import type { PickedHar } from './picked-har.ts'
 /**
  * `acceptLocalHar` is the gate every local pick passes: it reads the file and
  * validates it through `web-trace-core`'s own HAR parser, so a file the picker
- * accepts is one a replay can parse and a file it rejects is rejected here rather
+ * accepts is one an extraction can parse and a file it rejects is rejected here rather
  * than downstream.
  */
 
@@ -104,7 +104,7 @@ describe('acceptLocalHar', () => {
 
   it('should preserve any file name and the exact text of an accepted HAR', async () => {
     // A validated pick is a gate, not a transform: whatever name and bytes came
-    // in come back out unchanged, so the replay parses exactly what was picked.
+    // in come back out unchanged, so the extraction parses exactly what was picked.
     await fc.assert(
       fc.asyncProperty(
         fc.string({ minLength: 1 }).filter((n) => n.trim() !== ''),

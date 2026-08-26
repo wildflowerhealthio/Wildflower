@@ -9,22 +9,26 @@ before adding one.
 
 ## Package roles
 
-- **`collector-fundamentals`** — the pure vocabulary + the handler machines.
-  `CollectorDescriptor` ("a collector" as one first-class value), the
-  `ResourcePersistence*` write seam, `EntityDefinition` / `UrlMatch` /
-  `ScrapingPlan` / `Step`, and the `./config-form` view contract, plus
+- **`collector-fundamentals`** — the collector vocabulary + the handler
+  machines, built on `importer-fundamentals` (which owns `EntityDefinition` /
+  `UrlMatch` / `ImportableResponse` — the decode vocabulary the importer slice
+  defines and this slice consumes). `CollectorDescriptor` ("a collector" as one
+  first-class value), the `ResourcePersistence*` write seam,
+  `CollectorEntityDefinition` (an importer `EntityDefinition` extended with the
+  live-only `followUpSteps` crawl seam) / `ScrapingPlan` / `Step` /
+  `RemoteResponse` (the live, chunk-accumulating implementation of
+  `ImportableResponse`), and the `./config-form` view contract, plus
   `CollectorBridgeMessageHandler` (the response tracker + automatic-navigation
   machine + run lifecycle). Provenance is core here: the framework mints the
   run id at dispatch and invokes the plan's optional `captureProvenance` hook
   at the tracker seam, and a settled batch structurally separates `resources`
-  from best-effort `diagnostics`. Also `./replay` — the **offline** counterpart
-  to the live machinery: `Replay.replayEntities(entityDefinitions, responses)`
-  folds a static set of responses through a plan's entities (same
-  first-`isFoundAt`-match-wins routing, no navigation, no persistence), and
-  `Recognizer.resolve` ranks the collectors that claim a set of responses. No
-  registry, no HTTP runtime, no React. Everything else depends on it; it depends
-  on nothing else in the slice. Deliberately FHIR-agnostic — nothing here names
-  a resource type, and `./replay` names no archive format either.
+  from best-effort `diagnostics`. No registry, no HTTP runtime, no React.
+  Everything else in the slice depends on it; within the slice it depends on
+  nothing, and outside it only on `importer-fundamentals` — the archive-driven
+  counterpart of the tracker (`Extraction.run`) lives there, and
+  `src/handler/extraction-parity.test.ts` here pins that the two route and
+  decode identically. Deliberately FHIR-agnostic — nothing here names a
+  resource type.
 - **`collector-registry`** — the **closed, compile-time** assembly. A single
   `descriptors` tuple lists every collector; the `CollectorConfig` union, the
   `CollectorTag` literal, `CollectorRequirements`, and the
@@ -35,11 +39,11 @@ before adding one.
 - **`*-client-collector`** (`fhir-r4-client-collector`, …) — one
   `CollectorDescriptor` per import site: config schema + arbitraries, scraping
   plan, display strings, persist sink, and the collector's own `ConfigForm`.
-  The entities a collector decodes with live in its sibling **importer
-  project** under `slices/importer/` (`fhir-r4-importer` is the worked
-  example), shared with the archive importer; the collector depends on
+  A source's decode lives in its **importer project** under `slices/importer/`
+  (`fhir-r4-importer` is the worked example); the collector package layers
+  navigation and persistence on top of those entities, depending on
   `collector-fundamentals` and its importer project — never on
-  `collector-react`. Three today:
+  `collector-react`, and never the reverse direction. Three today:
   [`fhir-r4-client-collector`](./fhir-r4-client-collector/AGENTS.md),
   [`rexall-be-well-collector`](./rexall-be-well-collector/AGENTS.md) (which also
   carries the Rexall carebook dialect it decodes with), and
@@ -115,9 +119,10 @@ before adding one.
   too-broad pattern earlier in the list shadows a later entity. Make patterns
   disjoint by construction, e.g. `mustHaveQuery` on a list-by-query pattern so
   it can't also match a single-resource URL (see `UrlMatch`).
-  `collector-fundamentals/replay` walks the same list the same way, so a plan
-  shadows identically live and offline — that is deliberate: a plan must not
-  decode one thing through a webview and another through an archive.
+  `importer-fundamentals`' `Extraction.run` walks the same list the same way,
+  so an entity list shadows identically live and in an archive import — that is
+  deliberate: a source must not decode one thing through a webview and another
+  through an archive.
 - **A new config in the union changes the remotes API wire schema — regenerate
   the OpenAPI snapshots.** `CollectorConfig` is the payload of
   `CreateRemote`/`UpdateRemote`; widening it drifts the committed spec. Run
@@ -265,10 +270,11 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   on unchanged (a diagnostic never takes a run down, and the stream's error
   shape is untouched), and `followUpSteps` receives the **raw** parse output —
   generation runs before the hook — so a generator that opens a link per
-  resource does not also fire for a provenance record. **Offline replay never
-  invokes it at all** — an archive-driven import already has its source as one
-  artifact, so its provenance is the link to that archive, not a per-response
-  trace. `followUpSteps` is likewise WARN-ignored there (nothing to navigate).
+  resource does not also fire for a provenance record. **An archive import never
+  invokes it at all** — `importer-fundamentals`' `Extraction.run` knows only the
+  base `EntityDefinition`, so neither `captureProvenance` nor `followUpSteps`
+  exists on that path (an import already has its source as one artifact, and
+  there is nothing to navigate).
 - **`RemoteResponse` answers a _recorder_'s questions, not just a decoder's.**
   The seam exposes everything an entity may know about a response, including the
   three a capturing entity needs that a decoding one ignores: the sniffer's

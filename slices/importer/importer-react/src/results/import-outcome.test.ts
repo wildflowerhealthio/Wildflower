@@ -2,7 +2,7 @@ import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import type { ResourceWriteFailure } from 'fhir-r4/clients'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { Preview } from 'importer-core'
+import type { ImportPreview } from 'importer-core'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import {
@@ -75,7 +75,7 @@ describe('summarizeBatch and isPartialBatch', () => {
       imported('a', 3, 0),
       imported('b', 2, 1),
       { _tag: 'uploadFailed', id: 'c', fileName: 'c.har', error: new Error('boom') },
-      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'no-collector' },
+      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'no-importer' },
     ]
     const summary = summarizeBatch(batch)
     expect(summary.written).toBe(4) // 3 + 1
@@ -87,7 +87,7 @@ describe('summarizeBatch and isPartialBatch', () => {
   it('is partial when any file upload-failed or wrote partially, complete otherwise', () => {
     expect(isPartialBatch([imported('a', 3, 0)])).toBe(false)
     // A skipped file alone is not a failure — it is the multi-file echo of
-    // NoCollectorClaims being data.
+    // NoImporterClaims being data.
     expect(
       isPartialBatch([
         imported('a', 3, 0),
@@ -123,15 +123,15 @@ const patient = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
 /** A `Preview` holding exactly `count` resources, all Patients. */
-const previewWith = (count: number): Preview =>
+const previewWith = (count: number): ImportPreview.Preview =>
   previewOf({ Patient: Array.from({ length: count }, (_, index) => patient(`pat-${index}`)) })
 
 /** A `Preview` carrying the given resources, grouped by type; other fields empty. */
 const previewOf = (
   resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
-): Preview => ({
+): ImportPreview.Preview => ({
   _tag: 'Preview',
-  collectorTag: 'fhir-r4',
+  importerTag: 'fhir-r4',
   rootUrls: ['https://r4.example.org/baseR4'],
   resourcesByType,
   parseFailures: [],

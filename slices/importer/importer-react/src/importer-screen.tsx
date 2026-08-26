@@ -13,7 +13,7 @@ import styles from './importer-screen.module.css'
  *
  * @remarks
  * The screen is the opt-in seam made visible. The read half runs on a pick and
- * writes nothing — `SourcePicker` → `useImportRun` (`runHarImport`, once per
+ * writes nothing — `SourcePicker` → `useImportRun` (`HarImport.run`, once per
  * picked file) → `PreviewPanel`, which shows every file's outcome under one
  * confirm. Only the explicit confirm reaches the write half — `useConfirmImport`,
  * which for each writable file uploads its HAR archive when the pick is local (so

@@ -345,7 +345,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
   // Resolve a request URL against the page's own `location` so relative
   // requests (`/api/fhir/Patient/123`) are reported absolute. The
   // downstream `UrlMatch` entity matchers require a `://host…` shape
-  // (see `collector-fundamentals/model/url-match.ts`), so a verbatim
+  // (see `importer-fundamentals`' `url-match.ts`), so a verbatim
   // relative URL would never match and the capture would be silently
   // cancelled (issue #373). The sniffer is the only layer that knows the
   // page's base, so normalize here — every consumer then sees absolute

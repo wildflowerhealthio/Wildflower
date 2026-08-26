@@ -13,8 +13,8 @@ import {
 import type { MessageHandler } from 'effect-messaging-core'
 import { UnknownException } from 'effect/Cause'
 import type { CollectorBridge } from '../bridge.ts'
-import type * as EntityDefinition from '../model/entity-definition.ts'
-import { Response } from '../model/index.ts'
+import type * as CollectorEntityDefinition from '../model/collector-entity-definition.ts'
+import { RemoteResponse } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as Telemetry from '../telemetry/index.ts'
 
@@ -29,8 +29,8 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * invariant).
  */
 interface IncompleteSniffedRequest<TResources> {
-  readonly response: Response.RemoteResponse
-  readonly entity: EntityDefinition.EntityDefinition<TResources>
+  readonly response: RemoteResponse.RemoteResponse
+  readonly entity: CollectorEntityDefinition.CollectorEntityDefinition<TResources>
 }
 
 /**
@@ -138,7 +138,9 @@ const make = <TResources>({
   handleGeneratedSteps,
   captureProvenance,
 }: {
-  matchEntity: (url: string) => Option.Option<EntityDefinition.EntityDefinition<TResources>>
+  matchEntity: (
+    url: string
+  ) => Option.Option<CollectorEntityDefinition.CollectorEntityDefinition<TResources>>
   sendMessage: (
     message: typeof CancelSnifferRequestMessage.Type
   ) => Effect.Effect<void, never, never>
@@ -151,7 +153,7 @@ const make = <TResources>({
    * WARN-logged and the parse output flows on unchanged.
    */
   captureProvenance?: (
-    response: Response.RemoteResponse,
+    response: RemoteResponse.RemoteResponse,
     produced: readonly TResources[]
   ) => Effect.Effect<SniffedBatch<TResources>, unknown>
   /**
@@ -225,7 +227,7 @@ const make = <TResources>({
      */
     const offerSniffResultAndUntrack = (
       id: string,
-      response: Response.RemoteResponse,
+      response: RemoteResponse.RemoteResponse,
       result: Either.Either<
         SniffedBatch<TResources>,
         ParseResult.ParseError | UnknownException | SnifferCancelled
@@ -256,7 +258,7 @@ const make = <TResources>({
         // that timestamps an exchange must not label the settle as the start.
         const startedAt = yield* DateTime.now
         MutableHashMap.set(event.id, {
-          response: new Response.RemoteResponse(
+          response: new RemoteResponse.RemoteResponse(
             event.id,
             event.url,
             event.status,

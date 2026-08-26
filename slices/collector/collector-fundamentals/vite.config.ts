@@ -10,10 +10,11 @@ export default defineConfig({
     entry: {
       index: 'src/index.ts',
       bridge: 'src/bridge.ts',
+      'config-form': 'src/config-form.ts',
       'model/index': 'src/model/index.ts',
+      'telemetry/index': 'src/telemetry/index.ts',
       'test-helpers': 'src/test-helpers.ts',
       'handler/index': 'src/handler/index.ts',
-      'replay/index': 'src/replay/index.ts',
     },
   },
   test: {

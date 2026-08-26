@@ -1202,6 +1202,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../../importer/importer-fundamentals
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -1403,6 +1406,9 @@ importers:
       fhir-r4-importer:
         specifier: workspace:*
         version: link:../../importer/fhir-r4-importer
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../../importer/importer-fundamentals
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -1472,6 +1478,9 @@ importers:
       fhir-stu3-as-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-stu3-as-r4
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../../importer/importer-fundamentals
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -1538,6 +1547,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../../importer/importer-fundamentals
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -1604,6 +1616,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../../importer/importer-fundamentals
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -2010,9 +2025,6 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../../collector/collector-fundamentals
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -2022,6 +2034,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../importer-fundamentals
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -2043,12 +2058,6 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
-      collector-fundamentals:
-        specifier: workspace:*
-        version: link:../../collector/collector-fundamentals
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -2061,6 +2070,9 @@ importers:
       fhir-r4-importer:
         specifier: workspace:*
         version: link:../fhir-r4-importer
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../importer-fundamentals
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -2073,6 +2085,30 @@ importers:
       web-trace-core:
         specifier: workspace:*
         version: link:../../web-trace/web-trace-core
+
+  slices/importer/importer-fundamentals:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260707.2
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.2.9(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(yaml@2.9.0)
 
   slices/importer/importer-react:
     devDependencies:
@@ -12032,12 +12068,12 @@ snapshots:
       - utf-8-validate
       - vite
 
-  '@vitest/browser-preview@4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))':
+  '@vitest/browser-preview@4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10)':
     dependencies:
       '@testing-library/dom': 10.4.1
       '@testing-library/user-event': 14.6.6(@testing-library/dom@10.4.1)
-      '@vitest/browser': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))
-      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1)
+      '@vitest/browser': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10)
+      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
     transitivePeerDependencies:
       - bufferutil
       - msw
@@ -12061,7 +12097,7 @@ snapshots:
       - utf-8-validate
       - vite
 
-  '@vitest/browser@4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))':
+  '@vitest/browser@4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10)':
     dependencies:
       '@blazediff/core': 1.9.1
       '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
@@ -12070,7 +12106,7 @@ snapshots:
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.1.0
-      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1)
+      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
       ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
@@ -16016,8 +16052,8 @@ snapshots:
     dependencies:
       '@oxc-project/types': 0.143.0
       '@oxlint/plugins': 1.73.0
-      '@vitest/browser': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))
-      '@vitest/browser-preview': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))
+      '@vitest/browser': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10)
+      '@vitest/browser-preview': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10)
       '@vitest/expect': 4.1.10
       '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.10
@@ -16029,7 +16065,7 @@ snapshots:
       oxfmt: 0.62.0(vite-plus@0.2.9(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(yaml@2.9.0))
       oxlint: 1.77.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.2.9(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(yaml@2.9.0))
       oxlint-tsgolint: 7.0.2001
-      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.10))(jsdom@30.0.1)(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
+      vitest: 4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
     optionalDependencies:
       '@voidzero-dev/vite-plus-darwin-arm64': 0.2.9
       '@voidzero-dev/vite-plus-darwin-x64': 0.2.9
@@ -16085,36 +16121,6 @@ snapshots:
       terser: 5.50.0
       yaml: 2.9.0
 
-  vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.10))(jsdom@30.0.1)(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)):
-    dependencies:
-      '@vitest/expect': 4.1.10
-      '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
-      '@vitest/pretty-format': 4.1.10
-      '@vitest/runner': 4.1.10
-      '@vitest/snapshot': 4.1.10
-      '@vitest/spy': 4.1.10
-      '@vitest/utils': 4.1.10
-      es-module-lexer: 2.3.0
-      expect-type: 1.4.0
-      magic-string: 0.30.21
-      obug: 2.1.4
-      pathe: 2.0.3
-      picomatch: 4.0.5
-      std-env: 4.1.0
-      tinybench: 2.9.0
-      tinyexec: 1.3.0
-      tinyglobby: 0.2.17
-      tinyrainbow: 3.1.0
-      vite: 8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
-      why-is-node-running: 2.3.0
-    optionalDependencies:
-      '@opentelemetry/api': 1.9.0
-      '@types/node': 26.1.0
-      '@vitest/browser-preview': 4.1.10(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.10)
-      jsdom: 30.0.1
-    transitivePeerDependencies:
-      - msw
-
   vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1):
     dependencies:
       '@vitest/expect': 4.1.10
@@ -16141,6 +16147,36 @@ snapshots:
       '@opentelemetry/api': 1.9.0
       '@types/node': 26.1.0
       '@vitest/browser-preview': 4.1.10(@voidzero-dev/vite-plus-core@0.2.9(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.10)
+      jsdom: 30.0.1
+    transitivePeerDependencies:
+      - msw
+
+  vitest@4.1.10(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.10)(jsdom@30.0.1)(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)):
+    dependencies:
+      '@vitest/expect': 4.1.10
+      '@vitest/mocker': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))
+      '@vitest/pretty-format': 4.1.10
+      '@vitest/runner': 4.1.10
+      '@vitest/snapshot': 4.1.10
+      '@vitest/spy': 4.1.10
+      '@vitest/utils': 4.1.10
+      es-module-lexer: 2.3.0
+      expect-type: 1.4.0
+      magic-string: 0.30.21
+      obug: 2.1.4
+      pathe: 2.0.3
+      picomatch: 4.0.5
+      std-env: 4.1.0
+      tinybench: 2.9.0
+      tinyexec: 1.3.0
+      tinyglobby: 0.2.17
+      tinyrainbow: 3.1.0
+      vite: 8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0)
+      why-is-node-running: 2.3.0
+    optionalDependencies:
+      '@opentelemetry/api': 1.9.0
+      '@types/node': 26.1.0
+      '@vitest/browser-preview': 4.1.10(vite@8.2.1(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(vitest@4.1.10)
       jsdom: 30.0.1
     transitivePeerDependencies:
       - msw

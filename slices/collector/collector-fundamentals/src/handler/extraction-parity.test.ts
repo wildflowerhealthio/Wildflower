@@ -1,10 +1,10 @@
 import { Effect, Either, Encoding, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { runHandlerSync } from '../handler/collector-bridge-message-handler.test-helpers.ts'
-import * as SnifferResponseTracker from '../handler/sniffer-response-tracker.ts'
-import { echoEntity, replayResponse, type Echo } from './replay-entities.test-helpers.ts'
-import { replayEntities, type ReplayResponse } from './replay-entities.ts'
+import { Extraction } from 'importer-fundamentals'
+import { echoEntity, makeExtractionInput, type Echo } from 'importer-fundamentals/test-helpers'
+import { runHandlerSync } from './collector-bridge-message-handler.test-helpers.ts'
+import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
 
 const AlphaEntity = echoEntity('AlphaEntity', 'alpha')
 const BetaEntity = echoEntity('BetaEntity', 'beta')
@@ -13,12 +13,17 @@ const entityDefinitions = [AlphaEntity, BetaEntity]
 /**
  * The canned exchange set both paths see: two entities, an unclaimed response,
  * a multi-byte body, and a body that is not valid UTF-8.
+ *
+ * This suite is THE live-vs-offline parity pin: `importer-fundamentals`'
+ * `Extraction.run` and this package's `SnifferResponseTracker` must route and
+ * decode a set of responses identically, and only this package can see both
+ * halves (the dependency points from here to `importer-fundamentals`).
  */
-const exchanges: readonly ReplayResponse[] = [
-  replayResponse({ id: 'r1', url: 'https://example.com/alpha/1', body: '{"a":1}' }),
-  replayResponse({ id: 'r2', url: 'https://example.com/beta/2', body: 'plain text — ü' }),
-  replayResponse({ id: 'r3', url: 'https://example.com/gamma/3', body: 'unclaimed' }),
-  replayResponse({
+const exchanges: readonly Extraction.Input[] = [
+  makeExtractionInput({ id: 'r1', url: 'https://example.com/alpha/1', body: '{"a":1}' }),
+  makeExtractionInput({ id: 'r2', url: 'https://example.com/beta/2', body: 'plain text — ü' }),
+  makeExtractionInput({ id: 'r3', url: 'https://example.com/gamma/3', body: 'unclaimed' }),
+  makeExtractionInput({
     id: 'r4',
     url: 'https://example.com/alpha/4',
     headers: [['content-type', 'application/octet-stream']],
@@ -36,10 +41,10 @@ const exchanges: readonly ReplayResponse[] = [
  * source archive, so parity is against the tracker's *parse* output, which is
  * exactly what the hook is defined never to alter for `followUpSteps`.
  * Unclaimed responses are cancelled rather than tracked, which is the live
- * counterpart of the replay runner's `unmatched` bucket.
+ * counterpart of the extraction runner's `unmatched` bucket.
  */
 const resourcesViaTracker = (
-  responses: readonly ReplayResponse[]
+  responses: readonly Extraction.Input[]
 ): readonly (readonly Echo[])[] => {
   const results: SnifferResponseTracker.SniffResult<Echo>[] = []
   const tracker = Effect.runSync(
@@ -87,23 +92,23 @@ const resourcesViaTracker = (
 
 /**
  * `startedAt` is the one field the two paths cannot agree on — the tracker
- * reads the clock at `ResponseStart`, replay takes the archive's timestamp —
+ * reads the clock at `ResponseStart`, extraction takes the archive's timestamp —
  * and the echo entities deliberately don't read it, so the comparison is over
  * everything else a `RemoteResponse` carries.
  */
-describe('replayEntities / SnifferResponseTracker parity', () => {
+describe('Extraction.run / SnifferResponseTracker parity', () => {
   it('produces the same resources as driving the live tracker with the equivalent events', () => {
-    const viaReplay = Effect.runSync(replayEntities(entityDefinitions, exchanges)).batches.map(
+    const viaExtraction = Effect.runSync(Extraction.run(entityDefinitions, exchanges)).batches.map(
       (batch) => batch.resources
     )
 
-    expect(viaReplay).toEqual(resourcesViaTracker(exchanges))
+    expect(viaExtraction).toEqual(resourcesViaTracker(exchanges))
     // Guard against both sides being vacuously empty.
-    expect(viaReplay.flat()).toHaveLength(3)
+    expect(viaExtraction.flat()).toHaveLength(3)
   })
 
   it('accounts for the response the tracker cancels as unmatched', () => {
-    const outcome = Effect.runSync(replayEntities(entityDefinitions, exchanges))
+    const outcome = Effect.runSync(Extraction.run(entityDefinitions, exchanges))
 
     expect(outcome.unmatched).toEqual([{ id: 'r3', url: 'https://example.com/gamma/3' }])
     expect(resourcesViaTracker(exchanges)).toHaveLength(outcome.batches.length)

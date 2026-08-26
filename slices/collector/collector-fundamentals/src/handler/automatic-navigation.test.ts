@@ -5,7 +5,8 @@ import * as fc from 'fast-check'
 import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { type Step, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
+import { type Step, ScrapingPlan } from 'collector-fundamentals/model'
+import { UrlMatch } from 'importer-fundamentals'
 
 /** The guard bound every test here relies on unless it overrides it per-plan. */
 const DEFAULT_DRAINED_GUARD_TIMEOUT = ScrapingPlan.DEFAULT_DRAINED_GUARD_TIMEOUT

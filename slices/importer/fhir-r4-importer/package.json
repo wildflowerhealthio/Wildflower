@@ -2,7 +2,7 @@
   "name": "fhir-r4-importer",
   "version": "0.0.0",
   "private": true,
-  "description": "The FHIR R4 importer project: the Patient / Observation / Observation-list entities shared by the live collector plan and the archive importer, plus the offline surface (offlineEntities, fhirR4Recognizer, fhirRootOf) an archive import replays with. No DOM, no fs, no React.",
+  "description": "The FHIR R4 importer project: the Patient / Observation / Observation-list entities that define how FHIR R4 traffic decodes into resources, the fhirR4Recognizer / fhirRootOf recognition surface, and the assembled fhirR4Importer value an import pipeline registers. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -29,18 +29,18 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "collector-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*"
   }
 }

@@ -1,6 +1,6 @@
-import { EntityDefinition, UrlMatch } from 'collector-fundamentals/model'
 import { Effect, Schema } from 'effect'
 import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
+import { EntityDefinition, UrlMatch } from 'importer-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'

@@ -1,7 +1,7 @@
-import type { Response } from 'collector-fundamentals/model'
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
+import type { ImportableResponse } from 'importer-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -14,11 +14,11 @@ const { expectRightToEqual } = utilityExpectations(expect)
 const LIST_URL =
   'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_count=2147483646'
 
-const makeResponse = (body: string, url = LIST_URL): Response.RemoteResponse =>
+const makeResponse = (body: string, url = LIST_URL): ImportableResponse.ImportableResponse =>
   makeRemoteResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
 
 const runParse = (
-  r: Response.RemoteResponse
+  r: ImportableResponse.ImportableResponse
 ): Either.Either<readonly MedicationResource[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(MedicationListEntity.parse(r)))
 

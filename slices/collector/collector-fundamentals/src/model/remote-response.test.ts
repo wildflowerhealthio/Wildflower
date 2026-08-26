@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { RemoteResponse } from './response.ts'
+import { RemoteResponse } from './remote-response.ts'
 
 const encoder = new TextEncoder()
 

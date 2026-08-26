@@ -257,7 +257,7 @@ consumer's drive loop simply drains until `take` reports it done.
 
 Two supporting invariants:
 
-- **Entity pinned at `ResponseStart`.** The matching `EntityDefinition` is
+- **Entity pinned at `ResponseStart`.** The matching `CollectorEntityDefinition` is
   resolved once (via the injected `matchEntity`), when the stream starts, and
   stored on the tracked entry. Later events never re-run `matchEntity`, so a
   redirected `RequestError.url` (or any mid-stream change) can't reroute parsing.

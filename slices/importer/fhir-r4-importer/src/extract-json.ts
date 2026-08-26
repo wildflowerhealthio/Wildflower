@@ -3,7 +3,7 @@
  * mobile WebViews wrap around a `application/(fhir+)json` response
  * (Chrome / Safari render the bytes inside a `<html><body><pre>…</pre></body></html>`
  * shell). The handler streams `document.documentElement.outerHTML` as
- * the synthetic page content, so by the time the collector entity sees
+ * the synthetic page content, so by the time the entity sees
  * the response body, the JSON we actually want has been wrapped twice:
  * once by the viewer (`<pre>` injection) and once by HTML escaping
  * (`<` → `&lt;`, `&` → `&amp;`, etc.).

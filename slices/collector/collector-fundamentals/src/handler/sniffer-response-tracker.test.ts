@@ -5,8 +5,8 @@ import { Effect, MutableHashMap, Option, Schema } from 'effect'
 import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { EntityDefinition, ScrapingPlan, type Step } from 'collector-fundamentals/model'
-import { AnotherEntity, SimpleEntity } from 'collector-fundamentals/test-helpers'
+import { CollectorEntityDefinition, ScrapingPlan, type Step } from 'collector-fundamentals/model'
+import { AnotherEntity, SimpleEntity } from 'importer-fundamentals/test-helpers'
 import {
   cancelled,
   drainResults,
@@ -71,7 +71,7 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
             entityDefinitions: [
               SimpleEntity,
               AnotherEntity,
-            ] as readonly EntityDefinition.EntityDefinition<MultiResources>[],
+            ] as readonly CollectorEntityDefinition.CollectorEntityDefinition<MultiResources>[],
             stepSequence: [],
           }),
           sendMessage,
@@ -223,8 +223,8 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
     })
 
     it('routes to the first entity whose isFoundAt matches when multiple match', () => {
-      const OverlappingEntity: EntityDefinition.EntityDefinition<SimpleResources> =
-        EntityDefinition.make({
+      const OverlappingEntity: CollectorEntityDefinition.CollectorEntityDefinition<SimpleResources> =
+        CollectorEntityDefinition.make({
           name: 'OverlappingEntity',
           isFoundAt: (url) => /\/people\//.test(url),
           parse: () => Effect.succeed([]),
@@ -566,42 +566,44 @@ const openStepFor = (uri: string): Step.Step => ({
  * relative to the settled response's url — exercising both the `resources` and
  * `response` arguments of `followUpSteps`.
  */
-const generatingEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
-  name: 'GeneratingEntity',
-  isFoundAt: (url) => /\/people\//.test(url),
-  parse: (response) =>
-    Effect.map(
-      Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
-        response.text()
+const generatingEntity: CollectorEntityDefinition.CollectorEntityDefinition<SimpleResources> =
+  CollectorEntityDefinition.make({
+    name: 'GeneratingEntity',
+    isFoundAt: (url) => /\/people\//.test(url),
+    parse: (response) =>
+      Effect.map(
+        Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
+          response.text()
+        ),
+        (person) => [person]
       ),
-      (person) => [person]
-    ),
-  followUpSteps: (_resources, response) => [openStepFor(`${response.url}/child`)],
-})
+    followUpSteps: (_resources, response) => [openStepFor(`${response.url}/child`)],
+  })
 
 /**
  * An entity whose `parse` succeeds but whose `followUpSteps` throws — models a
  * generator that hits malformed scraped data. The tracker must contain the
  * throw rather than let it strand the settled request in the incomplete map.
  */
-const throwingEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
-  name: 'ThrowingEntity',
-  isFoundAt: (url) => /\/people\//.test(url),
-  parse: (response) =>
-    Effect.map(
-      Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
-        response.text()
+const throwingEntity: CollectorEntityDefinition.CollectorEntityDefinition<SimpleResources> =
+  CollectorEntityDefinition.make({
+    name: 'ThrowingEntity',
+    isFoundAt: (url) => /\/people\//.test(url),
+    parse: (response) =>
+      Effect.map(
+        Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
+          response.text()
+        ),
+        (person) => [person]
       ),
-      (person) => [person]
-    ),
-  followUpSteps: () => {
-    throw new Error('boom: malformed href')
-  },
-})
+    followUpSteps: () => {
+      throw new Error('boom: malformed href')
+    },
+  })
 
 /** Build a bare tracker with stubbed lifecycle hooks so both seams are observable. */
 const makeBareTracker = (options: {
-  readonly entity: EntityDefinition.EntityDefinition<SimpleResources>
+  readonly entity: CollectorEntityDefinition.CollectorEntityDefinition<SimpleResources>
   readonly handleGeneratedSteps: (steps: readonly Step.Step[]) => Effect.Effect<void>
   readonly handleNewSniffResult: () => Effect.Effect<void>
 }): SnifferResponseTracker.SnifferResponseTracker<SimpleResources> =>
@@ -620,7 +622,7 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
 
   const planWith = (
     captureProvenance: Hook,
-    entity: EntityDefinition.EntityDefinition<SimpleResources> = SimpleEntity
+    entity: CollectorEntityDefinition.CollectorEntityDefinition<SimpleResources> = SimpleEntity
   ): ScrapingPlan.ScrapingPlan<SimpleResources> =>
     ScrapingPlan.make<SimpleResources>({
       name: 'CapturePlan',
@@ -688,11 +690,12 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
   })
 
   it('never invokes the hook for an empty parse — the line between provenance and recording', () => {
-    const emptyEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
-      name: 'EmptyEntity',
-      isFoundAt: (url) => /\/people\//.test(url),
-      parse: () => Effect.succeed([]),
-    })
+    const emptyEntity: CollectorEntityDefinition.CollectorEntityDefinition<SimpleResources> =
+      CollectorEntityDefinition.make({
+        name: 'EmptyEntity',
+        isFoundAt: (url) => /\/people\//.test(url),
+        parse: () => Effect.succeed([]),
+      })
     const hook = vi.fn(annotatingHook)
     const handler = makeSimpleHandler({ scrapingPlan: planWith(hook, emptyEntity) })
 
@@ -758,8 +761,8 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
         },
       }))
     )
-    const generatingPersonEntity: EntityDefinition.EntityDefinition<SimpleResources> =
-      EntityDefinition.make({
+    const generatingPersonEntity: CollectorEntityDefinition.CollectorEntityDefinition<SimpleResources> =
+      CollectorEntityDefinition.make({
         name: 'GeneratingPersonEntity',
         isFoundAt: (url) => /\/people\//.test(url),
         parse: (response) =>

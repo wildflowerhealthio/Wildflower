@@ -3,16 +3,16 @@ import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { Response } from 'collector-fundamentals/model'
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import type { Observation } from 'fhir-r4/resources'
+import type { ImportableResponse } from 'importer-fundamentals'
+import { makeImportableResponse } from 'importer-fundamentals/test-helpers'
 
 import { ObservationListEntity } from './observation-list-entity.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
-const makeResponse = (body: string): Response.RemoteResponse =>
-  makeRemoteResponse({
+const makeResponse = (body: string): ImportableResponse.ImportableResponse =>
+  makeImportableResponse({
     url: 'https://example.com/Observation?_count=1',
     headers: [['content-type', 'application/fhir+json']],
     body,
@@ -45,7 +45,7 @@ const bundle = (...resources: readonly unknown[]): Record<string, unknown> => ({
 })
 
 const runParse = (
-  r: Response.RemoteResponse
+  r: ImportableResponse.ImportableResponse
 ): Either.Either<readonly (typeof Observation.Schema.Type)[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(ObservationListEntity.parse(r)))
 

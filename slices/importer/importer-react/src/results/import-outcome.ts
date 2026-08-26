@@ -1,12 +1,12 @@
 import type { ResourceWriteFailure } from 'fhir-r4/clients'
-import type { Preview } from 'importer-core'
+import type { ImportPreview } from 'importer-core'
 
 /**
  * What a confirmed import wrote, and what it could not — the value the results
  * view reads and the `partial` decision folds over.
  *
  * @remarks
- * The write half (`importer-core`'s `persistPreview`) returns only the resources
+ * The write half (`importer-core`'s `ImportPreview.persist`) returns only the resources
  * it could not write, as data on a `never` error channel. That is the whole
  * failure record; everything the results view shows is derived from it and the
  * preview it wrote. `attempted` is the number of resources the preview held,
@@ -42,7 +42,7 @@ interface ImportOutcome {
  * outcome's `attempted` read from, so the two can never disagree about whether a
  * preview has anything to write.
  */
-const previewResourceCount = (preview: Preview): number =>
+const previewResourceCount = (preview: ImportPreview.Preview): number =>
   Object.values(preview.resourcesByType).reduce((total, list) => total + list.length, 0)
 
 /**
@@ -54,7 +54,7 @@ const previewResourceCount = (preview: Preview): number =>
  * @returns The tally, with `written` derived as `attempted - failures.length`
  */
 const importOutcome = (
-  preview: Preview,
+  preview: ImportPreview.Preview,
   sourceRef: string,
   failures: readonly ResourceWriteFailure[]
 ): ImportOutcome => {
@@ -82,13 +82,13 @@ const isPartialOutcome = (outcome: ImportOutcome): boolean => outcome.failures.l
  *
  * @remarks
  * The read half's two non-writing outcomes, plus the rare unreadable file: a
- * `no-collector` file was recognized by nobody, a `nothing` file was recognized
+ * `no-importer` file was recognized by nobody, a `nothing` file was recognized
  * but matched no resources, and an `unreadable` file did not parse as a HAR at
- * all. None is a failure — they are the multi-file echo of `NoCollectorClaims`
+ * all. None is a failure — they are the multi-file echo of `NoImporterClaims`
  * being data, not an error — but each is reported so a reader knows why a file
  * they picked wrote nothing.
  */
-type SkipReason = 'no-collector' | 'nothing' | 'unreadable'
+type SkipReason = 'no-importer' | 'nothing' | 'unreadable'
 
 /**
  * What a single file in a confirmed batch resolved to.
@@ -169,7 +169,7 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
  * The `collectImportSummary` semantics, lifted to the batch: **any** failure —
  * a file whose archive would not upload, or a single resource the store
  * rejected — makes the whole batch partial. A `skipped` file is not a failure
- * (it is the multi-file echo of `NoCollectorClaims` being data), so it does not
+ * (it is the multi-file echo of `NoImporterClaims` being data), so it does not
  * make a batch partial on its own.
  */
 const isPartialBatch = (batch: BatchOutcome): boolean =>

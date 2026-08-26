@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { persistPreview, type Preview } from 'importer-core'
+import { ImportPreview } from 'importer-core'
 
 import { useUploadHar } from '../mutations/upload-har.ts'
 import {
@@ -32,15 +32,15 @@ import type { ReadEntry } from './use-import-run.ts'
  *    decision) and the reference the upload mints becomes the `meta.source` every
  *    resource from _that file_ carries. A `server` pick already names the archive
  *    it was fetched from, so it skips the upload and links to that document.
- * 2. **Write the resources.** `persistPreview` runs only after the file's archive
+ * 2. **Write the resources.** `ImportPreview.persist` runs only after the file's archive
  *    reference exists, so the archive create lands before the first resource write
  *    and no resource ever points at an archive that is not there yet.
  *
  * The whole batch is one Effect run through `runAuthed`: `Effect.forEach` maps
  * each file to a `FileImportResult`, `Match` dispatches the file's kind, and each
  * file's failure is caught into an `uploadFailed` result so one file never stops
- * the rest (the multi-file echo of `persistPreview` returning per-resource
- * failures as data). Files with nothing to write (recognized by no collector,
+ * the rest (the multi-file echo of `ImportPreview.persist` returning per-resource
+ * failures as data). Files with nothing to write (recognized by no importer,
  * recognized but empty, or unreadable) are `skipped` and never touch the server.
  *
  * @packageDocumentation
@@ -112,11 +112,11 @@ const importOneFile = (
   const skip = (reason: SkipReason): Effect.Effect<FileImportResult> =>
     Effect.succeed({ _tag: 'skipped', id, fileName, reason })
   const write = (
-    preview: Preview
+    preview: ImportPreview.Preview
   ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> =>
     secureSourceRef(picked, uploadHar).pipe(
       Effect.flatMap((sourceRef) =>
-        persistPreview(preview, sourceRef).pipe(
+        ImportPreview.persist(preview, sourceRef).pipe(
           Effect.map((failures): FileImportResult => ({
             _tag: 'imported',
             id,
@@ -133,7 +133,7 @@ const importOneFile = (
     Match.tag('unreadable', () => skip('unreadable')),
     Match.tag('read', ({ preview }) =>
       Match.value(preview).pipe(
-        Match.tag('NoCollectorClaims', () => skip('no-collector')),
+        Match.tag('NoImporterClaims', () => skip('no-importer')),
         Match.tag('Preview', (claimed) =>
           previewResourceCount(claimed) === 0 ? skip('nothing') : write(claimed)
         ),

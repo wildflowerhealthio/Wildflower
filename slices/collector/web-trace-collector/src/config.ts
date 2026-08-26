@@ -1,12 +1,9 @@
-import {
-  CollectorDescriptor,
-  type EntityDefinition,
-  ScrapingPlan,
-} from 'collector-fundamentals/model'
+import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
+import type { EntityDefinition } from 'importer-fundamentals'
 
 import { makeRawExchangeEntity } from './entities/raw-exchange-entity.ts'
 

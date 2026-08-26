@@ -1,6 +1,6 @@
-import { EntityDefinition, UrlMatch } from 'collector-fundamentals/model'
 import { Effect, Schema } from 'effect'
 import { Observation } from 'fhir-r4/resources'
+import { EntityDefinition, UrlMatch } from 'importer-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 

@@ -8,18 +8,18 @@ import { HarFromJson, emitHar } from 'web-trace-core/har'
 import { CAPTURE_FLOOR, arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 import chromeHar from './fixtures/chrome-fhir-capture.har.json' with { type: 'json' }
-import type { ImportPreview, Preview } from './import-preview.ts'
-import { runHarImport } from './run-har-import.ts'
+import * as HarImport from './har-import.ts'
+import type * as ImportPreview from './import-preview.ts'
 
 /**
  * Covers the read half of the import flow: a HAR archive in, an
- * {@link ImportPreview} out. Two fixture routes reach the same assertions — a
+ * {@link ImportPreview.ImportPreview} out. Two fixture routes reach the same assertions — a
  * HAR built through `web-trace-core`'s own `emitHar` from constructed exchanges,
  * and a committed Chrome DevTools export — so the pipeline is exercised against
  * both an archive shaped exactly like ours and a foreign one carrying browser
  * noise and vendor extras.
  *
- * The critical structural property is here too: `runHarImport` requires no
+ * The critical structural property is here too: `HarImport.run` requires no
  * services, so the FHIR write client is unreachable from a preview — asserted at
  * the type level and at runtime.
  */
@@ -62,16 +62,17 @@ const harTextOf = (exchanges: readonly TraceExchange[]): string =>
   Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' })))
 
 /** Run a preview, surfacing a HAR `ParseError` as a thrown defect (none expected). */
-const runPreview = (harText: string): ImportPreview => Effect.runSync(runHarImport(harText))
+const runPreview = (harText: string): ImportPreview.ImportPreview =>
+  Effect.runSync(HarImport.run(harText))
 
-/** Assert the preview claimed and narrow it to {@link Preview}. */
-const expectPreview = (preview: ImportPreview): Preview => {
+/** Assert the preview claimed and narrow it to {@link ImportPreview.Preview}. */
+const expectPreview = (preview: ImportPreview.ImportPreview): ImportPreview.Preview => {
   expect(preview._tag).toBe('Preview')
   if (preview._tag !== 'Preview') throw new Error('expected a Preview')
   return preview
 }
 
-describe('runHarImport', () => {
+describe('HarImport.run', () => {
   describe('a Patient read + Observation searchset', () => {
     it('previews re-keyed resources from an emitHar archive', () => {
       const root = 'https://r4.example.org/baseR4'
@@ -96,7 +97,7 @@ describe('runHarImport', () => {
         )
       )
 
-      expect(preview.collectorTag).toBe('fhir-r4')
+      expect(preview.importerTag).toBe('fhir-r4')
       expect(preview.rootUrls).toEqual([root])
       expect(preview.totalEntries).toBe(2)
       expect(preview.unmatchedCount).toBe(0)
@@ -169,7 +170,7 @@ describe('runHarImport', () => {
       const root = 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4'
       const preview = expectPreview(runPreview(JSON.stringify(chromeHar)))
 
-      expect(preview.collectorTag).toBe('fhir-r4')
+      expect(preview.importerTag).toBe('fhir-r4')
       // The Epic-style deep base path is recovered as the one source root.
       expect(preview.rootUrls).toEqual([root])
       expect(preview.totalEntries).toBe(5)
@@ -191,8 +192,8 @@ describe('runHarImport', () => {
     })
   })
 
-  describe('when no collector claims the traffic', () => {
-    it('reports NoCollectorClaims for a non-FHIR archive, counting the entries read', () => {
+  describe('when no importer claims the traffic', () => {
+    it('reports NoImporterClaims for a non-FHIR archive, counting the entries read', () => {
       const preview = runPreview(
         harTextOf([
           traceExchange({
@@ -206,16 +207,16 @@ describe('runHarImport', () => {
           }),
         ])
       )
-      expect(preview).toEqual({ _tag: 'NoCollectorClaims', totalEntries: 2 })
+      expect(preview).toEqual({ _tag: 'NoImporterClaims', totalEntries: 2 })
     })
 
-    test('property: an archive of arbitrary non-FHIR traffic is NoCollectorClaims', () => {
+    test('property: an archive of arbitrary non-FHIR traffic is NoImporterClaims', () => {
       const { session } = arbitraries(fc)
       fc.assert(
         fc.property(session, (exchanges) => {
           const preview = runPreview(harTextOf(exchanges))
-          expect(preview._tag).toBe('NoCollectorClaims')
-          if (preview._tag === 'NoCollectorClaims') {
+          expect(preview._tag).toBe('NoImporterClaims')
+          if (preview._tag === 'NoImporterClaims') {
             expect(preview.totalEntries).toBe(exchanges.length)
           }
         }),
@@ -282,7 +283,7 @@ describe('runHarImport', () => {
 
   describe('failures', () => {
     it('fails with a ParseError for text that is not a well-formed HAR', () => {
-      const result = Effect.runSync(Effect.either(runHarImport('{ not a har }')))
+      const result = Effect.runSync(Effect.either(HarImport.run('{ not a har }')))
       expect(result._tag).toBe('Left')
       if (result._tag === 'Left') {
         expect(result.left._tag).toBe('ParseError')
@@ -293,11 +294,11 @@ describe('runHarImport', () => {
   it('requires no services — the FHIR write client is unreachable from a preview', async () => {
     const root = 'https://r4.example.org/baseR4'
     // Type-level: annotating the requirements channel as `never` fails to compile
-    // if `runHarImport` ever reached a service (in particular the write client),
+    // if `HarImport.run` ever reached a service (in particular the write client),
     // because that would widen its `R`.
     const preview: (
       harText: string
-    ) => Effect.Effect<ImportPreview, ParseResult.ParseError, never> = runHarImport
+    ) => Effect.Effect<ImportPreview.ImportPreview, ParseResult.ParseError, never> = HarImport.run
     // Runtime: run with NO layers provided at all — a missing requirement would
     // surface as a defect here. Neither the compile above nor this run fails.
     const result = await Effect.runPromise(

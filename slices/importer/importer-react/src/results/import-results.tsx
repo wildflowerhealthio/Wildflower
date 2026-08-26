@@ -71,7 +71,7 @@ const causeOf = (error: unknown): string => {
 
 /** Why a skipped file wrote nothing, in words a reader can act on. */
 const skipReasonText = (reason: SkipReason): string => {
-  if (reason === 'no-collector') return 'No collector recognized this file.'
+  if (reason === 'no-importer') return 'No importer recognized this file.'
   if (reason === 'nothing') return 'Recognized, but nothing to import.'
   return 'Could not be read as a HAR.'
 }

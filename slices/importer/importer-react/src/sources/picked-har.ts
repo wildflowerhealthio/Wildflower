@@ -1,5 +1,5 @@
 /**
- * The one value every source converges on: a HAR the importer can replay, plus
+ * The one value every source converges on: a HAR the importer can extract from, plus
  * where it came from.
  *
  * @remarks
@@ -7,7 +7,7 @@
  * through the OS picker, and a HAR archive already uploaded to the device's own
  * FHIR server — and they differ only in {@link PickedHarSource}. The `text` and
  * `fileName` are the same shape whichever path produced them, so a downstream
- * step (2D links the provenance, a replay parses the text) reads one type and
+ * step (2D links the provenance, an extraction parses the text) reads one type and
  * never branches on the origin except to read the server reference.
  *
  * @packageDocumentation

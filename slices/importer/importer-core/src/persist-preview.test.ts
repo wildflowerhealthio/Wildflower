@@ -15,7 +15,7 @@ import { type FhirResource, Observation, Patient } from 'fhir-r4/resources'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { Preview } from './import-preview.ts'
-import { persistPreview } from './persist-preview.ts'
+import { persist } from './persist-preview.ts'
 
 /**
  * Covers the write half of the import flow. Two properties matter and both are
@@ -49,7 +49,7 @@ const previewOf = (
   resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
 ): Preview => ({
   _tag: 'Preview',
-  collectorTag: 'fhir-r4',
+  importerTag: 'fhir-r4',
   rootUrls: ['https://r4.example.org/baseR4'],
   resourcesByType,
   parseFailures: [],
@@ -58,7 +58,7 @@ const previewOf = (
   totalEntries: Object.values(resourcesByType).flat().length,
 })
 
-describe('persistPreview', () => {
+describe('ImportPreview.persist', () => {
   it('stamps every written resource with meta.source = sourceRef', async () => {
     const preview = previewOf({
       Patient: [genWithId(Patient.Schema, 'pat-1'), genWithId(Patient.Schema, 'pat-2')],
@@ -95,15 +95,15 @@ describe('persistPreview', () => {
     }
   })
 
-  it('writes nothing for a NoCollectorClaims preview, issuing no requests', async () => {
-    // The client is provided (persistPreview always requires it), but a
-    // NoCollectorClaims preview issues no writes — the recorder stays empty.
+  it('writes nothing for a NoImporterClaims preview, issuing no requests', async () => {
+    // The client is provided (persist always requires it), but a
+    // NoImporterClaims preview issues no writes — the recorder stays empty.
     const records: Array<RecordedRequest> = []
     const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
       Layer.provide(recordingHttpClientLayer(records, () => false))
     )
     const failures = await Effect.runPromise(
-      persistPreview({ _tag: 'NoCollectorClaims', totalEntries: 5 }, SOURCE_REF).pipe(
+      persist({ _tag: 'NoImporterClaims', totalEntries: 5 }, SOURCE_REF).pipe(
         Effect.provide(clientLayer)
       )
     )
@@ -173,7 +173,7 @@ const runPersist = async (
   const failures = await Effect.runPromise(
     Effect.gen(function* () {
       const fiber = yield* Effect.fork(
-        persistPreview(preview, SOURCE_REF).pipe(Effect.provide(clientLayer))
+        persist(preview, SOURCE_REF).pipe(Effect.provide(clientLayer))
       )
       yield* TestClock.adjust(Duration.seconds(2))
       return yield* Fiber.join(fiber)

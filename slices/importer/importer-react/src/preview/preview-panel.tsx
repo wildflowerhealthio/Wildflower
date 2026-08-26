@@ -1,7 +1,7 @@
 import type { JSX } from 'react'
 
 import type { FhirResource } from 'fhir-r4/resources'
-import type { Preview } from 'importer-core'
+import type { ImportPreview } from 'importer-core'
 
 import { previewResourceCount } from '../results/import-outcome.ts'
 import type { ReadEntry } from './use-import-run.ts'
@@ -16,15 +16,15 @@ import styles from './preview-panel.module.css'
  * panel renders them together under one confirm. Every file's outcome renders
  * honestly and distinctly — there is no empty section:
  *
- * - **No collector claimed** (`NoCollectorClaims`) — a plain "nothing here is
+ * - **No importer claimed** (`NoImporterClaims`) — a plain "nothing here is
  *   recognized" state naming how many entries were read, so a browser's HAR of a
- *   site we have no collector for reads as a fact, not a failure.
- * - **A collector claimed but matched nothing** (a `Preview` with no resources) —
- *   distinct from the above: the collector *did* recognize the traffic, it just
+ *   site we have no importer for reads as a fact, not a failure.
+ * - **An importer claimed but matched nothing** (a `Preview` with no resources) —
+ *   distinct from the above: the importer *did* recognize the traffic, it just
  *   produced no resources, and the entry counts explain why.
- * - **A collector claimed and produced resources** — per-`resourceType` sections
+ * - **An importer claimed and produced resources** — per-`resourceType` sections
  *   with counts and a summary row per resource, the inferred source root(s) and
- *   detected collector shown for transparency (not editable — the recognition is
+ *   detected importer shown for transparency (not editable — the recognition is
  *   zero-config), and honest notices for unmatched entries, absent bodies, and
  *   responses that matched a pattern but failed to decode.
  * - **Unreadable** — a file that did not parse as a HAR at all, reported against
@@ -70,12 +70,16 @@ const plural = (count: number, noun: string): string => (count === 1 ? noun : `$
 /** "read 5 entries" / "read 1 entry" — the entry-count phrasing shared by states. */
 const entriesRead = (count: number): string => `Read ${count} ${count === 1 ? 'entry' : 'entries'}`
 
-/** The transparency block: the detected collector and the source root(s) it keyed under. */
-const RecognitionSummary = ({ preview }: { readonly preview: Preview }): JSX.Element => (
+/** The transparency block: the detected importer and the source root(s) it keyed under. */
+const RecognitionSummary = ({
+  preview,
+}: {
+  readonly preview: ImportPreview.Preview
+}): JSX.Element => (
   <dl className={styles.recognition}>
     <div className={styles.recognitionRow}>
-      <dt className={styles.recognitionTerm}>Collector</dt>
-      <dd className={styles.recognitionValue}>{preview.collectorTag}</dd>
+      <dt className={styles.recognitionTerm}>Importer</dt>
+      <dd className={styles.recognitionValue}>{preview.importerTag}</dd>
     </div>
     <div className={styles.recognitionRow}>
       <dt className={styles.recognitionTerm}>{plural(preview.rootUrls.length, 'Source root')}</dt>
@@ -122,7 +126,7 @@ const ResourceTypeSection = ({
 )
 
 /** The honest notices around the written resources: absent bodies, unmatched noise, decode failures. */
-const PreviewNotices = ({ preview }: { readonly preview: Preview }): JSX.Element => (
+const PreviewNotices = ({ preview }: { readonly preview: ImportPreview.Preview }): JSX.Element => (
   <div className={styles.notices}>
     {preview.unmatchedCount > 0 && (
       <p className={styles.notice}>
@@ -152,13 +156,13 @@ const PreviewNotices = ({ preview }: { readonly preview: Preview }): JSX.Element
 )
 
 /** One claimed preview's content: recognition, the resources it would write, and its notices. */
-const ClaimedBody = ({ preview }: { readonly preview: Preview }): JSX.Element => {
+const ClaimedBody = ({ preview }: { readonly preview: ImportPreview.Preview }): JSX.Element => {
   const resourceTypes = Object.entries(preview.resourcesByType)
   if (previewResourceCount(preview) === 0) {
     return (
       <>
         <p role="status" className={styles.emptyMessage}>
-          {`The ${preview.collectorTag} collector recognized this archive, but matched no resources to import.`}
+          {`The ${preview.importerTag} importer recognized this archive, but matched no resources to import.`}
         </p>
         <RecognitionSummary preview={preview} />
         <PreviewNotices preview={preview} />
@@ -182,7 +186,7 @@ const ClaimedBody = ({ preview }: { readonly preview: Preview }): JSX.Element =>
   )
 }
 
-/** One file's body: unreadable, no-collector, or the claimed preview's content. */
+/** One file's body: unreadable, no-importer, or the claimed preview's content. */
 const FileBody = ({ entry }: { readonly entry: ReadEntry }): JSX.Element => {
   if (entry._tag === 'unreadable') {
     return (
@@ -191,10 +195,10 @@ const FileBody = ({ entry }: { readonly entry: ReadEntry }): JSX.Element => {
       </p>
     )
   }
-  if (entry.preview._tag === 'NoCollectorClaims') {
+  if (entry.preview._tag === 'NoImporterClaims') {
     return (
       <p role="status" className={styles.emptyMessage}>
-        {`${entriesRead(entry.preview.totalEntries)}, but no registered collector recognized any of them.`}
+        {`${entriesRead(entry.preview.totalEntries)}, but no registered importer recognized any of them.`}
       </p>
     )
   }

@@ -1,9 +1,9 @@
-import type { Response } from 'collector-fundamentals/model'
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
+import type { ImportableResponse } from 'importer-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -17,7 +17,7 @@ const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
 
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 
-const makeResponse = (body: string): Response.RemoteResponse =>
+const makeResponse = (body: string): ImportableResponse.ImportableResponse =>
   makeRemoteResponse({
     url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc.def`,
     body,
@@ -27,7 +27,7 @@ const parse = (payload: unknown): readonly FhirResource[] =>
   Effect.runSync(CustomerEntity.parse(makeResponse(JSON.stringify(payload))))
 
 const runParse = (
-  r: Response.RemoteResponse
+  r: ImportableResponse.ImportableResponse
 ): Either.Either<readonly FhirResource[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(CustomerEntity.parse(r)))
 

@@ -4,7 +4,7 @@ import { Chunk, Effect, MutableHashMap, Option } from 'effect'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SimpleEntity } from 'collector-fundamentals/test-helpers'
+import { SimpleEntity } from 'importer-fundamentals/test-helpers'
 import {
   noopSendMessage,
   responseData,

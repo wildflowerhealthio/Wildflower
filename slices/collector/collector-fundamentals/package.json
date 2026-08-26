@@ -2,7 +2,7 @@
   "name": "collector-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "The shared representations every collector implementation depends on: Remote / EntityDefinition / RemoteResponse / Link / WebViewSource, plus the `./config-form` view contract (ConfigFormProps) a collector's account form is written against. No bridge, no store, no HTTP runtime. Concrete client packages (e.g. fhir-r4-client-collector) depend on this package (and may build their config-form UI on the ./config-form contract); collector-registry sits on top and registers them.",
+  "description": "The shared representations every collector implementation depends on: CollectorDescriptor / CollectorEntityDefinition / RemoteResponse / ScrapingPlan / Step / WebViewSource, plus the `./config-form` view contract (ConfigFormProps) a collector's account form is written against. Builds on importer-fundamentals' vocabulary (EntityDefinition / ImportableResponse / UrlMatch). No store, no HTTP runtime. Concrete client packages (e.g. fhir-r4-client-collector) depend on this package (and may build their config-form UI on the ./config-form contract); collector-registry sits on top and registers them.",
   "license": "MIT",
   "repository": {
     "type": "git",
@@ -34,10 +34,6 @@
       "source": "./src/model/index.ts",
       "default": "./dist/model/index.js"
     },
-    "./replay": {
-      "source": "./src/replay/index.ts",
-      "default": "./dist/replay/index.js"
-    },
     "./telemetry": {
       "source": "./src/telemetry/index.ts",
       "default": "./dist/telemetry/index.js"
@@ -62,6 +58,7 @@
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
     "fast-check": "catalog:",
+    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "typescript": "catalog:",
@@ -71,6 +68,7 @@
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "effect-messaging-core": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "react": "catalog:"
   }
