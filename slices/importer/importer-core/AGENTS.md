@@ -34,10 +34,10 @@ config edit. Node/neutral test env (not jsdom); the package touches no DOM.
   `ReplayResponse`s the runner reads, resolves the claiming collector
   (`Recognizer.resolve`), replays its offline entities
   (`Replay.replayEntities`), and folds the outcome into a `Preview`.
-- **`src/persist-preview.ts`** — the write half. `persistPreview(preview,
-sourceRef)` flattens the previewed resources, stamps each with `meta.source =
-sourceRef` via `web-trace-core`'s `withMetaSource`, and writes them through
-  `fhir-r4`'s `persistResources`.
+- **`src/persist-preview.ts`** — the write half.
+  `persistPreview(preview, sourceRef)` flattens the previewed resources, stamps
+  each with `meta.source = sourceRef` via `web-trace-core`'s `withMetaSource`,
+  and writes them through `fhir-r4`'s `persistResources`.
 - **`src/fixtures/chrome-fhir-capture.har.json`** — a committed Chrome DevTools
   export carrying FHIR traffic amid browser noise, the foreign-archive half of
   the preview tests.
@@ -54,8 +54,9 @@ sourceRef` via `web-trace-core`'s `withMetaSource`, and writes them through
    two packages meet.
 3. **Detect.** `Recognizer.resolve(REGISTERED_COLLECTORS, responses)` picks the
    most specific claiming collector. None → `NoCollectorClaims`.
-4. **Replay.** `Replay.replayEntities(collector.offlineEntitiesFor({ harText }),
-responses)` → the four-way `ReplayOutcome`.
+4. **Replay.** The claimed collector's `offlineEntitiesFor({ harText })`
+   entities fold through `Replay.replayEntities` → the four-way
+   `ReplayOutcome`.
 5. **Fold.** Batches group by `resourceType`; `unmatched`, `parseFailures`, and
    `bodyAbsent` become counts (and, for parse failures, `{ url, error }` data).
    `collector.rootOf` folded over every response URL yields `rootUrls` — the
