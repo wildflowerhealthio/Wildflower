@@ -7,7 +7,7 @@ import type { Observation } from 'fhir-r4/resources'
 import type { HttpResponse } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
-import { ObservationListEntity } from './observation-list-entity.ts'
+import { ObservationListResponseKind } from './observation-list-response-kind.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -20,7 +20,7 @@ const makeResponse = (body: string): HttpResponse.HttpResponse =>
 
 /**
  * Build the WebView JSON-viewer wrapper around a raw FHIR JSON
- * payload (see the sibling `patient-entity.test.ts` for the full
+ * payload (see the sibling `patient-response-kind.test.ts` for the full
  * rationale): mobile WebViews render `application/json` inside an
  * HTML-escaped `<pre>`, which `extractJson` strips before decoding.
  */
@@ -47,9 +47,9 @@ const bundle = (...resources: readonly unknown[]): Record<string, unknown> => ({
 const runParse = (
   r: HttpResponse.HttpResponse
 ): Either.Either<readonly (typeof Observation.Schema.Type)[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(ObservationListEntity.parse(r)))
+  Effect.runSync(Effect.either(ObservationListResponseKind.parse(r)))
 
-describe('ObservationListEntity', () => {
+describe('ObservationListResponseKind', () => {
   describe('isFoundAt', () => {
     it.each([
       // The exact production-shaped URL asked about: HAPI serves under a
@@ -69,14 +69,14 @@ describe('ObservationListEntity', () => {
       // `mustHaveQuery`: a bare list URL with no query is NOT a match…
       { url: 'https://example.com/Observation', match: false },
       { url: 'https://example.com/baseR4/Observation', match: false },
-      // …and the single-resource URL stays disjoint (that's ObservationEntity),
+      // …and the single-resource URL stays disjoint (that's ObservationResponseKind),
       // even under a base path.
       { url: 'https://example.com/Observation/123', match: false },
       { url: 'https://example.com/Observation/123?_format=json', match: false },
       { url: 'https://example.com/baseR4/Observation/123', match: false },
       { url: 'https://example.com/Patient?name=x', match: false },
     ])('returns $match for "$url"', ({ url, match }) => {
-      expect(ObservationListEntity.isFoundAt(url)).toBe(match)
+      expect(ObservationListResponseKind.isFoundAt(url)).toBe(match)
     })
   })
 
@@ -160,7 +160,7 @@ describe('ObservationListEntity', () => {
       fc.assert(
         fc.property(fc.json(), (json) => {
           const result = Effect.runSync(
-            Effect.either(ObservationListEntity.parse(makeResponse(json)))
+            Effect.either(ObservationListResponseKind.parse(makeResponse(json)))
           )
           expect(['Right', 'Left']).toContain(result._tag)
         }),

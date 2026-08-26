@@ -1,6 +1,6 @@
 /**
  * Small builder for the URL-recognition regexes consumed by
- * `EntityDefinition.isFoundAt`. The hand-crafted FHIR regexes mixed
+ * `HttpResponseKind.isFoundAt`. The hand-crafted FHIR regexes mixed
  * several literal-vs-wildcard path segments and end-of-path
  * boundaries; this DSL keeps the surface declarative and the
  * boundary semantics named so a reader doesn't have to translate

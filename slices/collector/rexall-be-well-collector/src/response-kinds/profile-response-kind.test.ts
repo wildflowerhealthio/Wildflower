@@ -7,7 +7,7 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import profileMe from '../fixtures/profile-me.json' with { type: 'json' }
-import { ProfileEntity } from './profile-entity.ts'
+import { ProfileResponseKind } from './profile-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
 
@@ -19,9 +19,9 @@ const makeResponse = (body: string, url = PROFILE_URL): HttpResponse.HttpRespons
 const runParse = (
   r: HttpResponse.HttpResponse
 ): Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(ProfileEntity.parse(r)))
+  Effect.runSync(Effect.either(ProfileResponseKind.parse(r)))
 
-describe('ProfileEntity', () => {
+describe('ProfileResponseKind', () => {
   describe('isFoundAt', () => {
     it.each([
       { url: PROFILE_URL, match: true },
@@ -34,7 +34,7 @@ describe('ProfileEntity', () => {
       // A different profile sub-path is not the identity endpoint.
       { url: 'https://tunnel/enduser/profile/v2/settings', match: false },
     ])('returns $match for "$url"', ({ url, match }) => {
-      expect(ProfileEntity.isFoundAt(url)).toBe(match)
+      expect(ProfileResponseKind.isFoundAt(url)).toBe(match)
     })
   })
 
@@ -107,7 +107,9 @@ describe('ProfileEntity', () => {
     it('never throws on arbitrary JSON strings', () => {
       fc.assert(
         fc.property(fc.json(), (json) => {
-          const result = Effect.runSync(Effect.either(ProfileEntity.parse(makeResponse(json))))
+          const result = Effect.runSync(
+            Effect.either(ProfileResponseKind.parse(makeResponse(json)))
+          )
           expect(['Right', 'Left']).toContain(result._tag)
         }),
         { numRuns: numRunsFor({ base: 100 }) }

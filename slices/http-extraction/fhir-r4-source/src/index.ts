@@ -5,8 +5,8 @@
  * @remarks
  * Three layers, all exported from here:
  *
- * - the three entities (`PatientEntity`, `ObservationEntity`,
- *   `ObservationListEntity`) and the `fhirR4EntityDefinitions` tuple — the
+ * - the three response kinds (`PatientResponseKind`, `ObservationResponseKind`,
+ *   `ObservationListResponseKind`) and the `fhirR4ResponseKinds` tuple — the
  *   **single definition** of how FHIR R4 traffic decodes, consumed by this
  *   package's source surface and by the live scraping plan in
  *   `fhir-r4-client-collector` (which keys resources under its configured
@@ -23,11 +23,11 @@
  *
  * @packageDocumentation
  */
-export { PatientEntity } from './entities/patient-entity.ts'
-export { ObservationEntity } from './entities/observation-entity.ts'
-export { ObservationListEntity } from './entities/observation-list-entity.ts'
+export { PatientResponseKind } from './response-kinds/patient-response-kind.ts'
+export { ObservationResponseKind } from './response-kinds/observation-response-kind.ts'
+export { ObservationListResponseKind } from './response-kinds/observation-list-response-kind.ts'
 export { extractJson } from './extract-json.ts'
-export { fhirR4EntityDefinitions } from './plan-entities.ts'
+export { fhirR4ResponseKinds } from './plan-entities.ts'
 export { fhirR4Recognizer, fhirRootOf } from './recognizer.ts'
 export { fhirR4SourceEntities } from './source-entities.ts'
 export { fhirR4Source } from './source.ts'

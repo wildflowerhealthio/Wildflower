@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 import { Bundle } from 'fhir-r4/data-types'
 import { Observation } from 'fhir-r4/resources'
-import { EntityDefinition, UrlMatch } from 'http-extraction-fundamentals'
+import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 
@@ -13,8 +13,8 @@ const isObservation = Schema.is(Observation.Schema)
 
 /**
  * `…://host/Observation?…`. The `mustHaveQuery` boundary keeps the
- * list pattern disjoint from `ObservationEntity` (`/Observation/<id>`),
- * so order in `ScrapingPlan.entityDefinitions` is no longer
+ * list pattern disjoint from `ObservationResponseKind` (`/Observation/<id>`),
+ * so order in the `ScrapingPlan` response kinds is no longer
  * load-bearing.
  */
 const observationListUrl = UrlMatch.make({
@@ -34,9 +34,9 @@ const observationListUrl = UrlMatch.make({
  * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
  * wrap.
  */
-const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> =
-  EntityDefinition.make({
-    name: 'ObservationListEntity',
+const ObservationListResponseKind: HttpResponseKind.HttpResponseKind<ObservationType> =
+  HttpResponseKind.make({
+    name: 'ObservationListResponseKind',
     isFoundAt: (url) => observationListUrl.test(url),
     parse: (response) =>
       Effect.gen(function* () {
@@ -46,11 +46,11 @@ const ObservationListEntity: EntityDefinition.EntityDefinition<ObservationType> 
         const droppedCount = allEntries.length - resources.length
         if (droppedCount > 0) {
           yield* Effect.logInfo(
-            `ObservationListEntity: dropped ${droppedCount} of ${allEntries.length} Bundle entries that did not decode as Observation`
+            `ObservationListResponseKind: dropped ${droppedCount} of ${allEntries.length} Bundle entries that did not decode as Observation`
           )
         }
         return resources
       }),
   })
 
-export { ObservationListEntity }
+export { ObservationListResponseKind }

@@ -138,10 +138,12 @@ describe('scrapingPlan', () => {
 
   it('registers exactly one entity, and it is the catch-all recorder', () => {
     const plan = scrapingPlan(defaultConfig, 'run-1')
-    expect(plan.entityDefinitions.map((entity) => entity.name)).toEqual(['RawExchangeEntity'])
+    expect(plan.responseKinds.map((responseKind) => responseKind.name)).toEqual([
+      'RawExchangeResponseKind',
+    ])
     fc.assert(
       fc.property(fc.webUrl(), (url) => {
-        expect(plan.entityDefinitions.every((entity) => entity.isFoundAt(url))).toBe(true)
+        expect(plan.responseKinds.every((responseKind) => responseKind.isFoundAt(url))).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
@@ -153,9 +155,11 @@ describe('scrapingPlan', () => {
     // recording entity carries. The id derives from the framework's run id, so
     // distinctness is per *run* — the framework mints a fresh one per build.
     const resourceIdFromABuildFor = async (runId: string): Promise<string | undefined> => {
-      const [entity] = scrapingPlan(defaultConfig, runId).entityDefinitions
-      if (entity === undefined) throw new Error('unreachable: one entity asserted above')
-      const [resource] = await Effect.runPromise(entity.parse(makeCollectorHttpResponse({ id: 'req-1' })))
+      const [responseKind] = scrapingPlan(defaultConfig, runId).responseKinds
+      if (responseKind === undefined) throw new Error('unreachable: one entity asserted above')
+      const [resource] = await Effect.runPromise(
+        responseKind.parse(makeCollectorHttpResponse({ id: 'req-1' }))
+      )
       return resource?.id ?? undefined
     }
 

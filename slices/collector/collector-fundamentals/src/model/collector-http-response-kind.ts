@@ -1,15 +1,15 @@
-import type { EntityDefinition } from 'http-extraction-fundamentals'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { deepFreeze } from 'kitchen-sink'
 import type { CollectorHttpResponse } from './collector-http-response.ts'
 import type * as Step from './step.ts'
 
 /**
- * An `http-extraction-fundamentals` `EntityDefinition`, extended with the one seam only a live
+ * An `http-extraction-fundamentals` `HttpResponseKind`, extended with the one seam only a live
  * collector run can drive: reactive crawling via `followUpSteps`.
  *
  * @remarks
  * The base recipe — `name` / `isFoundAt` / `parse` — is
- * `http-extraction-fundamentals`' {@link EntityDefinition.EntityDefinition}, so a
+ * `http-extraction-fundamentals`' {@link HttpResponseKind.HttpResponseKind}, so a
  * source package's entities feed a `ScrapingPlan` unchanged (the extra
  * member is optional). What this type adds exists only live: generated
  * `Step`s drive *navigation*, and an archive-driven extraction has nothing to
@@ -35,23 +35,26 @@ import type * as Step from './step.ts'
  *   `parse` stays a pure decode with no hidden control flow, and the handler —
  *   not the decode — owns when generation runs.
  */
-interface CollectorEntityDefinition<
+interface CollectorHttpResponseKind<
   TResources,
-> extends EntityDefinition.EntityDefinition<TResources> {
+> extends HttpResponseKind.HttpResponseKind<TResources> {
   // Declared as a *method* signature, not a `readonly` arrow property, on
   // purpose: `resources` puts `TResources` in a parameter (contravariant)
-  // position, which would make `CollectorEntityDefinition` — and thus
+  // position, which would make `CollectorHttpResponseKind` — and thus
   // `ScrapingPlan` — invariant in `TResources`, breaking the
   // `ScrapingPlan<Resources>` → `ScrapingPlan<unknown>` widening the
   // sealed-`Resources` existential relies on. Method parameters are checked
   // bivariantly, so this keeps the type covariant (as the base
-  // `EntityDefinition` is) while still typing the generator precisely.
-  followUpSteps?(resources: readonly TResources[], response: CollectorHttpResponse): readonly Step.Step[]
+  // `HttpResponseKind` is) while still typing the generator precisely.
+  followUpSteps?(
+    resources: readonly TResources[],
+    response: CollectorHttpResponse
+  ): readonly Step.Step[]
 }
 
 /**
  * Shallow-clone + deep-freeze the supplied definition so callers
- * cannot mutate `entityDefinitions` (via `ScrapingPlan.make`) after
+ * cannot mutate `responseKinds` (via `ScrapingPlan.make`) after
  * construction — the dispatcher pins the matched entity per request
  * at `ResponseStart` and assumes it stays put. The clone copies the
  * known fields (`name`, `isFoundAt`, `parse`, and the optional
@@ -59,8 +62,8 @@ interface CollectorEntityDefinition<
  * object is silently dropped.
  */
 const make = <TResources>(
-  definition: CollectorEntityDefinition<TResources>
-): CollectorEntityDefinition<TResources> =>
+  definition: CollectorHttpResponseKind<TResources>
+): CollectorHttpResponseKind<TResources> =>
   deepFreeze({
     name: definition.name,
     isFoundAt: definition.isFoundAt,
@@ -73,4 +76,4 @@ const make = <TResources>(
   })
 
 export { make }
-export type { CollectorEntityDefinition }
+export type { CollectorHttpResponseKind }

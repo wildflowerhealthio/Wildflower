@@ -67,7 +67,7 @@ type EnumDecision =
  *
  * @remarks
  * A controlled-vocabulary code is short. Past this a letters-only run is prose —
- * a free-text note, a display name — not something an `EntityDefinition`
+ * a free-text note, a display name — not something an `HttpResponseKind`
  * branches on.
  */
 const CODE_TOKEN_MAX_LENGTH = 64
@@ -361,7 +361,7 @@ const isPlainDecimal = (text: string): boolean => /^-?\d+(\.\d+)?$/.test(text)
  * @remarks
  * The carve-out exists because pure pseudonymization turns `"status": "active"`
  * into noise. A status code or a unit enum is not PHI, and it is exactly what an
- * `EntityDefinition` branches on — so a path whose values across the session
+ * `HttpResponseKind` branches on — so a path whose values across the session
  * number at most the threshold is left alone.
  *
  * There are **two** verbatim rules, decided independently: the code carve-out

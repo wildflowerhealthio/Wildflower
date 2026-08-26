@@ -11,7 +11,7 @@ navigation, persistence, HAR, files, or apps.
 ## Packages
 
 - **`http-extraction-fundamentals`** — the vocabulary, as `effect`-style
-  namespaces from one flat entry: `EntityDefinition` / `UrlMatch` /
+  namespaces from one flat entry: `HttpResponseKind` / `UrlMatch` /
   `HttpResponse` (how one response decodes into resources), `Extraction`
   (`Extraction.run` over archived responses), `Recognizer`
   (`Recognizer.resolve`, which source claims a response set), and `Source`
@@ -43,7 +43,7 @@ A CSV or DICOM import is a _document_, not HTTP traffic — its decode belongs
 in a pure dialect package (the way rexall's carebook dialect and
 `web-trace-core`'s codec already work), which a file importer wraps in the
 importer slice. This slice only enters that picture if the same source is
-_also_ reachable over HTTP: then an `EntityDefinition.parse` wraps the same
+_also_ reachable over HTTP: then an `HttpResponseKind.parse` wraps the same
 dialect from `response.bytes()`, and the dialect sits below both transports —
 which is exactly what keeps the dependency graph acyclic.
 

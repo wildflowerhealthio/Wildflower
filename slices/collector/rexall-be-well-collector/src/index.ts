@@ -15,5 +15,5 @@ export * as Bundle from './bundle.ts'
 
 export * from './config.ts'
 export * from './rexall-config-form.tsx'
-export * from './entities/profile-entity.ts'
-export * from './entities/medication-list-entity.ts'
+export * from './response-kinds/profile-response-kind.ts'
+export * from './response-kinds/medication-list-response-kind.ts'

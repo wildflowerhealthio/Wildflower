@@ -8,7 +8,7 @@
 
 export * from './config.ts'
 export * from './shoppers-drugmart-config-form.tsx'
-export * from './entities/customer-entity.ts'
-export * from './entities/prescription-entity.ts'
-export * from './entities/prescription-history-entity.ts'
+export * from './response-kinds/customer-response-kind.ts'
+export * from './response-kinds/prescription-response-kind.ts'
+export * from './response-kinds/prescription-history-response-kind.ts'
 export * as Shoppers from './shoppers.ts'

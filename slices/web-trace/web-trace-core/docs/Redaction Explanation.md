@@ -51,7 +51,7 @@ fix.
 ## Two carve-outs, not one
 
 Pure pseudonymization destroys two different things that are not PHI: the short
-codes an `EntityDefinition` branches on, and the URIs that say what those codes
+codes an `HttpResponseKind` branches on, and the URIs that say what those codes
 _mean_. They are recognised by separate rules, decided independently, and
 switched independently.
 
@@ -67,7 +67,7 @@ threshold that cannot bring it back, instead of at the switch that can.
 ## The enum carve-out
 
 Pure pseudonymization turns `"status": "active"` into noise. Status codes and
-unit enums are not PHI, and they are precisely what an `EntityDefinition`
+unit enums are not PHI, and they are precisely what an `HttpResponseKind`
 branches on. So a path can export verbatim — but it has to clear **two**
 independent bars, and the order matters.
 

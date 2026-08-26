@@ -3,7 +3,7 @@ import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId, originalIdOf } from 'fhir-r4/identity'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { EntityDefinition } from 'http-extraction-fundamentals'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
@@ -244,17 +244,17 @@ describe('source identity', () => {
     patientId: 'pat-7',
   }
 
-  const entityNamed = (name: string): EntityDefinition.EntityDefinition<FhirResource> => {
-    const found = scrapingPlan(CONFIG, FIXED_RUN_ID).entityDefinitions.find(
-      (entity) => entity.name === name
+  const responseKindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {
+    const found = scrapingPlan(CONFIG, FIXED_RUN_ID).responseKinds.find(
+      (responseKind) => responseKind.name === name
     )
-    if (found === undefined) throw new Error(`no entity named ${name}`)
+    if (found === undefined) throw new Error(`no response kind named ${name}`)
     return found
   }
 
   const parseBody = (name: string, url: string, body: unknown): readonly FhirResource[] =>
     Effect.runSync(
-      entityNamed(name).parse(
+      responseKindNamed(name).parse(
         makeCollectorHttpResponse({
           url,
           headers: [['content-type', 'application/fhir+json']],
@@ -264,7 +264,7 @@ describe('source identity', () => {
     )
 
   const adoptedPatient = (): FhirResource => {
-    const [resource] = parseBody('PatientEntity', `${ROOT_URL}/Patient/pat-7`, {
+    const [resource] = parseBody('PatientResponseKind', `${ROOT_URL}/Patient/pat-7`, {
       resourceType: 'Patient',
       id: 'pat-7',
       identifier: [{ system: 'http://hospital.example/mrn', value: 'MRN-42' }],
@@ -299,7 +299,7 @@ describe('source identity', () => {
     // sides have to agree after adoption, not just before it.
     const patientId = adoptedPatient().id
     const [observation] = parseBody(
-      'ObservationListEntity',
+      'ObservationListResponseKind',
       `${ROOT_URL}/Observation?subject%3APatient=pat-7`,
       {
         resourceType: 'Bundle',

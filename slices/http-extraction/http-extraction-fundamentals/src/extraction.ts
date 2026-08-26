@@ -1,6 +1,6 @@
 import { Effect, Either, type ParseResult } from 'effect'
 
-import type * as EntityDefinition from './entity-definition.ts'
+import type * as HttpResponseKind from './http-response-kind.ts'
 import * as HttpResponse from './http-response.ts'
 
 /**
@@ -80,7 +80,7 @@ interface Extraction<TResources> {
  * Run a static set of archived responses through a source's entities.
  *
  * @typeParam TResources - The resource type the entities decode to
- * @param entityDefinitions - The source's entities, in list order; the
+ * @param responseKinds - The source's entities, in list order; the
  *   first whose `isFoundAt` matches a response's URL claims it
  * @param responses - The responses to extract from, in the order they should
  *   be seen
@@ -106,7 +106,7 @@ interface Extraction<TResources> {
  * effectful.
  */
 const run = <TResources>(
-  entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[],
+  responseKinds: readonly HttpResponseKind.HttpResponseKind<TResources>[],
   responses: readonly Input[]
 ): Effect.Effect<Extraction<TResources>> =>
   Effect.gen(function* () {
@@ -117,22 +117,22 @@ const run = <TResources>(
 
     for (const source of responses) {
       const ref: ResponseRef = { id: source.id, url: source.url }
-      const entity = entityDefinitions.find((candidate) => candidate.isFoundAt(source.url))
-      if (entity === undefined) {
+      const responseKind = responseKinds.find((candidate) => candidate.isFoundAt(source.url))
+      if (responseKind === undefined) {
         unmatched.push(ref)
         continue
       }
       if (source.bodyAbsent) {
-        bodyAbsent.push({ ...ref, entityName: entity.name })
+        bodyAbsent.push({ ...ref, entityName: responseKind.name })
         continue
       }
 
-      const parsed = yield* Effect.either(entity.parse(HttpResponse.make(source)))
+      const parsed = yield* Effect.either(responseKind.parse(HttpResponse.make(source)))
       if (Either.isLeft(parsed)) {
-        parseFailures.push({ ...ref, entityName: entity.name, error: parsed.left })
+        parseFailures.push({ ...ref, entityName: responseKind.name, error: parsed.left })
         continue
       }
-      batches.push({ ...ref, entityName: entity.name, resources: parsed.right })
+      batches.push({ ...ref, entityName: responseKind.name, resources: parsed.right })
     }
 
     return { batches, unmatched, parseFailures, bodyAbsent }

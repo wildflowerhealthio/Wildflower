@@ -1,7 +1,7 @@
 import { DateTime, Effect, ParseResult, Schema } from 'effect'
 
-import * as EntityDefinition from './entity-definition.ts'
 import type * as Extraction from './extraction.ts'
+import * as HttpResponseKind from './http-response-kind.ts'
 import * as HttpResponse from './http-response.ts'
 
 /**
@@ -47,9 +47,9 @@ const makeHttpResponse = (overrides: HttpResponseOverrides = {}): HttpResponse.H
 }
 
 /**
- * Two reusable test entities mirroring the shape a real entity (e.g.
- * `PatientEntity`) takes — a value built via `EntityDefinition.make`, no
- * inheritance.
+ * Two reusable test response kinds mirroring the shape a real response kind
+ * (e.g. `PatientResponseKind`) takes — a value built via
+ * `HttpResponseKind.make`, no inheritance.
  */
 
 const SimpleSchema = Schema.Struct({
@@ -57,9 +57,9 @@ const SimpleSchema = Schema.Struct({
   age: Schema.Number,
 })
 
-const SimpleEntity: EntityDefinition.EntityDefinition<typeof SimpleSchema.Type> =
-  EntityDefinition.make({
-    name: 'SimpleEntity',
+const SimpleResponseKind: HttpResponseKind.HttpResponseKind<typeof SimpleSchema.Type> =
+  HttpResponseKind.make({
+    name: 'SimpleResponseKind',
     isFoundAt: (url) => /\/people\/\d+$/.test(url),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => [data]),
@@ -67,16 +67,16 @@ const SimpleEntity: EntityDefinition.EntityDefinition<typeof SimpleSchema.Type> 
 
 const AnotherSchema = Schema.Struct({ id: Schema.String })
 
-const AnotherEntity: EntityDefinition.EntityDefinition<typeof AnotherSchema.Type> =
-  EntityDefinition.make({
-    name: 'AnotherEntity',
+const AnotherResponseKind: HttpResponseKind.HttpResponseKind<typeof AnotherSchema.Type> =
+  HttpResponseKind.make({
+    name: 'AnotherResponseKind',
     isFoundAt: (url) => /\/items\//.test(url),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(AnotherSchema))(response.text()), (data) => [data]),
   })
 
 /**
- * What the {@link echoEntity} test entities decode to: the response fields
+ * What the {@link echoResponseKind} test entities decode to: the response fields
  * they were handed, echoed back.
  *
  * @remarks
@@ -105,8 +105,8 @@ interface Echo {
  * changing which entity claims it, so parse-failure isolation is testable
  * against an otherwise identical fold.
  */
-const echoEntity = (name: string, marker: string): EntityDefinition.EntityDefinition<Echo> =>
-  EntityDefinition.make({
+const echoResponseKind = (name: string, marker: string): HttpResponseKind.HttpResponseKind<Echo> =>
+  HttpResponseKind.make({
     name,
     isFoundAt: (url) => url.includes(`/${marker}/`),
     parse: (response) =>
@@ -129,7 +129,7 @@ const echoEntity = (name: string, marker: string): EntityDefinition.EntityDefini
           ]),
   })
 
-/** The body an {@link echoEntity} refuses to parse. */
+/** The body an {@link echoResponseKind} refuses to parse. */
 const POISON_BODY = 'POISON'
 
 /** Fixed instant, so a generated response never depends on the clock. */
@@ -153,13 +153,13 @@ const makeExtractionInput = (
 })
 
 export {
-  AnotherEntity,
+  AnotherResponseKind,
   DEFAULT_STARTED_AT,
-  echoEntity,
+  echoResponseKind,
   EXTRACTION_STARTED_AT,
   makeExtractionInput,
   makeHttpResponse,
   POISON_BODY,
-  SimpleEntity,
+  SimpleResponseKind,
 }
 export type { Echo, HttpResponseOverrides }

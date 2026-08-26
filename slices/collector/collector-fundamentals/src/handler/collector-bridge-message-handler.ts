@@ -234,8 +234,8 @@ const make = <TResources>({
       yield* SnifferResponseTracker.make<TResources>({
         // The tracker only needs "which entity (if any) parses this URL"; derive
         // it from the plan here so the tracker stays decoupled from `ScrapingPlan`.
-        matchEntity: (url) =>
-          Option.fromNullable(scrapingPlan.entityDefinitions.find((e) => e.isFoundAt(url))),
+        matchResponseKind: (url) =>
+          Option.fromNullable(scrapingPlan.responseKinds.find((e) => e.isFoundAt(url))),
         sendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         handleGeneratedSteps: (steps) => enqueueGeneratedSteps(steps),

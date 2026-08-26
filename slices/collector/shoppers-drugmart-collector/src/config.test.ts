@@ -3,7 +3,7 @@ import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId } from 'fhir-r4/identity'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { EntityDefinition } from 'http-extraction-fundamentals'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
@@ -321,16 +321,18 @@ describe('scrapingPlan', () => {
  * portal id as `identifier[0]`, rewrite relative references).
  */
 describe('source identity', () => {
-  const entityNamed = (name: string): EntityDefinition.EntityDefinition<FhirResource> => {
-    const found = scrapingPlan(defaultConfig, FIXED_RUN_ID).entityDefinitions.find(
-      (entity) => entity.name === name
+  const responseKindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {
+    const found = scrapingPlan(defaultConfig, FIXED_RUN_ID).responseKinds.find(
+      (responseKind) => responseKind.name === name
     )
-    if (found === undefined) throw new Error(`no entity named ${name}`)
+    if (found === undefined) throw new Error(`no response kind named ${name}`)
     return found
   }
 
   const parseThrough = (name: string, url: string, body: unknown): readonly FhirResource[] =>
-    Effect.runSync(entityNamed(name).parse(makeCollectorHttpResponse({ url, body: JSON.stringify(body) })))
+    Effect.runSync(
+      responseKindNamed(name).parse(makeCollectorHttpResponse({ url, body: JSON.stringify(body) }))
+    )
 
   const CUSTOMERS_URL = 'https://mypharmacy.shoppersdrugmart.ca/api/v1/customers/pc-uuid-1?expand=x'
   const STATUS_URL =
@@ -358,7 +360,7 @@ describe('source identity', () => {
   }
 
   const parsePrescription = (): readonly FhirResource[] =>
-    parseThrough('PrescriptionEntity', STATUS_URL, prescriptionPayload)
+    parseThrough('PrescriptionResponseKind', STATUS_URL, prescriptionPayload)
 
   it('keys each synthesized resource under a derived local id, portal id first', () => {
     const resources = parsePrescription()
@@ -398,7 +400,7 @@ describe('source identity', () => {
 
     const patientId = localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', 'pt-uuid-1')
     // The subject link holds because the reference and the demographic Patient
-    // CustomerEntity emits (see below) both go through the one derivation on
+    // CustomerResponseKind emits (see below) both go through the one derivation on
     // `pt-uuid-1`.
     expect(request.subject.reference).toBe(`Patient/${patientId}`)
     expect(dispense.subject?.reference).toBe(`Patient/${patientId}`)
@@ -417,7 +419,7 @@ describe('source identity', () => {
   })
 
   it('adopts the account Patient under a distinct id from the demographic Patient, materializing the link', () => {
-    const resources = parseThrough('CustomerEntity', CUSTOMERS_URL, customerPayload)
+    const resources = parseThrough('CustomerResponseKind', CUSTOMERS_URL, customerPayload)
     const account = resources.find(
       (r) => r.resourceType === 'Patient' && r.identifier[1]?.value === 'pc-uuid-1'
     )

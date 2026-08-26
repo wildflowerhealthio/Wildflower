@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
-import { EntityDefinition, UrlMatch } from 'http-extraction-fundamentals'
+import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 
@@ -20,8 +20,8 @@ const patientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMa
  * navigation (Observation list) is declared on the slice's
  * `ScrapingPlan.stepSequence`, not emitted from `parse`.
  */
-const PatientEntity: EntityDefinition.EntityDefinition<PatientType> = EntityDefinition.make({
-  name: 'PatientEntity',
+const PatientResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
+  name: 'PatientResponseKind',
   isFoundAt: (url) => patientUrl.test(url),
   parse: (response) =>
     Effect.map(decode(extractJson(response.text())), (patient) => {
@@ -31,4 +31,4 @@ const PatientEntity: EntityDefinition.EntityDefinition<PatientType> = EntityDefi
     }),
 })
 
-export { PatientEntity }
+export { PatientResponseKind }

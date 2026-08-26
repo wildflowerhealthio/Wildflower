@@ -13,7 +13,7 @@ import {
 import type { MessageHandler } from 'effect-messaging-core'
 import { UnknownException } from 'effect/Cause'
 import type { CollectorBridge } from '../bridge.ts'
-import type * as CollectorEntityDefinition from '../model/collector-entity-definition.ts'
+import type * as CollectorHttpResponseKind from '../model/collector-http-response-kind.ts'
 import { CollectorHttpResponse } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as Telemetry from '../telemetry/index.ts'
@@ -22,15 +22,15 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
 /**
  * Per-id state for one incomplete sniffed request — a tracked response still
- * accumulating body chunks. `entity` is pinned at `ResponseStart` so
- * `ResponseFinished` / `RequestError` don't re-walk `entityDefinitions` (and so
+ * accumulating body chunks. `responseKind` is pinned at `ResponseStart` so
+ * `ResponseFinished` / `RequestError` don't re-walk `responseKinds` (and so
  * a hypothetical mutation of the remote between Start and Finish couldn't
  * reroute parsing — the factory now deep-freezes anyway, but this nails the
  * invariant).
  */
 interface IncompleteSniffedRequest<TResources> {
   readonly response: CollectorHttpResponse
-  readonly entity: CollectorEntityDefinition.CollectorEntityDefinition<TResources>
+  readonly responseKind: CollectorHttpResponseKind.CollectorHttpResponseKind<TResources>
 }
 
 /**
@@ -132,15 +132,15 @@ interface SnifferResponseTracker<TResources> {
 }
 
 const make = <TResources>({
-  matchEntity,
+  matchResponseKind,
   sendMessage,
   handleNewSniffResult,
   handleGeneratedSteps,
   captureProvenance,
 }: {
-  matchEntity: (
+  matchResponseKind: (
     url: string
-  ) => Option.Option<CollectorEntityDefinition.CollectorEntityDefinition<TResources>>
+  ) => Option.Option<CollectorHttpResponseKind.CollectorHttpResponseKind<TResources>>
   sendMessage: (
     message: typeof CancelSnifferRequestMessage.Type
   ) => Effect.Effect<void, never, never>
@@ -245,8 +245,8 @@ const make = <TResources>({
 
     const handleResponseStart: Service['ResponseStart'] = (event) =>
       Effect.gen(function* () {
-        const entity = matchEntity(event.url)
-        if (Option.isNone(entity)) {
+        const responseKind = matchResponseKind(event.url)
+        if (Option.isNone(responseKind)) {
           yield* sendMessage({
             _tag: 'CancelSnifferRequest',
             id: event.id,
@@ -266,7 +266,7 @@ const make = <TResources>({
             event.headers,
             startedAt
           ),
-          entity: entity.value,
+          responseKind: responseKind.value,
         })(incompleteSniffedRequests)
       })
 
@@ -292,7 +292,7 @@ const make = <TResources>({
       )
 
     const handleResponseFinished: Service['ResponseFinished'] = (event) =>
-      withTracked('ResponseFinished', event.id, ({ response, entity }) =>
+      withTracked('ResponseFinished', event.id, ({ response, responseKind }) =>
         Effect.gen(function* () {
           // `url.path` is a path-only OTel semconv key: strip scheme/host/query
           // from the captured full URL, falling back to the raw string if it
@@ -301,7 +301,7 @@ const make = <TResources>({
             Either.try(() => new URL(response.url).pathname),
             () => response.url
           )
-          const result = yield* Effect.either(entity.parse(response)).pipe(
+          const result = yield* Effect.either(responseKind.parse(response)).pipe(
             // `Effect.either` always succeeds, so the span closes OK; record the
             // OTel-standard `error.type` (the ParseError tag) only on the Left
             // branch so failures stay queryable without flipping span status.
@@ -315,7 +315,7 @@ const make = <TResources>({
             ),
             Effect.withSpan(Telemetry.Importing.Parse.Span.Name, {
               attributes: {
-                [Telemetry.Entity.Attributes.Name]: entity.name,
+                [Telemetry.Entity.Attributes.Name]: responseKind.name,
                 [Telemetry.Entity.Attributes.Size]: response.byteLength,
                 [Telemetry.Entity.Chunk.Attributes.ChunkCount]: response.chunkCount,
                 [Telemetry.Entity.Attributes.UrlPath]: urlPath,
@@ -327,11 +327,11 @@ const make = <TResources>({
           // automatic-navigation machine leaves `Drained` (if idle) ahead of the
           // offer's `NoMoreResultsExpected` close-check. Failed parses,
           // `RequestError`, `Cancelled`, and abandons generate nothing.
-          if (Either.isRight(result) && entity.followUpSteps !== undefined) {
+          if (Either.isRight(result) && responseKind.followUpSteps !== undefined) {
             const parsed = result.right
             // Bind the pure, this-free method so the thunk can call it.
             // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method; the call is safe
-            const generateFollowUps = entity.followUpSteps
+            const generateFollowUps = responseKind.followUpSteps
             // A generator running on malformed scraped data can throw; contain it
             // like `parse`'s `Effect.either` above so a throw WARNs and generates
             // nothing but still reaches the drop-then-offer below — skipping it
@@ -340,7 +340,7 @@ const make = <TResources>({
               Effect.flatMap(handleGeneratedSteps),
               Effect.catchAll((error) =>
                 Effect.logWarning(
-                  `CollectorBridgeMessageHandler.ResponseFinished: ${entity.name}.followUpSteps threw; generating no follow-ups (${error.message})`
+                  `CollectorBridgeMessageHandler.ResponseFinished: ${responseKind.name}.followUpSteps threw; generating no follow-ups (${error.message})`
                 )
               )
             )

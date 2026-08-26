@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
-import { EntityDefinition, UrlMatch } from 'http-extraction-fundamentals'
+import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 import { nonEmpty } from 'kitchen-sink'
 
 import { extractJson } from '../extract-json.ts'
@@ -57,7 +57,7 @@ const decodePatient = Schema.decodeUnknown(Patient.Schema)
  * emitting a field only when the source carries it (so an absent name/DOB/etc.
  * leaves the corresponding R4 slot at its schema default rather than a synthetic
  * empty). The result is decoded through `Patient.Schema` so it lands as a proper
- * decoded R4 value — matching how `PatientEntity` decodes a wire Patient.
+ * decoded R4 value — matching how `PatientResponseKind` decodes a wire Patient.
  *
  * `nonEmpty` is what makes "absent" and "blank" one case: the carebook profile
  * sends `""` for a name it holds no value for, which would otherwise synthesize
@@ -93,7 +93,7 @@ const profileUrl = UrlMatch.make({
 })
 
 /**
- * Entity for the carebook profile response (`…/enduser/profile/v2/me`). `parse`
+ * Response kind for the carebook profile response (`…/enduser/profile/v2/me`). `parse`
  * decodes the bespoke (non-FHIR) profile JSON and **synthesizes an R4 Patient**:
  * `id = identifiers.uid` (the `subject` every medication references), plus
  * birthDate, postal-code address, email telecom, and name when the profile
@@ -101,8 +101,8 @@ const profileUrl = UrlMatch.make({
  * plan's `stepSequence`, not emitted here. {@link extractJson} normalizes the
  * body across raw-XHR intercepts and the mobile WebView's JSON-viewer wrap.
  */
-const ProfileEntity: EntityDefinition.EntityDefinition<PatientType> = EntityDefinition.make({
-  name: 'ProfileEntity',
+const ProfileResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
+  name: 'ProfileResponseKind',
   isFoundAt: (url) => profileUrl.test(url),
   parse: (response) =>
     Effect.gen(function* () {
@@ -112,4 +112,4 @@ const ProfileEntity: EntityDefinition.EntityDefinition<PatientType> = EntityDefi
     }),
 })
 
-export { ProfileEntity, ProfileSchema }
+export { ProfileResponseKind, ProfileSchema }

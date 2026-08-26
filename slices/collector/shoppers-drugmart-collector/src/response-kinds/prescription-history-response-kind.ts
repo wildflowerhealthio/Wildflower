@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { EntityDefinition } from 'http-extraction-fundamentals'
+import { HttpResponseKind } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime } from '../dates.ts'
 import { extractJson } from '../extract-json.ts'
@@ -50,7 +50,7 @@ const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 /**
  * The `authorizingPrescription` wire linking a history dispense back to its
  * request: a relative `MedicationRequest/<prescriptionId>` reference (re-keyed by
- * adoption onto the request {@link !PrescriptionEntity} wrote), carrying the
+ * adoption onto the request {@link !PrescriptionResponseKind} wrote), carrying the
  * human-facing `prescriptionNumber` as the reference's own `identifier` (that
  * number names the prescription, not the dispense, so it belongs here rather than
  * on the dispense's `identifier`). `undefined` when neither is present.
@@ -127,7 +127,7 @@ const dispenseWire = (dispense: SourceHistoryDispense): Record<string, unknown> 
  * but **not** the user-facing page `…/en/prescription-history` (which the SPA
  * navigates to and which carries no query). Version-agnostic (`/api/[^/]+/…`):
  * the capture shows `/api/p1/…` while the endpoint is documented as `/api/v1/…`.
- * Disjoint from {@link !CustomerEntity} and {@link !PrescriptionEntity} by
+ * Disjoint from {@link !CustomerResponseKind} and {@link !PrescriptionResponseKind} by
  * construction — different path segments — so entity order is not load-bearing.
  */
 const historyUrl = /:\/\/[^/]+\/api\/[^/]+\/prescription-history\/?\?(?:[^#]*&)?customerId=/
@@ -151,9 +151,9 @@ const historyUrl = /:\/\/[^/]+\/api\/[^/]+\/prescription-history\/?\?(?:[^#]*&)?
  * dropped-and-counted via `Effect.logInfo`. {@link extractJson} normalizes the
  * body across raw-XHR intercepts and the mobile WebView's JSON-viewer wrap.
  */
-const PrescriptionHistoryEntity: EntityDefinition.EntityDefinition<FhirResource> =
-  EntityDefinition.make({
-    name: 'PrescriptionHistoryEntity',
+const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
+  HttpResponseKind.make({
+    name: 'PrescriptionHistoryResponseKind',
     isFoundAt: (url) => historyUrl.test(url),
     parse: (response) =>
       Effect.gen(function* () {
@@ -173,7 +173,7 @@ const PrescriptionHistoryEntity: EntityDefinition.EntityDefinition<FhirResource>
         }
         if (dropped > 0) {
           yield* Effect.logInfo(
-            `PrescriptionHistoryEntity: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`
+            `PrescriptionHistoryResponseKind: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`
           )
         }
 
@@ -181,4 +181,4 @@ const PrescriptionHistoryEntity: EntityDefinition.EntityDefinition<FhirResource>
       }),
   })
 
-export { PrescriptionHistoryEntity, HistoryPayload, SourceHistoryDispense }
+export { PrescriptionHistoryResponseKind, HistoryPayload, SourceHistoryDispense }

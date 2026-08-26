@@ -11,7 +11,10 @@ import { BodyDigestUnavailable } from 'web-trace-core/capture'
 
 import type { BodyPolicy } from '../body-policy.ts'
 import { DEFAULT_BODY_CONTENT_TYPES, DEFAULT_MAX_BODY_BYTES } from '../config.ts'
-import { digestFailureAsParseError, makeRawExchangeEntity } from './raw-exchange-entity.ts'
+import {
+  digestFailureAsParseError,
+  makeRawExchangeResponseKind,
+} from './raw-exchange-response-kind.ts'
 
 const { expectRightToEqual } = utilityExpectations(expect)
 
@@ -26,13 +29,15 @@ const defaultPolicy: BodyPolicy = {
   maxBodyBytes: DEFAULT_MAX_BODY_BYTES,
 }
 
-const entity = makeRawExchangeEntity({ sessionId: SESSION_ID, policy: defaultPolicy })
+const entity = makeRawExchangeResponseKind({ sessionId: SESSION_ID, policy: defaultPolicy })
 
 const parse = (
   overrides: Parameters<typeof makeCollectorHttpResponse>[0] = {},
   definition = entity
 ): Promise<readonly DocumentReferenceType[]> =>
-  Effect.runPromise(definition.parse(makeCollectorHttpResponse({ startedAt: STARTED_AT, ...overrides })))
+  Effect.runPromise(
+    definition.parse(makeCollectorHttpResponse({ startedAt: STARTED_AT, ...overrides }))
+  )
 
 /** The single resource a parse of one exchange produces. */
 const parseOne = async (
@@ -172,7 +177,7 @@ describe('parse', () => {
     })
 
     it('records an over-cap body as skipped, with its size and hash preserved', async () => {
-      const tiny = makeRawExchangeEntity({
+      const tiny = makeRawExchangeResponseKind({
         sessionId: SESSION_ID,
         policy: { bodyContentTypes: ['json'], maxBodyBytes: 2 },
       })
@@ -187,7 +192,7 @@ describe('parse', () => {
     })
 
     it('never filters by URL — every URL is recorded whatever the allowlist says', async () => {
-      const nothingStored = makeRawExchangeEntity({
+      const nothingStored = makeRawExchangeResponseKind({
         sessionId: SESSION_ID,
         policy: { bodyContentTypes: [], maxBodyBytes: 0 },
       })
@@ -252,7 +257,7 @@ describe('parse', () => {
   })
 
   it('distinguishes two sessions recording the same request id', async () => {
-    const other = makeRawExchangeEntity({ sessionId: 'session-xyz', policy: defaultPolicy })
+    const other = makeRawExchangeResponseKind({ sessionId: 'session-xyz', policy: defaultPolicy })
     const [a, b] = await Promise.all([parseOne({ id: 'req-1' }), parseOne({ id: 'req-1' }, other)])
     expect(a.id).not.toBe(b.id)
   })

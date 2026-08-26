@@ -1,9 +1,9 @@
 import type { FhirResource } from 'fhir-r4/resources'
-import type { EntityDefinition } from 'http-extraction-fundamentals'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
-import { ObservationEntity } from './entities/observation-entity.ts'
-import { ObservationListEntity } from './entities/observation-list-entity.ts'
-import { PatientEntity } from './entities/patient-entity.ts'
+import { ObservationListResponseKind } from './response-kinds/observation-list-response-kind.ts'
+import { ObservationResponseKind } from './response-kinds/observation-response-kind.ts'
+import { PatientResponseKind } from './response-kinds/patient-response-kind.ts'
 
 /**
  * The three FHIR R4 entities in plan order — Patient, Observation,
@@ -11,7 +11,7 @@ import { PatientEntity } from './entities/patient-entity.ts'
  *
  * @remarks
  * Both this package's `fhirR4SourceEntities` (`./source-entities.ts`) and
- * the live scraping plan's `entityDefinitions` (`fhir-r4-client-collector`'s
+ * the live scraping plan's response kinds (`fhir-r4-client-collector`'s
  * `config.ts`) adopt *this* tuple, so a resource decodes identically whether
  * it arrives through an archive or a sniffer. It lives in its own
  * module, rather than inline in the plan, so both consumers name the same
@@ -19,16 +19,16 @@ import { PatientEntity } from './entities/patient-entity.ts'
  * reference the two share is unambiguous.
  *
  * The declared element type is the whole `FhirResource` union, which each
- * entity's narrower `EntityDefinition` satisfies by covariance — so no cast is
+ * entity's narrower `HttpResponseKind` satisfies by covariance — so no cast is
  * needed, and `adoptSourceIdentity` (whose guard demands the full union) can
  * wrap the tuple as-is. `mustHaveQuery` on the Observation-list pattern keeps
  * the two Observation entities disjoint, so the order is not load-bearing; it
  * only fixes the sequence both surfaces route by.
  */
-const fhirR4EntityDefinitions: readonly EntityDefinition.EntityDefinition<FhirResource>[] = [
-  PatientEntity,
-  ObservationEntity,
-  ObservationListEntity,
+const fhirR4ResponseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = [
+  PatientResponseKind,
+  ObservationResponseKind,
+  ObservationListResponseKind,
 ]
 
-export { fhirR4EntityDefinitions }
+export { fhirR4ResponseKinds }

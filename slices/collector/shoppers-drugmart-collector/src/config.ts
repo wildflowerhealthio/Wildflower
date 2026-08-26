@@ -4,12 +4,12 @@ import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { EntityDefinition } from 'http-extraction-fundamentals'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { CustomerEntity } from './entities/customer-entity.ts'
-import { PrescriptionEntity } from './entities/prescription-entity.ts'
-import { PrescriptionHistoryEntity } from './entities/prescription-history-entity.ts'
+import { CustomerResponseKind } from './response-kinds/customer-response-kind.ts'
+import { PrescriptionHistoryResponseKind } from './response-kinds/prescription-history-response-kind.ts'
+import { PrescriptionResponseKind } from './response-kinds/prescription-response-kind.ts'
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -148,7 +148,7 @@ const SETTLE = Duration.seconds(8)
  * `…/api/<seg>/prescription-history?customerId=…` XHR (every dispense across all
  * prescriptions) **and** the `…/api/<seg>/customers/:id?expand=…` XHR (the
  * account + its managed people) automatically — one page visit feeds both the
- * {@link PrescriptionHistoryEntity} and {@link CustomerEntity} recognizers.
+ * {@link PrescriptionHistoryResponseKind} and {@link CustomerResponseKind} recognizers.
  */
 const PRESCRIPTION_HISTORY_URL = 'https://mypharmacy.shoppersdrugmart.ca/en/prescription-history'
 
@@ -224,9 +224,9 @@ const captureProvenance = makeFhirProvenanceCapture('shoppers-drugmart')<FhirRes
  * `prescription-history` + `customers` XHRs settle. Every `Fill`/`Click`
  * dispatches and advances immediately (a `PageAction` fires no `PageLoaded`), so
  * the short `Delay`s between them are the only thing pacing the login form.
- * `CustomerEntity` recognizes
- * `…/customers/<uuid>`; `PrescriptionEntity` recognizes
- * `…/prescriptions/:uuid/prescription-status`; `PrescriptionHistoryEntity`
+ * `CustomerResponseKind` recognizes
+ * `…/customers/<uuid>`; `PrescriptionResponseKind` recognizes
+ * `…/prescriptions/:uuid/prescription-status`; `PrescriptionHistoryResponseKind`
  * recognizes `…/prescription-history?customerId=…` — disjoint patterns, so entity
  * order is not load-bearing.
  *
@@ -256,17 +256,17 @@ const scrapingPlan = (
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Shoppers Drug Mart',
-    // Widening upcast (safe: `EntityDefinition` is covariant in its resource
+    // Widening upcast (safe: `HttpResponseKind` is covariant in its resource
     // type, and Patient / MedicationRequest / MedicationDispense are all
     // `FhirResource`), mirroring `fhir-r4-client-collector`.
     // Order is not load-bearing — the three recognizers are disjoint by
     // construction (`/customers/<uuid>`, `/prescriptions/:uuid/prescription-status`,
     // `/prescription-history?customerId=…` — different path segments).
-    entityDefinitions: [
-      CustomerEntity,
-      PrescriptionEntity,
-      PrescriptionHistoryEntity,
-    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    responseKinds: [
+      CustomerResponseKind,
+      PrescriptionResponseKind,
+      PrescriptionHistoryResponseKind,
+    ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[],
     captureProvenance,
     stepSequence: [
       // Open the `mypharmacy` login page; this first `Open` builds the sniffer.

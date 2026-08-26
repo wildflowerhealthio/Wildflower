@@ -7,7 +7,7 @@ import type { Patient } from 'fhir-r4/resources'
 import type { HttpResponse } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
-import { PatientEntity } from './patient-entity.ts'
+import { PatientResponseKind } from './patient-response-kind.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -22,7 +22,7 @@ const makeResponse = (body: string): HttpResponse.HttpResponse =>
  * Build the WebView JSON-viewer wrapper around a raw FHIR JSON
  * payload. Mobile WebViews render `application/json` responses by
  * dropping the bytes inside a `<pre>` element with HTML entities
- * escaped (`<` → `&lt;`, `&` → `&amp;`); `PatientEntity.parse`
+ * escaped (`<` → `&lt;`, `&` → `&amp;`); `PatientResponseKind.parse`
  * (via `extractJson`) strips this wrapper before decoding.
  */
 const wrappedHtml = (rawJson: string): string => {
@@ -34,9 +34,9 @@ const wrappedHtml = (rawJson: string): string => {
 const runParse = (
   r: HttpResponse.HttpResponse
 ): Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(PatientEntity.parse(r)))
+  Effect.runSync(Effect.either(PatientResponseKind.parse(r)))
 
-describe('PatientEntity', () => {
+describe('PatientResponseKind', () => {
   describe('isFoundAt', () => {
     it.each([
       { url: 'https://r4.smarthealthit.org/Patient/123', match: true },
@@ -52,7 +52,7 @@ describe('PatientEntity', () => {
       { url: 'https://example.com/Patient/123/', match: false },
       { url: 'https://example.com/Patient/123/_history', match: false },
     ])('returns $match for "$url"', ({ url, match }) => {
-      expect(PatientEntity.isFoundAt(url)).toBe(match)
+      expect(PatientResponseKind.isFoundAt(url)).toBe(match)
     })
   })
 
@@ -97,7 +97,9 @@ describe('PatientEntity', () => {
     it('never throws on arbitrary JSON strings', () => {
       fc.assert(
         fc.property(fc.json(), (json) => {
-          const result = Effect.runSync(Effect.either(PatientEntity.parse(makeResponse(json))))
+          const result = Effect.runSync(
+            Effect.either(PatientResponseKind.parse(makeResponse(json)))
+          )
           expect(['Right', 'Left']).toContain(result._tag)
         }),
         { numRuns: numRunsFor({ base: 100 }) }

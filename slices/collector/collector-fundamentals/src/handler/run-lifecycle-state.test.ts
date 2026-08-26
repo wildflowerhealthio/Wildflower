@@ -4,7 +4,7 @@ import { Chunk, Effect, MutableHashMap, Option } from 'effect'
 import { utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { SimpleEntity } from 'http-extraction-fundamentals/test-helpers'
+import { SimpleResponseKind } from 'http-extraction-fundamentals/test-helpers'
 import {
   noopSendMessage,
   responseData,
@@ -48,7 +48,8 @@ const makeHarness = (): Effect.Effect<Harness> =>
     const drained = { value: false }
     const tracker: SnifferResponseTracker.SnifferResponseTracker<SimpleResources> =
       yield* SnifferResponseTracker.make<SimpleResources>({
-        matchEntity: (url) => Option.fromNullable([SimpleEntity].find((e) => e.isFoundAt(url))),
+        matchResponseKind: (url) =>
+          Option.fromNullable([SimpleResponseKind].find((e) => e.isFoundAt(url))),
         sendMessage: noopSendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         handleGeneratedSteps: () => Effect.void,

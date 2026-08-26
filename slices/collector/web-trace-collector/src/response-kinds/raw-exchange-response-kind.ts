@@ -1,5 +1,5 @@
 import { DateTime, Effect, ParseResult } from 'effect'
-import { EntityDefinition } from 'http-extraction-fundamentals'
+import { HttpResponseKind } from 'http-extraction-fundamentals'
 import { TraceExchange } from 'web-trace-core'
 import { type DocumentReferenceType, toDocumentReference } from 'web-trace-core/codec'
 import { toExchangeFields } from 'web-trace-core/provenance'
@@ -17,7 +17,7 @@ import { type BodyPolicy, decideBody } from '../body-policy.ts'
 
 /**
  * Re-raise a body-digest failure as a `ParseError`, the only error type
- * `EntityDefinition.parse` may fail with.
+ * `HttpResponseKind.parse` may fail with.
  *
  * @param cause - The digest failure
  * @returns The equivalent `ParseError`, naming the real reason
@@ -37,7 +37,7 @@ const digestFailureAsParseError = (cause: BodyDigestUnavailable): ParseResult.Pa
   })
 
 /** What a recording run pins for the lifetime of one session. */
-interface RawExchangeEntityOptions {
+interface RawExchangeResponseKindOptions {
   /** Shared by every exchange in this run; half of the resource id. */
   readonly sessionId: string
   /** The capture-time body policy — bodies only, never which exchanges are recorded. */
@@ -48,7 +48,7 @@ interface RawExchangeEntityOptions {
  * Build the catch-all recording entity for one session.
  *
  * @param options - The session id every exchange carries, and the body policy
- * @returns An `EntityDefinition` that turns any response into one trace
+ * @returns An `HttpResponseKind` that turns any response into one trace
  *   `DocumentReference`
  *
  * @remarks
@@ -58,11 +58,11 @@ interface RawExchangeEntityOptions {
  * would abort the requests the user's own browsing depends on. See invariant 1
  * in the [package AGENTS.md](../../AGENTS.md) before touching it.
  */
-const makeRawExchangeEntity = (
-  options: RawExchangeEntityOptions
-): EntityDefinition.EntityDefinition<DocumentReferenceType> =>
-  EntityDefinition.make({
-    name: 'RawExchangeEntity',
+const makeRawExchangeResponseKind = (
+  options: RawExchangeResponseKindOptions
+): HttpResponseKind.HttpResponseKind<DocumentReferenceType> =>
+  HttpResponseKind.make({
+    name: 'RawExchangeResponseKind',
     // Catch-all — see the remarks above before narrowing this.
     isFoundAt: () => true,
     parse: (response) =>
@@ -97,4 +97,8 @@ const makeRawExchangeEntity = (
     // user never visited, and move the browser under them while they browse.
   })
 
-export { digestFailureAsParseError, makeRawExchangeEntity, type RawExchangeEntityOptions }
+export {
+  digestFailureAsParseError,
+  makeRawExchangeResponseKind,
+  type RawExchangeResponseKindOptions,
+}

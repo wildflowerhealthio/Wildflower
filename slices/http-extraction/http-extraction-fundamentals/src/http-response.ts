@@ -11,7 +11,7 @@ import type { DateTime } from 'effect'
 type Headers = readonly (readonly [string, string])[]
 
 /**
- * One response, as an `EntityDefinition.parse` sees it — the readable surface
+ * One response, as an `HttpResponseKind.parse` sees it — the readable surface
  * every entity decodes (or records) from, however the response was obtained.
  *
  * @remarks

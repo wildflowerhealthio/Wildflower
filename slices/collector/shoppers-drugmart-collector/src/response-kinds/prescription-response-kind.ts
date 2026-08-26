@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { EntityDefinition } from 'http-extraction-fundamentals'
+import { HttpResponseKind } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime, firstDateTime } from '../dates.ts'
 import { extractJson } from '../extract-json.ts'
@@ -302,8 +302,8 @@ const dispenseWire = (
 /**
  * `…://host/…/prescriptions/<uuid>/prescription-status`. Hand-rolled (not
  * `UrlMatch.make`) so it tolerates an optional trailing slash / query and stays
- * disjoint from {@link !CustomerEntity}'s `…/customers/<uuid>` pattern and
- * {@link !PrescriptionHistoryEntity}'s `…/prescription-history?customerId=…`
+ * disjoint from {@link !CustomerResponseKind}'s `…/customers/<uuid>` pattern and
+ * {@link !PrescriptionHistoryResponseKind}'s `…/prescription-history?customerId=…`
  * pattern (different path segments) — entity order is therefore not
  * load-bearing.
  */
@@ -323,7 +323,7 @@ const prescriptionStatusUrl =
  *   surfaced via `Effect.logInfo` rather than silently skipped.
  *
  * **No `Patient`.** The subject Patient records now come from
- * {@link !CustomerEntity} (the customers XHR fires on the same run), so the
+ * {@link !CustomerResponseKind} (the customers XHR fires on the same run), so the
  * `subject: Patient/<patientId>` references here resolve to the demographic
  * Patient that entity emits — this entity no longer synthesizes a minimal stub.
  * The trade-off: a run where the customers XHR fails leaves those `subject`
@@ -335,39 +335,40 @@ const prescriptionStatusUrl =
  * emitted. {@link extractJson} normalizes the body across raw-XHR intercepts and
  * the mobile WebView's JSON-viewer wrap.
  */
-const PrescriptionEntity: EntityDefinition.EntityDefinition<FhirResource> = EntityDefinition.make({
-  name: 'PrescriptionEntity',
-  isFoundAt: (url) => prescriptionStatusUrl.test(url),
-  parse: (response) =>
-    Effect.gen(function* () {
-      const rx = yield* decodePrescription(extractJson(response.text()))
-      // The status payload names the drug once, on the prescription — build the
-      // concept once and share it with the request and every dispense.
-      const medication = medicationWire(rx)
-      const request = yield* decodeRequest(requestWire(rx, medication))
+const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
+  HttpResponseKind.make({
+    name: 'PrescriptionResponseKind',
+    isFoundAt: (url) => prescriptionStatusUrl.test(url),
+    parse: (response) =>
+      Effect.gen(function* () {
+        const rx = yield* decodePrescription(extractJson(response.text()))
+        // The status payload names the drug once, on the prescription — build the
+        // concept once and share it with the request and every dispense.
+        const medication = medicationWire(rx)
+        const request = yield* decodeRequest(requestWire(rx, medication))
 
-      const rawDispenses = flattenDispenses(rx.dispenses ?? [])
-      const dispenses: Array<typeof MedicationDispense.Schema.Type> = []
-      let dropped = 0
-      for (const raw of rawDispenses) {
-        const decoded = decodeSourceDispense(raw)
-        const wire = Option.isSome(decoded)
-          ? dispenseWire(decoded.value, rx, medication)
-          : undefined
-        if (wire === undefined) {
-          dropped += 1
-          continue
+        const rawDispenses = flattenDispenses(rx.dispenses ?? [])
+        const dispenses: Array<typeof MedicationDispense.Schema.Type> = []
+        let dropped = 0
+        for (const raw of rawDispenses) {
+          const decoded = decodeSourceDispense(raw)
+          const wire = Option.isSome(decoded)
+            ? dispenseWire(decoded.value, rx, medication)
+            : undefined
+          if (wire === undefined) {
+            dropped += 1
+            continue
+          }
+          dispenses.push(yield* decodeDispense(wire))
         }
-        dispenses.push(yield* decodeDispense(wire))
-      }
-      if (dropped > 0) {
-        yield* Effect.logInfo(
-          `PrescriptionEntity: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`
-        )
-      }
+        if (dropped > 0) {
+          yield* Effect.logInfo(
+            `PrescriptionResponseKind: dropped ${dropped} of ${rawDispenses.length} dispense entries with no dispenseId (or undecodable)`
+          )
+        }
 
-      return [request, ...dispenses]
-    }),
-})
+        return [request, ...dispenses]
+      }),
+  })
 
-export { PrescriptionEntity, SourcePrescription, SourceDispense }
+export { PrescriptionResponseKind, SourcePrescription, SourceDispense }

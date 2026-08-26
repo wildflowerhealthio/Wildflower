@@ -412,7 +412,7 @@ describe('the enum carve-out', () => {
     expect(out.birthDate).not.toBe(identifying.birthDate)
     expect(out.zipPostalCode).not.toBe(identifying.zipPostalCode)
     expect(out.phone).not.toBe(identifying.phone)
-    // The carve-out still earns its keep: a code an EntityDefinition branches
+    // The carve-out still earns its keep: a code an HttpResponseKind branches
     // on survives at the same one-distinct-value cardinality.
     expect(out.status).toBe('active')
   })

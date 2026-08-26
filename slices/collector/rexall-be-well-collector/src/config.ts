@@ -4,12 +4,12 @@ import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { EntityDefinition } from 'http-extraction-fundamentals'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { MedicationListEntity } from './entities/medication-list-entity.ts'
-import { ProfileEntity } from './entities/profile-entity.ts'
+import { MedicationListResponseKind } from './response-kinds/medication-list-response-kind.ts'
+import { ProfileResponseKind } from './response-kinds/profile-response-kind.ts'
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -174,7 +174,7 @@ const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
  * XHRs settle. Every `Fill`/`Click` dispatches and advances immediately (a
  * `PageAction` fires no `PageLoaded`), so the short `Delay`s between them are the
  * only thing pacing the login form.
- * `ProfileEntity` recognizes `…/profile/v2/me`; `MedicationListEntity` recognizes
+ * `ProfileResponseKind` recognizes `…/profile/v2/me`; `MedicationListResponseKind` recognizes
  * the `…/pharmacy/Location?…` searchset — disjoint patterns, so entity order is
  * not load-bearing.
  *
@@ -207,10 +207,10 @@ const scrapingPlan = (
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Rexall Be Well',
-    entityDefinitions: [
-      ProfileEntity,
-      MedicationListEntity,
-    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    responseKinds: [
+      ProfileResponseKind,
+      MedicationListResponseKind,
+    ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[],
     captureProvenance,
     stepSequence: [
       // Open the login page — the step that builds the sniffer — then wait for

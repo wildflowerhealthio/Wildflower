@@ -13,7 +13,7 @@ const openStep = (uri: string): Step.Step => ({
 const planWith = (stepSequence: readonly Step.Step[]): ScrapingPlan.ScrapingPlan<never> =>
   ScrapingPlan.make<never>({
     name: 'FreezeTestPlan',
-    entityDefinitions: [],
+    responseKinds: [],
     stepSequence,
   })
 
@@ -26,7 +26,7 @@ describe('ScrapingPlan.make', () => {
     // change a run already under way.
     expect(Object.isFrozen(plan)).toBe(true)
     expect(Object.isFrozen(plan.stepSequence)).toBe(true)
-    expect(Object.isFrozen(plan.entityDefinitions)).toBe(true)
+    expect(Object.isFrozen(plan.responseKinds)).toBe(true)
     expect(Object.isFrozen(plan.stepSequence[0])).toBe(true)
   })
 
@@ -74,7 +74,7 @@ describe('ScrapingPlan.make', () => {
     ) => Effect.succeed({ resources: produced, diagnostics: [] })
     const plan = ScrapingPlan.make<never>({
       name: 'HookPlan',
-      entityDefinitions: [],
+      responseKinds: [],
       stepSequence: [],
       captureProvenance,
     })

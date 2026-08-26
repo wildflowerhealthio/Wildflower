@@ -26,7 +26,7 @@ import { settleForkedWork } from './collector-bridge-message-handler.test-helper
  * The automatic-navigation machine in isolation (not via
  * `CollectorBridgeMessageHandler`) — the composition with the response tracker
  * is covered by `collector-bridge-message-handler.test.ts`. The machine ignores
- * `entityDefinitions`, so the plan carries an empty list.
+ * `responseKinds`, so the plan carries an empty list.
  *
  * The machine *owns a breadth-first step queue* (seeded from `stepSequence`,
  * grown by `handleStepsGenerated`). Every `Navigation` **dispatches and advances
@@ -1650,7 +1650,7 @@ const makeMachine = (options: {
     make({
       scrapingPlan: ScrapingPlan.make({
         name: 'TestPlan',
-        entityDefinitions: [],
+        responseKinds: [],
         stepSequence: options.stepSequence ?? [],
         drainedGuardTimeout: options.drainedGuardTimeout,
       }),

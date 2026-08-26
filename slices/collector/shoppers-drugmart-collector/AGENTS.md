@@ -25,17 +25,17 @@ XHRs the collector cares about, and which page fires each:
 
 - `GET …/api/<seg>/customers/:uuid?expand=…` — the account and the people it
   manages. Fired by the health dashboard **and** the prescription-history page.
-  → `CustomerEntity`.
+  → `CustomerResponseKind`.
 - `GET …/api/<seg>/prescriptions/:uuid/prescription-status` — one **per
-  prescription**, fired by the prescription-dashboard page. → `PrescriptionEntity`.
+  prescription**, fired by the prescription-dashboard page. → `PrescriptionResponseKind`.
 - `GET …/api/<seg>/prescription-history?customerId=…` — **every** dispense across
   all prescriptions (the status endpoint carries at most the latest fill per
-  prescription), fired by the prescription-history page. → `PrescriptionHistoryEntity`.
+  prescription), fired by the prescription-history page. → `PrescriptionHistoryResponseKind`.
 - `…/customers/:uuid/toasts?source=LOGIN` and other sub-paths are **not** claimed
   — the `customers` recognizer anchors the uuid as the final path segment.
 
 The three recognizers are **disjoint by construction** (different path segments),
-so `entityDefinitions` order is not load-bearing.
+so `responseKinds` order is not load-bearing.
 
 ## The collector
 
@@ -46,18 +46,18 @@ Mirrors `fhir-r4-client-collector`; wired into `collector-registry` +
 password }`) with fast-check arbitraries, `defaultConfig`, the
   login-pause-for-2FA-then-visit-dashboard-and-history `scrapingPlan`, and the
   `ShoppersDrugMartCollectorDescriptor`.
-- `src/entities/customer-entity.ts` — recognizes `…/customers/<uuid>` and
+- `src/response-kinds/customer-response-kind.ts` — recognizes `…/customers/<uuid>` and
   synthesizes, from the account payload, one demographic `Patient` per managed
   person (keyed by `patients[].id`) plus a linked account `Patient` (keyed by
   `pcid`).
-- `src/entities/prescription-entity.ts` — recognizes
+- `src/response-kinds/prescription-response-kind.ts` — recognizes
   `…/prescriptions/:uuid/prescription-status` (one XHR per prescription) and
   synthesizes one `MedicationRequest` and one `MedicationDispense` per
-  `dispenses` entry. No Patient (the subject records come from `CustomerEntity`).
-- `src/entities/prescription-history-entity.ts` — recognizes
+  `dispenses` entry. No Patient (the subject records come from `CustomerResponseKind`).
+- `src/response-kinds/prescription-history-response-kind.ts` — recognizes
   `…/prescription-history?customerId=…` and synthesizes one `MedicationDispense`
   per history entry (no Patient, no MedicationRequest).
-- `src/entities/medication-wire.ts` — the `medicationCodeableConcept` builder
+- `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept` builder
   (brand/chemical text + DIN coding) shared by the two dispense-emitting entities;
   the DIN is per-payload (fills of one rx can differ).
 - `src/dates.ts` — the `decodesAsDateTime` / `firstDateTime` date-validation
@@ -126,7 +126,7 @@ characterised, so it is deferred until the portal's real behaviour is observed.
 The account's `pcid` (`== customer.id ==` the `customerId` query param) and a
 managed person's `patientId` (a `customer.patients[].id`) are **different kinds
 of id** — an account vs a person — but the relationship is **known and joinable**:
-the customers payload carries both together. So `CustomerEntity` emits:
+the customers payload carries both together. So `CustomerResponseKind` emits:
 
 - a **demographic** `Patient` per `customer.patients[]` entry, keyed by its `id`
   (name, phone telecom, address) — the record `MedicationRequest.subject` /
@@ -142,7 +142,7 @@ derivation) — and rewrites the `link.seealso` relative reference onto the
 demographic Patient's derived id, so the join is **materialized** in the store and
 lands on the same id `subject` resolves to.
 
-**`PrescriptionEntity` no longer emits a subject Patient.** `CustomerEntity` owns
+**`PrescriptionResponseKind` no longer emits a subject Patient.** `CustomerResponseKind` owns
 those records, and the same run always visits a page that fires the customers XHR.
 The trade-off (documented in the entity): a run where the customers XHR fails
 leaves the prescriptions' `subject` references dangling, which the store tolerates

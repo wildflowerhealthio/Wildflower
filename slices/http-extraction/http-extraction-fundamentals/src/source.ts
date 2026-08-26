@@ -1,6 +1,6 @@
 import type { Option } from 'effect'
 
-import type * as EntityDefinition from './entity-definition.ts'
+import type * as HttpResponseKind from './http-response-kind.ts'
 import type * as Recognizer from './recognizer.ts'
 
 /**
@@ -28,7 +28,7 @@ interface Source<TResources> extends Recognizer.Recognizer {
   /** The source's stable tag, the discriminator a consumer reports. */
   readonly tag: string
   /** The entities `Extraction.run` folds a set of responses through. */
-  readonly entities: readonly EntityDefinition.EntityDefinition<TResources>[]
+  readonly entities: readonly HttpResponseKind.HttpResponseKind<TResources>[]
   /**
    * The source root a single URL was served from, or `None` when the URL
    * names no resource this source understands. The per-URL primitive a

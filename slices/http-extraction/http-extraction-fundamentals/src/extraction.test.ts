@@ -3,19 +3,19 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { assert, describe, expect, it, test } from 'vite-plus/test'
 
-import * as EntityDefinition from './entity-definition.ts'
 import { arbitraryScenarios, type Scenario } from './extraction.test-helpers.ts'
 import * as Extraction from './extraction.ts'
-import { echoEntity, makeExtractionInput, POISON_BODY, type Echo } from './test-helpers.ts'
+import * as HttpResponseKind from './http-response-kind.ts'
+import { echoResponseKind, makeExtractionInput, POISON_BODY, type Echo } from './test-helpers.ts'
 
-const AlphaEntity = echoEntity('AlphaEntity', 'alpha')
-const BetaEntity = echoEntity('BetaEntity', 'beta')
-const entityDefinitions = [AlphaEntity, BetaEntity]
+const AlphaEntity = echoResponseKind('AlphaEntity', 'alpha')
+const BetaEntity = echoResponseKind('BetaEntity', 'beta')
+const responseKinds = [AlphaEntity, BetaEntity]
 
 const extract = (scenarios: readonly Scenario[]): Extraction.Extraction<Echo> =>
   Effect.runSync(
     Extraction.run(
-      entityDefinitions,
+      responseKinds,
       scenarios.map((scenario) => scenario.response)
     )
   )
@@ -94,9 +94,9 @@ describe('Extraction.run', () => {
     // A pattern that claims everything, and one that claims a subset of it:
     // whichever comes first in the list wins every response they both match —
     // the same silent ordering dependency every consumer of an entity list has.
-    const Broad = echoEntity('BroadEntity', 'alpha')
-    const Narrow: EntityDefinition.EntityDefinition<Echo> = EntityDefinition.make({
-      ...echoEntity('NarrowEntity', 'alpha'),
+    const Broad = echoResponseKind('BroadEntity', 'alpha')
+    const Narrow: HttpResponseKind.HttpResponseKind<Echo> = HttpResponseKind.make({
+      ...echoResponseKind('NarrowEntity', 'alpha'),
       isFoundAt: (url) => url.includes('/alpha/') && url.endsWith('9'),
     })
 
@@ -132,7 +132,7 @@ describe('Extraction.run', () => {
 
   it('reports a parse failure with the URL and the entity that claimed it', () => {
     const extraction = Effect.runSync(
-      Extraction.run(entityDefinitions, [
+      Extraction.run(responseKinds, [
         makeExtractionInput({ id: 'r1', url: 'https://example.com/alpha/1', body: POISON_BODY }),
       ])
     )
@@ -150,7 +150,7 @@ describe('Extraction.run', () => {
 
   it('never calls parse for a response the archive carried no body for', () => {
     let parseCalls = 0
-    const Counting: EntityDefinition.EntityDefinition<Echo> = EntityDefinition.make({
+    const Counting: HttpResponseKind.HttpResponseKind<Echo> = HttpResponseKind.make({
       ...AlphaEntity,
       parse: (response) => {
         parseCalls += 1
@@ -182,7 +182,7 @@ describe('Extraction.run', () => {
   })
 
   it('returns empty accounting for an empty input', () => {
-    expect(Effect.runSync(Extraction.run(entityDefinitions, []))).toEqual({
+    expect(Effect.runSync(Extraction.run(responseKinds, []))).toEqual({
       batches: [],
       unmatched: [],
       parseFailures: [],

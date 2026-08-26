@@ -1,16 +1,16 @@
 import { Effect } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { EntityDefinition } from 'http-extraction-fundamentals'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { fhirR4SourceEntities } from './source-entities.ts'
 
 const entityNamed = (
-  entities: readonly EntityDefinition.EntityDefinition<FhirResource>[],
+  entities: readonly HttpResponseKind.HttpResponseKind<FhirResource>[],
   name: string
-): EntityDefinition.EntityDefinition<FhirResource> => {
+): HttpResponseKind.HttpResponseKind<FhirResource> => {
   const found = entities.find((entity) => entity.name === name)
   if (found === undefined) throw new Error(`no entity named ${name}`)
   return found
@@ -31,15 +31,15 @@ const parseImporter = (name: string, url: string, body: unknown): readonly FhirR
 describe('fhirR4SourceEntities', () => {
   it('decodes through the shared tuple in plan order', () => {
     expect(fhirR4SourceEntities.map((entity) => entity.name)).toEqual([
-      'PatientEntity',
-      'ObservationEntity',
-      'ObservationListEntity',
+      'PatientResponseKind',
+      'ObservationResponseKind',
+      'ObservationListResponseKind',
     ])
   })
 
   it("keys a resource under its own URL's root", () => {
     const root = 'https://r4.example.org/baseR4'
-    const [patient] = parseImporter('PatientEntity', `${root}/Patient/pat-7`, {
+    const [patient] = parseImporter('PatientResponseKind', `${root}/Patient/pat-7`, {
       resourceType: 'Patient',
       id: 'pat-7',
     })
@@ -49,11 +49,11 @@ describe('fhirR4SourceEntities', () => {
   it('keys resources from different servers under their own roots, no shared system', () => {
     const rootA = 'https://a.example.org/baseR4'
     const rootB = 'https://b.example.org/fhir/R4'
-    const [fromA] = parseImporter('PatientEntity', `${rootA}/Patient/1`, {
+    const [fromA] = parseImporter('PatientResponseKind', `${rootA}/Patient/1`, {
       resourceType: 'Patient',
       id: '1',
     })
-    const [fromB] = parseImporter('ObservationEntity', `${rootB}/Observation/2`, {
+    const [fromB] = parseImporter('ObservationResponseKind', `${rootB}/Observation/2`, {
       resourceType: 'Observation',
       id: '2',
       status: 'final',
@@ -65,7 +65,7 @@ describe('fhirR4SourceEntities', () => {
 
   it("rewrites a relative reference under the referring resource's own root", () => {
     const root = 'https://r4.example.org/baseR4'
-    const [observation] = parseImporter('ObservationEntity', `${root}/Observation/obs-1`, {
+    const [observation] = parseImporter('ObservationResponseKind', `${root}/Observation/obs-1`, {
       resourceType: 'Observation',
       id: 'obs-1',
       status: 'final',

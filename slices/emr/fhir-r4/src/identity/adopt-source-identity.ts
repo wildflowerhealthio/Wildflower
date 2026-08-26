@@ -13,14 +13,14 @@ type AdoptableParse = (
  * adopted.
  *
  * @remarks
- * Structural rather than `http-extraction-fundamentals`' `EntityDefinition`: this
+ * Structural rather than `http-extraction-fundamentals`' `HttpResponseKind`: this
  * package sits below the collector slice and cannot import it — the same
  * precedent `web-trace-core`'s `CapturedResponse` sets.
  *
  * `parse` is declared with method syntax so its parameter is checked
  * bivariantly, which is what lets a concrete entity typed against the
  * collector's own `CollectorHttpResponse` satisfy an `unknown` here. The trick is
- * `collector-fundamentals`' own, used on `CollectorEntityDefinition.followUpSteps` for
+ * `collector-fundamentals`' own, used on `CollectorHttpResponseKind.followUpSteps` for
  * the same reason.
  */
 interface AdoptableEntity {
@@ -31,7 +31,7 @@ interface AdoptableEntity {
 
 /** The one field of a scraping plan {@link adoptSourceIdentity} rewrites. */
 interface AdoptablePlan {
-  readonly entityDefinitions: readonly AdoptableEntity[]
+  readonly responseKinds: readonly AdoptableEntity[]
 }
 
 /** The resource type an entity's `parse` declares it produces. */
@@ -57,7 +57,7 @@ type ParsedBy<TEntity extends AdoptableEntity> =
  * `slices/collector/docs/Source Identity Explanation.md`.
  */
 type EntitiesParseEveryResource<TPlan extends AdoptablePlan> =
-  FhirResource extends ParsedBy<TPlan['entityDefinitions'][number]>
+  FhirResource extends ParsedBy<TPlan['responseKinds'][number]>
     ? unknown
     : {
         readonly __adoptSourceIdentity: 'the entities of this plan must parse the whole FhirResource union'
@@ -140,7 +140,7 @@ const adoptEntity = (source: SourceIdentity, entity: AdoptableEntity): Adoptable
  * — their suites keep testing the un-adopted decode. See
  * `slices/collector/docs/Source Identity Explanation.md`.
  *
- * Only `entityDefinitions` changes; every other plan field (`captureProvenance`,
+ * Only `responseKinds` changes; every other plan field (`captureProvenance`,
  * `stepSequence`, timeouts) passes through by reference. Within an
  * entity only `parse` is wrapped, and only with `Effect.map`, so the error
  * channel is untouched and parses stay synchronously runnable.
@@ -161,9 +161,9 @@ const adoptEntity = (source: SourceIdentity, entity: AdoptableEntity): Adoptable
 const adoptSourceIdentity =
   (source: SourceIdentity) =>
   <TPlan extends AdoptablePlan>(plan: TPlan & EntitiesParseEveryResource<TPlan>): TPlan => {
-    const entityDefinitions = plan.entityDefinitions.map((entity) => adoptEntity(source, entity))
-    Object.freeze(entityDefinitions)
-    const adopted = { ...plan, entityDefinitions }
+    const responseKinds = plan.responseKinds.map((entity) => adoptEntity(source, entity))
+    Object.freeze(responseKinds)
+    const adopted = { ...plan, responseKinds }
     Object.freeze(adopted)
     return adopted
   }

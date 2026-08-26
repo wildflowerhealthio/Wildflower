@@ -21,7 +21,7 @@ An ordinary `*-client-collector`, mirroring `rexall-be-well-collector`'s layout:
   and the `WebTraceCollectorDescriptor`.
 - `src/body-policy.ts` — the capture-time body policy: content-type extraction,
   allowlist token matching, the size cap, and the SHA-256 every body carries.
-- `src/entities/raw-exchange-entity.ts` — the catch-all entity. One
+- `src/response-kinds/raw-exchange-response-kind.ts` — the catch-all response kind. One
   `DocumentReference` per exchange, encoded by `web-trace-core`'s codec.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.

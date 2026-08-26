@@ -17,7 +17,7 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'fhir-r4', rootUrl, patientId }`)
   with fast-check arbitraries, `defaultConfig` (the public SMART Health IT
   sandbox), the two-page `scrapingPlan`, and the `FhirR4CollectorDescriptor`.
-  The plan decodes through `fhir-r4-source`'s `fhirR4EntityDefinitions`
+  The plan decodes through `fhir-r4-source`'s `fhirR4ResponseKinds`
   tuple — the entities themselves (and the assembled `fhirR4Source` an archive
   import extracts with) live in that package, the **source package** this
   collector builds its live plan from. See
@@ -84,7 +84,7 @@ Lives in [`fhir-r4-source`](../../http-extraction/fhir-r4-source/AGENTS.md)
 `fhirR4Recognizer` (specificity `50`), `fhirRootOf` (the per-URL root
 primitive — that package owns "what a FHIR root is"), and the assembled
 `fhirR4Source` value. The live plan here and the source surface there
-consume the **same** `fhirR4EntityDefinitions` tuple, so a resource decodes
+consume the **same** `fhirR4ResponseKinds` tuple, so a resource decodes
 identically through the sniffer and through an archive; only the identity
 source differs (the live plan keys under `config.rootUrl`, an archive import
 keys under each response's own root), and `source-parity.test.ts` in this
@@ -102,8 +102,8 @@ package pins that the two coincide for a capture from the configured server.
   fixed run id.
 - **A response that produced no resource is not captured.** The tracker skips
   the hook on an empty parse, which is the line between provenance collection
-  and bulk recording. `PatientEntity` returns `[]` for a patient with a null id
-  and `ObservationListEntity` returns `[]` for a bundle with no usable
+  and bulk recording. `PatientResponseKind` returns `[]` for a patient with a null id
+  and `ObservationListResponseKind` returns `[]` for a bundle with no usable
   entries — those responses leave no trace, by design.
 - **A trace must never degrade the primary output.** A failing or dying hook is
   WARN-logged by the tracker and the entity's own resources flow on unchanged;
@@ -112,7 +112,7 @@ package pins that the two coincide for a capture from the configured server.
   separation is structural, not a predicate. If an existing entity suite's
   expectations have to change to accommodate provenance, something has gone
   wrong — the wiring only adds `meta.source` and a separate diagnostic.
-- **`entityDefinitions` order is not load-bearing here, and should stay that
+- **`responseKinds` order is not load-bearing here, and should stay that
   way.** `mustHaveQuery` on the Observation-list pattern keeps it disjoint from
   the single-`Observation` pattern; without it the first `isFoundAt` match would
   silently win.

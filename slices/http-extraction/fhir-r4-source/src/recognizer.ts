@@ -1,7 +1,7 @@
 import { Option } from 'effect'
 import type { Extraction, Recognizer } from 'http-extraction-fundamentals'
 
-import { fhirR4EntityDefinitions } from './plan-entities.ts'
+import { fhirR4ResponseKinds } from './plan-entities.ts'
 
 /**
  * How FHIR R4 traffic is recognized: {@link fhirRootOf} reads the FHIR root
@@ -44,9 +44,9 @@ const fhirRootOf = (url: string): Option.Option<string> => {
   return match?.[1] === undefined ? Option.none() : Option.some(match[1])
 }
 
-/** Does any of the shared entities claim this URL by its pattern? */
+/** Does any of the shared response kinds claim this URL by its pattern? */
 const matchesFhirEntityPattern = (url: string): boolean =>
-  fhirR4EntityDefinitions.some((entity) => entity.isFoundAt(url))
+  fhirR4ResponseKinds.some((responseKind) => responseKind.isFoundAt(url))
 
 /**
  * Where FHIR R4 sits in the recognizer specificity ranking.

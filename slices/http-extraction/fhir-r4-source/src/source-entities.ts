@@ -1,14 +1,14 @@
 import { Effect, Option } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import { EntityDefinition } from 'http-extraction-fundamentals'
+import { HttpResponseKind } from 'http-extraction-fundamentals'
 
-import { fhirR4EntityDefinitions } from './plan-entities.ts'
+import { fhirR4ResponseKinds } from './plan-entities.ts'
 import { fhirRootOf } from './recognizer.ts'
 
 /**
  * The entities the FHIR R4 source extracts a set of responses with: the shared
- * `fhirR4EntityDefinitions` tuple's decode, keying each resource under the
+ * `fhirR4ResponseKinds` tuple's decode, keying each resource under the
  * root of the URL it arrived on.
  *
  * @remarks
@@ -28,14 +28,14 @@ import { fhirRootOf } from './recognizer.ts'
  */
 
 /**
- * Wrap an entity so its `parse` output is adopted under the root of the URL the
- * response arrived on, rather than a single pre-chosen source.
+ * Wrap a response kind so its `parse` output is adopted under the root of the
+ * URL the response arrived on, rather than a single pre-chosen source.
  *
  * @remarks
- * The decode is the shared entity's, untouched — only the adoption source
- * changes, and it is read per response from `response.url`. `adoptResource`
- * (from `fhir-r4/identity`, the same derivation the live plan's
- * `adoptSourceIdentity` applies) re-keys each resource under
+ * The decode is the shared response kind's, untouched — only the adoption
+ * source changes, and it is read per response from `response.url`.
+ * `adoptResource` (from `fhir-r4/identity`, the same derivation the live
+ * plan's `adoptSourceIdentity` applies) re-keys each resource under
  * `{ system: root, baseUrl: root }`, so a resource imported from a given root
  * carries the byte-identical local id the live plan gives it when
  * `config.rootUrl` is that root.
@@ -46,13 +46,13 @@ import { fhirRootOf } from './recognizer.ts'
  * than being dropped; the decode itself already succeeded.
  */
 const adoptedUnderResponseRoot = (
-  entity: EntityDefinition.EntityDefinition<FhirResource>
-): EntityDefinition.EntityDefinition<FhirResource> =>
-  EntityDefinition.make({
-    name: entity.name,
-    isFoundAt: entity.isFoundAt,
+  responseKind: HttpResponseKind.HttpResponseKind<FhirResource>
+): HttpResponseKind.HttpResponseKind<FhirResource> =>
+  HttpResponseKind.make({
+    name: responseKind.name,
+    isFoundAt: responseKind.isFoundAt,
     parse: (response) =>
-      Effect.map(entity.parse(response), (resources) => {
+      Effect.map(responseKind.parse(response), (resources) => {
         const root = fhirRootOf(response.url)
         if (Option.isNone(root)) return resources
         const adopt = adoptResource({ system: root.value, baseUrl: root.value })
@@ -65,7 +65,7 @@ const adoptedUnderResponseRoot = (
  * resource keyed under the root of the URL it arrived on.
  *
  * @remarks
- * Reuses `fhirR4EntityDefinitions` for the decode — the same single definition
+ * Reuses `fhirR4ResponseKinds` for the decode — the same single definition
  * the live plan consumes — so a resource decodes identically whether it arrives
  * through a sniffer or an archive; only the identity source differs (the live
  * plan keys under `config.rootUrl`, this keys under each response's own root,
@@ -78,7 +78,7 @@ const adoptedUnderResponseRoot = (
  * extraction navigates nothing, and an archive-driven consumer's provenance
  * is its source archive linked once, not a per-response trace.
  */
-const fhirR4SourceEntities: readonly EntityDefinition.EntityDefinition<FhirResource>[] =
-  fhirR4EntityDefinitions.map(adoptedUnderResponseRoot)
+const fhirR4SourceEntities: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] =
+  fhirR4ResponseKinds.map(adoptedUnderResponseRoot)
 
 export { fhirR4SourceEntities }

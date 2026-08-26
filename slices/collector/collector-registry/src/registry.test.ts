@@ -108,7 +108,7 @@ describe('resourcePersistenceRuntimeForConfig', () => {
     name: plan.name,
     firstOpenUri: firstOpenUri(plan),
     stepNames: plan.stepSequence.map((step) => `${step._tag}:${step.name}`),
-    entityNames: plan.entityDefinitions.map((entity) => entity.name),
+    entityNames: plan.responseKinds.map((responseKind) => responseKind.name),
   })
 
   it('dispatches fhir-r4 configs to the fhir-r4 scraping plan', () => {

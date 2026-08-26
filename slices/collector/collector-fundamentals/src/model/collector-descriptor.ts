@@ -138,7 +138,7 @@ type RequirementsOf<D> =
 
 /**
  * Build a frozen {@link CollectorDescriptor} from its authored spec,
- * matching the `EntityDefinition`/`ScrapingPlan` house style (an
+ * matching the `HttpResponseKind`/`ScrapingPlan` house style (an
  * identity factory that hands back an immutable value).
  *
  * The container and the descriptor's *own* data (`display`,

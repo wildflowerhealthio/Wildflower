@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { Observation } from 'fhir-r4/resources'
-import { EntityDefinition, UrlMatch } from 'http-extraction-fundamentals'
+import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 
@@ -20,13 +20,12 @@ const observationUrl = UrlMatch.make({ segments: [UrlMatch.literal('Observation'
  * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
  * wrap.
  */
-const ObservationEntity: EntityDefinition.EntityDefinition<ObservationType> = EntityDefinition.make(
-  {
-    name: 'ObservationEntity',
+const ObservationResponseKind: HttpResponseKind.HttpResponseKind<ObservationType> =
+  HttpResponseKind.make({
+    name: 'ObservationResponseKind',
     isFoundAt: (url) => observationUrl.test(url),
     parse: (response) =>
       Effect.map(decode(extractJson(response.text())), (observation) => [observation]),
-  }
-)
+  })
 
-export { ObservationEntity }
+export { ObservationResponseKind }

@@ -2,7 +2,7 @@ import type { DateTime } from 'effect'
 import type { HttpResponse } from 'http-extraction-fundamentals'
 
 /**
- * One in-flight (then settled) sniffed response, as an `EntityDefinition.parse`
+ * One in-flight (then settled) sniffed response, as an `HttpResponseKind.parse`
  * sees it — the live implementation of
  * {@link HttpResponse.HttpResponse}, accumulating body chunks as
  * the sniffer streams them in.

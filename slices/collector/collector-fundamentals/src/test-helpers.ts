@@ -39,7 +39,9 @@ const DEFAULT_STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
  * machinery, use `http-extraction-fundamentals/test-helpers`' `makeHttpResponse`
  * instead.
  */
-const makeCollectorHttpResponse = (overrides: CollectorHttpResponseOverrides = {}): CollectorHttpResponse => {
+const makeCollectorHttpResponse = (
+  overrides: CollectorHttpResponseOverrides = {}
+): CollectorHttpResponse => {
   const response = new CollectorHttpResponse(
     overrides.id ?? 'req-1',
     overrides.url ?? 'https://example.com/resource/id',

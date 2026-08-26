@@ -6,7 +6,10 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import prescriptions from '../fixtures/prescriptions-searchset.json' with { type: 'json' }
-import { MedicationListEntity, type MedicationResource } from './medication-list-entity.ts'
+import {
+  MedicationListResponseKind,
+  type MedicationResource,
+} from './medication-list-response-kind.ts'
 
 const { expectRightToEqual } = utilityExpectations(expect)
 
@@ -20,9 +23,9 @@ const makeResponse = (body: string, url = LIST_URL): HttpResponse.HttpResponse =
 const runParse = (
   r: HttpResponse.HttpResponse
 ): Either.Either<readonly MedicationResource[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(MedicationListEntity.parse(r)))
+  Effect.runSync(Effect.either(MedicationListResponseKind.parse(r)))
 
-describe('MedicationListEntity', () => {
+describe('MedicationListResponseKind', () => {
   describe('isFoundAt', () => {
     it.each([
       // The real prescriptions-page searchset (Location + _revincludes).
@@ -42,7 +45,7 @@ describe('MedicationListEntity', () => {
         match: false,
       },
     ])('returns $match for "$url"', ({ url, match }) => {
-      expect(MedicationListEntity.isFoundAt(url)).toBe(match)
+      expect(MedicationListResponseKind.isFoundAt(url)).toBe(match)
     })
   })
 
@@ -145,7 +148,7 @@ describe('MedicationListEntity', () => {
       fc.assert(
         fc.property(fc.json(), (json) => {
           const result = Effect.runSync(
-            Effect.either(MedicationListEntity.parse(makeResponse(json)))
+            Effect.either(MedicationListResponseKind.parse(makeResponse(json)))
           )
           expect(['Right', 'Left']).toContain(result._tag)
         }),

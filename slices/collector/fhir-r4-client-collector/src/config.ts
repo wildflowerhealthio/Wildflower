@@ -7,7 +7,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { fhirR4EntityDefinitions } from 'fhir-r4-source'
+import { fhirR4ResponseKinds } from 'fhir-r4-source'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -96,7 +96,7 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * browser-sniffer's window-`load` handler snapshots the rendered document (the
  * browser's native JSON viewer wraps the response in `<pre>{json}</pre>`),
  * streams it through the standard `ResponseStart`/`Data`/`Finished` triple keyed
- * on the FHIR URL, and `PatientEntity.parse` extracts the JSON via
+ * on the FHIR URL, and `PatientResponseKind.parse` extracts the JSON via
  * `extractJson`. A pattern-less `AwaitPageSettled` holds until that Patient page
  * has settled, then the next `Open` step navigates the WebView to
  * `/Observation?subject:Patient=…&_count=250`; the same snapshot-and-extract
@@ -112,7 +112,7 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * which is unambiguous because each `Open` targets a fresh document. The FHIR endpoints are direct JSON documents (one request per
  * page, no post-load XHR fan-out), so the hold on the settled page is
  * sufficient — no additional fixed `Delay` grace step is needed.
- * `entityDefinitions` are listed Patient → Observation → Bundle so
+ * `responseKinds` are listed Patient → Observation → Bundle so
  * `isFoundAt` matches are evaluated in that order; `mustHaveQuery` on
  * the Bundle pattern keeps the list disjoint from the single-resource
  * Observation pattern.
@@ -147,7 +147,7 @@ const scrapingPlan = (
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
-    entityDefinitions: fhirR4EntityDefinitions,
+    responseKinds: fhirR4ResponseKinds,
     captureProvenance,
     stepSequence: [
       // Open the Patient JSON document — the step that brings the sniffer up —

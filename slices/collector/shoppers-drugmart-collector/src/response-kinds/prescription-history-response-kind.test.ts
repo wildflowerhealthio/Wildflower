@@ -8,7 +8,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { DIN_CODE_SYSTEM, ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
-import { PrescriptionHistoryEntity } from './prescription-history-entity.ts'
+import { PrescriptionHistoryResponseKind } from './prescription-history-response-kind.ts'
 
 const BASE = 'https://mypharmacy.shoppersdrugmart.ca'
 const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
@@ -22,7 +22,7 @@ const makeResponse = (body: string): HttpResponse.HttpResponse =>
   })
 
 const parse = (payload: unknown): readonly FhirResource[] =>
-  Effect.runSync(PrescriptionHistoryEntity.parse(makeResponse(JSON.stringify(payload))))
+  Effect.runSync(PrescriptionHistoryResponseKind.parse(makeResponse(JSON.stringify(payload))))
 
 /**
  * A representative history payload modelled on the real capture: two fills of
@@ -66,7 +66,7 @@ const historyPayload = (): Record<string, unknown> => ({
   ],
 })
 
-describe('PrescriptionHistoryEntity', () => {
+describe('PrescriptionHistoryResponseKind', () => {
   describe('isFoundAt', () => {
     it.each([
       // Both API version segments (the capture shows `p1`, docs say `v1`).
@@ -81,7 +81,7 @@ describe('PrescriptionHistoryEntity', () => {
       { url: `${BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc`, match: false },
       { url: `${BASE}/api/p1/prescriptions/rx-1/prescription-status`, match: false },
     ])('returns $match for "$url"', ({ url, match }) => {
-      expect(PrescriptionHistoryEntity.isFoundAt(url)).toBe(match)
+      expect(PrescriptionHistoryResponseKind.isFoundAt(url)).toBe(match)
     })
   })
 
@@ -177,7 +177,7 @@ describe('PrescriptionHistoryEntity', () => {
       fc.assert(
         fc.property(fc.json(), (json) => {
           const result = Effect.runSync(
-            Effect.either(PrescriptionHistoryEntity.parse(makeResponse(json)))
+            Effect.either(PrescriptionHistoryResponseKind.parse(makeResponse(json)))
           )
           expect(['Right', 'Left']).toContain(result._tag)
         }),

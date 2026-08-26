@@ -28,9 +28,9 @@ machinery lives in `slices/emr/fhir-stu3-as-r4`.
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'rexall', email, password }`) with
   fast-check arbitraries, `defaultConfig`, the login-and-prescriptions
   `scrapingPlan`, and the `RexallCollectorDescriptor`.
-- `src/entities/profile-entity.ts` — recognizes `…/profile/v2/me` and synthesizes
+- `src/response-kinds/profile-response-kind.ts` — recognizes `…/profile/v2/me` and synthesizes
   an R4 `Patient` from the (non-FHIR) carebook profile JSON.
-- `src/entities/medication-list-entity.ts` — recognizes the prescriptions page's
+- `src/response-kinds/medication-list-response-kind.ts` — recognizes the prescriptions page's
   `…/pharmacy/Location?…_revinclude=…` searchset and decodes the **heterogeneous**
   bundle "as is" (a `Schema.Union` of the two carebook `R4FromStu3Schema`
   transforms plus a `null` catch-all for non-medication entries), then splits off
@@ -229,7 +229,7 @@ searchset's `_revinclude` already carries `MedicationDispense`, so the deferred
 `followUpSteps` crawl (one `Open` per `MedicationRequest.id` →
 `…/prescriptions/details/{id}`) is left out until a capture diff proves the detail
 XHR is richer. Adding it later is a pure, additive `followUpSteps` method on
-`MedicationListEntity` — no structural change.
+`MedicationListResponseKind` — no structural change.
 
 ## Fixtures & open questions caveat
 
@@ -246,7 +246,7 @@ and what it did not:
   `{base}/{name}` this package asserted before. `RequestType` is
   `fill | refill`, not `order | refill`. See `carebook.ts` for the two
   `schemas`/`schema` host spellings and which side each system falls on.
-- **Profile field names.** `ProfileEntity` reads `data.identifiers.uid` /
+- **Profile field names.** `ProfileResponseKind` reads `data.identifiers.uid` /
   `data.identifiers.email` / `data.names.firstName` / `data.names.lastName` /
   `data.birthDate` / `data.zipPostalCode`. The name and postal-code paths are
   **not** flat — reading them as `data.firstName` / `data.address.postalCode`

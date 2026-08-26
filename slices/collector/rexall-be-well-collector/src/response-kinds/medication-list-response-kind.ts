@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
-import { EntityDefinition, UrlMatch } from 'http-extraction-fundamentals'
+import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'
@@ -68,7 +68,7 @@ const promote = (resource: MedicationResource): MedicationResource =>
 /**
  * `…://host/…/pharmacy/Location?…`. The `mustHaveQuery` boundary keeps this
  * list-searchset pattern disjoint from any single-resource pattern (and from
- * `ProfileEntity`'s `…/profile/v2/me`), so `ScrapingPlan.entityDefinitions`
+ * `ProfileResponseKind`'s `…/profile/v2/me`), so `ScrapingPlan.responseKinds`
  * ordering is not load-bearing.
  */
 const medicationListUrl = UrlMatch.make({
@@ -77,7 +77,7 @@ const medicationListUrl = UrlMatch.make({
 })
 
 /**
- * Entity for the Rexall prescriptions page's single XHR: the carebook STU3
+ * Response kind for the Rexall prescriptions page's single XHR: the carebook STU3
  * searchset the SPA fires when `app.letsbewell.ca/health/prescriptions` loads
  * (`…/pharmacy/Location?_revinclude=MedicationRequest…`). It is one
  * *heterogeneous* Bundle — the matched `Location` plus `MedicationRequest`,
@@ -88,7 +88,7 @@ const medicationListUrl = UrlMatch.make({
  * else to `null`), then splits off just the `MedicationRequest` /
  * `MedicationDispense` resources — the store only writes those. The dropped
  * non-medication entries are surfaced via `Effect.logInfo` so those losses
- * aren't invisible, exactly the `ObservationListEntity` drop-and-log pattern.
+ * aren't invisible, exactly the `ObservationListResponseKind` drop-and-log pattern.
  * {@link extractJson} normalizes the body across raw-XHR intercepts and the
  * mobile WebView's JSON-viewer wrap.
  *
@@ -99,9 +99,9 @@ const medicationListUrl = UrlMatch.make({
  * detail XHR is richer. Adding it later is a pure, additive `followUpSteps`
  * method here — no structural change (see issue #339).
  */
-const MedicationListEntity: EntityDefinition.EntityDefinition<MedicationResource> =
-  EntityDefinition.make({
-    name: 'MedicationListEntity',
+const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationResource> =
+  HttpResponseKind.make({
+    name: 'MedicationListResponseKind',
     isFoundAt: (url) => medicationListUrl.test(url),
     parse: (response) =>
       Effect.gen(function* () {
@@ -114,12 +114,12 @@ const MedicationListEntity: EntityDefinition.EntityDefinition<MedicationResource
         const droppedCount = allEntries.length - resources.length
         if (droppedCount > 0) {
           yield* Effect.logInfo(
-            `MedicationListEntity: dropped ${droppedCount} of ${allEntries.length} Bundle entries that are not MedicationRequest/MedicationDispense`
+            `MedicationListResponseKind: dropped ${droppedCount} of ${allEntries.length} Bundle entries that are not MedicationRequest/MedicationDispense`
           )
         }
         return resources
       }),
   })
 
-export { MedicationListEntity }
+export { MedicationListResponseKind }
 export type { MedicationResource }

@@ -6,7 +6,7 @@ import type { HttpResponse } from './http-response.ts'
  * Stateless, struct-shaped *definition* of an entity — not an entity
  * in and of itself, just a recipe a routing loop uses to recognize
  * matching responses and decode them. A concrete entity
- * (e.g. `PatientEntity`) is a value built by {@link make}, not an
+ * (e.g. `PatientResponseKind`) is a value built by {@link make}, not an
  * instance; its `parse` closes over whatever schemas / decoders it
  * needs and takes the {@link HttpResponse} each call. Passing
  * the full response (not a pre-extracted slice of fields) keeps the
@@ -15,9 +15,9 @@ import type { HttpResponse } from './http-response.ts'
  * dispatcher having to know in advance which it'll need.
  *
  * Import callers use the file as a namespace:
- * `import { EntityDefinition } from 'http-extraction-fundamentals'`
- * → `EntityDefinition.EntityDefinition<T>` for the type,
- * `EntityDefinition.make({...})` for the constructor.
+ * `import { HttpResponseKind } from 'http-extraction-fundamentals'`
+ * → `HttpResponseKind.HttpResponseKind<T>` for the type,
+ * `HttpResponseKind.make({...})` for the constructor.
  *
  * - `name`: stable identifier, useful for logging and reporting which
  *   entity claimed a response.
@@ -33,7 +33,7 @@ import type { HttpResponse } from './http-response.ts'
  *   need Effect-typed dependencies (clock, randomness, …). `parse`
  *   stays a *pure decode*: it never emits navigation.
  */
-interface EntityDefinition<TResources> {
+interface HttpResponseKind<TResources> {
   readonly name: string
   readonly isFoundAt: (url: string) => boolean
   readonly parse: (
@@ -49,7 +49,7 @@ interface EntityDefinition<TResources> {
  * extra unexpected property on the caller's object is silently
  * dropped.
  */
-const make = <TResources>(definition: EntityDefinition<TResources>): EntityDefinition<TResources> =>
+const make = <TResources>(definition: HttpResponseKind<TResources>): HttpResponseKind<TResources> =>
   deepFreeze({
     name: definition.name,
     isFoundAt: definition.isFoundAt,
@@ -57,4 +57,4 @@ const make = <TResources>(definition: EntityDefinition<TResources>): EntityDefin
   })
 
 export { make }
-export type { EntityDefinition }
+export type { HttpResponseKind }

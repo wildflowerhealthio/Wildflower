@@ -14,7 +14,7 @@ import {
   ShoppersIdentifierSystem,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
-import { PrescriptionEntity } from './prescription-entity.ts'
+import { PrescriptionResponseKind } from './prescription-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
 
@@ -28,12 +28,12 @@ const makeResponse = (body: string): HttpResponse.HttpResponse =>
   makeCollectorHttpResponse({ url: STATUS_URL, body })
 
 const parse = (body: string): readonly FhirResource[] =>
-  Effect.runSync(PrescriptionEntity.parse(makeResponse(body)))
+  Effect.runSync(PrescriptionResponseKind.parse(makeResponse(body)))
 
 const runParse = (
   r: HttpResponse.HttpResponse
 ): Either.Either<readonly FhirResource[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(PrescriptionEntity.parse(r)))
+  Effect.runSync(Effect.either(PrescriptionResponseKind.parse(r)))
 
 /** Filter + narrow a heterogeneous batch to one resource type. */
 const byType = <T extends FhirResource['resourceType']>(
@@ -135,7 +135,7 @@ const expectedDispense = decodeDispense({
   whenHandedOver: '2026-01-10T00:00:00Z',
 })
 
-describe('PrescriptionEntity', () => {
+describe('PrescriptionResponseKind', () => {
   describe('isFoundAt', () => {
     it.each([
       { url: STATUS_URL, match: true },
@@ -164,7 +164,7 @@ describe('PrescriptionEntity', () => {
       },
       { url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1', match: false },
     ])('returns $match for "$url"', ({ url, match }) => {
-      expect(PrescriptionEntity.isFoundAt(url)).toBe(match)
+      expect(PrescriptionResponseKind.isFoundAt(url)).toBe(match)
     })
   })
 
@@ -174,7 +174,7 @@ describe('PrescriptionEntity', () => {
       const result = parse(prescriptionJson())
 
       // Assert — whole-value on the full batch; the subject Patient now comes
-      // from CustomerEntity, so no minimal Patient is emitted here.
+      // from CustomerResponseKind, so no minimal Patient is emitted here.
       expect(result).toStrictEqual([expectedRequest, expectedDispense])
     })
 
@@ -312,7 +312,9 @@ describe('PrescriptionEntity', () => {
     it('never throws on arbitrary JSON strings', () => {
       fc.assert(
         fc.property(fc.json(), (json) => {
-          const result = Effect.runSync(Effect.either(PrescriptionEntity.parse(makeResponse(json))))
+          const result = Effect.runSync(
+            Effect.either(PrescriptionResponseKind.parse(makeResponse(json)))
+          )
           expect(['Right', 'Left']).toContain(result._tag)
         }),
         { numRuns: numRunsFor({ base: 100 }) }

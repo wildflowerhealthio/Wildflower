@@ -11,13 +11,13 @@ never disagree on a decode. It is the first of the per-source packages;
 
 ## Shape
 
-- `src/entities/patient-entity.ts` — `…/Patient/<id>` → one R4 `Patient`.
-- `src/entities/observation-entity.ts` — `…/Observation/<id>` → one R4
+- `src/response-kinds/patient-response-kind.ts` — `…/Patient/<id>` → one R4 `Patient`.
+- `src/response-kinds/observation-response-kind.ts` — `…/Observation/<id>` → one R4
   `Observation`.
-- `src/entities/observation-list-entity.ts` — `…/Observation?…` → the
+- `src/response-kinds/observation-list-response-kind.ts` — `…/Observation?…` → the
   `Observation`s of a searchset `Bundle`, dropping-and-counting entries that
   carry no resource.
-- `src/plan-entities.ts` — the `fhirR4EntityDefinitions` tuple (Patient,
+- `src/plan-entities.ts` — the `fhirR4ResponseKinds` tuple (Patient,
   Observation, Observation-list, in that order), the **single definition** both
   this package's source surface and the live plan consume.
 - `src/recognizer.ts` — `fhirR4Recognizer` (claims a response set when any URL
@@ -38,7 +38,7 @@ never disagree on a decode. It is the first of the per-source packages;
 ## Layering
 
 Pure like a `-core`: no DOM, no `fs`, no React. Depends on
-`http-extraction-fundamentals` (`EntityDefinition`, `UrlMatch`, `Extraction`,
+`http-extraction-fundamentals` (`HttpResponseKind`, `UrlMatch`, `Extraction`,
 `Recognizer`, `Source`), `fhir-r4` (resources + identity), `effect`, and
 `kitchen-sink` — nothing else. In particular it must **never** import anything
 from `slices/collector` (`fhir-r4-client-collector` depends on this package;
@@ -53,7 +53,7 @@ pin only its own surface's behaviour.
 
 ## Traps
 
-- **`entityDefinitions` order is not load-bearing here, and should stay that
+- **`responseKinds` order is not load-bearing here, and should stay that
   way.** `mustHaveQuery` on the Observation-list pattern keeps it disjoint from
   the single-`Observation` pattern; without it the first `isFoundAt` match would
   silently win.

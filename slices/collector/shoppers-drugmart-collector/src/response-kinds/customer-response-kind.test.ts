@@ -8,7 +8,7 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
-import { CustomerEntity } from './customer-entity.ts'
+import { CustomerResponseKind } from './customer-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
 
@@ -24,12 +24,12 @@ const makeResponse = (body: string): HttpResponse.HttpResponse =>
   })
 
 const parse = (payload: unknown): readonly FhirResource[] =>
-  Effect.runSync(CustomerEntity.parse(makeResponse(JSON.stringify(payload))))
+  Effect.runSync(CustomerResponseKind.parse(makeResponse(JSON.stringify(payload))))
 
 const runParse = (
   r: HttpResponse.HttpResponse
 ): Either.Either<readonly FhirResource[], ParseResult.ParseError> =>
-  Effect.runSync(Effect.either(CustomerEntity.parse(r)))
+  Effect.runSync(Effect.either(CustomerResponseKind.parse(r)))
 
 /**
  * A representative multi-patient customers payload modelled on the real capture
@@ -77,7 +77,7 @@ const customerPayload = (overrides?: Record<string, unknown>): Record<string, un
     stores: [{ id: 9000 }],
   }
 
-describe('CustomerEntity', () => {
+describe('CustomerResponseKind', () => {
   describe('isFoundAt', () => {
     it.each([
       // Both API version segments (the capture shows `p1`, docs say `v1`).
@@ -101,7 +101,7 @@ describe('CustomerEntity', () => {
         match: false,
       },
     ])('returns $match for "$url"', ({ url, match }) => {
-      expect(CustomerEntity.isFoundAt(url)).toBe(match)
+      expect(CustomerResponseKind.isFoundAt(url)).toBe(match)
     })
   })
 
@@ -203,7 +203,9 @@ describe('CustomerEntity', () => {
     it('never throws on arbitrary JSON strings', () => {
       fc.assert(
         fc.property(fc.json(), (json) => {
-          const result = Effect.runSync(Effect.either(CustomerEntity.parse(makeResponse(json))))
+          const result = Effect.runSync(
+            Effect.either(CustomerResponseKind.parse(makeResponse(json)))
+          )
           expect(['Right', 'Left']).toContain(result._tag)
         }),
         { numRuns: numRunsFor({ base: 100 }) }

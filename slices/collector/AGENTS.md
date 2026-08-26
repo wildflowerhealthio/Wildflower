@@ -11,11 +11,11 @@ before adding one.
 
 - **`collector-fundamentals`** — the collector vocabulary + the handler
   machines, built on `http-extraction-fundamentals` (which owns
-  `EntityDefinition` / `UrlMatch` / `HttpResponse` — the decode vocabulary the
+  `HttpResponseKind` / `UrlMatch` / `HttpResponse` — the decode vocabulary the
   `http-extraction` slice defines and this slice runs live).
   `CollectorDescriptor` ("a collector" as one
   first-class value), the `ResourcePersistence*` write seam,
-  `CollectorEntityDefinition` (an `EntityDefinition` extended with the
+  `CollectorHttpResponseKind` (an `HttpResponseKind` extended with the
   live-only `followUpSteps` crawl seam) / `ScrapingPlan` / `Step` /
   `CollectorHttpResponse` (the live, chunk-accumulating implementation of
   `HttpResponse`), and the `./config-form` view contract, plus
@@ -116,7 +116,7 @@ before adding one.
   that stores, hashes, or forwards a body must read `bytes()`.
 - **First `isFoundAt` match wins, so overlapping URL patterns are a silent
   ordering dependency — keep them disjoint.** `CollectorBridgeMessageHandler`
-  consults `entityDefinitions` in list order at each `ResponseStart`; a
+  consults `responseKinds` in list order at each `ResponseStart`; a
   too-broad pattern earlier in the list shadows a later entity. Make patterns
   disjoint by construction, e.g. `mustHaveQuery` on a list-by-query pattern so
   it can't also match a single-resource URL (see `UrlMatch`).
@@ -274,7 +274,7 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   generation runs before the hook — so a generator that opens a link per
   resource does not also fire for a provenance record. **An archive import never
   invokes it at all** — `http-extraction-fundamentals`' `Extraction.run` knows
-  only the base `EntityDefinition`, so neither `captureProvenance` nor
+  only the base `HttpResponseKind`, so neither `captureProvenance` nor
   `followUpSteps` exists on that path (an import already has its source as one artifact, and
   there is nothing to navigate).
 - **`CollectorHttpResponse` answers a _recorder_'s questions, not just a decoder's.**

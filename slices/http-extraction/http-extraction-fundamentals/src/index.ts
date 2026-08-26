@@ -7,7 +7,7 @@
  *
  * @packageDocumentation
  */
-export * as EntityDefinition from './entity-definition.ts'
+export * as HttpResponseKind from './http-response-kind.ts'
 export * as Extraction from './extraction.ts'
 export * as HttpResponse from './http-response.ts'
 export * as Recognizer from './recognizer.ts'

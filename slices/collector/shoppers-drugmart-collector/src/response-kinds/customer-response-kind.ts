@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { EntityDefinition } from 'http-extraction-fundamentals'
+import { HttpResponseKind } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
@@ -172,8 +172,8 @@ const accountPatientWire = (
  * as the **final** path segment (`[^/?#]+` then `\/?(?:[?#]|$)`) so it matches
  * `…/customers/<uuid>` and `…/customers/<uuid>?expand=…` but **not**
  * `…/customers/<uuid>/toasts?source=LOGIN` (or any other sub-path). Disjoint
- * from {@link !PrescriptionEntity} (`/prescriptions/:uuid/prescription-status`)
- * and {@link !PrescriptionHistoryEntity} (`/prescription-history?customerId=…`)
+ * from {@link !PrescriptionResponseKind} (`/prescriptions/:uuid/prescription-status`)
+ * and {@link !PrescriptionHistoryResponseKind} (`/prescription-history?customerId=…`)
  * by construction — different final segments — so entity order is not
  * load-bearing. Version-agnostic (`/api/[^/]+/…`): the capture shows `/api/p1/…`
  * while the endpoint is documented as `/api/v1/…`.
@@ -192,7 +192,7 @@ const customerUrl = /:\/\/[^/]+\/api\/[^/]+\/customers\/[^/?#]+\/?(?:[?#]|$)/
  *   demographic Patient so the account↔person join the payload asserts survives
  *   into the store.
  *
- * This entity — not {@link !PrescriptionEntity} — owns the subject Patient
+ * This entity — not {@link !PrescriptionResponseKind} — owns the subject Patient
  * records. A run where this customers XHR fails therefore leaves the
  * prescriptions' `subject` references dangling; the store tolerates that
  * (references are not FK-enforced) and the same run always visits a page that
@@ -201,35 +201,37 @@ const customerUrl = /:\/\/[^/]+\/api\/[^/]+\/customers\/[^/?#]+\/?(?:[?#]|$)/
  * `Effect.logInfo`. {@link extractJson} normalizes the body across raw-XHR
  * intercepts and the mobile WebView's JSON-viewer wrap.
  */
-const CustomerEntity: EntityDefinition.EntityDefinition<FhirResource> = EntityDefinition.make({
-  name: 'CustomerEntity',
-  isFoundAt: (url) => customerUrl.test(url),
-  parse: (response) =>
-    Effect.gen(function* () {
-      const { customer } = yield* decodeCustomer(extractJson(response.text()))
+const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
+  {
+    name: 'CustomerResponseKind',
+    isFoundAt: (url) => customerUrl.test(url),
+    parse: (response) =>
+      Effect.gen(function* () {
+        const { customer } = yield* decodeCustomer(extractJson(response.text()))
 
-      const rawPatients = customer.patients ?? []
-      const patients: Array<typeof Patient.Schema.Type> = []
-      const patientIds: Array<string> = []
-      let dropped = 0
-      for (const raw of rawPatients) {
-        const decoded = decodeSourcePatient(raw)
-        if (Option.isNone(decoded)) {
-          dropped += 1
-          continue
+        const rawPatients = customer.patients ?? []
+        const patients: Array<typeof Patient.Schema.Type> = []
+        const patientIds: Array<string> = []
+        let dropped = 0
+        for (const raw of rawPatients) {
+          const decoded = decodeSourcePatient(raw)
+          if (Option.isNone(decoded)) {
+            dropped += 1
+            continue
+          }
+          patientIds.push(decoded.value.id)
+          patients.push(yield* decodePatient(patientWire(decoded.value)))
         }
-        patientIds.push(decoded.value.id)
-        patients.push(yield* decodePatient(patientWire(decoded.value)))
-      }
-      if (dropped > 0) {
-        yield* Effect.logInfo(
-          `CustomerEntity: dropped ${dropped} of ${rawPatients.length} patient entries with no id (or undecodable)`
-        )
-      }
+        if (dropped > 0) {
+          yield* Effect.logInfo(
+            `CustomerResponseKind: dropped ${dropped} of ${rawPatients.length} patient entries with no id (or undecodable)`
+          )
+        }
 
-      const account = yield* decodePatient(accountPatientWire(customer, patientIds))
-      return [...patients, account]
-    }),
-})
+        const account = yield* decodePatient(accountPatientWire(customer, patientIds))
+        return [...patients, account]
+      }),
+  }
+)
 
-export { CustomerEntity, CustomerPayload, SourcePatient }
+export { CustomerResponseKind, CustomerPayload, SourcePatient }

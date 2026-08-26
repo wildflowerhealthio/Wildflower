@@ -30,7 +30,7 @@ const captureProvenance = (): Effect.Effect<never> => Effect.never
 
 /** A module-singleton entity, as every real entity is. */
 const entity = {
-  name: 'PatientEntity',
+  name: 'PatientResponseKind',
   isFoundAt,
   parse: (_response: string): Effect.Effect<readonly FhirResource[], ParseResult.ParseError> =>
     Effect.succeed([patient('src-1')]),
@@ -48,7 +48,7 @@ const stepSequence = [{ _tag: 'Delay', name: 'wait' }] as const
 
 const plan = {
   name: 'Example',
-  entityDefinitions: [entity],
+  responseKinds: [entity],
   stepSequence,
   captureProvenance,
 }
@@ -58,7 +58,7 @@ const plan = {
  * entities do before the plan widens them.
  */
 const narrowEntity = {
-  name: 'NarrowPatientEntity',
+  name: 'NarrowPatientResponseKind',
   isFoundAt,
   parse: (
     _response: string
@@ -66,7 +66,7 @@ const narrowEntity = {
     Effect.succeed([patient('src-1')]),
 }
 
-const narrowPlan = { ...plan, entityDefinitions: [narrowEntity] }
+const narrowPlan = { ...plan, responseKinds: [narrowEntity] }
 
 describe('adoptSourceIdentity', () => {
   // The combinator hands `TPlan` back unchanged, which is only truthful when the
@@ -80,12 +80,12 @@ describe('adoptSourceIdentity', () => {
 
     // Widening the entity list is the fix, and it compiles.
     const widened: readonly (typeof entity)[] = [entity]
-    expect(adoptSourceIdentity(SOURCE)({ ...plan, entityDefinitions: widened })).toBeDefined()
+    expect(adoptSourceIdentity(SOURCE)({ ...plan, responseKinds: widened })).toBeDefined()
     expect(typeof refused).toBe('function')
   })
 
   test('adopts what the entities parse', async () => {
-    const [wrapped] = adoptSourceIdentity(SOURCE)(plan).entityDefinitions
+    const [wrapped] = adoptSourceIdentity(SOURCE)(plan).responseKinds
     if (wrapped === undefined) throw new Error('unreachable: one entity')
     const [resource] = await Effect.runPromise(wrapped.parse('body'))
     expect(resource?.id).toBe(localResourceId(SOURCE.system, 'Patient', 'src-1'))
@@ -100,7 +100,7 @@ describe('adoptSourceIdentity', () => {
   })
 
   test('leaves every entity field but parse at its original reference', () => {
-    const [wrapped] = adoptSourceIdentity(SOURCE)(plan).entityDefinitions
+    const [wrapped] = adoptSourceIdentity(SOURCE)(plan).responseKinds
     expect(wrapped?.name).toBe(entity.name)
     expect(wrapped?.isFoundAt).toBe(entity.isFoundAt)
     expect(wrapped?.followUpSteps).toBe(entity.followUpSteps)
@@ -113,34 +113,32 @@ describe('adoptSourceIdentity', () => {
   test('mints one parse wrapper per (source, entity), so two builds deep-equal', () => {
     const first = adoptSourceIdentity(SOURCE)(plan)
     const second = adoptSourceIdentity({ system: SOURCE.system })(plan)
-    expect(first.entityDefinitions[0]?.parse).toBe(second.entityDefinitions[0]?.parse)
+    expect(first.responseKinds[0]?.parse).toBe(second.responseKinds[0]?.parse)
     expect(first).toEqual(second)
   })
 
   test('wraps separately per source system', () => {
     const first = adoptSourceIdentity(SOURCE)(plan)
     const other = adoptSourceIdentity({ system: 'https://other.example/fhir' })(plan)
-    expect(first.entityDefinitions[0]?.parse).not.toBe(other.entityDefinitions[0]?.parse)
+    expect(first.responseKinds[0]?.parse).not.toBe(other.responseKinds[0]?.parse)
   })
 
   test('wraps separately when only baseUrl differs', () => {
     const bare = adoptSourceIdentity(SOURCE)(plan)
     const based = adoptSourceIdentity({ ...SOURCE, baseUrl: SOURCE.system })(plan)
-    expect(bare.entityDefinitions[0]?.parse).not.toBe(based.entityDefinitions[0]?.parse)
+    expect(bare.responseKinds[0]?.parse).not.toBe(based.responseKinds[0]?.parse)
   })
 
   test('passes a parse failure through untouched — the error channel is unchanged', async () => {
-    const adopted = adoptSourceIdentity(SOURCE)({ ...plan, entityDefinitions: [failing] })
-    const result = await Effect.runPromise(
-      Effect.either(adopted.entityDefinitions[0].parse('body'))
-    )
+    const adopted = adoptSourceIdentity(SOURCE)({ ...plan, responseKinds: [failing] })
+    const result = await Effect.runPromise(Effect.either(adopted.responseKinds[0].parse('body')))
     expect(result._tag).toBe('Left')
   })
 
   // Adoption runs inside `Effect.map` only, so a synchronous parse stays
   // synchronously runnable — the collector's sync runner depends on it.
   test('keeps a synchronous parse synchronously runnable', () => {
-    const [wrapped] = adoptSourceIdentity(SOURCE)(plan).entityDefinitions
+    const [wrapped] = adoptSourceIdentity(SOURCE)(plan).responseKinds
     if (wrapped === undefined) throw new Error('unreachable: one entity')
     expect(Effect.runSync(wrapped.parse('body'))[0]?.id).toBe(
       localResourceId(SOURCE.system, 'Patient', 'src-1')
@@ -150,8 +148,8 @@ describe('adoptSourceIdentity', () => {
   test('freezes the returned plan and its entities', () => {
     const adopted = adoptSourceIdentity(SOURCE)(plan)
     expect(Object.isFrozen(adopted)).toBe(true)
-    expect(Object.isFrozen(adopted.entityDefinitions)).toBe(true)
-    expect(Object.isFrozen(adopted.entityDefinitions[0])).toBe(true)
+    expect(Object.isFrozen(adopted.responseKinds)).toBe(true)
+    expect(Object.isFrozen(adopted.responseKinds[0])).toBe(true)
   })
 
   test('passes an id-less resource through rather than inventing an identity', async () => {
@@ -161,8 +159,8 @@ describe('adoptSourceIdentity', () => {
       parse: (_response: string): Effect.Effect<readonly FhirResource[], ParseResult.ParseError> =>
         Effect.succeed([patient(null)]),
     }
-    const adopted = adoptSourceIdentity(SOURCE)({ ...plan, entityDefinitions: [idLess] })
-    const [resource] = await Effect.runPromise(adopted.entityDefinitions[0].parse('body'))
+    const adopted = adoptSourceIdentity(SOURCE)({ ...plan, responseKinds: [idLess] })
+    const [resource] = await Effect.runPromise(adopted.responseKinds[0].parse('body'))
     expect(resource?.id).toBeNull()
   })
 })

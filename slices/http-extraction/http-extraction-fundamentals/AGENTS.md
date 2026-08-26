@@ -12,9 +12,9 @@ One namespace per module, in the `effect` style: the file is the noun, the
 principal type shares the namespace's name (`Source.Source`), and functions
 read in the namespace's context (`Extraction.run`, not `runExtraction`). All
 six are exported from the **flat root entry**:
-`import { EntityDefinition, Extraction, Source } from 'http-extraction-fundamentals'`.
+`import { HttpResponseKind, Extraction, Source } from 'http-extraction-fundamentals'`.
 
-- **`EntityDefinition`** (`src/entity-definition.ts`) — the recipe for
+- **`HttpResponseKind`** (`src/http-response-kind.ts`) — the recipe for
   recognizing and decoding one response shape: `name` / `isFoundAt` / `parse`.
   `parse` takes an `HttpResponse` and returns
   `Effect<readonly TResources[], ParseError>` — a pure decode, never
@@ -47,8 +47,8 @@ six are exported from the **flat root entry**:
   keeps its own closed list of them.
 
 `http-extraction-fundamentals/test-helpers` is the one sub-entry:
-`makeHttpResponse`, `makeExtractionInput`, the `SimpleEntity` /
-`AnotherEntity` sample entities, and the `echoEntity` provenance-asserting
+`makeHttpResponse`, `makeExtractionInput`, the `SimpleResponseKind` /
+`AnotherResponseKind` sample response kinds, and the `echoResponseKind` provenance-asserting
 builders shared with `collector-fundamentals`' parity test.
 
 ## Layering
@@ -64,8 +64,8 @@ builders shared with `collector-fundamentals`' parity test.
   package that can see both halves. A test here that wants `CollectorHttpResponse`
   is in the wrong package.
 - Collector-only concerns extend rather than live here:
-  `CollectorEntityDefinition` (collector-fundamentals) adds the optional
-  `followUpSteps` crawl seam on top of `EntityDefinition`, and `Extraction`
+  `CollectorHttpResponseKind` (collector-fundamentals) adds the optional
+  `followUpSteps` crawl seam on top of `HttpResponseKind`, and `Extraction`
   knows nothing about it — extraction navigates nothing.
 
 ## Traps

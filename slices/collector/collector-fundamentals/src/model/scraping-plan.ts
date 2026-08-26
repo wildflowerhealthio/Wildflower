@@ -1,5 +1,5 @@
 import { Duration, type Effect } from 'effect'
-import type * as CollectorEntityDefinition from './collector-entity-definition.ts'
+import type * as CollectorHttpResponseKind from './collector-http-response-kind.ts'
 import type { CollectorHttpResponse } from './collector-http-response.ts'
 import type * as Step from './step.ts'
 
@@ -42,7 +42,7 @@ interface CaptureProvenanceResult<TResources> {
  * whose `requestSniffingResults` stream carries each terminal outcome, and
  * which:
  *
- *   - Consults `entityDefinitions` for each `ResponseStart` to decide
+ *   - Consults `responseKinds` for each `ResponseStart` to decide
  *     whether to track the in-flight response (first `isFoundAt` match
  *     wins; non-matching responses are cancelled via `sendMessage`).
  *   - Drives the sniffer through a **breadth-first step queue** seeded with
@@ -67,7 +67,7 @@ interface CaptureProvenanceResult<TResources> {
  * `Open` step at the head of `stepSequence`.
  *
  * - `name`: stable identifier for logs / UI.
- * - `entityDefinitions`: ordered list of recognizer/parser pairs.
+ * - `responseKinds`: ordered list of recognizer/parser pairs.
  *   `CollectorBridgeMessageHandler` consults `isFoundAt` against each
  *   response URL; the first match wins.
  * - `stepSequence`: the *initial* contents of the navigation queue — an
@@ -93,13 +93,13 @@ interface CaptureProvenanceResult<TResources> {
  */
 interface ScrapingPlan<TResources> {
   readonly name: string
-  readonly entityDefinitions: readonly CollectorEntityDefinition.CollectorEntityDefinition<TResources>[]
+  readonly responseKinds: readonly CollectorHttpResponseKind.CollectorHttpResponseKind<TResources>[]
   readonly stepSequence: readonly Step.Step[]
   readonly maxGeneratedSteps?: number
   readonly dedupeGeneratedOpenUris?: boolean
   readonly drainedGuardTimeout?: Duration.Duration
   // Declared as a *method* signature, not a `readonly` arrow property, for the
-  // same reason as `CollectorEntityDefinition.followUpSteps`: `produced` puts
+  // same reason as `CollectorHttpResponseKind.followUpSteps`: `produced` puts
   // `TResources` in a parameter (contravariant) position, which would make
   // `ScrapingPlan` invariant in `TResources` and break the
   // `ScrapingPlan<Resources>` → `ScrapingPlan<unknown>` widening the
@@ -163,7 +163,7 @@ const freezePlanValue = (value: unknown): void => {
  * because the handler pins the matched entity per in-flight request
  * at `ResponseStart` and seeds its step queue from `stepSequence`;
  * freezing also keeps the type-level `readonly` honest at runtime so
- * a caller can't push into `entityDefinitions` or `stepSequence`
+ * a caller can't push into `responseKinds` or `stepSequence`
  * after construction.
  *
  * `Duration`-valued fields are the one exception — see {@link freezePlanValue}.
@@ -171,7 +171,7 @@ const freezePlanValue = (value: unknown): void => {
 const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResources> => {
   const frozen: ScrapingPlan<TResources> = {
     name: plan.name,
-    entityDefinitions: plan.entityDefinitions,
+    responseKinds: plan.responseKinds,
     stepSequence: plan.stepSequence,
     maxGeneratedSteps: plan.maxGeneratedSteps,
     dedupeGeneratedOpenUris: plan.dedupeGeneratedOpenUris,

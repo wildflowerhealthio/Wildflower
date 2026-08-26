@@ -10,7 +10,11 @@ const encoder = new TextEncoder()
 const STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
 
 /** A response with no body; the constructor's fixed fields aren't what most cases are about. */
-const bare = (url = 'https://example.com', status = 200, statusText = 'OK'): CollectorHttpResponse =>
+const bare = (
+  url = 'https://example.com',
+  status = 200,
+  statusText = 'OK'
+): CollectorHttpResponse =>
   new CollectorHttpResponse('req-1', url, status, statusText, [], STARTED_AT)
 
 describe('CollectorHttpResponse', () => {

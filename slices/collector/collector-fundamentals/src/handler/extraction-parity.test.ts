@@ -3,16 +3,16 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { Extraction } from 'http-extraction-fundamentals'
 import {
-  echoEntity,
+  echoResponseKind,
   makeExtractionInput,
   type Echo,
 } from 'http-extraction-fundamentals/test-helpers'
 import { runHandlerSync } from './collector-bridge-message-handler.test-helpers.ts'
 import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
 
-const AlphaEntity = echoEntity('AlphaEntity', 'alpha')
-const BetaEntity = echoEntity('BetaEntity', 'beta')
-const entityDefinitions = [AlphaEntity, BetaEntity]
+const AlphaEntity = echoResponseKind('AlphaEntity', 'alpha')
+const BetaEntity = echoResponseKind('BetaEntity', 'beta')
+const responseKinds = [AlphaEntity, BetaEntity]
 
 /**
  * The canned exchange set both paths see: two entities, an unclaimed response,
@@ -53,8 +53,8 @@ const resourcesViaTracker = (
   const results: SnifferResponseTracker.SniffResult<Echo>[] = []
   const tracker = Effect.runSync(
     SnifferResponseTracker.make<Echo>({
-      matchEntity: (url) =>
-        Option.fromNullable(entityDefinitions.find((entity) => entity.isFoundAt(url))),
+      matchResponseKind: (url) =>
+        Option.fromNullable(responseKinds.find((entity) => entity.isFoundAt(url))),
       sendMessage: () => Effect.void,
       handleNewSniffResult: (result) =>
         Effect.sync(() => {
@@ -102,7 +102,7 @@ const resourcesViaTracker = (
  */
 describe('Extraction.run / SnifferResponseTracker parity', () => {
   it('produces the same resources as driving the live tracker with the equivalent events', () => {
-    const viaExtraction = Effect.runSync(Extraction.run(entityDefinitions, exchanges)).batches.map(
+    const viaExtraction = Effect.runSync(Extraction.run(responseKinds, exchanges)).batches.map(
       (batch) => batch.resources
     )
 
@@ -112,7 +112,7 @@ describe('Extraction.run / SnifferResponseTracker parity', () => {
   })
 
   it('accounts for the response the tracker cancels as unmatched', () => {
-    const outcome = Effect.runSync(Extraction.run(entityDefinitions, exchanges))
+    const outcome = Effect.runSync(Extraction.run(responseKinds, exchanges))
 
     expect(outcome.unmatched).toEqual([{ id: 'r3', url: 'https://example.com/gamma/3' }])
     expect(resourcesViaTracker(exchanges)).toHaveLength(outcome.batches.length)

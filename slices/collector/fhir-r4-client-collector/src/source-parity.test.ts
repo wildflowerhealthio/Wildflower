@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 import { fhirR4SourceEntities, fhirR4Recognizer, fhirRootOf } from 'fhir-r4-source'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { EntityDefinition, Extraction } from 'http-extraction-fundamentals'
+import type { HttpResponseKind, Extraction } from 'http-extraction-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
@@ -39,19 +39,19 @@ const input = (url: string, body = '{}'): Extraction.Input => ({
   bodyAbsent: false,
 })
 
-const entityNamed = (
-  entities: readonly EntityDefinition.EntityDefinition<FhirResource>[],
+const responseKindNamed = (
+  responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[],
   name: string
-): EntityDefinition.EntityDefinition<FhirResource> => {
-  const found = entities.find((entity) => entity.name === name)
-  if (found === undefined) throw new Error(`no entity named ${name}`)
+): HttpResponseKind.HttpResponseKind<FhirResource> => {
+  const found = responseKinds.find((responseKind) => responseKind.name === name)
+  if (found === undefined) throw new Error(`no response kind named ${name}`)
   return found
 }
 
 /** Parse `body` at `url` through the importer entity named `name`. */
 const parseImporter = (name: string, url: string, body: unknown): readonly FhirResource[] =>
   Effect.runSync(
-    entityNamed(fhirR4SourceEntities, name).parse(
+    responseKindNamed(fhirR4SourceEntities, name).parse(
       makeCollectorHttpResponse({
         url,
         headers: [['content-type', 'application/fhir+json']],
@@ -81,12 +81,11 @@ describe('fhirR4SourceEntities against the live plan', () => {
   test('matches the live plan when a resource is captured from its configured root', () => {
     const rootUrl = 'https://r4.example.org/baseR4'
     const body = { resourceType: 'Patient', id: 'pat-7' }
-    const [importedPatient] = parseImporter('PatientEntity', `${rootUrl}/Patient/pat-7`, body)
+    const [importedPatient] = parseImporter('PatientResponseKind', `${rootUrl}/Patient/pat-7`, body)
     const [livePatient] = Effect.runSync(
-      entityNamed(
-        scrapingPlan({ _tag: 'fhir-r4', rootUrl, patientId: 'pat-7' }, FIXED_RUN_ID)
-          .entityDefinitions,
-        'PatientEntity'
+      responseKindNamed(
+        scrapingPlan({ _tag: 'fhir-r4', rootUrl, patientId: 'pat-7' }, FIXED_RUN_ID).responseKinds,
+        'PatientResponseKind'
       ).parse(
         makeCollectorHttpResponse({
           url: `${rootUrl}/Patient/pat-7`,
@@ -103,7 +102,7 @@ describe('fhirR4SourceEntities against the live plan', () => {
     fc.assert(
       fc.property(Arbitrary.make(InstanceConfig), (config) => {
         const [patient] = parseImporter(
-          'PatientEntity',
+          'PatientResponseKind',
           `${config.rootUrl}/Patient/${encodeURIComponent(config.patientId)}`,
           { resourceType: 'Patient', id: config.patientId }
         )
