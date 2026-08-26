@@ -1,0 +1,167 @@
+import { DateTime, Effect, ParseResult, Schema } from 'effect'
+
+import * as EntityDefinition from './entity-definition.ts'
+import type * as Extraction from './extraction.ts'
+import * as ImportableResponse from './importable-response.ts'
+
+/**
+ * Fields a test wants to vary on an
+ * {@link ImportableResponse.ImportableResponse}; everything omitted takes a
+ * benign default.
+ */
+interface ImportableResponseOverrides {
+  readonly id?: string
+  readonly url?: string
+  readonly status?: number
+  readonly statusText?: string
+  readonly headers?: ImportableResponse.Headers
+  /** The observed response-start instant. Fixed by default, so tests stay deterministic. */
+  readonly startedAt?: DateTime.Utc
+  /** Body bytes. A `string` is UTF-8 encoded; pass a `Uint8Array` for a non-UTF-8 body. */
+  readonly body?: string | Uint8Array
+}
+
+const utf8 = new TextEncoder()
+
+/** The default {@link makeImportableResponse} `startedAt` — fixed, so tests are deterministic. */
+const DEFAULT_STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
+
+/**
+ * Build an {@link ImportableResponse.ImportableResponse} for a test,
+ * defaulting every field a test does not care about.
+ *
+ * @param overrides - The fields to set; see {@link ImportableResponseOverrides}
+ * @returns An `ImportableResponse` over the given (or empty) body
+ */
+const makeImportableResponse = (
+  overrides: ImportableResponseOverrides = {}
+): ImportableResponse.ImportableResponse => {
+  const body = overrides.body
+  return ImportableResponse.make({
+    id: overrides.id ?? 'req-1',
+    url: overrides.url ?? 'https://example.com/resource/id',
+    status: overrides.status ?? 200,
+    statusText: overrides.statusText ?? 'OK',
+    headers: overrides.headers ?? [['content-type', 'application/json']],
+    startedAt: overrides.startedAt ?? DEFAULT_STARTED_AT,
+    body: typeof body === 'string' ? utf8.encode(body) : (body ?? new Uint8Array()),
+  })
+}
+
+/**
+ * Two reusable test entities mirroring the shape a real entity (e.g.
+ * `PatientEntity`) takes — a value built via `EntityDefinition.make`, no
+ * inheritance.
+ */
+
+const SimpleSchema = Schema.Struct({
+  name: Schema.String,
+  age: Schema.Number,
+})
+
+const SimpleEntity: EntityDefinition.EntityDefinition<typeof SimpleSchema.Type> =
+  EntityDefinition.make({
+    name: 'SimpleEntity',
+    isFoundAt: (url) => /\/people\/\d+$/.test(url),
+    parse: (response) =>
+      Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => [data]),
+  })
+
+const AnotherSchema = Schema.Struct({ id: Schema.String })
+
+const AnotherEntity: EntityDefinition.EntityDefinition<typeof AnotherSchema.Type> =
+  EntityDefinition.make({
+    name: 'AnotherEntity',
+    isFoundAt: (url) => /\/items\//.test(url),
+    parse: (response) =>
+      Effect.map(Schema.decode(Schema.parseJson(AnotherSchema))(response.text()), (data) => [data]),
+  })
+
+/**
+ * What the {@link echoEntity} test entities decode to: the response fields
+ * they were handed, echoed back.
+ *
+ * @remarks
+ * Echoing rather than decoding a payload is what lets a property assert
+ * *provenance* — that this batch came from that response, and that the bytes
+ * `parse` saw are the bytes the input carried — without the test knowing what
+ * the generated body was.
+ */
+interface Echo {
+  readonly entityName: string
+  readonly id: string
+  readonly url: string
+  readonly status: number
+  readonly statusText: string
+  readonly headers: readonly (readonly [string, string])[]
+  readonly bytes: Uint8Array
+}
+
+/**
+ * An entity claiming every URL containing `/<marker>/`, decoding to a single
+ * {@link Echo} — unless the body is the literal `POISON`, which fails the
+ * parse.
+ *
+ * @remarks
+ * The poison body is how a property makes a *specific* response fail without
+ * changing which entity claims it, so parse-failure isolation is testable
+ * against an otherwise identical fold.
+ */
+const echoEntity = (name: string, marker: string): EntityDefinition.EntityDefinition<Echo> =>
+  EntityDefinition.make({
+    name,
+    isFoundAt: (url) => url.includes(`/${marker}/`),
+    parse: (response) =>
+      response.text() === POISON_BODY
+        ? Effect.fail(
+            new ParseResult.ParseError({
+              issue: new ParseResult.Type(Schema.String.ast, response.url, 'poisoned body'),
+            })
+          )
+        : Effect.succeed([
+            {
+              entityName: name,
+              id: response.id,
+              url: response.url,
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+              bytes: response.bytes(),
+            },
+          ]),
+  })
+
+/** The body an {@link echoEntity} refuses to parse. */
+const POISON_BODY = 'POISON'
+
+/** Fixed instant, so a generated response never depends on the clock. */
+const EXTRACTION_STARTED_AT = DateTime.unsafeMake('2026-02-02T00:00:00.000Z')
+
+/** Build an {@link Extraction.Input}, defaulting everything a test doesn't set. */
+const makeExtractionInput = (
+  overrides: Partial<Omit<Extraction.Input, 'body'>> & { readonly body?: string | Uint8Array } = {}
+): Extraction.Input => ({
+  id: overrides.id ?? 'req-1',
+  url: overrides.url ?? 'https://example.com/alpha/1',
+  status: overrides.status ?? 200,
+  statusText: overrides.statusText ?? 'OK',
+  headers: overrides.headers ?? [['content-type', 'application/json']],
+  startedAt: overrides.startedAt ?? EXTRACTION_STARTED_AT,
+  body:
+    typeof overrides.body === 'string'
+      ? utf8.encode(overrides.body)
+      : (overrides.body ?? utf8.encode('{}')),
+  bodyAbsent: overrides.bodyAbsent ?? false,
+})
+
+export {
+  AnotherEntity,
+  DEFAULT_STARTED_AT,
+  echoEntity,
+  EXTRACTION_STARTED_AT,
+  makeExtractionInput,
+  makeImportableResponse,
+  POISON_BODY,
+  SimpleEntity,
+}
+export type { Echo, ImportableResponseOverrides }
