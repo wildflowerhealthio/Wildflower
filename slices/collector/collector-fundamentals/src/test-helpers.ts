@@ -1,13 +1,13 @@
 import { DateTime } from 'effect'
 import type { HttpResponse } from 'http-extraction-fundamentals'
 
-import { RemoteResponse } from './model/remote-response.ts'
+import { CollectorHttpResponse } from './model/collector-http-response.ts'
 
 /**
- * Fields a test wants to vary on a {@link RemoteResponse}; everything omitted
+ * Fields a test wants to vary on a {@link CollectorHttpResponse}; everything omitted
  * takes a benign default.
  */
-interface RemoteResponseOverrides {
+interface CollectorHttpResponseOverrides {
   readonly id?: string
   readonly url?: string
   readonly status?: number
@@ -21,15 +21,15 @@ interface RemoteResponseOverrides {
 
 const utf8 = new TextEncoder()
 
-/** The default {@link makeRemoteResponse} `startedAt` — fixed, so tests are deterministic. */
+/** The default {@link makeCollectorHttpResponse} `startedAt` — fixed, so tests are deterministic. */
 const DEFAULT_STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
 
 /**
- * Build a settled {@link RemoteResponse} for a test, defaulting every field a
+ * Build a settled {@link CollectorHttpResponse} for a test, defaulting every field a
  * test does not care about.
  *
- * @param overrides - The fields to set; see {@link RemoteResponseOverrides}
- * @returns A `RemoteResponse` with `body` already appended as a single chunk
+ * @param overrides - The fields to set; see {@link CollectorHttpResponseOverrides}
+ * @returns A `CollectorHttpResponse` with `body` already appended as a single chunk
  *
  * @remarks
  * Six positional constructor arguments is a lot to restate at every call site,
@@ -39,8 +39,8 @@ const DEFAULT_STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
  * machinery, use `http-extraction-fundamentals/test-helpers`' `makeHttpResponse`
  * instead.
  */
-const makeRemoteResponse = (overrides: RemoteResponseOverrides = {}): RemoteResponse => {
-  const response = new RemoteResponse(
+const makeCollectorHttpResponse = (overrides: CollectorHttpResponseOverrides = {}): CollectorHttpResponse => {
+  const response = new CollectorHttpResponse(
     overrides.id ?? 'req-1',
     overrides.url ?? 'https://example.com/resource/id',
     overrides.status ?? 200,
@@ -55,5 +55,5 @@ const makeRemoteResponse = (overrides: RemoteResponseOverrides = {}): RemoteResp
   return response
 }
 
-export { DEFAULT_STARTED_AT, makeRemoteResponse }
-export type { RemoteResponseOverrides }
+export { DEFAULT_STARTED_AT, makeCollectorHttpResponse }
+export type { CollectorHttpResponseOverrides }

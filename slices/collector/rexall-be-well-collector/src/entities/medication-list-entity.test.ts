@@ -1,4 +1,4 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { HttpResponse } from 'http-extraction-fundamentals'
@@ -15,7 +15,7 @@ const LIST_URL =
   'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_count=2147483646'
 
 const makeResponse = (body: string, url = LIST_URL): HttpResponse.HttpResponse =>
-  makeRemoteResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
+  makeCollectorHttpResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
 
 const runParse = (
   r: HttpResponse.HttpResponse

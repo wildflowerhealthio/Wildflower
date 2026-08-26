@@ -19,7 +19,7 @@ type AdoptableParse = (
  *
  * `parse` is declared with method syntax so its parameter is checked
  * bivariantly, which is what lets a concrete entity typed against the
- * collector's own `RemoteResponse` satisfy an `unknown` here. The trick is
+ * collector's own `CollectorHttpResponse` satisfy an `unknown` here. The trick is
  * `collector-fundamentals`' own, used on `CollectorEntityDefinition.followUpSteps` for
  * the same reason.
  */

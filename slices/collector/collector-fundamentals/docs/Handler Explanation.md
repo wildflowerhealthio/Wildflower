@@ -73,7 +73,7 @@ settled `SniffResult` via the injected `handleNewSniffResult`. This is the
 
 A successful `ResponseFinished` parse prepends two steps: **generate**, then
 **capture**. Before the drop, it calls the pinned entity's `followUpSteps` (if
-any) with the parsed resources and the settled `RemoteResponse`, and hands them
+any) with the parsed resources and the settled `CollectorHttpResponse`, and hands them
 to `handleGeneratedSteps`; then, for a non-empty parse on a plan that states a
 `captureProvenance` hook, it invokes the hook to build the settled
 `SniffedBatch` (`resources` possibly link-annotated, plus best-effort

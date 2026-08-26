@@ -1,4 +1,4 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { MedicationDispense } from 'fhir-r4/resources'
@@ -16,7 +16,7 @@ const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 
 const makeResponse = (body: string): HttpResponse.HttpResponse =>
-  makeRemoteResponse({
+  makeCollectorHttpResponse({
     url: `${BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`,
     body,
   })

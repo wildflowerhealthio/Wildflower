@@ -56,7 +56,7 @@ which is exactly what keeps the dependency graph acyclic.
 - **The live-vs-archive parity pin lives in `collector-fundamentals`**
   (`src/handler/extraction-parity.test.ts`) — the one package that can see
   both `Extraction.run` and the live tracker. A test here that wants
-  `RemoteResponse` is in the wrong package.
+  `CollectorHttpResponse` is in the wrong package.
 - **A source's per-source parity test lives with the collector config it
   needs** (`fhir-r4-client-collector/src/source-parity.test.ts`), because the
   dependency points from the collector to the source package, never back.

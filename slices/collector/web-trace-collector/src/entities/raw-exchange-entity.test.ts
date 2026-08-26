@@ -1,4 +1,4 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { DateTime, Duration, Effect, Either, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { DocumentReference } from 'fhir-r4/resources'
@@ -29,14 +29,14 @@ const defaultPolicy: BodyPolicy = {
 const entity = makeRawExchangeEntity({ sessionId: SESSION_ID, policy: defaultPolicy })
 
 const parse = (
-  overrides: Parameters<typeof makeRemoteResponse>[0] = {},
+  overrides: Parameters<typeof makeCollectorHttpResponse>[0] = {},
   definition = entity
 ): Promise<readonly DocumentReferenceType[]> =>
-  Effect.runPromise(definition.parse(makeRemoteResponse({ startedAt: STARTED_AT, ...overrides })))
+  Effect.runPromise(definition.parse(makeCollectorHttpResponse({ startedAt: STARTED_AT, ...overrides })))
 
 /** The single resource a parse of one exchange produces. */
 const parseOne = async (
-  overrides: Parameters<typeof makeRemoteResponse>[0] = {},
+  overrides: Parameters<typeof makeCollectorHttpResponse>[0] = {},
   definition = entity
 ): Promise<DocumentReferenceType> => {
   const resources = await parse(overrides, definition)

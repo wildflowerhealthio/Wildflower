@@ -14,7 +14,7 @@ import type { MessageHandler } from 'effect-messaging-core'
 import { UnknownException } from 'effect/Cause'
 import type { CollectorBridge } from '../bridge.ts'
 import type * as CollectorEntityDefinition from '../model/collector-entity-definition.ts'
-import { RemoteResponse } from '../model/index.ts'
+import { CollectorHttpResponse } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as Telemetry from '../telemetry/index.ts'
 
@@ -29,7 +29,7 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * invariant).
  */
 interface IncompleteSniffedRequest<TResources> {
-  readonly response: RemoteResponse.RemoteResponse
+  readonly response: CollectorHttpResponse
   readonly entity: CollectorEntityDefinition.CollectorEntityDefinition<TResources>
 }
 
@@ -78,7 +78,7 @@ interface SniffedBatch<TResources> {
  * One settled outcome for a sniffed request, the element type of the run's
  * `requestSniffingResults` stream: `Right` a decoded {@link SniffedBatch},
  * `Left` a {@link SniffFailure}. The tracker folds the response URL into the
- * `Left` at emit time (it holds the `RemoteResponse`), so consumers get
+ * `Left` at emit time (it holds the `CollectorHttpResponse`), so consumers get
  * everything they need without the full response object — the runner reads
  * only the URL.
  */
@@ -153,7 +153,7 @@ const make = <TResources>({
    * WARN-logged and the parse output flows on unchanged.
    */
   captureProvenance?: (
-    response: RemoteResponse.RemoteResponse,
+    response: CollectorHttpResponse,
     produced: readonly TResources[]
   ) => Effect.Effect<SniffedBatch<TResources>, unknown>
   /**
@@ -219,7 +219,7 @@ const make = <TResources>({
      * the just-settled id in the map at end-check time, so the final settle could
      * never close the stream; see the [Handler
      * Explanation](../../docs/Handler%20Explanation.md).) The response URL is
-     * folded into the failure `Left` here, where the `RemoteResponse` is in hand.
+     * folded into the failure `Left` here, where the `CollectorHttpResponse` is in hand.
      *
      * `handleNewSniffResult` is passed to `Effect.andThen` as a *thunk* so it is
      * evaluated only after the `remove` runs — its synchronous `unsafeOffer`
@@ -227,7 +227,7 @@ const make = <TResources>({
      */
     const offerSniffResultAndUntrack = (
       id: string,
-      response: RemoteResponse.RemoteResponse,
+      response: CollectorHttpResponse,
       result: Either.Either<
         SniffedBatch<TResources>,
         ParseResult.ParseError | UnknownException | SnifferCancelled
@@ -258,7 +258,7 @@ const make = <TResources>({
         // that timestamps an exchange must not label the settle as the start.
         const startedAt = yield* DateTime.now
         MutableHashMap.set(event.id, {
-          response: new RemoteResponse.RemoteResponse(
+          response: new CollectorHttpResponse(
             event.id,
             event.url,
             event.status,

@@ -98,7 +98,7 @@ const resourcesViaTracker = (
  * `startedAt` is the one field the two paths cannot agree on — the tracker
  * reads the clock at `ResponseStart`, extraction takes the archive's timestamp —
  * and the echo entities deliberately don't read it, so the comparison is over
- * everything else a `RemoteResponse` carries.
+ * everything else a `CollectorHttpResponse` carries.
  */
 describe('Extraction.run / SnifferResponseTracker parity', () => {
   it('produces the same resources as driving the live tracker with the equivalent events', () => {

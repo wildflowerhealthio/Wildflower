@@ -21,7 +21,7 @@ import type { HttpResponse } from 'http-extraction-fundamentals'
  * rather than decoding a payload out of it; a decoding entity ignores both. See
  * the per-member notes for why each is on the response rather than re-derived.
  */
-class RemoteResponse implements HttpResponse.HttpResponse {
+class CollectorHttpResponse implements HttpResponse.HttpResponse {
   #chunks: Uint8Array[] = []
 
   constructor(
@@ -102,4 +102,4 @@ class RemoteResponse implements HttpResponse.HttpResponse {
   }
 }
 
-export { RemoteResponse }
+export { CollectorHttpResponse }

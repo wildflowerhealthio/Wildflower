@@ -62,7 +62,7 @@ keeps draining — and `persistResources` has a `never` error channel, returning
 unwritable resources as `PersistFailure` data.
 
 A body that is **not UTF-8 decodable is stored base64 with its content type, not
-dropped**. This is why the policy reads `RemoteResponse.bytes()` and never
+dropped**. This is why the policy reads `CollectorHttpResponse.bytes()` and never
 `text()`: `text()` replaces undecodable bytes with U+FFFD, and a re-encode of
 that string is not the body that arrived.
 
@@ -126,7 +126,7 @@ artifact for designing a collector against a search API — are not captured.
 - **Every body carries a SHA-256, stored or skipped**, so a skipped body is still
   evidence. That digest is Web Crypto, which is `Promise`-returning, which is why
   the body policy is `Effect`-shaped and why `parse` can fail at all.
-- **`RemoteResponse` carries `id` and `startedAt` for this collector's sake.**
+- **`CollectorHttpResponse` carries `id` and `startedAt` for this collector's sake.**
   Other entities decode a payload and need neither; a recorder needs the sniffer's
   correlation id (for the resource id) and the observed response-start instant
   (so a trace does not claim the settle was the start). `timings.receive` is

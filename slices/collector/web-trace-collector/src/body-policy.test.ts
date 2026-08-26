@@ -1,4 +1,4 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, Encoding } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
@@ -23,7 +23,7 @@ const utf8 = new TextEncoder()
 
 /**
  * Bytes with their backing store pinned to a real `ArrayBuffer`, which is what
- * `crypto.subtle.digest` (and so `sha256Base64`) takes. `RemoteResponse.bytes()`
+ * `crypto.subtle.digest` (and so `sha256Base64`) takes. `CollectorHttpResponse.bytes()`
  * already hands those over; `TextEncoder` and `fc.uint8Array` do not, so a test
  * that builds bytes by hand copies once here rather than making the production
  * signature looser than the platform's.
@@ -32,9 +32,9 @@ const pinned = (value: string | Uint8Array): Uint8Array<ArrayBuffer> =>
   new Uint8Array(typeof value === 'string' ? utf8.encode(value) : value)
 
 const decide = (
-  overrides: Parameters<typeof makeRemoteResponse>[0],
+  overrides: Parameters<typeof makeCollectorHttpResponse>[0],
   policy: BodyPolicy = defaultPolicy
-): Promise<TraceBody> => run(decideBody(makeRemoteResponse(overrides), policy))
+): Promise<TraceBody> => run(decideBody(makeCollectorHttpResponse(overrides), policy))
 
 describe('contentTypeOf', () => {
   it.each([

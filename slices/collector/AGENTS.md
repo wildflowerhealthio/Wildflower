@@ -17,7 +17,7 @@ before adding one.
   first-class value), the `ResourcePersistence*` write seam,
   `CollectorEntityDefinition` (an `EntityDefinition` extended with the
   live-only `followUpSteps` crawl seam) / `ScrapingPlan` / `Step` /
-  `RemoteResponse` (the live, chunk-accumulating implementation of
+  `CollectorHttpResponse` (the live, chunk-accumulating implementation of
   `HttpResponse`), and the `./config-form` view contract, plus
   `CollectorBridgeMessageHandler` (the response tracker + automatic-navigation
   machine + run lifecycle). Provenance is core here: the framework mints the
@@ -103,7 +103,7 @@ before adding one.
   `PersistFailure` into `RunnerState: 'partial'` and fires the caller's
   `onError`, which is exactly why a diagnostic failure must never be returned.
   An empty half costs no call.
-- **A `RemoteResponse` carries the sniffer's correlation `id` and the observed
+- **A `CollectorHttpResponse` carries the sniffer's correlation `id` and the observed
   `startedAt`, and exposes the body two ways.** Most entities decode a known
   payload and use only `url` / `headers` / `text()`. An entity that _records_ an
   exchange rather than decoding one needs more: `id` (the sniffer's per-request
@@ -263,7 +263,7 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   is the line between deliberate provenance collection and bulk recording.**
   The tracker invokes the plan's hook inside `ResponseFinished`, the only place
   the "response → the resources it produced" pairing exists (the
-  `RemoteResponse` is discarded the moment the settle is offered). A response
+  `CollectorHttpResponse` is discarded the moment the settle is offered). A response
   that decoded to **nothing** is therefore never captured, and neither is a
   failed parse — if you want every exchange stored regardless, that is a
   recorder, i.e. its own entity claiming every response (see
@@ -277,7 +277,7 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   only the base `EntityDefinition`, so neither `captureProvenance` nor
   `followUpSteps` exists on that path (an import already has its source as one artifact, and
   there is nothing to navigate).
-- **`RemoteResponse` answers a _recorder_'s questions, not just a decoder's.**
+- **`CollectorHttpResponse` answers a _recorder_'s questions, not just a decoder's.**
   The seam exposes everything an entity may know about a response, including the
   three a capturing entity needs that a decoding one ignores: the sniffer's
   correlation `id` (so a stored record keys on `(sessionId, requestId)` and a

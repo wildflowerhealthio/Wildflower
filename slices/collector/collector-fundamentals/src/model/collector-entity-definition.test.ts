@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { makeRemoteResponse } from '../test-helpers.ts'
+import { makeCollectorHttpResponse } from '../test-helpers.ts'
 import * as CollectorEntityDefinition from './collector-entity-definition.ts'
 
 interface Person {
@@ -23,7 +23,7 @@ describe('CollectorEntityDefinition.make', () => {
 
     // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method; asserting the copied reference
     expect(made.followUpSteps).toBe(followUpSteps)
-    expect(made.followUpSteps?.([{ name: 'Alice' }], makeRemoteResponse())).toEqual([])
+    expect(made.followUpSteps?.([{ name: 'Alice' }], makeCollectorHttpResponse())).toEqual([])
   })
 
   it('freezes the definition so a caller cannot re-route it after construction', () => {

@@ -1,4 +1,4 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId, originalIdOf } from 'fhir-r4/identity'
@@ -193,7 +193,7 @@ describe('scrapingPlan', () => {
     // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method
     const hook = plan.captureProvenance
     expect(hook).toBeDefined()
-    const response = makeRemoteResponse({ id: 'req-1' })
+    const response = makeCollectorHttpResponse({ id: 'req-1' })
     const result = await Effect.runPromise(
       hook?.(FIXED_RUN_ID, response, [patient]) ?? Effect.die('hook asserted defined above')
     )
@@ -255,7 +255,7 @@ describe('source identity', () => {
   const parseBody = (name: string, url: string, body: unknown): readonly FhirResource[] =>
     Effect.runSync(
       entityNamed(name).parse(
-        makeRemoteResponse({
+        makeCollectorHttpResponse({
           url,
           headers: [['content-type', 'application/fhir+json']],
           body: JSON.stringify(body),

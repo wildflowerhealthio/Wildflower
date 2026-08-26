@@ -1,4 +1,4 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { Patient } from 'fhir-r4/resources'
@@ -14,7 +14,7 @@ const { expectLeftToEqual } = utilityExpectations(expect)
 const PROFILE_URL = 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me'
 
 const makeResponse = (body: string, url = PROFILE_URL): HttpResponse.HttpResponse =>
-  makeRemoteResponse({ url, body })
+  makeCollectorHttpResponse({ url, body })
 
 const runParse = (
   r: HttpResponse.HttpResponse

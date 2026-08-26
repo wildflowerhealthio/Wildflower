@@ -36,7 +36,7 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   mapping (the recorder's entity spreads it too); `makeFhirProvenanceCapture`
   is the hook factory a production collector states as its plan's
   `captureProvenance`. `CapturedResponse` names the readable surface of
-  `collector-fundamentals`' `RemoteResponse` _structurally_ — this package
+  `collector-fundamentals`' `CollectorHttpResponse` _structurally_ — this package
   sits below the collector slice and must not import it, so the boundary is a
   shape, not a dependency.
 - **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects

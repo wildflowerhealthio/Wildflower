@@ -1,6 +1,6 @@
 import { Duration, type Effect } from 'effect'
 import type * as CollectorEntityDefinition from './collector-entity-definition.ts'
-import type { RemoteResponse } from './remote-response.ts'
+import type { CollectorHttpResponse } from './collector-http-response.ts'
 import type * as Step from './step.ts'
 
 /** Default {@link ScrapingPlan.maxGeneratedSteps} when a plan omits it. */
@@ -121,7 +121,7 @@ interface ScrapingPlan<TResources> {
    */
   captureProvenance?(
     runId: string,
-    response: RemoteResponse,
+    response: CollectorHttpResponse,
     produced: readonly TResources[]
   ): Effect.Effect<CaptureProvenanceResult<TResources>, unknown>
 }

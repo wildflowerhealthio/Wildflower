@@ -8,7 +8,7 @@ import {
   type SetSnifferStatus as SetSnifferStatusMessage,
   type SniffingComplete as SniffingCompleteMessage,
 } from '../bridge.ts'
-import { type RemoteResponse, ScrapingPlan, WebViewSource } from '../model/index.ts'
+import { type CollectorHttpResponse, ScrapingPlan, WebViewSource } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as AutomaticNavigation from './automatic-navigation/index.ts'
 import * as RunLifecycleState from './run-lifecycle-state.ts'
@@ -166,7 +166,7 @@ const make = <TResources>({
     const captureProvenance =
       planCaptureProvenance === undefined
         ? undefined
-        : (response: RemoteResponse.RemoteResponse, produced: readonly TResources[]) =>
+        : (response: CollectorHttpResponse, produced: readonly TResources[]) =>
             planCaptureProvenance(runId, response, produced)
     // Run-wide crawler safety, applied to *generated* steps only (never the
     // authored sequence): dedup generated `Open`s by URI so a self-link or a

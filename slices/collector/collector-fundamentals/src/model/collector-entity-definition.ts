@@ -1,6 +1,6 @@
 import type { EntityDefinition } from 'http-extraction-fundamentals'
 import { deepFreeze } from 'kitchen-sink'
-import type { RemoteResponse } from './remote-response.ts'
+import type { CollectorHttpResponse } from './collector-http-response.ts'
 import type * as Step from './step.ts'
 
 /**
@@ -18,7 +18,7 @@ import type * as Step from './step.ts'
  * - `followUpSteps` (optional): the declared, statically-visible seam for
  *   reactive crawling. Every time this entity's `parse` succeeds, the handler
  *   calls it with the just-parsed resources and the settled
- *   {@link RemoteResponse}, and appends whatever `Step`s it returns to the
+ *   {@link CollectorHttpResponse}, and appends whatever `Step`s it returns to the
  *   back of the automatic-navigation queue (breadth-first). It is **pure and
  *   synchronous** — a plain `resources → steps` function, not an `Effect` — so
  *   generation is visible at the definition site and its invocation is owned by
@@ -46,7 +46,7 @@ interface CollectorEntityDefinition<
   // sealed-`Resources` existential relies on. Method parameters are checked
   // bivariantly, so this keeps the type covariant (as the base
   // `EntityDefinition` is) while still typing the generator precisely.
-  followUpSteps?(resources: readonly TResources[], response: RemoteResponse): readonly Step.Step[]
+  followUpSteps?(resources: readonly TResources[], response: CollectorHttpResponse): readonly Step.Step[]
 }
 
 /**

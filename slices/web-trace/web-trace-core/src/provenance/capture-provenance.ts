@@ -35,12 +35,12 @@ interface ProvenanceCapture<TResource> {
 
 /**
  * The readable surface of a captured response — structurally the part of
- * `collector-fundamentals`' `RemoteResponse` a capture consumes.
+ * `collector-fundamentals`' `CollectorHttpResponse` a capture consumes.
  *
  * @remarks
  * Structural on purpose: `web-trace-core` sits below the collector slice and
  * cannot import it, so this names the fields rather than the class. A real
- * `RemoteResponse` satisfies it as-is — a collector passes the response object
+ * `CollectorHttpResponse` satisfies it as-is — a collector passes the response object
  * straight through instead of copying fields into an intermediate.
  *
  * `bytes()` is the body read, **never `text()`**: `text()` is UTF-8 and lossy,

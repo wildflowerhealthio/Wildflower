@@ -5,7 +5,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import type { HttpResponse } from 'http-extraction-fundamentals'
 
 import {
@@ -25,7 +25,7 @@ const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 
 const makeResponse = (body: string): HttpResponse.HttpResponse =>
-  makeRemoteResponse({ url: STATUS_URL, body })
+  makeCollectorHttpResponse({ url: STATUS_URL, body })
 
 const parse = (body: string): readonly FhirResource[] =>
   Effect.runSync(PrescriptionEntity.parse(makeResponse(body)))

@@ -1,4 +1,4 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
@@ -155,7 +155,7 @@ describe('scrapingPlan', () => {
     const resourceIdFromABuildFor = async (runId: string): Promise<string | undefined> => {
       const [entity] = scrapingPlan(defaultConfig, runId).entityDefinitions
       if (entity === undefined) throw new Error('unreachable: one entity asserted above')
-      const [resource] = await Effect.runPromise(entity.parse(makeRemoteResponse({ id: 'req-1' })))
+      const [resource] = await Effect.runPromise(entity.parse(makeCollectorHttpResponse({ id: 'req-1' })))
       return resource?.id ?? undefined
     }
 

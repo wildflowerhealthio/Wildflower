@@ -1,4 +1,4 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, DateTime, Effect, Option } from 'effect'
 import * as fc from 'fast-check'
 import { fhirR4SourceEntities, fhirR4Recognizer, fhirRootOf } from 'fhir-r4-source'
@@ -52,7 +52,7 @@ const entityNamed = (
 const parseImporter = (name: string, url: string, body: unknown): readonly FhirResource[] =>
   Effect.runSync(
     entityNamed(fhirR4SourceEntities, name).parse(
-      makeRemoteResponse({
+      makeCollectorHttpResponse({
         url,
         headers: [['content-type', 'application/fhir+json']],
         body: JSON.stringify(body),
@@ -88,7 +88,7 @@ describe('fhirR4SourceEntities against the live plan', () => {
           .entityDefinitions,
         'PatientEntity'
       ).parse(
-        makeRemoteResponse({
+        makeCollectorHttpResponse({
           url: `${rootUrl}/Patient/pat-7`,
           headers: [['content-type', 'application/fhir+json']],
           body: JSON.stringify(body),

@@ -3,20 +3,20 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { RemoteResponse } from './remote-response.ts'
+import { CollectorHttpResponse } from './collector-http-response.ts'
 
 const encoder = new TextEncoder()
 
 const STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
 
 /** A response with no body; the constructor's fixed fields aren't what most cases are about. */
-const bare = (url = 'https://example.com', status = 200, statusText = 'OK'): RemoteResponse =>
-  new RemoteResponse('req-1', url, status, statusText, [], STARTED_AT)
+const bare = (url = 'https://example.com', status = 200, statusText = 'OK'): CollectorHttpResponse =>
+  new CollectorHttpResponse('req-1', url, status, statusText, [], STARTED_AT)
 
-describe('RemoteResponse', () => {
+describe('CollectorHttpResponse', () => {
   it('stores id, url, status, statusText, headers, and startedAt', () => {
     expect(
-      new RemoteResponse(
+      new CollectorHttpResponse(
         'req-42',
         'https://example.com/Patient/123',
         200,
@@ -40,7 +40,7 @@ describe('RemoteResponse', () => {
       ['set-cookie', 'remember=true'],
       ['content-type', 'text/plain'],
     ] as const
-    const response = new RemoteResponse(
+    const response = new CollectorHttpResponse(
       'req-1',
       'https://example.com',
       200,

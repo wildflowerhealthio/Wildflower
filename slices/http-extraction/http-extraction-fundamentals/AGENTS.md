@@ -26,7 +26,7 @@ six are exported from the **flat root entry**:
   `url` / `status` / `statusText` / `headers` (`Headers`) / `startedAt` /
   `bytes()` / `text()`. An interface, not a class: `make` builds one over
   bytes already in hand (an `Init`, the extraction path), and
-  `collector-fundamentals`' `RemoteResponse` implements it over streamed
+  `collector-fundamentals`' `CollectorHttpResponse` implements it over streamed
   chunks (the live path) — that `implements` clause is the compile-time pin
   that both paths hand entities the same surface.
 - **`Extraction`** (`src/extraction.ts`) — run archived responses through a
@@ -61,7 +61,7 @@ builders shared with `collector-fundamentals`' parity test.
 - The live-vs-archive parity pin — that `Extraction.run` and the collector's
   `SnifferResponseTracker` route and decode identically — lives in
   `collector-fundamentals/src/handler/extraction-parity.test.ts`, the one
-  package that can see both halves. A test here that wants `RemoteResponse`
+  package that can see both halves. A test here that wants `CollectorHttpResponse`
   is in the wrong package.
 - Collector-only concerns extend rather than live here:
   `CollectorEntityDefinition` (collector-fundamentals) adds the optional
