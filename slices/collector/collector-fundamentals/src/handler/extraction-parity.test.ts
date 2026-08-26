@@ -1,8 +1,12 @@
 import { Effect, Either, Encoding, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Extraction } from 'importer-fundamentals'
-import { echoEntity, makeExtractionInput, type Echo } from 'importer-fundamentals/test-helpers'
+import { Extraction } from 'http-extraction-fundamentals'
+import {
+  echoEntity,
+  makeExtractionInput,
+  type Echo,
+} from 'http-extraction-fundamentals/test-helpers'
 import { runHandlerSync } from './collector-bridge-message-handler.test-helpers.ts'
 import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
 
@@ -14,10 +18,10 @@ const entityDefinitions = [AlphaEntity, BetaEntity]
  * The canned exchange set both paths see: two entities, an unclaimed response,
  * a multi-byte body, and a body that is not valid UTF-8.
  *
- * This suite is THE live-vs-offline parity pin: `importer-fundamentals`'
+ * This suite is THE live-vs-offline parity pin: `http-extraction-fundamentals`'
  * `Extraction.run` and this package's `SnifferResponseTracker` must route and
  * decode a set of responses identically, and only this package can see both
- * halves (the dependency points from here to `importer-fundamentals`).
+ * halves (the dependency points from here to `http-extraction-fundamentals`).
  */
 const exchanges: readonly Extraction.Input[] = [
   makeExtractionInput({ id: 'r1', url: 'https://example.com/alpha/1', body: '{"a":1}' }),

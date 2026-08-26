@@ -6,7 +6,7 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
-import type { ImportableResponse } from 'importer-fundamentals'
+import type { HttpResponse } from 'http-extraction-fundamentals'
 
 import {
   DIN_CODE_SYSTEM,
@@ -24,14 +24,14 @@ const STATUS_URL =
 const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 
-const makeResponse = (body: string): ImportableResponse.ImportableResponse =>
+const makeResponse = (body: string): HttpResponse.HttpResponse =>
   makeRemoteResponse({ url: STATUS_URL, body })
 
 const parse = (body: string): readonly FhirResource[] =>
   Effect.runSync(PrescriptionEntity.parse(makeResponse(body)))
 
 const runParse = (
-  r: ImportableResponse.ImportableResponse
+  r: HttpResponse.HttpResponse
 ): Either.Either<readonly FhirResource[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(PrescriptionEntity.parse(r)))
 

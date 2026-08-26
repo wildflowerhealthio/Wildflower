@@ -1,10 +1,10 @@
 import type { DateTime } from 'effect'
-import type { ImportableResponse } from 'importer-fundamentals'
+import type { HttpResponse } from 'http-extraction-fundamentals'
 
 /**
  * One in-flight (then settled) sniffed response, as an `EntityDefinition.parse`
  * sees it — the live implementation of
- * {@link ImportableResponse.ImportableResponse}, accumulating body chunks as
+ * {@link HttpResponse.HttpResponse}, accumulating body chunks as
  * the sniffer streams them in.
  *
  * @remarks
@@ -14,14 +14,14 @@ import type { ImportableResponse } from 'importer-fundamentals'
  * response is here — the tracker never pre-extracts a slice of it.
  *
  * `implements` is the compile-time pin that live and archive-driven `parse`
- * see the same surface: an entity written against `ImportableResponse` decodes
+ * see the same surface: an entity written against `HttpResponse` decodes
  * a sniffed response and an archived one identically.
  *
  * `id` and `startedAt` serve a *capturing* entity, one that records the exchange
  * rather than decoding a payload out of it; a decoding entity ignores both. See
  * the per-member notes for why each is on the response rather than re-derived.
  */
-class RemoteResponse implements ImportableResponse.ImportableResponse {
+class RemoteResponse implements HttpResponse.HttpResponse {
   #chunks: Uint8Array[] = []
 
   constructor(
@@ -36,7 +36,7 @@ class RemoteResponse implements ImportableResponse.ImportableResponse {
     public readonly url: string,
     public readonly status: number,
     public readonly statusText: string,
-    public readonly headers: ImportableResponse.Headers,
+    public readonly headers: HttpResponse.Headers,
     /**
      * When the tracker observed `ResponseStart` — the only instant on the
      * response the sniffer reports. `parse` runs at *settle*, so a capturing

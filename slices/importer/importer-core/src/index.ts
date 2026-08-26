@@ -4,8 +4,8 @@
  * them.
  *
  * @remarks
- * `HarImport.run` is the read half (detect which registered importer claims
- * the archive, run its entities, fold the extraction into an
+ * `HarImport.run` is the read half (detect which registered HTTP source claims
+ * the archive's traffic, run its entities, fold the extraction into an
  * `ImportPreview.ImportPreview`); `ImportPreview.persist` is the write half.
  * The two are split so a caller previews, shows the user what would be
  * written, and only then confirms — the read half cannot write, by
@@ -18,4 +18,4 @@
  */
 export * as HarImport from './har-import.ts'
 export * as ImportPreview from './import-preview.ts'
-export { importers } from './importers.ts'
+export { sources } from './sources.ts'

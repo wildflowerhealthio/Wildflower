@@ -2,7 +2,7 @@ import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { Patient } from 'fhir-r4/resources'
-import type { ImportableResponse } from 'importer-fundamentals'
+import type { HttpResponse } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -13,11 +13,11 @@ const { expectLeftToEqual } = utilityExpectations(expect)
 
 const PROFILE_URL = 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me'
 
-const makeResponse = (body: string, url = PROFILE_URL): ImportableResponse.ImportableResponse =>
+const makeResponse = (body: string, url = PROFILE_URL): HttpResponse.HttpResponse =>
   makeRemoteResponse({ url, body })
 
 const runParse = (
-  r: ImportableResponse.ImportableResponse
+  r: HttpResponse.HttpResponse
 ): Either.Either<readonly (typeof Patient.Schema.Type)[], ParseResult.ParseError> =>
   Effect.runSync(Effect.either(ProfileEntity.parse(r)))
 

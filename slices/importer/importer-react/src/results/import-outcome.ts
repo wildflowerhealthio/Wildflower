@@ -82,13 +82,13 @@ const isPartialOutcome = (outcome: ImportOutcome): boolean => outcome.failures.l
  *
  * @remarks
  * The read half's two non-writing outcomes, plus the rare unreadable file: a
- * `no-importer` file was recognized by nobody, a `nothing` file was recognized
+ * `no-source` file was recognized by nobody, a `nothing` file was recognized
  * but matched no resources, and an `unreadable` file did not parse as a HAR at
- * all. None is a failure — they are the multi-file echo of `NoImporterClaims`
+ * all. None is a failure — they are the multi-file echo of `NoSourceClaims`
  * being data, not an error — but each is reported so a reader knows why a file
  * they picked wrote nothing.
  */
-type SkipReason = 'no-importer' | 'nothing' | 'unreadable'
+type SkipReason = 'no-source' | 'nothing' | 'unreadable'
 
 /**
  * What a single file in a confirmed batch resolved to.
@@ -169,7 +169,7 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
  * The `collectImportSummary` semantics, lifted to the batch: **any** failure —
  * a file whose archive would not upload, or a single resource the store
  * rejected — makes the whole batch partial. A `skipped` file is not a failure
- * (it is the multi-file echo of `NoImporterClaims` being data), so it does not
+ * (it is the multi-file echo of `NoSourceClaims` being data), so it does not
  * make a batch partial on its own.
  */
 const isPartialBatch = (batch: BatchOutcome): boolean =>

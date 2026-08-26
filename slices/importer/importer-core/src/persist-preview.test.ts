@@ -49,7 +49,7 @@ const previewOf = (
   resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
 ): Preview => ({
   _tag: 'Preview',
-  importerTag: 'fhir-r4',
+  sourceTag: 'fhir-r4',
   rootUrls: ['https://r4.example.org/baseR4'],
   resourcesByType,
   parseFailures: [],
@@ -95,15 +95,15 @@ describe('ImportPreview.persist', () => {
     }
   })
 
-  it('writes nothing for a NoImporterClaims preview, issuing no requests', async () => {
+  it('writes nothing for a NoSourceClaims preview, issuing no requests', async () => {
     // The client is provided (persist always requires it), but a
-    // NoImporterClaims preview issues no writes — the recorder stays empty.
+    // NoSourceClaims preview issues no writes — the recorder stays empty.
     const records: Array<RecordedRequest> = []
     const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
       Layer.provide(recordingHttpClientLayer(records, () => false))
     )
     const failures = await Effect.runPromise(
-      persist({ _tag: 'NoImporterClaims', totalEntries: 5 }, SOURCE_REF).pipe(
+      persist({ _tag: 'NoSourceClaims', totalEntries: 5 }, SOURCE_REF).pipe(
         Effect.provide(clientLayer)
       )
     )

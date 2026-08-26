@@ -10,22 +10,23 @@ before adding one.
 ## Package roles
 
 - **`collector-fundamentals`** — the collector vocabulary + the handler
-  machines, built on `importer-fundamentals` (which owns `EntityDefinition` /
-  `UrlMatch` / `ImportableResponse` — the decode vocabulary the importer slice
-  defines and this slice consumes). `CollectorDescriptor` ("a collector" as one
+  machines, built on `http-extraction-fundamentals` (which owns
+  `EntityDefinition` / `UrlMatch` / `HttpResponse` — the decode vocabulary the
+  `http-extraction` slice defines and this slice runs live).
+  `CollectorDescriptor` ("a collector" as one
   first-class value), the `ResourcePersistence*` write seam,
-  `CollectorEntityDefinition` (an importer `EntityDefinition` extended with the
+  `CollectorEntityDefinition` (an `EntityDefinition` extended with the
   live-only `followUpSteps` crawl seam) / `ScrapingPlan` / `Step` /
   `RemoteResponse` (the live, chunk-accumulating implementation of
-  `ImportableResponse`), and the `./config-form` view contract, plus
+  `HttpResponse`), and the `./config-form` view contract, plus
   `CollectorBridgeMessageHandler` (the response tracker + automatic-navigation
   machine + run lifecycle). Provenance is core here: the framework mints the
   run id at dispatch and invokes the plan's optional `captureProvenance` hook
   at the tracker seam, and a settled batch structurally separates `resources`
   from best-effort `diagnostics`. No registry, no HTTP runtime, no React.
   Everything else in the slice depends on it; within the slice it depends on
-  nothing, and outside it only on `importer-fundamentals` — the archive-driven
-  counterpart of the tracker (`Extraction.run`) lives there, and
+  nothing, and outside it only on `http-extraction-fundamentals` — the
+  archive-driven counterpart of the tracker (`Extraction.run`) lives there, and
   `src/handler/extraction-parity.test.ts` here pins that the two route and
   decode identically. Deliberately FHIR-agnostic — nothing here names a
   resource type.
@@ -39,11 +40,11 @@ before adding one.
 - **`*-client-collector`** (`fhir-r4-client-collector`, …) — one
   `CollectorDescriptor` per import site: config schema + arbitraries, scraping
   plan, display strings, persist sink, and the collector's own `ConfigForm`.
-  A source's decode lives in its **importer project** under `slices/importer/`
-  (`fhir-r4-importer` is the worked example); the collector package layers
-  navigation and persistence on top of those entities, depending on
-  `collector-fundamentals` and its importer project — never on
-  `collector-react`, and never the reverse direction. Three today:
+  A source's decode lives in its **source package** under
+  `slices/http-extraction/` (`fhir-r4-source` is the worked example); the
+  collector package layers navigation and persistence on top of those
+  entities, depending on `collector-fundamentals` and its source package —
+  never on `collector-react`, and never the reverse direction. Three today:
   [`fhir-r4-client-collector`](./fhir-r4-client-collector/AGENTS.md),
   [`rexall-be-well-collector`](./rexall-be-well-collector/AGENTS.md) (which also
   carries the Rexall carebook dialect it decodes with), and
@@ -119,8 +120,9 @@ before adding one.
   too-broad pattern earlier in the list shadows a later entity. Make patterns
   disjoint by construction, e.g. `mustHaveQuery` on a list-by-query pattern so
   it can't also match a single-resource URL (see `UrlMatch`).
-  `importer-fundamentals`' `Extraction.run` walks the same list the same way,
-  so an entity list shadows identically live and in an archive import — that is
+  `http-extraction-fundamentals`' `Extraction.run` walks the same list the
+  same way, so an entity list shadows identically live and in an archive
+  import — that is
   deliberate: a source must not decode one thing through a webview and another
   through an archive.
 - **A new config in the union changes the remotes API wire schema — regenerate
@@ -271,9 +273,9 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   shape is untouched), and `followUpSteps` receives the **raw** parse output —
   generation runs before the hook — so a generator that opens a link per
   resource does not also fire for a provenance record. **An archive import never
-  invokes it at all** — `importer-fundamentals`' `Extraction.run` knows only the
-  base `EntityDefinition`, so neither `captureProvenance` nor `followUpSteps`
-  exists on that path (an import already has its source as one artifact, and
+  invokes it at all** — `http-extraction-fundamentals`' `Extraction.run` knows
+  only the base `EntityDefinition`, so neither `captureProvenance` nor
+  `followUpSteps` exists on that path (an import already has its source as one artifact, and
   there is nothing to navigate).
 - **`RemoteResponse` answers a _recorder_'s questions, not just a decoder's.**
   The seam exposes everything an entity may know about a response, including the

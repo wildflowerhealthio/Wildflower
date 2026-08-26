@@ -40,7 +40,7 @@ import type { ReadEntry } from './use-import-run.ts'
  * each file to a `FileImportResult`, `Match` dispatches the file's kind, and each
  * file's failure is caught into an `uploadFailed` result so one file never stops
  * the rest (the multi-file echo of `ImportPreview.persist` returning per-resource
- * failures as data). Files with nothing to write (recognized by no importer,
+ * failures as data). Files with nothing to write (recognized by no source,
  * recognized but empty, or unreadable) are `skipped` and never touch the server.
  *
  * @packageDocumentation
@@ -133,7 +133,7 @@ const importOneFile = (
     Match.tag('unreadable', () => skip('unreadable')),
     Match.tag('read', ({ preview }) =>
       Match.value(preview).pipe(
-        Match.tag('NoImporterClaims', () => skip('no-importer')),
+        Match.tag('NoSourceClaims', () => skip('no-source')),
         Match.tag('Preview', (claimed) =>
           previewResourceCount(claimed) === 0 ? skip('nothing') : write(claimed)
         ),

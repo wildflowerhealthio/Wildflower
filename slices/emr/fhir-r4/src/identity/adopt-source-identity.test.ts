@@ -12,7 +12,7 @@ import { localResourceId } from './local-resource-id.ts'
  * keeps two plans built from one config deep-equal.
  *
  * The plan and entity shapes here are plain objects rather than
- * `collector-fundamentals` / `importer-fundamentals` values — `fhir-r4` sits below both slices and
+ * `collector-fundamentals` / `http-extraction-fundamentals` values — `fhir-r4` sits below both slices and
  * names both structurally, so the suite exercises exactly the surface the
  * combinator claims.
  */

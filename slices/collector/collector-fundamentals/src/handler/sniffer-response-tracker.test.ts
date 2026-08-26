@@ -6,7 +6,7 @@ import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { CollectorEntityDefinition, ScrapingPlan, type Step } from 'collector-fundamentals/model'
-import { AnotherEntity, SimpleEntity } from 'importer-fundamentals/test-helpers'
+import { AnotherEntity, SimpleEntity } from 'http-extraction-fundamentals/test-helpers'
 import {
   cancelled,
   drainResults,

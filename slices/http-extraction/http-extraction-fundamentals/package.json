@@ -1,0 +1,46 @@
+{
+  "name": "http-extraction-fundamentals",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The vocabulary of extracting entities from HTTP traffic: EntityDefinition / UrlMatch / HttpResponse (how one response decodes into resources), Extraction (run archived responses through a source's entities), Recognizer (which source claims a response set), and Source (an HTTP source as one first-class value). Pure — no DOM, no fs, no React, and no dependency on any slice; the collector runs this vocabulary live and the HAR importer runs it over archives, and both build on this package, never the reverse.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/http-extraction/http-extraction-fundamentals"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./test-helpers": {
+      "source": "./src/test-helpers.ts",
+      "default": "./dist/test-helpers.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "kitchen-sink": "workspace:*"
+  }
+}

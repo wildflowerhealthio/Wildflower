@@ -4,7 +4,7 @@ import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { EntityDefinition } from 'importer-fundamentals'
+import type { EntityDefinition } from 'http-extraction-fundamentals'
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
 import { CustomerEntity } from './entities/customer-entity.ts'

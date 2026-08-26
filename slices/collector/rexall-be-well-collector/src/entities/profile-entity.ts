@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
-import { EntityDefinition, UrlMatch } from 'importer-fundamentals'
+import { EntityDefinition, UrlMatch } from 'http-extraction-fundamentals'
 import { nonEmpty } from 'kitchen-sink'
 
 import { extractJson } from '../extract-json.ts'

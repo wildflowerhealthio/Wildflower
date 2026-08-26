@@ -11,7 +11,7 @@ shares no code with it. The write sink is `fhir-r4/clients`' shared
 `persistResources` (the same one every FHIR collector uses); the JSON extractor
 is a verbatim copy, per slice layering.
 
-Like every other importer, the plan is wrapped in `adoptSourceIdentity` so its
+Like every other collector, the plan is wrapped in `adoptSourceIdentity` so its
 resources are re-keyed under derived local ids — see
 [account vs patient records](#account-vs-patient-records) and the
 [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).

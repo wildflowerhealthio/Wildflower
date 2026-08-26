@@ -3,7 +3,7 @@ import { type TransportAdapter } from 'effect-messaging-core'
 import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 
 import { type Step, ScrapingPlan } from 'collector-fundamentals/model'
-import { SimpleEntity } from 'importer-fundamentals/test-helpers'
+import { SimpleEntity } from 'http-extraction-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
 import type { SniffResult } from './sniffer-response-tracker.ts'
 

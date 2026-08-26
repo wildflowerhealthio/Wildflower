@@ -87,7 +87,7 @@ it drives them and reimplements none.
   failure is caught and recorded as its own `FileImportResult` (`uploadFailed`,
   carrying the cause) — the remaining files still import, the multi-file echo of
   `ImportPreview.persist` returning per-resource failures as data. A file with nothing to
-  write (no importer, recognized-but-empty, or unreadable) is `skipped`, never a
+  write (no source, recognized-but-empty, or unreadable) is `skipped`, never a
   failure. `isPartialBatch` lifts `collectImportSummary` to the batch: any
   upload failure or any per-resource failure makes the whole batch partial; a
   `skipped` file alone does not. There is **no** whole-flow `errored` state — an
@@ -95,7 +95,7 @@ it drives them and reimplements none.
   FHIR server's own response), not swallowed behind "Try again".
 - **The confirm affordance is gated on the batch having something to write.**
   `PreviewPanel` shows the single confirm button only when at least one file is a
-  claimed `Preview` with resources; files that are `NoImporterClaims`,
+  claimed `Preview` with resources; files that are `NoSourceClaims`,
   claimed-but-empty, or unreadable render their own row but add nothing to write.
   `useConfirmImport` re-checks each file (skipping the non-writable ones) — the
   gate is the affordance, the per-file check is the safety.
@@ -202,7 +202,7 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   `new Uint8Array(...)` — reproducing the real single-realm behaviour rather than
   the jsdom artifact. The production encode stays `new TextEncoder().encode(text)`.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router — and
-  pins that each file's outcome (no-importer, claimed-but-empty, parse-failure,
+  pins that each file's outcome (no-source, claimed-but-empty, parse-failure,
   unreadable, and a healthy preview) renders to its own role/text, that a mixed
   batch sums to one confirm over every file's section, and that the confirm appears
   only when at least one file has something to write. `results/import-outcome.test.ts`

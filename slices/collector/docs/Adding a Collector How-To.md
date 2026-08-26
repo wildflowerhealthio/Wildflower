@@ -14,24 +14,25 @@ that depends on `collector-fundamentals` only.
 
 ## What you're building
 
-A source's decode lives in its **importer project** under `slices/importer/` —
-`fhir-r4-importer` is the worked example — as `EntityDefinition`s (and, when
-the source supports archive import, an assembled `Importer.Importer` value).
+A source's decode lives in its **source package** under
+`slices/http-extraction/` — `fhir-r4-source` is the worked example — as
+`EntityDefinition`s (and, when the source supports archive import, an
+assembled `Source.Source` value).
 The collector package layers browser-driving navigation and persistence on top
-of those entities; it depends on its importer project, never the reverse.
+of those entities; it depends on its source package, never the reverse.
 
-| Piece           | Where                                       | Contract                                                       |
-| --------------- | ------------------------------------------- | -------------------------------------------------------------- |
-| Entities        | `slices/importer/*-importer/src/entities/`  | `EntityDefinition.make` — recognize + parse one response shape |
-| Config          | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
-| Scraping plan   | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — steps (leading `Open`), entities         |
-| Persist sink    | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |
-| Provenance      | `*-client-collector/src/config.ts`          | one `captureProvenance:` line on the plan (see step 6)         |
-| Source identity | `*-client-collector/src/config.ts`          | wrap the plan in `adoptSourceIdentity` (see step 7)            |
-| Descriptor      | `*-client-collector/src/config.ts`          | `CollectorDescriptor.make` — bundles all of the above          |
-| Config form     | `*-client-collector/src/*-config-form.tsx`  | `ConfigFormProps<Config>`                                      |
-| Registry entry  | `collector-registry/src/registry.ts`        | append to `descriptors`                                        |
-| Form entry      | `collector-react/src/forms/config-form.tsx` | add to `configForms`                                           |
+| Piece           | Where                                           | Contract                                                       |
+| --------------- | ----------------------------------------------- | -------------------------------------------------------------- |
+| Entities        | `slices/http-extraction/*-source/src/entities/` | `EntityDefinition.make` — recognize + parse one response shape |
+| Config          | `*-client-collector/src/config.ts`              | `Schema.TaggedStruct` + fast-check arbitraries                 |
+| Scraping plan   | `*-client-collector/src/config.ts`              | `ScrapingPlan.make` — steps (leading `Open`), entities         |
+| Persist sink    | `*-client-collector/src/config.ts`              | import `fhir-r4`'s `persistResources` — don't write your own   |
+| Provenance      | `*-client-collector/src/config.ts`              | one `captureProvenance:` line on the plan (see step 6)         |
+| Source identity | `*-client-collector/src/config.ts`              | wrap the plan in `adoptSourceIdentity` (see step 7)            |
+| Descriptor      | `*-client-collector/src/config.ts`              | `CollectorDescriptor.make` — bundles all of the above          |
+| Config form     | `*-client-collector/src/*-config-form.tsx`      | `ConfigFormProps<Config>`                                      |
+| Registry entry  | `collector-registry/src/registry.ts`            | append to `descriptors`                                        |
+| Form entry      | `collector-react/src/forms/config-form.tsx`     | add to `configForms`                                           |
 
 ## 1. Scaffold the client-collector package
 
@@ -48,7 +49,7 @@ Run `vp install` after adding the package so the workspace picks it up.
 
 ## 2. Define entities
 
-An `EntityDefinition` (`importer-fundamentals`) is a recipe the routing loop
+An `EntityDefinition` (`http-extraction-fundamentals`) is a recipe the routing loop
 uses to _recognize_ a response by URL and _decode_ it to resources:
 
 ```ts

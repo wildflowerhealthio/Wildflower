@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { EntityDefinition } from 'importer-fundamentals'
+import { EntityDefinition } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'

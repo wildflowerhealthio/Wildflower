@@ -21,10 +21,10 @@ import type { ReadEntry } from './use-import-run.ts'
 afterEach(cleanup)
 
 describe('PreviewPanel', () => {
-  it('renders a no-importer file as its own state, with no confirm action', () => {
+  it('renders a no-source file as its own state, with no confirm action', () => {
     render(
       <PreviewPanel
-        entries={[readEntry({ _tag: 'NoImporterClaims', totalEntries: 42 })]}
+        entries={[readEntry({ _tag: 'NoSourceClaims', totalEntries: 42 })]}
         onConfirm={() => undefined}
         onCancel={() => undefined}
         confirming={false}
@@ -39,7 +39,7 @@ describe('PreviewPanel', () => {
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined()
   })
 
-  it('renders a claimed-but-empty file distinctly from the no-importer one', () => {
+  it('renders a claimed-but-empty file distinctly from the no-source one', () => {
     render(
       <PreviewPanel
         entries={[readEntry(previewOf({ resourcesByType: {}, unmatchedCount: 3 }))]}
@@ -50,7 +50,7 @@ describe('PreviewPanel', () => {
     )
 
     // An importer *did* claim — the importer and unmatched count are surfaced,
-    // with a distinct message from the no-importer one, and still nothing to write.
+    // with a distinct message from the no-source one, and still nothing to write.
     expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
     expect(screen.getByText('fhir-r4')).toBeDefined()
     expect(screen.getByText(/recognized this archive, but matched no resources/)).toBeDefined()
@@ -129,7 +129,7 @@ describe('PreviewPanel', () => {
       <PreviewPanel
         entries={[
           readEntry(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }), 'a.har'),
-          readEntry({ _tag: 'NoImporterClaims', totalEntries: 7 }, 'b.har'),
+          readEntry({ _tag: 'NoSourceClaims', totalEntries: 7 }, 'b.har'),
           readEntry(
             previewOf({ resourcesByType: { Observation: [observation('obs-1')] } }),
             'c.har'
@@ -229,7 +229,7 @@ const previewOf = (fields: {
   readonly parseFailures?: readonly ImportPreview.ImportParseFailure[]
 }): ImportPreview.Preview => ({
   _tag: 'Preview',
-  importerTag: 'fhir-r4',
+  sourceTag: 'fhir-r4',
   rootUrls: fields.rootUrls ?? ['https://r4.example.org/baseR4'],
   resourcesByType: fields.resourcesByType,
   parseFailures: fields.parseFailures ?? [],

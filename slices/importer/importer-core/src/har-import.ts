@@ -1,11 +1,11 @@
 import { Array as Arr, Effect, Option, type ParseResult } from 'effect'
 
 import type { FhirResource } from 'fhir-r4/resources'
-import { Extraction, type Importer, Recognizer } from 'importer-fundamentals'
+import { Extraction, Recognizer, type Source } from 'http-extraction-fundamentals'
 import { type ArchivedExchange, fromHarJson } from 'web-trace-core/har'
 
 import type * as ImportPreview from './import-preview.ts'
-import { importers } from './importers.ts'
+import { sources } from './sources.ts'
 
 /**
  * Detect, extract, and preview a HAR archive — the read half of the import
@@ -13,10 +13,10 @@ import { importers } from './importers.ts'
  *
  * @remarks
  * `HarImport.run(harText)` decodes the archive, asks the closed
- * {@link importers} list which importer claims its traffic, runs that
- * importer's entities over the exchanges, and folds the result into an
+ * {@link sources} list which HTTP source claims its traffic, runs that
+ * source's entities over the exchanges, and folds the result into an
  * {@link ImportPreview.ImportPreview}. A malformed archive is the only
- * failure; every other outcome — no importer claims, a claim with parse
+ * failure; every other outcome — no source claims, a claim with parse
  * failures, unmatched noise, absent bodies — is data on the returned preview.
  *
  * **This module never persists.** Its Effect requires nothing (`R = never`), and
@@ -36,7 +36,7 @@ import { importers } from './importers.ts'
  * An {@link ArchivedExchange} and an `Extraction.Input` line up field-for-field —
  * `id`/`url`/`status`/`statusText`/`headers`/`startedAt`/`body`/`bodyAbsent`,
  * with `ArchivedExchange`'s `headers` (`HeadersWire`, an ordered `[name, value]`
- * list) being exactly `ImportableResponse.Headers`. Restated explicitly rather
+ * list) being exactly `HttpResponse.Headers`. Restated explicitly rather
  * than passed through so a drift in either shape is a compile error here, at
  * the one seam the two packages meet — neither package imports the other, so
  * this is the only place their alignment is checked.
@@ -62,13 +62,13 @@ const toImportParseFailures = (
  * The distinct source roots a claimed archive reached, in first-seen order.
  *
  * @param responses - The archive's responses, in input order
- * @param rootOf - The importer's per-URL root reader (`fhir-r4-importer`'s
+ * @param rootOf - The source's per-URL root reader (`fhir-r4-source`'s
  *   `fhirRootOf`)
  * @returns Every distinct root some response's URL named, de-duplicated but
  *   otherwise untouched — no single root chosen, no voting
  *
  * @remarks
- * One archive can reach several servers, and an importer's entities key each
+ * One archive can reach several servers, and a source's entities key each
  * resource under the root of *its own* URL, so the pipeline must not collapse
  * those to one. This collects the full set rather than inferring a winner — the
  * same "keep every server apart, no voting" stance the entities take. URLs
@@ -81,7 +81,7 @@ const distinctRoots = (
 ): readonly string[] => Arr.dedupe(Arr.filterMap(responses, (response) => rootOf(response.url)))
 
 /**
- * Run a claimed archive through its importer's entities and fold the
+ * Run a claimed archive through its source's entities and fold the
  * extraction into a `Preview`.
  *
  * @remarks
@@ -89,17 +89,16 @@ const distinctRoots = (
  * The source roots are the *set* the archive reached ({@link distinctRoots}),
  * not a single inferred one — a capture spanning two servers keeps both, and
  * each server's resources are already keyed apart under their own roots by the
- * importer's entities.
+ * source's entities.
  */
 const previewClaimed = (
-  importer: Importer.Importer<FhirResource>,
-  responses: readonly Extraction.Input[],
-  archive: Importer.ArchiveContext
+  source: Source.Source<FhirResource>,
+  responses: readonly Extraction.Input[]
 ): Effect.Effect<ImportPreview.ImportPreview> =>
-  Effect.map(Extraction.run(importer.entitiesFor(archive), responses), (extraction) => ({
+  Effect.map(Extraction.run(source.entities, responses), (extraction) => ({
     _tag: 'Preview',
-    importerTag: importer.tag,
-    rootUrls: distinctRoots(responses, importer.rootOf),
+    sourceTag: source.tag,
+    rootUrls: distinctRoots(responses, source.rootOf),
     resourcesByType: Arr.groupBy(
       extraction.batches.flatMap((batch) => batch.resources),
       (resource) => resource.resourceType
@@ -115,16 +114,16 @@ const previewClaimed = (
  *
  * @param harText - The text of a `.har` file
  * @returns An {@link ImportPreview.ImportPreview} — a `Preview` when a
- *   registered importer claims the traffic, `NoImporterClaims` when none does;
+ *   registered source claims the traffic, `NoSourceClaims` when none does;
  *   failing only with a `ParseError` when the text is not a well-formed HAR
  *   archive
  *
  * @remarks
  * The pipeline is: decode the archive (`fromHarJson`), map its exchanges to the
  * structural inputs the extraction runner reads, resolve the most specific
- * registered importer that claims them, and — if one does — run its entities
- * and fold the four-way extraction into the preview. No importer claiming is a
- * `NoImporterClaims`, not an error.
+ * registered source that claims them, and — if one does — run its entities
+ * and fold the four-way extraction into the preview. No source claiming is a
+ * `NoSourceClaims`, not an error.
  *
  * The returned Effect requires nothing. It cannot write, and specifically cannot
  * reach `FhirR4ResourcesHttpApiClient`; a preview is read-only by construction,
@@ -134,11 +133,11 @@ const run = (harText: string): Effect.Effect<ImportPreview.ImportPreview, ParseR
   Effect.gen(function* () {
     const session = yield* fromHarJson(harText)
     const responses = session.exchanges.map(toInput)
-    const claimed = Recognizer.resolve(importers, responses)
+    const claimed = Recognizer.resolve(sources, responses)
     if (Option.isNone(claimed)) {
-      return { _tag: 'NoImporterClaims', totalEntries: responses.length }
+      return { _tag: 'NoSourceClaims', totalEntries: responses.length }
     }
-    return yield* previewClaimed(claimed.value, responses, { harText })
+    return yield* previewClaimed(claimed.value, responses)
   })
 
 export { run, toInput }

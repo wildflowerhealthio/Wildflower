@@ -12,7 +12,7 @@ import {
   WebViewSource,
 } from 'collector-fundamentals/model'
 import type { TransportAdapter } from 'effect-messaging-core'
-import { UrlMatch } from 'importer-fundamentals'
+import { UrlMatch } from 'http-extraction-fundamentals'
 
 import {
   adapterLayer,

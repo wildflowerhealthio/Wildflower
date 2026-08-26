@@ -1,5 +1,5 @@
 import { DateTime } from 'effect'
-import type { ImportableResponse } from 'importer-fundamentals'
+import type { HttpResponse } from 'http-extraction-fundamentals'
 
 import { RemoteResponse } from './model/remote-response.ts'
 
@@ -12,7 +12,7 @@ interface RemoteResponseOverrides {
   readonly url?: string
   readonly status?: number
   readonly statusText?: string
-  readonly headers?: ImportableResponse.Headers
+  readonly headers?: HttpResponse.Headers
   /** The observed response-start instant. Fixed by default, so tests stay deterministic. */
   readonly startedAt?: DateTime.Utc
   /** Body bytes. A `string` is UTF-8 encoded; pass a `Uint8Array` for a non-UTF-8 body. */
@@ -35,8 +35,8 @@ const DEFAULT_STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
  * Six positional constructor arguments is a lot to restate at every call site,
  * and most tests care about one or two of them. Chunk *boundaries* are the one
  * thing this hides — a test about multi-chunk accumulation should call
- * `appendChunk` itself. For a plain `ImportableResponse` with no chunk
- * machinery, use `importer-fundamentals/test-helpers`' `makeImportableResponse`
+ * `appendChunk` itself. For a plain `HttpResponse` with no chunk
+ * machinery, use `http-extraction-fundamentals/test-helpers`' `makeHttpResponse`
  * instead.
  */
 const makeRemoteResponse = (overrides: RemoteResponseOverrides = {}): RemoteResponse => {

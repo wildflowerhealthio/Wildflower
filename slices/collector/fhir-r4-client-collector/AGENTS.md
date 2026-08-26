@@ -17,11 +17,11 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'fhir-r4', rootUrl, patientId }`)
   with fast-check arbitraries, `defaultConfig` (the public SMART Health IT
   sandbox), the two-page `scrapingPlan`, and the `FhirR4CollectorDescriptor`.
-  The plan decodes through `fhir-r4-importer`'s `fhirR4EntityDefinitions`
-  tuple — the entities themselves (and the importer surface an archive import
-  runs, `fhirR4Importer`) live in that package, the **importer project** this
+  The plan decodes through `fhir-r4-source`'s `fhirR4EntityDefinitions`
+  tuple — the entities themselves (and the assembled `fhirR4Source` an archive
+  import extracts with) live in that package, the **source package** this
   collector builds its live plan from. See
-  [fhir-r4-importer AGENTS.md](../../importer/fhir-r4-importer/AGENTS.md).
+  [fhir-r4-source AGENTS.md](../../http-extraction/fhir-r4-source/AGENTS.md).
 - the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('fhir-r4')`,
   one module-level line in `src/config.ts`, stated as the plan's
   `captureProvenance`.
@@ -33,11 +33,11 @@ config.rootUrl })` wrapping the plan factory's return, so every resource is
   [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 - `src/fhir-r4-config-form.tsx` (+ `.module.css`) — the rootUrl/patientId
   `ConfigFormProps` form `collector-react` registers.
-- `src/importer-parity.test.ts` — pins that a resource captured from its
+- `src/source-parity.test.ts` — pins that a resource captured from its
   configured root carries the byte-identical id through the live plan and
-  through the importer's entities (the tests that need
-  `InstanceConfig`/`scrapingPlan`; the importer surface's own behaviour is
-  pinned in `fhir-r4-importer`).
+  through the source's entities (the tests that need
+  `InstanceConfig`/`scrapingPlan`; the source's own behaviour is
+  pinned in `fhir-r4-source`).
 - `src/index.ts` — the barrel the registry and the React adapter import from.
 
 ## The plan
@@ -76,19 +76,19 @@ both link directions live in `web-trace-core`; this package only names itself.
   specific clinical resource _is_ the provenance, so storing its size and hash
   with no data would defeat the point.
 
-## Importer surface
+## Source surface
 
-Lives in [`fhir-r4-importer`](../../importer/fhir-r4-importer/AGENTS.md)
-(`slices/importer`), together with the entities: `fhirR4ImporterEntities`
+Lives in [`fhir-r4-source`](../../http-extraction/fhir-r4-source/AGENTS.md)
+(`slices/http-extraction`), together with the entities: `fhirR4SourceEntities`
 (keying each resource under the root of the URL it arrived on),
 `fhirR4Recognizer` (specificity `50`), `fhirRootOf` (the per-URL root
 primitive — that package owns "what a FHIR root is"), and the assembled
-`fhirR4Importer` value. The live plan here and the importer surface there
+`fhirR4Source` value. The live plan here and the source surface there
 consume the **same** `fhirR4EntityDefinitions` tuple, so a resource decodes
 identically through the sniffer and through an archive; only the identity
-source differs (the live plan keys under `config.rootUrl`, the importer keys
-under each response's own root), and `importer-parity.test.ts` in this package
-pins that the two coincide for a capture from the configured server.
+source differs (the live plan keys under `config.rootUrl`, an archive import
+keys under each response's own root), and `source-parity.test.ts` in this
+package pins that the two coincide for a capture from the configured server.
 
 ## Traps
 

@@ -9,8 +9,8 @@ that writes it.
 A `-core` package following the rule in [slices/AGENTS.md](../../AGENTS.md):
 adapters depend on it, it depends on no adapter. Its accepted imports are exactly
 four: `web-trace-core` (the HAR codec and `withMetaSource`),
-`importer-fundamentals` (the extraction runner, the recognizer, and the
-`Importer` shape), `fhir-r4-importer` (the assembled `fhirR4Importer`), and
+`http-extraction-fundamentals` (the extraction runner, the recognizer, and the
+`Source` shape), `fhir-r4-source` (the assembled `fhirR4Source`), and
 `fhir-r4` (resources and the persist sink). It re-derives none of them.
 
 Auto-picked-up by the root `slices/**/vite.config.ts` Vitest glob — no root
@@ -22,20 +22,24 @@ The public surface is two `effect`-style namespaces plus the closed list, all
 re-exported from `src/index.ts`:
 
 - **`src/import-preview.ts`** — the **`ImportPreview`** namespace: the result
-  union `ImportPreview.ImportPreview` — `NoImporterClaims` (no registered
-  importer understood the archive — a first-class outcome, not an error) or
+  union `ImportPreview.ImportPreview` — `NoSourceClaims` (no registered
+  HTTP source claimed the archive's traffic — a first-class outcome, not an
+  error) or
   `Preview` (one did; here is what it would write, grouped by `resourceType`
-  with `importerTag` naming the claimant and every non-resource outcome
+  with `sourceTag` naming the claimant and every non-resource outcome
   counted) — plus `ImportPreview.persist`, re-exported from the write module
   below.
-- **`src/importers.ts`** — the **closed, compile-time** `importers` list. Each
-  entry is an `Importer.Importer<FhirResource>` value assembled in its own
-  importer project (`fhir-r4-importer`'s `fhirR4Importer`); registering one is
-  a single static append here. Only `fhir-r4` is registered.
+- **`src/sources.ts`** — the **closed, compile-time** `sources` list. Each
+  entry is a `Source.Source<FhirResource>` value assembled in its own package
+  under `slices/http-extraction` (`fhir-r4-source`'s `fhirR4Source`);
+  registering one is a single static append here. This list is HAR-detection
+  machinery and deliberately lives here, not in the `http-extraction` slice —
+  the collector assembles its own descriptor tuple from the same source
+  packages. Only `fhir-r4` is registered.
 - **`src/har-import.ts`** — the **`HarImport`** namespace, the read half.
   `HarImport.run(harText)` decodes the archive (`fromHarJson`), maps its
   `ArchivedExchange`es to the structural `Extraction.Input`s the runner reads
-  (`toInput`), resolves the claiming importer (`Recognizer.resolve`), runs its
+  (`toInput`), resolves the claiming source (`Recognizer.resolve`), runs its
   entities (`Extraction.run`), and folds the extraction into a `Preview`.
 - **`src/persist-preview.ts`** — the write half, surfaced as
   `ImportPreview.persist(preview, sourceRef)`: flatten the previewed
@@ -55,13 +59,13 @@ re-exported from `src/index.ts`:
    line up field-for-field; `toInput` restates the eight fields
    explicitly so a drift in either shape is a compile error at the one seam the
    two packages meet.
-3. **Detect.** `Recognizer.resolve(importers, responses)` picks the
-   most specific claiming importer. None → `NoImporterClaims`.
-4. **Extract.** The claimed importer's `entitiesFor({ harText })` entities
-   fold through `Extraction.run` → the four-way `Extraction.Extraction`.
+3. **Detect.** `Recognizer.resolve(sources, responses)` picks the
+   most specific claiming source. None → `NoSourceClaims`.
+4. **Extract.** The claimed source's `entities` fold through `Extraction.run`
+   → the four-way `Extraction.Extraction`.
 5. **Fold.** Batches group by `resourceType`; `unmatched`, `parseFailures`, and
    `bodyAbsent` become counts (and, for parse failures, `{ url, error }` data).
-   `importer.rootOf` folded over every response URL yields `rootUrls` — the
+   `source.rootOf` folded over every response URL yields `rootUrls` — the
    distinct set of source roots the archive reached, no single one chosen.
 
 `ImportPreview.persist` is the opt-in tail: flatten → stamp `meta.source` →
@@ -75,12 +79,12 @@ write.
   being a pure function of the archive. A test asserts this at the type level
   (annotating `R` as `never`) and at runtime (running with no layers provided).
   Keep it that way — the preview-then-confirm safety rests on it.
-- **`NoImporterClaims` is data, not an error.** A browser's HAR export of a
-  site we have no importer for, or one carrying no FHIR resource URL, is an
+- **`NoSourceClaims` is data, not an error.** A browser's HAR export of a
+  site we have no source for, or one carrying no FHIR resource URL, is an
   ordinary outcome a caller renders. Only a malformed archive reaches the error
   channel.
-- **Many sources in one archive — `rootUrls` is a set, no voting.** The FHIR R4
-  importer entities key each resource under the root of the URL it arrived on
+- **Many servers in one archive — `rootUrls` is a set, no voting.** The FHIR R4
+  source entities key each resource under the root of the URL it arrived on
   (per response, inside the entities), so one archive can span several servers
   and keep each apart. `Preview.rootUrls` is the **distinct set** of source
   roots the archive reached, in first-seen order — never a single
@@ -95,9 +99,9 @@ write.
   failure. `bodyAbsentCount` surfaces it separately — a reader who folds it into
   `parseFailures` reports a decode that never happened.
 - **The mapping to `Extraction.Input` is restated, not passed through.** Neither
-  `web-trace-core` nor `importer-fundamentals` imports the other, so
+  `web-trace-core` nor `http-extraction-fundamentals` imports the other, so
   `toInput` is the only place their alignment is checked. `HeadersWire`
-  (`ArchivedExchange.headers`) is exactly `ImportableResponse.Headers` — an
+  (`ArchivedExchange.headers`) is exactly `HttpResponse.Headers` — an
   ordered `[name, value]` list — so the map is a re-statement, and a compile
   error if either drifts.
 - **`meta.source` is single-valued and last-writer-wins.** `withMetaSource`
@@ -113,7 +117,7 @@ write.
 ## Testing
 
 Property-based where a property earns it (an archive of arbitrary non-FHIR
-traffic is always `NoImporterClaims`), example-based for the shaped fixtures.
+traffic is always `NoSourceClaims`), example-based for the shaped fixtures.
 Two fixture routes reach the same `Preview` assertions — a HAR built through
 `web-trace-core`'s own `emitHar` from constructed exchanges, and the committed
 Chrome DevTools export — so the pipeline is held against both an archive shaped
@@ -125,10 +129,11 @@ retry backoff on `TestClock`.
 
 - [slices/importer/AGENTS.md](../AGENTS.md) — why this slice exists and its
   guardrails.
-- [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
-  `Extraction` / `Recognizer` / `Importer` vocabulary this package assembles.
-- [fhir-r4-importer AGENTS.md](../fhir-r4-importer/AGENTS.md) — the FHIR R4
-  importer project (`fhirR4Importer`).
+- [http-extraction-fundamentals AGENTS.md](../../http-extraction/http-extraction-fundamentals/AGENTS.md)
+  — the `Extraction` / `Recognizer` / `Source` vocabulary this package
+  assembles.
+- [fhir-r4-source AGENTS.md](../../http-extraction/fhir-r4-source/AGENTS.md) —
+  the FHIR R4 source (`fhirR4Source`).
 - [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the HAR
   codec and `withMetaSource`.
 - [slices/emr/AGENTS.md](../../emr/AGENTS.md) — `fhir-r4`'s `persistResources`

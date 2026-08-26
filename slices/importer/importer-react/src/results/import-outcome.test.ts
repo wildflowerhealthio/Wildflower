@@ -75,7 +75,7 @@ describe('summarizeBatch and isPartialBatch', () => {
       imported('a', 3, 0),
       imported('b', 2, 1),
       { _tag: 'uploadFailed', id: 'c', fileName: 'c.har', error: new Error('boom') },
-      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'no-importer' },
+      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'no-source' },
     ]
     const summary = summarizeBatch(batch)
     expect(summary.written).toBe(4) // 3 + 1
@@ -87,7 +87,7 @@ describe('summarizeBatch and isPartialBatch', () => {
   it('is partial when any file upload-failed or wrote partially, complete otherwise', () => {
     expect(isPartialBatch([imported('a', 3, 0)])).toBe(false)
     // A skipped file alone is not a failure — it is the multi-file echo of
-    // NoImporterClaims being data.
+    // NoSourceClaims being data.
     expect(
       isPartialBatch([
         imported('a', 3, 0),
@@ -131,7 +131,7 @@ const previewOf = (
   resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
 ): ImportPreview.Preview => ({
   _tag: 'Preview',
-  importerTag: 'fhir-r4',
+  sourceTag: 'fhir-r4',
   rootUrls: ['https://r4.example.org/baseR4'],
   resourcesByType,
   parseFailures: [],

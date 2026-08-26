@@ -1,16 +1,16 @@
-import type { EntityDefinition } from 'importer-fundamentals'
+import type { EntityDefinition } from 'http-extraction-fundamentals'
 import { deepFreeze } from 'kitchen-sink'
 import type { RemoteResponse } from './remote-response.ts'
 import type * as Step from './step.ts'
 
 /**
- * An importer's `EntityDefinition`, extended with the one seam only a live
+ * An `http-extraction-fundamentals` `EntityDefinition`, extended with the one seam only a live
  * collector run can drive: reactive crawling via `followUpSteps`.
  *
  * @remarks
  * The base recipe — `name` / `isFoundAt` / `parse` — is
- * `importer-fundamentals`' {@link EntityDefinition.EntityDefinition}, so an
- * importer project's entities feed a `ScrapingPlan` unchanged (the extra
+ * `http-extraction-fundamentals`' {@link EntityDefinition.EntityDefinition}, so a
+ * source package's entities feed a `ScrapingPlan` unchanged (the extra
  * member is optional). What this type adds exists only live: generated
  * `Step`s drive *navigation*, and an archive-driven extraction has nothing to
  * navigate.

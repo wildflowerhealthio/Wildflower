@@ -13,7 +13,7 @@ type AdoptableParse = (
  * adopted.
  *
  * @remarks
- * Structural rather than `importer-fundamentals`' `EntityDefinition`: this
+ * Structural rather than `http-extraction-fundamentals`' `EntityDefinition`: this
  * package sits below the collector slice and cannot import it — the same
  * precedent `web-trace-core`'s `CapturedResponse` sets.
  *

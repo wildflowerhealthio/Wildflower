@@ -3,7 +3,7 @@ import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { EntityDefinition } from 'importer-fundamentals'
+import type { EntityDefinition } from 'http-extraction-fundamentals'
 
 import { makeRawExchangeEntity } from './entities/raw-exchange-entity.ts'
 

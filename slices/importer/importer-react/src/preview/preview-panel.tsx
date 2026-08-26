@@ -16,9 +16,9 @@ import styles from './preview-panel.module.css'
  * panel renders them together under one confirm. Every file's outcome renders
  * honestly and distinctly — there is no empty section:
  *
- * - **No importer claimed** (`NoImporterClaims`) — a plain "nothing here is
+ * - **No importer claimed** (`NoSourceClaims`) — a plain "nothing here is
  *   recognized" state naming how many entries were read, so a browser's HAR of a
- *   site we have no importer for reads as a fact, not a failure.
+ *   site we have no source for reads as a fact, not a failure.
  * - **An importer claimed but matched nothing** (a `Preview` with no resources) —
  *   distinct from the above: the importer *did* recognize the traffic, it just
  *   produced no resources, and the entry counts explain why.
@@ -78,8 +78,8 @@ const RecognitionSummary = ({
 }): JSX.Element => (
   <dl className={styles.recognition}>
     <div className={styles.recognitionRow}>
-      <dt className={styles.recognitionTerm}>Importer</dt>
-      <dd className={styles.recognitionValue}>{preview.importerTag}</dd>
+      <dt className={styles.recognitionTerm}>Source</dt>
+      <dd className={styles.recognitionValue}>{preview.sourceTag}</dd>
     </div>
     <div className={styles.recognitionRow}>
       <dt className={styles.recognitionTerm}>{plural(preview.rootUrls.length, 'Source root')}</dt>
@@ -162,7 +162,7 @@ const ClaimedBody = ({ preview }: { readonly preview: ImportPreview.Preview }): 
     return (
       <>
         <p role="status" className={styles.emptyMessage}>
-          {`The ${preview.importerTag} importer recognized this archive, but matched no resources to import.`}
+          {`The ${preview.sourceTag} importer recognized this archive, but matched no resources to import.`}
         </p>
         <RecognitionSummary preview={preview} />
         <PreviewNotices preview={preview} />
@@ -186,7 +186,7 @@ const ClaimedBody = ({ preview }: { readonly preview: ImportPreview.Preview }): 
   )
 }
 
-/** One file's body: unreadable, no-importer, or the claimed preview's content. */
+/** One file's body: unreadable, no-source, or the claimed preview's content. */
 const FileBody = ({ entry }: { readonly entry: ReadEntry }): JSX.Element => {
   if (entry._tag === 'unreadable') {
     return (
@@ -195,10 +195,10 @@ const FileBody = ({ entry }: { readonly entry: ReadEntry }): JSX.Element => {
       </p>
     )
   }
-  if (entry.preview._tag === 'NoImporterClaims') {
+  if (entry.preview._tag === 'NoSourceClaims') {
     return (
       <p role="status" className={styles.emptyMessage}>
-        {`${entriesRead(entry.preview.totalEntries)}, but no registered importer recognized any of them.`}
+        {`${entriesRead(entry.preview.totalEntries)}, but no known source recognized any of them.`}
       </p>
     )
   }

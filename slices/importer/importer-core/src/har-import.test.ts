@@ -97,7 +97,7 @@ describe('HarImport.run', () => {
         )
       )
 
-      expect(preview.importerTag).toBe('fhir-r4')
+      expect(preview.sourceTag).toBe('fhir-r4')
       expect(preview.rootUrls).toEqual([root])
       expect(preview.totalEntries).toBe(2)
       expect(preview.unmatchedCount).toBe(0)
@@ -170,7 +170,7 @@ describe('HarImport.run', () => {
       const root = 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4'
       const preview = expectPreview(runPreview(JSON.stringify(chromeHar)))
 
-      expect(preview.importerTag).toBe('fhir-r4')
+      expect(preview.sourceTag).toBe('fhir-r4')
       // The Epic-style deep base path is recovered as the one source root.
       expect(preview.rootUrls).toEqual([root])
       expect(preview.totalEntries).toBe(5)
@@ -193,7 +193,7 @@ describe('HarImport.run', () => {
   })
 
   describe('when no importer claims the traffic', () => {
-    it('reports NoImporterClaims for a non-FHIR archive, counting the entries read', () => {
+    it('reports NoSourceClaims for a non-FHIR archive, counting the entries read', () => {
       const preview = runPreview(
         harTextOf([
           traceExchange({
@@ -207,16 +207,16 @@ describe('HarImport.run', () => {
           }),
         ])
       )
-      expect(preview).toEqual({ _tag: 'NoImporterClaims', totalEntries: 2 })
+      expect(preview).toEqual({ _tag: 'NoSourceClaims', totalEntries: 2 })
     })
 
-    test('property: an archive of arbitrary non-FHIR traffic is NoImporterClaims', () => {
+    test('property: an archive of arbitrary non-FHIR traffic is NoSourceClaims', () => {
       const { session } = arbitraries(fc)
       fc.assert(
         fc.property(session, (exchanges) => {
           const preview = runPreview(harTextOf(exchanges))
-          expect(preview._tag).toBe('NoImporterClaims')
-          if (preview._tag === 'NoImporterClaims') {
+          expect(preview._tag).toBe('NoSourceClaims')
+          if (preview._tag === 'NoSourceClaims') {
             expect(preview.totalEntries).toBe(exchanges.length)
           }
         }),

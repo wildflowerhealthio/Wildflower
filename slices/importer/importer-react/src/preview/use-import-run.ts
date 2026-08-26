@@ -38,7 +38,7 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * the write step.
  *
  * @remarks
- * `read` carries the whole {@link ImportPreview.ImportPreview} union — a `NoImporterClaims` is
+ * `read` carries the whole {@link ImportPreview.ImportPreview} union — a `NoSourceClaims` is
  * a first-class outcome the preview view renders, not an error — and `unreadable`
  * carries the one malformed-archive `ParseError`. The confirm step writes only
  * the `read` entries whose preview is a claimed `Preview` with resources. `id` is
