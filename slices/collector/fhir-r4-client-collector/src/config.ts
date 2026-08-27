@@ -108,13 +108,10 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * it the queue would drain the instant the `Open` dispatches and the run could
  * complete before the request is even tracked. The holds are **pattern-less**:
  * each waits for the *next* settle after its `Open` (skipping the prior page),
- * which is unambiguous because each `Open` targets a fresh document. The FHIR endpoints are direct JSON documents (one request per
- * page, no post-load XHR fan-out), so the hold on the settled page is
- * sufficient — no additional fixed `Delay` grace step is needed.
- * `responseKinds` are listed Patient → Observation → Bundle; routing is by
- * highest `tryRecognize` specificity (ties → list order), and `mustHaveQuery` on
- * the Bundle pattern keeps the list disjoint from the single-resource
- * Observation pattern, so the order is not load-bearing.
+ * which is unambiguous because each `Open` targets a fresh document. The FHIR
+ * endpoints are direct JSON documents (one request per page, no post-load XHR
+ * fan-out), so the hold on the settled page is sufficient — no additional fixed
+ * `Delay` grace step is needed.
  *
  * `config.rootUrl` and `config.patientId` are pre-validated by
  * {@link InstanceConfig} (no trailing slashes; patientId is the FHIR
@@ -122,15 +119,11 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * still applied defensively in case the value reaches this function
  * through an untyped path.
  *
- * `responseKinds` is `fhir-r4-source`'s already-adopted `fhirR4SourceEntities`
- * — the single pre-adopted definition an archive import also extracts with — so
- * every resource is re-keyed under the root of the URL it arrived on: a derived
- * local id, the server's own id kept as `identifier[0]`, and references
- * rewritten to match. The source system is that per-response-derived root (which
- * doubles as `baseUrl`, so a server that spells its self-references absolutely
- * rewrites them the same as relative ones); for a same-server capture the
- * derived root equals `config.rootUrl`, so this collector's ids are
- * byte-identical to the old configured-constant keying. `config.rootUrl` keeps
+ * `responseKinds` is `fhir-r4-source`'s pre-adopted `fhirR4SourceEntities` —
+ * the single definition an archive import also extracts with — so every
+ * resource keys under the per-response-derived root (see the
+ * [Source Identity Explanation](../../docs/Source%20Identity%20Explanation.md)
+ * and this package's AGENTS.md for the redirect caveat). `config.rootUrl` keeps
  * only its navigation role — the `Open` steps still target `${config.rootUrl}/…`.
  *
  * Provenance is the plan-level `captureProvenance` hook — the whole of this

@@ -103,8 +103,7 @@ const medicationListUrl = UrlMatch.make({
 const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationResource> =
   HttpResponseKind.make({
     name: 'MedicationListResponseKind',
-    // URL-gated by this kind's own pattern; on a match it mints the portal
-    // source (`system` only — carebook's references are relative, no `baseUrl`).
+    // Mints the constant portal SID; no `baseUrl` — carebook references are relative.
     tryRecognize: (url) =>
       pipe(
         medicationListUrl(url),

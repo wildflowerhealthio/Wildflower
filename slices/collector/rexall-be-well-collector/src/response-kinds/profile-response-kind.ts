@@ -104,8 +104,7 @@ const profileUrl = UrlMatch.make({
  */
 const ProfileResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
   name: 'ProfileResponseKind',
-  // URL-gated by this kind's own pattern; on a match it mints the portal source
-  // (`system` only — carebook's references are relative, so no `baseUrl`).
+  // Mints the constant portal SID; no `baseUrl` — carebook references are relative.
   tryRecognize: (url) =>
     pipe(
       profileUrl(url),

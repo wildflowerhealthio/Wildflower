@@ -7,24 +7,11 @@ import styles from './review-body.module.css'
 
 /**
  * The interactive per-URL review of one HAR file's responses: which of the
- * archive's traffic to import and, on the rare overlap, through which kind.
- *
- * @remarks
- * A view over `importer-fundamentals`' pure {@link Review} model. Recognition is
- * per-response (`Review.recognize`), so the body is a per-URL list of the
- * archive's responses with their ranked candidates, not one winning source:
- *
- * - **Whole-import kind toggles** disable a kind everywhere at once; every
- *   response re-derives its pick from what remains.
- * - **A per-response picker** chooses among the kinds that matched — usually one
- *   (shown as a static label, no real choice), a `<select>` only on a genuine
- *   cross-source overlap, defaulting to the top-specificity candidate.
- * - **A collapsible no-match section** folds away the responses no kind claimed
- *   (the browser noise around the FHIR traffic).
- *
- * Uncontrolled: it holds the {@link Review.Selection} and reports every change up
- * through {@link ReviewBodyProps.onChange}, so the shell can decode only the
- * chosen responses on confirm (`Review.chosen`) without owning the interaction.
+ * archive's traffic to import and, on the rare overlap, through which kind. A
+ * view over `importer-fundamentals`' pure {@link Review} model — uncontrolled,
+ * reporting every selection change up through {@link ReviewBodyProps.onChange}.
+ * The interaction model (toggles, picker, no-match fold) is described in this
+ * package's AGENTS.md.
  *
  * @packageDocumentation
  */

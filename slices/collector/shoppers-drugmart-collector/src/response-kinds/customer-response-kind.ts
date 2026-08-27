@@ -205,9 +205,7 @@ const customerUrl = /:\/\/[^/]+\/api\/[^/]+\/customers\/[^/?#]+\/?(?:[?#]|$)/
 const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
   {
     name: 'CustomerResponseKind',
-    // URL-gated by this kind's own pattern; on a match it mints the portal
-    // source (`system` only — the collector writes relative references, so no
-    // `baseUrl`).
+    // Mints the constant portal SID; no `baseUrl` — references are relative.
     tryRecognize: (url) =>
       customerUrl.test(url)
         ? Option.some({

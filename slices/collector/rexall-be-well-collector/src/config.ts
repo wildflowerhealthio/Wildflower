@@ -13,17 +13,12 @@ import { ProfileResponseKind } from './response-kinds/profile-response-kind.ts'
 import { REXALL_CAREBOOK_SYSTEM } from './source-system.ts'
 
 /**
- * The collector's response kinds, adopted once at module load: each is widened
- * to `HttpResponseKind<FhirResource>` (the per-kind `adoptUnderRecognizedRoot`
- * guard reads the whole `FhirResource` union off the element, and the two kinds
- * declare narrower outputs — Patient, MedicationRequest/MedicationDispense — all
- * `FhirResource` by covariance) and then wrapped so each resource is re-keyed
- * under {@link REXALL_CAREBOOK_SYSTEM} — the identity each kind's own
- * `tryRecognize` mints (`{ system: REXALL_CAREBOOK_SYSTEM }`, no `baseUrl`:
- * carebook's references are relative). Module-level and source-parameter-free,
- * so two plans from one config share the frozen array by identity (deep-equal
- * stays honest). Order is not load-bearing — the two recognizers are disjoint
- * (`…/profile/v2/me`, `…/pharmacy/Location?…`).
+ * The collector's response kinds, widened then adopted once at module load —
+ * each resource re-keys under {@link REXALL_CAREBOOK_SYSTEM}, the identity the
+ * kind's own `tryRecognize` mints (see the
+ * [Source Identity Explanation](../../docs/Source%20Identity%20Explanation.md)
+ * for the widen-first guard and why module scope keeps deep-equal honest).
+ * Order is not load-bearing — the two recognizers are disjoint.
  */
 const responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = (
   [

@@ -13,22 +13,12 @@ import styles from './preview-panel.module.css'
  * informed, opt-in act.
  *
  * @remarks
- * A pick is a *batch* of one or more files, each read independently, and this
- * panel renders them together under one confirm. Every file's outcome renders
- * honestly and distinctly:
- *
- * - **A read file** renders the format's interactive `ReviewBody` — a per-URL
- *   list of the archive's recognized responses, each with a picker among the
- *   kinds that matched (defaulting to the top-specificity one), a whole-import
- *   kind toggle, and a collapsible section for the responses nothing recognized.
- * - **An unreadable file** — one that did not parse at all — is reported against
- *   its own name rather than sinking the batch.
- *
- * The single confirm action appears only when at least one file has a chosen
- * response to write, and it opts into writing *every* chosen response across the
- * batch; the other state offers only a way back. Confirming here does not write —
- * it calls `onConfirm`, and the confirm step (upload-then-persist, per file, only
- * the chosen responses) is what writes.
+ * A pick is a *batch* of one or more files, each read independently and
+ * rendered together under one confirm: a read file gets the format's
+ * interactive `ReviewBody`, an unreadable one is reported against its own name
+ * rather than sinking the batch. The confirm appears only when at least one
+ * file has a chosen response, and it does not write — it calls `onConfirm`;
+ * the confirm step is what writes, and only the chosen responses.
  *
  * @packageDocumentation
  */

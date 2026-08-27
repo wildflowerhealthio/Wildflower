@@ -52,17 +52,10 @@ interface RawExchangeResponseKindOptions {
  *   `DocumentReference`
  *
  * @remarks
- * **`tryRecognize` is total — it returns `Some` for every URL and never
- * throws — and that matters twice** — coverage, and the fact that
- * `CollectorBridgeMessageHandler` fires a `CancelSnifferRequest` at any response
- * no entity claims, so narrowing this would abort the requests the user's own
- * browsing depends on. It claims at {@link Specificity.CATCH_ALL} (so any kind
- * that decodes the traffic outranks it) and carries **no `source`** — a recorder
- * records, it does not import, so it mints no identity and its traces are keyed
- * by `(sessionId, requestId)` at their own codec, not adopted. It builds no
- * `new URL` and inspects nothing, so a malformed or relative URL the sniffer
- * reports still yields `Some` rather than throwing. See invariant 1 in the
- * [package AGENTS.md](../../AGENTS.md) before touching it.
+ * **`tryRecognize` is total — `Some` for every URL, minting no `source`, never
+ * throwing** (it inspects nothing, so a malformed URL cannot trip it). A miss
+ * here fires `CancelSnifferRequest` and aborts the user's own browsing — read
+ * invariant 1 in the [package AGENTS.md](../../AGENTS.md) before touching it.
  */
 const makeRawExchangeResponseKind = (
   options: RawExchangeResponseKindOptions

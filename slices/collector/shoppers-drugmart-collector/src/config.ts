@@ -13,18 +13,12 @@ import { PrescriptionResponseKind } from './response-kinds/prescription-response
 import { SHOPPERS_DRUGMART_SYSTEM } from './source-system.ts'
 
 /**
- * The collector's response kinds, adopted once at module load: the three are
- * widened to `HttpResponseKind<FhirResource>` (a safe upcast — `HttpResponseKind`
- * is covariant in its resource type, and Patient / MedicationRequest /
- * MedicationDispense are all `FhirResource`; the per-kind `adoptUnderRecognizedRoot`
- * guard reads the whole union off the element) and then wrapped so each resource
- * is re-keyed under {@link SHOPPERS_DRUGMART_SYSTEM} — the identity each kind's
- * own `tryRecognize` mints (`{ system: SHOPPERS_DRUGMART_SYSTEM }`, no `baseUrl`:
- * the collector only ever writes relative references). Module-level and
- * source-parameter-free, so two plans from one config share the frozen array by
- * identity (deep-equal stays honest). Order is not load-bearing — the three
- * recognizers are disjoint by construction (`/customers/<uuid>`,
- * `/prescriptions/:uuid/prescription-status`, `/prescription-history?customerId=…`).
+ * The collector's response kinds, widened then adopted once at module load —
+ * each resource re-keys under {@link SHOPPERS_DRUGMART_SYSTEM}, the identity
+ * the kind's own `tryRecognize` mints (see the
+ * [Source Identity Explanation](../../docs/Source%20Identity%20Explanation.md)
+ * for the widen-first guard and why module scope keeps deep-equal honest).
+ * Order is not load-bearing — the three recognizers are disjoint.
  */
 const responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = (
   [

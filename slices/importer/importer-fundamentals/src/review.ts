@@ -3,30 +3,12 @@ import { Array as Arr, Effect, Option, pipe } from 'effect'
 import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
 
 /**
- * The per-response review model: which response kinds are enabled across the
- * whole import, and which single response overrides its default pick. Built on
- * `Extraction.recognize` / `parseWith`, resource-agnostic, and UI-framework-free
- * — the interactive `ReviewBody` a format's React package renders is a view over
- * these pure transitions.
- *
- * @remarks
- * Recognition is per-response now (each URL routed independently against the
- * pool), so a review is a set of choices *per response*, not one winning source
- * for a whole archive. Two axes of choice:
- *
- * - **Whole-import kind toggles** ({@link enabledKinds}) — disabling a kind
- *   removes it from *every* response's candidates at once, and each response
- *   re-derives its pick from what remains. This is the "I don't want any
- *   Observations from this archive" control.
- * - **Per-response overrides** ({@link overrides}) — on the rare response two
- *   kinds both claim (a real cross-source overlap), a reviewer can pick the
- *   non-default one. Keyed by response id → kind **name** (not the candidate
- *   object) because selection state must be serializable; the candidate objects
- *   that carry the kind for execution are re-derived from recognition each time.
- *
- * The default pick for a response is the top-specificity candidate among the
- * enabled kinds — exactly what routing would choose — so an untouched review
- * writes what `Extraction.run` would have.
+ * The pure per-response review model: whole-import kind toggles plus
+ * per-response pick overrides, resolved against ranked recognition. The
+ * interactive `ReviewBody` a format's React package renders is a view over
+ * these transitions — see this package's AGENTS.md for the model's rationale
+ * (per-response choices, serializable name-keyed overrides, untouched review ==
+ * what `Extraction.run` would write).
  *
  * @packageDocumentation
  */
@@ -143,14 +125,8 @@ const recognize = Extraction.recognize
  * @param responses - The decoded responses, in input order
  * @param selection - The reviewer's choices
  * @returns The resources of every chosen response that decoded, flattened in
- *   input order — never failing (a decode error or absent body contributes
- *   nothing, exactly as `Extraction.run` reports them as data)
- *
- * @remarks
- * Choose-then-persist: a response with no chosen pick (its kind disabled, or no
- * kind claimed it) is never decoded, so a confirm writes only what the reviewer
- * opted into. `Extraction.parseWith` folds every non-resource outcome to `[]`,
- * so this is total.
+ *   input order — total: a response with no chosen pick is never decoded, and
+ *   `parseWith` folds a decode error or absent body to `[]`
  */
 const chosen = <TResource>(
   pool: readonly HttpResponseKind.HttpResponseKind<TResource>[],

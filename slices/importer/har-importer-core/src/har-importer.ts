@@ -12,17 +12,10 @@ import { persistFhir } from './persist-fhir.ts'
  * in, FHIR resources out, written through the FHIR store.
  *
  * @remarks
- * The one place the three seams the HAR import is assembled from meet —
- * `web-trace-core`'s HAR codec ({@link decodeHar}), the FHIR R4 response-kind
- * pool ({@link fhirPool}), and the FHIR persist sink ({@link persistFhir}) — bound
- * to `TResource = FhirResource` and `R = FhirR4ResourcesHttpApiClient`. The
- * per-response review that sits between decode and persist is format-agnostic
- * (`importer-fundamentals`' `Review`), so it is not named here. The shell lists
- * this descriptor in its closed `format → …` registry.
- *
- * `persist` hands `fhir-r4`'s `ResourceWriteFailure`s straight back; they satisfy
- * `PersistFailure` structurally, so a drift in either shape is a compile error
- * here rather than a silent divergence.
+ * The one place the three seams meet — {@link decodeHar}, {@link fhirPool},
+ * {@link persistFhir} — listed by the shell's closed registry. The review
+ * between decode and persist is format-agnostic (`Review`), so it is not named
+ * here; see this package's AGENTS.md for the roles.
  */
 const harImporterDescriptor: FileImporterDescriptor<
   HarSettings,

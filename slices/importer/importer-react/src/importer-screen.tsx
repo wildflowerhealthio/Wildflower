@@ -16,19 +16,12 @@ import styles from './importer-screen.module.css'
  * results.
  *
  * @remarks
- * The screen is the opt-in seam made visible. It composes the closed
- * `format → { descriptor, SettingsPicker, ReviewBody }` registry — HAR is the one
- * format today. The read half runs on a pick and writes nothing —
- * `SourcePicker` → `useImportRun` (the descriptor's `decode`, once per picked
- * file) → `PreviewPanel`, which renders every file's interactive `ReviewBody`
- * under one confirm. Only the explicit confirm reaches the write half —
- * `useConfirmImport`, which for each file with a chosen response uploads its HAR
- * archive when the pick is local (so every written resource's `meta.source` names
- * it) and then decodes and persists that file's chosen responses. Best-effort:
- * one file's failed upload does not stop the rest, and it lands as its own row in
- * the results. A cancel from the preview, or "import another archive" from the
- * results, discards everything and returns to the picker with nothing further
- * written.
+ * The screen is the opt-in seam made visible: the read half
+ * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing, and only
+ * the explicit confirm reaches the write half (`useConfirmImport` —
+ * upload-then-persist, per file, only the chosen responses, best-effort). A
+ * cancel or "import another archive" discards everything with nothing further
+ * written. The flow and package roles are in this package's AGENTS.md.
  *
  * The slice owns every level of this flow rather than the host app: an app mounts
  * only this screen, the same lesson the web-trace viewer learned about split

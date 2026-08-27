@@ -339,8 +339,7 @@ const prescriptionStatusUrl =
 const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
     name: 'PrescriptionResponseKind',
-    // URL-gated by this kind's own pattern; on a match it mints the portal
-    // source (`system` only — relative references, so no `baseUrl`).
+    // Mints the constant portal SID; no `baseUrl` — references are relative.
     tryRecognize: (url) =>
       prescriptionStatusUrl.test(url)
         ? Option.some({

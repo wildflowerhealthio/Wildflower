@@ -13,22 +13,11 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * screen to review.
  *
  * @remarks
- * This is the pure, non-writing side of the flow: `decode` reads a file's text
- * into the structural responses the recognizer reads, requiring no services and
- * writing nothing. Each pick is read independently — files in a batch may decode
- * differently, or fail — and the outcomes are held side by side as
- * {@link FileReadOutcome}s so the preview can review them together. It is run
- * through `fhir-r4-react`'s `useRunAuthed` — the one runner every source in this
- * slice already reads from router context — even though a decode needs no auth,
- * so the whole slice drives one runner rather than reaching for `Effect.runPromise`
- * here. The write client stays unreachable from a read by `decode`'s own
- * construction, not by anything this hook does.
- *
- * A malformed file is the only failure `decode` has, surfaced per file as an
- * `unreadable` outcome rather than a whole-batch error — a local pick was
- * validated through the HAR parser at the picker so it rarely fires, but a server
- * archive is decoded, not re-validated, so the case exists for it and, in a
- * batch, one bad file does not sink the others.
+ * The pure, non-writing side of the flow: each pick decodes independently into
+ * a {@link FileReadOutcome}, a malformed file becoming its own `unreadable` row
+ * rather than a whole-batch error. Run through `useRunAuthed` (the slice's one
+ * runner) even though a decode needs no auth; the write client stays
+ * unreachable by `decode`'s own construction, not by anything this hook does.
  *
  * @packageDocumentation
  */

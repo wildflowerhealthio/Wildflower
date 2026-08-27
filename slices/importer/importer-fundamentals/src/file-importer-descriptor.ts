@@ -20,17 +20,10 @@ import type { PersistFailure } from './persist-failure.ts'
  *   write client for HAR); stays visible so the shell provides it
  *
  * @remarks
- * The contract mirrors the collector slice's `CollectorDescriptor` — one value a
- * closed, compile-time registry lists — but for the *archive* transport rather
- * than the live one. `decode` names the format (HAR → the `Extraction.Input`s
- * the recognizer reads); `pool` and `TResource` name the source; `persist` names
- * the sink. The per-response review that sits between `decode` and `persist` is
- * format-agnostic (`./review.ts`), so it lives here and every descriptor shares
- * it.
- *
- * `decode` requires nothing (`R = never`): reading a file into responses is a
- * pure function of its text, so a preview can never reach the write client by
- * construction. Only {@link persist} carries `R`.
+ * The archive-transport mirror of the collector slice's `CollectorDescriptor` —
+ * one value a closed, compile-time registry lists; see this package's AGENTS.md
+ * for the roles. Only {@link persist} carries `R`: `decode` requires nothing,
+ * so a preview can never reach the write client by construction.
  */
 interface FileImporterDescriptor<TSettings, TResource, R> {
   /** The format tag this descriptor binds (`'har'`); the registry's key. */

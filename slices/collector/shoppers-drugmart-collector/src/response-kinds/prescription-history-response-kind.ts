@@ -155,8 +155,7 @@ const historyUrl = /:\/\/[^/]+\/api\/[^/]+\/prescription-history\/?\?(?:[^#]*&)?
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
     name: 'PrescriptionHistoryResponseKind',
-    // URL-gated by this kind's own pattern; on a match it mints the portal
-    // source (`system` only — relative references, so no `baseUrl`).
+    // Mints the constant portal SID; no `baseUrl` — references are relative.
     tryRecognize: (url) =>
       historyUrl.test(url)
         ? Option.some({

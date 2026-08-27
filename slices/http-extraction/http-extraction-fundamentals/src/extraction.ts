@@ -116,8 +116,8 @@ const candidatesFor = <K extends Recognizes>(
   ).toSorted((a, b) => b.recognized.specificity - a.recognized.specificity)
 
 /**
- * Pick the one response kind that claims `url`, highest specificity wins
- * (ties → pool order).
+ * Pick the one response kind that claims `url` — the head of
+ * {@link candidatesFor}, whose remarks state the tie-break rule.
  *
  * @typeParam K - The caller's concrete kind type — see
  *   {@link RecognitionCandidate}
@@ -125,12 +125,6 @@ const candidatesFor = <K extends Recognizes>(
  * @param url - The response URL to route
  * @returns The claiming kind of maximal `specificity` paired with its
  *   {@link RecognizedUrlData}, or `None` when none claims
- *
- * @remarks
- * Generic in the concrete element (constraint = just the `tryRecognize` field,
- * a `Pick` so the constraint reads only what routing needs) so a caller's
- * extra fields ride through untouched. The head of {@link candidatesFor},
- * whose remarks state the tie-break rule.
  */
 const routeTo = <K extends Recognizes>(
   pool: readonly K[],
@@ -145,20 +139,15 @@ interface RecognizedResponse<K> {
 
 /**
  * Recognize each response against the whole pool, keeping **every** kind that
- * claimed it.
+ * claimed it — the ranked candidate set an interactive per-response picker
+ * needs, where {@link routeTo} resolves the single winner.
  *
  * @typeParam K - The caller's concrete kind type — see
  *   {@link RecognitionCandidate}
  * @param pool - The candidate kinds, in list order
  * @param responses - The responses to recognize, in input order
  * @returns One {@link RecognizedResponse} per input response, its `candidates`
- *   sorted by specificity descending (ties → list order), `[]` when no kind
- *   claimed
- *
- * @remarks
- * Unlike {@link routeTo} (which resolves the single winner), this keeps the
- * whole ranked candidate set — the input an interactive per-response picker
- * needs when a real cross-source overlap gives a reviewer a choice.
+ *   most specific first, `[]` when no kind claimed
  */
 const recognize = <K extends Recognizes>(
   pool: readonly K[],
@@ -257,24 +246,15 @@ const outcomeOf = <TResources>(
  *   parse failures, absent bodies — each in input order
  *
  * @remarks
- * A deterministic map-then-group rebuilt on {@link routeTo} +
- * {@link parseWith}, so the live tracker and this archive runner route through
- * the one function — same highest-specificity-wins routing (a change from the
- * old first-match-wins: overlapping same-specificity patterns still resolve by
- * list order, so keep intra-source patterns disjoint), same
- * {@link HttpResponse.HttpResponse} handed to `parse`, same "one bad response
- * never takes the run down" isolation. `collector-fundamentals`'
- * `extraction-parity.test.ts` pins that its live sniffer path routes and
- * decodes identically.
+ * A deterministic map-then-group over {@link routeTo} + {@link parseWith}, so
+ * the live tracker and this archive runner route through the one function
+ * (`collector-fundamentals`' `extraction-parity.test.ts` pins it) and one bad
+ * response never takes the run down.
  *
  * **The runner does not persist.** It hands back what it decoded; writing is
- * the caller's separate, opt-in step. That is what makes a
- * preview-then-confirm flow possible, and it keeps the runner a pure function
- * of its inputs.
- *
- * The `Effect` is infallible (`never` in the error channel): every failure
- * mode is reported as data, and the effect is only there because `parse` is
- * effectful.
+ * the caller's separate, opt-in step — that is what makes preview-then-confirm
+ * possible. The `Effect` is infallible: every failure mode is data, and the
+ * effect is only there because `parse` is effectful.
  */
 const run = <TResources>(
   responseKinds: readonly HttpResponseKind.HttpResponseKind<TResources>[],

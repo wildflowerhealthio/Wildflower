@@ -22,27 +22,15 @@ import type { FileReadOutcome } from './use-import-run.ts'
  * with the archive it came from.
  *
  * @remarks
- * This is the seam the preview-then-confirm promise rests on — nothing here runs
- * until the user confirms a batch they have reviewed. Each file is handled
- * independently and the order within a file is fixed and load-bearing:
- *
- * 1. **Secure provenance.** A `local` pick has bytes the server has never seen,
- *    so its archive is uploaded first (`useUploadHar`, a fresh uuid per the epic
- *    decision) and the reference the upload mints becomes the `meta.source` every
- *    resource from _that file_ carries. A `server` pick already names the archive
- *    it was fetched from, so it skips the upload and links to that document.
- * 2. **Write the chosen resources.** The descriptor's `persist` runs only after
- *    the file's archive reference exists, so the archive create lands before the
- *    first resource write and no resource ever points at an archive that is not
- *    there yet. **Only the reviewed, chosen responses are decoded** (`Review.chosen`),
- *    so the confirm writes exactly what the user opted into.
- *
- * The whole batch is one Effect run through `runAuthed`: `Effect.forEach` maps
- * each file to a `FileImportResult`, `Match` dispatches the file's kind, and each
- * file's failure is caught into an `uploadFailed` result so one file never stops
- * the rest (the multi-file echo of `persist` returning per-resource failures as
- * data). Files with nothing chosen (recognized by no enabled kind, or unreadable)
- * are `skipped` and never touch the server.
+ * The seam the preview-then-confirm promise rests on — nothing here runs until
+ * the user confirms a reviewed batch. Per file the order is load-bearing:
+ * secure the archive reference first (upload a `local` pick's bytes; a `server`
+ * pick already has one), then decode and persist **only the chosen responses**
+ * (`Review.chosen`) — so no resource ever points at an archive that is not
+ * there yet, and the confirm writes exactly what the user opted into. Each
+ * file's failure is caught into its own `uploadFailed` result, so one file
+ * never stops the rest; a file with nothing chosen is `skipped` and never
+ * touches the server.
  *
  * @packageDocumentation
  */

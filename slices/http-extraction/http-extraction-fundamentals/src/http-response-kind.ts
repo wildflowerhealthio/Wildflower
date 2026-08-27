@@ -6,21 +6,15 @@ import type { HttpResponse } from './http-response.ts'
  * What a {@link HttpResponseKind.tryRecognize} match tells a router: how
  * specific the claim is, and (optionally) the identity this response's
  * resources key under.
- *
- * @remarks
- * `specificity` is the number routing ranks by — highest wins — drawn from the
- * `Specificity` tier convention. `source`, when present, is the namespace every
- * resource this kind parses is adopted under; **absent** means the kind
- * recognizes the URL but mints no identity — a recorder records, it does not
- * import (web-trace). The `source` shape is structurally identical to
- * `fhir-r4/identity`'s `SourceIdentity`, on purpose, so the layering seam stays
- * clean without this package naming FHIR.
  */
 interface RecognizedUrlData {
+  /** The number routing ranks by, highest wins — see the `Specificity` tiers. */
   readonly specificity: number
   /**
    * The namespace this response's resources key under; absent = recognized but
-   * mints no identity (a recorder records, it doesn't import).
+   * mints no identity (a recorder records, it doesn't import). Structurally
+   * `fhir-r4/identity`'s `SourceIdentity`, on purpose — the layering seam stays
+   * clean without this package naming FHIR.
    */
   readonly source?: { readonly system: string; readonly baseUrl?: string }
 }
