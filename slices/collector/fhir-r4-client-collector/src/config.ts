@@ -2,12 +2,11 @@ import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
-import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { fhirR4ResponseKinds } from 'fhir-r4-source'
+import { fhirR4SourceEntities } from 'fhir-r4-source'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -123,12 +122,16 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * still applied defensively in case the value reaches this function
  * through an untyped path.
  *
- * The plan is wrapped in `adoptSourceIdentity` so every resource it parses is
- * re-keyed under the configured server's namespace: a derived local id, the
- * server's own id kept as `identifier[0]`, and references rewritten to match.
- * The source system is `config.rootUrl` — the configured root, never a URL
- * recovered from a response — and it doubles as `baseUrl`, so a server that
- * spells its self-references absolutely rewrites them the same as relative ones.
+ * `responseKinds` is `fhir-r4-source`'s already-adopted `fhirR4SourceEntities`
+ * — the single pre-adopted definition an archive import also extracts with — so
+ * every resource is re-keyed under the root of the URL it arrived on: a derived
+ * local id, the server's own id kept as `identifier[0]`, and references
+ * rewritten to match. The source system is that per-response-derived root (which
+ * doubles as `baseUrl`, so a server that spells its self-references absolutely
+ * rewrites them the same as relative ones); for a same-server capture the
+ * derived root equals `config.rootUrl`, so this collector's ids are
+ * byte-identical to the old configured-constant keying. `config.rootUrl` keeps
+ * only its navigation role — the `Open` steps still target `${config.rootUrl}/…`.
  *
  * Provenance is the plan-level `captureProvenance` hook — the whole of this
  * collector's wiring is the one line naming it. The framework mints the run
@@ -147,7 +150,7 @@ const scrapingPlan = (
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
-    responseKinds: fhirR4ResponseKinds,
+    responseKinds: fhirR4SourceEntities,
     captureProvenance,
     stepSequence: [
       // Open the Patient JSON document — the step that brings the sniffer up —
@@ -189,7 +192,7 @@ const scrapingPlan = (
       },
     ],
   })
-  return adoptSourceIdentity({ system: config.rootUrl, baseUrl: config.rootUrl })(plan)
+  return plan
 }
 
 /**

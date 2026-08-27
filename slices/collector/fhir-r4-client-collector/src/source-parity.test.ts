@@ -16,12 +16,16 @@ import { InstanceConfig, scrapingPlan } from './config.ts'
 
 /**
  * Parity between this collector's live plan and `fhir-r4-source`'s extraction
- * surface: the two consume the same entity tuple, and a resource captured from
- * its configured root must carry the byte-identical id either way. These tests
- * live here, not in `fhir-r4-source`, because they are the only ones that
- * need the live `InstanceConfig`/`scrapingPlan` — the source's own behaviour is
- * pinned in that package's `source-entities.test.ts` and the response-kind
- * tests.
+ * surface. Post-unification (Phase 2) the two are the **same** pre-adopted
+ * array: the live plan's `responseKinds` IS `fhirR4SourceEntities` by reference,
+ * so a resource decodes and keys identically live and in an archive by
+ * construction rather than by coincidence. What is left to pin here — the only
+ * claims that are not tautologies — is that reference identity itself, that the
+ * shared entities key a resource under the root of the URL it arrived on, and
+ * the property the live-keying switch actually rests on: a capture from a
+ * configured `rootUrl` recognizes with `source.system === rootUrl` (and
+ * `baseUrl` likewise). These live here, not in `fhir-r4-source`, because they
+ * are the only ones that need the live `InstanceConfig`/`scrapingPlan`.
  */
 
 /** The plan factory ignores its run id; a fixed one keeps builds comparable. */
@@ -36,8 +40,8 @@ const responseKindNamed = (
   return found
 }
 
-/** Parse `body` at `url` through the importer entity named `name`. */
-const parseImporter = (name: string, url: string, body: unknown): readonly FhirResource[] =>
+/** Parse `body` at `url` through the shared source entity named `name`. */
+const parseSource = (name: string, url: string, body: unknown): readonly FhirResource[] =>
   Effect.runSync(
     responseKindNamed(fhirR4SourceEntities, name).parse(
       makeCollectorHttpResponse({
@@ -59,31 +63,29 @@ const hasResourceSegment = (rootUrl: string): boolean =>
     .split('/')
     .some((segment) => segment === 'Patient' || segment === 'Observation')
 
-describe('fhirR4SourceEntities against the live plan', () => {
-  test('matches the live plan when a resource is captured from its configured root', () => {
+describe('the live plan shares fhir-r4-source pre-adopted entities', () => {
+  test('the plan responseKinds IS fhirR4SourceEntities (same single definition)', () => {
+    // The point of the unification: no separate live-adoption wrapper, so the
+    // live plan and an archive import extract with the exact same frozen array.
+    fc.assert(
+      fc.property(Arbitrary.make(InstanceConfig), (config) => {
+        expect(scrapingPlan(config, FIXED_RUN_ID).responseKinds).toBe(fhirR4SourceEntities)
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
+  })
+
+  test('keys a resource captured from its configured root under that root', () => {
     const rootUrl = 'https://r4.example.org/baseR4'
     const body = { resourceType: 'Patient', id: 'pat-7' }
-    const [importedPatient] = parseImporter('PatientResponseKind', `${rootUrl}/Patient/pat-7`, body)
-    const [livePatient] = Effect.runSync(
-      responseKindNamed(
-        scrapingPlan({ _tag: 'fhir-r4', rootUrl, patientId: 'pat-7' }, FIXED_RUN_ID).responseKinds,
-        'PatientResponseKind'
-      ).parse(
-        makeCollectorHttpResponse({
-          url: `${rootUrl}/Patient/pat-7`,
-          headers: [['content-type', 'application/fhir+json']],
-          body: JSON.stringify(body),
-        })
-      )
-    )
-    expect(importedPatient?.id).toBe(localResourceId(rootUrl, 'Patient', 'pat-7'))
-    expect(importedPatient?.id).toBe(livePatient?.id)
+    const [patient] = parseSource('PatientResponseKind', `${rootUrl}/Patient/pat-7`, body)
+    expect(patient?.id).toBe(localResourceId(rootUrl, 'Patient', 'pat-7'))
   })
 
   test('property: keys any configured rootUrl under that same root', () => {
     fc.assert(
       fc.property(Arbitrary.make(InstanceConfig), (config) => {
-        const [patient] = parseImporter(
+        const [patient] = parseSource(
           'PatientResponseKind',
           `${config.rootUrl}/Patient/${encodeURIComponent(config.patientId)}`,
           { resourceType: 'Patient', id: config.patientId }
@@ -98,10 +100,10 @@ describe('fhirR4SourceEntities against the live plan', () => {
 describe("tryRecognize mints the configured root as the resource's source", () => {
   // The load-bearing guard for Phase 2's keying switch: a resource captured from
   // a configured `rootUrl` recognizes with `source.system === rootUrl` (and
-  // `baseUrl` likewise), so the derived id equals the live-adopted one. When
-  // Phase 2 drops `adoptSourceIdentity` in favour of the pre-adopted kinds, the
-  // live==archive assertions above become tautologies and this property is the
-  // only real guard left on that switch.
+  // `baseUrl` likewise), so the derived id equals the one the old
+  // configured-constant keying gave it. With the live-adoption wrapper gone, the
+  // live==archive assertions above are reference-identical by construction, so
+  // this property is the only real guard left on that switch.
   test('property: PatientResponseKind recognizes the configured root as its source', () => {
     fc.assert(
       fc.property(

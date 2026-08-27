@@ -206,7 +206,7 @@ type TraceSessionId = typeof TraceSessionId.Type
  * and the decode side reads identifiers, never the id.
  *
  * This is the **one** site that mints a trace's id. A trace must never also be
- * routed through `adoptSourceIdentity` — that would hash this hash.
+ * routed through `adoptUnderRecognizedRoot` — that would hash this hash.
  *
  * **Not free** — two hash lanes, not a concatenation — so it belongs at a write
  * or a decode, never in a React render body. A list or selection key wants

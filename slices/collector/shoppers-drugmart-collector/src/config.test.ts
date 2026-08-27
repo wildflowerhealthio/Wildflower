@@ -313,12 +313,12 @@ describe('scrapingPlan', () => {
 })
 
 /**
- * The plan's entities as the framework sees them — wrapped by
- * `adoptSourceIdentity`, not the raw module singletons the entity suites
- * exercise. That distinction is the point of this block: the entity suites pin
- * the portal-JSON → R4 synthesis, and these pin what the plan does to the
- * synthesized resources afterwards (re-key under a derived local id, keep the
- * portal id as `identifier[0]`, rewrite relative references).
+ * The plan's entities as the framework sees them — the module-level kinds
+ * pre-adopted with `adoptUnderRecognizedRoot`, not the raw module singletons the
+ * entity suites exercise. That distinction is the point of this block: the
+ * entity suites pin the portal-JSON → R4 synthesis, and these pin what adoption
+ * does to the synthesized resources afterwards (re-key under a derived local id,
+ * keep the portal id as `identifier[0]`, rewrite relative references).
  */
 describe('source identity', () => {
   const responseKindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {

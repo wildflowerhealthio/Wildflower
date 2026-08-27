@@ -141,7 +141,7 @@ const patientWire = (patient: SourcePatient): Record<string, unknown> => {
  * The account `Patient` **wire**, keyed by `customer.pcid`, carrying the
  * account-level name, email, phone, and address. It carries a `link.seealso` to
  * each managed person's demographic Patient (`patientIds`) — after
- * `adoptSourceIdentity` rewrites those relative references, the account↔person
+ * `adoptUnderRecognizedRoot` rewrites those relative references, the account↔person
  * join the customers payload asserts is finally materialized in the store.
  */
 const accountPatientWire = (

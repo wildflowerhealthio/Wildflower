@@ -231,10 +231,10 @@ describe('scrapingPlan', () => {
 })
 
 /**
- * The plan's entities as the framework sees them — wrapped by
- * `adoptSourceIdentity`, not the raw module singletons the entity suites
- * exercise. The entity suites pin the FHIR decode; these pin what the plan does
- * to it afterwards.
+ * The plan's entities as the framework sees them — `fhir-r4-source`'s
+ * pre-adopted `fhirR4SourceEntities`, not the raw module singletons the entity
+ * suites exercise. The entity suites pin the FHIR decode; these pin what
+ * adoption does to it afterwards (re-key under the URL's root).
  */
 describe('source identity', () => {
   const ROOT_URL = 'https://r4.example.org/baseR4'

@@ -20,8 +20,9 @@ import { PatientResponseKind } from './response-kinds/patient-response-kind.ts'
  *
  * The declared element type is the whole `FhirResource` union, which each
  * entity's narrower `HttpResponseKind` satisfies by covariance — so no cast is
- * needed, and `adoptSourceIdentity` (whose guard demands the full union) can
- * wrap the tuple as-is. `mustHaveQuery` on the Observation-list pattern keeps
+ * needed, and `adoptUnderRecognizedRoot` (whose per-kind guard demands the full
+ * union) can map over the tuple as-is. `mustHaveQuery` on the Observation-list
+ * pattern keeps
  * the two Observation entities disjoint, so the order is not load-bearing; it
  * only fixes the sequence both surfaces route by.
  */

@@ -268,10 +268,11 @@ describe('scrapingPlan', () => {
 })
 
 /**
- * The plan's entities as the framework sees them — wrapped by
- * `adoptSourceIdentity`, not the raw module singletons the entity suites
- * exercise. That distinction is the point of this block: the entity suites pin
- * the carebook decode, and these pin what the plan does to it afterwards.
+ * The plan's entities as the framework sees them — the module-level kinds
+ * pre-adopted with `adoptUnderRecognizedRoot`, not the raw module singletons the
+ * entity suites exercise. That distinction is the point of this block: the
+ * entity suites pin the carebook decode, and these pin what adoption does to it
+ * afterwards.
  */
 describe('source identity', () => {
   const responseKindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {

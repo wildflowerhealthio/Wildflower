@@ -2,7 +2,7 @@ import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
-import { adoptSourceIdentity } from 'fhir-r4/identity'
+import { adoptUnderRecognizedRoot } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
@@ -11,6 +11,28 @@ import { CustomerResponseKind } from './response-kinds/customer-response-kind.ts
 import { PrescriptionHistoryResponseKind } from './response-kinds/prescription-history-response-kind.ts'
 import { PrescriptionResponseKind } from './response-kinds/prescription-response-kind.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from './source-system.ts'
+
+/**
+ * The collector's response kinds, adopted once at module load: the three are
+ * widened to `HttpResponseKind<FhirResource>` (a safe upcast — `HttpResponseKind`
+ * is covariant in its resource type, and Patient / MedicationRequest /
+ * MedicationDispense are all `FhirResource`; the per-kind `adoptUnderRecognizedRoot`
+ * guard reads the whole union off the element) and then wrapped so each resource
+ * is re-keyed under {@link SHOPPERS_DRUGMART_SYSTEM} — the identity each kind's
+ * own `tryRecognize` mints (`{ system: SHOPPERS_DRUGMART_SYSTEM }`, no `baseUrl`:
+ * the collector only ever writes relative references). Module-level and
+ * source-parameter-free, so two plans from one config share the frozen array by
+ * identity (deep-equal stays honest). Order is not load-bearing — the three
+ * recognizers are disjoint by construction (`/customers/<uuid>`,
+ * `/prescriptions/:uuid/prescription-status`, `/prescription-history?customerId=…`).
+ */
+const responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = (
+  [
+    CustomerResponseKind,
+    PrescriptionResponseKind,
+    PrescriptionHistoryResponseKind,
+  ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[]
+).map(adoptUnderRecognizedRoot)
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -211,7 +233,7 @@ const captureProvenance = makeFhirProvenanceCapture('shoppers-drugmart')<FhirRes
  * recognizes `…/prescription-history?customerId=…` — disjoint patterns, so entity
  * order is not load-bearing.
  *
- * The plan is wrapped in `adoptSourceIdentity` under
+ * `responseKinds` is the module-level {@link responseKinds}, pre-adopted under
  * {@link SHOPPERS_DRUGMART_SYSTEM}, so every resource its entities synthesize is
  * re-keyed under a derived local id, with the portal's own id kept as
  * `identifier[0]`. No `baseUrl`: the collector only ever writes relative
@@ -237,17 +259,7 @@ const scrapingPlan = (
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Shoppers Drug Mart',
-    // Widening upcast (safe: `HttpResponseKind` is covariant in its resource
-    // type, and Patient / MedicationRequest / MedicationDispense are all
-    // `FhirResource`), mirroring `fhir-r4-client-collector`.
-    // Order is not load-bearing — the three recognizers are disjoint by
-    // construction (`/customers/<uuid>`, `/prescriptions/:uuid/prescription-status`,
-    // `/prescription-history?customerId=…` — different path segments).
-    responseKinds: [
-      CustomerResponseKind,
-      PrescriptionResponseKind,
-      PrescriptionHistoryResponseKind,
-    ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[],
+    responseKinds,
     captureProvenance,
     stepSequence: [
       // Open the `mypharmacy` login page; this first `Open` builds the sniffer.
@@ -358,7 +370,7 @@ const scrapingPlan = (
       { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: HISTORY_SETTLE },
     ],
   })
-  return adoptSourceIdentity({ system: SHOPPERS_DRUGMART_SYSTEM })(plan)
+  return plan
 }
 
 /**

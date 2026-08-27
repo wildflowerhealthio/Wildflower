@@ -2,7 +2,7 @@ import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
-import { adoptSourceIdentity } from 'fhir-r4/identity'
+import { adoptUnderRecognizedRoot } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
@@ -11,6 +11,26 @@ import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 import { MedicationListResponseKind } from './response-kinds/medication-list-response-kind.ts'
 import { ProfileResponseKind } from './response-kinds/profile-response-kind.ts'
 import { REXALL_CAREBOOK_SYSTEM } from './source-system.ts'
+
+/**
+ * The collector's response kinds, adopted once at module load: each is widened
+ * to `HttpResponseKind<FhirResource>` (the per-kind `adoptUnderRecognizedRoot`
+ * guard reads the whole `FhirResource` union off the element, and the two kinds
+ * declare narrower outputs — Patient, MedicationRequest/MedicationDispense — all
+ * `FhirResource` by covariance) and then wrapped so each resource is re-keyed
+ * under {@link REXALL_CAREBOOK_SYSTEM} — the identity each kind's own
+ * `tryRecognize` mints (`{ system: REXALL_CAREBOOK_SYSTEM }`, no `baseUrl`:
+ * carebook's references are relative). Module-level and source-parameter-free,
+ * so two plans from one config share the frozen array by identity (deep-equal
+ * stays honest). Order is not load-bearing — the two recognizers are disjoint
+ * (`…/profile/v2/me`, `…/pharmacy/Location?…`).
+ */
+const responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = (
+  [
+    ProfileResponseKind,
+    MedicationListResponseKind,
+  ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[]
+).map(adoptUnderRecognizedRoot)
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -168,7 +188,7 @@ const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
  * already carries `MedicationDispense`, so the deferred `followUpSteps` crawl is
  * left out until a capture diff proves the detail XHR is richer (issue #339).
  *
- * The plan is wrapped in `adoptSourceIdentity` under
+ * `responseKinds` is the module-level {@link responseKinds}, pre-adopted under
  * {@link REXALL_CAREBOOK_SYSTEM}, so every resource it parses is re-keyed under
  * a derived local id with the carebook id kept as `identifier[0]`. No `baseUrl`:
  * carebook's references are relative. This is what separates a
@@ -193,10 +213,7 @@ const scrapingPlan = (
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Rexall Be Well',
-    responseKinds: [
-      ProfileResponseKind,
-      MedicationListResponseKind,
-    ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[],
+    responseKinds,
     captureProvenance,
     stepSequence: [
       // Open the login page — the step that builds the sniffer — then wait for
@@ -288,7 +305,7 @@ const scrapingPlan = (
       { _tag: 'Delay', name: 'Collecting prescriptions', duration: SETTLE },
     ],
   })
-  return adoptSourceIdentity({ system: REXALL_CAREBOOK_SYSTEM })(plan)
+  return plan
 }
 
 /**
