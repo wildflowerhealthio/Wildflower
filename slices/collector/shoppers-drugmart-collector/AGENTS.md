@@ -11,9 +11,11 @@ shares no code with it. The write sink is `fhir-r4/clients`' shared
 `persistResources` (the same one every FHIR collector uses); the JSON extractor
 is a verbatim copy, per slice layering.
 
-Like every other collector, the plan is wrapped in `adoptSourceIdentity` so its
-resources are re-keyed under derived local ids — see
-[account vs patient records](#account-vs-patient-records) and the
+Like every other FHIR-family collector, its resources are re-keyed under derived
+local ids: `SHOPPERS_DRUGMART_SYSTEM` rides each kind's own `tryRecognize` as
+`source: { system: SHOPPERS_DRUGMART_SYSTEM }` (no `baseUrl`), and the kind list
+is mapped through `adoptUnderRecognizedRoot` once at module scope in `config.ts`
+— see [account vs patient records](#account-vs-patient-records) and the
 [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 
 ## The endpoints (version-agnostic)
@@ -64,8 +66,9 @@ password }`) with fast-check arbitraries, `defaultConfig`, the
   helpers shared across entities.
 - `src/shoppers.ts` — the identifier/coding-system URL catalogue
   (`ShoppersIdentifierSystem`, `DIN_CODE_SYSTEM`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`),
-  plus `SHOPPERS_DRUGMART_SYSTEM` (in `config.ts`) — the Wildflower-minted `sid`
-  URI the plan adopts under, mirroring Rexall's `REXALL_CAREBOOK_SYSTEM`.
+  plus `SHOPPERS_DRUGMART_SYSTEM` (in `src/source-system.ts`) — the
+  Wildflower-minted `sid` URI each kind's `tryRecognize` mints and adoption keys
+  under, mirroring Rexall's `REXALL_CAREBOOK_SYSTEM`.
 - the write sink — `fhir-r4/clients`' shared `persistResources`, imported in
   `config.ts` and handed straight to the descriptor (no per-collector copy).
 - provenance — the plan-level `captureProvenance` hook
@@ -135,7 +138,7 @@ the customers payload carries both together. So `CustomerResponseKind` emits:
   address) carrying a `link.seealso` to each demographic Patient.
 
 Each carries its own id as a FHIR `identifier` (distinct systems in
-`shoppers.ts`). `adoptSourceIdentity` re-keys each Patient under
+`shoppers.ts`). `adoptUnderRecognizedRoot` re-keys each Patient under
 `localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', <original id>)` — the account
 and each person get **distinct** derived ids (the original id is an input to the
 derivation) — and rewrites the `link.seealso` relative reference onto the

@@ -9,19 +9,30 @@ both build on this package, never the reverse.
 ## Namespaces
 
 One namespace per module, in the `effect` style: the file is the noun, the
-principal type shares the namespace's name (`Source.Source`), and functions
-read in the namespace's context (`Extraction.run`, not `runExtraction`). All
-five are exported from the **flat root entry**:
-`import { HttpResponseKind, Extraction, Source } from 'http-extraction-fundamentals'`.
+principal type shares the namespace's name (`HttpResponseKind.HttpResponseKind`),
+and functions read in the namespace's context (`Extraction.run`, not
+`runExtraction`). All are exported from the **flat root entry**:
+`import { HttpResponseKind, Extraction, Specificity, UrlMatch } from 'http-extraction-fundamentals'`.
 
 - **`HttpResponseKind`** (`src/http-response-kind.ts`) — the recipe for
-  recognizing and decoding one response shape: `name` / `isFoundAt` / `parse`.
-  `parse` takes an `HttpResponse` and returns
-  `Effect<readonly TResources[], ParseError>` — a pure decode, never
+  recognizing and decoding one response shape: `name` / `tryRecognize` /
+  `parse`. `tryRecognize(url)` returns `Option<RecognizedUrlData>` — `None` when
+  the kind does not claim the URL, `Some { specificity, source? }` when it does,
+  where each kind constructs its **own** identity: recognition, root, and
+  confidence are one read. `source` (structurally `fhir-r4/identity`'s
+  `SourceIdentity`, on purpose) is the namespace this response's resources key
+  under, and is **absent** for a kind that recognizes but mints no identity (a
+  recorder records, it does not import). `parse` takes an `HttpResponse` and
+  returns `Effect<readonly TResources[], ParseError>` — a pure decode, never
   navigation. `make` shallow-clones and deep-freezes.
 - **`UrlMatch`** (`src/url-match.ts`) — the declarative URL-recognition regex
-  builder `isFoundAt` predicates are made from (`make` / `literal` / `id`,
-  `pathEnd` vs `mustHaveQuery` boundaries).
+  builder a kind's `tryRecognize` is made from (`make` / `literal` / `id`,
+  `pathEnd` vs `mustHaveQuery` boundaries). A `make` call returns the
+  `UrlMatcher` itself — the bare `(url) => Option<root>` function: recognition
+  **and** root are one read of one `^`-anchored, scheme-required pattern (group 1
+  captures `https?://<authority><base path>`), so they can never disagree. A
+  non-`http(s)` or scheme-less URL is `None` (a deliberate tightening — a root
+  must be a URL a `SourceIdentity` can key under).
 - **`HttpResponse`** (`src/http-response.ts`) — what a `parse` sees: `id` /
   `url` / `status` / `statusText` / `headers` (`Headers`) / `startedAt` /
   `bytes()` / `text()`. An interface, not a class: `make` builds one over
@@ -30,20 +41,23 @@ five are exported from the **flat root entry**:
   chunks (the live path) — that `implements` clause is the compile-time pin
   that both paths hand entities the same surface.
 - **`Extraction`** (`src/extraction.ts`) — run archived responses through a
-  source's entities. `Extraction.run(entities, inputs)` folds each
-  `Extraction.Input` (an `HttpResponse.Init` + `bodyAbsent`) through
-  first-`isFoundAt`-match-wins routing into an `Extraction.Extraction`: the
-  four-way accounting of `batches` / `unmatched` / `parseFailures` /
-  `bodyAbsent`, every input in exactly one bucket, in input order.
-  Infallible — failures are data, not errors. It never persists.
-- **`Source`** (`src/source.ts`) — an HTTP source as one first-class value:
-  `Source.Source<TResources>` carries both how it claims a response set with no
-  user configuration (`name` / `specificity` / `claims`) and what a consumer
-  drives once traffic is in hand (`tag`, `responseKinds` — a plain readonly
-  array — and `rootOf(url)`). `Source.resolve` picks the most specific claimant;
-  specificity convention: portal-specific > protocol-generic > catch-all.
-  Concrete source packages assemble one (`fhir-r4-source`'s `fhirR4Source`);
-  each consumer keeps its own closed list of them.
+  source's entities. `routeTo(pool, url)` picks the one claiming kind of highest
+  specificity (ties → list order); `recognize(pool, responses)` keeps **every**
+  claiming kind per response, ranked (the input an interactive picker needs);
+  `parseWith(kind, response)` decodes one response, folding every outcome —
+  resources, `parseError`, `bodyAbsent` — to data. `run(entities, inputs)` is
+  the map-then-group rebuilt on `routeTo` + `parseWith`: it folds each
+  `Extraction.Input` (an `HttpResponse.Init` + `bodyAbsent`) into an
+  `Extraction.Extraction`, the four-way accounting of `batches` / `unmatched` /
+  `parseFailures` / `bodyAbsent`, every input in exactly one bucket, in input
+  order. Infallible — failures are data, not errors. It never persists.
+- **`Specificity`** (`src/specificity.ts`) — the exported cross-source tier
+  constants a kind's `tryRecognize` draws its `specificity` from and routing
+  ranks by, **highest wins**: `PORTAL` (100, a named patient portal) > `PROTOCOL`
+  (50, any FHIR R4 server) > `CATCH_ALL` (0, a recorder). A plain ordered
+  convention, not an enum this package polices — the ranking the deleted `Source`
+  value's doc comment used to hold. Room left between tiers so a new source slots
+  in without renumbering.
 
 `http-extraction-fundamentals/test-helpers` is the one sub-entry:
 `makeHttpResponse`, `makeExtractionInput`, the `SimpleResponseKind` /

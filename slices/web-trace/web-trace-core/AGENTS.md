@@ -91,8 +91,8 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   _rendered_ as is `fhir-r4`'s `localResourceId` — the one derivation every
   stored resource is keyed under — so a reader goes through the two `Identifier`
   entries, never through the id. `traceResourceId` is the **single** site that
-  mints it; a trace must never also be run through `adoptSourceIdentity`, which
-  would hash the hash. A session label is an arbitrary string, so spelling the
+  mints it; a trace must never also be run through `adoptUnderRecognizedRoot`,
+  which would hash the hash. A session label is an arbitrary string, so spelling the
   id `{sessionId}-{requestId}` verbatim could mint an id outside FHIR's grammar;
   going through the derivation makes that unrepresentable. The pair is folded
   with `joinIdComponents`, the length-prefixed encoding `localResourceId` uses on

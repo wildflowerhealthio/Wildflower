@@ -114,17 +114,20 @@ before adding one.
   and therefore lossy: a body that is not valid UTF-8 comes back peppered with
   U+FFFD, and a re-encode of that string is not the body that arrived. Anything
   that stores, hashes, or forwards a body must read `bytes()`.
-- **First `isFoundAt` match wins, so overlapping URL patterns are a silent
-  ordering dependency — keep them disjoint.** `CollectorBridgeMessageHandler`
-  consults `responseKinds` in list order at each `ResponseStart`; a
-  too-broad pattern earlier in the list shadows a later entity. Make patterns
-  disjoint by construction, e.g. `mustHaveQuery` on a list-by-query pattern so
-  it can't also match a single-resource URL (see `UrlMatch`).
-  `http-extraction-fundamentals`' `Extraction.run` walks the same list the
-  same way, so an entity list shadows identically live and in an archive
-  import — that is
-  deliberate: a source must not decode one thing through a webview and another
-  through an archive.
+- **Routing is highest-specificity-wins, ties → list order, so overlapping
+  same-specificity patterns are a silent ordering dependency — keep them
+  disjoint.** `CollectorBridgeMessageHandler` routes each `ResponseStart` through
+  `Extraction.routeTo`, which ranks the kinds whose `tryRecognize` claims the URL
+  by `specificity` and breaks a tie by list order. A too-broad pattern at the
+  same tier earlier in the list then shadows a later entity. Make patterns
+  disjoint by construction, e.g. `mustHaveQuery` on a list-by-query pattern so it
+  can't also match a single-resource URL (see `UrlMatch`). `specificity` only
+  disambiguates a **cross-source** pool (the importer's flat pool); within one
+  collector plan every kind sits at the same tier, so intra-plan disjointness is
+  still required. `http-extraction-fundamentals`' `Extraction.run` routes through
+  the same `routeTo`, so an entity list shadows identically live and in an
+  archive import — that is deliberate: a source must not decode one thing through
+  a webview and another through an archive.
 - **A new config in the union changes the remotes API wire schema — regenerate
   the OpenAPI snapshots.** `CollectorConfig` is the payload of
   `CreateRemote`/`UpdateRemote`; widening it drifts the committed spec. Run
@@ -214,10 +217,12 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   fresh `parse` closure each time (`toEqual` compares functions by reference).
   The projection still fails loudly on a mis-dispatch (a plan from the wrong
   descriptor differs in all four fields) without asserting a purity the interface
-  never promised. The `adoptSourceIdentity` wrapper a production collector ends
-  its factory with is what keeps deep-equal working for the per-collector suites:
-  it memoizes one wrapped `parse` per `(source, entity)`, so two plans built from
-  one config still name the same function.
+  never promised. Module-scope pre-adoption is what keeps deep-equal working for
+  the per-collector suites: a production collector's kinds are wrapped with
+  `adoptUnderRecognizedRoot` **once at module load** (the combinator takes no
+  source parameter — identity is read per response inside `parse` — so there is
+  nothing to parameterize and no memo), and every plan a config builds names the
+  same frozen kind by identity.
 - **Every `Step` carries a required `name`; the machine pushes it as a separate
   `SetSnifferStatus` control message, _not_ on the step's own action.** As the
   machine reaches each step it emits `SetSnifferStatus { name }`, which the Tauri

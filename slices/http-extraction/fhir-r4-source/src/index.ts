@@ -13,7 +13,8 @@
  *   keys resources under its configured root);
  * - the source response kinds (`fhirR4SourceEntities`) — the same tuple wrapped
  *   with `adoptUnderRecognizedRoot`, so each resource is keyed under the root
- *   of the URL it arrived on. This is what `importer-core`'s pool registers.
+ *   of the URL it arrived on. This is what `har-importer-core`'s `fhirPool`
+ *   registers.
  *
  * The collector's own concerns — config schema, scraping plan, config form,
  * descriptor — stay in `fhir-r4-client-collector`, which depends on this

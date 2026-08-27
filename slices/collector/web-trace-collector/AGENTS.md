@@ -35,17 +35,22 @@ recording _means_, not just how it is implemented.
 
 ### 1. No URL filtering, ever
 
-`isFoundAt` returns `true` unconditionally. The allowlist governs **bodies**,
-never whether an exchange is recorded — every response the sniffer reports
-becomes a `DocumentReference`, and a declined body still records its `size`,
-`hash`, and the reason it was declined.
+`tryRecognize` is **total** — it returns `Some({ specificity: Specificity.CATCH_ALL })`
+for every URL, with **no `source`** (it records, it does not import — there is no
+identity to mint and nothing to adopt). It never throws, even on a malformed or
+relative URL (`new URL(url)` would reject, so it does not parse the URL at all).
+The allowlist governs **bodies**, never whether an exchange is recorded — every
+response the sniffer reports becomes a `DocumentReference`, and a declined body
+still records its `size`, `hash`, and the reason it was declined.
 
 **The catch-all matters twice.** The obvious half is coverage: a recording that
 filtered by URL would decide in advance what a collector author is allowed to
 discover. The half that is easy to miss is that `CollectorBridgeMessageHandler`
-fires a `CancelSnifferRequest` at any response no entity claims — so a narrower
-predicate would not merely skip those exchanges, it would **abort the requests
-the user's own browsing depends on** and break the page in front of them.
+fires a `CancelSnifferRequest` at any response **no entity claims** (a `None` from
+routing) — so a `tryRecognize` that returned `None`, or one that threw, would not
+merely skip those exchanges, it would **abort the requests the user's own
+browsing depends on** and break the page in front of them. `CATCH_ALL` is the
+lowest tier, so a real source kind always out-ranks it in a mixed pool.
 
 ### 2. Redaction never happens on the write path
 
@@ -84,10 +89,11 @@ artifact for designing a collector against a search API — are not captured.
 - **The encoding lives in `web-trace-core` and is imported, never re-derived.**
   A second copy drifts, and already-recorded sessions stop decoding.
   `toDocumentReference` is the only way a trace resource is built here.
-- **This plan is _not_ wrapped in `adoptSourceIdentity`, and must not be.** A
-  trace's id already comes from the shared derivation, applied once at
-  `traceResourceId`; adopting it on top would hash a hash. The combinator is for
-  a collector that _imports_ resources another system identified — see the
+- **This kind is _not_ adopted, and must not be.** Its `tryRecognize` mints no
+  `source`, so it is never mapped through `adoptUnderRecognizedRoot`. A trace's id
+  already comes from the shared derivation, applied once at `traceResourceId`;
+  adopting it on top would hash a hash. The combinator is for a collector that
+  _imports_ resources another system identified — see the
   [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 - **`makeScrapingPlan` is `(config, runId) => plan`, deterministic given its
   inputs — the framework mints the run id.** The session id is

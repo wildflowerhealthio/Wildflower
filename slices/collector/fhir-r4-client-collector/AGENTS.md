@@ -17,19 +17,22 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'fhir-r4', rootUrl, patientId }`)
   with fast-check arbitraries, `defaultConfig` (the public SMART Health IT
   sandbox), the two-page `scrapingPlan`, and the `FhirR4CollectorDescriptor`.
-  The plan decodes through `fhir-r4-source`'s `fhirR4ResponseKinds`
-  tuple — the entities themselves (and the assembled `fhirR4Source` an archive
-  import extracts with) live in that package, the **source package** this
-  collector builds its live plan from. See
+  The plan's `responseKinds` are `fhir-r4-source`'s `fhirR4SourceEntities`
+  consumed **directly** — the same pre-adopted definition the archive importer
+  runs, so live and archive are reference identity and cannot disagree. The
+  response kinds live in that package, the **source package** this collector
+  builds its live plan from. See
   [fhir-r4-source AGENTS.md](../../http-extraction/fhir-r4-source/AGENTS.md).
 - the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('fhir-r4')`,
   one module-level line in `src/config.ts`, stated as the plan's
   `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
-- the source identity — `adoptSourceIdentity({ system: config.rootUrl, baseUrl:
-config.rootUrl })` wrapping the plan factory's return, so every resource is
-  keyed under the **configured** root rather than the server's own id. See the
+- the source identity — nothing to wire here: `fhirR4SourceEntities` is already
+  adopted (`adoptUnderRecognizedRoot`), so each resource keys under the root of
+  the URL it arrived on, minted by each kind's own `tryRecognize`
+  (`recognizeFhirRoot` → `{ system: root, baseUrl: root }`). See
+  [live keying](#live-keying-is-per-response) and the
   [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 - `src/fhir-r4-config-form.tsx` (+ `.module.css`) — the rootUrl/patientId
   `ConfigFormProps` form `collector-react` registers.
@@ -79,16 +82,27 @@ both link directions live in `web-trace-core`; this package only names itself.
 ## Source surface
 
 Lives in [`fhir-r4-source`](../../http-extraction/fhir-r4-source/AGENTS.md)
-(`slices/http-extraction`), together with the response kinds:
-`fhirR4SourceEntities` (keying each resource under the root of the URL it
-arrived on), `fhirRootOf` (the per-URL root primitive — that package owns "what
-a FHIR root is"), and the assembled `fhirR4Source` value, which claims FHIR R4
-traffic by URL at specificity `50`. The live plan here and the source surface there
-consume the **same** `fhirR4ResponseKinds` tuple, so a resource decodes
-identically through the sniffer and through an archive; only the identity
-source differs (the live plan keys under `config.rootUrl`, an archive import
-keys under each response's own root), and `source-parity.test.ts` in this
-package pins that the two coincide for a capture from the configured server.
+(`slices/http-extraction`), together with the response kinds: each kind's
+`tryRecognize` (built from `recognizeFhirRoot`) claims a FHIR URL at
+`Specificity.PROTOCOL` and mints `{ system: root, baseUrl: root }` from the
+matcher's own capture, and `fhirR4SourceEntities` is that kind tuple pre-adopted.
+The live plan here consumes `fhirR4SourceEntities` **directly** — the same
+single, already-adopted array the archive importer runs — so a resource decodes
+_and_ keys identically through the sniffer and through an archive, by reference.
+`source-parity.test.ts` in this package pins the surviving load-bearing property:
+`tryRecognize(${config.rootUrl}/Patient/…).source.{system,baseUrl} ===
+config.rootUrl` for a capture from the configured server.
+
+### Live keying is per-response
+
+FHIR keying derives from each response's **own URL root**, not `config.rootUrl`.
+For an ordinary same-server capture the two coincide, byte for byte. **Caveat:** a
+FHIR endpoint that redirects **cross-origin or cross-basepath** — the sniffer pins
+`response.url` at `ResponseStart`, so the derived root becomes the redirect
+target, where config-constant keying would have used `config.rootUrl`. Accepted:
+keying under a resource's own URL is what lets a two-server capture separate
+cleanly, and `config.rootUrl` keeps only its navigation role (the plan's `Open`
+steps still target `${config.rootUrl}/Patient/…`).
 
 ## Traps
 
@@ -114,8 +128,8 @@ package pins that the two coincide for a capture from the configured server.
   wrong — the wiring only adds `meta.source` and a separate diagnostic.
 - **`responseKinds` order is not load-bearing here, and should stay that
   way.** `mustHaveQuery` on the Observation-list pattern keeps it disjoint from
-  the single-`Observation` pattern; without it the first `isFoundAt` match would
-  silently win.
+  the single-`Observation` pattern; without it the two would tie on specificity
+  and routing would fall back to list order, silently shadowing the narrower.
 - **`patientId` is `encodeURIComponent`-ed even though the schema already
   constrains it** to the FHIR R4 logical-id grammar — defence for a value that
   reaches the factory through an untyped path. `config.test.ts` pins that the

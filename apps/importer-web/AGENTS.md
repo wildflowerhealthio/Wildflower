@@ -194,7 +194,7 @@ into it. The marketing site links there from its "collection of apps" section
 - `app.test.tsx` — the whole tree over a recording stub transport, through the
   real `buildSmartRouterContext`. It walks a synthesized HAR (built with
   `web-trace-core`'s `emitHar` + `test-helpers`, the established pattern —
-  don't reach into `importer-core`'s fixture) from pick to preview to confirm,
+  don't reach into `har-importer-core`'s fixture) from pick to review to confirm,
   and asserts what only this layer can see: every read **and every write** is
   addressed to the FHIR base and carries `Bearer …`, and the resource types
   written are exactly the ones `config.ts`'s scope string covers.

@@ -12,14 +12,17 @@ navigation, persistence, HAR, files, or apps.
 
 - **`http-extraction-fundamentals`** — the vocabulary, as `effect`-style
   namespaces from one flat entry: `HttpResponseKind` / `UrlMatch` /
-  `HttpResponse` (how one response decodes into resources), `Extraction`
-  (`Extraction.run` over archived responses), and `Source` (`Source.Source`, an
-  HTTP source as one first-class value: how it claims a response set —
-  `name` / `specificity` / `claims`, ranked by `Source.resolve` — plus `tag`,
-  `responseKinds`, and `rootOf`). Imports from no slice. See its
+  `HttpResponse` (how one response is recognized and decoded into resources),
+  `Extraction` (`Extraction.run` / `routeTo` / `recognize` / `parseWith` over
+  archived responses), and `Specificity` (the cross-source tier constants
+  routing ranks a claim by). A response kind carries its own recognition +
+  identity on `tryRecognize(url)`; there is no separate `Source` value. Imports
+  from no slice. See its
   [AGENTS.md](./http-extraction-fundamentals/AGENTS.md).
-- **`fhir-r4-source`** — the first per-source package: the FHIR R4 entities,
-  the recognition surface, and the assembled `fhirR4Source`. See its
+- **`fhir-r4-source`** — the first per-source package: the FHIR R4 response
+  kinds, and `fhirR4SourceEntities` — the same kinds pre-adopted so each
+  resource keys under the root of the URL it arrived on, the single definition
+  both a live plan and an archive import consume. See its
   [AGENTS.md](./fhir-r4-source/AGENTS.md). The rexall and shoppers entities
   still live inside their collector packages (they already build on the
   fundamentals here); extracting them into sibling `*-source` packages is
@@ -29,13 +32,12 @@ navigation, persistence, HAR, files, or apps.
 
 Each consumer assembles its **own** closed list from the per-source packages,
 because the two lists have different members and different payloads: the HAR
-importer needs a specificity-ranked list of sources that can claim an archive
-(`importer-core`'s `sources`); the collector needs a descriptor tuple carrying
-config schemas, forms, plans, and persist sinks (`collector-registry`'s
-`descriptors` — and its `web-trace-collector` recorder member deliberately
-claims archives never). A shared registry would force one of those concerns
-into the other's home. Add a `-core` only if a genuine shared enumeration need
-appears.
+importer needs a flat pool of response kinds every response is routed against by
+highest specificity (`har-importer-core`'s `fhirPool`); the collector needs a
+descriptor tuple carrying config schemas, forms, plans, and persist sinks
+(`collector-registry`'s `descriptors`). A shared registry would force one of
+those concerns into the other's home. Add a `-core` only if a genuine shared
+enumeration need appears.
 
 ## Future formats don't come through here
 
