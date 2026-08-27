@@ -3,6 +3,7 @@ import { Observation } from 'fhir-r4/resources'
 import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
+import { recognizeFhirRoot } from '../recognize-fhir-root.ts'
 
 type ObservationType = typeof Observation.Schema.Type
 
@@ -23,7 +24,7 @@ const observationUrl = UrlMatch.make({ segments: [UrlMatch.literal('Observation'
 const ObservationResponseKind: HttpResponseKind.HttpResponseKind<ObservationType> =
   HttpResponseKind.make({
     name: 'ObservationResponseKind',
-    isFoundAt: (url) => observationUrl.test(url),
+    tryRecognize: recognizeFhirRoot(observationUrl),
     parse: (response) =>
       Effect.map(decode(extractJson(response.text())), (observation) => [observation]),
   })

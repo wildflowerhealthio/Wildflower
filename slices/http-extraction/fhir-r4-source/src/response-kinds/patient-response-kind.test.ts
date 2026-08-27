@@ -1,10 +1,10 @@
-import { Effect, type Either, type ParseResult } from 'effect'
+import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { Patient } from 'fhir-r4/resources'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
 import { PatientResponseKind } from './patient-response-kind.ts'
@@ -37,22 +37,34 @@ const runParse = (
   Effect.runSync(Effect.either(PatientResponseKind.parse(r)))
 
 describe('PatientResponseKind', () => {
-  describe('isFoundAt', () => {
+  describe('tryRecognize', () => {
     it.each([
-      { url: 'https://r4.smarthealthit.org/Patient/123', match: true },
-      { url: 'https://example.com/Patient/abc', match: true },
-      // New: ?-query terminator counts as a match (the production
-      // URL is `…/Patient/<id>?_format=json`).
-      { url: 'https://example.com/Patient/abc?_format=json', match: true },
-      // Base-path-mounted FHIR servers match (issue #376).
-      { url: 'https://hapi.fhir.org/baseR4/Patient/123', match: true },
-      { url: 'https://example.com/Observation/456', match: false },
-      // Trailing slash: not a match — the `(?:\?|$)` boundary excludes
-      // `/_history` and other subresource paths.
-      { url: 'https://example.com/Patient/123/', match: false },
-      { url: 'https://example.com/Patient/123/_history', match: false },
-    ])('returns $match for "$url"', ({ url, match }) => {
-      expect(PatientResponseKind.isFoundAt(url)).toBe(match)
+      // A recognized URL yields its own root as the source (system === baseUrl),
+      // absorbing the per-URL root-capture cases.
+      { url: 'https://r4.smarthealthit.org/Patient/123', root: 'https://r4.smarthealthit.org' },
+      { url: 'https://example.com/Patient/abc', root: 'https://example.com' },
+      // ?-query terminator counts (the production URL is `…/Patient/<id>?_format=json`).
+      { url: 'https://example.com/Patient/abc?_format=json', root: 'https://example.com' },
+      // Base-path-mounted FHIR servers recover their base path as the root (#376).
+      { url: 'https://hapi.fhir.org/baseR4/Patient/123', root: 'https://hapi.fhir.org/baseR4' },
+      {
+        url: 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4/Patient/eXYZ',
+        root: 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4',
+      },
+    ])('recognizes "$url" under root "$root"', ({ url, root }) => {
+      const recognized = PatientResponseKind.tryRecognize(url)
+      expect(recognized).toStrictEqual(
+        Option.some({ specificity: Specificity.PROTOCOL, source: { system: root, baseUrl: root } })
+      )
+    })
+
+    it.each([
+      { url: 'https://example.com/Observation/456' },
+      // Trailing slash / subresource paths are excluded by the `(?:\?|$)` boundary.
+      { url: 'https://example.com/Patient/123/' },
+      { url: 'https://example.com/Patient/123/_history' },
+    ])('does not claim "$url"', ({ url }) => {
+      expect(PatientResponseKind.tryRecognize(url)).toStrictEqual(Option.none())
     })
   })
 

@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { assert, describe, expect, it, test } from 'vite-plus/test'
@@ -6,6 +6,7 @@ import { assert, describe, expect, it, test } from 'vite-plus/test'
 import { arbitraryScenarios, type Scenario } from './extraction.test-helpers.ts'
 import * as Extraction from './extraction.ts'
 import * as HttpResponseKind from './http-response-kind.ts'
+import { Specificity } from './specificity.ts'
 import { echoResponseKind, makeExtractionInput, POISON_BODY, type Echo } from './test-helpers.ts'
 
 const AlphaEntity = echoResponseKind('AlphaEntity', 'alpha')
@@ -90,19 +91,16 @@ describe('Extraction.run', () => {
     )
   })
 
-  test('property: the first entity whose isFoundAt matches claims the response', () => {
-    // A pattern that claims everything, and one that claims a subset of it:
-    // whichever comes first in the list wins every response they both match —
-    // the same silent ordering dependency every consumer of an entity list has.
-    const Broad = echoResponseKind('BroadEntity', 'alpha')
-    const Narrow: HttpResponseKind.HttpResponseKind<Echo> = HttpResponseKind.make({
-      ...echoResponseKind('NarrowEntity', 'alpha'),
-      isFoundAt: (url) => url.includes('/alpha/') && url.endsWith('9'),
-    })
+  test('property: the highest-specificity entity that claims wins, regardless of list order', () => {
+    // A broad entity and a narrower one both claim the same URL, with distinct
+    // specificities: the more specific wins wherever it sits in the list — the
+    // change from the old first-match-wins routing.
+    const Broad = echoResponseKind('BroadEntity', 'alpha', Specificity.PROTOCOL)
+    const Narrow = echoResponseKind('NarrowEntity', 'alpha', Specificity.PORTAL)
 
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), fc.boolean(), (path, broadFirst) => {
-        const url = `https://example.com/alpha/${encodeURIComponent(path)}9`
+        const url = `https://example.com/alpha/${encodeURIComponent(path)}`
         const order = broadFirst ? [Broad, Narrow] : [Narrow, Broad]
 
         const extraction = Effect.runSync(
@@ -110,7 +108,8 @@ describe('Extraction.run', () => {
         )
 
         expect(extraction.batches).toHaveLength(1)
-        expect(extraction.batches[0].entityName).toBe(broadFirst ? 'BroadEntity' : 'NarrowEntity')
+        // Narrow (PORTAL) always wins over Broad (PROTOCOL), whatever the order.
+        expect(extraction.batches[0].entityName).toBe('NarrowEntity')
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -188,5 +187,117 @@ describe('Extraction.run', () => {
       parseFailures: [],
       bodyAbsent: [],
     })
+  })
+})
+
+describe('Extraction.routeTo', () => {
+  const Broad = echoResponseKind('BroadEntity', 'alpha', Specificity.PROTOCOL)
+  const Narrow = echoResponseKind('NarrowEntity', 'alpha', Specificity.PORTAL)
+
+  it('picks the highest-specificity claimant', () => {
+    const routed = Extraction.routeTo([Broad, Narrow], 'https://example.com/alpha/1')
+    expect(Option.map(routed, (r) => r.kind.name)).toEqual(Option.some('NarrowEntity'))
+    expect(Option.map(routed, (r) => r.recognized.specificity)).toEqual(
+      Option.some(Specificity.PORTAL)
+    )
+  })
+
+  it('breaks ties toward the earliest candidate in list order', () => {
+    const first = echoResponseKind('FirstEntity', 'alpha', Specificity.PROTOCOL)
+    const second = echoResponseKind('SecondEntity', 'alpha', Specificity.PROTOCOL)
+    expect(
+      Option.map(Extraction.routeTo([first, second], 'https://x/alpha/1'), (r) => r.kind.name)
+    ).toEqual(Option.some('FirstEntity'))
+    expect(
+      Option.map(Extraction.routeTo([second, first], 'https://x/alpha/1'), (r) => r.kind.name)
+    ).toEqual(Option.some('SecondEntity'))
+  })
+
+  it('is None when nothing claims', () => {
+    expect(Extraction.routeTo([Broad, Narrow], 'https://example.com/gamma/1')).toEqual(
+      Option.none()
+    )
+  })
+
+  it("carries a caller's extra element fields through untouched", () => {
+    // The Pick constraint keeps a concrete element's own fields on the way out —
+    // the same trick the live tracker uses to keep `followUpSteps`.
+    const withExtra = { ...Narrow, followUpMarker: 'ride-along' }
+    const routed = Extraction.routeTo([withExtra], 'https://x/alpha/1')
+    expect(Option.map(routed, (r) => r.kind.followUpMarker)).toEqual(Option.some('ride-along'))
+  })
+})
+
+describe('Extraction.recognize', () => {
+  const Broad = echoResponseKind('BroadEntity', 'alpha', Specificity.PROTOCOL)
+  const Narrow = echoResponseKind('NarrowEntity', 'alpha', Specificity.PORTAL)
+
+  it('returns every claiming kind, sorted by specificity descending', () => {
+    const [recognized] = Extraction.recognize(
+      [Broad, Narrow],
+      [makeExtractionInput({ id: 'r1', url: 'https://x/alpha/1' })]
+    )
+    expect(recognized?.candidates.map((c) => c.kind.name)).toEqual(['NarrowEntity', 'BroadEntity'])
+  })
+
+  it('keeps list order for equal specificities', () => {
+    const first = echoResponseKind('FirstEntity', 'alpha', Specificity.PROTOCOL)
+    const second = echoResponseKind('SecondEntity', 'alpha', Specificity.PROTOCOL)
+    const [recognized] = Extraction.recognize(
+      [first, second],
+      [makeExtractionInput({ id: 'r1', url: 'https://x/alpha/1' })]
+    )
+    expect(recognized?.candidates.map((c) => c.kind.name)).toEqual(['FirstEntity', 'SecondEntity'])
+  })
+
+  it('is an empty candidate list for a response no kind claims', () => {
+    const [recognized] = Extraction.recognize(
+      [Broad, Narrow],
+      [makeExtractionInput({ id: 'r1', url: 'https://x/gamma/1' })]
+    )
+    expect(recognized?.candidates).toEqual([])
+    expect(recognized?.ref).toEqual({ id: 'r1', url: 'https://x/gamma/1' })
+  })
+})
+
+describe('Extraction.parseWith', () => {
+  const alpha = echoResponseKind('AlphaEntity', 'alpha')
+
+  it('yields a resources outcome for a body that decodes', () => {
+    const outcome = Effect.runSync(
+      Extraction.parseWith(alpha, makeExtractionInput({ url: 'https://x/alpha/1', body: '{}' }))
+    )
+    expect(outcome._tag).toBe('resources')
+    if (outcome._tag !== 'resources') throw new Error('expected resources')
+    expect(outcome.resources).toHaveLength(1)
+  })
+
+  it('yields a parseError outcome for a body that fails to decode', () => {
+    const outcome = Effect.runSync(
+      Extraction.parseWith(
+        alpha,
+        makeExtractionInput({ url: 'https://x/alpha/1', body: POISON_BODY })
+      )
+    )
+    expect(outcome._tag).toBe('parseError')
+  })
+
+  it('yields a bodyAbsent outcome without calling parse', () => {
+    let parseCalls = 0
+    const counting = {
+      ...alpha,
+      parse: (r: Parameters<typeof alpha.parse>[0]) => {
+        parseCalls += 1
+        return alpha.parse(r)
+      },
+    }
+    const outcome = Effect.runSync(
+      Extraction.parseWith(
+        counting,
+        makeExtractionInput({ url: 'https://x/alpha/1', bodyAbsent: true })
+      )
+    )
+    expect(outcome._tag).toBe('bodyAbsent')
+    expect(parseCalls).toBe(0)
   })
 })

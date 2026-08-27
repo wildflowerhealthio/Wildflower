@@ -1,12 +1,13 @@
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
-import { Effect, type Either, type ParseResult } from 'effect'
+import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { Patient } from 'fhir-r4/resources'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import profileMe from '../fixtures/profile-me.json' with { type: 'json' }
+import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 import { ProfileResponseKind } from './profile-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -22,7 +23,7 @@ const runParse = (
   Effect.runSync(Effect.either(ProfileResponseKind.parse(r)))
 
 describe('ProfileResponseKind', () => {
-  describe('isFoundAt', () => {
+  describe('tryRecognize', () => {
     it.each([
       { url: PROFILE_URL, match: true },
       { url: 'https://tunnel/enduser/profile/v2/me?x=1', match: true },
@@ -33,8 +34,17 @@ describe('ProfileResponseKind', () => {
       },
       // A different profile sub-path is not the identity endpoint.
       { url: 'https://tunnel/enduser/profile/v2/settings', match: false },
-    ])('returns $match for "$url"', ({ url, match }) => {
-      expect(ProfileResponseKind.isFoundAt(url)).toBe(match)
+    ])('recognizes $match for "$url"', ({ url, match }) => {
+      expect(Option.isSome(ProfileResponseKind.tryRecognize(url))).toBe(match)
+    })
+
+    it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
+      expect(ProfileResponseKind.tryRecognize(PROFILE_URL)).toStrictEqual(
+        Option.some({
+          specificity: Specificity.PORTAL,
+          source: { system: REXALL_CAREBOOK_SYSTEM },
+        })
+      )
     })
   })
 

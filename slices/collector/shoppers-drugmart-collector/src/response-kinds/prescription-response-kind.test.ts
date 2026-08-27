@@ -1,4 +1,4 @@
-import { Effect, type Either, type ParseResult, Schema } from 'effect'
+import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
@@ -6,7 +6,7 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 
 import {
   DIN_CODE_SYSTEM,
@@ -14,6 +14,7 @@ import {
   ShoppersIdentifierSystem,
   shoppersStoreLocatorUrl,
 } from '../shoppers.ts'
+import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { PrescriptionResponseKind } from './prescription-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -136,7 +137,7 @@ const expectedDispense = decodeDispense({
 })
 
 describe('PrescriptionResponseKind', () => {
-  describe('isFoundAt', () => {
+  describe('tryRecognize', () => {
     it.each([
       { url: STATUS_URL, match: true },
       // Both API version segments (the capture shows `p1`, docs say `v1`).
@@ -163,8 +164,17 @@ describe('PrescriptionResponseKind', () => {
         match: false,
       },
       { url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1', match: false },
-    ])('returns $match for "$url"', ({ url, match }) => {
-      expect(PrescriptionResponseKind.isFoundAt(url)).toBe(match)
+    ])('recognizes $match for "$url"', ({ url, match }) => {
+      expect(Option.isSome(PrescriptionResponseKind.tryRecognize(url))).toBe(match)
+    })
+
+    it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
+      expect(PrescriptionResponseKind.tryRecognize(STATUS_URL)).toStrictEqual(
+        Option.some({
+          specificity: Specificity.PORTAL,
+          source: { system: SHOPPERS_DRUGMART_SYSTEM },
+        })
+      )
     })
   })
 

@@ -1,10 +1,10 @@
-import { Effect, type Either, type ParseResult } from 'effect'
+import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { Observation } from 'fhir-r4/resources'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
 import { ObservationListResponseKind } from './observation-list-response-kind.ts'
@@ -50,33 +50,47 @@ const runParse = (
   Effect.runSync(Effect.either(ObservationListResponseKind.parse(r)))
 
 describe('ObservationListResponseKind', () => {
-  describe('isFoundAt', () => {
+  describe('tryRecognize', () => {
     it.each([
       // The exact production-shaped URL asked about: HAPI serves under a
-      // base path (`/baseR4`), which `UrlMatch` now tolerates (issue #376).
+      // base path (`/baseR4`), which `UrlMatch` tolerates (issue #376), and the
+      // base path is recovered as the root (absorbing the per-URL root cases).
       {
         url: 'https://hapi.fhir.org/baseR4/Observation?subject%3APatient=testmartin&_count=250&_format=json',
-        match: true,
+        root: 'https://hapi.fhir.org/baseR4',
       },
       // No base path: `Observation` is the first path segment → matches.
-      { url: 'https://r4.smarthealthit.org/Observation?subject=x', match: true },
-      { url: 'https://hapi.fhir.org/Observation?_count=250&_format=json', match: true },
-      // Deeper base path (Epic-style) still matches.
+      {
+        url: 'https://r4.smarthealthit.org/Observation?subject=x',
+        root: 'https://r4.smarthealthit.org',
+      },
+      {
+        url: 'https://hapi.fhir.org/Observation?_count=250&_format=json',
+        root: 'https://hapi.fhir.org',
+      },
+      // Deeper base path (Epic-style) still matches and recovers its full root.
       {
         url: 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4/Observation?patient=1',
-        match: true,
+        root: 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4',
       },
+    ])('recognizes "$url" under root "$root"', ({ url, root }) => {
+      expect(ObservationListResponseKind.tryRecognize(url)).toStrictEqual(
+        Option.some({ specificity: Specificity.PROTOCOL, source: { system: root, baseUrl: root } })
+      )
+    })
+
+    it.each([
       // `mustHaveQuery`: a bare list URL with no query is NOT a match…
-      { url: 'https://example.com/Observation', match: false },
-      { url: 'https://example.com/baseR4/Observation', match: false },
+      { url: 'https://example.com/Observation' },
+      { url: 'https://example.com/baseR4/Observation' },
       // …and the single-resource URL stays disjoint (that's ObservationResponseKind),
       // even under a base path.
-      { url: 'https://example.com/Observation/123', match: false },
-      { url: 'https://example.com/Observation/123?_format=json', match: false },
-      { url: 'https://example.com/baseR4/Observation/123', match: false },
-      { url: 'https://example.com/Patient?name=x', match: false },
-    ])('returns $match for "$url"', ({ url, match }) => {
-      expect(ObservationListResponseKind.isFoundAt(url)).toBe(match)
+      { url: 'https://example.com/Observation/123' },
+      { url: 'https://example.com/Observation/123?_format=json' },
+      { url: 'https://example.com/baseR4/Observation/123' },
+      { url: 'https://example.com/Patient?name=x' },
+    ])('does not claim "$url"', ({ url }) => {
+      expect(ObservationListResponseKind.tryRecognize(url)).toStrictEqual(Option.none())
     })
   })
 

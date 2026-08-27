@@ -81,14 +81,14 @@ const isPartialOutcome = (outcome: ImportOutcome): boolean => outcome.failures.l
  * failure.
  *
  * @remarks
- * The read half's two non-writing outcomes, plus the rare unreadable file: a
- * `no-source` file was recognized by nobody, a `nothing` file was recognized
- * but matched no resources, and an `unreadable` file did not parse as a HAR at
- * all. None is a failure — they are the multi-file echo of `NoSourceClaims`
- * being data, not an error — but each is reported so a reader knows why a file
- * they picked wrote nothing.
+ * The read half's non-writing outcome, plus the rare unreadable file: a
+ * `nothing` file previewed no resources to import (its traffic matched no kind,
+ * or matched but decoded nothing — one collapsed outcome under per-URL
+ * recognition), and an `unreadable` file did not parse as a HAR at all. Neither
+ * is a failure — an empty preview is ordinary data, not an error — but each is
+ * reported so a reader knows why a file they picked wrote nothing.
  */
-type SkipReason = 'no-source' | 'nothing' | 'unreadable'
+type SkipReason = 'nothing' | 'unreadable'
 
 /**
  * What a single file in a confirmed batch resolved to.
@@ -101,7 +101,7 @@ type SkipReason = 'no-source' | 'nothing' | 'unreadable'
  * `DocumentReference` could not be uploaded, so none of its resources were
  * written and none could be stamped; `skipped` is a file that had nothing to
  * write. `fileName` names the file in every case, and `id` is the picked file's
- * stable identity, carried from its `ReadEntry` for a React `key` since two files
+ * stable identity, carried from its `FileReadOutcome` for a React `key` since two files
  * in a batch can share a name.
  */
 type FileImportResult =
@@ -169,8 +169,8 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
  * The `collectImportSummary` semantics, lifted to the batch: **any** failure —
  * a file whose archive would not upload, or a single resource the store
  * rejected — makes the whole batch partial. A `skipped` file is not a failure
- * (it is the multi-file echo of `NoSourceClaims` being data), so it does not
- * make a batch partial on its own.
+ * (an empty preview is ordinary data), so it does not make a batch partial on
+ * its own.
  */
 const isPartialBatch = (batch: BatchOutcome): boolean =>
   batch.some(

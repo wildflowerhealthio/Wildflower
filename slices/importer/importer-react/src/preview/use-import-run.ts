@@ -16,8 +16,8 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * archive, detects the importer, runs its entities, and folds the
  * result, requiring no services and writing nothing. Each pick is read
  * independently — files in a batch may be recognized by different importers, or
- * not at all — and the outcomes are held side by side as {@link ReadEntry}s so
- * the preview can sum them. It is run through `fhir-r4-react`'s `useRunAuthed` —
+ * not at all — and the outcomes are held side by side as
+ * {@link FileReadOutcome}s so the preview can sum them. It is run through `fhir-r4-react`'s `useRunAuthed` —
  * the one runner every source in this slice already reads from router context —
  * even though a preview needs no auth, so the whole slice drives one runner
  * rather than reaching for `Effect.runPromise` here. The write client stays
@@ -25,7 +25,7 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * anything this hook does.
  *
  * A malformed archive is the only failure `HarImport.run` has, surfaced per file
- * as an `unreadable` entry rather than a whole-batch error — a local pick was
+ * as an `unreadable` outcome rather than a whole-batch error — a local pick was
  * validated through the HAR parser at the picker so it rarely fires, but a server
  * archive is decoded, not re-validated, so the case exists for it and, in a
  * batch, one bad file does not sink the others.
@@ -38,19 +38,19 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * the write step.
  *
  * @remarks
- * `read` carries the whole {@link ImportPreview.ImportPreview} union — a `NoSourceClaims` is
- * a first-class outcome the preview view renders, not an error — and `unreadable`
- * carries the one malformed-archive `ParseError`. The confirm step writes only
- * the `read` entries whose preview is a claimed `Preview` with resources. `id` is
- * a per-pick stable identity for a React `key`, since two files in a batch can
- * share a name.
+ * `read` carries the {@link ImportPreview.Preview} the read produced — an empty
+ * one (nothing recognized, or recognized but decoded nothing) is ordinary data
+ * the preview view renders, not an error — and `unreadable` carries the one
+ * malformed-archive `ParseError`. The confirm step writes only the `read`
+ * files whose preview has resources. `id` is a per-pick stable identity for a
+ * React `key`, since two files in a batch can share a name.
  */
-type ReadEntry =
+type FileReadOutcome =
   | {
       readonly _tag: 'read'
       readonly id: string
       readonly picked: PickedHar
-      readonly preview: ImportPreview.ImportPreview
+      readonly preview: ImportPreview.Preview
     }
   | {
       readonly _tag: 'unreadable'
@@ -66,7 +66,7 @@ type ReadEntry =
 type ImportRunState =
   | { readonly _tag: 'idle' }
   | { readonly _tag: 'reading' }
-  | { readonly _tag: 'ready'; readonly entries: readonly ReadEntry[] }
+  | { readonly _tag: 'ready'; readonly files: readonly FileReadOutcome[] }
 
 /** Imperative surface the screen drives the read through. */
 interface ImportRun {
@@ -79,7 +79,7 @@ interface ImportRun {
 
 /**
  * Drives a batch read as an imperative action, mapping each pick's
- * `HarImport.run` outcome onto a {@link ReadEntry}. The authed runner comes from
+ * `HarImport.run` outcome onto a {@link FileReadOutcome}. The authed runner comes from
  * router context via `fhir-r4-react`, so mount this inside the host app's router.
  *
  * @returns The read surface: its `state`, the `run` trigger, and a `reset` back
@@ -99,25 +99,25 @@ const useImportRun = (): ImportRun => {
       const ticket = latest.current
       setState({ _tag: 'reading' })
       // Each pick reads independently and concurrently; `catchAll` turns the sole
-      // `ParseError` into an `unreadable` entry, so one bad file in the batch is a
-      // row rather than a whole-batch failure — the read Effect cannot fail.
+      // `ParseError` into an `unreadable` outcome, so one bad file in the batch is
+      // a row rather than a whole-batch failure — the read Effect cannot fail.
       const readAll = Effect.forEach(
         picks,
         (picked) =>
           Effect.gen(function* () {
             const id = yield* Effect.sync(() => crypto.randomUUID())
             return yield* HarImport.run(picked.text).pipe(
-              Effect.map((preview): ReadEntry => ({ _tag: 'read', id, picked, preview })),
+              Effect.map((preview): FileReadOutcome => ({ _tag: 'read', id, picked, preview })),
               Effect.catchAll((error) =>
-                Effect.succeed<ReadEntry>({ _tag: 'unreadable', id, picked, error })
+                Effect.succeed<FileReadOutcome>({ _tag: 'unreadable', id, picked, error })
               )
             )
           }),
         { concurrency: 'unbounded' }
       )
-      void runAuthed(readAll).then((entries) => {
+      void runAuthed(readAll).then((files) => {
         if (latest.current !== ticket) return
-        setState({ _tag: 'ready', entries })
+        setState({ _tag: 'ready', files })
       })
     },
     [runAuthed]
@@ -131,4 +131,4 @@ const useImportRun = (): ImportRun => {
   return { state, run, reset }
 }
 
-export { type ImportRun, type ImportRunState, type ReadEntry, useImportRun }
+export { type FileReadOutcome, type ImportRun, type ImportRunState, useImportRun }

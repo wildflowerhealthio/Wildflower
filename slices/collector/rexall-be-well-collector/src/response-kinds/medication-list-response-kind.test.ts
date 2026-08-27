@@ -1,11 +1,12 @@
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
-import { Effect, type Either, type ParseResult } from 'effect'
+import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import prescriptions from '../fixtures/prescriptions-searchset.json' with { type: 'json' }
+import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 import {
   MedicationListResponseKind,
   type MedicationResource,
@@ -13,7 +14,7 @@ import {
 
 const { expectRightToEqual } = utilityExpectations(expect)
 
-/** The prescriptions searchset URL the SPA fires (tunnel host), matched by `isFoundAt`. */
+/** The prescriptions searchset URL the SPA fires (tunnel host), matched by `tryRecognize`. */
 const LIST_URL =
   'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_count=2147483646'
 
@@ -26,7 +27,7 @@ const runParse = (
   Effect.runSync(Effect.either(MedicationListResponseKind.parse(r)))
 
 describe('MedicationListResponseKind', () => {
-  describe('isFoundAt', () => {
+  describe('tryRecognize', () => {
     it.each([
       // The real prescriptions-page searchset (Location + _revincludes).
       { url: LIST_URL, match: true },
@@ -44,8 +45,17 @@ describe('MedicationListResponseKind', () => {
         url: 'https://tunnel/enduser/health/v1/fhir/stu3/MedicationRequest?patient=x',
         match: false,
       },
-    ])('returns $match for "$url"', ({ url, match }) => {
-      expect(MedicationListResponseKind.isFoundAt(url)).toBe(match)
+    ])('recognizes $match for "$url"', ({ url, match }) => {
+      expect(Option.isSome(MedicationListResponseKind.tryRecognize(url))).toBe(match)
+    })
+
+    it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
+      expect(MedicationListResponseKind.tryRecognize(LIST_URL)).toStrictEqual(
+        Option.some({
+          specificity: Specificity.PORTAL,
+          source: { system: REXALL_CAREBOOK_SYSTEM },
+        })
+      )
     })
   })
 

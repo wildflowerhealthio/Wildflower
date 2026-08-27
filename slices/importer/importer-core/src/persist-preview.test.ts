@@ -48,14 +48,12 @@ const genWithId = <A extends FhirResource, I>(
 const previewOf = (
   resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
 ): Preview => ({
-  _tag: 'Preview',
-  sourceTag: 'fhir-r4',
   rootUrls: ['https://r4.example.org/baseR4'],
   resourcesByType,
   parseFailures: [],
   unmatchedCount: 0,
   bodyAbsentCount: 0,
-  totalEntries: Object.values(resourcesByType).flat().length,
+  totalResponses: Object.values(resourcesByType).flat().length,
 })
 
 describe('ImportPreview.persist', () => {
@@ -95,17 +93,15 @@ describe('ImportPreview.persist', () => {
     }
   })
 
-  it('writes nothing for a NoSourceClaims preview, issuing no requests', async () => {
-    // The client is provided (persist always requires it), but a
-    // NoSourceClaims preview issues no writes — the recorder stays empty.
+  it('writes nothing for an empty preview, issuing no requests', async () => {
+    // The client is provided (persist always requires it), but a preview that
+    // recognized nothing has no resources to write — the recorder stays empty.
     const records: Array<RecordedRequest> = []
     const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
       Layer.provide(recordingHttpClientLayer(records, () => false))
     )
     const failures = await Effect.runPromise(
-      persist({ _tag: 'NoSourceClaims', totalEntries: 5 }, SOURCE_REF).pipe(
-        Effect.provide(clientLayer)
-      )
+      persist(previewOf({}), SOURCE_REF).pipe(Effect.provide(clientLayer))
     )
     expect(failures).toEqual([])
     expect(records).toEqual([])

@@ -1,10 +1,11 @@
-import { Effect } from 'effect'
-import { localResourceId } from 'fhir-r4/identity'
+import { Effect, Either } from 'effect'
+import { type AdoptableEntity, localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { fhirR4ResponseKinds } from './plan-entities.ts'
 import { fhirR4SourceEntities } from './source-entities.ts'
 
 const entityNamed = (
@@ -29,6 +30,20 @@ const parseImporter = (name: string, url: string, body: unknown): readonly FhirR
   )
 
 describe('fhirR4SourceEntities', () => {
+  it('HttpResponseKind<FhirResource> satisfies AdoptableEntity (the seam drift guard)', () => {
+    // `fhir-r4/identity` cannot import `http-extraction-fundamentals` (layering),
+    // so `AdoptableEntity` restates `HttpResponseKind`'s shape structurally. This
+    // package is the one that sees both types, and this typed assignment is where
+    // the alignment is *deliberate* rather than coincidental: if either side's
+    // shape drifts (a renamed field, a changed `tryRecognize` payload), this
+    // line — and `source-entities.ts`'s own `.map(adoptUnderRecognizedRoot)` —
+    // go red together, naming the seam.
+    const seam: readonly AdoptableEntity[] = fhirR4ResponseKinds
+    expect(seam.map((entity) => entity.name)).toEqual(
+      fhirR4SourceEntities.map((entity) => entity.name)
+    )
+  })
+
   it('decodes through the shared tuple in plan order', () => {
     expect(fhirR4SourceEntities.map((entity) => entity.name)).toEqual([
       'PatientResponseKind',
@@ -78,5 +93,28 @@ describe('fhirR4SourceEntities', () => {
     expect(observation.subject?.reference).toBe(
       `Patient/${localResourceId(root, 'Patient', 'pat-7')}`
     )
+  })
+
+  it('fails with a ParseError when handed a URL its kind does not recognize', () => {
+    // `adoptUnderRecognizedRoot` reads the identity off the kind's own
+    // `tryRecognize`; a URL it does not claim has no root to key under, so the
+    // wrapped parse fails rather than passing resources through un-adopted. In
+    // the pipeline `Extraction.run` only ever hands a kind a URL it routed there,
+    // so this arm guards a misuse, not a normal response.
+    const result = Effect.runSync(
+      Effect.either(
+        entityNamed(fhirR4SourceEntities, 'PatientResponseKind').parse(
+          makeHttpResponse({
+            url: 'https://example.com/not-a-fhir-url',
+            headers: [['content-type', 'application/fhir+json']],
+            body: JSON.stringify({ resourceType: 'Patient', id: 'pat-7' }),
+          })
+        )
+      )
+    )
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe('ParseError')
+    }
   })
 })

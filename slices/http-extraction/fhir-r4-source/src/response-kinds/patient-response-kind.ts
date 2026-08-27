@@ -3,6 +3,7 @@ import { Patient } from 'fhir-r4/resources'
 import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
+import { recognizeFhirRoot } from '../recognize-fhir-root.ts'
 
 type PatientType = typeof Patient.Schema.Type
 
@@ -22,7 +23,7 @@ const patientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMa
  */
 const PatientResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
   name: 'PatientResponseKind',
-  isFoundAt: (url) => patientUrl.test(url),
+  tryRecognize: recognizeFhirRoot(patientUrl),
   parse: (response) =>
     Effect.map(decode(extractJson(response.text())), (patient) => {
       if (patient.id === null) return []

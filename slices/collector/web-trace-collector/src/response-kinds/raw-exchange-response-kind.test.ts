@@ -1,7 +1,8 @@
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
-import { DateTime, Duration, Effect, Either, ParseResult, Schema } from 'effect'
+import { DateTime, Duration, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { DocumentReference } from 'fhir-r4/resources'
+import { Specificity } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
@@ -51,16 +52,18 @@ const parseOne = async (
   return resource
 }
 
-describe('isFoundAt', () => {
+describe('tryRecognize', () => {
   // The catch-all is load-bearing twice over: it is what records everything,
   // and it is what stops `CollectorBridgeMessageHandler` from firing
   // `CancelSnifferRequest` at responses no entity claims — which would abort
   // the very requests the user's browsing depends on. A narrowing regression
   // here breaks the page in front of the user, not just the recording.
-  it('claims every URL, including ones no collector would normally recognize', () => {
+  it('claims every URL at CATCH_ALL specificity with no source, including ones no collector would recognize', () => {
     fc.assert(
       fc.property(fc.webUrl(), (url) => {
-        expect(entity.isFoundAt(url)).toBe(true)
+        expect(entity.tryRecognize(url)).toStrictEqual(
+          Option.some({ specificity: Specificity.CATCH_ALL })
+        )
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -70,10 +73,15 @@ describe('isFoundAt', () => {
     'https://portal.example.com/api/patients',
     'https://cdn.example.com/bundle.a1b2c3.js',
     'https://portal.example.com/favicon.ico',
+    // A relative / malformed URL `new URL` would throw on still yields `Some`
+    // (and mints no `source`) — the recorder never parses the URL.
     'not-even-a-url',
+    '/relative/path',
     '',
-  ])('claims %j', (url) => {
-    expect(entity.isFoundAt(url)).toBe(true)
+  ])('claims %j, minting no source', (url) => {
+    const recognized = entity.tryRecognize(url)
+    expect(Option.isSome(recognized)).toBe(true)
+    expect(Option.getOrThrow(recognized).source).toBeUndefined()
   })
 })
 

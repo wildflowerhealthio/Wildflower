@@ -1,9 +1,10 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Option, pipe, Schema } from 'effect'
 import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
-import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
+import { HttpResponseKind, Specificity, UrlMatch } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'
+import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 
 /**
  * A parsed medication resource: the decoded output of either carebook
@@ -102,7 +103,16 @@ const medicationListUrl = UrlMatch.make({
 const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationResource> =
   HttpResponseKind.make({
     name: 'MedicationListResponseKind',
-    isFoundAt: (url) => medicationListUrl.test(url),
+    // URL-gated by this kind's own pattern; on a match it mints the portal
+    // source (`system` only — carebook's references are relative, no `baseUrl`).
+    tryRecognize: (url) =>
+      pipe(
+        medicationListUrl(url),
+        Option.map(() => ({
+          specificity: Specificity.PORTAL,
+          source: { system: REXALL_CAREBOOK_SYSTEM },
+        }))
+      ),
     parse: (response) =>
       Effect.gen(function* () {
         const bundle = yield* decode(extractJson(response.text()))

@@ -1,13 +1,14 @@
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
-import { Effect, Schema } from 'effect'
+import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { DIN_CODE_SYSTEM, ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
+import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { PrescriptionHistoryResponseKind } from './prescription-history-response-kind.ts'
 
 const BASE = 'https://mypharmacy.shoppersdrugmart.ca'
@@ -67,7 +68,7 @@ const historyPayload = (): Record<string, unknown> => ({
 })
 
 describe('PrescriptionHistoryResponseKind', () => {
-  describe('isFoundAt', () => {
+  describe('tryRecognize', () => {
     it.each([
       // Both API version segments (the capture shows `p1`, docs say `v1`).
       { url: `${BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`, match: true },
@@ -80,8 +81,21 @@ describe('PrescriptionHistoryResponseKind', () => {
       // The neighbouring entities' URLs must NOT match (disjointness).
       { url: `${BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc`, match: false },
       { url: `${BASE}/api/p1/prescriptions/rx-1/prescription-status`, match: false },
-    ])('returns $match for "$url"', ({ url, match }) => {
-      expect(PrescriptionHistoryResponseKind.isFoundAt(url)).toBe(match)
+    ])('recognizes $match for "$url"', ({ url, match }) => {
+      expect(Option.isSome(PrescriptionHistoryResponseKind.tryRecognize(url))).toBe(match)
+    })
+
+    it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
+      expect(
+        PrescriptionHistoryResponseKind.tryRecognize(
+          `${BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`
+        )
+      ).toStrictEqual(
+        Option.some({
+          specificity: Specificity.PORTAL,
+          source: { system: SHOPPERS_DRUGMART_SYSTEM },
+        })
+      )
     })
   })
 

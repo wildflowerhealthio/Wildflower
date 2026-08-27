@@ -1,8 +1,9 @@
-import { DateTime, Effect, ParseResult, Schema } from 'effect'
+import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
 
 import type * as Extraction from './extraction.ts'
 import * as HttpResponseKind from './http-response-kind.ts'
 import * as HttpResponse from './http-response.ts'
+import { Specificity } from './specificity.ts'
 
 /**
  * Fields a test wants to vary on an
@@ -57,10 +58,29 @@ const SimpleSchema = Schema.Struct({
   age: Schema.Number,
 })
 
+/**
+ * Recognize a URL matching `pattern` with a fixed `specificity` (and optional
+ * `source`), `None` otherwise — the `tryRecognize` shape the test kinds share.
+ */
+const recognizeMatching =
+  (
+    pattern: RegExp,
+    recognized: HttpResponseKind.RecognizedUrlData
+  ): ((url: string) => Option.Option<HttpResponseKind.RecognizedUrlData>) =>
+  (url) =>
+    pattern.test(url) ? Option.some(recognized) : Option.none()
+
+// The two reusable kinds carry DISTINCT specificities so a routing test can
+// exercise the highest-specificity-wins ranking, and `SimpleResponseKind`
+// carries a `source` (so `recognize`/`routeTo` can be checked minting an
+// identity) while `AnotherResponseKind` mints none.
 const SimpleResponseKind: HttpResponseKind.HttpResponseKind<typeof SimpleSchema.Type> =
   HttpResponseKind.make({
     name: 'SimpleResponseKind',
-    isFoundAt: (url) => /\/people\/\d+$/.test(url),
+    tryRecognize: recognizeMatching(/\/people\/\d+$/, {
+      specificity: Specificity.PORTAL,
+      source: { system: 'https://example.test/people' },
+    }),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => [data]),
   })
@@ -70,7 +90,7 @@ const AnotherSchema = Schema.Struct({ id: Schema.String })
 const AnotherResponseKind: HttpResponseKind.HttpResponseKind<typeof AnotherSchema.Type> =
   HttpResponseKind.make({
     name: 'AnotherResponseKind',
-    isFoundAt: (url) => /\/items\//.test(url),
+    tryRecognize: recognizeMatching(/\/items\//, { specificity: Specificity.PROTOCOL }),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(AnotherSchema))(response.text()), (data) => [data]),
   })
@@ -103,12 +123,19 @@ interface Echo {
  * @remarks
  * The poison body is how a property makes a *specific* response fail without
  * changing which entity claims it, so parse-failure isolation is testable
- * against an otherwise identical fold.
+ * against an otherwise identical fold. `specificity` defaults to
+ * `Specificity.PROTOCOL`; pass a different tier to exercise highest-specificity
+ * routing between two markers that overlap.
  */
-const echoResponseKind = (name: string, marker: string): HttpResponseKind.HttpResponseKind<Echo> =>
+const echoResponseKind = (
+  name: string,
+  marker: string,
+  specificity: number = Specificity.PROTOCOL
+): HttpResponseKind.HttpResponseKind<Echo> =>
   HttpResponseKind.make({
     name,
-    isFoundAt: (url) => url.includes(`/${marker}/`),
+    tryRecognize: (url) =>
+      url.includes(`/${marker}/`) ? Option.some({ specificity }) : Option.none(),
     parse: (response) =>
       response.text() === POISON_BODY
         ? Effect.fail(

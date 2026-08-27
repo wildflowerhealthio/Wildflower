@@ -1,12 +1,12 @@
-import { Effect, type ParseResult } from 'effect'
+import { Effect, Option, ParseResult, Schema } from 'effect'
 
 import type { FhirResource } from '../resources/fhir-resource.ts'
 import { adoptResource, type SourceIdentity } from './adopt-resource.ts'
 
 /** The parse signature an adopted entity's wrapper stands in for. */
-type AdoptableParse = (
-  response: unknown
-) => Effect.Effect<readonly FhirResource[], ParseResult.ParseError>
+type AdoptableParse = (response: {
+  readonly url: string
+}) => Effect.Effect<readonly FhirResource[], ParseResult.ParseError>
 
 /**
  * The structural shape of an entity definition whose parse output can be
@@ -17,16 +17,28 @@ type AdoptableParse = (
  * package sits below the collector slice and cannot import it — the same
  * precedent `web-trace-core`'s `CapturedResponse` sets.
  *
+ * `tryRecognize` mirrors `HttpResponseKind.tryRecognize` structurally: `Some`
+ * carries how specific the claim is and, when the kind mints one, the
+ * {@link SourceIdentity} its resources key under; `None` (or a `Some` with no
+ * `source`) is a URL this kind does not adopt an identity for.
+ * {@link adoptUnderRecognizedRoot} reads the `source` off it verbatim.
+ *
  * `parse` is declared with method syntax so its parameter is checked
  * bivariantly, which is what lets a concrete entity typed against the
- * collector's own `CollectorHttpResponse` satisfy an `unknown` here. The trick is
- * `collector-fundamentals`' own, used on `CollectorHttpResponseKind.followUpSteps` for
- * the same reason.
+ * collector's own `CollectorHttpResponse` satisfy the narrowed
+ * `{ url: string }` here. The trick is `collector-fundamentals`' own, used on
+ * `CollectorHttpResponseKind.followUpSteps` for the same reason. The parameter
+ * is narrowed from the old `unknown` to the one field the combinator reads.
  */
 interface AdoptableEntity {
   readonly name: string
-  readonly isFoundAt: (url: string) => boolean
-  parse(response: unknown): Effect.Effect<readonly FhirResource[], ParseResult.ParseError>
+  readonly tryRecognize: (url: string) => Option.Option<{
+    readonly specificity: number
+    readonly source?: SourceIdentity
+  }>
+  parse(response: {
+    readonly url: string
+  }): Effect.Effect<readonly FhirResource[], ParseResult.ParseError>
 }
 
 /** The one field of a scraping plan {@link adoptSourceIdentity} rewrites. */
@@ -61,6 +73,27 @@ type EntitiesParseEveryResource<TPlan extends AdoptablePlan> =
     ? unknown
     : {
         readonly __adoptSourceIdentity: 'the entities of this plan must parse the whole FhirResource union'
+      }
+
+/**
+ * The per-kind sibling of {@link EntitiesParseEveryResource}, for
+ * {@link adoptUnderRecognizedRoot}: `unknown` when the single entity declares
+ * the whole `FhirResource` union, an unassignable shape when it declares less.
+ *
+ * @remarks
+ * `adoptUnderRecognizedRoot` wraps one kind (not a plan), so the guard reads
+ * `ParsedBy` off the entity directly. Same reasoning as the plan-level guard —
+ * adoption widens to `FhirResource` and cannot be declared not to, so a kind
+ * whose declared output is narrower is refused rather than silently
+ * misdeclared. The fix is the same: widen the kind's declared resource type to
+ * `HttpResponseKind<FhirResource>` before mapping (`fhirR4ResponseKinds` is
+ * already that wide).
+ */
+type EntityParsesEveryResource<TEntity extends AdoptableEntity> =
+  FhirResource extends ParsedBy<TEntity>
+    ? unknown
+    : {
+        readonly __adoptUnderRecognizedRoot: 'this response kind must parse the whole FhirResource union'
       }
 
 /**
@@ -117,7 +150,7 @@ const adoptEntity = (source: SourceIdentity, entity: AdoptableEntity): Adoptable
   const cached = cache.get(entity)
   const parse =
     cached ??
-    ((response: unknown) =>
+    ((response: { readonly url: string }) =>
       Effect.map(entity.parse(response), (resources) => resources.map(adoptResource(source))))
   if (cached === undefined) {
     cache.set(entity, parse)
@@ -168,4 +201,91 @@ const adoptSourceIdentity =
     return adopted
   }
 
-export { adoptSourceIdentity, type AdoptableEntity, type AdoptablePlan }
+/**
+ * A schema AST for the `ParseError` a non-recognized response fails with. The
+ * failure is not a decode failure, so there is no wire schema that produced it;
+ * a `String` AST just carries the URL as the offending value, the same way
+ * `web-trace`'s `digestFailureAsParseError` re-raises a non-parse cause as a
+ * `ParseError`.
+ */
+const unrecognizedAst = Schema.String.ast
+
+/**
+ * Re-raise "this kind does not adopt an identity for this URL" as the
+ * `ParseError` an entity's `parse` may fail with.
+ *
+ * @param name - The entity that was asked to adopt
+ * @param url - The response URL it did not recognize (or recognized without a
+ *   source)
+ * @param reason - The real reason, named for the reader
+ * @returns The equivalent `ParseError`, on the same channel a decode failure
+ *   uses — so `Extraction.run` reports it as an ordinary per-response
+ *   `parseFailure`, never a widened channel or a defect
+ */
+const notAdoptableError = (name: string, url: string, reason: string): ParseResult.ParseError =>
+  new ParseResult.ParseError({
+    issue: new ParseResult.Forbidden(unrecognizedAst, url, `${name}: ${reason}`),
+  })
+
+/**
+ * Adopt every resource a single response kind parses under the identity **its
+ * own `tryRecognize` mints for the response's URL** — the one, option-less
+ * per-kind combinator that replaces both the live `adoptSourceIdentity(const)`
+ * wrapper and the archive's per-URL-root wrapper.
+ *
+ * @param entity - The kind to wrap; its declared output must be the whole
+ *   `FhirResource` union ({@link EntityParsesEveryResource})
+ * @returns The same kind with its `parse` adopting, every other field kept by
+ *   reference
+ *
+ * @remarks
+ * The identity is read verbatim from `entity.tryRecognize(response.url).source`
+ * — no source parameter, so a package applies this once at module load and two
+ * plans from one config share the same frozen kind by identity (no memo, and
+ * deep-equal gets *easier*). Only `parse` is wrapped, and only with
+ * `Effect.map` over a successful decode, so the error channel and synchronous
+ * runnability are untouched.
+ *
+ * A `parse` on a response this kind's `tryRecognize` returns `None` for — **or**
+ * `Some` with no `source` (a kind that recognizes but mints no identity has no
+ * business being adopted) — **fails** with a {@link notAdoptableError} naming
+ * the real reason, rather than passing through un-adopted (the old silent
+ * archive behaviour) or dying. In practice the URL a kind is handed always
+ * recognizes (routing put it there), so this arm guards a misconfiguration, not
+ * a normal response.
+ */
+const adoptUnderRecognizedRoot = <TEntity extends AdoptableEntity>(
+  entity: TEntity & EntityParsesEveryResource<TEntity>
+): TEntity => {
+  const parse: AdoptableParse = (response) =>
+    Option.match(entity.tryRecognize(response.url), {
+      onNone: () =>
+        Effect.fail(
+          notAdoptableError(
+            entity.name,
+            response.url,
+            'URL not recognized by this kind — cannot adopt an identity'
+          )
+        ),
+      onSome: (recognized) => {
+        const source = recognized.source
+        return source === undefined
+          ? Effect.fail(
+              notAdoptableError(
+                entity.name,
+                response.url,
+                'recognized but mints no source identity — cannot adopt'
+              )
+            )
+          : Effect.map(entity.parse(response), (resources) => {
+              const adopt = adoptResource(source)
+              return resources.map((resource) => adopt(resource))
+            })
+      },
+    })
+  const wrapped: TEntity = { ...entity, parse }
+  Object.freeze(wrapped)
+  return wrapped
+}
+
+export { adoptSourceIdentity, adoptUnderRecognizedRoot, type AdoptableEntity, type AdoptablePlan }

@@ -1,9 +1,10 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Option, pipe, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
-import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
+import { HttpResponseKind, Specificity, UrlMatch } from 'http-extraction-fundamentals'
 import { nonEmpty } from 'kitchen-sink'
 
 import { extractJson } from '../extract-json.ts'
+import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 
 type PatientType = typeof Patient.Schema.Type
 
@@ -103,7 +104,16 @@ const profileUrl = UrlMatch.make({
  */
 const ProfileResponseKind: HttpResponseKind.HttpResponseKind<PatientType> = HttpResponseKind.make({
   name: 'ProfileResponseKind',
-  isFoundAt: (url) => profileUrl.test(url),
+  // URL-gated by this kind's own pattern; on a match it mints the portal source
+  // (`system` only — carebook's references are relative, so no `baseUrl`).
+  tryRecognize: (url) =>
+    pipe(
+      profileUrl(url),
+      Option.map(() => ({
+        specificity: Specificity.PORTAL,
+        source: { system: REXALL_CAREBOOK_SYSTEM },
+      }))
+    ),
   parse: (response) =>
     Effect.gen(function* () {
       const profile = yield* decodeProfile(extractJson(response.text()))

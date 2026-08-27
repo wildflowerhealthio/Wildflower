@@ -31,7 +31,7 @@ export {
 export {
   type ImportRun,
   type ImportRunState,
-  type ReadEntry,
+  type FileReadOutcome,
   useImportRun,
 } from './preview/use-import-run.ts'
 export {

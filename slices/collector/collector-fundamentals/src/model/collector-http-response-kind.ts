@@ -8,7 +8,7 @@ import type * as Step from './step.ts'
  * collector run can drive: reactive crawling via `followUpSteps`.
  *
  * @remarks
- * The base recipe — `name` / `isFoundAt` / `parse` — is
+ * The base recipe — `name` / `tryRecognize` / `parse` — is
  * `http-extraction-fundamentals`' {@link HttpResponseKind.HttpResponseKind}, so a
  * source package's entities feed a `ScrapingPlan` unchanged (the extra
  * member is optional). What this type adds exists only live: generated
@@ -57,7 +57,7 @@ interface CollectorHttpResponseKind<
  * cannot mutate `responseKinds` (via `ScrapingPlan.make`) after
  * construction — the dispatcher pins the matched entity per request
  * at `ResponseStart` and assumes it stays put. The clone copies the
- * known fields (`name`, `isFoundAt`, `parse`, and the optional
+ * known fields (`name`, `tryRecognize`, `parse`, and the optional
  * `followUpSteps`) so an extra unexpected property on the caller's
  * object is silently dropped.
  */
@@ -66,7 +66,7 @@ const make = <TResources>(
 ): CollectorHttpResponseKind<TResources> =>
   deepFreeze({
     name: definition.name,
-    isFoundAt: definition.isFoundAt,
+    tryRecognize: definition.tryRecognize,
     parse: definition.parse,
     // `followUpSteps` is declared as a method (for covariance — see the interface
     // note), so copying the reference trips `unbound-method`; it is a pure,

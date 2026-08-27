@@ -1,7 +1,7 @@
 import { Effect, Either, Encoding, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { Extraction } from 'http-extraction-fundamentals'
+import { Extraction, type HttpResponseKind, Specificity } from 'http-extraction-fundamentals'
 import {
   echoResponseKind,
   makeExtractionInput,
@@ -48,13 +48,15 @@ const exchanges: readonly Extraction.Input[] = [
  * counterpart of the extraction runner's `unmatched` bucket.
  */
 const resourcesViaTracker = (
-  responses: readonly Extraction.Input[]
+  responses: readonly Extraction.Input[],
+  kinds: readonly HttpResponseKind.HttpResponseKind<Echo>[] = responseKinds
 ): readonly (readonly Echo[])[] => {
   const results: SnifferResponseTracker.SniffResult<Echo>[] = []
   const tracker = Effect.runSync(
     SnifferResponseTracker.make<Echo>({
-      matchResponseKind: (url) =>
-        Option.fromNullable(responseKinds.find((entity) => entity.isFoundAt(url))),
+      // Route through the same `Extraction.routeTo` the archive runner uses, so
+      // live and archive routing are one function.
+      matchResponseKind: (url) => Option.map(Extraction.routeTo(kinds, url), (r) => r.kind),
       sendMessage: () => Effect.void,
       handleNewSniffResult: (result) =>
         Effect.sync(() => {
@@ -116,5 +118,23 @@ describe('Extraction.run / SnifferResponseTracker parity', () => {
 
     expect(outcome.unmatched).toEqual([{ id: 'r3', url: 'https://example.com/gamma/3' }])
     expect(resourcesViaTracker(exchanges)).toHaveLength(outcome.batches.length)
+  })
+
+  it('routes a specificity overlap to the same winner live and in an archive', () => {
+    // Two kinds both claim `/alpha/…`, at different specificities. Highest wins
+    // in both paths, whatever the list order — the tie is broken by specificity,
+    // not by which loop walks the list.
+    const broad = echoResponseKind('BroadEntity', 'alpha', Specificity.PROTOCOL)
+    const narrow = echoResponseKind('NarrowEntity', 'alpha', Specificity.PORTAL)
+    const overlapping = [broad, narrow]
+    const overlap = [
+      makeExtractionInput({ id: 'o1', url: 'https://example.com/alpha/1', body: '{"a":1}' }),
+    ]
+
+    const viaExtraction = Effect.runSync(Extraction.run(overlapping, overlap))
+    expect(viaExtraction.batches.map((batch) => batch.entityName)).toEqual(['NarrowEntity'])
+    expect(viaExtraction.batches.map((batch) => batch.resources)).toEqual(
+      resourcesViaTracker(overlap, overlapping)
+    )
   })
 })

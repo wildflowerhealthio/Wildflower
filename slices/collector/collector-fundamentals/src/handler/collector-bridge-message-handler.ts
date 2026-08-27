@@ -1,6 +1,7 @@
 import { type CancelSnifferRequestMessage, type PageActionMessage } from 'browser-sniffer-core'
 import { Effect, type Mailbox, type MutableHashMap, Option, Schema } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
+import { Extraction } from 'http-extraction-fundamentals'
 import {
   type CollectorBridge,
   type EnsureSnifferVisible as EnsureSnifferVisibleMessage,
@@ -232,10 +233,13 @@ const make = <TResources>({
     // three bindings reference one another): without them TS infers `any`.
     const tracker: SnifferResponseTracker.SnifferResponseTracker<TResources> =
       yield* SnifferResponseTracker.make<TResources>({
-        // The tracker only needs "which entity (if any) parses this URL"; derive
-        // it from the plan here so the tracker stays decoupled from `ScrapingPlan`.
+        // The tracker only needs "which entity (if any) parses this URL"; route
+        // it through the same `Extraction.routeTo` an archive import uses, so
+        // live and archive routing are one function (highest specificity wins,
+        // ties → list order). `routeTo` is generic in the concrete element, so
+        // the matched `CollectorHttpResponseKind`'s `followUpSteps` rides through.
         matchResponseKind: (url) =>
-          Option.fromNullable(scrapingPlan.responseKinds.find((e) => e.isFoundAt(url))),
+          Option.map(Extraction.routeTo(scrapingPlan.responseKinds, url), (routed) => routed.kind),
         sendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         handleGeneratedSteps: (steps) => enqueueGeneratedSteps(steps),

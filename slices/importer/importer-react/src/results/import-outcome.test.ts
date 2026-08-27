@@ -75,7 +75,7 @@ describe('summarizeBatch and isPartialBatch', () => {
       imported('a', 3, 0),
       imported('b', 2, 1),
       { _tag: 'uploadFailed', id: 'c', fileName: 'c.har', error: new Error('boom') },
-      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'no-source' },
+      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'nothing' },
     ]
     const summary = summarizeBatch(batch)
     expect(summary.written).toBe(4) // 3 + 1
@@ -86,8 +86,7 @@ describe('summarizeBatch and isPartialBatch', () => {
 
   it('is partial when any file upload-failed or wrote partially, complete otherwise', () => {
     expect(isPartialBatch([imported('a', 3, 0)])).toBe(false)
-    // A skipped file alone is not a failure — it is the multi-file echo of
-    // NoSourceClaims being data.
+    // A skipped file alone is not a failure — an empty preview is ordinary data.
     expect(
       isPartialBatch([
         imported('a', 3, 0),
@@ -130,14 +129,12 @@ const previewWith = (count: number): ImportPreview.Preview =>
 const previewOf = (
   resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
 ): ImportPreview.Preview => ({
-  _tag: 'Preview',
-  sourceTag: 'fhir-r4',
   rootUrls: ['https://r4.example.org/baseR4'],
   resourcesByType,
   parseFailures: [],
   unmatchedCount: 0,
   bodyAbsentCount: 0,
-  totalEntries: Object.values(resourcesByType).flat().length,
+  totalResponses: Object.values(resourcesByType).flat().length,
 })
 
 /** `count` distinct write failures, shaped like the write sink's own records. */

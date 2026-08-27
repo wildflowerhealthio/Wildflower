@@ -74,10 +74,10 @@ const ImporterScreen = (): JSX.Element => {
     // the case `PreviewPanel` shows the confirm action for.
     return (
       <PreviewPanel
-        entries={runState.entries}
+        files={runState.files}
         confirming={confirming}
         onCancel={startOver}
-        onConfirm={() => confirm.confirm(runState.entries)}
+        onConfirm={() => confirm.confirm(runState.files)}
       />
     )
   })()

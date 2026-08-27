@@ -12,7 +12,6 @@ import {
   WebViewSource,
 } from 'collector-fundamentals/model'
 import type { TransportAdapter } from 'effect-messaging-core'
-import { UrlMatch } from 'http-extraction-fundamentals'
 
 import {
   adapterLayer,
@@ -353,7 +352,7 @@ const awaitUserDismissStep = (timeout = Duration.minutes(10)): Step.Step => ({
 const awaitSettledFor = (segment: string): Step.Step => ({
   _tag: 'AwaitPageSettled',
   name: `await people/${segment}`,
-  pattern: UrlMatch.make({ segments: [UrlMatch.literal('people'), UrlMatch.literal(segment)] }),
+  pattern: new RegExp(`/people/${segment}(?:[/?#]|$)`),
   timeout: Duration.seconds(30),
 })
 
@@ -398,7 +397,8 @@ const makeGeneratingHandler = (opts: {
         responseKinds: [
           CollectorHttpResponseKind.make<Person>({
             name: 'PersonEntity',
-            isFoundAt: (url) => /\/people\//.test(url),
+            tryRecognize: (url) =>
+              /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
             parse: (response) =>
               Effect.map(Schema.decode(Schema.parseJson(PersonSchema))(response.text()), (p) => [
                 p,

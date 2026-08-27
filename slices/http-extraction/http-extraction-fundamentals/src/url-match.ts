@@ -8,11 +8,11 @@ import { Option } from 'effect'
  * `\/Patient\/[^/?#]+(?:\?|$)/` to "Patient slash any-segment then
  * end-of-path or query-start" in their head.
  *
- * A {@link make} call fuses two reads of the *same* pattern into one
- * {@link UrlMatcher}: `test` (does this URL name the resource?) and
- * `recognizeRoot` (the scheme + authority + base-path prefix the resource was
- * served from). They can never disagree because they share one regex —
- * `test(url) === Option.isSome(recognizeRoot(url))`.
+ * A {@link make} call returns the {@link UrlMatcher} itself — the bare function
+ * `(url) => Option<root>`: `Some` the scheme + authority + base-path prefix the
+ * resource was served from when the URL names the resource, `None` when it does
+ * not. Recognition and root are one read of one regex, so they can never
+ * disagree: `Option.isSome(matcher(url))` is "does this URL name the resource?".
  *
  * The pattern is `^`-anchored and requires an `https?://` scheme: group 1
  * captures `https?://<authority><base path>`, then the declared segments and
@@ -26,9 +26,8 @@ import { Option } from 'effect'
  * beneath from one place.
  *
  * Requiring a scheme is a deliberate tightening: a non-`http(s)` or
- * scheme-less URL now `test`s false and `recognizeRoot`s `None`, because a
- * root has to be a URL a `SourceIdentity` can key under, which a non-HTTP
- * scheme is not.
+ * scheme-less URL now returns `None`, because a root has to be a URL a
+ * `SourceIdentity` can key under, which a non-HTTP scheme is not.
  *
  * Import callers use the file as a namespace:
  * `import { UrlMatch } from 'http-extraction-fundamentals'` →
@@ -36,28 +35,23 @@ import { Option } from 'effect'
  *
  * @example
  * ```ts
- * const PatientUrl = UrlMatch.make({
+ * const patientUrl = UrlMatch.make({
  *   segments: [UrlMatch.literal('Patient'), UrlMatch.id],
  * })
- * PatientUrl.test('https://r4/Patient/123')              // true
- * PatientUrl.test('https://r4/Patient/123?_format=json') // true
- * PatientUrl.test('https://r4/fhir/R4/Patient/123')      // true (base path)
- * PatientUrl.test('https://r4/Patient/123/_history')     // false
- * PatientUrl.test('https://r4/Observation/123')          // false
- * PatientUrl.test('https://Patient/123')                 // false (host is not a segment)
- * PatientUrl.test('ftp://r4/Patient/123')                // false (scheme required)
+ * patientUrl('https://ehr/Patient/1')          // Some('https://ehr')
+ * patientUrl('https://ehr/baseR4/Patient/1')   // Some('https://ehr/baseR4')
+ * patientUrl('https://ehr/Patient/1?_x=json')  // Some('https://ehr')
+ * patientUrl('https://ehr/Patient/1/_history') // None
+ * patientUrl('https://ehr/Observation/2')      // None
+ * patientUrl('https://Patient/123')            // None (host is not a segment)
+ * patientUrl('ftp://ehr/Patient/1')            // None (scheme required)
  *
- * // recognizeRoot recovers the scheme+authority+base-path prefix:
- * PatientUrl.recognizeRoot('https://ehr/baseR4/Patient/1') // Some('https://ehr/baseR4')
- * PatientUrl.recognizeRoot('https://ehr/Observation/2')    // None
- *
- * const ObservationListUrl = UrlMatch.make({
+ * const observationListUrl = UrlMatch.make({
  *   segments: [UrlMatch.literal('Observation')],
  *   end: 'mustHaveQuery',
  * })
- * ObservationListUrl.test('https://r4/Observation?subject=…')        // true
- * ObservationListUrl.test('https://r4/baseR4/Observation?subject=…') // true (base path)
- * ObservationListUrl.test('https://r4/Observation/123')              // false
+ * observationListUrl('https://ehr/Observation?subject=…') // Some('https://ehr')
+ * observationListUrl('https://ehr/Observation/123')       // None
  * ```
  */
 
@@ -93,21 +87,11 @@ const segmentPattern = (s: PathSegment): string =>
 const endPattern = (e: PathEnd): string => (e === 'mustHaveQuery' ? '\\?' : '(?:\\?|$)')
 
 /**
- * A URL pattern with its recognition decision and its captured root fused
- * onto one regex.
+ * A URL recognizer: `Some` the `https?://<authority><base path>` prefix `url`
+ * was served from when `url` names the resource, `None` when it names no such
+ * resource (or is not `http(s)`). Recognition and root are the one read.
  */
-interface UrlMatcher {
-  /**
-   * Whether `url` names this resource. Equal to
-   * `Option.isSome(recognizeRoot(url))` — the two read the same regex.
-   */
-  readonly test: (url: string) => boolean
-  /**
-   * The `https?://<authority><base path>` prefix `url` was served from, or
-   * `Option.none()` when `url` names no such resource (or is not `http(s)`).
-   */
-  readonly recognizeRoot: (url: string) => Option.Option<string>
-}
+type UrlMatcher = (url: string) => Option.Option<string>
 
 /**
  * Build a {@link UrlMatcher} from `https?://<authority><base path>` (captured
@@ -132,11 +116,10 @@ const make = (config: {
   // `/Observation/<id>` never gets re-read as a base path that makes the list
   // `/Observation?` match). `^`-anchored so the capture starts at the scheme.
   const pattern = new RegExp(`^(https?://[^/]+(?:/[^/?#]+)*?)${segments}${end}`)
-  const recognizeRoot = (url: string): Option.Option<string> => {
+  return (url: string): Option.Option<string> => {
     const match = pattern.exec(url)
     return match?.[1] === undefined ? Option.none() : Option.some(match[1])
   }
-  return { test: (url) => Option.isSome(recognizeRoot(url)), recognizeRoot }
 }
 
 export { id, literal, make }

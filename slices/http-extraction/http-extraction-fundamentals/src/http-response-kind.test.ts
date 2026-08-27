@@ -1,8 +1,9 @@
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import * as HttpResponseKind from './http-response-kind.ts'
 import type * as HttpResponse from './http-response.ts'
 import { makeHttpResponse, SimpleResponseKind } from './test-helpers.ts'
 
@@ -66,5 +67,24 @@ describe('HttpResponseKind.make', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+
+  it('clones only the known fields, dropping an unexpected one', () => {
+    // A non-literal carrying an extra property: `make` copies only the known
+    // fields, so `surprise` is silently dropped (excess-property check does not
+    // fire on a pre-built value).
+    const definition = {
+      name: 'ExtraFieldKind',
+      tryRecognize: (url: string) =>
+        url.endsWith('/keep') ? Option.some({ specificity: 10 }) : Option.none(),
+      parse: () => Effect.succeed([]),
+      surprise: 'dropped',
+    }
+    const made = HttpResponseKind.make(definition)
+
+    expect(Object.hasOwn(made, 'surprise')).toBe(false)
+    expect(Option.isSome(made.tryRecognize('https://x/keep'))).toBe(true)
+    expect(Option.isNone(made.tryRecognize('https://x/drop'))).toBe(true)
+    expect(Object.isFrozen(made)).toBe(true)
   })
 })

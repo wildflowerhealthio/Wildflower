@@ -112,10 +112,10 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * which is unambiguous because each `Open` targets a fresh document. The FHIR endpoints are direct JSON documents (one request per
  * page, no post-load XHR fan-out), so the hold on the settled page is
  * sufficient — no additional fixed `Delay` grace step is needed.
- * `responseKinds` are listed Patient → Observation → Bundle so
- * `isFoundAt` matches are evaluated in that order; `mustHaveQuery` on
+ * `responseKinds` are listed Patient → Observation → Bundle; routing is by
+ * highest `tryRecognize` specificity (ties → list order), and `mustHaveQuery` on
  * the Bundle pattern keeps the list disjoint from the single-resource
- * Observation pattern.
+ * Observation pattern, so the order is not load-bearing.
  *
  * `config.rootUrl` and `config.patientId` are pre-validated by
  * {@link InstanceConfig} (no trailing slashes; patientId is the FHIR

@@ -13,7 +13,7 @@ import type * as ImportPreview from './import-preview.ts'
 
 /**
  * Covers the read half of the import flow: a HAR archive in, an
- * {@link ImportPreview.ImportPreview} out. Two fixture routes reach the same assertions — a
+ * {@link ImportPreview.Preview} out. Two fixture routes reach the same assertions — a
  * HAR built through `web-trace-core`'s own `emitHar` from constructed exchanges,
  * and a committed Chrome DevTools export — so the pipeline is exercised against
  * both an archive shaped exactly like ours and a foreign one carrying browser
@@ -62,44 +62,34 @@ const harTextOf = (exchanges: readonly TraceExchange[]): string =>
   Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' })))
 
 /** Run a preview, surfacing a HAR `ParseError` as a thrown defect (none expected). */
-const runPreview = (harText: string): ImportPreview.ImportPreview =>
+const runPreview = (harText: string): ImportPreview.Preview =>
   Effect.runSync(HarImport.run(harText))
-
-/** Assert the preview claimed and narrow it to {@link ImportPreview.Preview}. */
-const expectPreview = (preview: ImportPreview.ImportPreview): ImportPreview.Preview => {
-  expect(preview._tag).toBe('Preview')
-  if (preview._tag !== 'Preview') throw new Error('expected a Preview')
-  return preview
-}
 
 describe('HarImport.run', () => {
   describe('a Patient read + Observation searchset', () => {
     it('previews re-keyed resources from an emitHar archive', () => {
       const root = 'https://r4.example.org/baseR4'
-      const preview = expectPreview(
-        runPreview(
-          harTextOf([
-            traceExchange({
-              requestId: 'req-0',
-              url: `${root}/Patient/pat-7?_format=json`,
-              headers: [['content-type', 'application/fhir+json']],
-              body: storedJson(patient('pat-7')),
-              startedAtMillis: CAPTURE_FLOOR,
-            }),
-            traceExchange({
-              requestId: 'req-1',
-              url: `${root}/Observation?subject%3APatient=pat-7&_count=250`,
-              headers: [['content-type', 'application/fhir+json']],
-              body: storedJson(searchset(observation('obs-1'), observation('obs-2'))),
-              startedAtMillis: CAPTURE_FLOOR + 1000,
-            }),
-          ])
-        )
+      const preview = runPreview(
+        harTextOf([
+          traceExchange({
+            requestId: 'req-0',
+            url: `${root}/Patient/pat-7?_format=json`,
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson(patient('pat-7')),
+            startedAtMillis: CAPTURE_FLOOR,
+          }),
+          traceExchange({
+            requestId: 'req-1',
+            url: `${root}/Observation?subject%3APatient=pat-7&_count=250`,
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson(searchset(observation('obs-1'), observation('obs-2'))),
+            startedAtMillis: CAPTURE_FLOOR + 1000,
+          }),
+        ])
       )
 
-      expect(preview.sourceTag).toBe('fhir-r4')
       expect(preview.rootUrls).toEqual([root])
-      expect(preview.totalEntries).toBe(2)
+      expect(preview.totalResponses).toBe(2)
       expect(preview.unmatchedCount).toBe(0)
       expect(preview.bodyAbsentCount).toBe(0)
       expect(preview.parseFailures).toEqual([])
@@ -121,32 +111,30 @@ describe('HarImport.run', () => {
       // no inference or voting.
       const rootA = 'https://a.example.org/baseR4'
       const rootB = 'https://b.example.org/fhir/R4'
-      const preview = expectPreview(
-        runPreview(
-          harTextOf([
-            traceExchange({
-              requestId: 'req-0',
-              url: `${rootA}/Patient/pat-7?_format=json`,
-              headers: [['content-type', 'application/fhir+json']],
-              body: storedJson(patient('pat-7')),
-              startedAtMillis: CAPTURE_FLOOR,
-            }),
-            traceExchange({
-              requestId: 'req-1',
-              url: `${rootB}/Patient/pat-9?_format=json`,
-              headers: [['content-type', 'application/fhir+json']],
-              body: storedJson(patient('pat-9')),
-              startedAtMillis: CAPTURE_FLOOR + 1000,
-            }),
-            traceExchange({
-              requestId: 'req-2',
-              url: `${rootB}/Observation?patient=pat-9`,
-              headers: [['content-type', 'application/fhir+json']],
-              body: storedJson(searchset(observation('obs-b1'))),
-              startedAtMillis: CAPTURE_FLOOR + 2000,
-            }),
-          ])
-        )
+      const preview = runPreview(
+        harTextOf([
+          traceExchange({
+            requestId: 'req-0',
+            url: `${rootA}/Patient/pat-7?_format=json`,
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson(patient('pat-7')),
+            startedAtMillis: CAPTURE_FLOOR,
+          }),
+          traceExchange({
+            requestId: 'req-1',
+            url: `${rootB}/Patient/pat-9?_format=json`,
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson(patient('pat-9')),
+            startedAtMillis: CAPTURE_FLOOR + 1000,
+          }),
+          traceExchange({
+            requestId: 'req-2',
+            url: `${rootB}/Observation?patient=pat-9`,
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson(searchset(observation('obs-b1'))),
+            startedAtMillis: CAPTURE_FLOOR + 2000,
+          }),
+        ])
       )
 
       // Both servers are surfaced, in first-seen order — neither is dropped and
@@ -163,17 +151,16 @@ describe('HarImport.run', () => {
       expect(observations.map((resource) => resource.id)).toEqual([
         localResourceId(rootB, 'Observation', 'obs-b1'),
       ])
-      expect(preview.totalEntries).toBe(3)
+      expect(preview.totalResponses).toBe(3)
     })
 
     it('previews re-keyed resources from a committed Chrome DevTools export', () => {
       const root = 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4'
-      const preview = expectPreview(runPreview(JSON.stringify(chromeHar)))
+      const preview = runPreview(JSON.stringify(chromeHar))
 
-      expect(preview.sourceTag).toBe('fhir-r4')
       // The Epic-style deep base path is recovered as the one source root.
       expect(preview.rootUrls).toEqual([root])
-      expect(preview.totalEntries).toBe(5)
+      expect(preview.totalResponses).toBe(5)
       // fonts, analytics, and the app bundle are the browser noise around the
       // FHIR traffic — matched by no entity.
       expect(preview.unmatchedCount).toBe(3)
@@ -192,8 +179,8 @@ describe('HarImport.run', () => {
     })
   })
 
-  describe('when no importer claims the traffic', () => {
-    it('reports NoSourceClaims for a non-FHIR archive, counting the entries read', () => {
+  describe('when no response kind recognizes the traffic', () => {
+    it('is an empty preview for a non-FHIR archive, counting every response as unmatched', () => {
       const preview = runPreview(
         harTextOf([
           traceExchange({
@@ -207,18 +194,24 @@ describe('HarImport.run', () => {
           }),
         ])
       )
-      expect(preview).toEqual({ _tag: 'NoSourceClaims', totalEntries: 2 })
+      // No tagged "nothing recognized" outcome any more — just a preview whose
+      // batches are empty and whose entries all went unmatched.
+      expect(preview.resourcesByType).toEqual({})
+      expect(preview.rootUrls).toEqual([])
+      expect(preview.unmatchedCount).toBe(2)
+      expect(preview.totalResponses).toBe(2)
+      expect(preview.parseFailures).toEqual([])
     })
 
-    test('property: an archive of arbitrary non-FHIR traffic is NoSourceClaims', () => {
+    test('property: an archive of arbitrary non-FHIR traffic recognizes nothing', () => {
       const { session } = arbitraries(fc)
       fc.assert(
         fc.property(session, (exchanges) => {
           const preview = runPreview(harTextOf(exchanges))
-          expect(preview._tag).toBe('NoSourceClaims')
-          if (preview._tag === 'NoSourceClaims') {
-            expect(preview.totalEntries).toBe(exchanges.length)
-          }
+          expect(preview.resourcesByType).toEqual({})
+          expect(preview.rootUrls).toEqual([])
+          expect(preview.unmatchedCount).toBe(exchanges.length)
+          expect(preview.totalResponses).toBe(exchanges.length)
         }),
         { numRuns: numRunsFor({ base: 50 }) }
       )
@@ -228,34 +221,32 @@ describe('HarImport.run', () => {
   describe('accounting for entries around the claimed resources', () => {
     it('counts unmatched extra entries alongside a claimed FHIR resource', () => {
       const root = 'https://r4.example.org/baseR4'
-      const preview = expectPreview(
-        runPreview(
-          harTextOf([
-            traceExchange({
-              requestId: 'req-0',
-              url: `${root}/Patient/pat-7?_format=json`,
-              headers: [['content-type', 'application/fhir+json']],
-              body: storedJson(patient('pat-7')),
-            }),
-            traceExchange({
-              requestId: 'req-1',
-              url: 'https://portal.example.com/login',
-              body: storedJson({}),
-            }),
-            traceExchange({
-              requestId: 'req-2',
-              url: 'https://cdn.example.com/app.7f3c.js',
-              body: storedJson({}),
-            }),
-          ])
-        )
+      const preview = runPreview(
+        harTextOf([
+          traceExchange({
+            requestId: 'req-0',
+            url: `${root}/Patient/pat-7?_format=json`,
+            headers: [['content-type', 'application/fhir+json']],
+            body: storedJson(patient('pat-7')),
+          }),
+          traceExchange({
+            requestId: 'req-1',
+            url: 'https://portal.example.com/login',
+            body: storedJson({}),
+          }),
+          traceExchange({
+            requestId: 'req-2',
+            url: 'https://cdn.example.com/app.7f3c.js',
+            body: storedJson({}),
+          }),
+        ])
       )
       expect(preview.unmatchedCount).toBe(2)
-      expect(preview.totalEntries).toBe(3)
+      expect(preview.totalResponses).toBe(3)
       expect(preview.resourcesByType['Patient'] ?? []).toHaveLength(1)
     })
 
-    it('counts a matched entry the archive stored no body for as bodyAbsent, not a parse failure', () => {
+    it('counts a matched response the archive stored no body for as bodyAbsent, not a parse failure', () => {
       const root = 'https://r4.example.org/baseR4'
       const skipped: TraceBody = {
         _tag: 'SkippedBody',
@@ -264,16 +255,14 @@ describe('HarImport.run', () => {
         hash: ANY_HASH,
         reason: 'Content type outside the allowlist',
       }
-      const preview = expectPreview(
-        runPreview(
-          harTextOf([
-            traceExchange({
-              url: `${root}/Patient/pat-7?_format=json`,
-              headers: [['content-type', 'application/fhir+json']],
-              body: skipped,
-            }),
-          ])
-        )
+      const preview = runPreview(
+        harTextOf([
+          traceExchange({
+            url: `${root}/Patient/pat-7?_format=json`,
+            headers: [['content-type', 'application/fhir+json']],
+            body: skipped,
+          }),
+        ])
       )
       expect(preview.bodyAbsentCount).toBe(1)
       expect(preview.parseFailures).toEqual([])
@@ -298,7 +287,7 @@ describe('HarImport.run', () => {
     // because that would widen its `R`.
     const preview: (
       harText: string
-    ) => Effect.Effect<ImportPreview.ImportPreview, ParseResult.ParseError, never> = HarImport.run
+    ) => Effect.Effect<ImportPreview.Preview, ParseResult.ParseError, never> = HarImport.run
     // Runtime: run with NO layers provided at all — a missing requirement would
     // surface as a defect here. Neither the compile above nor this run fails.
     const result = await Effect.runPromise(
@@ -312,6 +301,7 @@ describe('HarImport.run', () => {
         ])
       )
     )
-    expect(result._tag).toBe('Preview')
+    expect(result.totalResponses).toBe(1)
+    expect(result.resourcesByType['Patient'] ?? []).toHaveLength(1)
   })
 })

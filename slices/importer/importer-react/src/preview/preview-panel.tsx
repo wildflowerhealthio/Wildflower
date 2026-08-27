@@ -4,7 +4,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import type { ImportPreview } from 'importer-core'
 
 import { previewResourceCount } from '../results/import-outcome.ts'
-import type { ReadEntry } from './use-import-run.ts'
+import type { FileReadOutcome } from './use-import-run.ts'
 import styles from './preview-panel.module.css'
 
 /**
@@ -16,17 +16,16 @@ import styles from './preview-panel.module.css'
  * panel renders them together under one confirm. Every file's outcome renders
  * honestly and distinctly — there is no empty section:
  *
- * - **No importer claimed** (`NoSourceClaims`) — a plain "nothing here is
- *   recognized" state naming how many entries were read, so a browser's HAR of a
- *   site we have no source for reads as a fact, not a failure.
- * - **An importer claimed but matched nothing** (a `Preview` with no resources) —
- *   distinct from the above: the importer *did* recognize the traffic, it just
- *   produced no resources, and the entry counts explain why.
- * - **An importer claimed and produced resources** — per-`resourceType` sections
- *   with counts and a summary row per resource, the inferred source root(s) and
- *   detected importer shown for transparency (not editable — the recognition is
- *   zero-config), and honest notices for unmatched entries, absent bodies, and
- *   responses that matched a pattern but failed to decode.
+ * - **Nothing to import** (a `Preview` with no resources) — recognition is
+ *   per-URL now, so "no known source recognized the traffic" and "recognized
+ *   but produced no resources" are one empty state; the response counts and the
+ *   (possibly empty) source-root list explain why, so a browser's HAR of a site
+ *   we have no source for reads as a fact, not a failure.
+ * - **Produced resources** — per-`resourceType` sections with counts and a
+ *   summary row per resource, the source root(s) shown for transparency (not
+ *   editable — the recognition is zero-config), and honest notices for
+ *   unrecognized responses, absent bodies, and responses that a kind recognized
+ *   but failed to decode.
  * - **Unreadable** — a file that did not parse as a HAR at all, reported against
  *   its own name rather than sinking the batch.
  *
@@ -41,7 +40,7 @@ import styles from './preview-panel.module.css'
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
   /** Every picked file's read outcome, rendered together under one confirm. */
-  readonly entries: readonly ReadEntry[]
+  readonly files: readonly FileReadOutcome[]
   /**
    * Called when the user confirms the batch. Fires only when at least one file
    * has a claimed preview with resources to write; the panel gates the
@@ -67,20 +66,13 @@ const UNREADABLE_FILE_MESSAGE = 'This file could not be read as a HAR.'
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
 
-/** "read 5 entries" / "read 1 entry" — the entry-count phrasing shared by states. */
-const entriesRead = (count: number): string => `Read ${count} ${count === 1 ? 'entry' : 'entries'}`
-
-/** The transparency block: the detected importer and the source root(s) it keyed under. */
+/** The transparency block: the source root(s) the recognized responses keyed under. */
 const RecognitionSummary = ({
   preview,
 }: {
   readonly preview: ImportPreview.Preview
 }): JSX.Element => (
   <dl className={styles.recognition}>
-    <div className={styles.recognitionRow}>
-      <dt className={styles.recognitionTerm}>Source</dt>
-      <dd className={styles.recognitionValue}>{preview.sourceTag}</dd>
-    </div>
     <div className={styles.recognitionRow}>
       <dt className={styles.recognitionTerm}>{plural(preview.rootUrls.length, 'Source root')}</dt>
       <dd className={styles.recognitionValue}>
@@ -130,7 +122,7 @@ const PreviewNotices = ({ preview }: { readonly preview: ImportPreview.Preview }
   <div className={styles.notices}>
     {preview.unmatchedCount > 0 && (
       <p className={styles.notice}>
-        {`${preview.unmatchedCount} other ${preview.unmatchedCount === 1 ? 'entry' : 'entries'} went unrecognized.`}
+        {`${preview.unmatchedCount} other ${plural(preview.unmatchedCount, 'response')} went unrecognized.`}
       </p>
     )}
     {preview.bodyAbsentCount > 0 && (
@@ -162,7 +154,7 @@ const ClaimedBody = ({ preview }: { readonly preview: ImportPreview.Preview }): 
     return (
       <>
         <p role="status" className={styles.emptyMessage}>
-          {`The ${preview.sourceTag} importer recognized this archive, but matched no resources to import.`}
+          {`Read ${preview.totalResponses} ${plural(preview.totalResponses, 'response')}, but nothing here to import.`}
         </p>
         <RecognitionSummary preview={preview} />
         <PreviewNotices preview={preview} />
@@ -186,30 +178,23 @@ const ClaimedBody = ({ preview }: { readonly preview: ImportPreview.Preview }): 
   )
 }
 
-/** One file's body: unreadable, no-source, or the claimed preview's content. */
-const FileBody = ({ entry }: { readonly entry: ReadEntry }): JSX.Element => {
-  if (entry._tag === 'unreadable') {
+/** One file's body: unreadable, or the preview's content (empty or with resources). */
+const FileBody = ({ file }: { readonly file: FileReadOutcome }): JSX.Element => {
+  if (file._tag === 'unreadable') {
     return (
       <p role="alert" className={styles.emptyMessage}>
         {UNREADABLE_FILE_MESSAGE}
       </p>
     )
   }
-  if (entry.preview._tag === 'NoSourceClaims') {
-    return (
-      <p role="status" className={styles.emptyMessage}>
-        {`${entriesRead(entry.preview.totalEntries)}, but no known source recognized any of them.`}
-      </p>
-    )
-  }
-  return <ClaimedBody preview={entry.preview} />
+  return <ClaimedBody preview={file.preview} />
 }
 
 /** One file's whole outcome, under its own name — the unit the batch is built from. */
-const FileSection = ({ entry }: { readonly entry: ReadEntry }): JSX.Element => (
-  <section className={styles.fileSection} aria-label={entry.picked.fileName}>
-    <h3 className={styles.fileHeading}>{entry.picked.fileName}</h3>
-    <FileBody entry={entry} />
+const FileSection = ({ file }: { readonly file: FileReadOutcome }): JSX.Element => (
+  <section className={styles.fileSection} aria-label={file.picked.fileName}>
+    <h3 className={styles.fileHeading}>{file.picked.fileName}</h3>
+    <FileBody file={file} />
   </section>
 )
 
@@ -237,13 +222,10 @@ const PreviewActions = ({
   </div>
 )
 
-/** The resources a batch of read entries would write, summed across its files. */
-const writableCountOf = (entries: readonly ReadEntry[]): number =>
-  entries.reduce(
-    (total, entry) =>
-      entry._tag === 'read' && entry.preview._tag === 'Preview'
-        ? total + previewResourceCount(entry.preview)
-        : total,
+/** The resources a batch of read files would write, summed across them. */
+const writableCountOf = (files: readonly FileReadOutcome[]): number =>
+  files.reduce(
+    (total, file) => (file._tag === 'read' ? total + previewResourceCount(file.preview) : total),
     0
   )
 
@@ -253,25 +235,25 @@ const writableCountOf = (entries: readonly ReadEntry[]): number =>
  * writing the whole batch.
  */
 const PreviewPanel = ({
-  entries,
+  files,
   onConfirm,
   onCancel,
   confirming,
 }: PreviewPanelProps): JSX.Element => {
-  const writableCount = writableCountOf(entries)
+  const writableCount = writableCountOf(files)
   return (
     <section aria-label="Import preview" className={styles.panel}>
       <h2 className={styles.heading}>
         {writableCount > 0 ? PREVIEW_HEADING : NOTHING_TO_IMPORT_HEADING}
       </h2>
-      {entries.length > 1 && writableCount > 0 && (
+      {files.length > 1 && writableCount > 0 && (
         <p role="status" className={styles.batchSummary}>
-          {`${writableCount} ${plural(writableCount, 'resource')} across ${entries.length} files`}
+          {`${writableCount} ${plural(writableCount, 'resource')} across ${files.length} files`}
         </p>
       )}
       <div className={styles.fileSections}>
-        {entries.map((entry) => (
-          <FileSection key={entry.id} entry={entry} />
+        {files.map((file) => (
+          <FileSection key={file.id} file={file} />
         ))}
       </div>
       <PreviewActions

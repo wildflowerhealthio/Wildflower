@@ -10,6 +10,7 @@ import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
 import { MedicationListResponseKind } from './response-kinds/medication-list-response-kind.ts'
 import { ProfileResponseKind } from './response-kinds/profile-response-kind.ts'
+import { REXALL_CAREBOOK_SYSTEM } from './source-system.ts'
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -66,21 +67,6 @@ const defaultConfig: InstanceConfig = {
   email: 'you@example.com',
   password: 'your-password',
 }
-
-/**
- * The source system every resource this collector imports is keyed under.
- *
- * @remarks
- * A Wildflower-minted `sid` URI in the same style as `web-trace`'s systems, not
- * a carebook dialect constant — carebook publishes no namespace for "the id this
- * portal gave a resource", so this names the portal on its behalf. It does not
- * belong in `carebook.ts` for that reason.
- *
- * **Persisted wire format.** It is the hash domain for every derived local id
- * and the `Identifier.system` written beside every carebook id, so changing it
- * orphans everything already imported from Rexall.
- */
-const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
 
 /** The user-facing login page the plan `Open`s first. */
 const LOGIN_URL = 'https://letsbewell.ca/sign-in'

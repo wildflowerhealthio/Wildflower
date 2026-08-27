@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import type { Effect } from 'effect'
 
 import {
   type FhirR4ResourcesHttpApiClient,
@@ -20,7 +20,7 @@ import type { ImportPreview } from './import-preview.ts'
  * Persist every resource a preview would write, stamping each with the archive
  * it came from.
  *
- * @param preview - The preview to persist; a `NoSourceClaims` writes nothing
+ * @param preview - The preview to persist; an empty one writes nothing
  * @param sourceRef - The relative reference of the HAR-archive
  *   `DocumentReference` this import reads from (`DocumentReference/<id>`),
  *   stamped onto every written resource's `meta.source`
@@ -38,16 +38,14 @@ import type { ImportPreview } from './import-preview.ts'
  * so one failing write is returned as a {@link ResourceWriteFailure} and never
  * stops the rest of the batch. Nothing here throws.
  *
- * A `NoSourceClaims` preview has nothing to write, so this is an immediate
- * empty result that does not even touch the client.
+ * A preview whose `resourcesByType` is empty (nothing recognized, or nothing
+ * decoded) flattens to no resources, so this is an immediate empty result that
+ * does not even touch the client.
  */
 const persist = (
   preview: ImportPreview,
   sourceRef: string
 ): Effect.Effect<ReadonlyArray<ResourceWriteFailure>, never, FhirR4ResourcesHttpApiClient> => {
-  if (preview._tag === 'NoSourceClaims') {
-    return Effect.succeed([])
-  }
   const resources: readonly FhirResource[] = Object.values(preview.resourcesByType)
     .flat()
     .map((resource) => withMetaSource(resource, sourceRef))

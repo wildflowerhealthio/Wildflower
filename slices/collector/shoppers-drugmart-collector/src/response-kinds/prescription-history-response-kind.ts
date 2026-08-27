@@ -1,11 +1,12 @@
 import { Effect, Option, Schema } from 'effect'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind } from 'http-extraction-fundamentals'
+import { HttpResponseKind, Specificity } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime } from '../dates.ts'
 import { extractJson } from '../extract-json.ts'
 import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
+import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
 /** The dispensing store as a history entry carries it (all parts optional). */
@@ -154,7 +155,15 @@ const historyUrl = /:\/\/[^/]+\/api\/[^/]+\/prescription-history\/?\?(?:[^#]*&)?
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
     name: 'PrescriptionHistoryResponseKind',
-    isFoundAt: (url) => historyUrl.test(url),
+    // URL-gated by this kind's own pattern; on a match it mints the portal
+    // source (`system` only — relative references, so no `baseUrl`).
+    tryRecognize: (url) =>
+      historyUrl.test(url)
+        ? Option.some({
+            specificity: Specificity.PORTAL,
+            source: { system: SHOPPERS_DRUGMART_SYSTEM },
+          })
+        : Option.none(),
     parse: (response) =>
       Effect.gen(function* () {
         const { dispenses: raw } = yield* decodeHistory(extractJson(response.text()))

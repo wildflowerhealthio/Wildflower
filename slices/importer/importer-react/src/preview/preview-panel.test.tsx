@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { LOCAL_SOURCE, type PickedHar } from '../sources/picked-har.ts'
 import { NOTHING_TO_IMPORT_HEADING, PREVIEW_HEADING, PreviewPanel } from './preview-panel.tsx'
-import type { ReadEntry } from './use-import-run.ts'
+import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
  * The preview view is pure — props in, DOM out — so it is driven directly, no
@@ -21,10 +21,10 @@ import type { ReadEntry } from './use-import-run.ts'
 afterEach(cleanup)
 
 describe('PreviewPanel', () => {
-  it('renders a no-source file as its own state, with no confirm action', () => {
+  it('renders an empty preview (nothing recognized) as the nothing-to-import state', () => {
     render(
       <PreviewPanel
-        entries={[readEntry({ _tag: 'NoSourceClaims', totalEntries: 42 })]}
+        files={[readFile(previewOf({ resourcesByType: {}, unmatchedCount: 42 }))]}
         onConfirm={() => undefined}
         onCancel={() => undefined}
         confirming={false}
@@ -32,29 +32,29 @@ describe('PreviewPanel', () => {
     )
 
     // The batch has nothing to write, so the top heading says so and the file's
-    // own row explains why: recognized by nobody.
+    // own row explains why, counting the responses read.
     expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
-    expect(screen.getByRole('status').textContent).toMatch(/Read 42 entries/)
+    expect(screen.getByRole('status').textContent).toMatch(
+      /Read 42 responses.*nothing here to import/
+    )
     expect(screen.queryByRole('button', { name: /Import/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined()
   })
 
-  it('renders a claimed-but-empty file distinctly from the no-source one', () => {
+  it('surfaces the response counts on an empty preview', () => {
     render(
       <PreviewPanel
-        entries={[readEntry(previewOf({ resourcesByType: {}, unmatchedCount: 3 }))]}
+        files={[readFile(previewOf({ resourcesByType: {}, unmatchedCount: 3 }))]}
         onConfirm={() => undefined}
         onCancel={() => undefined}
         confirming={false}
       />
     )
 
-    // An importer *did* claim — the importer and unmatched count are surfaced,
-    // with a distinct message from the no-source one, and still nothing to write.
+    // Recognition is per-URL now, so "nothing recognized" is just an empty
+    // preview — its unmatched count explains why nothing was written.
     expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
-    expect(screen.getByText('fhir-r4')).toBeDefined()
-    expect(screen.getByText(/recognized this archive, but matched no resources/)).toBeDefined()
-    expect(screen.getByText(/3 other entries went unrecognized/)).toBeDefined()
+    expect(screen.getByText(/3 other responses went unrecognized/)).toBeDefined()
     expect(screen.queryByRole('button', { name: /Import/ })).toBeNull()
   })
 
@@ -67,8 +67,8 @@ describe('PreviewPanel', () => {
     }
     render(
       <PreviewPanel
-        entries={[
-          readEntry(
+        files={[
+          readFile(
             previewOf({
               resourcesByType: { Patient: [patient('pat-1')] },
               parseFailures: [failure],
@@ -90,8 +90,8 @@ describe('PreviewPanel', () => {
     const onConfirm = vi.fn()
     render(
       <PreviewPanel
-        entries={[
-          readEntry(
+        files={[
+          readFile(
             previewOf({
               rootUrls: ['https://r4.example.org/baseR4'],
               resourcesByType: {
@@ -107,10 +107,9 @@ describe('PreviewPanel', () => {
       />
     )
 
-    // The healthy heading, the detected importer and its source root, and the
-    // per-type sections with counts and rows.
+    // The healthy heading, the source root, and the per-type sections with
+    // counts and rows.
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
-    expect(screen.getByText('fhir-r4')).toBeDefined()
     expect(screen.getByText('https://r4.example.org/baseR4')).toBeDefined()
     expect(screen.getByRole('heading', { name: /Patient/ })).toBeDefined()
     expect(screen.getByRole('heading', { name: /Observation/ })).toBeDefined()
@@ -127,10 +126,10 @@ describe('PreviewPanel', () => {
   it('sums a mixed batch: one confirm for the writable files, each file rendered', () => {
     render(
       <PreviewPanel
-        entries={[
-          readEntry(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }), 'a.har'),
-          readEntry({ _tag: 'NoSourceClaims', totalEntries: 7 }, 'b.har'),
-          readEntry(
+        files={[
+          readFile(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }), 'a.har'),
+          readFile(previewOf({ resourcesByType: {}, unmatchedCount: 7 }), 'b.har'),
+          readFile(
             previewOf({ resourcesByType: { Observation: [observation('obs-1')] } }),
             'c.har'
           ),
@@ -153,9 +152,9 @@ describe('PreviewPanel', () => {
   it('reports an unreadable file against its name without sinking a writable sibling', () => {
     render(
       <PreviewPanel
-        entries={[
+        files={[
           { _tag: 'unreadable', id: 'u', picked: pickedHar('broken.har'), error: anyParseError() },
-          readEntry(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }), 'good.har'),
+          readFile(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }), 'good.har'),
         ]}
         onConfirm={() => undefined}
         onCancel={() => undefined}
@@ -171,7 +170,7 @@ describe('PreviewPanel', () => {
   it('disables the confirm while a confirmed import is running', () => {
     render(
       <PreviewPanel
-        entries={[readEntry(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }))]}
+        files={[readFile(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }))]}
         onConfirm={() => undefined}
         onCancel={() => undefined}
         confirming
@@ -185,15 +184,15 @@ describe('PreviewPanel', () => {
 
 // Helpers
 
-/** A `local` pick with the given name — the shape a read entry carries. */
+/** A `local` pick with the given name — the shape a read file carries. */
 const pickedHar = (fileName: string): PickedHar => ({
   fileName,
   text: '{}',
   source: LOCAL_SOURCE,
 })
 
-/** A `read` {@link ReadEntry} wrapping one preview, named for the batch's file rows. */
-const readEntry = (preview: ImportPreview.ImportPreview, fileName = 'session.har'): ReadEntry => ({
+/** A `read` {@link FileReadOutcome} wrapping one preview, named for the batch's file rows. */
+const readFile = (preview: ImportPreview.Preview, fileName = 'session.har'): FileReadOutcome => ({
   _tag: 'read',
   id: fileName,
   picked: pickedHar(fileName),
@@ -220,20 +219,24 @@ const observation = (id: string): FhirResource =>
     code: { text: 'Body Weight' },
   })
 
-/** A claimed `Preview` with the given fields; the rest are sensible empties. */
+/** A `Preview` with the given fields; the rest are sensible empties. */
 const previewOf = (fields: {
   readonly resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
   readonly rootUrls?: readonly string[]
   readonly unmatchedCount?: number
   readonly bodyAbsentCount?: number
   readonly parseFailures?: readonly ImportPreview.ImportParseFailure[]
-}): ImportPreview.Preview => ({
-  _tag: 'Preview',
-  sourceTag: 'fhir-r4',
-  rootUrls: fields.rootUrls ?? ['https://r4.example.org/baseR4'],
-  resourcesByType: fields.resourcesByType,
-  parseFailures: fields.parseFailures ?? [],
-  unmatchedCount: fields.unmatchedCount ?? 0,
-  bodyAbsentCount: fields.bodyAbsentCount ?? 0,
-  totalEntries: Object.values(fields.resourcesByType).flat().length,
-})
+}): ImportPreview.Preview => {
+  const unmatchedCount = fields.unmatchedCount ?? 0
+  const bodyAbsentCount = fields.bodyAbsentCount ?? 0
+  const parseFailures = fields.parseFailures ?? []
+  const resourceCount = Object.values(fields.resourcesByType).flat().length
+  return {
+    rootUrls: fields.rootUrls ?? ['https://r4.example.org/baseR4'],
+    resourcesByType: fields.resourcesByType,
+    parseFailures,
+    unmatchedCount,
+    bodyAbsentCount,
+    totalResponses: resourceCount + unmatchedCount + bodyAbsentCount + parseFailures.length,
+  }
+}

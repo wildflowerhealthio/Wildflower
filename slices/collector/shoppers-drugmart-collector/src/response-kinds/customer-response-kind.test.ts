@@ -1,13 +1,14 @@
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
-import { Effect, type Either, type ParseResult, Schema } from 'effect'
+import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
+import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { CustomerResponseKind } from './customer-response-kind.ts'
 
 const { expectLeftToEqual } = utilityExpectations(expect)
@@ -78,7 +79,7 @@ const customerPayload = (overrides?: Record<string, unknown>): Record<string, un
   }
 
 describe('CustomerResponseKind', () => {
-  describe('isFoundAt', () => {
+  describe('tryRecognize', () => {
     it.each([
       // Both API version segments (the capture shows `p1`, docs say `v1`).
       { url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}`, match: true },
@@ -100,8 +101,19 @@ describe('CustomerResponseKind', () => {
         url: `${CUSTOMERS_BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`,
         match: false,
       },
-    ])('returns $match for "$url"', ({ url, match }) => {
-      expect(CustomerResponseKind.isFoundAt(url)).toBe(match)
+    ])('recognizes $match for "$url"', ({ url, match }) => {
+      expect(Option.isSome(CustomerResponseKind.tryRecognize(url))).toBe(match)
+    })
+
+    it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
+      expect(
+        CustomerResponseKind.tryRecognize(`${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}`)
+      ).toStrictEqual(
+        Option.some({
+          specificity: Specificity.PORTAL,
+          source: { system: SHOPPERS_DRUGMART_SYSTEM },
+        })
+      )
     })
   })
 

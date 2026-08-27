@@ -1,5 +1,5 @@
-import { DateTime, Effect, ParseResult } from 'effect'
-import { HttpResponseKind } from 'http-extraction-fundamentals'
+import { DateTime, Effect, Option, ParseResult } from 'effect'
+import { HttpResponseKind, Specificity } from 'http-extraction-fundamentals'
 import { TraceExchange } from 'web-trace-core'
 import { type DocumentReferenceType, toDocumentReference } from 'web-trace-core/codec'
 import { toExchangeFields } from 'web-trace-core/provenance'
@@ -52,19 +52,26 @@ interface RawExchangeResponseKindOptions {
  *   `DocumentReference`
  *
  * @remarks
- * **`isFoundAt` returns `true` unconditionally, and that matters twice** —
- * coverage, and the fact that `CollectorBridgeMessageHandler` fires a
- * `CancelSnifferRequest` at any response no entity claims, so narrowing this
- * would abort the requests the user's own browsing depends on. See invariant 1
- * in the [package AGENTS.md](../../AGENTS.md) before touching it.
+ * **`tryRecognize` is total — it returns `Some` for every URL and never
+ * throws — and that matters twice** — coverage, and the fact that
+ * `CollectorBridgeMessageHandler` fires a `CancelSnifferRequest` at any response
+ * no entity claims, so narrowing this would abort the requests the user's own
+ * browsing depends on. It claims at {@link Specificity.CATCH_ALL} (so any kind
+ * that decodes the traffic outranks it) and carries **no `source`** — a recorder
+ * records, it does not import, so it mints no identity and its traces are keyed
+ * by `(sessionId, requestId)` at their own codec, not adopted. It builds no
+ * `new URL` and inspects nothing, so a malformed or relative URL the sniffer
+ * reports still yields `Some` rather than throwing. See invariant 1 in the
+ * [package AGENTS.md](../../AGENTS.md) before touching it.
  */
 const makeRawExchangeResponseKind = (
   options: RawExchangeResponseKindOptions
 ): HttpResponseKind.HttpResponseKind<DocumentReferenceType> =>
   HttpResponseKind.make({
     name: 'RawExchangeResponseKind',
-    // Catch-all — see the remarks above before narrowing this.
-    isFoundAt: () => true,
+    // Total catch-all: `Some` for every URL, no `source`, never throws — see the
+    // remarks above before narrowing this.
+    tryRecognize: () => Option.some({ specificity: Specificity.CATCH_ALL }),
     parse: (response) =>
       Effect.gen(function* () {
         const body = yield* Effect.mapError(

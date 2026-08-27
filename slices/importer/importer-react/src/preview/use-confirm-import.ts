@@ -14,7 +14,7 @@ import {
   type SkipReason,
 } from '../results/import-outcome.ts'
 import { harArchiveReference, type PickedHar } from '../sources/picked-har.ts'
-import type { ReadEntry } from './use-import-run.ts'
+import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
  * The opt-in write half of the flow, as one imperative action over a batch:
@@ -63,8 +63,8 @@ type ConfirmState =
 /** Imperative surface the screen drives the confirm through. */
 interface ConfirmImport {
   readonly state: ConfirmState
-  /** Run the per-file upload-then-persist action for every read entry in the batch. */
-  readonly confirm: (entries: readonly ReadEntry[]) => void
+  /** Run the per-file upload-then-persist action for every read file in the batch. */
+  readonly confirm: (files: readonly FileReadOutcome[]) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
@@ -99,15 +99,15 @@ const secureSourceRef = (
 }
 
 /**
- * Run one read entry to its {@link FileImportResult}: skip a file with nothing to
+ * Run one read file to its {@link FileImportResult}: skip a file with nothing to
  * write, otherwise upload its archive and persist its resources. Best-effort — a
  * failed upload is caught into an `uploadFailed` result, never a raised error.
  */
 const importOneFile = (
-  entry: ReadEntry,
+  file: FileReadOutcome,
   uploadHar: ReturnType<typeof useUploadHar>
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
-  const { id, picked } = entry
+  const { id, picked } = file
   const fileName = picked.fileName
   const skip = (reason: SkipReason): Effect.Effect<FileImportResult> =>
     Effect.succeed({ _tag: 'skipped', id, fileName, reason })
@@ -129,16 +129,12 @@ const importOneFile = (
         Effect.succeed<FileImportResult>({ _tag: 'uploadFailed', id, fileName, error })
       )
     )
-  return Match.value(entry).pipe(
+  return Match.value(file).pipe(
     Match.tag('unreadable', () => skip('unreadable')),
+    // A preview is one shape now — recognition is per-URL, so "nothing
+    // recognized" and "recognized but decoded nothing" are one empty preview.
     Match.tag('read', ({ preview }) =>
-      Match.value(preview).pipe(
-        Match.tag('NoSourceClaims', () => skip('no-source')),
-        Match.tag('Preview', (claimed) =>
-          previewResourceCount(claimed) === 0 ? skip('nothing') : write(claimed)
-        ),
-        Match.exhaustive
-      )
+      previewResourceCount(preview) === 0 ? skip('nothing') : write(preview)
     ),
     Match.exhaustive
   )
@@ -163,11 +159,11 @@ const useConfirmImport = (): ConfirmImport => {
   const latest = useRef(0)
 
   const confirm = useCallback(
-    (entries: readonly ReadEntry[]): void => {
+    (files: readonly FileReadOutcome[]): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
-      const batch = Effect.forEach(entries, (entry) => importOneFile(entry, uploadHar), {
+      const batch = Effect.forEach(files, (file) => importOneFile(file, uploadHar), {
         concurrency: 'unbounded',
       })
       void runAuthed(batch).then((results) => {

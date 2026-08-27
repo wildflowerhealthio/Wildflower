@@ -81,9 +81,8 @@ interface DelayStep {
  * The url filter a page-wait hold carries: anything with a `RegExp`-shaped
  * `test`. The FSM only ever asks "does this url match" — so a hand-written
  * `RegExp` literal (which can pin a *host*, e.g. `/:\/\/app\.letsbewell\.ca/`)
- * and a `UrlMatch.make` matcher (segments-only, host-agnostic) both qualify,
- * and the type names exactly the capability consumed rather than one carrier
- * of it.
+ * qualifies, and the type names exactly the capability consumed rather than
+ * one carrier of it.
  */
 interface UrlPattern {
   readonly test: (url: string) => boolean
@@ -125,7 +124,7 @@ interface UrlPattern {
  * backstop — this `timeout` is the bound on *this step*. (The plan-level
  * `drainedGuardTimeout` bounds only the tail after the queue drains, so it never
  * shortens a hold.) `pattern`, when present, is a {@link UrlPattern} — a
- * `RegExp` literal or a `UrlMatch.make({ segments, end })` matcher.
+ * `RegExp` literal.
  */
 interface AwaitPageSettledStep {
   readonly _tag: 'AwaitPageSettled'

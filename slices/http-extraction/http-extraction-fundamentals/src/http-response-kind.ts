@@ -1,6 +1,29 @@
-import type { Effect, ParseResult } from 'effect'
+import type { Effect, Option, ParseResult } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
 import type { HttpResponse } from './http-response.ts'
+
+/**
+ * What a {@link HttpResponseKind.tryRecognize} match tells a router: how
+ * specific the claim is, and (optionally) the identity this response's
+ * resources key under.
+ *
+ * @remarks
+ * `specificity` is the number routing ranks by — highest wins — drawn from the
+ * `Specificity` tier convention. `source`, when present, is the namespace every
+ * resource this kind parses is adopted under; **absent** means the kind
+ * recognizes the URL but mints no identity — a recorder records, it does not
+ * import (web-trace). The `source` shape is structurally identical to
+ * `fhir-r4/identity`'s `SourceIdentity`, on purpose, so the layering seam stays
+ * clean without this package naming FHIR.
+ */
+interface RecognizedUrlData {
+  readonly specificity: number
+  /**
+   * The namespace this response's resources key under; absent = recognized but
+   * mints no identity (a recorder records, it doesn't import).
+   */
+  readonly source?: { readonly system: string; readonly baseUrl?: string }
+}
 
 /**
  * Stateless, struct-shaped *definition* of an entity — not an entity
@@ -21,10 +44,12 @@ import type { HttpResponse } from './http-response.ts'
  *
  * - `name`: stable identifier, useful for logging and reporting which
  *   entity claimed a response.
- * - `isFoundAt`: URL-match predicate; whichever loop walks the entity
- *   list — `Extraction.run` over an archive, or a live handler over
- *   sniffed traffic — consults this to route each response, first
- *   match wins.
+ * - `tryRecognize`: URL-match; `Some` a {@link RecognizedUrlData} when this
+ *   entity claims the URL (carrying how specific the claim is and the identity
+ *   its resources key under), `None` when it does not. Whichever loop walks the
+ *   entity list — `Extraction.run`/`routeTo` over an archive, or a live handler
+ *   over sniffed traffic — consults this to route each response, **highest
+ *   specificity wins** (ties → list order).
  * - `parse`: `Effect`-returning decode from {@link HttpResponse}
  *   to the resource array, with `ParseError` in the error channel.
  *   Returning an `Effect` (rather than an `Either`) lets entities log
@@ -35,7 +60,7 @@ import type { HttpResponse } from './http-response.ts'
  */
 interface HttpResponseKind<TResources> {
   readonly name: string
-  readonly isFoundAt: (url: string) => boolean
+  readonly tryRecognize: (url: string) => Option.Option<RecognizedUrlData>
   readonly parse: (
     response: HttpResponse
   ) => Effect.Effect<readonly TResources[], ParseResult.ParseError>
@@ -45,16 +70,16 @@ interface HttpResponseKind<TResources> {
  * Shallow-clone + deep-freeze the supplied definition so callers
  * cannot mutate an entity list after construction — a routing loop
  * pins the matched entity per response and assumes it stays put. The
- * clone copies the known fields (`name`, `isFoundAt`, `parse`) so an
+ * clone copies the known fields (`name`, `tryRecognize`, `parse`) so an
  * extra unexpected property on the caller's object is silently
  * dropped.
  */
 const make = <TResources>(definition: HttpResponseKind<TResources>): HttpResponseKind<TResources> =>
   deepFreeze({
     name: definition.name,
-    isFoundAt: definition.isFoundAt,
+    tryRecognize: definition.tryRecognize,
     parse: definition.parse,
   })
 
 export { make }
-export type { HttpResponseKind }
+export type { HttpResponseKind, RecognizedUrlData }

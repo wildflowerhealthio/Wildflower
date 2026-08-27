@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Effect, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { makeCollectorHttpResponse } from '../test-helpers.ts'
@@ -12,7 +12,8 @@ const followUpSteps = (): readonly never[] => []
 
 const definition: CollectorHttpResponseKind.CollectorHttpResponseKind<Person> = {
   name: 'PersonEntity',
-  isFoundAt: (url) => url.includes('/people/'),
+  tryRecognize: (url) =>
+    url.includes('/people/') ? Option.some({ specificity: 50 }) : Option.none(),
   parse: () => Effect.succeed([{ name: 'Alice' }]),
   followUpSteps,
 }
@@ -38,7 +39,7 @@ describe('CollectorHttpResponseKind.make', () => {
   it('leaves followUpSteps undefined for a leaf entity', () => {
     const made = CollectorHttpResponseKind.make({
       name: 'LeafEntity',
-      isFoundAt: () => true,
+      tryRecognize: () => Option.some({ specificity: 0 }),
       parse: () => Effect.succeed([]),
     })
 

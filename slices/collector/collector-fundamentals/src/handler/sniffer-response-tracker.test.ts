@@ -6,6 +6,7 @@ import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { CollectorHttpResponseKind, ScrapingPlan, type Step } from 'collector-fundamentals/model'
+import { Specificity } from 'http-extraction-fundamentals'
 import { AnotherResponseKind, SimpleResponseKind } from 'http-extraction-fundamentals/test-helpers'
 import {
   cancelled,
@@ -222,11 +223,17 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
       expect(drainResults(handler)).toHaveLength(1)
     })
 
-    it('routes to the first entity whose isFoundAt matches when multiple match', () => {
+    it('routes to the earliest entity when several claim at the same specificity', () => {
+      // `SimpleResponseKind` claims at `Specificity.PORTAL`, so a genuine tie
+      // needs the overlapping kind at the same tier — then the tie breaks toward
+      // list order, exactly as `Extraction.routeTo` documents.
       const OverlappingEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
         CollectorHttpResponseKind.make({
           name: 'OverlappingEntity',
-          isFoundAt: (url) => /\/people\//.test(url),
+          tryRecognize: (url) =>
+            /\/people\//.test(url)
+              ? Option.some({ specificity: Specificity.PORTAL })
+              : Option.none(),
           parse: () => Effect.succeed([]),
         })
 
@@ -569,7 +576,8 @@ const openStepFor = (uri: string): Step.Step => ({
 const generatingEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
   CollectorHttpResponseKind.make({
     name: 'GeneratingEntity',
-    isFoundAt: (url) => /\/people\//.test(url),
+    tryRecognize: (url) =>
+      /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
     parse: (response) =>
       Effect.map(
         Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
@@ -588,7 +596,8 @@ const generatingEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<Simp
 const throwingEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
   CollectorHttpResponseKind.make({
     name: 'ThrowingEntity',
-    isFoundAt: (url) => /\/people\//.test(url),
+    tryRecognize: (url) =>
+      /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
     parse: (response) =>
       Effect.map(
         Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
@@ -610,7 +619,9 @@ const makeBareTracker = (options: {
   Effect.runSync(
     SnifferResponseTracker.make<SimpleResources>({
       matchResponseKind: (url) =>
-        options.responseKind.isFoundAt(url) ? Option.some(options.responseKind) : Option.none(),
+        Option.isSome(options.responseKind.tryRecognize(url))
+          ? Option.some(options.responseKind)
+          : Option.none(),
       sendMessage: noopSendMessage,
       handleNewSniffResult: options.handleNewSniffResult,
       handleGeneratedSteps: options.handleGeneratedSteps,
@@ -693,7 +704,8 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
     const emptyEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
       CollectorHttpResponseKind.make({
         name: 'EmptyEntity',
-        isFoundAt: (url) => /\/people\//.test(url),
+        tryRecognize: (url) =>
+          /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
         parse: () => Effect.succeed([]),
       })
     const hook = vi.fn(annotatingHook)
@@ -764,7 +776,8 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
     const generatingPersonEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
       CollectorHttpResponseKind.make({
         name: 'GeneratingPersonEntity',
-        isFoundAt: (url) => /\/people\//.test(url),
+        tryRecognize: (url) =>
+          /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
         parse: (response) =>
           Effect.map(
             Schema.decode(

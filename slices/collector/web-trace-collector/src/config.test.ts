@@ -1,5 +1,5 @@
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
-import { Arbitrary, Effect, Schema } from 'effect'
+import { Arbitrary, Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -143,10 +143,24 @@ describe('scrapingPlan', () => {
     ])
     fc.assert(
       fc.property(fc.webUrl(), (url) => {
-        expect(plan.responseKinds.every((responseKind) => responseKind.isFoundAt(url))).toBe(true)
+        expect(
+          plan.responseKinds.every((responseKind) => Option.isSome(responseKind.tryRecognize(url)))
+        ).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
+  })
+
+  it('recognizes even a URL `new URL` rejects — the recorder never throws', () => {
+    const plan = scrapingPlan(defaultConfig, 'run-1')
+    // Relative / malformed strings the sniffer might report: `tryRecognize` must
+    // still yield `Some` (a miss would fire CancelSnifferRequest and abort the
+    // user's browsing), and must never throw parsing them.
+    for (const url of ['not a url', '/relative/path', '', 'http://[oops']) {
+      expect(
+        plan.responseKinds.every((responseKind) => Option.isSome(responseKind.tryRecognize(url)))
+      ).toBe(true)
+    }
   })
 
   it('gives each run its own session id, so two runs are two recordings', async () => {
