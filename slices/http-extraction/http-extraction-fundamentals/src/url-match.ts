@@ -1,20 +1,34 @@
+import { Option } from 'effect'
+
 /**
- * Small builder for the URL-recognition regexes consumed by
- * `HttpResponseKind.isFoundAt`. The hand-crafted FHIR regexes mixed
- * several literal-vs-wildcard path segments and end-of-path
- * boundaries; this DSL keeps the surface declarative and the
+ * Small builder for the URL matchers consumed by `HttpResponseKind`. The
+ * hand-crafted FHIR regexes mixed several literal-vs-wildcard path segments
+ * and end-of-path boundaries; this DSL keeps the surface declarative and the
  * boundary semantics named so a reader doesn't have to translate
  * `\/Patient\/[^/?#]+(?:\?|$)/` to "Patient slash any-segment then
  * end-of-path or query-start" in their head.
  *
- * The produced `RegExp` is intentionally *unanchored* on both sides:
- * a typical URL has a scheme prefix and a trailing path/query the
- * entity doesn't care about. The pattern starts with `://[^/]+` so
- * an HTTP/HTTPS scheme + host has to lead the match, followed by an
- * optional base path — real FHIR servers mount the resource tree
- * under a prefix (`/baseR4`, `/fhir/R4`, `/interconnect-fhir-oauth/api/FHIR/R4`),
- * so the declared segments match as a suffix of the path rather than
- * directly under the origin root.
+ * A {@link make} call fuses two reads of the *same* pattern into one
+ * {@link UrlMatcher}: `test` (does this URL name the resource?) and
+ * `recognizeRoot` (the scheme + authority + base-path prefix the resource was
+ * served from). They can never disagree because they share one regex —
+ * `test(url) === Option.isSome(recognizeRoot(url))`.
+ *
+ * The pattern is `^`-anchored and requires an `https?://` scheme: group 1
+ * captures `https?://<authority><base path>`, then the declared segments and
+ * the end boundary follow. The base path is optional and non-greedy because
+ * real FHIR servers mount the resource tree under a prefix (`/baseR4`,
+ * `/fhir/R4`, `/interconnect-fhir-oauth/api/FHIR/R4`), so the declared
+ * segments match as a suffix of the path rather than directly under the
+ * origin root, and the *shortest* base path that lets them match wins. This
+ * is deliberately the same shape a `SourceIdentity` keys under, so a match
+ * yields both the recognition decision and the root a resource is adopted
+ * beneath from one place.
+ *
+ * Requiring a scheme is a deliberate tightening: a non-`http(s)` or
+ * scheme-less URL now `test`s false and `recognizeRoot`s `None`, because a
+ * root has to be a URL a `SourceIdentity` can key under, which a non-HTTP
+ * scheme is not.
  *
  * Import callers use the file as a namespace:
  * `import { UrlMatch } from 'http-extraction-fundamentals'` →
@@ -31,14 +45,19 @@
  * PatientUrl.test('https://r4/Patient/123/_history')     // false
  * PatientUrl.test('https://r4/Observation/123')          // false
  * PatientUrl.test('https://Patient/123')                 // false (host is not a segment)
+ * PatientUrl.test('ftp://r4/Patient/123')                // false (scheme required)
+ *
+ * // recognizeRoot recovers the scheme+authority+base-path prefix:
+ * PatientUrl.recognizeRoot('https://ehr/baseR4/Patient/1') // Some('https://ehr/baseR4')
+ * PatientUrl.recognizeRoot('https://ehr/Observation/2')    // None
  *
  * const ObservationListUrl = UrlMatch.make({
  *   segments: [UrlMatch.literal('Observation')],
  *   end: 'mustHaveQuery',
  * })
- * ObservationListUrl.test('https://r4/Observation?subject=…')      // true
+ * ObservationListUrl.test('https://r4/Observation?subject=…')        // true
  * ObservationListUrl.test('https://r4/baseR4/Observation?subject=…') // true (base path)
- * ObservationListUrl.test('https://r4/Observation/123')            // false
+ * ObservationListUrl.test('https://r4/Observation/123')              // false
  * ```
  */
 
@@ -74,28 +93,51 @@ const segmentPattern = (s: PathSegment): string =>
 const endPattern = (e: PathEnd): string => (e === 'mustHaveQuery' ? '\\?' : '(?:\\?|$)')
 
 /**
- * Build a `RegExp` matching `://host` followed by the supplied
- * path segments and end-of-path boundary. Compose segments with
- * {@link literal} and {@link id}.
+ * A URL pattern with its recognition decision and its captured root fused
+ * onto one regex.
+ */
+interface UrlMatcher {
+  /**
+   * Whether `url` names this resource. Equal to
+   * `Option.isSome(recognizeRoot(url))` — the two read the same regex.
+   */
+  readonly test: (url: string) => boolean
+  /**
+   * The `https?://<authority><base path>` prefix `url` was served from, or
+   * `Option.none()` when `url` names no such resource (or is not `http(s)`).
+   */
+  readonly recognizeRoot: (url: string) => Option.Option<string>
+}
+
+/**
+ * Build a {@link UrlMatcher} from `https?://<authority><base path>` (captured
+ * as the root) followed by the supplied path segments and end-of-path
+ * boundary. Compose segments with {@link literal} and {@link id}.
  */
 const make = (config: {
   readonly segments: readonly PathSegment[]
   readonly end?: PathEnd
-}): RegExp => {
+}): UrlMatcher => {
   const segments = config.segments.map(segmentPattern).join('')
   const end = endPattern(config.end ?? 'pathEnd')
-  // Authority is `://[^/]+` (greedy, stops at the first `/`, so the host
-  // is never mistaken for a segment — `https://Observation/123` does not
-  // match a `/Observation` segment). Then allow an arbitrary base path
-  // before the first declared segment; FHIR servers commonly mount under
-  // `/baseR4`, `/fhir/R4`, `/interconnect-fhir-oauth/api/FHIR/R4`, etc.
-  // Non-greedy so the SHORTEST base path that still lets the declared
-  // segments match wins, preserving the `pathEnd`/`mustHaveQuery`
-  // disjointness (a single-resource `/Observation/<id>` never gets
-  // re-read as a base path that makes the list `/Observation?` match).
-  const basePath = '(?:/[^/?#]+)*?'
-  return new RegExp(`://[^/]+${basePath}${segments}${end}`)
+  // Group 1 is the root: `https?://` (scheme required — a root must be a URL a
+  // `SourceIdentity` keys under) then the authority `[^/]+` (greedy, stops at
+  // the first `/`, so the host is never mistaken for a segment —
+  // `https://Observation/123` does not match a `/Observation` segment), then
+  // an arbitrary base path before the first declared segment; FHIR servers
+  // commonly mount under `/baseR4`, `/fhir/R4`,
+  // `/interconnect-fhir-oauth/api/FHIR/R4`, etc. Non-greedy so the SHORTEST
+  // base path that still lets the declared segments match wins, preserving
+  // the `pathEnd`/`mustHaveQuery` disjointness (a single-resource
+  // `/Observation/<id>` never gets re-read as a base path that makes the list
+  // `/Observation?` match). `^`-anchored so the capture starts at the scheme.
+  const pattern = new RegExp(`^(https?://[^/]+(?:/[^/?#]+)*?)${segments}${end}`)
+  const recognizeRoot = (url: string): Option.Option<string> => {
+    const match = pattern.exec(url)
+    return match?.[1] === undefined ? Option.none() : Option.some(match[1])
+  }
+  return { test: (url) => Option.isSome(recognizeRoot(url)), recognizeRoot }
 }
 
 export { id, literal, make }
-export type { PathEnd, PathSegment }
+export type { PathEnd, PathSegment, UrlMatcher }

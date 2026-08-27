@@ -78,6 +78,18 @@ interface DelayStep {
 }
 
 /**
+ * The url filter a page-wait hold carries: anything with a `RegExp`-shaped
+ * `test`. The FSM only ever asks "does this url match" — so a hand-written
+ * `RegExp` literal (which can pin a *host*, e.g. `/:\/\/app\.letsbewell\.ca/`)
+ * and a `UrlMatch.make` matcher (segments-only, host-agnostic) both qualify,
+ * and the type names exactly the capability consumed rather than one carrier
+ * of it.
+ */
+interface UrlPattern {
+  readonly test: (url: string) => boolean
+}
+
+/**
  * A plan-only hold that waits for a *settled page load* whose url matches
  * `pattern`, then processes the next queue entry. Like {@link DelayStep} it
  * carries no `action` and never reaches the wire — the FSM consumes it as a
@@ -112,8 +124,8 @@ interface DelayStep {
  * run via `SniffingComplete`; see the field). There is no runner-side idle
  * backstop — this `timeout` is the bound on *this step*. (The plan-level
  * `drainedGuardTimeout` bounds only the tail after the queue drains, so it never
- * shortens a hold.) `pattern`, when present, is a `RegExp` built with
- * `UrlMatch.make({ segments, end })`.
+ * shortens a hold.) `pattern`, when present, is a {@link UrlPattern} — a
+ * `RegExp` literal or a `UrlMatch.make({ segments, end })` matcher.
  */
 interface AwaitPageSettledStep {
   readonly _tag: 'AwaitPageSettled'
@@ -123,7 +135,7 @@ interface AwaitPageSettledStep {
    * next settled load regardless of url (see the type doc). A pattern-less hold
    * never matches the page in hand, so it always parks for a fresh settle.
    */
-  readonly pattern?: RegExp
+  readonly pattern?: UrlPattern
   readonly timeout: Duration.Duration
   /**
    * What a `timeout` does. Omitted or `false` (the default) **aborts** the run
@@ -164,7 +176,7 @@ interface AwaitPageSettledStep {
 interface AwaitPageRequestedStep {
   readonly _tag: 'AwaitPageRequested'
   readonly name: string
-  readonly pattern: RegExp
+  readonly pattern: UrlPattern
   readonly timeout: Duration.Duration
   /**
    * What a `timeout` does — identical to {@link AwaitPageSettledStep.continueOnTimeout}.
@@ -297,4 +309,5 @@ export type {
   AwaitUserDismissStep,
   EnsureWindowVisibleStep,
   StepAction,
+  UrlPattern,
 }

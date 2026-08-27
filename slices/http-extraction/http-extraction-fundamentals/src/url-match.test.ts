@@ -1,14 +1,19 @@
+import { Option } from 'effect'
+import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as UrlMatch from './url-match.ts'
 
 describe('UrlMatch.make', () => {
-  describe('single literal + id segment (Patient/:id)', () => {
+  describe('test — single literal + id segment (Patient/:id)', () => {
     const PatientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMatch.id] })
 
     it.each([
       { url: 'https://r4.smarthealthit.org/Patient/123', match: true },
       { url: 'https://example.com/Patient/abc', match: true },
+      // `http` is accepted as readily as `https`.
+      { url: 'http://example.com/Patient/abc', match: true },
       // Query-string boundary: the `?` ends the path.
       { url: 'https://example.com/Patient/abc?_format=json', match: true },
       // Disjoint resources.
@@ -31,12 +36,16 @@ describe('UrlMatch.make', () => {
       // Authority-vs-segment guard: a host literally named `Patient` is NOT a
       // `/Patient` segment (the greedy `://[^/]+` consumes it as the host).
       { url: 'https://Patient/123', match: false },
+      // Scheme required (deliberate tightening): a non-`http(s)` scheme and a
+      // scheme-less URL now fail even when the resource segment is present.
+      { url: 'ftp://example.com/Patient/123', match: false },
+      { url: 'urn:example:Patient/123', match: false },
     ])('returns $match for "$url"', ({ url, match }) => {
       expect(PatientUrl.test(url)).toBe(match)
     })
   })
 
-  describe('mustHaveQuery boundary (Observation list)', () => {
+  describe('test — mustHaveQuery boundary (Observation list)', () => {
     const ObservationList = UrlMatch.make({
       segments: [UrlMatch.literal('Observation')],
       end: 'mustHaveQuery',
@@ -71,5 +80,85 @@ describe('UrlMatch.make', () => {
     const PatientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMatch.id] })
     expect(PatientUrl.test('/Patient/123')).toBe(false)
     expect(PatientUrl.test('Patient/123')).toBe(false)
+  })
+
+  describe('recognizeRoot — captures the scheme + authority + base-path prefix', () => {
+    const PatientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMatch.id] })
+    const ObservationList = UrlMatch.make({
+      segments: [UrlMatch.literal('Observation')],
+      end: 'mustHaveQuery',
+    })
+
+    it('recovers the origin root when there is no base path', () => {
+      expect(PatientUrl.recognizeRoot('https://ehr/Patient/1')).toStrictEqual(
+        Option.some('https://ehr')
+      )
+    })
+
+    it('recovers a single-segment base path (baseR4)', () => {
+      expect(PatientUrl.recognizeRoot('https://ehr/baseR4/Patient/1')).toStrictEqual(
+        Option.some('https://ehr/baseR4')
+      )
+    })
+
+    it('recovers a deep base path and stops before the query', () => {
+      const ObservationUrl = UrlMatch.make({
+        segments: [UrlMatch.literal('Observation'), UrlMatch.id],
+      })
+      expect(
+        ObservationUrl.recognizeRoot(
+          'https://ehr/interconnect-fhir-oauth/api/FHIR/R4/Observation/2?x=1'
+        )
+      ).toStrictEqual(Option.some('https://ehr/interconnect-fhir-oauth/api/FHIR/R4'))
+    })
+
+    it('is None when the URL names no matching resource', () => {
+      expect(PatientUrl.recognizeRoot('https://ehr/Observation/1')).toStrictEqual(Option.none())
+    })
+
+    it('is None for a non-http(s) scheme even with the resource segment', () => {
+      expect(PatientUrl.recognizeRoot('ftp://ehr/Patient/1')).toStrictEqual(Option.none())
+    })
+
+    it('respects mustHaveQuery disjointness — a single resource yields no list root', () => {
+      // The single-`Observation` URL must not be re-read as a base path that
+      // makes the `mustHaveQuery` list match.
+      expect(ObservationList.recognizeRoot('https://ehr/Observation/2')).toStrictEqual(
+        Option.none()
+      )
+      expect(ObservationList.recognizeRoot('https://ehr/Observation?x=1')).toStrictEqual(
+        Option.some('https://ehr')
+      )
+    })
+  })
+
+  describe('test/recognizeRoot invariant', () => {
+    const PatientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMatch.id] })
+
+    it('has test(url) === Option.isSome(recognizeRoot(url)) for any string', () => {
+      // A mix of arbitrary strings and synthesized URLs likely to exercise
+      // both the matching and non-matching branches of the shared regex.
+      const urlLike = fc.oneof(
+        fc.string(),
+        fc.webUrl(),
+        fc
+          .tuple(
+            fc.constantFrom('https', 'http', 'ftp'),
+            fc.domain(),
+            fc.array(fc.stringMatching(/^[a-zA-Z0-9]+$/)),
+            fc.stringMatching(/^[a-zA-Z0-9]+$/)
+          )
+          .map(
+            ([scheme, host, base, id]) =>
+              `${scheme}://${host}${base.map((s) => `/${s}`).join('')}/Patient/${id}`
+          )
+      )
+      fc.assert(
+        fc.property(urlLike, (url) => {
+          expect(PatientUrl.test(url)).toBe(Option.isSome(PatientUrl.recognizeRoot(url)))
+        }),
+        { numRuns: numRunsFor({ base: 100 }) }
+      )
+    })
   })
 })
