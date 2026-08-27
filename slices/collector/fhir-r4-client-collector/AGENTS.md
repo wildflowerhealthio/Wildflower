@@ -79,11 +79,11 @@ both link directions live in `web-trace-core`; this package only names itself.
 ## Source surface
 
 Lives in [`fhir-r4-source`](../../http-extraction/fhir-r4-source/AGENTS.md)
-(`slices/http-extraction`), together with the entities: `fhirR4SourceEntities`
-(keying each resource under the root of the URL it arrived on),
-`fhirR4Recognizer` (specificity `50`), `fhirRootOf` (the per-URL root
-primitive — that package owns "what a FHIR root is"), and the assembled
-`fhirR4Source` value. The live plan here and the source surface there
+(`slices/http-extraction`), together with the response kinds:
+`fhirR4SourceEntities` (keying each resource under the root of the URL it
+arrived on), `fhirRootOf` (the per-URL root primitive — that package owns "what
+a FHIR root is"), and the assembled `fhirR4Source` value, which claims FHIR R4
+traffic by URL at specificity `50`. The live plan here and the source surface there
 consume the **same** `fhirR4ResponseKinds` tuple, so a resource decodes
 identically through the sniffer and through an archive; only the identity
 source differs (the live plan keys under `config.rootUrl`, an archive import

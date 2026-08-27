@@ -11,11 +11,13 @@
  *   package's source surface and by the live scraping plan in
  *   `fhir-r4-client-collector` (which keys resources under its configured
  *   root);
- * - the recognition surface (`fhirR4Recognizer`, `fhirRootOf`) and the
- *   source entities (`fhirR4SourceEntities`, keying each resource under
- *   the root of the URL it arrived on);
+ * - the per-URL root primitive (`fhirRootOf`) and the source response kinds
+ *   (`fhirR4SourceEntities`, keying each resource under the root of the URL it
+ *   arrived on);
  * - `fhirR4Source`, the whole source as one `Source.Source` value a
- *   consumer registers.
+ *   consumer registers — its own `claims`/`specificity` recognizing FHIR R4
+ *   traffic, `fhirR4SourceEntities` as its `responseKinds`, and `fhirRootOf`
+ *   as its `rootOf`.
  *
  * The collector's own concerns — config schema, scraping plan, config form,
  * descriptor — stay in `fhir-r4-client-collector`, which depends on this
@@ -28,6 +30,6 @@ export { ObservationResponseKind } from './response-kinds/observation-response-k
 export { ObservationListResponseKind } from './response-kinds/observation-list-response-kind.ts'
 export { extractJson } from './extract-json.ts'
 export { fhirR4ResponseKinds } from './plan-entities.ts'
-export { fhirR4Recognizer, fhirRootOf } from './recognizer.ts'
+export { fhirRootOf } from './root.ts'
 export { fhirR4SourceEntities } from './source-entities.ts'
 export { fhirR4Source } from './source.ts'

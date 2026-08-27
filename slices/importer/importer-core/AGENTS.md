@@ -9,7 +9,7 @@ that writes it.
 A `-core` package following the rule in [slices/AGENTS.md](../../AGENTS.md):
 adapters depend on it, it depends on no adapter. Its accepted imports are exactly
 four: `web-trace-core` (the HAR codec and `withMetaSource`),
-`http-extraction-fundamentals` (the extraction runner, the recognizer, and the
+`http-extraction-fundamentals` (the extraction runner, `Source.resolve`, and the
 `Source` shape), `fhir-r4-source` (the assembled `fhirR4Source`), and
 `fhir-r4` (resources and the persist sink). It re-derives none of them.
 
@@ -39,7 +39,7 @@ re-exported from `src/index.ts`:
 - **`src/har-import.ts`** — the **`HarImport`** namespace, the read half.
   `HarImport.run(harText)` decodes the archive (`fromHarJson`), maps its
   `ArchivedExchange`es to the structural `Extraction.Input`s the runner reads
-  (`toInput`), resolves the claiming source (`Recognizer.resolve`), runs its
+  (`toInput`), resolves the claiming source (`Source.resolve`), runs its
   entities (`Extraction.run`), and folds the extraction into a `Preview`.
 - **`src/persist-preview.ts`** — the write half, surfaced as
   `ImportPreview.persist(preview, sourceRef)`: flatten the previewed
@@ -59,7 +59,7 @@ re-exported from `src/index.ts`:
    line up field-for-field; `toInput` restates the eight fields
    explicitly so a drift in either shape is a compile error at the one seam the
    two packages meet.
-3. **Detect.** `Recognizer.resolve(sources, responses)` picks the
+3. **Detect.** `Source.resolve(sources, responses)` picks the
    most specific claiming source. None → `NoSourceClaims`.
 4. **Extract.** The claimed source's `entities` fold through `Extraction.run`
    → the four-way `Extraction.Extraction`.
@@ -130,7 +130,7 @@ retry backoff on `TestClock`.
 - [slices/importer/AGENTS.md](../AGENTS.md) — why this slice exists and its
   guardrails.
 - [http-extraction-fundamentals AGENTS.md](../../http-extraction/http-extraction-fundamentals/AGENTS.md)
-  — the `Extraction` / `Recognizer` / `Source` vocabulary this package
+  — the `Extraction` / `Source` vocabulary this package
   assembles.
 - [fhir-r4-source AGENTS.md](../../http-extraction/fhir-r4-source/AGENTS.md) —
   the FHIR R4 source (`fhirR4Source`).

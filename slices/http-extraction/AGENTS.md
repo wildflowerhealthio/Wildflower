@@ -13,10 +13,10 @@ navigation, persistence, HAR, files, or apps.
 - **`http-extraction-fundamentals`** — the vocabulary, as `effect`-style
   namespaces from one flat entry: `HttpResponseKind` / `UrlMatch` /
   `HttpResponse` (how one response decodes into resources), `Extraction`
-  (`Extraction.run` over archived responses), `Recognizer`
-  (`Recognizer.resolve`, which source claims a response set), and `Source`
-  (`Source.Source`, an HTTP source as one first-class value: the recognizer
-  fields plus `tag`, `entities`, and `rootOf`). Imports from no slice. See its
+  (`Extraction.run` over archived responses), and `Source` (`Source.Source`, an
+  HTTP source as one first-class value: how it claims a response set —
+  `name` / `specificity` / `claims`, ranked by `Source.resolve` — plus `tag`,
+  `responseKinds`, and `rootOf`). Imports from no slice. See its
   [AGENTS.md](./http-extraction-fundamentals/AGENTS.md).
 - **`fhir-r4-source`** — the first per-source package: the FHIR R4 entities,
   the recognition surface, and the assembled `fhirR4Source`. See its
@@ -29,7 +29,7 @@ navigation, persistence, HAR, files, or apps.
 
 Each consumer assembles its **own** closed list from the per-source packages,
 because the two lists have different members and different payloads: the HAR
-importer needs a recognizer-ranked list of sources that can claim an archive
+importer needs a specificity-ranked list of sources that can claim an archive
 (`importer-core`'s `sources`); the collector needs a descriptor tuple carrying
 config schemas, forms, plans, and persist sinks (`collector-registry`'s
 `descriptors` — and its `web-trace-collector` recorder member deliberately

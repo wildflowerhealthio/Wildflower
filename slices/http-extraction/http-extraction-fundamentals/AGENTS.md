@@ -11,7 +11,7 @@ both build on this package, never the reverse.
 One namespace per module, in the `effect` style: the file is the noun, the
 principal type shares the namespace's name (`Source.Source`), and functions
 read in the namespace's context (`Extraction.run`, not `runExtraction`). All
-six are exported from the **flat root entry**:
+five are exported from the **flat root entry**:
 `import { HttpResponseKind, Extraction, Source } from 'http-extraction-fundamentals'`.
 
 - **`HttpResponseKind`** (`src/http-response-kind.ts`) — the recipe for
@@ -36,15 +36,14 @@ six are exported from the **flat root entry**:
   four-way accounting of `batches` / `unmatched` / `parseFailures` /
   `bodyAbsent`, every input in exactly one bucket, in input order.
   Infallible — failures are data, not errors. It never persists.
-- **`Recognizer`** (`src/recognizer.ts`) — how a source claims a response set
-  with no user configuration (`name` / `specificity` / `claims`);
-  `Recognizer.resolve` picks the most specific claimant. Specificity
-  convention: portal-specific > protocol-generic > catch-all.
 - **`Source`** (`src/source.ts`) — an HTTP source as one first-class value:
-  `Source.Source<TResources>` extends `Recognizer.Recognizer` with `tag`,
-  `entities` (a plain readonly array), and `rootOf(url)`. Concrete source
-  packages assemble one (`fhir-r4-source`'s `fhirR4Source`); each consumer
-  keeps its own closed list of them.
+  `Source.Source<TResources>` carries both how it claims a response set with no
+  user configuration (`name` / `specificity` / `claims`) and what a consumer
+  drives once traffic is in hand (`tag`, `responseKinds` — a plain readonly
+  array — and `rootOf(url)`). `Source.resolve` picks the most specific claimant;
+  specificity convention: portal-specific > protocol-generic > catch-all.
+  Concrete source packages assemble one (`fhir-r4-source`'s `fhirR4Source`);
+  each consumer keeps its own closed list of them.
 
 `http-extraction-fundamentals/test-helpers` is the one sub-entry:
 `makeHttpResponse`, `makeExtractionInput`, the `SimpleResponseKind` /

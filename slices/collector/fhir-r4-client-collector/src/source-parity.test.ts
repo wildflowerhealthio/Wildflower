@@ -1,7 +1,7 @@
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, DateTime, Effect, Option } from 'effect'
 import * as fc from 'fast-check'
-import { fhirR4SourceEntities, fhirR4Recognizer, fhirRootOf } from 'fhir-r4-source'
+import { fhirR4Source, fhirR4SourceEntities, fhirRootOf } from 'fhir-r4-source'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind, Extraction } from 'http-extraction-fundamentals'
@@ -16,7 +16,7 @@ import { InstanceConfig, scrapingPlan } from './config.ts'
  * its configured root must carry the byte-identical id either way. These tests
  * live here, not in `fhir-r4-source`, because they are the only ones that
  * need the live `InstanceConfig`/`scrapingPlan` — the source's own behaviour is
- * pinned in that package's `recognizer.test.ts` and `source-entities.test.ts`.
+ * pinned in that package's `source.test.ts` and `source-entities.test.ts`.
  */
 
 /** The plan factory ignores its run id; a fixed one keeps builds comparable. */
@@ -25,8 +25,8 @@ const FIXED_RUN_ID = 'test-run'
 const utf8 = new TextEncoder()
 
 /**
- * A minimal {@link Extraction.Input} for the recognizer, which reads only
- * `url` — everything else is filler the shape requires.
+ * A minimal {@link Extraction.Input} for the source's `claims`, which reads
+ * only `url` — everything else is filler the shape requires.
  */
 const input = (url: string, body = '{}'): Extraction.Input => ({
   id: `req:${url}`,
@@ -60,13 +60,13 @@ const parseImporter = (name: string, url: string, body: unknown): readonly FhirR
     )
   )
 
-describe('fhirR4Recognizer against the live config', () => {
+describe('fhirR4Source.claims against the live config', () => {
   test("property: claims any capture containing the plan's configured URLs", () => {
     fc.assert(
       fc.property(Arbitrary.make(InstanceConfig), (config) => {
         const safeId = encodeURIComponent(config.patientId)
         expect(
-          fhirR4Recognizer.claims([
+          fhirR4Source.claims([
             input(`${config.rootUrl}/Patient/${safeId}?_format=json`),
             input(`${config.rootUrl}/Observation?subject%3APatient=${safeId}`),
           ])

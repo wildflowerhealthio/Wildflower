@@ -4,7 +4,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind } from 'http-extraction-fundamentals'
 
 import { fhirR4ResponseKinds } from './plan-entities.ts'
-import { fhirRootOf } from './recognizer.ts'
+import { fhirRootOf } from './root.ts'
 
 /**
  * The entities the FHIR R4 source extracts a set of responses with: the shared

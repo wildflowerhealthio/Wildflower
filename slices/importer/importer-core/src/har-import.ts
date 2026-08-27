@@ -1,7 +1,7 @@
 import { Array as Arr, Effect, Option, type ParseResult } from 'effect'
 
 import type { FhirResource } from 'fhir-r4/resources'
-import { Extraction, Recognizer, type Source } from 'http-extraction-fundamentals'
+import { Extraction, Source } from 'http-extraction-fundamentals'
 import { type ArchivedExchange, fromHarJson } from 'web-trace-core/har'
 
 import type * as ImportPreview from './import-preview.ts'
@@ -85,7 +85,7 @@ const distinctRoots = (
  * extraction into a `Preview`.
  *
  * @remarks
- * The claim is the recognizer's; from there this only extracts and accounts.
+ * The claim is the source's; from there this only extracts and accounts.
  * The source roots are the *set* the archive reached ({@link distinctRoots}),
  * not a single inferred one — a capture spanning two servers keeps both, and
  * each server's resources are already keyed apart under their own roots by the
@@ -95,7 +95,7 @@ const previewClaimed = (
   source: Source.Source<FhirResource>,
   responses: readonly Extraction.Input[]
 ): Effect.Effect<ImportPreview.ImportPreview> =>
-  Effect.map(Extraction.run(source.entities, responses), (extraction) => ({
+  Effect.map(Extraction.run(source.responseKinds, responses), (extraction) => ({
     _tag: 'Preview',
     sourceTag: source.tag,
     rootUrls: distinctRoots(responses, source.rootOf),
@@ -133,7 +133,7 @@ const run = (harText: string): Effect.Effect<ImportPreview.ImportPreview, ParseR
   Effect.gen(function* () {
     const session = yield* fromHarJson(harText)
     const responses = session.exchanges.map(toInput)
-    const claimed = Recognizer.resolve(sources, responses)
+    const claimed = Source.resolve(sources, responses)
     if (Option.isNone(claimed)) {
       return { _tag: 'NoSourceClaims', totalEntries: responses.length }
     }

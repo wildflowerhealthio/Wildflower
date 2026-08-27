@@ -38,7 +38,7 @@ The HAR import is assembled from pieces that each already have a home, and the
 assembly belongs to none of them:
 
 - **`http-extraction-fundamentals`** (in `slices/http-extraction`) owns the
-  FHIR-agnostic machinery (`Extraction.run`, `Recognizer.resolve`, the
+  FHIR-agnostic machinery (`Extraction.run`, `Source.resolve`, the
   `Source` shape) but names no archive format and no resource type.
 - **`fhir-r4-source`** (same slice) owns the FHIR R4 surface (`fhirR4Source`
   and the entities under it) but knows nothing about HAR or about a closed
@@ -63,7 +63,7 @@ source, an extracted preview, and an opt-in write out.
   registered so far.
 - **The slice imports only the accepted seams.** `importer-core` depends on
   `web-trace-core` (HAR codec + `withMetaSource`), `http-extraction-fundamentals`
-  (extraction + recognizer + the `Source` shape), the per-source packages
+  (extraction + recognition + the `Source` shape), the per-source packages
   (`fhir-r4-source`'s `fhirR4Source`), and `fhir-r4` (resources + the persist
   sink). It re-derives none of them. Nothing here imports from
   `slices/collector`, in code or in concept.

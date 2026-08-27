@@ -4,7 +4,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import type * as Extraction from './extraction.ts'
-import { resolve, type Recognizer } from './recognizer.ts'
+import { resolve } from './source.ts'
 import { makeExtractionInput } from './test-helpers.ts'
 
 const responses: readonly Extraction.Input[] = [
@@ -12,33 +12,36 @@ const responses: readonly Extraction.Input[] = [
   makeExtractionInput({ id: 'r2', url: 'https://fhir.example.com/baseR4/Patient/1' }),
 ]
 
-/** A recognizer carrying a caller-owned payload, as a real `Source` would. */
-interface Registered extends Recognizer {
+/** A source-shaped candidate carrying a caller-owned payload, as a real `Source` would. */
+interface Candidate {
+  readonly name: string
+  readonly specificity: number
+  readonly claims: (rs: readonly Extraction.Input[]) => boolean
   readonly sourceTag: string
 }
 
-const recognizer = (
+const candidate = (
   name: string,
   specificity: number,
   claims: (rs: readonly Extraction.Input[]) => boolean
-): Registered => ({ name, specificity, claims, sourceTag: `${name}-tag` })
+): Candidate => ({ name, specificity, claims, sourceTag: `${name}-tag` })
 
-const PortalRecognizer = recognizer('portal', 30, (rs) =>
+const portalCandidate = candidate('portal', 30, (rs) =>
   rs.some((r) => r.url.includes('portal.example.com'))
 )
-const FhirRecognizer = recognizer('fhir', 20, (rs) => rs.some((r) => r.url.includes('/baseR4/')))
-const CatchAllRecognizer = recognizer('catchAll', 10, () => true)
+const fhirCandidate = candidate('fhir', 20, (rs) => rs.some((r) => r.url.includes('/baseR4/')))
+const catchAllCandidate = candidate('catchAll', 10, () => true)
 
-describe('Recognizer.resolve', () => {
-  it('picks the more specific of two recognizers that both claim', () => {
-    const winner = resolve([CatchAllRecognizer, FhirRecognizer, PortalRecognizer], responses)
+describe('Source.resolve', () => {
+  it('picks the more specific of two sources that both claim', () => {
+    const winner = resolve([catchAllCandidate, fhirCandidate, portalCandidate], responses)
 
-    expect(Option.getOrNull(winner)).toBe(PortalRecognizer)
+    expect(Option.getOrNull(winner)).toBe(portalCandidate)
   })
 
-  it('falls back to a less specific recognizer when the specific one abstains', () => {
+  it('falls back to a less specific source when the specific one abstains', () => {
     const winner = resolve(
-      [CatchAllRecognizer, FhirRecognizer, PortalRecognizer],
+      [catchAllCandidate, fhirCandidate, portalCandidate],
       [
         makeExtractionInput({
           id: 'r1',
@@ -47,21 +50,21 @@ describe('Recognizer.resolve', () => {
       ]
     )
 
-    expect(Option.getOrNull(winner)).toBe(FhirRecognizer)
+    expect(Option.getOrNull(winner)).toBe(fhirCandidate)
   })
 
   it('returns None when nothing claims', () => {
-    expect(resolve([PortalRecognizer, FhirRecognizer], [])).toEqual(Option.none())
+    expect(resolve([portalCandidate, fhirCandidate], [])).toEqual(Option.none())
   })
 
   it("carries the caller's payload through untouched", () => {
-    const winner = resolve([CatchAllRecognizer, PortalRecognizer], responses)
+    const winner = resolve([catchAllCandidate, portalCandidate], responses)
 
     expect(Option.map(winner, (r) => r.sourceTag)).toEqual(Option.some('portal-tag'))
   })
 
-  test('property: the winner is a claiming recognizer of maximal specificity, whatever the list order', () => {
-    const candidates = [PortalRecognizer, FhirRecognizer, CatchAllRecognizer]
+  test('property: the winner is a claiming source of maximal specificity, whatever the list order', () => {
+    const candidates = [portalCandidate, fhirCandidate, catchAllCandidate]
 
     fc.assert(
       fc.property(
@@ -87,8 +90,8 @@ describe('Recognizer.resolve', () => {
   test('property: ties break toward the earlier candidate', () => {
     fc.assert(
       fc.property(fc.integer({ min: -100, max: 100 }), (specificity) => {
-        const first = recognizer('first', specificity, () => true)
-        const second = recognizer('second', specificity, () => true)
+        const first = candidate('first', specificity, () => true)
+        const second = candidate('second', specificity, () => true)
 
         expect(Option.getOrNull(resolve([first, second], responses))).toBe(first)
         expect(Option.getOrNull(resolve([second, first], responses))).toBe(second)

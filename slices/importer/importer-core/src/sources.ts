@@ -14,7 +14,7 @@ import type { Source } from 'http-extraction-fundamentals'
  * rather than in the `http-extraction` slice: the collector assembles its own
  * descriptor tuple from the same source packages, and the two lists have
  * different members and payloads. Only `fhir-r4` is registered so far; the
- * recognizer specificity ranking (see `fhir-r4-source`'s
+ * source specificity ranking (see `fhir-r4-source`'s
  * `FHIR_R4_SPECIFICITY`) reserves seats for the neighbours.
  */
 const sources: readonly Source.Source<FhirResource>[] = [fhirR4Source]
