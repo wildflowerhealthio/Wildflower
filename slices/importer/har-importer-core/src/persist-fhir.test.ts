@@ -14,11 +14,10 @@ import { FhirR4ResourcesHttpApiClient, type ResourceWriteFailure } from 'fhir-r4
 import { type FhirResource, Observation, Patient } from 'fhir-r4/resources'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { Preview } from './import-preview.ts'
-import { persist } from './persist-preview.ts'
+import { persistFhir } from './persist-fhir.ts'
 
 /**
- * Covers the write half of the import flow. Two properties matter and both are
+ * Covers the HAR binding's write sink. Two properties matter and both are
  * delegated deliberately — the source stamp to `web-trace-core`'s
  * `withMetaSource`, the write itself to `fhir-r4`'s `persistResources` — so the
  * tests pin the seam, not a reimplementation:
@@ -44,25 +43,14 @@ const genWithId = <A extends FhirResource, I>(
   return { ...value, id, meta: null }
 }
 
-/** A `Preview` carrying exactly the given resources, grouped by type. */
-const previewOf = (
-  resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
-): Preview => ({
-  rootUrls: ['https://r4.example.org/baseR4'],
-  resourcesByType,
-  parseFailures: [],
-  unmatchedCount: 0,
-  bodyAbsentCount: 0,
-  totalResponses: Object.values(resourcesByType).flat().length,
-})
-
-describe('ImportPreview.persist', () => {
-  it('stamps every written resource with meta.source = sourceRef', async () => {
-    const preview = previewOf({
-      Patient: [genWithId(Patient.Schema, 'pat-1'), genWithId(Patient.Schema, 'pat-2')],
-      Observation: [genWithId(Observation.Schema, 'obs-1')],
-    })
-    const { records, failures } = await runPersist(preview)
+describe('persistFhir', () => {
+  it('should stamp every written resource with meta.source = sourceRef', async () => {
+    const resources = [
+      genWithId(Patient.Schema, 'pat-1'),
+      genWithId(Patient.Schema, 'pat-2'),
+      genWithId(Observation.Schema, 'obs-1'),
+    ]
+    const { records, failures } = await runPersist(resources)
 
     expect(failures).toEqual([])
     expect(records).toHaveLength(3)
@@ -73,12 +61,9 @@ describe('ImportPreview.persist', () => {
     }
   })
 
-  it('returns write failures as data without throwing, and one failure does not stop the rest', async () => {
-    const preview = previewOf({
-      Patient: [genWithId(Patient.Schema, 'ok-1')],
-      Observation: [genWithId(Observation.Schema, 'bad-1')],
-    })
-    const { records, failures } = await runPersist(preview, (request) =>
+  it('should return write failures as data without throwing, one failure not stopping the rest', async () => {
+    const resources = [genWithId(Patient.Schema, 'ok-1'), genWithId(Observation.Schema, 'bad-1')]
+    const { records, failures } = await runPersist(resources, (request) =>
       request.url.includes('/Observation/')
     )
 
@@ -93,15 +78,15 @@ describe('ImportPreview.persist', () => {
     }
   })
 
-  it('writes nothing for an empty preview, issuing no requests', async () => {
-    // The client is provided (persist always requires it), but a preview that
-    // recognized nothing has no resources to write — the recorder stays empty.
+  it('should write nothing for no resources, issuing no requests', async () => {
+    // The client is provided (persist always requires it), but with no resources
+    // there is nothing to write — the recorder stays empty.
     const records: Array<RecordedRequest> = []
     const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
       Layer.provide(recordingHttpClientLayer(records, () => false))
     )
     const failures = await Effect.runPromise(
-      persist(previewOf({}), SOURCE_REF).pipe(Effect.provide(clientLayer))
+      persistFhir([], SOURCE_REF).pipe(Effect.provide(clientLayer))
     )
     expect(failures).toEqual([])
     expect(records).toEqual([])
@@ -151,12 +136,12 @@ const recordingHttpClientLayer = (
   )
 
 /**
- * Persist a preview over the real client + recording stub, returning the
+ * Persist resources over the real client + recording stub, returning the
  * recorded requests and the sink's reported failures. Retry backoff runs on
  * `TestClock` (a 2s virtual jump covers the 250 + 500 + 1000ms schedule).
  */
 const runPersist = async (
-  preview: Preview,
+  resources: readonly FhirResource[],
   shouldFail: (request: HttpClientRequest.HttpClientRequest) => boolean = () => false
 ): Promise<{
   readonly records: ReadonlyArray<RecordedRequest>
@@ -169,7 +154,7 @@ const runPersist = async (
   const failures = await Effect.runPromise(
     Effect.gen(function* () {
       const fiber = yield* Effect.fork(
-        persist(preview, SOURCE_REF).pipe(Effect.provide(clientLayer))
+        persistFhir(resources, SOURCE_REF).pipe(Effect.provide(clientLayer))
       )
       yield* TestClock.adjust(Duration.seconds(2))
       return yield* Fiber.join(fiber)

@@ -26,8 +26,15 @@ export {
 export {
   type ConfirmImport,
   type ConfirmState,
+  type SelectionFor,
   useConfirmImport,
 } from './preview/use-confirm-import.ts'
+export {
+  type Format,
+  type FormatRegistration,
+  formatRegistry,
+  harRegistration,
+} from './registry.ts'
 export {
   type ImportRun,
   type ImportRunState,
@@ -42,7 +49,6 @@ export {
   importOutcome,
   isPartialBatch,
   isPartialOutcome,
-  previewResourceCount,
   type SkipReason,
   summarizeBatch,
 } from './results/import-outcome.ts'

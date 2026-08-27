@@ -1,13 +1,13 @@
 {
-  "name": "importer-core",
+  "name": "importer-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure core of the importer slice: read a HAR archive, detect which registered HTTP source claims its traffic, run its entities into a preview, and — as a separate opt-in step — persist the previewed resources. No DOM, no fs, no React.",
+  "description": "Resource-agnostic upstream of the importer slice: the FileImporterDescriptor contract, the per-response review/selection model built on Extraction.recognize/parseWith, and the generic choose-then-persist orchestration. Names no archive format and no resource type. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/importer/importer-core"
+    "directory": "slices/importer/importer-fundamentals"
   },
   "files": [
     "dist"
@@ -32,20 +32,14 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "fhir-r4-source": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "fhir-r4-source": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "kitchen-sink": "workspace:*"
   }
 }

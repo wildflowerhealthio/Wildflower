@@ -1,7 +1,7 @@
 import { Cause, ParseResult, Runtime } from 'effect'
 import type { JSX } from 'react'
 
-import type { ResourceWriteFailure } from 'fhir-r4/clients'
+import type { PersistFailure } from 'importer-fundamentals'
 
 import {
   type BatchOutcome,
@@ -43,7 +43,7 @@ const COMPLETE_HEADING = 'Import complete'
 const PARTIAL_HEADING = 'Imported with some failures'
 
 /** The failed-resource identity a row shows — the write sink's own `label`/`id`. */
-const failureLabel = (failure: ResourceWriteFailure): string =>
+const failureLabel = (failure: PersistFailure): string =>
   `${failure.failed.label}/${failure.failed.id}`
 
 /**

@@ -3,14 +3,13 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { ImportPreview } from 'importer-core'
+import { type FileImporterDescriptor, Review } from 'importer-fundamentals'
 
 import { useUploadHar } from '../mutations/upload-har.ts'
 import {
   type BatchOutcome,
   type FileImportResult,
   importOutcome,
-  previewResourceCount,
   type SkipReason,
 } from '../results/import-outcome.ts'
 import { harArchiveReference, type PickedHar } from '../sources/picked-har.ts'
@@ -18,13 +17,13 @@ import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
  * The opt-in write half of the flow, as one imperative action over a batch:
- * for every file that has resources to write, upload its HAR archive if the pick
- * is local, then persist that file's previewed resources, each stamped with the
- * archive it came from.
+ * for every file with responses the review chose, upload its HAR archive if the
+ * pick is local, then decode and persist those chosen responses, each stamped
+ * with the archive it came from.
  *
  * @remarks
  * This is the seam the preview-then-confirm promise rests on — nothing here runs
- * until the user confirms a batch they have seen. Each file is handled
+ * until the user confirms a batch they have reviewed. Each file is handled
  * independently and the order within a file is fixed and load-bearing:
  *
  * 1. **Secure provenance.** A `local` pick has bytes the server has never seen,
@@ -32,16 +31,18 @@ import type { FileReadOutcome } from './use-import-run.ts'
  *    decision) and the reference the upload mints becomes the `meta.source` every
  *    resource from _that file_ carries. A `server` pick already names the archive
  *    it was fetched from, so it skips the upload and links to that document.
- * 2. **Write the resources.** `ImportPreview.persist` runs only after the file's archive
- *    reference exists, so the archive create lands before the first resource write
- *    and no resource ever points at an archive that is not there yet.
+ * 2. **Write the chosen resources.** The descriptor's `persist` runs only after
+ *    the file's archive reference exists, so the archive create lands before the
+ *    first resource write and no resource ever points at an archive that is not
+ *    there yet. **Only the reviewed, chosen responses are decoded** (`Review.chosen`),
+ *    so the confirm writes exactly what the user opted into.
  *
  * The whole batch is one Effect run through `runAuthed`: `Effect.forEach` maps
  * each file to a `FileImportResult`, `Match` dispatches the file's kind, and each
  * file's failure is caught into an `uploadFailed` result so one file never stops
- * the rest (the multi-file echo of `ImportPreview.persist` returning per-resource
- * failures as data). Files with nothing to write (recognized by no source,
- * recognized but empty, or unreadable) are `skipped` and never touch the server.
+ * the rest (the multi-file echo of `persist` returning per-resource failures as
+ * data). Files with nothing chosen (recognized by no enabled kind, or unreadable)
+ * are `skipped` and never touch the server.
  *
  * @packageDocumentation
  */
@@ -60,11 +61,14 @@ type ConfirmState =
   | { readonly _tag: 'confirming' }
   | { readonly _tag: 'done'; readonly batch: BatchOutcome }
 
+/** How the confirm reads each file's reviewed selection. */
+type SelectionFor = (fileId: string) => Review.Selection
+
 /** Imperative surface the screen drives the confirm through. */
 interface ConfirmImport {
   readonly state: ConfirmState
   /** Run the per-file upload-then-persist action for every read file in the batch. */
-  readonly confirm: (files: readonly FileReadOutcome[]) => void
+  readonly confirm: (files: readonly FileReadOutcome[], selectionFor: SelectionFor) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
@@ -99,58 +103,65 @@ const secureSourceRef = (
 }
 
 /**
- * Run one read file to its {@link FileImportResult}: skip a file with nothing to
- * write, otherwise upload its archive and persist its resources. Best-effort — a
- * failed upload is caught into an `uploadFailed` result, never a raised error.
+ * Run one read file to its {@link FileImportResult}: skip a file the review chose
+ * nothing from, otherwise upload its archive and persist its chosen resources.
+ * Best-effort — a failed upload is caught into an `uploadFailed` result, never a
+ * raised error.
  */
-const importOneFile = (
+const importOneFile = <TSettings, TResource>(
   file: FileReadOutcome,
+  descriptor: FileImporterDescriptor<TSettings, TResource, FhirR4ResourcesHttpApiClient>,
+  selectionFor: SelectionFor,
   uploadHar: ReturnType<typeof useUploadHar>
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
   const { id, picked } = file
   const fileName = picked.fileName
   const skip = (reason: SkipReason): Effect.Effect<FileImportResult> =>
     Effect.succeed({ _tag: 'skipped', id, fileName, reason })
-  const write = (
-    preview: ImportPreview.Preview
-  ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> =>
-    secureSourceRef(picked, uploadHar).pipe(
-      Effect.flatMap((sourceRef) =>
-        ImportPreview.persist(preview, sourceRef).pipe(
-          Effect.map((failures): FileImportResult => ({
-            _tag: 'imported',
-            id,
-            fileName,
-            outcome: importOutcome(preview, sourceRef, failures),
-          }))
-        )
-      ),
-      Effect.catchAll((error) =>
-        Effect.succeed<FileImportResult>({ _tag: 'uploadFailed', id, fileName, error })
-      )
-    )
   return Match.value(file).pipe(
     Match.tag('unreadable', () => skip('unreadable')),
-    // A preview is one shape now — recognition is per-URL, so "nothing
-    // recognized" and "recognized but decoded nothing" are one empty preview.
-    Match.tag('read', ({ preview }) =>
-      previewResourceCount(preview) === 0 ? skip('nothing') : write(preview)
-    ),
+    Match.tag('read', ({ responses }) => {
+      const selection = selectionFor(id)
+      const recognized = Review.recognize(descriptor.pool, responses)
+      if (Review.chosenCount(recognized, selection) === 0) return skip('nothing')
+      return Review.chosen(descriptor.pool, responses, selection).pipe(
+        Effect.flatMap((resources) =>
+          secureSourceRef(picked, uploadHar).pipe(
+            Effect.flatMap((sourceRef) =>
+              descriptor.persist(resources, sourceRef).pipe(
+                Effect.map((failures): FileImportResult => ({
+                  _tag: 'imported',
+                  id,
+                  fileName,
+                  outcome: importOutcome(resources.length, sourceRef, failures),
+                }))
+              )
+            )
+          )
+        ),
+        Effect.catchAll((error) =>
+          Effect.succeed<FileImportResult>({ _tag: 'uploadFailed', id, fileName, error })
+        )
+      )
+    }),
     Match.exhaustive
   )
 }
 
 /**
- * Drives a single confirmed batch — for each file, upload (if local) then
- * persist — as one Effect run through `runAuthed`, mapping its per-file lifecycle
- * onto a {@link BatchOutcome}. The authed runner and the upload mutation both come
- * from router context via `fhir-r4-react`, so mount this inside the host app's
- * router and `QueryClientProvider`.
+ * Drives a single confirmed batch — for each file, upload (if local) then decode
+ * and persist the chosen responses — as one Effect run through `runAuthed`,
+ * mapping its per-file lifecycle onto a {@link BatchOutcome}. The authed runner
+ * and the upload mutation both come from router context via `fhir-r4-react`, so
+ * mount this inside the host app's router and `QueryClientProvider`.
  *
+ * @param descriptor - The file format's descriptor (its `pool` + `persist`)
  * @returns The confirm surface: its `state`, the `confirm` trigger, and a `reset`
  *   back to `idle`
  */
-const useConfirmImport = (): ConfirmImport => {
+const useConfirmImport = <TSettings, TResource>(
+  descriptor: FileImporterDescriptor<TSettings, TResource, FhirR4ResourcesHttpApiClient>
+): ConfirmImport => {
   const runAuthed = useRunAuthed()
   const uploadHar = useUploadHar()
   const [state, setState] = useState<ConfirmState>({ _tag: 'idle' })
@@ -159,19 +170,21 @@ const useConfirmImport = (): ConfirmImport => {
   const latest = useRef(0)
 
   const confirm = useCallback(
-    (files: readonly FileReadOutcome[]): void => {
+    (files: readonly FileReadOutcome[], selectionFor: SelectionFor): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
-      const batch = Effect.forEach(files, (file) => importOneFile(file, uploadHar), {
-        concurrency: 'unbounded',
-      })
+      const batch = Effect.forEach(
+        files,
+        (file) => importOneFile(file, descriptor, selectionFor, uploadHar),
+        { concurrency: 'unbounded' }
+      )
       void runAuthed(batch).then((results) => {
         if (latest.current !== ticket) return
         setState({ _tag: 'done', batch: results })
       })
     },
-    [runAuthed, uploadHar]
+    [descriptor, runAuthed, uploadHar]
   )
 
   const reset = useCallback((): void => {
@@ -182,4 +195,4 @@ const useConfirmImport = (): ConfirmImport => {
   return { state, confirm, reset }
 }
 
-export { type ConfirmImport, type ConfirmState, useConfirmImport }
+export { type ConfirmImport, type ConfirmState, type SelectionFor, useConfirmImport }
