@@ -6,7 +6,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { fhirR4SourceEntities } from 'fhir-r4-source'
+import { fhirR4ResponseKinds } from 'fhir-r4-source'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -119,7 +119,7 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * still applied defensively in case the value reaches this function
  * through an untyped path.
  *
- * `responseKinds` is `fhir-r4-source`'s pre-adopted `fhirR4SourceEntities` —
+ * `responseKinds` is `fhir-r4-source`'s pre-adopted `fhirR4ResponseKinds` —
  * the single definition an archive import also extracts with — so every
  * resource keys under the per-response-derived root (see the
  * [Source Identity Explanation](../../docs/Source%20Identity%20Explanation.md)
@@ -143,7 +143,7 @@ const scrapingPlan = (
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
-    responseKinds: fhirR4SourceEntities,
+    responseKinds: fhirR4ResponseKinds,
     captureProvenance,
     stepSequence: [
       // Open the Patient JSON document — the step that brings the sniffer up —

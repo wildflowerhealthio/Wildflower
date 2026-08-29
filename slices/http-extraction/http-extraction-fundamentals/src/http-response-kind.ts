@@ -52,7 +52,7 @@ interface RecognizedUrlData {
  *   need Effect-typed dependencies (clock, randomness, …). `parse`
  *   stays a *pure decode*: it never emits navigation.
  */
-interface HttpResponseKind<TResources> {
+interface HttpResponseKind<out TResources> {
   readonly name: string
   readonly tryRecognize: (url: string) => Option.Option<RecognizedUrlData>
   readonly parse: (

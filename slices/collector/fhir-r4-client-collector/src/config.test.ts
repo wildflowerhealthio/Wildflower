@@ -232,7 +232,7 @@ describe('scrapingPlan', () => {
 
 /**
  * The plan's entities as the framework sees them — `fhir-r4-source`'s
- * pre-adopted `fhirR4SourceEntities`, not the raw module singletons the entity
+ * pre-adopted `fhirR4ResponseKinds`, not the raw module singletons the entity
  * suites exercise. The entity suites pin the FHIR decode; these pin what
  * adoption does to it afterwards (re-key under the URL's root).
  */

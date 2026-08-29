@@ -1,11 +1,11 @@
 import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Effect, Option } from 'effect'
 import * as fc from 'fast-check'
+import { fhirR4ResponseKinds } from 'fhir-r4-source'
 import {
-  fhirR4SourceEntities,
   ObservationListResponseKind,
   PatientResponseKind,
-} from 'fhir-r4-source'
+} from 'fhir-r4-source/test-helpers'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind } from 'http-extraction-fundamentals'
@@ -17,7 +17,7 @@ import { InstanceConfig, scrapingPlan } from './config.ts'
 /**
  * Parity between this collector's live plan and `fhir-r4-source`'s extraction
  * surface. Post-unification (Phase 2) the two are the **same** pre-adopted
- * array: the live plan's `responseKinds` IS `fhirR4SourceEntities` by reference,
+ * array: the live plan's `responseKinds` IS `fhirR4ResponseKinds` by reference,
  * so a resource decodes and keys identically live and in an archive by
  * construction rather than by coincidence. What is left to pin here — the only
  * claims that are not tautologies — is that reference identity itself, that the
@@ -43,7 +43,7 @@ const responseKindNamed = (
 /** Parse `body` at `url` through the shared source entity named `name`. */
 const parseSource = (name: string, url: string, body: unknown): readonly FhirResource[] =>
   Effect.runSync(
-    responseKindNamed(fhirR4SourceEntities, name).parse(
+    responseKindNamed(fhirR4ResponseKinds, name).parse(
       makeCollectorHttpResponse({
         url,
         headers: [['content-type', 'application/fhir+json']],
@@ -64,12 +64,12 @@ const hasResourceSegment = (rootUrl: string): boolean =>
     .some((segment) => segment === 'Patient' || segment === 'Observation')
 
 describe('the live plan shares fhir-r4-source pre-adopted entities', () => {
-  test('the plan responseKinds IS fhirR4SourceEntities (same single definition)', () => {
+  test('the plan responseKinds IS fhirR4ResponseKinds (same single definition)', () => {
     // The point of the unification: no separate live-adoption wrapper, so the
     // live plan and an archive import extract with the exact same frozen array.
     fc.assert(
       fc.property(Arbitrary.make(InstanceConfig), (config) => {
-        expect(scrapingPlan(config, FIXED_RUN_ID).responseKinds).toBe(fhirR4SourceEntities)
+        expect(scrapingPlan(config, FIXED_RUN_ID).responseKinds).toBe(fhirR4ResponseKinds)
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )

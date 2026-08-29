@@ -104,21 +104,19 @@ const adoptUnderRecognizedRoot = <TEntity extends AdoptableEntity>(
             'URL not recognized by this kind — cannot adopt an identity'
           )
         ),
-      onSome: (recognized) => {
-        const source = recognized.source
-        return source === undefined
-          ? Effect.fail(
+      onSome: ({ source }) =>
+        Effect.gen(function* () {
+          if (source == null)
+            return yield* Effect.fail(
               notAdoptableError(
                 entity.name,
                 response.url,
                 'recognized but mints no source identity — cannot adopt'
               )
             )
-          : Effect.map(entity.parse(response), (resources) => {
-              const adopt = adoptResource(source)
-              return resources.map((resource) => adopt(resource))
-            })
-      },
+          const resources = yield* entity.parse(response)
+          return resources.map(adoptResource(source))
+        }),
     })
   const wrapped: TEntity = { ...entity, parse }
   Object.freeze(wrapped)

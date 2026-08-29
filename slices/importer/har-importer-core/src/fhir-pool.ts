@@ -1,11 +1,11 @@
-import { fhirR4SourceEntities } from 'fhir-r4-source'
+import { fhirR4ResponseKinds } from 'fhir-r4-source'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
 /**
  * The flat pool of `HttpResponseKind`s a HAR archive's traffic is recognized and
  * decoded through — the FHIR R4 source's entities, already keyed under the root
- * of the URL each resource arrived on (`fhirR4SourceEntities`, consumed
+ * of the URL each resource arrived on (`fhirR4ResponseKinds`, consumed
  * pre-adopted, never re-adopted here).
  *
  * @remarks
@@ -21,6 +21,6 @@ import type { HttpResponseKind } from 'http-extraction-fundamentals'
  * which is why this HAR-detection pool lives here rather than in the
  * `http-extraction` slice.
  */
-const fhirPool: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = fhirR4SourceEntities
+const fhirPool: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = fhirR4ResponseKinds
 
 export { fhirPool }
