@@ -16,13 +16,13 @@ import '@fontsource-variable/atkinson-hyperlegible-next/wght.css'
 import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css'
 import '@fontsource-variable/atkinson-hyperlegible-mono/wght.css'
 
+import { addOsColorSchemeListener } from 'react-tundraish'
 import { App } from './app.tsx'
-import { startColorSchemeSync } from './color-scheme.ts'
 import { standaloneSmartConfig } from './config.ts'
 
 // Mirror the OS colour preference onto `data-color-scheme` so tundra's dark
 // palette (keyed off that attribute, not `prefers-color-scheme`) tracks the OS.
-startColorSchemeSync()
+addOsColorSchemeListener()
 
 // The app root is both the OAuth redirect target and the standalone landing
 // page. A callback in the URL (`code`/`state`, no `error`) means there is a
