@@ -231,11 +231,12 @@ export default defineConfig({
       'react/exhaustive-effect-dependencies': 'off',
       'react/purity': 'off',
       'react/static-components': 'off',
-      'react/globals': 'off',
-      'react/immutability': 'off',
       'react/refs': 'off',
       'react/memo-dependencies': 'off',
       'react/preserve-manual-memoization': 'off',
+      // react/globals and react/immutability are turned back on
+      // workspace-wide — their two flagged sites were both test
+      // harnesses and are relaxed by the test-files override below.
 
       // Enable-only rules (warnings — violations not yet fixed)
       'react/no-array-index-key': 'warn',
@@ -278,9 +279,21 @@ export default defineConfig({
         // Test files freely hoist small helpers (fixtures, arrange-step
         // builders) inside `describe`/`it` blocks for locality; enforcing
         // module-scope placement there hurts readability for no runtime gain.
+        //
+        // react/globals and react/immutability turn off here for the same
+        // "tests are observers, not renderers" reason: a test harness
+        // legitimately captures the render count or the value a hook
+        // returned by writing into an outer let / ref during a memo'd
+        // component's render — the whole point of the test is often to
+        // prove that a subsequent write does NOT trigger another render,
+        // which useState / useRef would sidestep by design. The rules
+        // stay on in production code; they only relax where "external
+        // side effect during render" is the assertion, not the bug.
         files: ['**/*.test.ts', '**/*.test.tsx', '**/*.test.mts', '**/*.test.cts'],
         rules: {
           'unicorn/consistent-function-scoping': 'off',
+          'react/globals': 'off',
+          'react/immutability': 'off',
         },
       },
     ],
