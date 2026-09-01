@@ -21,7 +21,12 @@ import {
   type JSX,
   type ReactNode,
 } from 'react'
-import { isAuthed, useAuthStateSubscribable, useSubscribable } from 'react-kitchen-sink'
+import {
+  isAuthed,
+  useAuthStateSubscribable,
+  useLastRendersValue,
+  useSubscribable,
+} from 'react-kitchen-sink'
 import { Dialog } from 'react-tundraish'
 
 import { useActiveDeviceUserCode } from '../../active-device-consent/use-active-device-user-code.ts'
@@ -153,14 +158,13 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
   // again.
   const [handledUserCode, setHandledUserCode] = useState<string | null>(null)
 
-  // Reset handledUserCode when the host's active userCode changes. Prev-
-  // value guard adjusted during render, per the React docs — a useEffect
-  // that does this trips react/set-state-in-effect (and paints the stale
-  // "already handled" state for one frame after the host publishes a new
-  // active code, briefly showing the closed popup as still closed).
-  const [prevActiveUserCode, setPrevActiveUserCode] = useState(activeUserCode)
+  // Reset handledUserCode when the host's active userCode changes. Adjust
+  // state during render (via useLastRendersValue) — a useEffect version
+  // trips react/set-state-in-effect and paints the stale "already handled"
+  // state for one frame after the host publishes a new active code,
+  // briefly showing the closed popup as still closed.
+  const prevActiveUserCode = useLastRendersValue(activeUserCode)
   if (activeUserCode !== prevActiveUserCode) {
-    setPrevActiveUserCode(activeUserCode)
     setHandledUserCode(null)
   }
 
