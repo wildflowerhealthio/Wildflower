@@ -18,8 +18,8 @@ function navLinkHref(link: NavLink, nav: NavContext): string {
 /**
  * Sticky top bar: brand on the left, in-page nav on the right. The two
  * text links collapse on phones (the "Request invite" pill always stays).
- * Its height is the source of `--header-height`, which the Convergence
- * sticky selector and the anchor scroll offsets both depend on.
+ * Its height is the source of `--header-height`, which consumers use for
+ * `scroll-margin-top` on anchor targets.
  *
  * @param nav - Determines whether links resolve as fragment-only (on the
  *   marketing site) or absolute (from an app).

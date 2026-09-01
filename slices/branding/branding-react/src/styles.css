@@ -11,6 +11,8 @@
 :root {
   --content-max-width: 1080px;
   --page-padding-x: var(--space-11);
+  /* Header padding (--space-8, doubled) + the 34px brand mark + the 1px
+   * bottom hairline. */
   --header-height: 71px;
   --radius-pill: 999px;
 }

@@ -11,10 +11,16 @@ import styles from './brand-bar.module.css'
  */
 function BrandBar(): JSX.Element {
   return (
-    <a className={styles['brand-bar']} href={sectionUrl('marketing')} aria-label="Wildflower home">
-      <AppIcon size={24} />
-      <span className={styles['brand-bar__wordmark']}>Wildflower</span>
-    </a>
+    <header>
+      <a
+        className={styles['brand-bar']}
+        href={sectionUrl('marketing')}
+        aria-label="Wildflower, home"
+      >
+        <AppIcon size={24} />
+        <span className={styles['brand-bar__wordmark']}>Wildflower</span>
+      </a>
+    </header>
   )
 }
 

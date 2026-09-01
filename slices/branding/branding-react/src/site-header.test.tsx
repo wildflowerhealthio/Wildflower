@@ -38,8 +38,15 @@ describe('SiteHeader', () => {
     render(<SiteHeader nav={fromApp} />)
 
     // Assert
-    const appsLink = screen.getByText('The apps')
-    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#how')
+    expect(screen.getByText('The apps').getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/#how'
+    )
+    expect(screen.getByText('Privacy').getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/#privacy'
+    )
+    expect(screen.getByText('Request invite').getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/#invite'
+    )
   })
 
   it('should link the brand to #top on the marketing site', () => {

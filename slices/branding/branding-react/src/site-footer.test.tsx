@@ -6,7 +6,7 @@ import { SiteFooter } from './site-footer.tsx'
 
 afterEach(() => {
   cleanup()
-  window.location.hash = ''
+  history.replaceState(null, '', window.location.pathname)
 })
 
 describe('SiteFooter', () => {
@@ -40,25 +40,27 @@ describe('SiteFooter', () => {
     expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#how')
   })
 
-  it('should render the About blurb when location.hash is #about-the-company', () => {
-    // Arrange
+  it('should toggle the About blurb when hash changes to #about-the-company', () => {
+    // Arrange — render first, blurb should be absent
+    render(<SiteFooter nav={onMarketingSite} />)
+    expect(screen.queryByText(/There is no company/)).toBeNull()
+
+    // Act — set hash to about-the-company
     act(() => {
       window.location.hash = '#about-the-company'
       window.dispatchEvent(new HashChangeEvent('hashchange'))
     })
 
-    // Act
-    render(<SiteFooter nav={onMarketingSite} />)
-
-    // Assert
+    // Assert — blurb appears
     expect(screen.getByText(/There is no company/)).toBeDefined()
-  })
 
-  it('should not render the About blurb by default', () => {
-    // Act
-    render(<SiteFooter nav={onMarketingSite} />)
+    // Act — change hash away
+    act(() => {
+      window.location.hash = '#how'
+      window.dispatchEvent(new HashChangeEvent('hashchange'))
+    })
 
-    // Assert
+    // Assert — blurb disappears
     expect(screen.queryByText(/There is no company/)).toBeNull()
   })
 

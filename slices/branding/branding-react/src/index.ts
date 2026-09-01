@@ -1,3 +1,5 @@
+import './styles.css'
+
 export { AppIcon } from './app-icon.tsx'
 export { BrandBar } from './brand-bar.tsx'
 export { SiteFooter } from './site-footer.tsx'

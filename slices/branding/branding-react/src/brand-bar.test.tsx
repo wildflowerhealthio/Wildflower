@@ -14,7 +14,7 @@ describe('BrandBar', () => {
     render(<BrandBar />)
 
     // Assert
-    const link = screen.getByLabelText('Wildflower home')
+    const link = screen.getByLabelText('Wildflower, home')
     expect(link.getAttribute('href')).toBe(sectionUrl('marketing'))
   })
 
@@ -34,5 +34,14 @@ describe('BrandBar', () => {
 
     // Assert
     expect(screen.getByText('Wildflower')).toBeDefined()
+  })
+
+  it('should be wrapped in a header element for banner landmark', () => {
+    // Arrange / Act
+    render(<BrandBar />)
+
+    // Assert
+    const banner = screen.getByRole('banner')
+    expect(banner).toBeDefined()
   })
 })

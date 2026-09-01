@@ -34,10 +34,10 @@ describe('sectionUrl', () => {
     expect(sectionUrl('serverDocs')).toBe('https://wildflowerhealth.io/wildflower-server-docs')
   })
 
-  it('should always start with SITE_ORIGIN', () => {
+  it('should always start with SITE_ORIGIN/', () => {
     fc.assert(
       fc.property(sectionIdArb, (id) => {
-        expect(sectionUrl(id)).toMatch(new RegExp(`^${SITE_ORIGIN}`))
+        expect(sectionUrl(id).startsWith(`${SITE_ORIGIN}/`)).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -61,7 +61,7 @@ describe('sectionUrl', () => {
         if (path === '') {
           expect(url).toBe(`${SITE_ORIGIN}/`)
         } else {
-          expect(url).toMatch(new RegExp(`${path}$`))
+          expect(url.endsWith(path)).toBe(true)
         }
       }),
       { numRuns: numRunsFor({ base: 100 }) }

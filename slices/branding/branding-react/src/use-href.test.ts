@@ -1,11 +1,11 @@
 import { act, cleanup, renderHook } from '@testing-library/react'
-import { afterEach, describe, expect, it } from 'vite-plus/test'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { useHref } from './use-href.ts'
 
 afterEach(() => {
   cleanup()
-  window.location.hash = ''
+  history.replaceState(null, '', window.location.pathname)
 })
 
 describe('useHref', () => {
@@ -34,14 +34,30 @@ describe('useHref', () => {
   it('should update when a popstate event fires', () => {
     // Arrange
     const { result } = renderHook(() => useHref())
-    const initialHref = result.current
 
     // Act
     act(() => {
+      history.pushState(null, '', '#via-popstate')
       window.dispatchEvent(new PopStateEvent('popstate'))
     })
 
-    // Assert — popstate re-reads from location, so it should still be current
-    expect(result.current).toBe(initialHref)
+    // Assert
+    expect(result.current).toContain('#via-popstate')
+  })
+
+  it('should unsubscribe both listeners on unmount', () => {
+    // Arrange
+    const removeSpy = vi.spyOn(window, 'removeEventListener')
+    const { unmount } = renderHook(() => useHref())
+
+    // Act
+    unmount()
+
+    // Assert
+    const removedEvents = removeSpy.mock.calls.map((call) => call[0])
+    expect(removedEvents).toContain('popstate')
+    expect(removedEvents).toContain('hashchange')
+
+    removeSpy.mockRestore()
   })
 })

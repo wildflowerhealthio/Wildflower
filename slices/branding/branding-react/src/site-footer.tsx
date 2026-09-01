@@ -18,11 +18,13 @@ type FooterLink = {
   readonly extra?: ComponentType
 }
 
-function resolveLinks(links: readonly NavLink[], nav: NavContext): readonly FooterLink[] {
-  return links.map((link) => ({
+function resolveLink(link: NavLink, nav: NavContext): FooterLink {
+  return {
     label: link.label,
     href: link.kind === 'anchor' ? anchorHref(nav, link.anchor) : link.href,
-  }))
+    extra:
+      link.kind === 'anchor' && link.anchor === 'about-the-company' ? AboutTheCompany : undefined,
+  }
 }
 
 /** Hash-gated blurb that appears beside the "About" footer link. */
@@ -71,11 +73,8 @@ function FooterColumn({
  *   (marketing site) or absolute (from an app).
  */
 function SiteFooter({ nav }: { readonly nav: NavContext }): JSX.Element {
-  const productLinks = resolveLinks(FOOTER_PRODUCT_LINKS, nav)
-  const companyBase = resolveLinks(FOOTER_COMPANY_LINKS, nav)
-  const companyLinks: readonly FooterLink[] = companyBase.map((link) =>
-    link.label === 'About' ? { ...link, extra: AboutTheCompany } : link
-  )
+  const productLinks = FOOTER_PRODUCT_LINKS.map((link) => resolveLink(link, nav))
+  const companyLinks = FOOTER_COMPANY_LINKS.map((link) => resolveLink(link, nav))
 
   return (
     <footer className={styles['site-footer']}>
