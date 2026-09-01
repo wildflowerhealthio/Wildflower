@@ -1,13 +1,13 @@
 {
-  "name": "har-importer-core",
+  "name": "shoppers-drugmart-source",
   "version": "0.0.0",
   "private": true,
-  "description": "The HAR binding of the importer slice: the concrete FileImporterDescriptor for format 'har' — HAR decode via web-trace-core's codec, the FHIR R4 response-kind pool, HAR settings, and the FHIR persist sink (withMetaSource + persistResources). No DOM, no fs, no React.",
+  "description": "The Shoppers Drug Mart source: Customer / Prescription / PrescriptionHistory response kinds that synthesize FHIR R4 Patient / MedicationRequest / MedicationDispense from the portal's bespoke JSON, each with its own tryRecognize, and the assembled shoppersDrugMartSource descriptor consumers extract with. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/importer/har-importer-core"
+    "directory": "slices/http-extraction/shoppers-drugmart-source"
   },
   "files": [
     "dist"
@@ -27,30 +27,20 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
-    "fhir-r4-source": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
-    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "rexall-be-well-source": "workspace:*",
-    "shoppers-drugmart-source": "workspace:*",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
-    "fhir-r4-source": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "rexall-be-well-source": "workspace:*",
-    "shoppers-drugmart-source": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "kitchen-sink": "workspace:*"
   }
 }
