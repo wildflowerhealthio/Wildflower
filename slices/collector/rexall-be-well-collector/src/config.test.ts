@@ -8,15 +8,10 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
 
-import {
-  InstanceConfig,
-  REXALL_CAREBOOK_SYSTEM,
-  RexallCollectorDescriptor,
-  defaultConfig,
-  scrapingPlan,
-} from './config.ts'
+import { InstanceConfig, RexallCollectorDescriptor, defaultConfig, scrapingPlan } from './config.ts'
 import prescriptions from './fixtures/prescriptions-searchset.json' with { type: 'json' }
 import profileFixture from './fixtures/profile-me.json' with { type: 'json' }
+import { REXALL_CAREBOOK_SYSTEM } from './source-system.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 

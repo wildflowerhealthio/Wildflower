@@ -1,9 +1,13 @@
 import { fhirR4Source } from 'fhir-r4-source'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
+import { rexallBeWellSource } from 'rexall-be-well-source'
 
 /** The registered sources whose kinds this importer's pool flattens. */
-const sources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[] = [fhirR4Source]
+const sources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[] = [
+  fhirR4Source,
+  rexallBeWellSource,
+]
 
 /**
  * The flat pool of `HttpResponseKind`s a HAR archive's traffic is recognized and
