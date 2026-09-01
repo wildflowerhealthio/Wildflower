@@ -135,7 +135,7 @@ describe('ReviewBody', () => {
 
     // Act — opt out of Observations, then decode what the reported selection chose.
     await userEvent.click(screen.getByRole('checkbox', { name: 'observation' }))
-    const resources = await Effect.runPromise(Review.chosen(pool, responses, reported))
+    const { resources } = await Effect.runPromise(Review.chosen(pool, responses, reported))
 
     // Assert — only the Patient decoded; the opted-out Observation wrote nothing.
     expect(resources).toEqual(['patient'])
