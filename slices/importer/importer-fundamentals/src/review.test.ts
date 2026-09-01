@@ -137,10 +137,12 @@ describe('Review.chosen', () => {
     ]
 
     // Act
-    const resources = await Effect.runPromise(Review.chosen(pool, responses, Review.initial(pool)))
+    const outcome = await Effect.runPromise(Review.chosen(pool, responses, Review.initial(pool)))
 
     // Assert — each recognized response decoded to its kind's name; the miss wrote nothing.
-    expect(resources.toSorted()).toEqual(['observation', 'patient'])
+    expect(outcome.resources.toSorted()).toEqual(['observation', 'patient'])
+    expect(outcome.parseFailures).toBe(0)
+    expect(outcome.bodyAbsent).toBe(0)
   })
 
   it('should not decode a response whose only pick was disabled', async () => {
@@ -153,22 +155,26 @@ describe('Review.chosen', () => {
     const selection = Review.toggleKind(Review.initial(pool), 'observation')
 
     // Act
-    const resources = await Effect.runPromise(Review.chosen(pool, responses, selection))
+    const outcome = await Effect.runPromise(Review.chosen(pool, responses, selection))
 
     // Assert — the Observation was opted out, so only the Patient decoded.
-    expect(resources).toEqual(['patient'])
+    expect(outcome.resources).toEqual(['patient'])
+    expect(outcome.parseFailures).toBe(0)
+    expect(outcome.bodyAbsent).toBe(0)
   })
 
-  it('should write nothing when a body is absent even though the URL was recognized', async () => {
+  it('should surface absent-body count when a recognized response has no body', async () => {
     // Arrange — a recognized Patient URL whose body the archive did not capture.
     const pool = [patientKind]
     const responses = [input('r0', 'https://ehr.test/Patient/1', true)]
 
     // Act
-    const resources = await Effect.runPromise(Review.chosen(pool, responses, Review.initial(pool)))
+    const outcome = await Effect.runPromise(Review.chosen(pool, responses, Review.initial(pool)))
 
     // Assert
-    expect(resources).toEqual([])
+    expect(outcome.resources).toEqual([])
+    expect(outcome.parseFailures).toBe(0)
+    expect(outcome.bodyAbsent).toBe(1)
   })
 })
 

@@ -113,7 +113,7 @@ const importOneFile = <TSettings, TParsed>(
       const recognized = Review.recognize(descriptor.pool, responses)
       if (Review.chosenCount(recognized, selection) === 0) return skip('nothing')
       return Review.chosen(descriptor.pool, responses, selection).pipe(
-        Effect.flatMap((resources) =>
+        Effect.flatMap(({ resources }) =>
           secureSourceRef(picked, uploadHar).pipe(
             Effect.flatMap((sourceRef) =>
               descriptor.persist(resources, sourceRef).pipe(

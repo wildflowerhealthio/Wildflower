@@ -117,6 +117,13 @@ const chosenCount = <K extends NamedKind>(
  */
 const recognize = Extraction.recognize
 
+/** What {@link chosen} returns: the decoded resources plus counts of non-resource outcomes. */
+interface ChosenOutcome<TParsed> {
+  readonly resources: readonly TParsed[]
+  readonly parseFailures: number
+  readonly bodyAbsent: number
+}
+
 /**
  * Decode only the chosen responses — the confirm's write set.
  *
@@ -125,25 +132,30 @@ const recognize = Extraction.recognize
  * @param responses - The decoded responses, in input order
  * @param selection - The reviewer's choices
  * @returns The resources of every chosen response that decoded, flattened in
- *   input order — total: a response with no chosen pick is never decoded, and
- *   `parseWith` folds a decode error or absent body to `[]`
+ *   input order, alongside counts of parse failures and absent bodies so the
+ *   confirm step can surface them
  */
 const chosen = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[],
   selection: Selection
-): Effect.Effect<readonly TParsed[]> =>
+): Effect.Effect<ChosenOutcome<TParsed>> =>
   pipe(
     Effect.forEach(Arr.zip(responses, recognize(pool, responses)), ([response, recognized]) =>
       Option.match(pickFor(recognized, selection), {
-        onNone: () => Effect.succeed<readonly TParsed[]>([]),
+        onNone: () => Effect.succeed<Extraction.ParseOutcome<TParsed>[]>([]),
         onSome: (candidate) =>
-          Extraction.parseWith(candidate.kind, response).pipe(
-            Effect.map((outcome) => (outcome._tag === 'resources' ? outcome.resources : []))
-          ),
+          Extraction.parseWith(candidate.kind, response).pipe(Effect.map((outcome) => [outcome])),
       })
     ),
-    Effect.map(Arr.flatten)
+    Effect.map((nested) => {
+      const outcomes = Arr.flatten(nested)
+      return {
+        resources: outcomes.flatMap((o) => (o._tag === 'resources' ? o.resources : [])),
+        parseFailures: outcomes.filter((o) => o._tag === 'parseError').length,
+        bodyAbsent: outcomes.filter((o) => o._tag === 'bodyAbsent').length,
+      }
+    })
   )
 
 export {
@@ -158,4 +170,4 @@ export {
   recognize,
   toggleKind,
 }
-export type { NamedKind, Selection }
+export type { ChosenOutcome, NamedKind, Selection }
