@@ -7,9 +7,8 @@
 //! parameters encoded in the stored string and compares in constant time, so
 //! callers do not perform their own comparison.
 
-use argon2::password_hash::rand_core::OsRng;
-use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
-use argon2::Argon2;
+use argon2::password_hash::{PasswordHasher, PasswordVerifier};
+use argon2::{Argon2, PasswordHash};
 
 /// Failure modes for client-secret hashing and verification.
 #[derive(Debug, thiserror::Error)]
@@ -30,9 +29,8 @@ pub enum ClientSecretError {
 ///
 /// Returns [`ClientSecretError::Hash`] if the argon2id hashing step fails.
 pub fn hash_client_secret(secret: &str) -> Result<String, ClientSecretError> {
-    let salt = SaltString::generate(&mut OsRng);
     Argon2::default()
-        .hash_password(secret.as_bytes(), &salt)
+        .hash_password(secret.as_bytes())
         .map(|hash| hash.to_string())
         .map_err(ClientSecretError::Hash)
 }
@@ -48,10 +46,11 @@ pub fn hash_client_secret(secret: &str) -> Result<String, ClientSecretError> {
 /// Returns [`ClientSecretError::MalformedHash`] if `stored_phc` is not a
 /// parseable PHC hash string (or verification fails for a non-mismatch reason).
 pub fn verify_client_secret(presented: &str, stored_phc: &str) -> Result<bool, ClientSecretError> {
-    let parsed = PasswordHash::new(stored_phc).map_err(ClientSecretError::MalformedHash)?;
+    let parsed =
+        PasswordHash::new(stored_phc).map_err(|e| ClientSecretError::MalformedHash(e.into()))?;
     match Argon2::default().verify_password(presented.as_bytes(), &parsed) {
         Ok(()) => Ok(true),
-        Err(argon2::password_hash::Error::Password) => Ok(false),
+        Err(argon2::password_hash::Error::PasswordInvalid) => Ok(false),
         Err(e) => Err(ClientSecretError::MalformedHash(e)),
     }
 }
