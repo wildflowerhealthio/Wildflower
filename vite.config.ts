@@ -221,22 +221,17 @@ export default defineConfig({
       'import/no-named-as-default-member': 'warn',
       'import/no-duplicates': 'warn',
 
-      // React Compiler / react-hooks v6 rules that vite-plus 0.3 (via its
-      // bundled oxlint) newly enabled under the `react` plugin. Every failure
-      // they surface is real, but fixing them is a separate audit — see the
-      // follow-up on `claude/migrate-deprecated-query-methods`. Keep this list
-      // in sync with that branch's remediation so a rule only comes back once
-      // the corresponding fix lands.
-      'react/set-state-in-effect': 'off',
-      'react/exhaustive-effect-dependencies': 'off',
-      'react/purity': 'off',
-      'react/static-components': 'off',
-      'react/refs': 'off',
-      'react/memo-dependencies': 'off',
-      'react/preserve-manual-memoization': 'off',
-      // react/globals and react/immutability are turned back on
-      // workspace-wide — their two flagged sites were both test
-      // harnesses and are relaxed by the test-files override below.
+      // All nine react-hooks v6 rules vite-plus 0.3 newly enforces are
+      // on: react/set-state-in-effect, react/exhaustive-effect-
+      // dependencies, react/purity, react/static-components,
+      // react/refs, react/memo-dependencies, react/preserve-manual-
+      // memoization, react/globals, react/immutability. Each was
+      // temporarily disabled in the previous PR (#552) so the merge
+      // wasn't blocked; the earlier commits on this branch fix every
+      // flagged site and this restore verifies zero survive under
+      // pre-commit lint. The last two (globals + immutability) had
+      // only test-harness violations and are relaxed by the test-files
+      // override below.
 
       // Enable-only rules (warnings — violations not yet fixed)
       'react/no-array-index-key': 'warn',
