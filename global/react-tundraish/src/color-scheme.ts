@@ -1,4 +1,26 @@
-import { applyColorScheme } from './apply-color-scheme.ts'
+/**
+ * Colour scheme type: the two values `data-color-scheme` can take. The
+ * stylesheet keys its dark palette solely off
+ * `:root[data-color-scheme='dark']`, so this attribute is the single
+ * trigger for dark mode — there is no `prefers-color-scheme` fallback rule.
+ */
+type ColorScheme = 'light' | 'dark'
+
+/**
+ * Write a colour scheme onto the document root as the authoritative
+ * `data-color-scheme` attribute. The stylesheet keys its dark palette solely
+ * off `:root[data-color-scheme='dark']`, so this attribute is the single
+ * trigger for dark mode — there is no `prefers-color-scheme` fallback rule.
+ *
+ * Both runtimes funnel through here: the embedded WebView relays the device
+ * scheme over the Navigation bridge (WKWebView reports `light` for
+ * `loadHTMLString` content regardless of device appearance, so it can't read
+ * `prefers-color-scheme` itself), and the plain web build derives it from
+ * `prefers-color-scheme` via {@link addOsColorSchemeListener}.
+ */
+const applyColorScheme = (scheme: ColorScheme): void => {
+  document.documentElement.dataset.colorScheme = scheme
+}
 
 /**
  * Mirror the browser's OS colour preference onto the document root as the
@@ -29,4 +51,5 @@ const addOsColorSchemeListener = (): (() => void) => {
   }
 }
 
-export { addOsColorSchemeListener }
+export { addOsColorSchemeListener, applyColorScheme }
+export type { ColorScheme }

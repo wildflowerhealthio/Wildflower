@@ -29,7 +29,10 @@ function AppNotFoundRoute(): JSX.Element {
 
 const Route = createFileRoute('/settings/apps/$id')({
   loader: async ({ context, params }) => {
-    const apps = await context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed))
+    const apps = await context.queryClient.query({
+      ...appsListQueryOptions(context.runAuthed),
+      staleTime: 'static',
+    })
     const app = apps.find((entry) => entry.id === params.id)
     // Unknown id → render the "not found" component (no redirect).
     if (app === undefined) return

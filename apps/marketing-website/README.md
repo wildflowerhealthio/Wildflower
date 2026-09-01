@@ -51,9 +51,9 @@ vp build    # production build to dist/
   - `--header-height` (the sticky header height section anchors offset their
     scroll target by),
   - `--beta-form-width` (shared by the hero and CTA forms) and `--radius-pill`.
-- **Dark mode** is the shared theme: `color-scheme.ts` mirrors the OS
-  preference onto `:root[data-color-scheme='dark']`, which is the only trigger
-  react-tundraish's dark palette reads. No module carries a
+- **Dark mode** is the shared theme: react-tundraish's `addOsColorSchemeListener`
+  mirrors the OS preference onto `:root[data-color-scheme='dark']`, which is the
+  only trigger react-tundraish's dark palette reads. No module carries a
   `prefers-color-scheme` block — a surface that must flip reads a token that
   already does.
 

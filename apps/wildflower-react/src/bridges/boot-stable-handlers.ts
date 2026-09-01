@@ -6,7 +6,7 @@ import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
 import type { AuthStateStore } from 'react-kitchen-sink'
 
-import { applyColorScheme } from '../styles/apply-color-scheme.ts'
+import { applyColorScheme } from 'react-tundraish'
 import { applyRootInsets } from '../styles/apply-root-insets.ts'
 
 /**

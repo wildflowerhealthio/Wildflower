@@ -109,7 +109,7 @@ describe('tunnelStateQueryOptions', () => {
     const queryClient = new QueryClient()
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    const state = await queryClient.ensureQueryData(options)
+    const state = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(state.settingsRevision).toBe(0)
     expect(state.servedOrigin).toBe('http://127.0.0.1:8080')
@@ -126,7 +126,7 @@ describe('tunnelStateQueryOptions', () => {
 
     // Pins the rejection the route loader surfaces to its errorComponent
     // (no longer swallowed) — see routes.test.tsx for the loader path.
-    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
+    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
     expect(queryClient.getQueryData(TUNNEL_STATE_QUERY_KEY)).toBeUndefined()
   })
 })

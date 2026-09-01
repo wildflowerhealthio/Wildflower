@@ -19,7 +19,7 @@ import { useMutation } from '@tanstack/react-query'
 import type { Remotes } from 'collector-registry/http-api-definition'
 import { resourcePersistenceRuntimeForConfig } from 'collector-registry/registry'
 import { Match } from 'effect'
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useRunAuthed } from '../queries/use-run-authed.ts'
 import { buildImportEffect, type FailedResource, type ImportSummary } from './sync-run.ts'
@@ -75,9 +75,14 @@ const useSyncRunner = ({ onError }: SyncRunnerInput = {}): SyncRunner => {
   const runAuthed = useRunAuthed()
 
   // Stash `onError` in a ref so a parent passing a fresh lambda each
-  // render doesn't re-key the mutation's closure.
+  // render doesn't re-key the mutation's closure. Mirror-write in an
+  // effect (no deps → after every render) so the ref stays current
+  // without violating react/refs, which forbids ref writes during
+  // render.
   const onErrorRef = useRef(onError)
-  onErrorRef.current = onError
+  useEffect(() => {
+    onErrorRef.current = onError
+  })
 
   // Live failure list, surfaced via `partial`. Reset at each start.
   const [failed, setFailed] = useState<ReadonlyArray<FailedResource>>([])

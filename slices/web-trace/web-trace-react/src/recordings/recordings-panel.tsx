@@ -1,4 +1,4 @@
-import { useMemo, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, PageLoading } from 'react-tundraish'
 import { type TraceExchange } from 'web-trace-core'
@@ -83,14 +83,15 @@ const RecordingsPanel = ({
   /**
    * The exchanges an export would cover: the same pure `filterExchanges` over
    * the same `ExchangeFilters` the list is showing — the filter is reused, not
-   * rebuilt. Memoised because the export hook rebuilds its preview whenever
-   * this identity changes, and `filterExchanges` returns a fresh array.
+   * rebuilt. React Compiler auto-memoizes this: the previous manual useMemo
+   * kept `openSession` as a dep, which RC flagged (react/preserve-manual-
+   * memoization) as "may be modified later" — a fresh `sessions.find`
+   * result RC couldn't prove stable — and skipped optimizing the whole
+   * component. Letting RC own the memoization keeps the identity as stable
+   * as it can be while restoring compiler-wide memoization on the panel.
    */
-  const exportableExchanges = useMemo(
-    (): readonly TraceExchange[] =>
-      openSession === undefined ? [] : filterExchanges(openSession.exchanges, filters),
-    [openSession, filters]
-  )
+  const exportableExchanges: readonly TraceExchange[] =
+    openSession === undefined ? [] : filterExchanges(openSession.exchanges, filters)
 
   const body = ((): JSX.Element | null => {
     if (isPending) return <PageLoading message="Loading recordings…" />

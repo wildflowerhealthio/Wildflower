@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react'
-import { cn } from 'react-kitchen-sink'
+import { cn, usePreviousDistinctValue } from 'react-kitchen-sink'
 
 import styles from './menu.module.css'
 
@@ -54,10 +54,21 @@ const Menu = ({
   const firstEnabledIndex = findFirstEnabled(items)
   const lastEnabledIndex = findLastEnabled(items)
 
-  useEffect(() => {
-    if (!open) return
+  // Reset the highlighted index when the menu opens (or when the first
+  // enabled item shifts while open). Adjust state during render — a
+  // useEffect version cascades a render and paints the stale index for
+  // one frame. `usePreviousDistinctValue` (react-kitchen-sink) hands back
+  // the value from the last render in which it differed.
+  const prevOpen = usePreviousDistinctValue(open)
+  const prevFirstEnabledIndex = usePreviousDistinctValue(firstEnabledIndex)
+  if (open && (open !== prevOpen || firstEnabledIndex !== prevFirstEnabledIndex)) {
     setActiveIndex(firstEnabledIndex)
-    if (firstEnabledIndex >= 0) {
+  }
+
+  // Focus follows the highlight — a genuine DOM side effect that has to
+  // live in a useEffect, but it no longer also carries a setState.
+  useEffect(() => {
+    if (open && firstEnabledIndex >= 0) {
       itemRefs.current[firstEnabledIndex]?.focus()
     }
   }, [open, firstEnabledIndex])

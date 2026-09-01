@@ -62,3 +62,12 @@ to every effect it runs — so the cookie rides the FHIR reads regardless of whi
 transport layer constructed the client. When splitting a shared `HttpClient` per
 consumer, check whether the behaviour you care about is a build-time or a
 request-time concern before assuming the split loses it.
+
+## Color-scheme helpers live in react-tundraish, not in each app
+
+`applyColorScheme`, `addOsColorSchemeListener`, and the `ColorScheme` type are
+exported from `react-tundraish`. They translate the OS `prefers-color-scheme`
+media query (or a bridge-relayed scheme) into the `data-color-scheme` attribute
+that the stylesheet keys its dark palette off. Previously five near-identical
+copies lived in individual apps; import from `react-tundraish` instead of
+creating a new local copy.

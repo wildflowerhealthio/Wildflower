@@ -79,7 +79,10 @@ function GrantDetailRoute(): JSX.Element {
 
 const Route = createFileRoute('/settings/gatekeeper/approved/$id')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(grantQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.query({
+      ...grantQueryOptions(context.runAuthed, params.id),
+      staleTime: 'static',
+    }),
   component: GrantDetailRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Not Found" />,
 })

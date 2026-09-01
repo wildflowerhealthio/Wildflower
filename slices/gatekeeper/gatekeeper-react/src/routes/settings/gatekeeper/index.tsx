@@ -195,7 +195,7 @@ const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.
  */
 const Route = createFileRoute('/settings/gatekeeper/')({
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(grantsQueryOptions(context.runAuthed)),
+    context.queryClient.query({ ...grantsQueryOptions(context.runAuthed), staleTime: 'static' }),
   component: AccessIndexScreen,
   errorComponent: ({ error, reset }) => <AccessIndexErrorView error={error} reset={reset} />,
 })

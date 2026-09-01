@@ -40,7 +40,10 @@ function SelfHostedAppDetailRoute(): JSX.Element {
 
 const Route = createFileRoute('/settings/apps/self-hosted/$id')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(selfHostedAppQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.query({
+      ...selfHostedAppQueryOptions(context.runAuthed, params.id),
+      staleTime: 'static',
+    }),
   component: SelfHostedAppDetailRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })

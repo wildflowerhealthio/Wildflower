@@ -35,7 +35,7 @@ describe('documentsInfiniteQueryOptions', () => {
     const options = documentsInfiniteQueryOptions(runAuthedOver([searchset([])]))
 
     // Act
-    await queryClient.fetchInfiniteQuery(options)
+    await queryClient.infiniteQuery(options)
 
     // Assert — the whole point of the sibling read: no category, no type, no
     // status. A `category=` would search for the empty token and match nothing.
@@ -54,7 +54,7 @@ describe('documentsInfiniteQueryOptions', () => {
     })
 
     // Act
-    await queryClient.fetchInfiniteQuery(options)
+    await queryClient.infiniteQuery(options)
 
     // Assert — the server narrows, not the browser. A read that fetched the
     // whole table and filtered locally would still pass every other assertion
@@ -77,7 +77,7 @@ describe('documentsInfiniteQueryOptions', () => {
     const options = documentsInfiniteQueryOptions(runAuthedOver([searchset([clinical])]))
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery(options)
+    const data = await queryClient.infiniteQuery(options)
 
     // Assert
     const [page] = data.pages
@@ -102,7 +102,7 @@ describe('documentsInfiniteQueryOptions', () => {
     )
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery(options)
+    const data = await queryClient.infiniteQuery(options)
 
     // Assert
     expect(data.pages[0]?.documents.map((document) => document.id)).toEqual(['doc-1'])
@@ -116,7 +116,7 @@ describe('documentsInfiniteQueryOptions', () => {
     const options = documentsInfiniteQueryOptions(runAuthedOver([first, second]))
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery({ ...options, pages: 3 })
+    const data = await queryClient.infiniteQuery({ ...options, pages: 3 })
 
     // Assert — the second request carried the cursor, and the third never happened
     expect(sentRequests).toHaveLength(2)
@@ -149,7 +149,7 @@ describe('documentsInfiniteQueryOptions', () => {
     const options = documentsInfiniteQueryOptions(failingRunAuthed())
 
     // Act / Assert
-    await expect(queryClient.fetchInfiniteQuery(options)).rejects.toThrow()
+    await expect(queryClient.infiniteQuery(options)).rejects.toThrow()
   })
 })
 

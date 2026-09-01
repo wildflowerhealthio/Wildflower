@@ -1,5 +1,6 @@
 import './styles.css'
 
+export { addOsColorSchemeListener, applyColorScheme, type ColorScheme } from './color-scheme.ts'
 export { AsyncErrorView, type AsyncErrorViewProps } from './async-error-view.tsx'
 export { Awaited, type AwaitedProps } from './awaited.tsx'
 export { Checkbox, type CheckboxProps } from './checkbox.tsx'

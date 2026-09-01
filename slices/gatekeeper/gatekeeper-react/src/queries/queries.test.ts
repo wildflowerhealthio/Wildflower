@@ -139,7 +139,7 @@ describe('grantsQueryOptions', () => {
     const options = grantsQueryOptions(makeRunAuthed(stubHttpClientLayer({ body: GRANT_BODY })))
     const queryClient = freshQueryClient()
 
-    const grants = await queryClient.ensureQueryData(options)
+    const grants = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(grants).toHaveLength(1)
     expect(grants[0]?.clientId).toBe('client-a')
@@ -151,7 +151,7 @@ describe('grantsQueryOptions', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
+    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
     expect(queryClient.getQueryData(GRANTS_QUERY_KEY)).toBeUndefined()
   })
 })
@@ -166,7 +166,7 @@ describe('requestsQueryOptions', () => {
     const options = requestsQueryOptions(makeRunAuthed(stubHttpClientLayer({ body: REQUEST_BODY })))
     const queryClient = freshQueryClient()
 
-    const requests = await queryClient.ensureQueryData(options)
+    const requests = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(requests).toHaveLength(1)
     expect(requests[0]?.status).toBe('pending')
@@ -186,7 +186,7 @@ describe('deviceConsentQueryOptions', () => {
     )
     const queryClient = freshQueryClient()
 
-    const consent = await queryClient.ensureQueryData(options)
+    const consent = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(consent.userCode).toBe('WDJB-MJHT')
     expect(consent.clientName).toBe('Test Device')
@@ -201,7 +201,7 @@ describe('deviceConsentQueryOptions', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
+    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
   })
 })
 
@@ -218,7 +218,7 @@ describe('oauthConsentQueryOptions', () => {
     )
     const queryClient = freshQueryClient()
 
-    const consent = await queryClient.ensureQueryData(options)
+    const consent = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(consent.id).toBe('consent-1')
     expect([...consent.scopes]).toEqual(['patient/*.read'])
@@ -232,6 +232,6 @@ describe('oauthConsentQueryOptions', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
+    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
   })
 })
