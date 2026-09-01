@@ -31,7 +31,7 @@ describe('traceExchangesInfiniteQueryOptions', () => {
     const options = traceExchangesInfiniteQueryOptions(runAuthedOver([searchset([])]))
 
     // Act
-    await queryClient.fetchInfiniteQuery(options)
+    await queryClient.infiniteQuery(options)
 
     // Assert
     expect(paramsOf(0)['category']).toBe(WEB_TRACE_CATEGORY_TOKEN)
@@ -47,7 +47,7 @@ describe('traceExchangesInfiniteQueryOptions', () => {
     })
 
     // Act
-    await queryClient.fetchInfiniteQuery(options)
+    await queryClient.infiniteQuery(options)
 
     // Assert
     expect(paramsOf(0)['_count']).toBe('7')
@@ -67,7 +67,7 @@ describe('traceExchangesInfiniteQueryOptions', () => {
     )
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery(options)
+    const data = await queryClient.infiniteQuery(options)
 
     // Assert
     const [page] = data.pages
@@ -91,7 +91,7 @@ describe('traceExchangesInfiniteQueryOptions', () => {
     )
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery(options)
+    const data = await queryClient.infiniteQuery(options)
 
     // Assert — a partial page is reported as partial, not presented as complete
     const [page] = data.pages
@@ -109,7 +109,7 @@ describe('traceExchangesInfiniteQueryOptions', () => {
     const options = traceExchangesInfiniteQueryOptions(runAuthedOver([searchset([clinical])]))
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery(options)
+    const data = await queryClient.infiniteQuery(options)
 
     // Assert — not a trace at all, so neither listed nor counted as a failure
     const [page] = data.pages
@@ -125,7 +125,7 @@ describe('traceExchangesInfiniteQueryOptions', () => {
     const options = traceExchangesInfiniteQueryOptions(runAuthedOver([first, second]))
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery({ ...options, pages: 3 })
+    const data = await queryClient.infiniteQuery({ ...options, pages: 3 })
 
     // Assert — the second request carried the cursor, and the third never happened
     expect(sentRequests).toHaveLength(2)
@@ -145,7 +145,7 @@ describe('traceExchangesInfiniteQueryOptions', () => {
     const options = traceExchangesInfiniteQueryOptions(failingRunAuthed())
 
     // Act / Assert
-    await expect(queryClient.fetchInfiniteQuery(options)).rejects.toThrow()
+    await expect(queryClient.infiniteQuery(options)).rejects.toThrow()
   })
 })
 

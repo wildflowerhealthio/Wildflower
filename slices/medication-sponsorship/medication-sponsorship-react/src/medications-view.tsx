@@ -1,5 +1,9 @@
 import type { JSX } from 'react'
-import { useMemo } from 'react'
+import { useMemo, useSyncExternalStore } from 'react'
+
+// Never-fires subscribe; useNowMillis snapshots Date.now() on renders the
+// caller already commits without also driving one per clock tick.
+const noopSubscribe = (): (() => void) => (): void => {}
 
 import {
   groupMedications,
@@ -75,8 +79,18 @@ export const MedicationsView = ({
   province,
   catalogs,
 }: MedicationsViewProps): JSX.Element => {
-  // Sampled once per render so every row's relative next-fill hint agrees.
-  const nowMillis = Date.now()
+  // Read as an external-store snapshot so `Date.now()` doesn't run during
+  // render (react/purity forbids that — it makes the output depend on
+  // wall-clock time and defeats React Compiler memoization). The subscribe
+  // is a no-op: we don't want a re-render on every clock tick, only a
+  // fresh sample on renders the caller was going to do anyway. Same
+  // per-render pinning as before, so every row's relative next-fill hint
+  // still agrees.
+  const nowMillis = useSyncExternalStore(
+    noopSubscribe,
+    () => Date.now(),
+    () => Date.now()
+  )
   const eligibility = useMemo(() => {
     const grouped = groupMedications(
       medications.map((view) => view.medication),

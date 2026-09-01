@@ -36,7 +36,10 @@ function CloudAppDetailRoute(): JSX.Element {
 
 const Route = createFileRoute('/settings/apps/cloud/$id')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(cloudAppQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.query({
+      ...cloudAppQueryOptions(context.runAuthed, params.id),
+      staleTime: 'static',
+    }),
   component: CloudAppDetailRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })

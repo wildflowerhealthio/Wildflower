@@ -42,9 +42,9 @@ import { AppTabShell } from '../session/tab-bar.tsx'
 const authLoader = async ({ context }: { readonly context: RouterContext }): Promise<void> => {
   const transport = await context.transport
   await Promise.allSettled([
-    context.queryClient.prefetchQuery(tunnelStateQueryOptions(context.runAuthed)),
-    context.queryClient.prefetchQuery(appsListQueryOptions(context.runAuthed)),
-    context.queryClient.prefetchQuery(remotesQueryOptions(context.runAuthed)),
+    context.queryClient.query(tunnelStateQueryOptions(context.runAuthed)),
+    context.queryClient.query(appsListQueryOptions(context.runAuthed)),
+    context.queryClient.query(remotesQueryOptions(context.runAuthed)),
   ])
   await Effect.runPromise(transport.sendMessage({ _tag: 'UIReady' })).catch((error: unknown) => {
     Sentry.captureException(error, { tags: { source: 'authLoader.UIReady' } })

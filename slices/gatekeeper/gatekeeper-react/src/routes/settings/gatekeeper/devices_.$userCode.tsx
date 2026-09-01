@@ -54,9 +54,10 @@ function SettingsDeviceConsentRoute(): JSX.Element {
 
 export const Route = createFileRoute('/settings/gatekeeper/devices_/$userCode')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(
-      deviceConsentQueryOptions(context.runAuthed, params.userCode)
-    ),
+    context.queryClient.query({
+      ...deviceConsentQueryOptions(context.runAuthed, params.userCode),
+      staleTime: 'static',
+    }),
   component: SettingsDeviceConsentRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Device Authorization" />,
 })

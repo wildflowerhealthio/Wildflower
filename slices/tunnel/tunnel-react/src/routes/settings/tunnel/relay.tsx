@@ -220,7 +220,10 @@ const RelaySettingsScreenContent = (): JSX.Element => {
  */
 export const Route = createFileRoute('/settings/tunnel/relay')({
   loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(tunnelStateQueryOptions(context.runAuthed))
+    await context.queryClient.query({
+      ...tunnelStateQueryOptions(context.runAuthed),
+      staleTime: 'static',
+    })
   },
   component: RelaySettingsScreenContent,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Relay settings" />,

@@ -47,7 +47,7 @@ const DatabasesScreen = (): JSX.Element => {
  */
 export const Route = createFileRoute('/settings/databases/')({
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(databasesQueryOptions(context.runAuthed)),
+    context.queryClient.query({ ...databasesQueryOptions(context.runAuthed), staleTime: 'static' }),
   component: DatabasesScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Your data" />,
 })

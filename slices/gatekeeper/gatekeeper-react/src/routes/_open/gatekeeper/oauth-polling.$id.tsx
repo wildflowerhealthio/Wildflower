@@ -8,7 +8,16 @@ import {
   type AuthorizationStatusError,
   pollAuthorizationStatus,
 } from 'gatekeeper-core/clients'
-import { Component, Suspense, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
+import {
+  Component,
+  Suspense,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+  type JSX,
+  type ReactNode,
+} from 'react'
 import {
   cn,
   isFreshlyAuthed,
@@ -25,6 +34,11 @@ import { useGatekeeperRuntimeLayer } from '../../../router-context.ts'
 import { OAuthConsentForm } from '../../../screens/oauth-consent/oauth-consent-form.tsx'
 import pageLayout from '../../../styles/page-layout.module.css'
 import styles from './oauth-polling.module.css'
+
+// Never-fires subscribe; the paired snapshot in PendingView pulls
+// Date.now() on renders the caller already commits without also driving
+// one per clock tick.
+const noopSubscribe = (): (() => void) => (): void => {}
 
 const ErrorComponent = (error: unknown): JSX.Element => (
   <div className={styles['poll']}>
@@ -149,7 +163,17 @@ const PendingView = ({ id }: { readonly id: string }): JSX.Element => {
   // phone-side approval advances the page) instead of mounting a doomed
   // `InlineConsent` — so only genuine errors reach the boundary below.
   const authSignal = useSubscribable(useAuthStateSubscribable())
-  if (!isFreshlyAuthed(authSignal, Date.now() / 1000)) return <PollingSpinner />
+  // `Date.now()` at render trips react/purity — snapshot it through
+  // useSyncExternalStore with a no-op subscribe instead. Freshness matches
+  // the render cadence the caller was already going to produce (no clock
+  // ticks trigger a re-render on their own), and the value is sourced
+  // through a React-blessed channel rather than an impure render call.
+  const nowSeconds = useSyncExternalStore(
+    noopSubscribe,
+    () => Date.now() / 1000,
+    () => Date.now() / 1000
+  )
+  if (!isFreshlyAuthed(authSignal, nowSeconds)) return <PollingSpinner />
 
   return (
     <ConsentErrorBoundary>
