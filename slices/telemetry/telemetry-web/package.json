@@ -36,7 +36,7 @@
     "@sentry/react": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "bumpp": "^12.2.2",
+    "bumpp": "catalog:",
     "effect": "catalog:",
     "telemetry-core": "workspace:*",
     "typescript": "catalog:",
