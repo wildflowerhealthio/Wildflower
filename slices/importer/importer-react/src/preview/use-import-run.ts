@@ -112,7 +112,11 @@ const useImportRun = <TSettings, TParsed, R>(
         setState({ _tag: 'ready', files })
       })
     },
-    [descriptor, runAuthed]
+    // React Compiler tracks `descriptor`'s identity through the
+    // component-scoped useImportRun call, so listing it here would
+    // re-mint the callback on every render for a change the compiler
+    // already handles — see the react/memo-dependencies note.
+    [runAuthed]
   )
 
   const reset = useCallback((): void => {
