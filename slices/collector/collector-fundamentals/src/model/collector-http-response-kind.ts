@@ -15,25 +15,18 @@ import type * as Step from './step.ts'
  * `Step`s drive *navigation*, and an archive-driven extraction has nothing to
  * navigate.
  *
- * - `followUpSteps` (optional): the declared, statically-visible seam for
- *   reactive crawling. Every time this entity's `parse` succeeds, the handler
- *   calls it with the just-parsed resources and the settled
- *   {@link CollectorHttpResponse}, and appends whatever `Step`s it returns to the
- *   back of the automatic-navigation queue (breadth-first). It is **pure and
- *   synchronous** — a plain `resources → steps` function, not an `Effect` — so
- *   generation is visible at the definition site and its invocation is owned by
- *   the handler, not hidden inside `parse`. `response` is passed alongside the
- *   parsed resources so a generator can resolve relative links against
- *   `response.url` (e.g. open every entry linked from a list/table). Run-wide
- *   dedup of generated `Open`s by URI and a `ScrapingPlan.maxGeneratedSteps`
- *   cap (enforced by the handler, not here) keep the naturally-recursive
- *   fan-out terminating. Omit it for a leaf entity that never spawns work. Each
- *   generated `Step` must carry a `name` (as any authored step does) — it labels
- *   the sniffer chrome as the generated step runs.
- *
- *   Generation is a separate, named field rather than a `parse` side-channel, so
- *   `parse` stays a pure decode with no hidden control flow, and the handler —
- *   not the decode — owns when generation runs.
+ * `followUpSteps` (optional) is the declared, statically-visible seam for
+ * reactive crawling — a separate, named field rather than a `parse`
+ * side-channel, so `parse` stays a pure decode and the handler owns when
+ * generation runs. It is **pure and synchronous** — a plain
+ * `resources → steps` function, not an `Effect`. Every time this entity's
+ * `parse` succeeds, the handler calls it with the just-parsed resources and
+ * the settled {@link CollectorHttpResponse} (so a generator can resolve
+ * relative links against `response.url`) and appends the returned `Step`s —
+ * each carrying a `name`, like any authored step — to the back of the
+ * automatic-navigation queue. The termination guards (run-wide `Open` dedup,
+ * `maxGeneratedSteps`) are the handler's, not this type's — see the slice
+ * AGENTS.md. Omit it for a leaf entity that never spawns work.
  */
 interface CollectorHttpResponseKind<TParsed> extends HttpResponseKind.HttpResponseKind<TParsed> {
   // Declared as a *method* signature, not a `readonly` arrow property, on
@@ -51,13 +44,9 @@ interface CollectorHttpResponseKind<TParsed> extends HttpResponseKind.HttpRespon
 }
 
 /**
- * Shallow-clone + deep-freeze the supplied definition so callers
- * cannot mutate `responseKinds` (via `ScrapingPlan.make`) after
- * construction — the dispatcher pins the matched entity per request
- * at `ResponseStart` and assumes it stays put. The clone copies the
- * known fields (`name`, `tryRecognize`, `parse`, and the optional
- * `followUpSteps`) so an extra unexpected property on the caller's
- * object is silently dropped.
+ * Same clone-and-freeze contract as the base `HttpResponseKind.make` — the
+ * dispatcher pins the matched entity per request at `ResponseStart` and
+ * assumes it stays put — extended to copy the optional `followUpSteps`.
  */
 const make = <TParsed>(
   definition: CollectorHttpResponseKind<TParsed>

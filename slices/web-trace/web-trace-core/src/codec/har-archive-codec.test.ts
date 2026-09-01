@@ -190,9 +190,7 @@ describe('HarArchive ⇄ DocumentReference', () => {
           const stored = await roundTrip(harArchive({ bytes: new TextEncoder().encode(fileText) }))
 
           const log = await Effect.runPromise(
-            Schema.decodeUnknown(HttpArchive.LogFromHarJson)(
-              new TextDecoder().decode(stored.bytes)
-            )
+            Schema.decodeUnknown(HttpArchive.LogFromHarJson)(new TextDecoder().decode(stored.bytes))
           )
           expect(log.entries.map((entry) => entry.url).toSorted()).toEqual(
             exchanges.map((exchange) => exchange.url).toSorted()

@@ -18,35 +18,20 @@ Part of the offline FHIR HAR importer epic (#489).
 
 ## Package roles
 
-- **`importer-fundamentals`** (resource-agnostic, format-agnostic) — the
-  `FileImporterDescriptor` contract ("a file-format importer" as one value a
-  closed registry lists), the structural `PersistFailure`, and the per-response
-  `Review` model: pure selection-state transitions (whole-import kind toggles,
-  per-response overrides, default pick = top specificity) plus choose-then-persist
-  (`Review.chosen` decodes only the chosen responses). Built on
-  `Extraction.recognize` / `parseWith`. No DOM, no `fs`, no React. See its
-  [AGENTS.md](./importer-fundamentals/AGENTS.md).
-- **`har-importer-core`** (the HAR binding) — the concrete
-  `harImporterDescriptor` for format `'har'`, assembled from three seams:
-  `web-trace-core`'s HAR codec (`decodeHar`), the FHIR R4 response-kind pool
-  (`fhirPool` = the registered `SourceDescriptor`s' kinds flattened — today
-  `fhir-r4-source`'s `fhirR4Source`, pre-adopted), and the
-  FHIR persist sink (`persistFhir` = `withMetaSource` + `persistResources`). Bound
-  to `TParsed = FhirResource`, empty `HarSettings`. No DOM, no `fs`, no React.
-  See its [AGENTS.md](./har-importer-core/AGENTS.md).
-- **`har-importer-react`** (the HAR UI) — `HarSettingsPicker` (a no-op today) and
-  the interactive per-URL `ReviewBody`: a per-URL list of the archive's
-  recognized responses, each with a picker among the kinds that matched
-  (defaulting to top specificity), whole-import kind toggles, and a collapsible
-  no-match section. Presentation over `importer-fundamentals`' pure `Review`
-  model. See its [AGENTS.md](./har-importer-react/AGENTS.md).
-- **`importer-react`** (the shell) — `ImporterScreen`, the whole
-  pick-review-confirm flow a host app mounts, plus the closed `format →
-{ descriptor, SettingsPicker, ReviewBody }` registry (`src/registry.ts`). It
-  holds per-file review selection state, reads each picked file through the
-  descriptor's `decode` writing nothing, and — only on confirm — uploads each
-  local file's archive and persists the reviewed, chosen responses. See its
-  [AGENTS.md](./importer-react/AGENTS.md).
+Each package's own AGENTS.md is the authority on its shape; the roles:
+
+- **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
+  (resource-agnostic, format-agnostic) — the `FileImporterDescriptor` contract,
+  the pure per-response `Review` model, and the structural `PersistFailure`.
+- **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
+  `harImporterDescriptor` for format `'har'`: HAR decode, the pre-adopted FHIR
+  response-kind pool, and the FHIR persist sink.
+- **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
+  `HarSettingsPicker` (a no-op today) and the interactive per-URL `ReviewBody`,
+  presentation over the pure `Review` model.
+- **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
+  `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
+  the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry.
 
 A host that provides the FHIR write client and the authed runner sits above
 `importer-react` and mounts `ImporterScreen`.

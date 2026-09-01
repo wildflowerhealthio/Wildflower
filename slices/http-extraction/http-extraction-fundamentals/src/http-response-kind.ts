@@ -30,43 +30,33 @@ interface RecognizedUrlData {
  * data flow visible: an entity can read `response.text()`,
  * `response.headers`, and `response.url` on demand without the
  * dispatcher having to know in advance which it'll need.
- *
- * Import callers use the file as a namespace:
- * `import { HttpResponseKind } from 'http-extraction-fundamentals'`
- * → `HttpResponseKind.HttpResponseKind<T>` for the type,
- * `HttpResponseKind.make({...})` for the constructor.
- *
- * - `name`: stable identifier, useful for logging and reporting which
- *   entity claimed a response.
- * - `tryRecognize`: URL-match; `Some` a {@link RecognizedUrlData} when this
- *   entity claims the URL (carrying how specific the claim is and the identity
- *   its resources key under), `None` when it does not. Whichever loop walks the
- *   entity list — `Extraction.recognize`/`routeTo` over an archive, or a live
- *   handler over sniffed traffic — consults this to route each response,
- *   **highest specificity wins** (ties → list order).
- * - `parse`: `Effect`-returning decode from {@link HttpResponse}
- *   to the resource array, with `ParseError` in the error channel.
- *   Returning an `Effect` (rather than an `Either`) lets entities log
- *   progress (`Effect.logInfo` for dropped bundle entries, for
- *   example) and stays compatible with future requirements that may
- *   need Effect-typed dependencies (clock, randomness, …). `parse`
- *   stays a *pure decode*: it never emits navigation.
  */
 interface HttpResponseKind<out TParsed> {
+  /** Stable identifier, for logging and reporting which entity claimed a response. */
   readonly name: string
+  /**
+   * URL-match: `Some` a {@link RecognizedUrlData} when this entity claims the
+   * URL, `None` when it does not. Whichever loop walks the entity list — over
+   * an archive or live sniffed traffic — routes each response through this via
+   * `Extraction.routeTo`, which owns the ranking rule.
+   */
   readonly tryRecognize: (url: string) => Option.Option<RecognizedUrlData>
+  /**
+   * A *pure decode* (it never emits navigation) from {@link HttpResponse} to
+   * the resource array, with `ParseError` in the error channel. An `Effect`
+   * rather than an `Either` so entities can log progress and grow Effect-typed
+   * dependencies (clock, randomness, …) without a signature change.
+   */
   readonly parse: (
     response: HttpResponse
   ) => Effect.Effect<readonly TParsed[], ParseResult.ParseError>
 }
 
 /**
- * Shallow-clone + deep-freeze the supplied definition so callers
- * cannot mutate an entity list after construction — a routing loop
- * pins the matched entity per response and assumes it stays put. The
- * clone copies the known fields (`name`, `tryRecognize`, `parse`) so an
- * extra unexpected property on the caller's object is silently
- * dropped.
+ * Shallow-clone + deep-freeze the supplied definition so callers cannot mutate
+ * an entity after construction — a routing loop pins the matched entity per
+ * response and assumes it stays put. Cloning only the known fields drops any
+ * extra property on the caller's object.
  */
 const make = <TParsed>(definition: HttpResponseKind<TParsed>): HttpResponseKind<TParsed> =>
   deepFreeze({

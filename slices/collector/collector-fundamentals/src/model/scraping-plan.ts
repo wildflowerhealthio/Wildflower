@@ -44,8 +44,8 @@ interface CaptureProvenanceResult<TParsed> {
  *
  *   - Consults `responseKinds` for each `ResponseStart` to decide
  *     whether to track the in-flight response (routed via
- *     `Extraction.routeTo` — highest `tryRecognize` specificity wins, ties →
- *     list order; non-matching responses are cancelled via `sendMessage`).
+ *     `Extraction.routeTo`; non-matching responses are cancelled via
+ *     `sendMessage`).
  *   - Drives the sniffer through a **breadth-first step queue** seeded with
  *     `stepSequence`. The runner's one-shot `Start` kicks off draining the
  *     queue front-to-back with no page in hand — so the plan's first step is an
@@ -68,11 +68,10 @@ interface CaptureProvenanceResult<TParsed> {
  * `Open` step at the head of `stepSequence`.
  *
  * - `name`: stable identifier for logs / UI.
- * - `responseKinds`: ordered list of recognizer/parser pairs.
- *   `CollectorBridgeMessageHandler` routes each response URL through
- *   `Extraction.routeTo` — the kind whose `tryRecognize` claims it with the
- *   highest specificity wins (ties → list order). Keep intra-plan patterns
- *   disjoint so the tie-break never becomes load-bearing.
+ * - `responseKinds`: ordered list of recognizer/parser pairs, routed per
+ *   response URL through `Extraction.routeTo` (which owns the ranking rule).
+ *   Keep intra-plan patterns disjoint so the tie-break never becomes
+ *   load-bearing.
  * - `stepSequence`: the *initial* contents of the navigation queue — an
  *   ordered list of `Step`s (`Navigation` actions and/or `Delay` pauses),
  *   beginning with the `Open` that opens the real first page. An empty array

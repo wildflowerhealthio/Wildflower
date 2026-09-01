@@ -105,9 +105,8 @@ const outcomeOf = <TParsed>(
  * Run a static set of archived responses through a source's response kinds.
  *
  * @typeParam TParsed - The resource type the kinds decode to
- * @param responseKinds - The candidate kinds, in list order; the kind whose
- *   `tryRecognize` claims a response's URL with the **highest specificity**
- *   claims it (ties → list order)
+ * @param responseKinds - The candidate kinds, in list order; each response is
+ *   claimed per `Extraction.routeTo`'s ranking
  * @param responses - The responses to extract from, in the order they should
  *   be seen
  * @returns The four-way {@link ExtractionResult} accounting — batches,

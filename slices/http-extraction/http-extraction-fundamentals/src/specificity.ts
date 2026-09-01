@@ -4,10 +4,6 @@
  * rather than an enum this package polices (a new kind of source needs no
  * change here), with room between tiers so a future source slots in without
  * renumbering.
- *
- * Import callers use the file as a namespace:
- * `import { Specificity } from 'http-extraction-fundamentals'` →
- * `Specificity.PORTAL`.
  */
 const Specificity = {
   /** A named patient portal — never mistaken for a bare protocol server. */

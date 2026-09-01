@@ -19,12 +19,10 @@ interface SettingsPickerProps<TSettings> {
  * The HAR format's settings picker — a no-op today.
  *
  * @remarks
- * A HAR archive is decoded and recognized with no user-tunable knobs, so this
- * renders only a hint and never calls {@link SettingsPickerProps.onChange}. It
- * exists so the shell's `format → { descriptor, SettingsPicker, ReviewBody }`
+ * A HAR archive has no user-tunable knobs, so this renders only a hint and
+ * never calls {@link SettingsPickerProps.onChange}. It exists so the shell's
  * registry has all three parts for HAR — the seam a format with real settings
- * (a redaction toggle, a root allowlist) fills in without the shell learning a
- * new shape.
+ * fills in without the shell learning a new shape.
  */
 const HarSettingsPicker = (_props: SettingsPickerProps<HarSettings>): JSX.Element => (
   <p>No import settings for a HAR archive.</p>

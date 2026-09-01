@@ -235,9 +235,9 @@ const make = <TParsed>({
       yield* SnifferResponseTracker.make<TParsed>({
         // The tracker only needs "which entity (if any) parses this URL"; route
         // it through the same `Extraction.routeTo` an archive import uses, so
-        // live and archive routing are one function (highest specificity wins,
-        // ties → list order). `routeTo` is generic in the concrete element, so
-        // the matched `CollectorHttpResponseKind`'s `followUpSteps` rides through.
+        // live and archive routing are one function. `routeTo` is generic in the
+        // concrete element, so the matched `CollectorHttpResponseKind`'s
+        // `followUpSteps` rides through.
         matchResponseKind: (url) =>
           Option.map(Extraction.routeTo(scrapingPlan.responseKinds, url), (routed) => routed.kind),
         sendMessage,

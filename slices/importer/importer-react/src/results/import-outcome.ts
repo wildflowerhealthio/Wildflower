@@ -6,15 +6,10 @@ import type { PersistFailure } from 'importer-fundamentals'
  *
  * @remarks
  * The write half (the format descriptor's `persist`) returns only the resources
- * it could not write, as data on a `never` error channel. That is the whole
- * failure record; everything the results view shows is derived from it and the
- * count of what the review chose to write. `attempted` is the number of
- * resources the chosen responses decoded to, `failures` the ones the store
- * rejected after their retries, and `written` the difference — never re-counted
- * off the wire, so a write that succeeded but whose response the stub mangled
- * cannot be mistaken for a failure. `sourceRef` is the HAR-archive reference
- * every written resource's `meta.source` points back to, so the results view can
- * name the provenance the confirm secured.
+ * it could not write, as data. Everything the results view shows derives from
+ * that failure record and the count of what the review chose to write —
+ * `written` is never re-counted off the wire, so a write that succeeded but
+ * whose response the stub mangled cannot be mistaken for a failure.
  *
  * @packageDocumentation
  */

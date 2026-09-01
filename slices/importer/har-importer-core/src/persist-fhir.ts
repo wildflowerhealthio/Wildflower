@@ -21,15 +21,11 @@ import { withMetaSource } from 'web-trace-core/provenance'
  *   `PersistFailure`), never failing; requires the FHIR write client
  *
  * @remarks
- * Each resource is linked back to its source archive with `web-trace-core`'s
- * {@link withMetaSource}, which sets `meta.source` while preserving whatever else
- * the resource's `meta` carried — the same single-valued back-pointer the live
- * collection path writes, here naming the uploaded archive rather than a
- * per-response trace. The write itself is `fhir-r4`'s {@link persistResources}:
- * bounded retries, a per-resource span, bounded concurrency, and — the property
- * this delegates for — failure-as-data, so one failing write is returned rather
- * than stopping the batch. Nothing here throws. An empty `resources` never
- * touches the client.
+ * {@link withMetaSource} writes the same single-valued `meta.source`
+ * back-pointer the live collection path does, here naming the uploaded archive
+ * rather than a per-response trace. The write itself is `fhir-r4`'s
+ * {@link persistResources}, delegated to for its failure-as-data contract; an
+ * empty `resources` never touches the client.
  */
 const persistFhir = (
   resources: readonly FhirResource[],

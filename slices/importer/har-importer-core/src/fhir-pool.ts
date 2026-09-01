@@ -12,17 +12,10 @@ const sources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[] = [fhi
  * re-adopted here).
  *
  * @remarks
- * The importer is **per-URL**: each response is recognized independently against
- * this whole pool (highest specificity wins), rather than one winning source
- * claiming the archive. So a mixed archive extracts every recognized URL — a
- * stray FHIR URL inside a portal capture extracts instead of being quarantined.
- *
- * Registering another source is one static append to {@link sources} of its
- * `SourceDescriptor` (assembled in its own package under
- * `slices/http-extraction`). Only `fhir-r4` is registered so far. The collector
- * assembles its own descriptor tuple from the same source packages; the two
- * lists have different members and payloads, which is why this HAR-detection
- * pool lives here rather than in the `http-extraction` slice.
+ * Each response is recognized independently against this whole pool — per-URL,
+ * never one winning source claiming the archive (see this package's AGENTS.md).
+ * Registering another source is one static append of its `SourceDescriptor` to
+ * {@link sources}; only `fhir-r4` is registered so far.
  */
 const fhirPool: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = sources.flatMap(
   (source) => source.responseKinds

@@ -8,10 +8,6 @@ import { Option } from 'effect'
  * regex read yields both the recognition decision and the captured root, so
  * the two can never disagree.
  *
- * Import callers use the file as a namespace:
- * `import { UrlMatch } from 'http-extraction-fundamentals'` →
- * `UrlMatch.make({...})`, `UrlMatch.literal(...)`, `UrlMatch.id`.
- *
  * @example
  * ```ts
  * const patientUrl = UrlMatch.make({
@@ -83,17 +79,15 @@ const make = (config: {
 }): UrlMatcher => {
   const segments = config.segments.map(segmentPattern).join('')
   const end = endPattern(config.end ?? 'pathEnd')
-  // Group 1 is the root: `https?://` (scheme required — a root must be a URL a
-  // `SourceIdentity` keys under) then the authority `[^/]+` (greedy, stops at
-  // the first `/`, so the host is never mistaken for a segment —
-  // `https://Observation/123` does not match a `/Observation` segment), then
-  // an arbitrary base path before the first declared segment; FHIR servers
-  // commonly mount under `/baseR4`, `/fhir/R4`,
-  // `/interconnect-fhir-oauth/api/FHIR/R4`, etc. Non-greedy so the SHORTEST
-  // base path that still lets the declared segments match wins, preserving
-  // the `pathEnd`/`mustHaveQuery` disjointness (a single-resource
-  // `/Observation/<id>` never gets re-read as a base path that makes the list
-  // `/Observation?` match). `^`-anchored so the capture starts at the scheme.
+  // Group 1 is the root: `https?://` (scheme required — a root must be a URL
+  // a `SourceIdentity` keys under), the authority `[^/]+` (stops at the first
+  // `/`, so a host is never mistaken for a segment), then an arbitrary base
+  // path — FHIR servers commonly mount under `/baseR4`, `/fhir/R4`, etc.
+  // Non-greedy so the SHORTEST base path that still lets the declared segments
+  // match wins, preserving `pathEnd`/`mustHaveQuery` disjointness (a
+  // single-resource `/Observation/<id>` never re-reads as a base path that
+  // makes the list `/Observation?` match). `^`-anchored so the capture starts
+  // at the scheme.
   const pattern = new RegExp(`^(https?://[^/]+(?:/[^/?#]+)*?)${segments}${end}`)
   return (url: string): Option.Option<string> => {
     const match = pattern.exec(url)

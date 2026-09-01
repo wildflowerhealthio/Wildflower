@@ -93,17 +93,12 @@ interface ReadableFile {
  *   `local` source, or fails with the reason the file was rejected
  *
  * @remarks
- * An `Effect` rather than an already-run `Promise`: the validation is a parse
- * that either yields a value or names why it did not — exactly the success/error
- * channels an `Effect` carries — so the pipeline reads as one (the parse
- * succeeds into the pick, its `ParseError` is described by
- * {@link describeRejection}) and nothing runs until the caller runs it, where
- * the pick's side effects belong.
  * Validation goes through `HttpArchive.LogFromHarJson`, so a file that is not
  * JSON and a file that is JSON but not an HTTP Archive both fail here rather
  * than downstream; the parse result itself is discarded, because the picker
  * hands on the *text* and the extraction parses it again when it runs. This is
- * a gate, not the parse.
+ * a gate, not the parse. A lazy `Effect` on purpose: nothing runs until the
+ * caller runs it, where the pick's side effects belong.
  */
 const acceptLocalHar = (file: ReadableFile): Effect.Effect<PickedHar, string> =>
   Effect.promise(() => file.text()).pipe(

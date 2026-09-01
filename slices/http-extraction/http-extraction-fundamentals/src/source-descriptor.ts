@@ -31,11 +31,8 @@ interface SourceDescriptor<TParsed> {
 }
 
 /**
- * Shallow-clone + deep-freeze the supplied descriptor, so the kind list a
- * routing loop or plan captures cannot shift after construction. The clone
- * copies the known fields, so an extra unexpected property on the caller's
- * object is silently dropped; the kinds themselves are already frozen by
- * `HttpResponseKind.make`.
+ * Same clone-and-freeze contract as `HttpResponseKind.make`, for the
+ * descriptor; the kinds themselves are already frozen by that constructor.
  */
 const make = <TParsed>(descriptor: SourceDescriptor<TParsed>): SourceDescriptor<TParsed> =>
   deepFreeze({
