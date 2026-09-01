@@ -10,12 +10,12 @@ import { type DocumentReferenceType, fromDocumentReference, isWebTrace } from 'w
 
 import { BodyDigestUnavailable } from 'web-trace-core/capture'
 
-import type { BodyPolicy } from '../body-policy.ts'
-import { DEFAULT_BODY_CONTENT_TYPES, DEFAULT_MAX_BODY_BYTES } from '../config.ts'
 import {
+  type BodyPolicy,
   digestFailureAsParseError,
   makeRawExchangeResponseKind,
-} from './raw-exchange-response-kind.ts'
+} from 'web-trace-source'
+import { DEFAULT_BODY_CONTENT_TYPES, DEFAULT_MAX_BODY_BYTES } from '../config.ts'
 
 const { expectRightToEqual } = utilityExpectations(expect)
 

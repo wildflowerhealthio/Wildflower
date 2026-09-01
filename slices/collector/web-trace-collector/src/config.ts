@@ -5,7 +5,7 @@ import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
-import { makeRawExchangeResponseKind } from './response-kinds/raw-exchange-response-kind.ts'
+import { makeRawExchangeResponseKind } from 'web-trace-source'
 
 /**
  * An absolute `http(s)` URL — the page the recording starts on. Validated by

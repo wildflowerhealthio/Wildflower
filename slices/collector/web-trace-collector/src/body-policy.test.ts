@@ -7,7 +7,7 @@ import type { TraceBody } from 'web-trace-core'
 
 import { contentTypeOf, sha256Base64, UNKNOWN_CONTENT_TYPE } from 'web-trace-core/capture'
 
-import { type BodyPolicy, contentTypeTokens, decideBody, isAllowlisted } from './body-policy.ts'
+import { type BodyPolicy, contentTypeTokens, decideBody, isAllowlisted } from 'web-trace-source'
 import { DEFAULT_BODY_CONTENT_TYPES, DEFAULT_MAX_BODY_BYTES } from './config.ts'
 
 const defaultPolicy: BodyPolicy = {
