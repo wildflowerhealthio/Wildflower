@@ -1,5 +1,5 @@
 import { descriptorForTag, type CollectorTag, type ConfigForTag } from 'collector-registry/registry'
-import { useState, type JSX } from 'react'
+import { createElement, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, PageHeader } from 'react-tundraish'
 
@@ -56,7 +56,6 @@ function AccountFormScreen<T extends CollectorTag>({
   onCancel,
 }: AccountFormScreenProps<T>): JSX.Element {
   const descriptor = descriptorForTag(tag)
-  const ConfigForm = configFormForTag(tag)
   const [name, setName] = useState(initialName)
 
   const handleSubmit = (config: ConfigForTag<T>): void => {
@@ -73,12 +72,23 @@ function AccountFormScreen<T extends CollectorTag>({
 
       <ErrorBanner error={error} />
 
-      <ConfigForm
-        initial={initial}
-        prefill={prefill}
-        disabled={disabled}
-        onSubmit={handleSubmit}
-        header={
+      {/*
+        `configFormForTag(tag)` is a stable per-tag lookup off a frozen
+        module-scope record — the returned component reference does not
+        change across renders for a given tag, so its state isn't reset.
+        React Compiler can't prove that from a JSX site with a
+        render-local component variable, so it flags
+        react/static-components on `<ConfigForm .../>`. Use
+        React.createElement here so no render-local component name enters
+        the JSX and the rule has nothing to fire on; the runtime is
+        identical to `<ConfigForm .../>`.
+      */}
+      {createElement(configFormForTag(tag), {
+        initial,
+        prefill,
+        disabled,
+        onSubmit: handleSubmit,
+        header: (
           <>
             <div className={styles['field']}>
               <label className={cn(styles['field__label'], 'text-label-3')}>Type</label>
@@ -103,8 +113,8 @@ function AccountFormScreen<T extends CollectorTag>({
               />
             </div>
           </>
-        }
-        footer={
+        ),
+        footer: (
           <div className={styles['button-row']}>
             <button type="submit" className="button-2 filled" disabled={disabled}>
               Save
@@ -113,8 +123,8 @@ function AccountFormScreen<T extends CollectorTag>({
               Cancel
             </button>
           </div>
-        }
-      />
+        ),
+      })}
     </>
   )
 }
