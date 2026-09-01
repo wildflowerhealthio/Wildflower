@@ -84,7 +84,7 @@ update-as-create — no `POST` create `.c`, no `DELETE` `.d`).
 - **Why writes at all.** Importing means persisting what a captured session
   contained. The write set is exactly what the flow produces today: the archive
   `DocumentReference` the confirm step uploads, plus the `Patient` and
-  `Observation` resources the registered `fhir-r4` collector replays out of a
+  `Observation` resources the registered `fhir-r4` source extracts out of a
   capture. Widen it alongside a new collector or entity, never ahead of one.
 - **Why `system/` and not `patient/`.** A HAR archive carries no `subject` — it
   records a browsing session, not a clinical fact about a person — so it is
@@ -194,7 +194,7 @@ into it. The marketing site links there from its "collection of apps" section
 - `app.test.tsx` — the whole tree over a recording stub transport, through the
   real `buildSmartRouterContext`. It walks a synthesized HAR (built with
   `web-trace-core`'s `emitHar` + `test-helpers`, the established pattern —
-  don't reach into `importer-core`'s fixture) from pick to preview to confirm,
+  don't reach into `har-importer-core`'s fixture) from pick to review to confirm,
   and asserts what only this layer can see: every read **and every write** is
   addressed to the FHIR base and carries `Bearer …`, and the resource types
   written are exactly the ones `config.ts`'s scope string covers.

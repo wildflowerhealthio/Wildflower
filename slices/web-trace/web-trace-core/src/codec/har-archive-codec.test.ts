@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { emitHar, fromHarJson, HarFromJson } from '../har/index.ts'
+import { emitHar, HarFromJson, HttpArchive } from '../har/index.ts'
 import { arbitraries } from '../test-helpers.ts'
 import { isWebTrace, toDocumentReference } from './document-reference-codec.ts'
 import type { HarArchive } from './har-archive-codec.ts'
@@ -175,11 +175,11 @@ describe('HarArchive ⇄ DocumentReference', () => {
     expect(wire.date).toBe('2024-01-01T00:00:00.000Z')
   })
 
-  test('property: stored bytes still parse as a HAR after the round trip, which is the point of storing them', async () => {
+  test('property: stored bytes still parse as an HTTP Archive after the round trip, which is the point of storing them', async () => {
     // The seam between this codec and `src/har/`: an archive is only worth
     // storing if what comes back out is still readable as the file that went
-    // in. Nothing here parses HAR — `HarFromJson` and `ArchivedSessionFromHar`
-    // do, on the bytes this codec hands back.
+    // in. Nothing here parses the archive — `HarFromJson` and
+    // `HttpArchive.LogFromHarJson` do, on the bytes this codec hands back.
     await fc.assert(
       fc.asyncProperty(
         fc.array(exchangeArbitrary, { minLength: 1, maxLength: 4 }),
@@ -189,10 +189,10 @@ describe('HarArchive ⇄ DocumentReference', () => {
           )
           const stored = await roundTrip(harArchive({ bytes: new TextEncoder().encode(fileText) }))
 
-          const session = await Effect.runPromise(
-            fromHarJson(new TextDecoder().decode(stored.bytes))
+          const log = await Effect.runPromise(
+            Schema.decodeUnknown(HttpArchive.LogFromHarJson)(new TextDecoder().decode(stored.bytes))
           )
-          expect(session.exchanges.map((entry) => entry.url).toSorted()).toEqual(
+          expect(log.entries.map((entry) => entry.url).toSorted()).toEqual(
             exchanges.map((exchange) => exchange.url).toSorted()
           )
         }

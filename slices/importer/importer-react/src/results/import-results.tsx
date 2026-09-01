@@ -1,7 +1,7 @@
 import { Cause, ParseResult, Runtime } from 'effect'
 import type { JSX } from 'react'
 
-import type { ResourceWriteFailure } from 'fhir-r4/clients'
+import type { PersistFailure } from 'importer-fundamentals'
 
 import {
   type BatchOutcome,
@@ -43,7 +43,7 @@ const COMPLETE_HEADING = 'Import complete'
 const PARTIAL_HEADING = 'Imported with some failures'
 
 /** The failed-resource identity a row shows — the write sink's own `label`/`id`. */
-const failureLabel = (failure: ResourceWriteFailure): string =>
+const failureLabel = (failure: PersistFailure): string =>
   `${failure.failed.label}/${failure.failed.id}`
 
 /**
@@ -71,8 +71,7 @@ const causeOf = (error: unknown): string => {
 
 /** Why a skipped file wrote nothing, in words a reader can act on. */
 const skipReasonText = (reason: SkipReason): string => {
-  if (reason === 'no-collector') return 'No collector recognized this file.'
-  if (reason === 'nothing') return 'Recognized, but nothing to import.'
+  if (reason === 'nothing') return 'Nothing here to import.'
   return 'Could not be read as a HAR.'
 }
 

@@ -1,18 +1,32 @@
-import {
-  CollectorDescriptor,
-  type EntityDefinition,
-  ScrapingPlan,
-} from 'collector-fundamentals/model'
+import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
-import { adoptSourceIdentity } from 'fhir-r4/identity'
+import { adoptUnderRecognizedRoot } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { CustomerEntity } from './entities/customer-entity.ts'
-import { PrescriptionEntity } from './entities/prescription-entity.ts'
-import { PrescriptionHistoryEntity } from './entities/prescription-history-entity.ts'
+import { CustomerResponseKind } from './response-kinds/customer-response-kind.ts'
+import { PrescriptionHistoryResponseKind } from './response-kinds/prescription-history-response-kind.ts'
+import { PrescriptionResponseKind } from './response-kinds/prescription-response-kind.ts'
+import { SHOPPERS_DRUGMART_SYSTEM } from './source-system.ts'
+
+/**
+ * The collector's response kinds, widened then adopted once at module load —
+ * each resource re-keys under {@link SHOPPERS_DRUGMART_SYSTEM}, the identity
+ * the kind's own `tryRecognize` mints (see the
+ * [Source Identity Explanation](../../docs/Source%20Identity%20Explanation.md)
+ * for the widen-first guard and why module scope keeps deep-equal honest).
+ * Order is not load-bearing — the three recognizers are disjoint.
+ */
+const responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = (
+  [
+    CustomerResponseKind,
+    PrescriptionResponseKind,
+    PrescriptionHistoryResponseKind,
+  ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[]
+).map(adoptUnderRecognizedRoot)
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -151,7 +165,7 @@ const SETTLE = Duration.seconds(8)
  * `…/api/<seg>/prescription-history?customerId=…` XHR (every dispense across all
  * prescriptions) **and** the `…/api/<seg>/customers/:id?expand=…` XHR (the
  * account + its managed people) automatically — one page visit feeds both the
- * {@link PrescriptionHistoryEntity} and {@link CustomerEntity} recognizers.
+ * {@link PrescriptionHistoryResponseKind} and {@link CustomerResponseKind} recognizers.
  */
 const PRESCRIPTION_HISTORY_URL = 'https://mypharmacy.shoppersdrugmart.ca/en/prescription-history'
 
@@ -174,26 +188,6 @@ const HISTORY_TIMEOUT = Duration.seconds(30)
  * tracked before the queue drains and the run completes.
  */
 const HISTORY_SETTLE = Duration.seconds(8)
-
-/**
- * The source system every resource this collector imports is keyed under.
- *
- * @remarks
- * A Wildflower-minted `sid` URI naming the Shoppers "mypharmacy" portal as an
- * import source, in the same style as `rexall-be-well-collector`'s
- * `REXALL_CAREBOOK_SYSTEM`. It is deliberately *not* one of `shoppers.ts`'s
- * per-field identifier systems (`SYSTEM_BASE`/`ShoppersIdentifierSystem`): those
- * name what a *field value* means (a `pcId`, a `patientId`), whereas this names
- * the *portal the whole resource came from* — the hash domain and the injected
- * `Identifier.system`. Keeping it here rather than in `shoppers.ts` mirrors that
- * split.
- *
- * **Persisted wire format.** It is the hash domain for every derived local id
- * (via {@link adoptSourceIdentity} → `localResourceId`) and the
- * `Identifier.system` written beside every source id, so changing it orphans
- * everything already imported from Shoppers Drug Mart.
- */
-const SHOPPERS_DRUGMART_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart'
 
 /**
  * This collector's provenance hook: every response an entity derives a
@@ -227,13 +221,13 @@ const captureProvenance = makeFhirProvenanceCapture('shoppers-drugmart')<FhirRes
  * `prescription-history` + `customers` XHRs settle. Every `Fill`/`Click`
  * dispatches and advances immediately (a `PageAction` fires no `PageLoaded`), so
  * the short `Delay`s between them are the only thing pacing the login form.
- * `CustomerEntity` recognizes
- * `…/customers/<uuid>`; `PrescriptionEntity` recognizes
- * `…/prescriptions/:uuid/prescription-status`; `PrescriptionHistoryEntity`
+ * `CustomerResponseKind` recognizes
+ * `…/customers/<uuid>`; `PrescriptionResponseKind` recognizes
+ * `…/prescriptions/:uuid/prescription-status`; `PrescriptionHistoryResponseKind`
  * recognizes `…/prescription-history?customerId=…` — disjoint patterns, so entity
  * order is not load-bearing.
  *
- * The plan is wrapped in `adoptSourceIdentity` under
+ * `responseKinds` is the module-level {@link responseKinds}, pre-adopted under
  * {@link SHOPPERS_DRUGMART_SYSTEM}, so every resource its entities synthesize is
  * re-keyed under a derived local id, with the portal's own id kept as
  * `identifier[0]`. No `baseUrl`: the collector only ever writes relative
@@ -259,17 +253,7 @@ const scrapingPlan = (
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Shoppers Drug Mart',
-    // Widening upcast (safe: `EntityDefinition` is covariant in its resource
-    // type, and Patient / MedicationRequest / MedicationDispense are all
-    // `FhirResource`), mirroring `fhir-r4-client-collector`.
-    // Order is not load-bearing — the three recognizers are disjoint by
-    // construction (`/customers/<uuid>`, `/prescriptions/:uuid/prescription-status`,
-    // `/prescription-history?customerId=…` — different path segments).
-    entityDefinitions: [
-      CustomerEntity,
-      PrescriptionEntity,
-      PrescriptionHistoryEntity,
-    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    responseKinds,
     captureProvenance,
     stepSequence: [
       // Open the `mypharmacy` login page; this first `Open` builds the sniffer.
@@ -380,7 +364,7 @@ const scrapingPlan = (
       { _tag: 'Delay', name: 'Done, waiting just a little longer', duration: HISTORY_SETTLE },
     ],
   })
-  return adoptSourceIdentity({ system: SHOPPERS_DRUGMART_SYSTEM })(plan)
+  return plan
 }
 
 /**

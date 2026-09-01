@@ -1,9 +1,9 @@
-import type { EntityDefinition } from 'collector-fundamentals/model'
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId, originalIdOf } from 'fhir-r4/identity'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
@@ -193,7 +193,7 @@ describe('scrapingPlan', () => {
     // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method
     const hook = plan.captureProvenance
     expect(hook).toBeDefined()
-    const response = makeRemoteResponse({ id: 'req-1' })
+    const response = makeCollectorHttpResponse({ id: 'req-1' })
     const result = await Effect.runPromise(
       hook?.(FIXED_RUN_ID, response, [patient]) ?? Effect.die('hook asserted defined above')
     )
@@ -231,10 +231,10 @@ describe('scrapingPlan', () => {
 })
 
 /**
- * The plan's entities as the framework sees them — wrapped by
- * `adoptSourceIdentity`, not the raw module singletons the entity suites
- * exercise. The entity suites pin the FHIR decode; these pin what the plan does
- * to it afterwards.
+ * The plan's entities as the framework sees them — `fhir-r4-source`'s
+ * pre-adopted `fhirR4Source.responseKinds`, not the raw module singletons the
+ * entity suites exercise. The entity suites pin the FHIR decode; these pin what
+ * adoption does to it afterwards (re-key under the URL's root).
  */
 describe('source identity', () => {
   const ROOT_URL = 'https://r4.example.org/baseR4'
@@ -244,18 +244,18 @@ describe('source identity', () => {
     patientId: 'pat-7',
   }
 
-  const entityNamed = (name: string): EntityDefinition.EntityDefinition<FhirResource> => {
-    const found = scrapingPlan(CONFIG, FIXED_RUN_ID).entityDefinitions.find(
-      (entity) => entity.name === name
+  const responseKindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {
+    const found = scrapingPlan(CONFIG, FIXED_RUN_ID).responseKinds.find(
+      (responseKind) => responseKind.name === name
     )
-    if (found === undefined) throw new Error(`no entity named ${name}`)
+    if (found === undefined) throw new Error(`no response kind named ${name}`)
     return found
   }
 
   const parseBody = (name: string, url: string, body: unknown): readonly FhirResource[] =>
     Effect.runSync(
-      entityNamed(name).parse(
-        makeRemoteResponse({
+      responseKindNamed(name).parse(
+        makeCollectorHttpResponse({
           url,
           headers: [['content-type', 'application/fhir+json']],
           body: JSON.stringify(body),
@@ -264,7 +264,7 @@ describe('source identity', () => {
     )
 
   const adoptedPatient = (): FhirResource => {
-    const [resource] = parseBody('PatientEntity', `${ROOT_URL}/Patient/pat-7`, {
+    const [resource] = parseBody('PatientResponseKind', `${ROOT_URL}/Patient/pat-7`, {
       resourceType: 'Patient',
       id: 'pat-7',
       identifier: [{ system: 'http://hospital.example/mrn', value: 'MRN-42' }],
@@ -299,7 +299,7 @@ describe('source identity', () => {
     // sides have to agree after adoption, not just before it.
     const patientId = adoptedPatient().id
     const [observation] = parseBody(
-      'ObservationListEntity',
+      'ObservationListResponseKind',
       `${ROOT_URL}/Observation?subject%3APatient=pat-7`,
       {
         resourceType: 'Bundle',

@@ -1,0 +1,54 @@
+{
+  "name": "har-importer-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The HAR format's UI for the importer slice: a (no-op) HAR SettingsPicker and the interactive per-URL ReviewBody — the archive's responses with their ranked candidates, a per-response picker among matched kinds, a whole-import kind toggle, and a collapsible no-match section. Presentation and interaction only.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/importer/har-importer-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "har-importer-core": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "har-importer-core": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "react": "catalog:"
+  }
+}

@@ -3,7 +3,7 @@ import { type TransportAdapter } from 'effect-messaging-core'
 import * as TestPlatformAdapterLayer from 'effect-messaging-core/test'
 
 import { type Step, ScrapingPlan } from 'collector-fundamentals/model'
-import { SimpleEntity } from 'collector-fundamentals/test-helpers'
+import { SimpleResponseKind } from 'http-extraction-fundamentals/test-helpers'
 import * as CollectorBridgeMessageHandler from './collector-bridge-message-handler.ts'
 import type { SniffResult } from './sniffer-response-tracker.ts'
 
@@ -31,7 +31,7 @@ type SimpleHandlerArgs = Parameters<typeof CollectorBridgeMessageHandler.make<Si
 const noopSendMessage: SimpleHandlerArgs['sendMessage'] = () => Effect.void
 
 /**
- * Build a handler bound to a single-entity plan (`SimpleEntity` only).
+ * Build a handler bound to a single-entity plan (`SimpleResponseKind` only).
  * Most tests only care about one entity; the few that want overlapping or
  * multi-entity setups build the plan inline.
  */
@@ -47,7 +47,7 @@ const makeSimpleHandler = (
     CollectorBridgeMessageHandler.make({
       scrapingPlan: ScrapingPlan.make<SimpleResources>({
         name: 'TestPlan',
-        entityDefinitions: [SimpleEntity],
+        responseKinds: [SimpleResponseKind],
         stepSequence: stepSequence ?? [],
       }),
       sendMessage: noopSendMessage,
@@ -65,9 +65,9 @@ const makeSimpleHandler = (
  * an empty mailbox) so a no-result path drains to `[]`. Replaces the old
  * `onResult` `vi.fn()` spy: assert on the returned array instead of mock calls.
  */
-const drainResults = <TResources>(handler: {
-  readonly requestSniffingResults: CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<TResources>['requestSniffingResults']
-}): ReadonlyArray<SniffResult<TResources>> =>
+const drainResults = <TParsed>(handler: {
+  readonly requestSniffingResults: CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<TParsed>['requestSniffingResults']
+}): ReadonlyArray<SniffResult<TParsed>> =>
   Chunk.toReadonlyArray(Effect.runSync(handler.requestSniffingResults.clear))
 
 type Handler = Effect.Effect.Success<

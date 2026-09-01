@@ -3,7 +3,7 @@
 // `FhirR4ConfigForm` `collector-react` registers.
 //
 // The entities the plan decodes with — and the offline surface an archive
-// importer replays — live in `fhir-r4-importer` (slices/importer), the shared
+// importer replays — live in `fhir-r4-source` (slices/http-extraction), the shared
 // importer project this package builds its live plan from.
 
 export * from './config.ts'

@@ -1,0 +1,45 @@
+{
+  "name": "importer-fundamentals",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Resource-agnostic upstream of the importer slice: the FileImporterDescriptor contract, the per-response review/selection model built on Extraction.recognize/parseWith, and the generic choose-then-persist orchestration. Names no archive format and no resource type. No DOM, no fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/importer/importer-fundamentals"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@effect/platform": "catalog:",
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "http-extraction-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "http-extraction-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*"
+  }
+}

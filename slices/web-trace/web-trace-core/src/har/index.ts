@@ -1,21 +1,12 @@
 /**
- * HAR 1.2, as one schema read in both directions: `emitHar` builds an archive
- * from captured exchanges, and an import reads one — including a foreign one —
- * as the exchanges a replay consumes.
+ * The HTTP Archive format (HAR 1.2), as one schema read in both directions:
+ * `emitHar` builds an archive from captured exchanges, and an import reads one
+ * — including a foreign one — as the entries a replay consumes
+ * (`HttpArchive`).
  *
  * @packageDocumentation
  */
-export {
-  ARCHIVED_EXCHANGE_ID_PREFIX,
-  ArchivedExchange,
-  ArchivedSession,
-  ArchivedSessionFromHar,
-  ArchivedSessionFromHarJson,
-  DROPPED_REQUEST_COMMENT,
-  DROPPED_TIMINGS_COMMENT,
-  fromHarJson,
-  toHarJson,
-} from './archived-exchange.ts'
+export * as HttpArchive from './http-archive.ts'
 export {
   CREATOR_NAME,
   type EmitHarOptions,

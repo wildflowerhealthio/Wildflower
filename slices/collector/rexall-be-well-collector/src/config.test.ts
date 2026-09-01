@@ -1,9 +1,9 @@
-import type { EntityDefinition } from 'collector-fundamentals/model'
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId } from 'fhir-r4/identity'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
@@ -172,7 +172,7 @@ describe('scrapingPlan', () => {
     // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method
     const hook = plan.captureProvenance
     expect(hook).toBeDefined()
-    const response = makeRemoteResponse({ id: 'req-1' })
+    const response = makeCollectorHttpResponse({ id: 'req-1' })
     const result = await Effect.runPromise(
       hook?.(FIXED_RUN_ID, response, [patient]) ?? Effect.die('hook asserted defined above')
     )
@@ -268,24 +268,25 @@ describe('scrapingPlan', () => {
 })
 
 /**
- * The plan's entities as the framework sees them — wrapped by
- * `adoptSourceIdentity`, not the raw module singletons the entity suites
- * exercise. That distinction is the point of this block: the entity suites pin
- * the carebook decode, and these pin what the plan does to it afterwards.
+ * The plan's entities as the framework sees them — the module-level kinds
+ * pre-adopted with `adoptUnderRecognizedRoot`, not the raw module singletons the
+ * entity suites exercise. That distinction is the point of this block: the
+ * entity suites pin the carebook decode, and these pin what adoption does to it
+ * afterwards.
  */
 describe('source identity', () => {
-  const entityNamed = (name: string): EntityDefinition.EntityDefinition<FhirResource> => {
-    const found = scrapingPlan(defaultConfig, FIXED_RUN_ID).entityDefinitions.find(
-      (entity) => entity.name === name
+  const responseKindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {
+    const found = scrapingPlan(defaultConfig, FIXED_RUN_ID).responseKinds.find(
+      (responseKind) => responseKind.name === name
     )
-    if (found === undefined) throw new Error(`no entity named ${name}`)
+    if (found === undefined) throw new Error(`no response kind named ${name}`)
     return found
   }
 
   const parseFixture = (name: string, url: string, body: unknown): readonly FhirResource[] =>
     Effect.runSync(
-      entityNamed(name).parse(
-        makeRemoteResponse({
+      responseKindNamed(name).parse(
+        makeCollectorHttpResponse({
           url,
           headers: [['content-type', 'application/fhir+json']],
           body: JSON.stringify(body),
@@ -298,7 +299,7 @@ describe('source identity', () => {
     'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly'
 
   const adoptedPatient = (): FhirResource => {
-    const [patientResource] = parseFixture('ProfileEntity', PROFILE_URL, profileFixture)
+    const [patientResource] = parseFixture('ProfileResponseKind', PROFILE_URL, profileFixture)
     if (patientResource === undefined) throw new Error('the profile fixture yields one Patient')
     return patientResource
   }
@@ -315,7 +316,7 @@ describe('source identity', () => {
     // The link only held before because the two entities happened to agree on
     // carebook's uid; now it holds because both go through one derivation.
     const patientId = adoptedPatient().id
-    const medications = parseFixture('MedicationListEntity', LIST_URL, prescriptions)
+    const medications = parseFixture('MedicationListResponseKind', LIST_URL, prescriptions)
     expect(medications.length).toBeGreaterThan(0)
     for (const medication of medications) {
       if (
@@ -329,7 +330,7 @@ describe('source identity', () => {
   })
 
   it('gives a request and a dispense distinct ids, and keeps every carebook identifier', () => {
-    const medications = parseFixture('MedicationListEntity', LIST_URL, prescriptions)
+    const medications = parseFixture('MedicationListResponseKind', LIST_URL, prescriptions)
     const request = medications.find((resource) => resource.resourceType === 'MedicationRequest')
     const dispense = medications.find((resource) => resource.resourceType === 'MedicationDispense')
     if (request?.resourceType !== 'MedicationRequest') throw new Error('expected a request')
@@ -348,7 +349,7 @@ describe('source identity', () => {
   it('leaves a contained-Medication fragment reference alone', () => {
     // `promote.ts` links the contained Medication with `medicationReference:
     // '#med-0001'`; a fragment is not a relative reference and must survive.
-    const medications = parseFixture('MedicationListEntity', LIST_URL, prescriptions)
+    const medications = parseFixture('MedicationListResponseKind', LIST_URL, prescriptions)
     const request = medications.find(
       (resource) => resource.id !== undefined && resource.resourceType === 'MedicationRequest'
     )
@@ -357,7 +358,7 @@ describe('source identity', () => {
   })
 
   it('rewrites the dispense authorizingPrescription without stealing its carebook identifier', () => {
-    const medications = parseFixture('MedicationListEntity', LIST_URL, prescriptions)
+    const medications = parseFixture('MedicationListResponseKind', LIST_URL, prescriptions)
     const dispense = medications.find((resource) => resource.resourceType === 'MedicationDispense')
     if (dispense?.resourceType !== 'MedicationDispense') throw new Error('expected a dispense')
     const [first] = dispense.authorizingPrescription

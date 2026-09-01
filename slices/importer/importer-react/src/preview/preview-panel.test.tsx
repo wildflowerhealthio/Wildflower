@@ -1,180 +1,130 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Either, Schema } from 'effect'
-import { type FhirResource, Observation, Patient } from 'fhir-r4/resources'
-import type { ImportParseFailure, ImportPreview, Preview } from 'importer-core'
+import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
+import { ReviewBody } from 'har-importer-react'
+import { type Extraction, HttpResponseKind } from 'http-extraction-fundamentals'
+import { Review } from 'importer-fundamentals'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { LOCAL_SOURCE, type PickedHar } from '../sources/picked-har.ts'
 import { NOTHING_TO_IMPORT_HEADING, PREVIEW_HEADING, PreviewPanel } from './preview-panel.tsx'
-import type { ReadEntry } from './use-import-run.ts'
+import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
- * The preview view is pure — props in, DOM out — so it is driven directly, no
- * router or transport. A pick is a batch of one or more files, so the point under
- * test is that every file's outcome renders **distinctly** — a browser's HAR of
- * an unknown site, a recognized archive that matched nothing, a decode failure
- * amid real resources, an unreadable file, and a healthy preview — under one
- * shared confirm that appears only when at least one file has something to write.
+ * The preview panel composes the format's interactive `ReviewBody` per file and
+ * gates one confirm over the whole batch. Driven directly — props in, DOM out,
+ * over a synthetic pool — the point under test is that every file renders
+ * distinctly (a review, an unreadable notice), that the confirm appears only when
+ * at least one file has a chosen response, and that it names the batch total.
  */
 
 afterEach(cleanup)
 
+/** A kind that claims URLs containing `token`, parsing to its own name. */
+const kind = (name: string, token: string): HttpResponseKind.HttpResponseKind<string> =>
+  HttpResponseKind.make({
+    name,
+    tryRecognize: (url) => (url.includes(token) ? Option.some({ specificity: 50 }) : Option.none()),
+    parse: () => Effect.succeed([name]),
+  })
+
+const pool = [kind('patient', '/Patient'), kind('observation', '/Observation')]
+
+/** One decoded response the recognizer reads. */
+const input = (id: string, url: string): Extraction.Input => ({
+  id,
+  url,
+  status: 200,
+  statusText: 'OK',
+  headers: [],
+  startedAt: DateTime.unsafeNow(),
+  body: new Uint8Array(),
+  bodyAbsent: false,
+})
+
 describe('PreviewPanel', () => {
-  it('renders a no-collector file as its own state, with no confirm action', () => {
+  it('renders a batch with nothing recognized as the nothing-to-import state', () => {
     render(
       <PreviewPanel
-        entries={[readEntry({ _tag: 'NoCollectorClaims', totalEntries: 42 })]}
-        onConfirm={() => undefined}
-        onCancel={() => undefined}
-        confirming={false}
+        files={[readFile([input('r0', 'https://cdn.test/app.js')])]}
+        {...panelProps()}
       />
     )
 
-    // The batch has nothing to write, so the top heading says so and the file's
-    // own row explains why: recognized by nobody.
+    // Nothing recognized, so the top heading says so and there is no confirm.
     expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
-    expect(screen.getByRole('status').textContent).toMatch(/Read 42 entries/)
     expect(screen.queryByRole('button', { name: /Import/ })).toBeNull()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeDefined()
+    // The unrecognized response folds into the no-match section.
+    expect(screen.getByText(/1 response matched no importer/)).toBeDefined()
   })
 
-  it('renders a claimed-but-empty file distinctly from the no-collector one', () => {
-    render(
-      <PreviewPanel
-        entries={[readEntry(previewOf({ resourcesByType: {}, unmatchedCount: 3 }))]}
-        onConfirm={() => undefined}
-        onCancel={() => undefined}
-        confirming={false}
-      />
-    )
-
-    // A collector *did* claim — the collector and unmatched count are surfaced,
-    // with a distinct message from the no-collector one, and still nothing to write.
-    expect(screen.getByRole('heading', { name: NOTHING_TO_IMPORT_HEADING })).toBeDefined()
-    expect(screen.getByText('fhir-r4')).toBeDefined()
-    expect(screen.getByText(/recognized this archive, but matched no resources/)).toBeDefined()
-    expect(screen.getByText(/3 other entries went unrecognized/)).toBeDefined()
-    expect(screen.queryByRole('button', { name: /Import/ })).toBeNull()
-  })
-
-  it('surfaces parse failures as an alert listing the responses that could not be decoded', () => {
-    const failure: ImportParseFailure = {
-      url: 'https://r4.example.org/baseR4/Observation/bad',
-      // The panel only reads `url`, but the type wants a real `ParseError` — a bad
-      // decode makes one rather than casting a stand-in into the channel.
-      error: anyParseError(),
-    }
-    render(
-      <PreviewPanel
-        entries={[
-          readEntry(
-            previewOf({
-              resourcesByType: { Patient: [patient('pat-1')] },
-              parseFailures: [failure],
-            })
-          ),
-        ]}
-        onConfirm={() => undefined}
-        onCancel={() => undefined}
-        confirming={false}
-      />
-    )
-
-    const alert = screen.getByRole('alert')
-    expect(alert.textContent).toMatch(/could not be decoded/)
-    expect(alert.textContent).toContain('https://r4.example.org/baseR4/Observation/bad')
-  })
-
-  it('renders a healthy preview with per-type counts, roots, and a confirm that opts in', async () => {
+  it('renders a review and a confirm naming the chosen-response total', async () => {
     const onConfirm = vi.fn()
     render(
       <PreviewPanel
-        entries={[
-          readEntry(
-            previewOf({
-              rootUrls: ['https://r4.example.org/baseR4'],
-              resourcesByType: {
-                Patient: [patient('pat-1')],
-                Observation: [observation('obs-1'), observation('obs-2')],
-              },
-            })
-          ),
+        files={[
+          readFile([
+            input('r0', 'https://ehr.test/Patient/1'),
+            input('r1', 'https://ehr.test/Observation?subject=1'),
+          ]),
         ]}
-        onConfirm={onConfirm}
-        onCancel={() => undefined}
-        confirming={false}
+        {...panelProps({ onConfirm })}
       />
     )
 
-    // The healthy heading, the detected collector and its source root, and the
-    // per-type sections with counts and rows.
+    // The healthy heading and both recognized URLs are shown by the review.
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
-    expect(screen.getByText('fhir-r4')).toBeDefined()
-    expect(screen.getByText('https://r4.example.org/baseR4')).toBeDefined()
-    expect(screen.getByRole('heading', { name: /Patient/ })).toBeDefined()
-    expect(screen.getByRole('heading', { name: /Observation/ })).toBeDefined()
-    expect(screen.getByText('pat-1')).toBeDefined()
-    expect(screen.getByText('obs-1')).toBeDefined()
-    expect(screen.getByText('obs-2')).toBeDefined()
+    expect(screen.getByText('https://ehr.test/Patient/1')).toBeDefined()
+    expect(screen.getByText('https://ehr.test/Observation?subject=1')).toBeDefined()
 
-    // The confirm names the total to write, and opting in calls back — it does not
-    // itself write.
-    await userEvent.click(screen.getByRole('button', { name: 'Import 3 resources' }))
+    // Two recognized responses ⇒ the confirm names two, and opting in calls back.
+    await userEvent.click(screen.getByRole('button', { name: 'Import 2 responses' }))
     expect(onConfirm).toHaveBeenCalledOnce()
   })
 
-  it('sums a mixed batch: one confirm for the writable files, each file rendered', () => {
+  it('sums a mixed batch: one confirm for the recognized files, each file rendered', () => {
     render(
       <PreviewPanel
-        entries={[
-          readEntry(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }), 'a.har'),
-          readEntry({ _tag: 'NoCollectorClaims', totalEntries: 7 }, 'b.har'),
-          readEntry(
-            previewOf({ resourcesByType: { Observation: [observation('obs-1')] } }),
-            'c.har'
-          ),
+        files={[
+          readFile([input('a0', 'https://ehr.test/Patient/1')], 'a.har'),
+          readFile([input('b0', 'https://cdn.test/app.js')], 'b.har'),
+          readFile([input('c0', 'https://ehr.test/Observation?s=1')], 'c.har'),
         ]}
-        onConfirm={() => undefined}
-        onCancel={() => undefined}
-        confirming={false}
+        {...panelProps()}
       />
     )
 
-    // Two writable files sum to two resources on one confirm; every file shows.
+    // Two recognized responses across three files, one confirm; every file shows.
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
-    expect(screen.getByText(/2 resources across 3 files/)).toBeDefined()
+    expect(screen.getByText(/2 responses across 3 files/)).toBeDefined()
     expect(screen.getByRole('region', { name: 'a.har' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'b.har' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'c.har' })).toBeDefined()
-    expect(screen.getByRole('button', { name: 'Import 2 resources' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Import 2 responses' })).toBeDefined()
   })
 
-  it('reports an unreadable file against its name without sinking a writable sibling', () => {
+  it('reports an unreadable file against its name without sinking a recognized sibling', () => {
     render(
       <PreviewPanel
-        entries={[
+        files={[
           { _tag: 'unreadable', id: 'u', picked: pickedHar('broken.har'), error: anyParseError() },
-          readEntry(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }), 'good.har'),
+          readFile([input('g0', 'https://ehr.test/Patient/1')], 'good.har'),
         ]}
-        onConfirm={() => undefined}
-        onCancel={() => undefined}
-        confirming={false}
+        {...panelProps()}
       />
     )
 
     expect(screen.getByText(/could not be read as a HAR/)).toBeDefined()
-    // The readable sibling still offers its confirm.
-    expect(screen.getByRole('button', { name: 'Import 1 resource' })).toBeDefined()
+    // The recognized sibling still offers its confirm.
+    expect(screen.getByRole('button', { name: 'Import 1 response' })).toBeDefined()
   })
 
   it('disables the confirm while a confirmed import is running', () => {
     render(
       <PreviewPanel
-        entries={[readEntry(previewOf({ resourcesByType: { Patient: [patient('pat-1')] } }))]}
-        onConfirm={() => undefined}
-        onCancel={() => undefined}
-        confirming
+        files={[readFile([input('r0', 'https://ehr.test/Patient/1')])]}
+        {...panelProps({ confirming: true })}
       />
     )
 
@@ -185,55 +135,51 @@ describe('PreviewPanel', () => {
 
 // Helpers
 
-/** A `local` pick with the given name — the shape a read entry carries. */
+/** A `local` pick with the given name — the shape a read file carries. */
 const pickedHar = (fileName: string): PickedHar => ({
   fileName,
   text: '{}',
   source: LOCAL_SOURCE,
 })
 
-/** A `read` {@link ReadEntry} wrapping one preview, named for the batch's file rows. */
-const readEntry = (preview: ImportPreview, fileName = 'session.har'): ReadEntry => ({
+/** A `read` {@link FileReadOutcome} wrapping some responses, named for the batch's file rows. */
+const readFile = (
+  responses: readonly Extraction.Input[],
+  fileName = 'session.har'
+): FileReadOutcome => ({
   _tag: 'read',
   id: fileName,
   picked: pickedHar(fileName),
-  preview,
+  responses,
+})
+
+/** The shared panel props, with the pool + review wired and the selection at its default. */
+const panelProps = (
+  overrides: {
+    readonly onConfirm?: () => void
+    readonly confirming?: boolean
+  } = {}
+): {
+  readonly pool: typeof pool
+  readonly ReviewBody: typeof ReviewBody
+  readonly selectionFor: () => Review.Selection
+  readonly onSelectionChange: () => void
+  readonly onConfirm: () => void
+  readonly onCancel: () => void
+  readonly confirming: boolean
+} => ({
+  pool,
+  ReviewBody,
+  selectionFor: () => Review.initial(pool),
+  onSelectionChange: () => undefined,
+  onConfirm: overrides.onConfirm ?? (() => undefined),
+  onCancel: () => undefined,
+  confirming: overrides.confirming ?? false,
 })
 
 /** A genuine `ParseError`, produced by a decode that must fail. */
-const anyParseError = (): ImportParseFailure['error'] => {
+const anyParseError = (): ParseResult.ParseError => {
   const result = Schema.decodeUnknownEither(Schema.Number)('not a number')
   if (Either.isRight(result)) throw new Error('unreachable: decode of a non-number succeeded')
   return result.left
 }
-
-/** A schema-valid `Patient` with a known id — the panel reads its id and type. */
-const patient = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
-
-/** A schema-valid `Observation` with a known id. */
-const observation = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Observation.Schema)({
-    resourceType: 'Observation',
-    id,
-    status: 'final',
-    code: { text: 'Body Weight' },
-  })
-
-/** A claimed `Preview` with the given fields; the rest are sensible empties. */
-const previewOf = (fields: {
-  readonly resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
-  readonly rootUrls?: readonly string[]
-  readonly unmatchedCount?: number
-  readonly bodyAbsentCount?: number
-  readonly parseFailures?: readonly ImportParseFailure[]
-}): Preview => ({
-  _tag: 'Preview',
-  collectorTag: 'fhir-r4',
-  rootUrls: fields.rootUrls ?? ['https://r4.example.org/baseR4'],
-  resourcesByType: fields.resourcesByType,
-  parseFailures: fields.parseFailures ?? [],
-  unmatchedCount: fields.unmatchedCount ?? 0,
-  bodyAbsentCount: fields.bodyAbsentCount ?? 0,
-  totalEntries: Object.values(fields.resourcesByType).flat().length,
-})

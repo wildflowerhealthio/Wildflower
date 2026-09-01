@@ -5,8 +5,9 @@ import { Effect, MutableHashMap, Option, Schema } from 'effect'
 import { LoggingLayerTest, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { EntityDefinition, ScrapingPlan, type Step } from 'collector-fundamentals/model'
-import { AnotherEntity, SimpleEntity } from 'collector-fundamentals/test-helpers'
+import { CollectorHttpResponseKind, ScrapingPlan, type Step } from 'collector-fundamentals/model'
+import { Specificity } from 'http-extraction-fundamentals'
+import { AnotherResponseKind, SimpleResponseKind } from 'http-extraction-fundamentals/test-helpers'
 import {
   cancelled,
   drainResults,
@@ -66,12 +67,12 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
         CollectorBridgeMessageHandler.make<MultiResources>({
           scrapingPlan: ScrapingPlan.make<MultiResources>({
             name: 'MultiPlan',
-            // Each entity is `EntityDefinition<X>` with `X ⊂ MultiResources`; widen
+            // Each response kind is `HttpResponseKind<X>` with `X ⊂ MultiResources`; widen
             // the array to the union so the array literal typechecks.
-            entityDefinitions: [
-              SimpleEntity,
-              AnotherEntity,
-            ] as readonly EntityDefinition.EntityDefinition<MultiResources>[],
+            responseKinds: [
+              SimpleResponseKind,
+              AnotherResponseKind,
+            ] as readonly CollectorHttpResponseKind.CollectorHttpResponseKind<MultiResources>[],
             stepSequence: [],
           }),
           sendMessage,
@@ -222,11 +223,17 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
       expect(drainResults(handler)).toHaveLength(1)
     })
 
-    it('routes to the first entity whose isFoundAt matches when multiple match', () => {
-      const OverlappingEntity: EntityDefinition.EntityDefinition<SimpleResources> =
-        EntityDefinition.make({
+    it('routes to the earliest entity when several claim at the same specificity', () => {
+      // `SimpleResponseKind` claims at `Specificity.PORTAL`, so a genuine tie
+      // needs the overlapping kind at the same tier — then the tie breaks toward
+      // list order, exactly as `Extraction.routeTo` documents.
+      const OverlappingEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
+        CollectorHttpResponseKind.make({
           name: 'OverlappingEntity',
-          isFoundAt: (url) => /\/people\//.test(url),
+          tryRecognize: (url) =>
+            /\/people\//.test(url)
+              ? Option.some({ specificity: Specificity.PORTAL })
+              : Option.none(),
           parse: () => Effect.succeed([]),
         })
 
@@ -234,7 +241,7 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
         CollectorBridgeMessageHandler.make<SimpleResources>({
           scrapingPlan: ScrapingPlan.make<SimpleResources>({
             name: 'OverlappingPlan',
-            entityDefinitions: [OverlappingEntity, SimpleEntity],
+            responseKinds: [OverlappingEntity, SimpleResponseKind],
             stepSequence: [],
           }),
           sendMessage: noopSendMessage,
@@ -250,7 +257,7 @@ describe('CollectorBridgeMessageHandler.make: sniffer response tracker', () => {
 
       const results = drainResults(handler)
       expect(results).toHaveLength(1)
-      // Overlapping wins because it's first in `entityDefinitions`; its parse
+      // Overlapping wins because it's first in `responseKinds`; its parse
       // returns an empty resource list regardless of body.
       expectRightToEqual(results[0], { resources: [], diagnostics: [] })
     })
@@ -418,7 +425,7 @@ describe('SnifferResponseTracker.make: follow-up generation', () => {
     const calls: string[] = []
     const generated: Step.Step[] = []
     const tracker = makeBareTracker({
-      entity: generatingEntity,
+      responseKind: generatingEntity,
       handleGeneratedSteps: (steps) =>
         Effect.sync(() => {
           calls.push('generate')
@@ -448,7 +455,7 @@ describe('SnifferResponseTracker.make: follow-up generation', () => {
     )
     const offerSpy = vi.fn(() => Effect.void)
     const tracker = makeBareTracker({
-      entity: generatingEntity,
+      responseKind: generatingEntity,
       handleGeneratedSteps: generateSpy,
       handleNewSniffResult: offerSpy,
     })
@@ -470,7 +477,7 @@ describe('SnifferResponseTracker.make: follow-up generation', () => {
       () => Effect.void
     )
     const tracker = makeBareTracker({
-      entity: generatingEntity,
+      responseKind: generatingEntity,
       handleGeneratedSteps: generateSpy,
       handleNewSniffResult: () => Effect.void,
     })
@@ -495,7 +502,7 @@ describe('SnifferResponseTracker.make: follow-up generation', () => {
       () => Effect.void
     )
     const tracker = makeBareTracker({
-      entity: generatingEntity,
+      responseKind: generatingEntity,
       handleGeneratedSteps: generateSpy,
       handleNewSniffResult: () => Effect.void,
     })
@@ -518,7 +525,7 @@ describe('SnifferResponseTracker.make: follow-up generation', () => {
     )
     const offerSpy = vi.fn(() => Effect.void)
     const tracker = makeBareTracker({
-      entity: throwingEntity,
+      responseKind: throwingEntity,
       handleGeneratedSteps: generateSpy,
       handleNewSniffResult: offerSpy,
     })
@@ -566,49 +573,55 @@ const openStepFor = (uri: string): Step.Step => ({
  * relative to the settled response's url — exercising both the `resources` and
  * `response` arguments of `followUpSteps`.
  */
-const generatingEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
-  name: 'GeneratingEntity',
-  isFoundAt: (url) => /\/people\//.test(url),
-  parse: (response) =>
-    Effect.map(
-      Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
-        response.text()
+const generatingEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
+  CollectorHttpResponseKind.make({
+    name: 'GeneratingEntity',
+    tryRecognize: (url) =>
+      /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
+    parse: (response) =>
+      Effect.map(
+        Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
+          response.text()
+        ),
+        (person) => [person]
       ),
-      (person) => [person]
-    ),
-  followUpSteps: (_resources, response) => [openStepFor(`${response.url}/child`)],
-})
+    followUpSteps: (_resources, response) => [openStepFor(`${response.url}/child`)],
+  })
 
 /**
  * An entity whose `parse` succeeds but whose `followUpSteps` throws — models a
  * generator that hits malformed scraped data. The tracker must contain the
  * throw rather than let it strand the settled request in the incomplete map.
  */
-const throwingEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
-  name: 'ThrowingEntity',
-  isFoundAt: (url) => /\/people\//.test(url),
-  parse: (response) =>
-    Effect.map(
-      Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
-        response.text()
+const throwingEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
+  CollectorHttpResponseKind.make({
+    name: 'ThrowingEntity',
+    tryRecognize: (url) =>
+      /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
+    parse: (response) =>
+      Effect.map(
+        Schema.decode(Schema.parseJson(Schema.Struct({ name: Schema.String, age: Schema.Number })))(
+          response.text()
+        ),
+        (person) => [person]
       ),
-      (person) => [person]
-    ),
-  followUpSteps: () => {
-    throw new Error('boom: malformed href')
-  },
-})
+    followUpSteps: () => {
+      throw new Error('boom: malformed href')
+    },
+  })
 
 /** Build a bare tracker with stubbed lifecycle hooks so both seams are observable. */
 const makeBareTracker = (options: {
-  readonly entity: EntityDefinition.EntityDefinition<SimpleResources>
+  readonly responseKind: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources>
   readonly handleGeneratedSteps: (steps: readonly Step.Step[]) => Effect.Effect<void>
   readonly handleNewSniffResult: () => Effect.Effect<void>
 }): SnifferResponseTracker.SnifferResponseTracker<SimpleResources> =>
   Effect.runSync(
     SnifferResponseTracker.make<SimpleResources>({
-      matchEntity: (url) =>
-        options.entity.isFoundAt(url) ? Option.some(options.entity) : Option.none(),
+      matchResponseKind: (url) =>
+        Option.isSome(options.responseKind.tryRecognize(url))
+          ? Option.some(options.responseKind)
+          : Option.none(),
       sendMessage: noopSendMessage,
       handleNewSniffResult: options.handleNewSniffResult,
       handleGeneratedSteps: options.handleGeneratedSteps,
@@ -620,11 +633,11 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
 
   const planWith = (
     captureProvenance: Hook,
-    entity: EntityDefinition.EntityDefinition<SimpleResources> = SimpleEntity
+    responseKind: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> = SimpleResponseKind
   ): ScrapingPlan.ScrapingPlan<SimpleResources> =>
     ScrapingPlan.make<SimpleResources>({
       name: 'CapturePlan',
-      entityDefinitions: [entity],
+      responseKinds: [responseKind],
       stepSequence: [],
       captureProvenance,
     })
@@ -688,11 +701,13 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
   })
 
   it('never invokes the hook for an empty parse — the line between provenance and recording', () => {
-    const emptyEntity: EntityDefinition.EntityDefinition<SimpleResources> = EntityDefinition.make({
-      name: 'EmptyEntity',
-      isFoundAt: (url) => /\/people\//.test(url),
-      parse: () => Effect.succeed([]),
-    })
+    const emptyEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
+      CollectorHttpResponseKind.make({
+        name: 'EmptyEntity',
+        tryRecognize: (url) =>
+          /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
+        parse: () => Effect.succeed([]),
+      })
     const hook = vi.fn(annotatingHook)
     const handler = makeSimpleHandler({ scrapingPlan: planWith(hook, emptyEntity) })
 
@@ -758,10 +773,11 @@ describe('CollectorBridgeMessageHandler.make: captureProvenance', () => {
         },
       }))
     )
-    const generatingPersonEntity: EntityDefinition.EntityDefinition<SimpleResources> =
-      EntityDefinition.make({
+    const generatingPersonEntity: CollectorHttpResponseKind.CollectorHttpResponseKind<SimpleResources> =
+      CollectorHttpResponseKind.make({
         name: 'GeneratingPersonEntity',
-        isFoundAt: (url) => /\/people\//.test(url),
+        tryRecognize: (url) =>
+          /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
         parse: (response) =>
           Effect.map(
             Schema.decode(

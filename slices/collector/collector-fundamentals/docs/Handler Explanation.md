@@ -33,8 +33,8 @@ record the bridge dispatches inbound messages to:
 The two machines share **no state**. Their only channel to each other is the
 supplied `sendMessage` — both ask the host to send outbound messages, but
 neither reads the other's internals. The composition threads the shared inputs
-into both (the automatic-navigation machine gets `scrapingPlan`; the tracker gets a `matchEntity`
-derived from `scrapingPlan.entityDefinitions`) and wires them to the lifecycle:
+into both (the automatic-navigation machine gets `scrapingPlan`; the tracker gets a `matchResponseKind`
+derived from `scrapingPlan.responseKinds`) and wires them to the lifecycle:
 the tracker publishes into the lifecycle's stream (via `handleNewSniffResult`,
 which offers the result and then runs the close-check) and injects an entity's
 generated `followUpSteps` into the machine (via `handleGeneratedSteps`, which
@@ -73,7 +73,7 @@ settled `SniffResult` via the injected `handleNewSniffResult`. This is the
 
 A successful `ResponseFinished` parse prepends two steps: **generate**, then
 **capture**. Before the drop, it calls the pinned entity's `followUpSteps` (if
-any) with the parsed resources and the settled `RemoteResponse`, and hands them
+any) with the parsed resources and the settled `CollectorHttpResponse`, and hands them
 to `handleGeneratedSteps`; then, for a non-empty parse on a plan that states a
 `captureProvenance` hook, it invokes the hook to build the settled
 `SniffedBatch` (`resources` possibly link-annotated, plus best-effort
@@ -257,9 +257,9 @@ consumer's drive loop simply drains until `take` reports it done.
 
 Two supporting invariants:
 
-- **Entity pinned at `ResponseStart`.** The matching `EntityDefinition` is
-  resolved once (via the injected `matchEntity`), when the stream starts, and
-  stored on the tracked entry. Later events never re-run `matchEntity`, so a
+- **Entity pinned at `ResponseStart`.** The matching `CollectorHttpResponseKind` is
+  resolved once (via the injected `matchResponseKind`), when the stream starts, and
+  stored on the tracked entry. Later events never re-run `matchResponseKind`, so a
   redirected `RequestError.url` (or any mid-stream change) can't reroute parsing.
   The `url` captured at start stays the source of truth on `response.url`.
 - **Untracked ids are benign.** A message for an id that isn't tracked is a

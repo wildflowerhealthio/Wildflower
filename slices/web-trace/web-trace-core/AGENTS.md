@@ -36,7 +36,7 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   mapping (the recorder's entity spreads it too); `makeFhirProvenanceCapture`
   is the hook factory a production collector states as its plan's
   `captureProvenance`. `CapturedResponse` names the readable surface of
-  `collector-fundamentals`' `RemoteResponse` _structurally_ — this package
+  `collector-fundamentals`' `CollectorHttpResponse` _structurally_ — this package
   sits below the collector slice and must not import it, so the boundary is a
   shape, not a dependency.
 - **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
@@ -47,8 +47,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   the format itself (`Har`, and `HarFromJson` for a file's text): encoded side
   the JSON the spec describes, type side the same structure with its values
   decoded. `emit.ts` builds an archive from `TraceExchange`es;
-  `archived-exchange.ts` is the projection an importer and a replay consume
-  (`ArchivedExchange`, `ArchivedSessionFromHar`), and it encodes back.
+  `http-archive.ts` is the projection an importer and a replay consume, as the
+  `HttpArchive` namespace (`Entry`, `Log`, `LogFromHarJson`), and it encodes
+  back.
   `fixtures/chrome-devtools.har.json` is a synthetic DevTools export the tests
   hold themselves to.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
@@ -91,8 +92,8 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   _rendered_ as is `fhir-r4`'s `localResourceId` — the one derivation every
   stored resource is keyed under — so a reader goes through the two `Identifier`
   entries, never through the id. `traceResourceId` is the **single** site that
-  mints it; a trace must never also be run through `adoptSourceIdentity`, which
-  would hash the hash. A session label is an arbitrary string, so spelling the
+  mints it; a trace must never also be run through `adoptUnderRecognizedRoot`,
+  which would hash the hash. A session label is an arbitrary string, so spelling the
   id `{sessionId}-{requestId}` verbatim could mint an id outside FHIR's grammar;
   going through the derivation makes that unrepresentable. The pair is folded
   with `joinIdComponents`, the length-prefixed encoding `localResourceId` uses on
@@ -172,7 +173,7 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   `HarArchive.bytes` is base64 of the file exactly as uploaded, so a truncated or
   mis-encoded upload is preserved rather than mangled and the attachment `hash`
   means something. Reading the contents is `src/har/`'s job — `HarFromJson` and
-  the `ArchivedSessionFromHar` projection — and it is where a malformed upload
+  the `HttpArchive.LogFromHarJson` projection — and it is where a malformed upload
   is meant to fail, not here.
 - **Every upload is a fresh document.** The id is a uuid the caller mints, not a
   derivation over the bytes — the same file twice is two documents on purpose.
@@ -262,8 +263,8 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   than the sniffer's `[0, 1000]` for the same reason. Encoding writes every
   field the spec requires, and a body always goes out base64 — a text body read
   from a foreign archive comes back base64, same bytes.
-- **`ArchivedExchange` is a projection, so encoding it is canonical rather than
-  verbatim.** It carries the response half and the body bytes, so a re-encoded
+- **`HttpArchive.Entry` is a projection, so encoding it is canonical rather
+  than verbatim.** It carries the response half and the body bytes, so a re-encoded
   archive states HAR's own "not observed" values for the request side and the
   timings, with a comment saying they were not carried through the import. The
   properties that hold are `decode(encode(x)) == x` and `read(write(read(f)))
@@ -283,9 +284,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   rather than rejecting the whole file over one unreadable favicon and losing the
   clinical entries with it. This is the **only** malformation that degrades:
   invalid JSON, JSON that is not a HAR, and a missing `status` still fail the
-  parse. The decode of `ArchivedSessionFromHar` therefore cannot fail once `Har`
+  parse. The decode of `HttpArchive.LogFromHarJson` therefore cannot fail once `Har`
   has parsed, which is why it is a plain `ParseResult.succeed`.
-- **`ArchivedExchange` is a shape, not a dependency — same trick as
+- **`HttpArchive.Entry` is a shape, not a dependency — same trick as
   `CapturedResponse`.** Its field names (`id`, `url`, `status`, `statusText`,
   `headers`, `startedAt`) are the ones a captured response carries, so a replay
   runner can consume an imported exchange and a live capture through one type
@@ -311,7 +312,7 @@ The five properties the privacy boundary rests on live in
 `src/pseudonymizer/redact.test.ts`; the HAR emitter is validated against the
 published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
 The reading direction is held to the emitter — a property in
-`src/har/archived-exchange.test.ts` round-trips a generated session through
+`src/har/http-archive.test.ts` round-trips a generated session through
 `emitHar` and back — and to a committed synthetic DevTools export for the half
 our own archives never exercise. `emit.test.ts` validates the **encoded**
 archive against `har-schema`, which is the only side the spec describes.

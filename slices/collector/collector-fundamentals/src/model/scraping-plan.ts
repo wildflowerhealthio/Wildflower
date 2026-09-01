@@ -1,6 +1,6 @@
 import { Duration, type Effect } from 'effect'
-import type * as EntityDefinition from './entity-definition.ts'
-import type { RemoteResponse } from './response.ts'
+import type * as CollectorHttpResponseKind from './collector-http-response-kind.ts'
+import type { CollectorHttpResponse } from './collector-http-response.ts'
 import type * as Step from './step.ts'
 
 /** Default {@link ScrapingPlan.maxGeneratedSteps} when a plan omits it. */
@@ -18,15 +18,15 @@ const DEFAULT_DRAINED_GUARD_TIMEOUT = Duration.seconds(60)
  * the parse output (possibly annotated with links) and any diagnostic
  * resources the capture minted alongside it.
  */
-interface CaptureProvenanceResult<TResources> {
+interface CaptureProvenanceResult<TParsed> {
   /** The parse output, possibly link-annotated; the run's primary output. */
-  readonly resources: readonly TResources[]
+  readonly resources: readonly TParsed[]
   /**
    * Records *about* the run, not part of it — persisted best-effort through
    * the same sink, WARN-logged on failure, and never part of the run's
    * failure summary.
    */
-  readonly diagnostics: readonly TResources[]
+  readonly diagnostics: readonly TParsed[]
 }
 
 /**
@@ -42,9 +42,10 @@ interface CaptureProvenanceResult<TResources> {
  * whose `requestSniffingResults` stream carries each terminal outcome, and
  * which:
  *
- *   - Consults `entityDefinitions` for each `ResponseStart` to decide
- *     whether to track the in-flight response (first `isFoundAt` match
- *     wins; non-matching responses are cancelled via `sendMessage`).
+ *   - Consults `responseKinds` for each `ResponseStart` to decide
+ *     whether to track the in-flight response (routed via
+ *     `Extraction.routeTo`; non-matching responses are cancelled via
+ *     `sendMessage`).
  *   - Drives the sniffer through a **breadth-first step queue** seeded with
  *     `stepSequence`. The runner's one-shot `Start` kicks off draining the
  *     queue front-to-back with no page in hand — so the plan's first step is an
@@ -67,9 +68,10 @@ interface CaptureProvenanceResult<TResources> {
  * `Open` step at the head of `stepSequence`.
  *
  * - `name`: stable identifier for logs / UI.
- * - `entityDefinitions`: ordered list of recognizer/parser pairs.
- *   `CollectorBridgeMessageHandler` consults `isFoundAt` against each
- *   response URL; the first match wins.
+ * - `responseKinds`: ordered list of recognizer/parser pairs, routed per
+ *   response URL through `Extraction.routeTo` (which owns the ranking rule).
+ *   Keep intra-plan patterns disjoint so the tie-break never becomes
+ *   load-bearing.
  * - `stepSequence`: the *initial* contents of the navigation queue — an
  *   ordered list of `Step`s (`Navigation` actions and/or `Delay` pauses),
  *   beginning with the `Open` that opens the real first page. An empty array
@@ -91,17 +93,17 @@ interface CaptureProvenanceResult<TResources> {
  *   plan's *holds* run, because it is armed only while the queue is empty. See
  *   [Handler Explanation](../../docs/Handler%20Explanation.md#the-drained-guard-the-only-bound-on-gate-b).
  */
-interface ScrapingPlan<TResources> {
+interface ScrapingPlan<TParsed> {
   readonly name: string
-  readonly entityDefinitions: readonly EntityDefinition.EntityDefinition<TResources>[]
+  readonly responseKinds: readonly CollectorHttpResponseKind.CollectorHttpResponseKind<TParsed>[]
   readonly stepSequence: readonly Step.Step[]
   readonly maxGeneratedSteps?: number
   readonly dedupeGeneratedOpenUris?: boolean
   readonly drainedGuardTimeout?: Duration.Duration
   // Declared as a *method* signature, not a `readonly` arrow property, for the
-  // same reason as `EntityDefinition.followUpSteps`: `produced` puts
-  // `TResources` in a parameter (contravariant) position, which would make
-  // `ScrapingPlan` invariant in `TResources` and break the
+  // same reason as `CollectorHttpResponseKind.followUpSteps`: `produced` puts
+  // `TParsed` in a parameter (contravariant) position, which would make
+  // `ScrapingPlan` invariant in `TParsed` and break the
   // `ScrapingPlan<Resources>` → `ScrapingPlan<unknown>` widening the
   // sealed-`Resources` existential relies on. Method parameters are checked
   // bivariantly, so this keeps the type covariant.
@@ -121,9 +123,9 @@ interface ScrapingPlan<TResources> {
    */
   captureProvenance?(
     runId: string,
-    response: RemoteResponse,
-    produced: readonly TResources[]
-  ): Effect.Effect<CaptureProvenanceResult<TResources>, unknown>
+    response: CollectorHttpResponse,
+    produced: readonly TParsed[]
+  ): Effect.Effect<CaptureProvenanceResult<TParsed>, unknown>
 }
 
 /**
@@ -163,15 +165,15 @@ const freezePlanValue = (value: unknown): void => {
  * because the handler pins the matched entity per in-flight request
  * at `ResponseStart` and seeds its step queue from `stepSequence`;
  * freezing also keeps the type-level `readonly` honest at runtime so
- * a caller can't push into `entityDefinitions` or `stepSequence`
+ * a caller can't push into `responseKinds` or `stepSequence`
  * after construction.
  *
  * `Duration`-valued fields are the one exception — see {@link freezePlanValue}.
  */
-const make = <TResources>(plan: ScrapingPlan<TResources>): ScrapingPlan<TResources> => {
-  const frozen: ScrapingPlan<TResources> = {
+const make = <TParsed>(plan: ScrapingPlan<TParsed>): ScrapingPlan<TParsed> => {
+  const frozen: ScrapingPlan<TParsed> = {
     name: plan.name,
-    entityDefinitions: plan.entityDefinitions,
+    responseKinds: plan.responseKinds,
     stepSequence: plan.stepSequence,
     maxGeneratedSteps: plan.maxGeneratedSteps,
     dedupeGeneratedOpenUris: plan.dedupeGeneratedOpenUris,

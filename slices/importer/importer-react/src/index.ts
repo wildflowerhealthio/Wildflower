@@ -6,12 +6,12 @@
  * {@link ImporterScreen} is the surface a host app mounts — the slice owns every
  * level. Three inputs converge on one {@link PickedHar} — a file dropped on the
  * zone, a file chosen through the OS picker, and a HAR archive already uploaded to
- * the device's own FHIR server; the read half (`importer-core`'s `runHarImport`,
+ * the device's own FHIR server; the read half (`importer-core`'s `HarImport.run`,
  * via {@link useImportRun}) folds it into an {@link PreviewPanel} preview writing
  * nothing; and only the explicit confirm ({@link useConfirmImport}) uploads the
  * archive when needed and persists the resources, each stamped with the archive
  * it came from. Presentation and interaction only: the HAR parser, the archive
- * codec, and the detect/replay/persist pipeline all live below this package.
+ * codec, and the detect/extract/persist pipeline all live below this package.
  *
  * @packageDocumentation
  */
@@ -26,12 +26,19 @@ export {
 export {
   type ConfirmImport,
   type ConfirmState,
+  type SelectionFor,
   useConfirmImport,
 } from './preview/use-confirm-import.ts'
 export {
+  type Format,
+  type FormatRegistration,
+  formatRegistry,
+  harRegistration,
+} from './registry.ts'
+export {
   type ImportRun,
   type ImportRunState,
-  type ReadEntry,
+  type FileReadOutcome,
   useImportRun,
 } from './preview/use-import-run.ts'
 export {
@@ -42,7 +49,6 @@ export {
   importOutcome,
   isPartialBatch,
   isPartialOutcome,
-  previewResourceCount,
   type SkipReason,
   summarizeBatch,
 } from './results/import-outcome.ts'

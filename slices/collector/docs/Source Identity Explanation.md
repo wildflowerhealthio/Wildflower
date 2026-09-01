@@ -174,37 +174,66 @@ reference immediately afterwards — rewriting it earlier is dead work.
 
 ## Where a collector states its source
 
-`adoptSourceIdentity(source)` wraps a whole `ScrapingPlan`: it replaces each
-entity's `parse` with one that adopts the parse output, and passes every other
-plan field (`captureProvenance`, `stepSequence`, timeouts) through by
-reference. A collector's entire wiring is one line at the end of its plan factory
-— see the [Adding a Collector How-To](./Adding%20a%20Collector%20How-To.md).
+Adoption is **one option-less per-kind combinator**, `adoptUnderRecognizedRoot`
+(in `fhir-r4/identity`). It wraps a single response kind, replacing its `parse`
+with one that adopts the parse output under the identity **the kind's own
+`tryRecognize` mints for the response's URL** — read verbatim from
+`entity.tryRecognize(response.url).source`, with no source passed in. Each kind
+constructs its own identity, so recognition and the namespace a resource keys
+under are the one decision:
 
-Three consequences worth knowing:
+- **FHIR** (`fhir-r4-source`) — `tryRecognize` returns `source: { system: root,
+baseUrl: root }`, the root captured by the kind's own fused `UrlMatch`. So a
+  resource keys under the root of the URL it arrived on.
+- **Rexall / Shoppers** — `tryRecognize` stays URL-gated but mints a constant
+  `source: { system: SID }` (`REXALL_CAREBOOK_SYSTEM` /
+  `SHOPPERS_DRUGMART_SYSTEM`, hardcoded in `config.ts`), no `baseUrl` because
+  references are relative.
+- **web-trace** — recognizes but mints **no** `source`, and is not adopted at
+  all (see [below](#web-trace-mints-its-own-ids-at-its-codec)).
 
-- **The wrapper is memoized per `(source, entity)`.** Plan factories are
-  deterministic and per-collector suites deep-equal two plans built from one
-  config; `toEqual` compares functions by identity, so a fresh closure per call
-  would break every one of them. The memo's outer map is keyed by source system
-  and is never evicted; for the FHIR collector that key is the user's configured
-  `rootUrl`, so its key space is user-driven rather than structural. Each entry
-  is one empty `WeakMap`, and that growth is accepted rather than solved — the
-  alternative trades it for the referential stability the memo exists to provide.
+This unifies what used to be two wrappers doing the same job with the identity
+sourced differently — a live `adoptSourceIdentity(constant)(plan)` that keyed
+under a config constant, and an archive per-URL-root wrapper. There is now one
+seam, and it is applied per kind at **module load**, not per plan: a collector
+`.map`s its kind list through the combinator once, and `fhir-r4-source` exports
+the result (as its `fhirR4Source` descriptor's `responseKinds`) that both the
+live plan and the archive importer consume. See the
+[Adding a Collector How-To](./Adding%20a%20Collector%20How-To.md).
+
+Consequences worth knowing:
+
+- **No source parameter means no memo.** The old wrapper took the source as an
+  argument and had to memoize one wrapped `parse` per `(source, entity)` so two
+  plans from one config stayed `toEqual` (functions compare by identity). The
+  identity now lives inside `tryRecognize`, so the combinator takes nothing to
+  parameterize: a package applies it once and every plan built from any config
+  shares the same frozen kind **by reference**. Deep-equal gets _easier_, and the
+  memo — with its unbounded, user-driven key space — is gone.
+- **An unrecognized URL fails as a `ParseError`.** A `parse` on a response whose
+  `tryRecognize` returns `None` — or `Some` with no `source` — **fails** with a
+  `ParseError` naming the real reason ("URL not recognized by this kind — cannot
+  adopt an identity"), on the same channel a decode failure uses. It is the
+  `web-trace` `digestFailureAsParseError` precedent: no channel widening, no
+  defect, and `Extraction.parseWith` folds it to an ordinary per-response
+  `parseError` outcome. In practice routing only ever hands a kind a URL it recognized,
+  so this arm guards a misconfiguration, not a normal response.
 - **`followUpSteps` receives adopted resources.** No entity defines one today,
   but a future generator that needs the source's id to build a source-server URL
   reads it back with `originalIdOf(source, resource)` rather than off
   `resource.id`.
-- **The plan's own type passes through, and that is checked rather than
-  assumed.** Adoption widens: `adoptResource` is declared `FhirResource →
-FhirResource`, because TypeScript cannot correlate the variant matched with the
-  branch taken and so cannot be told that every branch maps a variant to itself.
-  A combinator returning `TPlan` unchanged would therefore be asserting something
-  it does not deliver for a plan whose entities declare a narrower element type.
-  `adoptSourceIdentity` refuses such a plan instead, via a conditional on the
-  parameter (`TPlan & EntitiesParseEveryResource<TPlan>`) — the constraint alone
-  cannot do it, since a narrower entity is a legitimate subtype by covariance.
-  Both production collectors already widen at `ScrapingPlan.make<FhirResource>`,
-  so this costs them nothing.
+- **The guard is per kind, and reads the whole `FhirResource` union.** Adoption
+  widens: `adoptResource` is declared `FhirResource → FhirResource`, because
+  TypeScript cannot correlate the variant matched with the branch taken. A
+  combinator returning the kind's type unchanged would therefore be asserting
+  something it does not deliver for a kind that declares a narrower element type.
+  `adoptUnderRecognizedRoot` refuses such a kind, via a conditional on the
+  parameter (`TEntity & EntityParsesEveryResource<TEntity>`) — the constraint
+  alone cannot do it, since a narrower kind is a legitimate subtype by
+  covariance. The fix is to widen the kind list to
+  `HttpResponseKind<FhirResource>[]` **before** the `.map`: `fhir-r4-source`
+  declares its input tuple that wide, and the credential collectors widen at
+  module scope.
 
 Note the variant preservation inside `adoptResource` is real but unchecked: each
 `adoptX` maps a variant to itself **by construction**, and an `adoptX` that
@@ -214,17 +243,41 @@ The tracker's ordering is `parse` → `followUpSteps` → `captureProvenance`, s
 provenance hook's `context.related` and `meta.source` are both built from adopted
 ids with no changes to `capture-provenance.ts`.
 
-### The two production collectors
+### The three FHIR-family collectors
 
-- **`fhir-r4-client-collector`** — `{ system: config.rootUrl, baseUrl: config.rootUrl }`.
-  The system is the **configured** root, never a URL recovered from a response.
-  `baseUrl` makes a server that spells its own references absolutely rewrite them
-  the same as relative ones. The hash uses the raw configured string while the
-  stored `Identifier.system` is `new URL(rootUrl)`, whose `.href` may re-add a
-  trailing slash on a bare host — cosmetic, and irrelevant to the derivation.
+- **`fhir-r4-client-collector`** consumes `fhir-r4-source`'s
+  `fhirR4Source.responseKinds` directly — the same single pre-adopted definition the
+  archive importer runs, so live and archive are now reference identity and
+  cannot disagree. Each resource keys under `{ system: root, baseUrl: root }`
+  where `root` is the URL-derived root of the response it arrived on. `baseUrl`
+  makes a server that spells its own references absolutely rewrite them the same
+  as relative ones.
 - **`rexall-be-well-collector`** — `{ system: REXALL_CAREBOOK_SYSTEM }`, a
-  Wildflower-minted `sid` URI declared in its `config.ts`. No `baseUrl`: carebook
-  references are relative.
+  Wildflower-minted `sid` URI declared in its `config.ts`; the kind list is
+  widened to `HttpResponseKind<FhirResource>[]` and mapped through the combinator
+  at module scope. No `baseUrl`: carebook references are relative.
+- **`shoppers-drugmart-collector`** — `{ system: SHOPPERS_DRUGMART_SYSTEM }`,
+  the same shape as Rexall (its kinds are already wide, so it maps without an
+  extra widen). No `baseUrl`.
+
+### Live FHIR keying is per-response now — the one accepted behavior change
+
+Live FHIR keying moved from the **config-constant** `rootUrl` to each response's
+**own URL root**. For an ordinary same-server capture the two coincide, so the
+stored ids are byte-identical — pinned by `fhir-r4-client-collector`'s
+`source-parity.test.ts`, whose surviving load-bearing property asserts
+`tryRecognize(${config.rootUrl}/Patient/…).source.{system,baseUrl} ===
+config.rootUrl` (the live==archive assertions above are reference-identity by
+construction, so that property is the only real guard on the switch).
+
+**Edge case:** a FHIR endpoint that redirects **cross-origin or cross-basepath**.
+The sniffer pins `response.url` at `ResponseStart`, so the derived root becomes
+the **redirect target**, where config-constant keying would have used
+`config.rootUrl`. Resources from the two roots then key apart. This is accepted:
+keying under a resource's own URL is what lets a capture that reached two servers
+separate them with no inference, and a genuine cross-server reference is meant to
+be absolute anyway (see [cross-server references
+dangle](../../http-extraction/fhir-r4-source/AGENTS.md)).
 
 ## web-trace mints its own ids, at its codec
 
@@ -258,8 +311,9 @@ a selection key need identity within one list, not the resource id. Calling
 thousand-exchange session.
 
 **One id-minting site per resource kind.** Running a locally-minted resource
-through `adoptSourceIdentity` as well would hash a hash, so a plan that produces
-traces must not be wrapped.
+through `adoptUnderRecognizedRoot` as well would hash a hash, which is why
+`web-trace`'s recording kind mints no `source` — it is recognized but never
+adopted.
 
 ## One format, no guards
 

@@ -1,6 +1,7 @@
 import { type CancelSnifferRequestMessage, type PageActionMessage } from 'browser-sniffer-core'
 import { Effect, type Mailbox, type MutableHashMap, Option, Schema } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
+import { Extraction } from 'http-extraction-fundamentals'
 import {
   type CollectorBridge,
   type EnsureSnifferVisible as EnsureSnifferVisibleMessage,
@@ -8,7 +9,7 @@ import {
   type SetSnifferStatus as SetSnifferStatusMessage,
   type SniffingComplete as SniffingCompleteMessage,
 } from '../bridge.ts'
-import { type Response, ScrapingPlan, WebViewSource } from '../model/index.ts'
+import { type CollectorHttpResponse, ScrapingPlan, WebViewSource } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as AutomaticNavigation from './automatic-navigation/index.ts'
 import * as RunLifecycleState from './run-lifecycle-state.ts'
@@ -45,10 +46,10 @@ type OutboundMessage =
   | typeof SniffingCompleteMessage.Type
   | typeof SetSnifferStatusMessage.Type
 
-interface CollectorBridgeMessageHandler<TResources> extends Service {
+interface CollectorBridgeMessageHandler<TParsed> extends Service {
   readonly incompleteSniffedRequests: MutableHashMap.MutableHashMap<
     string,
-    IncompleteSniffedRequest<TResources>
+    IncompleteSniffedRequest<TParsed>
   >
   /**
    * The run's {@link SniffResult} stream, surfaced as the handler's result
@@ -56,7 +57,7 @@ interface CollectorBridgeMessageHandler<TResources> extends Service {
    * instead of being handed an `onResult` callback — see the
    * [Handler Explanation](../../docs/Handler%20Explanation.md).
    */
-  readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TResources>>
+  readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TParsed>>
   /**
    * Start the automatic navigation: dispatch the plan's leading `Open` — which
    * builds the sniffer webview directly on the real target URL — without waiting
@@ -142,12 +143,12 @@ const openUri = (step: Step.Step): string | undefined => {
  * a request settles; the lifecycle's `signalNoMoreResultsExpected` and teardown
  * fire only later), so there is no temporal-dead-zone hazard.
  */
-const make = <TResources>({
+const make = <TParsed>({
   scrapingPlan,
   sendMessage,
   runId,
 }: {
-  scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
+  scrapingPlan: ScrapingPlan.ScrapingPlan<TParsed>
   sendMessage: (message: OutboundMessage) => Effect.Effect<void, never, never>
   /**
    * The framework-minted id of this sync run, from the
@@ -156,7 +157,7 @@ const make = <TResources>({
    * every trace the run writes shares it.
    */
   runId: string
-}): Effect.Effect<CollectorBridgeMessageHandler<TResources>, never, never> =>
+}): Effect.Effect<CollectorBridgeMessageHandler<TParsed>, never, never> =>
   Effect.gen(function* () {
     // Bind the plan's provenance hook (declared as a method for covariance —
     // see `ScrapingPlan`) with the run id applied, so the tracker receives a
@@ -166,7 +167,7 @@ const make = <TResources>({
     const captureProvenance =
       planCaptureProvenance === undefined
         ? undefined
-        : (response: Response.RemoteResponse, produced: readonly TResources[]) =>
+        : (response: CollectorHttpResponse, produced: readonly TParsed[]) =>
             planCaptureProvenance(runId, response, produced)
     // Run-wide crawler safety, applied to *generated* steps only (never the
     // authored sequence): dedup generated `Open`s by URI so a self-link or a
@@ -230,20 +231,23 @@ const make = <TResources>({
 
     // Explicit annotations break the construction cycle's type inference (the
     // three bindings reference one another): without them TS infers `any`.
-    const tracker: SnifferResponseTracker.SnifferResponseTracker<TResources> =
-      yield* SnifferResponseTracker.make<TResources>({
-        // The tracker only needs "which entity (if any) parses this URL"; derive
-        // it from the plan here so the tracker stays decoupled from `ScrapingPlan`.
-        matchEntity: (url) =>
-          Option.fromNullable(scrapingPlan.entityDefinitions.find((e) => e.isFoundAt(url))),
+    const tracker: SnifferResponseTracker.SnifferResponseTracker<TParsed> =
+      yield* SnifferResponseTracker.make<TParsed>({
+        // The tracker only needs "which entity (if any) parses this URL"; route
+        // it through the same `Extraction.routeTo` an archive import uses, so
+        // live and archive routing are one function. `routeTo` is generic in the
+        // concrete element, so the matched `CollectorHttpResponseKind`'s
+        // `followUpSteps` rides through.
+        matchResponseKind: (url) =>
+          Option.map(Extraction.routeTo(scrapingPlan.responseKinds, url), (routed) => routed.kind),
         sendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         handleGeneratedSteps: (steps) => enqueueGeneratedSteps(steps),
         captureProvenance,
       })
 
-    const lifecycle: RunLifecycleState.RunLifecycleState<TResources> =
-      yield* RunLifecycleState.make<TResources>({
+    const lifecycle: RunLifecycleState.RunLifecycleState<TParsed> =
+      yield* RunLifecycleState.make<TParsed>({
         hasIncompleteSniffedRequests: tracker.hasIncompleteSniffedRequests,
         failIncompleteSniffedRequests: tracker.failIncompleteSniffedRequests,
         cancelIncompleteSniffedRequests: tracker.cancelIncompleteSniffedRequests,
@@ -259,7 +263,7 @@ const make = <TResources>({
     // `onSniffingComplete` hook, and the queue-drained fact through `onDrained`
     // (wired to the lifecycle's end-check so a trailing `Delay` still completes).
     const automaticNavigation: AutomaticNavigation.AutomaticNavigation =
-      yield* AutomaticNavigation.make<TResources>({
+      yield* AutomaticNavigation.make<TParsed>({
         scrapingPlan,
         sendMessage,
         onSniffingComplete: lifecycle.handleSniffingComplete,

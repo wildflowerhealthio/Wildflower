@@ -2,12 +2,11 @@ import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
-import { adoptSourceIdentity } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { fhirR4EntityDefinitions } from 'fhir-r4-importer'
+import { fhirR4Source } from 'fhir-r4-source'
 
 /**
  * `rootUrl` must be an absolute `http(s)://` URL with at least a host
@@ -96,7 +95,7 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * browser-sniffer's window-`load` handler snapshots the rendered document (the
  * browser's native JSON viewer wraps the response in `<pre>{json}</pre>`),
  * streams it through the standard `ResponseStart`/`Data`/`Finished` triple keyed
- * on the FHIR URL, and `PatientEntity.parse` extracts the JSON via
+ * on the FHIR URL, and `PatientResponseKind.parse` extracts the JSON via
  * `extractJson`. A pattern-less `AwaitPageSettled` holds until that Patient page
  * has settled, then the next `Open` step navigates the WebView to
  * `/Observation?subject:Patient=…&_count=250`; the same snapshot-and-extract
@@ -109,13 +108,10 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * it the queue would drain the instant the `Open` dispatches and the run could
  * complete before the request is even tracked. The holds are **pattern-less**:
  * each waits for the *next* settle after its `Open` (skipping the prior page),
- * which is unambiguous because each `Open` targets a fresh document. The FHIR endpoints are direct JSON documents (one request per
- * page, no post-load XHR fan-out), so the hold on the settled page is
- * sufficient — no additional fixed `Delay` grace step is needed.
- * `entityDefinitions` are listed Patient → Observation → Bundle so
- * `isFoundAt` matches are evaluated in that order; `mustHaveQuery` on
- * the Bundle pattern keeps the list disjoint from the single-resource
- * Observation pattern.
+ * which is unambiguous because each `Open` targets a fresh document. The FHIR
+ * endpoints are direct JSON documents (one request per page, no post-load XHR
+ * fan-out), so the hold on the settled page is sufficient — no additional fixed
+ * `Delay` grace step is needed.
  *
  * `config.rootUrl` and `config.patientId` are pre-validated by
  * {@link InstanceConfig} (no trailing slashes; patientId is the FHIR
@@ -123,12 +119,12 @@ const captureProvenance = makeFhirProvenanceCapture('fhir-r4')<FhirResource>
  * still applied defensively in case the value reaches this function
  * through an untyped path.
  *
- * The plan is wrapped in `adoptSourceIdentity` so every resource it parses is
- * re-keyed under the configured server's namespace: a derived local id, the
- * server's own id kept as `identifier[0]`, and references rewritten to match.
- * The source system is `config.rootUrl` — the configured root, never a URL
- * recovered from a response — and it doubles as `baseUrl`, so a server that
- * spells its self-references absolutely rewrites them the same as relative ones.
+ * `responseKinds` is `fhir-r4-source`'s pre-adopted `fhirR4Source.responseKinds` —
+ * the single definition an archive import also extracts with — so every
+ * resource keys under the per-response-derived root (see the
+ * [Source Identity Explanation](../../docs/Source%20Identity%20Explanation.md)
+ * and this package's AGENTS.md for the redirect caveat). `config.rootUrl` keeps
+ * only its navigation role — the `Open` steps still target `${config.rootUrl}/…`.
  *
  * Provenance is the plan-level `captureProvenance` hook — the whole of this
  * collector's wiring is the one line naming it. The framework mints the run
@@ -147,7 +143,7 @@ const scrapingPlan = (
   const observationUrl = `${config.rootUrl}/Observation?subject%3APatient=${safePatientId}&_count=250&_format=json`
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'FHIR R4',
-    entityDefinitions: fhirR4EntityDefinitions,
+    responseKinds: fhirR4Source.responseKinds,
     captureProvenance,
     stepSequence: [
       // Open the Patient JSON document — the step that brings the sniffer up —
@@ -189,7 +185,7 @@ const scrapingPlan = (
       },
     ],
   })
-  return adoptSourceIdentity({ system: config.rootUrl, baseUrl: config.rootUrl })(plan)
+  return plan
 }
 
 /**

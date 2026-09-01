@@ -1,8 +1,6 @@
-import { Schema } from 'effect'
 import * as fc from 'fast-check'
-import type { ResourceWriteFailure } from 'fhir-r4/clients'
-import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { Preview } from 'importer-core'
+import type { PersistFailure } from 'importer-fundamentals'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import {
@@ -10,12 +8,11 @@ import {
   importOutcome,
   isPartialBatch,
   isPartialOutcome,
-  previewResourceCount,
   summarizeBatch,
 } from './import-outcome.ts'
 
 /**
- * The pure fold from a written preview + its failures to the results tally. The
+ * The pure fold from a written count + its failures to the results tally. The
  * one property that matters is the `collectImportSummary` semantics: **any**
  * failure makes the whole import partial, `written` is exactly the attempted
  * count minus the failures, and the failure list is carried verbatim — never a
@@ -29,36 +26,24 @@ describe('importOutcome', () => {
         fc.nat({ max: 30 }),
         fc.nat({ max: 30 }),
         fc.string({ minLength: 1 }),
-        (resourceCount, failureCount, sourceRef) => {
-          const preview = previewWith(resourceCount)
+        (attempted, failureCount, sourceRef) => {
           const failures = failuresOf(failureCount)
-          const outcome = importOutcome(preview, sourceRef, failures)
+          const outcome = importOutcome(attempted, sourceRef, failures)
 
-          expect(outcome.attempted).toBe(resourceCount)
-          expect(outcome.written).toBe(resourceCount - failureCount)
+          expect(outcome.attempted).toBe(attempted)
+          expect(outcome.written).toBe(attempted - failureCount)
           expect(outcome.failures).toBe(failures)
           expect(outcome.sourceRef).toBe(sourceRef)
           expect(isPartialOutcome(outcome)).toBe(failureCount > 0)
         }
       ),
-      { numRuns: 200 }
+      { numRuns: numRunsFor({ base: 200 }) }
     )
-  })
-
-  it('counts resources across every type', () => {
-    const preview = previewOf({
-      Patient: [patient('a'), patient('b')],
-      Observation: [patient('c')],
-    })
-    expect(previewResourceCount(preview)).toBe(3)
   })
 
   it('is complete with an empty failure list, partial with any failure', () => {
-    const preview = previewWith(2)
-    expect(isPartialOutcome(importOutcome(preview, 'DocumentReference/a', []))).toBe(false)
-    expect(isPartialOutcome(importOutcome(preview, 'DocumentReference/a', failuresOf(1)))).toBe(
-      true
-    )
+    expect(isPartialOutcome(importOutcome(2, 'DocumentReference/a', []))).toBe(false)
+    expect(isPartialOutcome(importOutcome(2, 'DocumentReference/a', failuresOf(1)))).toBe(true)
   })
 })
 
@@ -75,7 +60,7 @@ describe('summarizeBatch and isPartialBatch', () => {
       imported('a', 3, 0),
       imported('b', 2, 1),
       { _tag: 'uploadFailed', id: 'c', fileName: 'c.har', error: new Error('boom') },
-      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'no-collector' },
+      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'nothing' },
     ]
     const summary = summarizeBatch(batch)
     expect(summary.written).toBe(4) // 3 + 1
@@ -86,8 +71,7 @@ describe('summarizeBatch and isPartialBatch', () => {
 
   it('is partial when any file upload-failed or wrote partially, complete otherwise', () => {
     expect(isPartialBatch([imported('a', 3, 0)])).toBe(false)
-    // A skipped file alone is not a failure — it is the multi-file echo of
-    // NoCollectorClaims being data.
+    // A skipped file alone is not a failure — an empty review is ordinary data.
     expect(
       isPartialBatch([
         imported('a', 3, 0),
@@ -106,42 +90,16 @@ describe('summarizeBatch and isPartialBatch', () => {
 
 // Helpers
 
-/** An `imported` file result writing `resourceCount` resources with `failureCount` failures. */
-const imported = (id: string, resourceCount: number, failureCount: number): FileImportResult => ({
+/** An `imported` file result writing `attempted` resources with `failureCount` failures. */
+const imported = (id: string, attempted: number, failureCount: number): FileImportResult => ({
   _tag: 'imported',
   id,
   fileName: `${id}.har`,
-  outcome: importOutcome(
-    previewWith(resourceCount),
-    `DocumentReference/${id}`,
-    failuresOf(failureCount)
-  ),
-})
-
-/** A schema-valid `Patient` with a known id; only its count and identity matter here. */
-const patient = (id: string): FhirResource =>
-  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
-
-/** A `Preview` holding exactly `count` resources, all Patients. */
-const previewWith = (count: number): Preview =>
-  previewOf({ Patient: Array.from({ length: count }, (_, index) => patient(`pat-${index}`)) })
-
-/** A `Preview` carrying the given resources, grouped by type; other fields empty. */
-const previewOf = (
-  resourcesByType: Readonly<Record<string, readonly FhirResource[]>>
-): Preview => ({
-  _tag: 'Preview',
-  collectorTag: 'fhir-r4',
-  rootUrls: ['https://r4.example.org/baseR4'],
-  resourcesByType,
-  parseFailures: [],
-  unmatchedCount: 0,
-  bodyAbsentCount: 0,
-  totalEntries: Object.values(resourcesByType).flat().length,
+  outcome: importOutcome(attempted, `DocumentReference/${id}`, failuresOf(failureCount)),
 })
 
 /** `count` distinct write failures, shaped like the write sink's own records. */
-const failuresOf = (count: number): readonly ResourceWriteFailure[] =>
+const failuresOf = (count: number): readonly PersistFailure[] =>
   Array.from({ length: count }, (_, index) => ({
     failed: { label: 'Observation', id: `obs-${index}` },
     cause: `write ${index} rejected`,

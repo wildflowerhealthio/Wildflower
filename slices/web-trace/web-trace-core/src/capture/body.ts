@@ -7,7 +7,7 @@ import type { StoredBody } from '../trace-exchange.ts'
  *
  * @remarks
  * Structurally the sniffer's `HeadersWire` and a collector's
- * `RemoteResponseHeaders`. Restated here as the minimum this module needs, so
+ * `CollectorHttpResponseHeaders`. Restated here as the minimum this module needs, so
  * `web-trace-core` does not have to name a collector type to hash a body.
  */
 type CaptureHeaders = readonly (readonly [string, string])[]
@@ -54,7 +54,7 @@ const contentTypeOf = (headers: CaptureHeaders): string => {
  * The base64-encoded SHA-256 of `bytes`, matching FHIR's `Attachment.hash`
  * (a `base64Binary`).
  *
- * @param bytes - The raw response body, as a collector's `RemoteResponse.bytes()`
+ * @param bytes - The raw response body, as a collector's `CollectorHttpResponse.bytes()`
  *   hands it over (its backing store is pinned to a real `ArrayBuffer`, which is
  *   what `crypto.subtle.digest`'s `BufferSource` parameter requires)
  * @returns The digest, base64-encoded
@@ -105,7 +105,7 @@ const sha256Base64 = (
  * The base64 is of the raw bytes, never of a UTF-8 decode: a body that is not
  * UTF-8 decodable is stored as it arrived rather than dropped or mangled, so a
  * hash over the stored data means something. Callers must therefore read
- * `RemoteResponse.bytes()`, not `text()`.
+ * `CollectorHttpResponse.bytes()`, not `text()`.
  */
 const storeBodyVerbatim = (
   bytes: Uint8Array<ArrayBuffer>,

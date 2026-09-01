@@ -1,14 +1,11 @@
-import {
-  CollectorDescriptor,
-  type EntityDefinition,
-  ScrapingPlan,
-} from 'collector-fundamentals/model'
+import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
-import { makeRawExchangeEntity } from './entities/raw-exchange-entity.ts'
+import { makeRawExchangeResponseKind } from './response-kinds/raw-exchange-response-kind.ts'
 
 /**
  * An absolute `http(s)` URL — the page the recording starts on. Validated by
@@ -159,16 +156,16 @@ const scrapingPlan = (
   config: InstanceConfig,
   runId: string
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
-  const entity = makeRawExchangeEntity({
+  const responseKind = makeRawExchangeResponseKind({
     sessionId: sessionIdFor(config, runId),
     policy: { bodyContentTypes: config.bodyContentTypes, maxBodyBytes: config.maxBodyBytes },
   })
   return ScrapingPlan.make<FhirResource>({
     name: 'Web Trace',
-    // Widening upcast (safe: `EntityDefinition` is covariant in its resource
+    // Widening upcast (safe: `HttpResponseKind` is covariant in its resource
     // type, and `DocumentReference` is a `FhirResource`), mirroring
     // `rexall-be-well-collector`.
-    entityDefinitions: [entity] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    responseKinds: [responseKind] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[],
     stepSequence: [
       // Open the configured root URL — the step that brings the sniffer up —
       // then hand the browser to the user.

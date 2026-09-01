@@ -1,9 +1,9 @@
-import type { EntityDefinition } from 'collector-fundamentals/model'
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Duration, Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId } from 'fhir-r4/identity'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
@@ -283,7 +283,7 @@ describe('scrapingPlan', () => {
     // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method
     const hook = plan.captureProvenance
     expect(hook).toBeDefined()
-    const response = makeRemoteResponse({ id: 'req-1' })
+    const response = makeCollectorHttpResponse({ id: 'req-1' })
     const result = await Effect.runPromise(
       hook?.(FIXED_RUN_ID, response, [patient]) ?? Effect.die('hook asserted defined above')
     )
@@ -313,24 +313,26 @@ describe('scrapingPlan', () => {
 })
 
 /**
- * The plan's entities as the framework sees them — wrapped by
- * `adoptSourceIdentity`, not the raw module singletons the entity suites
- * exercise. That distinction is the point of this block: the entity suites pin
- * the portal-JSON → R4 synthesis, and these pin what the plan does to the
- * synthesized resources afterwards (re-key under a derived local id, keep the
- * portal id as `identifier[0]`, rewrite relative references).
+ * The plan's entities as the framework sees them — the module-level kinds
+ * pre-adopted with `adoptUnderRecognizedRoot`, not the raw module singletons the
+ * entity suites exercise. That distinction is the point of this block: the
+ * entity suites pin the portal-JSON → R4 synthesis, and these pin what adoption
+ * does to the synthesized resources afterwards (re-key under a derived local id,
+ * keep the portal id as `identifier[0]`, rewrite relative references).
  */
 describe('source identity', () => {
-  const entityNamed = (name: string): EntityDefinition.EntityDefinition<FhirResource> => {
-    const found = scrapingPlan(defaultConfig, FIXED_RUN_ID).entityDefinitions.find(
-      (entity) => entity.name === name
+  const responseKindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {
+    const found = scrapingPlan(defaultConfig, FIXED_RUN_ID).responseKinds.find(
+      (responseKind) => responseKind.name === name
     )
-    if (found === undefined) throw new Error(`no entity named ${name}`)
+    if (found === undefined) throw new Error(`no response kind named ${name}`)
     return found
   }
 
   const parseThrough = (name: string, url: string, body: unknown): readonly FhirResource[] =>
-    Effect.runSync(entityNamed(name).parse(makeRemoteResponse({ url, body: JSON.stringify(body) })))
+    Effect.runSync(
+      responseKindNamed(name).parse(makeCollectorHttpResponse({ url, body: JSON.stringify(body) }))
+    )
 
   const CUSTOMERS_URL = 'https://mypharmacy.shoppersdrugmart.ca/api/v1/customers/pc-uuid-1?expand=x'
   const STATUS_URL =
@@ -358,7 +360,7 @@ describe('source identity', () => {
   }
 
   const parsePrescription = (): readonly FhirResource[] =>
-    parseThrough('PrescriptionEntity', STATUS_URL, prescriptionPayload)
+    parseThrough('PrescriptionResponseKind', STATUS_URL, prescriptionPayload)
 
   it('keys each synthesized resource under a derived local id, portal id first', () => {
     const resources = parsePrescription()
@@ -398,7 +400,7 @@ describe('source identity', () => {
 
     const patientId = localResourceId(SHOPPERS_DRUGMART_SYSTEM, 'Patient', 'pt-uuid-1')
     // The subject link holds because the reference and the demographic Patient
-    // CustomerEntity emits (see below) both go through the one derivation on
+    // CustomerResponseKind emits (see below) both go through the one derivation on
     // `pt-uuid-1`.
     expect(request.subject.reference).toBe(`Patient/${patientId}`)
     expect(dispense.subject?.reference).toBe(`Patient/${patientId}`)
@@ -417,7 +419,7 @@ describe('source identity', () => {
   })
 
   it('adopts the account Patient under a distinct id from the demographic Patient, materializing the link', () => {
-    const resources = parseThrough('CustomerEntity', CUSTOMERS_URL, customerPayload)
+    const resources = parseThrough('CustomerResponseKind', CUSTOMERS_URL, customerPayload)
     const account = resources.find(
       (r) => r.resourceType === 'Patient' && r.identifier[1]?.value === 'pc-uuid-1'
     )

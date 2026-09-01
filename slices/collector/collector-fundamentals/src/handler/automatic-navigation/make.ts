@@ -91,14 +91,14 @@ interface AutomaticNavigation {
   readonly stopAutomaticNavigation: () => Effect.Effect<void, never, never>
 }
 
-const make = <TResources>({
+const make = <TParsed>({
   scrapingPlan,
   sendMessage,
   onSniffingComplete,
   onDrained,
   onDrainedGuardExpired,
 }: {
-  scrapingPlan: ScrapingPlan.ScrapingPlan<TResources>
+  scrapingPlan: ScrapingPlan.ScrapingPlan<TParsed>
   sendMessage: (message: StepOutboundMessage) => Effect.Effect<void, never, never>
   /**
    * Run after the terminal `SniffingComplete` is dispatched. The composition

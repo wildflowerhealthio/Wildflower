@@ -6,10 +6,9 @@ import { describe, expect, it, vi } from 'vite-plus/test'
 
 import { OpenMessage } from 'collector-fundamentals/bridge'
 import {
-  EntityDefinition,
+  CollectorHttpResponseKind,
   ScrapingPlan,
   type Step,
-  UrlMatch,
   WebViewSource,
 } from 'collector-fundamentals/model'
 import type { TransportAdapter } from 'effect-messaging-core'
@@ -353,7 +352,7 @@ const awaitUserDismissStep = (timeout = Duration.minutes(10)): Step.Step => ({
 const awaitSettledFor = (segment: string): Step.Step => ({
   _tag: 'AwaitPageSettled',
   name: `await people/${segment}`,
-  pattern: UrlMatch.make({ segments: [UrlMatch.literal('people'), UrlMatch.literal(segment)] }),
+  pattern: new RegExp(`/people/${segment}(?:[/?#]|$)`),
   timeout: Duration.seconds(30),
 })
 
@@ -388,17 +387,18 @@ const dispatched = (
  */
 const makeGeneratingHandler = (opts: {
   readonly sendMessage: SendMessage
-  readonly followUpSteps: EntityDefinition.EntityDefinition<Person>['followUpSteps']
+  readonly followUpSteps: CollectorHttpResponseKind.CollectorHttpResponseKind<Person>['followUpSteps']
   readonly maxGeneratedSteps?: number
 }): CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<Person> =>
   Effect.runSync(
     CollectorBridgeMessageHandler.make<Person>({
       scrapingPlan: ScrapingPlan.make<Person>({
         name: 'GeneratingPlan',
-        entityDefinitions: [
-          EntityDefinition.make<Person>({
+        responseKinds: [
+          CollectorHttpResponseKind.make<Person>({
             name: 'PersonEntity',
-            isFoundAt: (url) => /\/people\//.test(url),
+            tryRecognize: (url) =>
+              /\/people\//.test(url) ? Option.some({ specificity: 50 }) : Option.none(),
             parse: (response) =>
               Effect.map(Schema.decode(Schema.parseJson(PersonSchema))(response.text()), (p) => [
                 p,

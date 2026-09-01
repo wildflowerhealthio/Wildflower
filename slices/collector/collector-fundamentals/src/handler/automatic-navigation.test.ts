@@ -5,7 +5,7 @@ import * as fc from 'fast-check'
 import { LoggingLayerTest, numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, vi } from 'vite-plus/test'
 
-import { type Step, ScrapingPlan, UrlMatch } from 'collector-fundamentals/model'
+import { type Step, ScrapingPlan } from 'collector-fundamentals/model'
 
 /** The guard bound every test here relies on unless it overrides it per-plan. */
 const DEFAULT_DRAINED_GUARD_TIMEOUT = ScrapingPlan.DEFAULT_DRAINED_GUARD_TIMEOUT
@@ -25,7 +25,7 @@ import { settleForkedWork } from './collector-bridge-message-handler.test-helper
  * The automatic-navigation machine in isolation (not via
  * `CollectorBridgeMessageHandler`) — the composition with the response tracker
  * is covered by `collector-bridge-message-handler.test.ts`. The machine ignores
- * `entityDefinitions`, so the plan carries an empty list.
+ * `responseKinds`, so the plan carries an empty list.
  *
  * The machine *owns a breadth-first step queue* (seeded from `stepSequence`,
  * grown by `handleStepsGenerated`). Every `Navigation` **dispatches and advances
@@ -1649,7 +1649,7 @@ const makeMachine = (options: {
     make({
       scrapingPlan: ScrapingPlan.make({
         name: 'TestPlan',
-        entityDefinitions: [],
+        responseKinds: [],
         stepSequence: options.stepSequence ?? [],
         drainedGuardTimeout: options.drainedGuardTimeout,
       }),
@@ -1741,7 +1741,7 @@ const awaitRequested = (
 ): Step.AwaitPageRequestedStep => ({
   _tag: 'AwaitPageRequested',
   name,
-  pattern: UrlMatch.make({ segments: [UrlMatch.literal(segment)] }),
+  pattern: new RegExp(`/${segment}(?:[/?#]|$)`),
   timeout,
 })
 
@@ -1753,7 +1753,7 @@ const awaitSettled = (
 ): Step.AwaitPageSettledStep => ({
   _tag: 'AwaitPageSettled',
   name,
-  pattern: UrlMatch.make({ segments: [UrlMatch.literal(segment)] }),
+  pattern: new RegExp(`/${segment}(?:[/?#]|$)`),
   timeout,
 })
 

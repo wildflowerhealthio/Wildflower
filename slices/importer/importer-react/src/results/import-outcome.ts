@@ -1,66 +1,50 @@
-import type { ResourceWriteFailure } from 'fhir-r4/clients'
-import type { Preview } from 'importer-core'
+import type { PersistFailure } from 'importer-fundamentals'
 
 /**
  * What a confirmed import wrote, and what it could not — the value the results
  * view reads and the `partial` decision folds over.
  *
  * @remarks
- * The write half (`importer-core`'s `persistPreview`) returns only the resources
- * it could not write, as data on a `never` error channel. That is the whole
- * failure record; everything the results view shows is derived from it and the
- * preview it wrote. `attempted` is the number of resources the preview held,
- * `failures` the ones the store rejected after their retries, and `written` the
- * difference — never re-counted off the wire, so a write that succeeded but whose
- * response the stub mangled cannot be mistaken for a failure. `sourceRef` is the
- * HAR-archive reference every written resource's `meta.source` points back to, so
- * the results view can name the provenance the confirm secured.
+ * The write half (the format descriptor's `persist`) returns only the resources
+ * it could not write, as data. Everything the results view shows derives from
+ * that failure record and the count of what the review chose to write —
+ * `written` is never re-counted off the wire, so a write that succeeded but
+ * whose response the stub mangled cannot be mistaken for a failure.
  *
  * @packageDocumentation
  */
 
 /** The tally a confirmed import resolves with. */
 interface ImportOutcome {
-  /** How many resources the preview would write. */
+  /** How many resources the confirmed review chose to write. */
   readonly attempted: number
   /** How many were written, i.e. `attempted` minus the failures. */
   readonly written: number
   /** The resources the store could not accept, verbatim from the write sink. */
-  readonly failures: readonly ResourceWriteFailure[]
+  readonly failures: readonly PersistFailure[]
   /** The `DocumentReference/<id>` every written resource's `meta.source` names. */
   readonly sourceRef: string
 }
 
 /**
- * How many resources a preview would write, across every `resourceType`.
+ * Fold a written count and its write failures into an {@link ImportOutcome}.
  *
- * @param preview - A claimed preview
- * @returns The flattened count of `resourcesByType`
- *
- * @remarks
- * The single source of "how many" both the confirm button's affordance and an
- * outcome's `attempted` read from, so the two can never disagree about whether a
- * preview has anything to write.
- */
-const previewResourceCount = (preview: Preview): number =>
-  Object.values(preview.resourcesByType).reduce((total, list) => total + list.length, 0)
-
-/**
- * Fold a preview and its write failures into an {@link ImportOutcome}.
- *
- * @param preview - The preview that was written
+ * @param attempted - How many resources the chosen responses decoded to and the
+ *   write was attempted for
  * @param sourceRef - The archive reference stamped onto every written resource
  * @param failures - The write sink's failures, as data
  * @returns The tally, with `written` derived as `attempted - failures.length`
  */
 const importOutcome = (
-  preview: Preview,
+  attempted: number,
   sourceRef: string,
-  failures: readonly ResourceWriteFailure[]
-): ImportOutcome => {
-  const attempted = previewResourceCount(preview)
-  return { attempted, written: attempted - failures.length, failures, sourceRef }
-}
+  failures: readonly PersistFailure[]
+): ImportOutcome => ({
+  attempted,
+  written: attempted - failures.length,
+  failures,
+  sourceRef,
+})
 
 /**
  * Whether an outcome is a partial import.
@@ -81,14 +65,14 @@ const isPartialOutcome = (outcome: ImportOutcome): boolean => outcome.failures.l
  * failure.
  *
  * @remarks
- * The read half's two non-writing outcomes, plus the rare unreadable file: a
- * `no-collector` file was recognized by nobody, a `nothing` file was recognized
- * but matched no resources, and an `unreadable` file did not parse as a HAR at
- * all. None is a failure — they are the multi-file echo of `NoCollectorClaims`
- * being data, not an error — but each is reported so a reader knows why a file
- * they picked wrote nothing.
+ * The read half's non-writing outcome, plus the rare unreadable file: a
+ * `nothing` file previewed no resources to import (its traffic matched no kind,
+ * or matched but decoded nothing — one collapsed outcome under per-URL
+ * recognition), and an `unreadable` file did not parse as a HAR at all. Neither
+ * is a failure — an empty preview is ordinary data, not an error — but each is
+ * reported so a reader knows why a file they picked wrote nothing.
  */
-type SkipReason = 'no-collector' | 'nothing' | 'unreadable'
+type SkipReason = 'nothing' | 'unreadable'
 
 /**
  * What a single file in a confirmed batch resolved to.
@@ -101,7 +85,7 @@ type SkipReason = 'no-collector' | 'nothing' | 'unreadable'
  * `DocumentReference` could not be uploaded, so none of its resources were
  * written and none could be stamped; `skipped` is a file that had nothing to
  * write. `fileName` names the file in every case, and `id` is the picked file's
- * stable identity, carried from its `ReadEntry` for a React `key` since two files
+ * stable identity, carried from its `FileReadOutcome` for a React `key` since two files
  * in a batch can share a name.
  */
 type FileImportResult =
@@ -169,8 +153,8 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
  * The `collectImportSummary` semantics, lifted to the batch: **any** failure —
  * a file whose archive would not upload, or a single resource the store
  * rejected — makes the whole batch partial. A `skipped` file is not a failure
- * (it is the multi-file echo of `NoCollectorClaims` being data), so it does not
- * make a batch partial on its own.
+ * (an empty preview is ordinary data), so it does not make a batch partial on
+ * its own.
  */
 const isPartialBatch = (batch: BatchOutcome): boolean =>
   batch.some(
@@ -187,7 +171,6 @@ export {
   importOutcome,
   isPartialBatch,
   isPartialOutcome,
-  previewResourceCount,
   type SkipReason,
   summarizeBatch,
 }

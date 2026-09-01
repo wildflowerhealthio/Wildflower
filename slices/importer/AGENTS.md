@@ -1,84 +1,108 @@
 # AGENTS.md — slices/importer
 
-Turns an **offline** capture — an uploaded `.har` file — into FHIR resources in
-the on-device store, with no live sniffer. It is the archive-driven counterpart
-of the `collector` slice: where a collector runs a `ScrapingPlan` against a
-webview, the importer replays a static archive through a collector's **offline
-entities** and previews the result before writing anything.
+The **importer**: the user-facing offering that turns a file the user picked
+into FHIR resources in the on-device store, reviewed per-URL first and persisted
+only on an explicit confirm. The slice is the app-facing flow plus per-file-format
+import pipelines — HAR today; a future CSV or DICOM importer joins as a sibling
+pipeline wrapping a pure decode dialect, never touching `slices/http-extraction`.
+The HAR importer is the one format whose contents _are_ HTTP traffic, so it alone
+reaches into the `http-extraction` slice to recognize which registered response
+kinds claim each archived response and to extract with them.
+
+The slice mirrors the collector slice's shape: a resource-agnostic
+**fundamentals** package under a **format binding** (core + React) under a
+**shell**. See the [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
+before adding a format.
 
 Part of the offline FHIR HAR importer epic (#489).
 
 ## Package roles
 
-- **`fhir-r4-importer`** — the first per-source **importer project**: the FHIR
-  R4 entities shared by the live `fhir-r4-client-collector` plan and the
-  archive importer, plus the offline surface (`offlineEntities`,
-  `fhirR4Recognizer`, `fhirRootOf`) an archive import replays with. Pure like a
-  `-core`; the collector package depends on it, never the reverse. See its
-  [AGENTS.md](./fhir-r4-importer/AGENTS.md). Sibling projects for the other
-  collectors (`shoppers-drugmart-importer`, `rexall-be-well-importer`,
-  `web-trace-importer`) follow the same shape.
-- **`importer-core`** — the pure layer: read a HAR archive, detect which
-  registered collector understands its traffic, replay that collector's offline
-  entities into an `ImportPreview`, and — as a separate, opt-in step — persist
-  the previewed resources. No DOM, no `fs`, no React. See its
-  [AGENTS.md](./importer-core/AGENTS.md).
-- **`importer-react`** — the browser UI adapter: `ImporterScreen`, the whole
-  preview-then-confirm flow a host app mounts. It picks one or more HARs (local
-  files dropped or chosen as a batch, or a single archive already on the device's
-  FHIR server), previews each through `runHarImport` in one combined view writing
-  nothing, and — only on an explicit confirm — uploads each local file's archive
-  and persists its resources through `persistPreview`, best-effort so one file's
-  failure does not stop the rest. See its
-  [AGENTS.md](./importer-react/AGENTS.md).
+Each package's own AGENTS.md is the authority on its shape; the roles:
+
+- **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
+  (resource-agnostic, format-agnostic) — the `FileImporterDescriptor` contract,
+  the pure per-response `Review` model, and the structural `PersistFailure`.
+- **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
+  `harImporterDescriptor` for format `'har'`: HAR decode, the pre-adopted FHIR
+  response-kind pool, and the FHIR persist sink.
+- **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
+  `HarSettingsPicker` (a no-op today) and the interactive per-URL `ReviewBody`,
+  presentation over the pure `Review` model.
+- **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
+  `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
+  the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry.
 
 A host that provides the FHIR write client and the authed runner sits above
 `importer-react` and mounts `ImporterScreen`.
 
-## Why this slice exists
+## Why this slice is layered this way
 
-The import is assembled from pieces that each already have a home, and the
-assembly belongs to neither of them:
+The HAR import is assembled from pieces that each already have a home, and the
+assembly belongs to none of them:
 
-- **not `collector-fundamentals`** — that package owns the FHIR-agnostic offline
-  machinery (`Replay.replayEntities`, `Recognizer.resolve`) but names no archive
-  format and no resource type.
-- **not `fhir-r4-importer`** — that package owns the FHIR R4 offline _surface_
-  (`offlineEntities`, `fhirR4Recognizer`, `fhirRootOf`) but knows nothing about
-  HAR or about a closed registry of collectors to choose between.
-- **not `web-trace-core`** — that package owns the HAR codec but is deliberately
-  collector-agnostic.
+- **`http-extraction-fundamentals`** (in `slices/http-extraction`) owns the
+  FHIR-agnostic machinery (`Extraction.routeTo` / `recognize` / `parseWith`,
+  `HttpResponseKind`, `Specificity`) but names no archive format and no resource
+  type.
+- **`fhir-r4-source`** (same slice) owns the FHIR R4 source descriptor
+  (`fhirR4Source`, its `responseKinds` pre-adopted) but knows nothing about HAR
+  or about a registry of formats.
+- **`web-trace-core`** (in `slices/web-trace`) owns the HAR codec but is
+  deliberately consumer-agnostic.
 
-The importer is the one place those three meet: HAR text in, a detected
-collector, a replayed preview, and an opt-in write out.
+`har-importer-core` is the one place those three meet: HAR text in, a per-URL
+recognition against the FHIR pool, and an opt-in write out. `importer-fundamentals`
+sits above `http-extraction` and below every binding, exactly as
+`collector-fundamentals` does.
 
 ## Guardrails
 
-- **The read half never writes.** `runHarImport` requires no services — in
-  particular not `FhirR4ResourcesHttpApiClient` — so a preview is a pure function
-  of the archive text and the write client is unreachable from it by
-  construction. Writing is `persistPreview`'s separate step, gated on the user
-  confirming the preview. This split is the whole point of a preview-then-confirm
-  flow; do not collapse it.
-- **The registry is closed and compile-time.** `REGISTERED_COLLECTORS` is a
-  literal tuple, mirroring `collector-registry`'s `descriptors`. Registering a
-  collector is one static edit. Only `fhir-r4` is registered this epic.
-- **The slice imports only the accepted seams.** `importer-core` depends on
-  `web-trace-core` (HAR codec + `withMetaSource`), `collector-fundamentals`
-  (replay + recognizer), the per-source importer projects (`fhir-r4-importer`'s
-  offline surface), and `fhir-r4` (resources + the persist sink). It re-derives
-  none of them. An importer project depends on `collector-fundamentals` and the
-  resource/dialect packages it decodes with — never on a `*-client-collector`
-  (the dependency points the other way) and never on `importer-core`.
+- **The importer is per-URL, not per-archive.** Each response is recognized
+  independently against the flat `pool` (highest specificity wins), so a mixed
+  archive extracts every recognized URL — a stray FHIR URL inside a portal
+  capture extracts, instead of being quarantined to one winning source. Nothing
+  claims a whole archive for a single source; each response carries its own
+  recognition.
+- **The read half never writes.** `decode` requires no services — in particular
+  not `FhirR4ResourcesHttpApiClient` — so reaching a review is a pure function of
+  the file text and the write client is unreachable from it by construction.
+  Writing is the descriptor's `persist`, gated on the user confirming a review.
+  Parse now runs at **confirm**, not preview (`Review.chosen` decodes only the
+  chosen responses). This split is the whole point; do not collapse it.
+- **The registry is closed and compile-time.** `importer-react`'s `formatRegistry`
+  is a literal `{ har: … } as const`; its `FormatRegistration` requires all three
+  parts (descriptor, `SettingsPicker`, `ReviewBody`), so a format missing one
+  fails to compile. Only `har` is registered so far. Unlike the collector slice
+  there is no separate registry package — the importer has no HTTP wire union to
+  derive.
+- **The slice imports only the accepted seams.** `har-importer-core` depends on
+  `web-trace-core` (HAR codec + `withMetaSource`), `http-extraction-fundamentals`
+  (extraction + recognition), `fhir-r4-source` (the pre-adopted pool),
+  `importer-fundamentals` (the contract), and `fhir-r4` (resources + the persist
+  sink). It re-derives none of them. Nothing here imports from `slices/collector`,
+  in code or in concept.
+- **A future file format gets its own binding, not a widened HAR one.** A CSV or
+  DICOM import decodes a _document_: its decode belongs in a pure dialect package
+  (the way rexall's carebook dialect and `web-trace-core`'s codec work), wrapped
+  here by a sibling `*-importer-core` binding implementing the same
+  `FileImporterDescriptor`. The dialect sits below both transports, which is what
+  keeps the graph acyclic.
 
 ## References
 
-- [importer-core AGENTS.md](./importer-core/AGENTS.md) — module layout, the
-  detect→replay→preview→persist pipeline, and traps.
-- [slices/collector/AGENTS.md](../collector/AGENTS.md) — the live counterpart,
-  and `collector-fundamentals/replay` (the offline runner this drives).
-- [fhir-r4-importer AGENTS.md](./fhir-r4-importer/AGENTS.md) — the offline
-  surface (`offlineEntities`, `fhirR4Recognizer`, `fhirRootOf`).
+- [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
+  — the checklist for a new format binding.
+- [importer-fundamentals AGENTS.md](./importer-fundamentals/AGENTS.md) — the
+  descriptor contract, the `Review` model, and `PersistFailure`.
+- [har-importer-core AGENTS.md](./har-importer-core/AGENTS.md) — the HAR binding's
+  decode/pool/sink.
+- [har-importer-react AGENTS.md](./har-importer-react/AGENTS.md) — the interactive
+  per-URL review.
+- [importer-react AGENTS.md](./importer-react/AGENTS.md) — the shell + registry
+  and the pick-review-confirm flow.
+- [slices/http-extraction/AGENTS.md](../http-extraction/AGENTS.md) — the
+  vocabulary and source packages the HAR importer recognizes and extracts with.
 - [web-trace-core AGENTS.md](../web-trace/web-trace-core/AGENTS.md) — the HAR
-  codec (`fromHarJson`, `ArchivedExchange`) and `withMetaSource`.
+  codec (the `HttpArchive` namespace) and `withMetaSource`.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

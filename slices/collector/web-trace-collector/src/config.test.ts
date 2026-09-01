@@ -1,5 +1,5 @@
-import { makeRemoteResponse } from 'collector-fundamentals/test-helpers'
-import { Arbitrary, Effect, Schema } from 'effect'
+import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
+import { Arbitrary, Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -138,13 +138,29 @@ describe('scrapingPlan', () => {
 
   it('registers exactly one entity, and it is the catch-all recorder', () => {
     const plan = scrapingPlan(defaultConfig, 'run-1')
-    expect(plan.entityDefinitions.map((entity) => entity.name)).toEqual(['RawExchangeEntity'])
+    expect(plan.responseKinds.map((responseKind) => responseKind.name)).toEqual([
+      'RawExchangeResponseKind',
+    ])
     fc.assert(
       fc.property(fc.webUrl(), (url) => {
-        expect(plan.entityDefinitions.every((entity) => entity.isFoundAt(url))).toBe(true)
+        expect(
+          plan.responseKinds.every((responseKind) => Option.isSome(responseKind.tryRecognize(url)))
+        ).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
+  })
+
+  it('recognizes even a URL `new URL` rejects — the recorder never throws', () => {
+    const plan = scrapingPlan(defaultConfig, 'run-1')
+    // Relative / malformed strings the sniffer might report: `tryRecognize` must
+    // still yield `Some` (a miss would fire CancelSnifferRequest and abort the
+    // user's browsing), and must never throw parsing them.
+    for (const url of ['not a url', '/relative/path', '', 'http://[oops']) {
+      expect(
+        plan.responseKinds.every((responseKind) => Option.isSome(responseKind.tryRecognize(url)))
+      ).toBe(true)
+    }
   })
 
   it('gives each run its own session id, so two runs are two recordings', async () => {
@@ -153,9 +169,11 @@ describe('scrapingPlan', () => {
     // recording entity carries. The id derives from the framework's run id, so
     // distinctness is per *run* — the framework mints a fresh one per build.
     const resourceIdFromABuildFor = async (runId: string): Promise<string | undefined> => {
-      const [entity] = scrapingPlan(defaultConfig, runId).entityDefinitions
-      if (entity === undefined) throw new Error('unreachable: one entity asserted above')
-      const [resource] = await Effect.runPromise(entity.parse(makeRemoteResponse({ id: 'req-1' })))
+      const [responseKind] = scrapingPlan(defaultConfig, runId).responseKinds
+      if (responseKind === undefined) throw new Error('unreachable: one entity asserted above')
+      const [resource] = await Effect.runPromise(
+        responseKind.parse(makeCollectorHttpResponse({ id: 'req-1' }))
+      )
       return resource?.id ?? undefined
     }
 

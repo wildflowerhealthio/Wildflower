@@ -25,9 +25,9 @@ import {
  * by construction — the viewer must never list an archive and the importer must
  * never list a trace.
  *
- * Nothing here parses HAR. The bytes are carried, hashed, and handed back
- * exactly as they arrived; reading them is `src/har/`'s job, through
- * `HarFromJson` and the `ArchivedSessionFromHar` projection.
+ * Nothing here parses the archive. The bytes are carried, hashed, and handed
+ * back exactly as they arrived; reading them is `src/har/`'s job, through
+ * `HarFromJson` and the `HttpArchive.LogFromHarJson` projection.
  *
  * @packageDocumentation
  */

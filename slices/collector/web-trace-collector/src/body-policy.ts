@@ -1,5 +1,5 @@
-import type { Response } from 'collector-fundamentals/model'
 import { Effect, Encoding } from 'effect'
+import type { HttpResponse } from 'http-extraction-fundamentals'
 import type { TraceBody } from 'web-trace-core'
 import { type BodyDigestUnavailable, contentTypeOf, sha256Base64 } from 'web-trace-core/capture'
 
@@ -89,7 +89,7 @@ interface BodyPolicy {
  * changes to get it back.
  */
 const decideBody = (
-  response: Response.RemoteResponse,
+  response: HttpResponse.HttpResponse,
   policy: BodyPolicy
 ): Effect.Effect<TraceBody, BodyDigestUnavailable> =>
   Effect.gen(function* () {

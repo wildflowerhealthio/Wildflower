@@ -14,24 +14,26 @@ that depends on `collector-fundamentals` only.
 
 ## What you're building
 
-A collector's **entities** (and, when it supports archive import, its offline
-surface) live in a sibling **importer project** under `slices/importer/` —
-`fhir-r4-importer` is the worked example — so the browser-driving collector and
-the archive importer share one decode. The collector package depends on its
-importer project, never the reverse.
+A source's decode lives in its **source package** under
+`slices/http-extraction/` — `fhir-r4-source` is the worked example — as
+`HttpResponseKind`s (and, when the source supports archive import, a
+`SourceDescriptor` like `fhirR4Source` whose pre-adopted kinds a HAR importer's
+pool flattens).
+The collector package layers browser-driving navigation and persistence on top
+of those entities; it depends on its source package, never the reverse.
 
-| Piece           | Where                                       | Contract                                                       |
-| --------------- | ------------------------------------------- | -------------------------------------------------------------- |
-| Entities        | `slices/importer/*-importer/src/entities/`  | `EntityDefinition.make` — recognize + parse one response shape |
-| Config          | `*-client-collector/src/config.ts`          | `Schema.TaggedStruct` + fast-check arbitraries                 |
-| Scraping plan   | `*-client-collector/src/config.ts`          | `ScrapingPlan.make` — steps (leading `Open`), entities         |
-| Persist sink    | `*-client-collector/src/config.ts`          | import `fhir-r4`'s `persistResources` — don't write your own   |
-| Provenance      | `*-client-collector/src/config.ts`          | one `captureProvenance:` line on the plan (see step 6)         |
-| Source identity | `*-client-collector/src/config.ts`          | wrap the plan in `adoptSourceIdentity` (see step 7)            |
-| Descriptor      | `*-client-collector/src/config.ts`          | `CollectorDescriptor.make` — bundles all of the above          |
-| Config form     | `*-client-collector/src/*-config-form.tsx`  | `ConfigFormProps<Config>`                                      |
-| Registry entry  | `collector-registry/src/registry.ts`        | append to `descriptors`                                        |
-| Form entry      | `collector-react/src/forms/config-form.tsx` | add to `configForms`                                           |
+| Piece           | Where                                                 | Contract                                                                          |
+| --------------- | ----------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Response kinds  | `slices/http-extraction/*-source/src/response-kinds/` | `HttpResponseKind.make` — recognize + parse one response shape                    |
+| Config          | `*-client-collector/src/config.ts`                    | `Schema.TaggedStruct` + fast-check arbitraries                                    |
+| Scraping plan   | `*-client-collector/src/config.ts`                    | `ScrapingPlan.make` — steps (leading `Open`), entities                            |
+| Persist sink    | `*-client-collector/src/config.ts`                    | import `fhir-r4`'s `persistResources` — don't write your own                      |
+| Provenance      | `*-client-collector/src/config.ts`                    | one `captureProvenance:` line on the plan (see step 6)                            |
+| Source identity | `*-source/src/response-kinds/` + `config.ts`          | each kind's `tryRecognize` mints its `source`; adopt at module scope (see step 7) |
+| Descriptor      | `*-client-collector/src/config.ts`                    | `CollectorDescriptor.make` — bundles all of the above                             |
+| Config form     | `*-client-collector/src/*-config-form.tsx`            | `ConfigFormProps<Config>`                                                         |
+| Registry entry  | `collector-registry/src/registry.ts`                  | append to `descriptors`                                                           |
+| Form entry      | `collector-react/src/forms/config-form.tsx`           | add to `configForms`                                                              |
 
 ## 1. Scaffold the client-collector package
 
@@ -48,33 +50,60 @@ Run `vp install` after adding the package so the workspace picks it up.
 
 ## 2. Define entities
 
-An `EntityDefinition` (`collector-fundamentals/model`) is a recipe the handler
-uses to _recognize_ a response by URL and _decode_ it to resources:
+An `HttpResponseKind` (`http-extraction-fundamentals`) is a recipe the routing loop
+uses to _recognize_ a response by URL and _decode_ it to resources. Recognition,
+the resource root, and the source identity are all one function — `tryRecognize`:
 
 ```ts
-const patientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMatch.id] })
+const profileUrl = UrlMatch.make({ segments: [UrlMatch.literal('profile'), UrlMatch.id] })
 
-const PatientEntity = EntityDefinition.make({
-  name: 'PatientEntity',
-  isFoundAt: (url) => patientUrl.test(url),
+const ProfileResponseKind = HttpResponseKind.make({
+  name: 'ProfileResponseKind',
+  // URL-gated by this kind's own pattern; on a match it mints the portal source.
+  tryRecognize: (url) =>
+    pipe(
+      profileUrl(url),
+      Option.map(() => ({ specificity: Specificity.PORTAL, source: { system: MY_SOURCE_SYSTEM } }))
+    ),
   parse: (response) => Effect.map(decode(extractJson(response.text())), (p) => [p]),
 })
 ```
 
-- **`UrlMatch.make({ segments, end? })`** builds the recognizer regex from named
-  path segments (`UrlMatch.literal('Patient')`, `UrlMatch.id`) so you don't
-  hand-write boundary regexes. It's unanchored and tolerates a base path between
-  host and segments (real servers mount under `/baseR4`, `/fhir/R4`, …).
-- **Keep patterns disjoint — first `isFoundAt` match wins.** The handler
-  consults entities in list order; a broad pattern earlier shadows a later one.
-  Where a list-by-query URL (`…/Observation?subject=…`) and a single-resource
-  URL (`…/Observation/123`) would both match, pin the list pattern with
-  `end: 'mustHaveQuery'` so the two are structurally disjoint.
+- **`UrlMatch.make({ segments, end? })`** returns the recognizer **function**
+  itself — `(url) => Option<root>`, where the `Some` carries the captured
+  `https?://<authority><base path>` prefix. Built from named path segments
+  (`UrlMatch.literal('profile')`, `UrlMatch.id`) so you don't hand-write boundary
+  regexes; it is `^`-anchored, requires an `http(s)` scheme, and tolerates a base
+  path between host and segments (real servers mount under `/baseR4`, `/fhir/R4`,
+  …). Recognition and root are one read, so they can never disagree.
+- **`tryRecognize(url)` returns `Option<RecognizedUrlData>`** — `None` when the
+  kind does not claim the URL, `Some { specificity, source? }` when it does. Draw
+  `specificity` from the `Specificity` tiers (a named portal is `PORTAL`, a
+  protocol-generic FHIR server is `PROTOCOL`). `source` is the identity this
+  kind's resources key under — `{ system }` for a portal whose references are
+  relative, `{ system, baseUrl }` when the source spells its references
+  absolutely (a FHIR source uses `fhir-r4-source`'s `recognizeFhirRoot`, which
+  mints `{ system: root, baseUrl: root }` from the matcher's own capture). Omit
+  `source` only for a recorder that records but does not import (`web-trace`).
+- **Keep patterns disjoint — within one collector every kind sits at the same
+  specificity tier, so routing falls back to list order and a broad pattern
+  shadows a later one.** Where a list-by-query URL (`…/Observation?subject=…`)
+  and a single-resource URL (`…/Observation/123`) would both match, pin the list
+  pattern with `end: 'mustHaveQuery'` so the two are structurally disjoint.
+  Specificity only disambiguates the importer's cross-source pool, never
+  intra-plan overlap.
+- **⚠ Do not make a kind claim every URL.** Under highest-specificity routing a
+  kind that returns `Some` for every URL would swallow every response (its `parse`
+  then failing), silently killing the collector past the by-name test safety
+  nets. A recorder catch-all (`web-trace`) is the one deliberate exception, and it
+  is the sole kind in its plan.
 - **`parse` returns an `Effect`** (`ParseError` in the error channel), not an
   `Either`, so an entity can `Effect.logInfo` dropped entries. Emit `[]` for a
   resource you can't use (e.g. a null id) rather than failing. `parse` stays a
   **pure decode** — it never emits navigation.
-- **`followUpSteps` (optional) is the reactive-crawl seam.** A pure, synchronous
+- **`followUpSteps` (optional) is the reactive-crawl seam**, added by
+  `collector-fundamentals`' `CollectorHttpResponseKind` (an entity that crawls
+  is built with `CollectorHttpResponseKind.make` instead). A pure, synchronous
   `(resources, response) => Step[]`: every time this entity's `parse` succeeds,
   the returned steps are appended to the back of the navigation queue (open every
   page a parsed list/table links, resolving relative links against
@@ -111,7 +140,7 @@ recognize and _how_ to walk the source. It's a factory over config:
 const scrapingPlan = (config: InstanceConfig): ScrapingPlan.ScrapingPlan<FhirResource> =>
   ScrapingPlan.make({
     name: 'FHIR R4',
-    entityDefinitions: [PatientEntity, ObservationEntity, ObservationListEntity],
+    responseKinds: [PatientResponseKind, ObservationResponseKind, ObservationListResponseKind],
     // The first `Open` step is what builds the sniffer webview.
     stepSequence: [
       {
@@ -226,7 +255,7 @@ const scrapingPlan = (
   _runId: string
 ): ScrapingPlan.ScrapingPlan<FhirResource> =>
   ScrapingPlan.make<FhirResource>({
-    entityDefinitions: [PatientEntity, ObservationEntity],
+    responseKinds: [PatientResponseKind, ObservationResponseKind],
     captureProvenance,
     …
   })
@@ -259,55 +288,62 @@ That is the whole wiring. The framework owns everything else:
 ## 7. Source identity: key every resource under the system it came from
 
 A resource is stored under its `id`, so the id has to mean the same thing across
-sources. Declare the absolute URI that names your source, and end the plan
-factory by wrapping the plan:
+sources. The identity is minted by each kind's `tryRecognize` (step 2); step 7 is
+just **applying adoption once at module scope** by mapping the kind list through
+`adoptUnderRecognizedRoot`. Declare the source URI in a `source-system.ts`
+module, and widen-then-map:
 
 ```ts
-import { adoptSourceIdentity } from 'fhir-r4/identity'
+import { adoptUnderRecognizedRoot } from 'fhir-r4/identity'
 
-/** Persisted wire format: the hash domain and the `Identifier.system`. */
-const MY_SOURCE_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/my-portal'
+// source-system.ts — persisted wire format: the hash domain and `Identifier.system`.
+export const MY_SOURCE_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/my-portal'
 
-const scrapingPlan = (
-  config: InstanceConfig,
-  _runId: string
-): ScrapingPlan.ScrapingPlan<FhirResource> => {
-  const plan = ScrapingPlan.make<FhirResource>({ … })
-  return adoptSourceIdentity({ system: MY_SOURCE_SYSTEM })(plan)
-}
+// config.ts — adopted once at module load, not per plan build.
+const responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = (
+  [ProfileResponseKind, MedicationListResponseKind] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[]
+).map(adoptUnderRecognizedRoot)
+
+const scrapingPlan = (config: InstanceConfig, _runId: string): ScrapingPlan.ScrapingPlan<FhirResource> =>
+  ScrapingPlan.make<FhirResource>({ responseKinds, … })
 ```
 
-That is the whole wiring — entities stay unaware, and their suites keep testing
-the un-adopted decode. Every resource the plan parses gets a derived `wf-…` id,
-keeps the source's own id as `identifier[0]`, and has its references rewritten to
-match. See the [Source Identity Explanation](./Source%20Identity%20Explanation.md)
-for the derivation and the field table.
+Each kind's `parse` output is adopted under the identity that kind's own
+`tryRecognize` minted for the response's URL — read verbatim, no source passed
+in. Every adopted resource gets a derived `wf-…` id, keeps the source's own id as
+`identifier[0]`, and has its references rewritten to match. See the
+[Source Identity Explanation](./Source%20Identity%20Explanation.md) for the
+derivation and the field table.
 
-Three choices to make:
+Three things to get right:
 
-- **The system URI.** For a FHIR source, the **configured** root URL (never one
-  recovered from a response). For a scraper, a Wildflower-minted `sid` URI naming
-  the portal. It is persisted wire format: changing it orphans everything already
-  imported.
-- **`baseUrl`.** Set it (usually to the same value) when the source spells its
-  own references absolutely, so `https://host/base/Patient/1` rewrites like
-  `Patient/1`. Leave it off for a source whose references are relative.
+- **The `source` each kind mints (step 2).** For a FHIR source, `{ system: root,
+baseUrl: root }` from `recognizeFhirRoot` (the root of the response's own URL —
+  a live capture from the configured server keys byte-identically to an archive
+  import, and a cross-origin redirect keys under the redirect target). For a
+  scraper, a Wildflower-minted `sid` URI naming the portal, `{ system: SID }` with
+  no `baseUrl` because references are relative. It is persisted wire format:
+  changing it orphans everything already imported.
+- **Widen before you map.** `adoptUnderRecognizedRoot` refuses a kind whose
+  declared output is narrower than the whole `FhirResource` union — adoption
+  widens to `FhirResource` and cannot be declared not to. Widen the list to
+  `HttpResponseKind<FhirResource>[]` before the `.map` (`fhir-r4-source`
+  declares its input tuple that wide). The map runs at **module scope**,
+  source-parameter-free, so two plans from one config share the frozen array by
+  identity and the per-collector deep-equal suites stay honest — there is no memo.
 - **Nothing for a recorder.** A collector that _mints_ its resources locally
-  rather than importing them — `web-trace-collector` — must not be wrapped; its
-  ids already come from the same derivation at its codec, and wrapping would hash
-  a hash.
+  rather than importing them — `web-trace-collector` — mints no `source` and is
+  never mapped through the combinator; its ids already come from the same
+  derivation at its codec, and adopting would hash a hash.
 
-Build the plan as `ScrapingPlan.make<FhirResource>`, as both production
-collectors do. `adoptSourceIdentity` rejects a plan whose entities declare a
-narrower element type at compile time: adoption widens to `FhirResource` and
-cannot be declared not to, so a combinator that handed such a plan back unchanged
-would be claiming a type it does not deliver. The error names the constraint —
-widen the entity list, don't work around it.
+A `parse` on a URL the kind's `tryRecognize` returns `None` for (or `Some` with
+no `source`) **fails** with a `ParseError` naming the reason — routing only ever
+hands a kind a URL it recognized, so this guards a misconfiguration, not a normal
+response.
 
 If you later add a `followUpSteps` generator that needs the source's id to build
-a source-server URL, read it back with `originalIdOf(source, resource)` — under an
-adopted plan the generator receives adopted resources, so `resource.id` is the
-local id.
+a source-server URL, read it back with `originalIdOf(source, resource)` — the
+generator receives adopted resources, so `resource.id` is the local id.
 
 ## 8. Descriptor + package index
 
@@ -385,9 +421,10 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 
 - **Config** — decode `defaultConfig`; round-trip `Arbitrary.make(InstanceConfig)`;
   reject malformed fields (table-driven).
-- **Entities** — `isFoundAt` matches the right URLs and _rejects_ the
-  neighbours (the disjointness that step 2's ordering depends on); `parse`
-  decodes a fixture and drops unusable entries.
+- **Entities** — `tryRecognize` is `Some` for the right URLs (with the right
+  `specificity` and `source`) and `None` for the neighbours (the disjointness
+  that step 2's routing depends on); `parse` decodes a fixture and drops unusable
+  entries.
 - **Scraping plan** — `stepSequence` (starting with the leading `Open`) holds
   the exact URLs (encoding, `?_format=json`, disjoint query
   patterns).

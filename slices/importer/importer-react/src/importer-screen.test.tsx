@@ -86,12 +86,12 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
-    // The three previewed resources are named in the preview
-    expect(screen.getByRole('heading', { name: /Patient/ })).toBeDefined()
-    expect(screen.getByRole('heading', { name: /Observation/ })).toBeDefined()
+    // The two recognized responses are named in the interactive review (per URL).
+    expect(screen.getByText(/\/Patient\/pat-7/)).toBeDefined()
+    expect(screen.getByText(/\/Observation\?/)).toBeDefined()
 
-    // Act — confirm
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    // Act — confirm (two chosen responses → one Patient + two Observations written)
+    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
 
     // Assert — writes appear only now
     await waitFor(() => {
@@ -110,7 +110,7 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -143,7 +143,7 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -172,7 +172,7 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
 
     // Assert — a partial result: the Patient wrote, both Observations are listed
     // as failures (retry backoff runs on the real clock, so allow for it)
@@ -200,7 +200,7 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
 
     // Assert — a partial result naming the failed file and showing the underlying
     // cause rather than hiding it, and the failed archive means no resource wrote.
@@ -225,12 +225,12 @@ describe('ImporterScreen', () => {
     ])
     await waitFor(() => {
       // Two files × three resources previewed under one confirm.
-      expect(screen.getByRole('button', { name: /Import 6 resources/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: /Import 4 responses/ })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
 
     // Confirm the whole batch
-    await userEvent.click(screen.getByRole('button', { name: /Import 6 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 responses/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -290,7 +290,7 @@ const searchsetOf = (...resources: readonly unknown[]): Record<string, unknown> 
 })
 
 /**
- * A HAR the `fhir-r4` collector recognizes: a Patient read and an Observation
+ * A HAR the `fhir-r4` importer recognizes: a Patient read and an Observation
  * searchset off one server, built through `web-trace-core`'s own `emitHar` so it
  * is shaped exactly like a real capture. Previews to 1 Patient + 2 Observations.
  */

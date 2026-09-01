@@ -28,9 +28,9 @@ machinery lives in `slices/emr/fhir-stu3-as-r4`.
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'rexall', email, password }`) with
   fast-check arbitraries, `defaultConfig`, the login-and-prescriptions
   `scrapingPlan`, and the `RexallCollectorDescriptor`.
-- `src/entities/profile-entity.ts` — recognizes `…/profile/v2/me` and synthesizes
+- `src/response-kinds/profile-response-kind.ts` — recognizes `…/profile/v2/me` and synthesizes
   an R4 `Patient` from the (non-FHIR) carebook profile JSON.
-- `src/entities/medication-list-entity.ts` — recognizes the prescriptions page's
+- `src/response-kinds/medication-list-response-kind.ts` — recognizes the prescriptions page's
   `…/pharmacy/Location?…_revinclude=…` searchset and decodes the **heterogeneous**
   bundle "as is" (a `Schema.Union` of the two carebook `R4FromStu3Schema`
   transforms plus a `null` catch-all for non-medication entries), then splits off
@@ -41,9 +41,15 @@ machinery lives in `slices/emr/fhir-stu3-as-r4`.
   `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
-- the source identity — `adoptSourceIdentity({ system: REXALL_CAREBOOK_SYSTEM })`
-  wrapping the plan factory's return. It is what stops the request/dispense pair
-  that shares a carebook id from collapsing onto one row. See the
+- the source identity — `REXALL_CAREBOOK_SYSTEM` (in `src/source-system.ts`, a
+  Wildflower-minted `sid` URI) rides each kind's own `tryRecognize` as
+  `source: { system: REXALL_CAREBOOK_SYSTEM }` (no `baseUrl`: carebook references
+  are relative). The kind list is widened to `HttpResponseKind<FhirResource>[]`
+  and mapped through `adoptUnderRecognizedRoot` **once at module scope** in
+  `config.ts` (source-parameter-free, so two plans from one config share the
+  frozen array by identity). Adoption keys under that constant `sid`, which is
+  what stops the request/dispense pair that shares a carebook id from collapsing
+  onto one row. See the
   [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a copy of
   `fhir-r4-client-collector`'s; slice layering forbids importing it).
@@ -229,7 +235,7 @@ searchset's `_revinclude` already carries `MedicationDispense`, so the deferred
 `followUpSteps` crawl (one `Open` per `MedicationRequest.id` →
 `…/prescriptions/details/{id}`) is left out until a capture diff proves the detail
 XHR is richer. Adding it later is a pure, additive `followUpSteps` method on
-`MedicationListEntity` — no structural change.
+`MedicationListResponseKind` — no structural change.
 
 ## Fixtures & open questions caveat
 
@@ -246,7 +252,7 @@ and what it did not:
   `{base}/{name}` this package asserted before. `RequestType` is
   `fill | refill`, not `order | refill`. See `carebook.ts` for the two
   `schemas`/`schema` host spellings and which side each system falls on.
-- **Profile field names.** `ProfileEntity` reads `data.identifiers.uid` /
+- **Profile field names.** `ProfileResponseKind` reads `data.identifiers.uid` /
   `data.identifiers.email` / `data.names.firstName` / `data.names.lastName` /
   `data.birthDate` / `data.zipPostalCode`. The name and postal-code paths are
   **not** flat — reading them as `data.firstName` / `data.address.postalCode`
@@ -289,8 +295,9 @@ Observed, not acted on — worth knowing before trusting a field:
 
 - A `MedicationRequest` and its `MedicationDispense` **share the same `id`** and
   the same identifier pair. Anything keying on id alone rather than
-  (resourceType, id) collapses the two — which is why the plan is wrapped in
-  `adoptSourceIdentity`, whose derivation takes the resource type as an input.
+  (resourceType, id) collapses the two — which is why the kinds are adopted with
+  `adoptUnderRecognizedRoot`, whose derivation takes the resource type as an
+  input.
 - `authorizingPrescription[].reference` does **not** resolve to any bundle
   entry; the working link is `identifier.value`. The two entries are the same
   reference twice, differing only in `identifier.system` (`…-type-order` /

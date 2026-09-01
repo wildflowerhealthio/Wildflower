@@ -1,18 +1,31 @@
-import {
-  CollectorDescriptor,
-  type EntityDefinition,
-  ScrapingPlan,
-} from 'collector-fundamentals/model'
+import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
-import { adoptSourceIdentity } from 'fhir-r4/identity'
+import { adoptUnderRecognizedRoot } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
+import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { MedicationListEntity } from './entities/medication-list-entity.ts'
-import { ProfileEntity } from './entities/profile-entity.ts'
+import { MedicationListResponseKind } from './response-kinds/medication-list-response-kind.ts'
+import { ProfileResponseKind } from './response-kinds/profile-response-kind.ts'
+import { REXALL_CAREBOOK_SYSTEM } from './source-system.ts'
+
+/**
+ * The collector's response kinds, widened then adopted once at module load —
+ * each resource re-keys under {@link REXALL_CAREBOOK_SYSTEM}, the identity the
+ * kind's own `tryRecognize` mints (see the
+ * [Source Identity Explanation](../../docs/Source%20Identity%20Explanation.md)
+ * for the widen-first guard and why module scope keeps deep-equal honest).
+ * Order is not load-bearing — the two recognizers are disjoint.
+ */
+const responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = (
+  [
+    ProfileResponseKind,
+    MedicationListResponseKind,
+  ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[]
+).map(adoptUnderRecognizedRoot)
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -69,21 +82,6 @@ const defaultConfig: InstanceConfig = {
   email: 'you@example.com',
   password: 'your-password',
 }
-
-/**
- * The source system every resource this collector imports is keyed under.
- *
- * @remarks
- * A Wildflower-minted `sid` URI in the same style as `web-trace`'s systems, not
- * a carebook dialect constant — carebook publishes no namespace for "the id this
- * portal gave a resource", so this names the portal on its behalf. It does not
- * belong in `carebook.ts` for that reason.
- *
- * **Persisted wire format.** It is the hash domain for every derived local id
- * and the `Identifier.system` written beside every carebook id, so changing it
- * orphans everything already imported from Rexall.
- */
-const REXALL_CAREBOOK_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/rexall-carebook'
 
 /** The user-facing login page the plan `Open`s first. */
 const LOGIN_URL = 'https://letsbewell.ca/sign-in'
@@ -177,7 +175,7 @@ const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
  * XHRs settle. Every `Fill`/`Click` dispatches and advances immediately (a
  * `PageAction` fires no `PageLoaded`), so the short `Delay`s between them are the
  * only thing pacing the login form.
- * `ProfileEntity` recognizes `…/profile/v2/me`; `MedicationListEntity` recognizes
+ * `ProfileResponseKind` recognizes `…/profile/v2/me`; `MedicationListResponseKind` recognizes
  * the `…/pharmacy/Location?…` searchset — disjoint patterns, so entity order is
  * not load-bearing.
  *
@@ -185,7 +183,7 @@ const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
  * already carries `MedicationDispense`, so the deferred `followUpSteps` crawl is
  * left out until a capture diff proves the detail XHR is richer (issue #339).
  *
- * The plan is wrapped in `adoptSourceIdentity` under
+ * `responseKinds` is the module-level {@link responseKinds}, pre-adopted under
  * {@link REXALL_CAREBOOK_SYSTEM}, so every resource it parses is re-keyed under
  * a derived local id with the carebook id kept as `identifier[0]`. No `baseUrl`:
  * carebook's references are relative. This is what separates a
@@ -210,10 +208,7 @@ const scrapingPlan = (
 ): ScrapingPlan.ScrapingPlan<FhirResource> => {
   const plan = ScrapingPlan.make<FhirResource>({
     name: 'Rexall Be Well',
-    entityDefinitions: [
-      ProfileEntity,
-      MedicationListEntity,
-    ] as readonly EntityDefinition.EntityDefinition<FhirResource>[],
+    responseKinds,
     captureProvenance,
     stepSequence: [
       // Open the login page — the step that builds the sniffer — then wait for
@@ -305,7 +300,7 @@ const scrapingPlan = (
       { _tag: 'Delay', name: 'Collecting prescriptions', duration: SETTLE },
     ],
   })
-  return adoptSourceIdentity({ system: REXALL_CAREBOOK_SYSTEM })(plan)
+  return plan
 }
 
 /**

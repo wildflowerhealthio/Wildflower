@@ -1,53 +1,76 @@
 # AGENTS.md — slices/importer/importer-react
 
-The browser UI adapter of the importer slice: the whole preview-then-confirm
-flow. `ImporterScreen` is the one surface a host app mounts — pick one or more
-HARs (local files dropped or chosen, or a single archive already on the device's
-FHIR server), preview exactly what every file would write in one combined view,
-confirm once to write the whole batch (uploading each local file's archive first),
-and read the per-file results. Local picking is a **batch**; the server list is
-single-select.
+The browser UI adapter of the importer slice, and its **shell**: the whole
+pick-review-confirm flow plus the closed `format → { descriptor, SettingsPicker,
+ReviewBody }` registry. `ImporterScreen` is the one surface a host app mounts —
+pick one or more HARs (local files dropped or chosen, or a single archive already
+on the device's FHIR server), review per-URL exactly what every file would write
+in one combined view, confirm once to write the reviewed, chosen responses across
+the batch (uploading each local file's archive first), and read the per-file
+results. Local picking is a **batch**; the server list is single-select.
 
 ## Layering
 
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../AGENTS.md): it depends on its sources, never the reverse.
-It depends on `importer-core` (the read/write pipeline — `runHarImport`,
-`persistPreview`), `web-trace-core` (the HAR archive codec under `/codec` and the
-HAR parser under `/har`), `fhir-r4` (the typed client and `ResourceWriteFailure`),
-and `fhir-r4-react` (the authed runner and the slice runtime layer).
+It depends on `importer-fundamentals` (the `FileImporterDescriptor` contract and
+the pure `Review` model), `har-importer-core` (the `harImporterDescriptor` and
+`HarSettings`), `har-importer-react` (`ReviewBody`, `HarSettingsPicker`),
+`web-trace-core` (the HAR archive codec under `/codec` and the HAR parser under
+`/har`), `fhir-r4` (the typed client and `ResourceWriteFailure`), and
+`fhir-r4-react` (the authed runner and the slice runtime layer).
 
-The seam between this package and the core is narrow: the read half hands back an
-`ImportPreview` and the write half takes a `Preview` + a source reference. This
-package owns the flow and the rendering; the core owns detect/replay/persist. If a
-component needs more than those two functions expose, widen the core's surface
-rather than reaching around it.
+The seam between this package and a format binding is the **descriptor** and the
+`Review` model: the read half runs the descriptor's `decode` (no services, no
+writes), the review drives `Review`'s pure transitions, and the write half runs
+`Review.chosen` then the descriptor's `persist`. If a component needs more than
+the descriptor and `Review` expose, widen those rather than reaching around them.
 
 **Presentation and interaction only.** Nothing here parses HAR, encodes an
-archive, replays entities, or writes resources. The parser (`fromHarJson`), the
-archive codec, the replay/fold (`runHarImport`), and the write sink
-(`persistPreview` → `fhir-r4`'s `persistResources`) all live below this package;
-it drives them and reimplements none.
+archive, runs entities, or writes resources. The parser
+(`HttpArchive.LogFromHarJson`), the
+archive codec, `decode`, the recognition (`Review.recognize`), and the write sink
+(`persist` → `fhir-r4`'s `persistResources`) all live below this package; it
+drives them and reimplements none.
+
+## The registry
+
+`src/registry.ts` is the closed, compile-time `format → FormatRegistration` map —
+the single edit point for wiring a file-format importer into the shell. A
+`FormatRegistration` bundles the three parts a format contributes: its
+`descriptor` (data), its `SettingsPicker`, and its `ReviewBody` (the two React
+views). The interface requires all three, so a format missing one fails to
+compile here. Only `har` is registered (`har-importer-core` +
+`har-importer-react`). The importer has no HTTP wire union to derive, so both
+halves live here — there is no separate `importer-registry` package the collector
+slice needs.
 
 ## Module layout
 
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
-  `useConfirmImport` → `ImportResults`. A cancel or "import another" discards and
-  returns to the picker.
-- **`src/preview/`** — the read half and its view. `use-import-run.ts` runs
-  `runHarImport` (via `useRunAuthed`) once per picked file and holds the batch of
-  `ReadEntry`s (each a `read` preview or an `unreadable` file);
-  `use-confirm-import.ts` is the opt-in write action, per file, best-effort
-  (upload-then-persist each writable file, one file's failure never stopping the
-  rest); `preview-panel.tsx` renders every file's outcome under one shared confirm
-  and gates that confirm on any file having something to write.
+  `useConfirmImport` → `ImportResults`. It holds each read file's
+  `Review.Selection`, keyed by the file's stable id (absent = the default, every
+  kind enabled, so an untouched file still imports everything recognized). A
+  cancel or "import another" discards the read, every review edit, and any confirm
+  outcome, and returns to the picker.
+- **`src/registry.ts`** — the closed format registry (above).
+- **`src/preview/`** — the read half, the review view, and the write action.
+  `use-import-run.ts` runs the descriptor's `decode` (via `useRunAuthed`) once per
+  picked file and holds the batch of `FileReadOutcome`s (each a `read` — its
+  decoded `Extraction.Input` responses — or an `unreadable` file); `preview-panel.tsx`
+  renders every read file's interactive `ReviewBody` under one shared confirm,
+  gating the confirm on the batch having at least one **chosen** response
+  (`Review.chosenCount` summed across files); `use-confirm-import.ts` is the
+  opt-in write action, per file, best-effort — upload-then-persist each file whose
+  review chose something, decoding **only** the chosen responses (`Review.chosen`),
+  one file's failure never stopping the rest.
 - **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
   per-file `ImportOutcome` and the `FileImportResult`/`BatchOutcome` aggregate
   (`summarizeBatch`, `isPartialBatch`), all on `collectImportSummary` semantics
   (any failure ⇒ partial); `import-results.tsx` renders a per-file breakdown —
-  writes with their provenance link, failed uploads with their cause, and
-  skipped files — under one aggregate tally.
+  writes with their provenance link, failed uploads with their cause, and skipped
+  files — under one aggregate tally.
 - **`src/sources/`** — the picker. `picked-har.ts` is the vocabulary
   (`PickedHar`, the `local` / `server` `PickedHarSource`, and `harArchiveReference`
   — the one spelling of a `DocumentReference/<id>` reference); `local-har.ts` is
@@ -66,19 +89,26 @@ it drives them and reimplements none.
 ## Traps
 
 - **The read half writes nothing, and the split is the whole product.** Reaching a
-  preview issues no writes — `runHarImport` requires no services and is run for its
-  data only. Every write is behind the one explicit confirm. A test pins this on
-  the wire (zero writes to reach a preview); do not add a write to the read path
-  (e.g. an "auto-upload on pick") that would collapse the opt-in seam.
+  review issues no writes — `decode` requires no services and is run for its data
+  only, and the parse of the chosen responses runs at **confirm**, not preview. A
+  test pins this on the wire (zero writes to reach a review); do not add a write to
+  the read path (e.g. an "auto-upload on pick") that would collapse the opt-in
+  seam.
+- **Selection state lives in the shell, not the review body.** `ReviewBody` is
+  uncontrolled — it holds its own working `Review.Selection` seeded from
+  `initialSelection` and reports every change up through `onChange`. The screen is
+  the source of truth (a `Map<fileId, Selection>`), so it can hand the confirm the
+  exact selection each file was reviewed with (`Review.chosen`). Don't move the
+  selection down into the body, or a confirm and the view could disagree.
 - **Confirm ordering is fixed per file: archive create, then that file's resource
   writes.** A `local` pick's archive is uploaded first (`useUploadHar`) and the
   reference it mints is stamped onto every resource from _that file_; only then
-  does `persistPreview` run for it. A `server` pick uploads nothing and links to
-  the document it was fetched from. Sequencing matters — a resource must never be
-  written pointing at an archive that is not there yet — so each file's upload
-  is `flatMap`ped before its persist, inside `importOneFile`. The whole batch is
-  one Effect (`Effect.forEach` at unbounded concurrency, `Match`-dispatched per
-  file) run through `runAuthed`; cross-file interleaving is fine because each
+  does the descriptor's `persist` run for it. A `server` pick uploads nothing and
+  links to the document it was fetched from. Sequencing matters — a resource must
+  never be written pointing at an archive that is not there yet — so each file's
+  upload is `flatMap`ped before its persist, inside `importOneFile`. The whole
+  batch is one Effect (`Effect.forEach` at unbounded concurrency, `Match`-dispatched
+  per file) run through `runAuthed`; cross-file interleaving is fine because each
   resource is stamped with its own file's reference. The upload crosses a TanStack
   mutation, so its `FiberFailure` rejection is `Cause.squash`ed back to the typed
   FHIR-client error before it is stored on the `uploadFailed` result — which is
@@ -86,19 +116,20 @@ it drives them and reimplements none.
 - **The batch is best-effort, and provenance stays per-file.** One file's upload
   failure is caught and recorded as its own `FileImportResult` (`uploadFailed`,
   carrying the cause) — the remaining files still import, the multi-file echo of
-  `persistPreview` returning per-resource failures as data. A file with nothing to
-  write (no collector, recognized-but-empty, or unreadable) is `skipped`, never a
-  failure. `isPartialBatch` lifts `collectImportSummary` to the batch: any
-  upload failure or any per-resource failure makes the whole batch partial; a
-  `skipped` file alone does not. There is **no** whole-flow `errored` state — an
-  upload failure is a row in the results, and its cause is surfaced there (the
-  FHIR server's own response), not swallowed behind "Try again".
-- **The confirm affordance is gated on the batch having something to write.**
-  `PreviewPanel` shows the single confirm button only when at least one file is a
-  claimed `Preview` with resources; files that are `NoCollectorClaims`,
-  claimed-but-empty, or unreadable render their own row but add nothing to write.
-  `useConfirmImport` re-checks each file (skipping the non-writable ones) — the
-  gate is the affordance, the per-file check is the safety.
+  `persist` returning per-resource failures as data. A file whose review chose
+  nothing (no kind recognized it, or every matching kind toggled off) or that was
+  `unreadable` is `skipped`, never a failure. `isPartialBatch` lifts
+  `collectImportSummary` to the batch: any upload failure or any per-resource
+  failure makes the whole batch partial; a `skipped` file alone does not. There is
+  **no** whole-flow `errored` state — an upload failure is a row in the results,
+  and its cause is surfaced there (the FHIR server's own response), not swallowed
+  behind "Try again".
+- **The confirm affordance is gated on the batch having a chosen response to
+  write.** `PreviewPanel` shows the single confirm button only when
+  `Review.chosenCount` summed across the read files is positive; unreadable files
+  and read files whose review chose nothing render their own section but add
+  nothing to write. `useConfirmImport` re-checks each file (skipping the ones with
+  nothing chosen) — the gate is the affordance, the per-file check is the safety.
 - **A HAR archive and a web trace share a code system and nothing else, and the
   disjointness is load-bearing.** The archive list searches `category` for
   `` `${WEB_TRACE_CODE_SYSTEM}|har-archive` `` (`HAR_ARCHIVE_CATEGORY_TOKEN`,
@@ -107,14 +138,15 @@ it drives them and reimplements none.
   web-trace viewer lists traces; this lists archives; `isWebTrace` and
   `isHarArchive` never both hold. The list must never surface a trace.
 - **The picker validates each local file through the real HAR parser, not a
-  second check.** `acceptLocalHar` runs `web-trace-core`'s `fromHarJson`, so a
-  file the picker accepts is a file a replay can parse, and a file that is not
+  second check.** `acceptLocalHar` runs `web-trace-core`'s
+  `HttpArchive.LogFromHarJson`, so a
+  file the picker accepts is a file a `decode` can parse, and a file that is not
   JSON and a file that is JSON-but-not-HAR both fail _at the picker_, next to the
   control the user just used. In a batch the accepted files are handed on together
   and the rejected ones are named in the notice; a **lone** rejected file with
   nothing accepted keeps its full parser detail instead (`describeRejection`) —
   the case a user is debugging one file. The parse result is discarded — this is a
-  gate, and the replay parses the text again when it runs.
+  gate, and `decode` parses the text again when it runs.
 - **`page-token.ts` is a copy of `web-trace-react`'s, deliberately.** The two
   slices page the same FHIR server the same way, but the importer must not depend
   on the web-trace viewer to do it — an adapter reaching into another adapter is
@@ -163,60 +195,48 @@ and [React Testing Reference](../../../docs/Testing/React%20Testing%20Reference.
 Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
 
 - `sources/source-picker.test.tsx` mocks only the router seam
-  (`vi.mock('fhir-r4-react', … useRunAuthed …)`, the `documents-panel.test.tsx`
-  pattern) and drives the whole picker over a stub `HttpClient`. The runner is
-  built through `fhir-r4-react/smart`'s `buildSmartRouterContext` so a bearer
-  token rides the wire and the test can assert `Authorization: Bearer …` and the
-  search URL (`category` token, `_count`, `_pageToken`) against the recorded
-  requests — the `app.test.tsx` shape.
-- The three-paths test synthesizes a `DataTransfer` for the drop, uploads to the
-  hidden input for the pick, and clicks a row for the server source. The two
-  local paths yield an identical `PickedHar` (`local` source); the server path
-  yields the same text under a `server` source. The server archive fixtures are
-  hand-built `DocumentReference` JSON with base64 `data` — not encoded through the
-  codec — so a `Uint8Array` from jsdom's realm never has to satisfy the codec's
-  `instanceof` check (`new TextEncoder().encode(…)` there produces a foreign-realm
-  array the archive schema rejects).
+  (`vi.mock('fhir-r4-react', … useRunAuthed …)`) and drives the whole picker over
+  a stub `HttpClient`; the runner is built through `fhir-r4-react/smart`'s
+  `buildSmartRouterContext` so a bearer token rides the wire and the test can
+  assert `Authorization: Bearer …` and the search URL against the recorded
+  requests. The three-paths test synthesizes a `DataTransfer` for the drop,
+  uploads to the hidden input for the pick, and clicks a row for the server source;
+  the server archive fixtures are hand-built `DocumentReference` JSON with base64
+  `data` so a `Uint8Array` from jsdom's realm never has to satisfy the codec's
+  `instanceof` check.
 - `mutations/upload-har.test.tsx` renders the hook over a _stateful_ stub that
   stores each PUT under its minted id and answers a later search with it, so the
-  list — mounted alongside — refetches on invalidation and the new archive appears
-  as an observed fact rather than a spy. It also asserts two uploads of the same
-  bytes produce two distinct ids.
+  list refetches on invalidation and the new archive appears as an observed fact;
+  it also asserts two uploads of the same bytes produce two distinct ids.
 - `importer-screen.test.tsx` is the end-to-end one: it replaces only the router
   seam and drives the whole flow over a recording stub `HttpClient`, reading one
-  ordered write log back. It pins the opt-in seam (zero writes to reach a preview),
+  ordered write log back. It pins the opt-in seam (zero writes to reach a review),
   the confirm ordering (the archive create lands before the first resource write,
-  every resource write carries `meta.source`), the server-source case (no archive
-  create, links to the fetched document), the multi-file batch (two files chosen
-  at once import as one confirm, each resource stamped with its own file's
-  archive), the per-file upload failure (a stubbed 503 on the `DocumentReference`
-  upload yields a partial result naming the file and surfacing the cause, with no
-  resource written), the partial-write fold (a stubbed 503 on Observation writes
-  yields the `partial` result listing them), and cancel (discards with no writes).
-- **`importer-screen.test.tsx` re-wraps `TextEncoder` output through the ambient
-  `Uint8Array`.** The confirm's local-upload path encodes the HAR text to bytes,
-  and jsdom's `TextEncoder` hands back a `Uint8Array` from a realm the archive
-  codec's `Uint8ArrayFromSelf` schema rejects on `instanceof` (the same trap the
-  picker test dodges by hand-building wires). A browser has one realm, so the test
-  stubs `TextEncoder` with a subclass that re-wraps its output through
-  `new Uint8Array(...)` — reproducing the real single-realm behaviour rather than
-  the jsdom artifact. The production encode stays `new TextEncoder().encode(text)`.
-- `preview/preview-panel.test.tsx` drives the pure panel by props — no router — and
-  pins that each file's outcome (no-collector, claimed-but-empty, parse-failure,
-  unreadable, and a healthy preview) renders to its own role/text, that a mixed
-  batch sums to one confirm over every file's section, and that the confirm appears
-  only when at least one file has something to write. `results/import-outcome.test.ts`
-  is the property/example test for the folds: per file, `written = attempted −
-failures` and any failure ⇒ partial; per batch, `summarizeBatch` sums the files
-  and `isPartialBatch` treats an upload failure or a partial write as partial while
-  a skipped file is not.
+  every resource write carries `meta.source`), the server-source case, the
+  multi-file batch, the per-file upload failure, the partial-write fold, and
+  cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
+  jsdom single-realm workaround; the production encode stays `new
+TextEncoder().encode(text)`).
+- `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
+  and pins that a read file renders its `ReviewBody`, an unreadable file renders
+  its own alert, that a mixed batch sums to one confirm over every file's section,
+  and that the confirm appears only when at least one file has a chosen response.
+  `results/import-outcome.test.ts` is the property/example test for the folds. The
+  interactive review's own behaviour (default pick = top specificity, toggling a
+  kind re-recognizes, the no-match fold) is pinned in `har-importer-react`'s
+  `review-body.test.tsx`.
 
 ## References
 
-- [slices/importer AGENTS.md](../AGENTS.md) — why the slice exists, its guardrails,
-  and the detect→replay→preview→persist pipeline this package's flow drives.
-- [importer-core AGENTS.md](../importer-core/AGENTS.md) — the read/write halves
-  (`runHarImport`, `persistPreview`) this package mounts a UI over.
+- [slices/importer AGENTS.md](../AGENTS.md) — the slice's package roles,
+  guardrails, and the per-URL pick-review-confirm pipeline this package's flow
+  drives.
+- [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
+  `FileImporterDescriptor` contract and the `Review` model this shell drives.
+- [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR
+  descriptor (`decode`, `pool`, `persist`) the registry lists.
+- [har-importer-react AGENTS.md](../har-importer-react/AGENTS.md) — the
+  interactive `ReviewBody` this shell mounts per file.
 - [slices AGENTS.md](../../AGENTS.md) — the slice layering rules this package
   follows.
 - [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the HAR
