@@ -144,10 +144,34 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
 
   const { enumCarveOut, enumThreshold, namespaceUris, overrides } = settings
 
+  // Flip isBuilding to true in the same render as the inputs change,
+  // rather than in the rebuild useEffect below — a setState-in-effect
+  // would render the previous preview as fresh for one paint, and it's
+  // what react/set-state-in-effect forbids. Prev-value guard adjusted
+  // during render, per the React docs.
+  const [prevBuildInputs, setPrevBuildInputs] = useState({
+    salt,
+    exchanges,
+    enumCarveOut,
+    enumThreshold,
+    namespaceUris,
+    overrides,
+  })
+  const buildInputsChanged =
+    prevBuildInputs.salt !== salt ||
+    prevBuildInputs.exchanges !== exchanges ||
+    prevBuildInputs.enumCarveOut !== enumCarveOut ||
+    prevBuildInputs.enumThreshold !== enumThreshold ||
+    prevBuildInputs.namespaceUris !== namespaceUris ||
+    prevBuildInputs.overrides !== overrides
+  if (buildInputsChanged && salt !== null) {
+    setPrevBuildInputs({ salt, exchanges, enumCarveOut, enumThreshold, namespaceUris, overrides })
+    setIsBuilding(true)
+  }
+
   useEffect(() => {
     if (salt === null) return undefined
     let cancelled = false
-    setIsBuilding(true)
     Effect.runPromise(
       buildExportPreview(exchanges, {
         salt,
