@@ -57,7 +57,10 @@ function AccountConfigRoute(): JSX.Element {
  */
 export const Route = createFileRoute('/_auth/collector/account/$id')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(remoteQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.query({
+      ...remoteQueryOptions(context.runAuthed, params.id),
+      staleTime: 'static',
+    }),
   component: AccountConfigRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Collector" />,
 })

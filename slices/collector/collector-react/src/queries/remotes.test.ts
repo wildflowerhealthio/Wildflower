@@ -102,7 +102,7 @@ describe('remotesQueryOptions', () => {
     const options = remotesQueryOptions(makeRunAuthed(stubHttpClientLayer({ body: [REMOTE_BODY] })))
     const queryClient = freshQueryClient()
 
-    const remotes = await queryClient.ensureQueryData(options)
+    const remotes = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(remotes).toHaveLength(1)
     expect(remotes[0]?.name).toBe('Demo FHIR Server')
@@ -114,7 +114,7 @@ describe('remotesQueryOptions', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
+    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
     expect(queryClient.getQueryData(REMOTES_QUERY_KEY)).toBeUndefined()
   })
 })
@@ -132,7 +132,7 @@ describe('remoteQueryOptions', () => {
     )
     const queryClient = freshQueryClient()
 
-    const remote = await queryClient.ensureQueryData(options)
+    const remote = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(remote.id).toBe('remote-1')
     expect(remote.config._tag).toBe('fhir-r4')
@@ -146,6 +146,6 @@ describe('remoteQueryOptions', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
+    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
   })
 })

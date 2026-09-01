@@ -78,7 +78,7 @@ const AppsListScreen = (): JSX.Element => {
  */
 const Route = createFileRoute('/settings/apps/')({
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),
+    context.queryClient.query({ ...appsListQueryOptions(context.runAuthed), staleTime: 'static' }),
   component: AppsListScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })
