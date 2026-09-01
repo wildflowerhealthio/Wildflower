@@ -15,7 +15,6 @@ import { unknownErrorToString } from 'kitchen-sink'
 import {
   Component,
   Suspense,
-  useEffect,
   useMemo,
   useState,
   type ErrorInfo,
@@ -154,9 +153,16 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
   // again.
   const [handledUserCode, setHandledUserCode] = useState<string | null>(null)
 
-  useEffect(() => {
+  // Reset handledUserCode when the host's active userCode changes. Prev-
+  // value guard adjusted during render, per the React docs — a useEffect
+  // that does this trips react/set-state-in-effect (and paints the stale
+  // "already handled" state for one frame after the host publishes a new
+  // active code, briefly showing the closed popup as still closed).
+  const [prevActiveUserCode, setPrevActiveUserCode] = useState(activeUserCode)
+  if (activeUserCode !== prevActiveUserCode) {
+    setPrevActiveUserCode(activeUserCode)
     setHandledUserCode(null)
-  }, [activeUserCode])
+  }
 
   const DeviceConsentErrorFallbackInstance = useMemo(
     () => (error: unknown) => (
