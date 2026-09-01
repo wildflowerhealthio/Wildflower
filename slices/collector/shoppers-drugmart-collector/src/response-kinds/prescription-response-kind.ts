@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, Specificity } from 'http-extraction-fundamentals'
+import { HttpResponseKind, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime, firstDateTime } from '../dates.ts'
 import { extractJson } from '../extract-json.ts'
@@ -339,14 +339,7 @@ const prescriptionStatusUrl =
 const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
     name: 'PrescriptionResponseKind',
-    // Mints the constant portal SID; no `baseUrl` — references are relative.
-    tryRecognize: (url) =>
-      prescriptionStatusUrl.test(url)
-        ? Option.some({
-            specificity: Specificity.PORTAL,
-            source: { system: SHOPPERS_DRUGMART_SYSTEM },
-          })
-        : Option.none(),
+    tryRecognize: recognizePortal(prescriptionStatusUrl, SHOPPERS_DRUGMART_SYSTEM),
     parse: (response) =>
       Effect.gen(function* () {
         const rx = yield* decodePrescription(extractJson(response.text()))

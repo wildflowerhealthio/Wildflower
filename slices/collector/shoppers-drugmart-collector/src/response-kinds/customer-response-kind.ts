@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, Specificity } from 'http-extraction-fundamentals'
+import { HttpResponseKind, recognizePortal } from 'http-extraction-fundamentals'
 
 import { extractJson } from '../extract-json.ts'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
@@ -205,14 +205,7 @@ const customerUrl = /:\/\/[^/]+\/api\/[^/]+\/customers\/[^/?#]+\/?(?:[?#]|$)/
 const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
   {
     name: 'CustomerResponseKind',
-    // Mints the constant portal SID; no `baseUrl` — references are relative.
-    tryRecognize: (url) =>
-      customerUrl.test(url)
-        ? Option.some({
-            specificity: Specificity.PORTAL,
-            source: { system: SHOPPERS_DRUGMART_SYSTEM },
-          })
-        : Option.none(),
+    tryRecognize: recognizePortal(customerUrl, SHOPPERS_DRUGMART_SYSTEM),
     parse: (response) =>
       Effect.gen(function* () {
         const { customer } = yield* decodeCustomer(extractJson(response.text()))
