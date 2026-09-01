@@ -115,7 +115,10 @@ const useImportRun = <TSettings, TParsed, R>(
     // React Compiler tracks `descriptor`'s identity through the
     // component-scoped useImportRun call, so listing it here would
     // re-mint the callback on every render for a change the compiler
-    // already handles — see the react/memo-dependencies note.
+    // already handles — see the react/memo-dependencies note. The old
+    // react-hooks/exhaustive-deps rule can't see the compiler and still
+    // wants it listed; disable that one line only.
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says descriptor is unnecessary
     [runAuthed]
   )
 
