@@ -2,31 +2,12 @@ import { CollectorDescriptor, ScrapingPlan } from 'collector-fundamentals/model'
 import { Duration, type FastCheck, Schema } from 'effect'
 import type { LazyArbitrary } from 'effect/Arbitrary'
 import { persistResources } from 'fhir-r4/clients'
-import { adoptUnderRecognizedRoot } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { makeFhirProvenanceCapture } from 'web-trace-core/provenance'
 
-import { CustomerResponseKind } from './response-kinds/customer-response-kind.ts'
-import { PrescriptionHistoryResponseKind } from './response-kinds/prescription-history-response-kind.ts'
-import { PrescriptionResponseKind } from './response-kinds/prescription-response-kind.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from './source-system.ts'
+import { shoppersDrugMartSource } from 'shoppers-drugmart-source'
 
-/**
- * The collector's response kinds, widened then adopted once at module load —
- * each resource re-keys under {@link SHOPPERS_DRUGMART_SYSTEM}, the identity
- * the kind's own `tryRecognize` mints (see the
- * [Source Identity Explanation](../../docs/Source%20Identity%20Explanation.md)
- * for the widen-first guard and why module scope keeps deep-equal honest).
- * Order is not load-bearing — the three recognizers are disjoint.
- */
-const responseKinds: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = (
-  [
-    CustomerResponseKind,
-    PrescriptionResponseKind,
-    PrescriptionHistoryResponseKind,
-  ] as readonly HttpResponseKind.HttpResponseKind<FhirResource>[]
-).map(adoptUnderRecognizedRoot)
+const { responseKinds } = shoppersDrugMartSource
 
 /**
  * A well-formed email address: a non-empty local part, `@`, and a dotted
@@ -387,10 +368,4 @@ const ShoppersDrugMartCollectorDescriptor = CollectorDescriptor.make({
   persistResources,
 })
 
-export {
-  InstanceConfig,
-  defaultConfig,
-  SHOPPERS_DRUGMART_SYSTEM,
-  scrapingPlan,
-  ShoppersDrugMartCollectorDescriptor,
-}
+export { InstanceConfig, defaultConfig, scrapingPlan, ShoppersDrugMartCollectorDescriptor }

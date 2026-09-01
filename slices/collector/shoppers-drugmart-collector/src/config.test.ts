@@ -10,11 +10,11 @@ import { traceResourceId } from 'web-trace-core'
 
 import {
   InstanceConfig,
-  SHOPPERS_DRUGMART_SYSTEM,
   ShoppersDrugMartCollectorDescriptor,
   defaultConfig,
   scrapingPlan,
 } from './config.ts'
+import { SHOPPERS_DRUGMART_SYSTEM } from './source-system.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
