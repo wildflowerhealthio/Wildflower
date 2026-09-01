@@ -41,9 +41,9 @@ interface RecognizedUrlData {
  * - `tryRecognize`: URL-match; `Some` a {@link RecognizedUrlData} when this
  *   entity claims the URL (carrying how specific the claim is and the identity
  *   its resources key under), `None` when it does not. Whichever loop walks the
- *   entity list — `Extraction.run`/`routeTo` over an archive, or a live handler
- *   over sniffed traffic — consults this to route each response, **highest
- *   specificity wins** (ties → list order).
+ *   entity list — `Extraction.recognize`/`routeTo` over an archive, or a live
+ *   handler over sniffed traffic — consults this to route each response,
+ *   **highest specificity wins** (ties → list order).
  * - `parse`: `Effect`-returning decode from {@link HttpResponse}
  *   to the resource array, with `ParseError` in the error channel.
  *   Returning an `Effect` (rather than an `Either`) lets entities log

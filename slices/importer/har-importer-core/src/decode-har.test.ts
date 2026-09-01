@@ -2,7 +2,8 @@ import { Effect, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import { Extraction } from 'http-extraction-fundamentals'
+import type { Extraction } from 'http-extraction-fundamentals'
+import { type ExtractionResult, runExtraction } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 import { type TraceBody, type TraceExchange } from 'web-trace-core'
@@ -17,7 +18,8 @@ import { defaultHarSettings } from './har-settings.ts'
 /**
  * Covers the HAR binding's read half: a HAR archive in, the structural
  * responses the recognizer reads out (`decodeHar`), and the four-way accounting
- * running the FHIR pool over them produces (`Extraction.run`). Two fixture
+ * running the FHIR pool over them produces (`runExtraction`, the archive-runner
+ * reference model in `http-extraction-fundamentals`' test-helpers). Two fixture
  * routes reach the same assertions — a HAR built through `web-trace-core`'s own
  * `emitHar` from constructed exchanges, and a committed Chrome DevTools export —
  * so the pipeline is held against both an archive shaped like ours and a foreign
@@ -66,23 +68,23 @@ const harTextOf = (exchanges: readonly TraceExchange[]): string =>
   Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' })))
 
 /** The four-way extraction of running the FHIR pool over a decoded HAR. */
-const extract = (harText: string): Extraction.Result<FhirResource> =>
+const extract = (harText: string): ExtractionResult<FhirResource> =>
   Effect.runSync(
     decodeHar(harText, defaultHarSettings).pipe(
-      Effect.flatMap((inputs) => Extraction.run(fhirPool, inputs))
+      Effect.flatMap((inputs) => runExtraction(fhirPool, inputs))
     )
   )
 
 /** Every decoded resource of one `resourceType`, in batch order. */
 const ofType = (
-  extraction: Extraction.Result<FhirResource>,
+  extraction: ExtractionResult<FhirResource>,
   resourceType: string
 ): readonly FhirResource[] =>
   extraction.batches
     .flatMap((batch) => batch.resources)
     .filter((resource) => resource.resourceType === resourceType)
 
-describe('decodeHar + Extraction.run', () => {
+describe('decodeHar + runExtraction', () => {
   describe('a Patient read + Observation searchset', () => {
     it('should decode re-keyed resources from an emitHar archive', () => {
       const root = 'https://r4.example.org/baseR4'

@@ -2,8 +2,8 @@
  * The vocabulary of extracting entities from HTTP traffic, exposed as one
  * namespace per module in the `effect` style: the file is the noun, the
  * principal type shares its name (`HttpResponseKind.HttpResponseKind`), and
- * functions read in the namespace's context (`Extraction.run`,
- * `Extraction.routeTo`, `HttpResponse.make`).
+ * functions read in the namespace's context (`Extraction.routeTo`,
+ * `Extraction.parseWith`, `HttpResponse.make`).
  *
  * @packageDocumentation
  */

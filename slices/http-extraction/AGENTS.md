@@ -4,8 +4,8 @@ The abstract fundamentals of **extracting entities from HTTP traffic**, plus
 per-source implementations. Two consumers build on this slice and neither owns
 it: the `collector` slice runs the vocabulary **live** (a sniffer webview
 streams responses through the same entities), and the `importer` slice's HAR
-importer runs it **over archives** (`Extraction.run` folds archived responses
-through a claimed source's entities). Nothing here knows about sniffers,
+importer runs it **over archives** (each archived response recognized and
+decoded through `Extraction.recognize` / `parseWith`). Nothing here knows about sniffers,
 navigation, persistence, HAR, files, or apps.
 
 ## Packages
@@ -13,7 +13,7 @@ navigation, persistence, HAR, files, or apps.
 - **`http-extraction-fundamentals`** — the vocabulary, as `effect`-style
   namespaces from one flat entry: `HttpResponseKind` / `UrlMatch` /
   `HttpResponse` (how one response is recognized and decoded into resources),
-  `Extraction` (`Extraction.run` / `routeTo` / `recognize` / `parseWith` over
+  `Extraction` (`routeTo` / `recognize` / `parseWith` over
   archived responses), and `Specificity` (the cross-source tier constants
   routing ranks a claim by). A response kind carries its own recognition +
   identity on `tryRecognize(url)`; there is no separate `Source` value. Imports
@@ -57,8 +57,9 @@ which is exactly what keeps the dependency graph acyclic.
   Never `collector-*`, never `importer-*`.
 - **The live-vs-archive parity pin lives in `collector-fundamentals`**
   (`src/handler/extraction-parity.test.ts`) — the one package that can see
-  both `Extraction.run` and the live tracker. A test here that wants
-  `CollectorHttpResponse` is in the wrong package.
+  both `runExtraction` (the archive-runner reference model in
+  `http-extraction-fundamentals`' test-helpers) and the live tracker. A test
+  here that wants `CollectorHttpResponse` is in the wrong package.
 - **A source's per-source parity test lives with the collector config it
   needs** (`fhir-r4-client-collector/src/source-parity.test.ts`), because the
   dependency points from the collector to the source package, never back.

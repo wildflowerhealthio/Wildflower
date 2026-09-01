@@ -2,7 +2,7 @@
   "name": "http-extraction-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "The vocabulary of extracting entities from HTTP traffic: EntityDefinition / UrlMatch / HttpResponse (how one response decodes into resources), Extraction (run archived responses through a source's entities), Recognizer (which source claims a response set), and Source (an HTTP source as one first-class value). Pure — no DOM, no fs, no React, and no dependency on any slice; the collector runs this vocabulary live and the HAR importer runs it over archives, and both build on this package, never the reverse.",
+  "description": "The vocabulary of extracting entities from HTTP traffic: HttpResponseKind / UrlMatch / HttpResponse (how one response is recognized and decoded into resources), Extraction (routeTo / recognize / parseWith over archived responses), and Specificity (the cross-source tiers routing ranks a claim by). Pure — no DOM, no fs, no React, and no dependency on any slice; the collector runs this vocabulary live and the HAR importer runs it over archives, and both build on this package, never the reverse.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

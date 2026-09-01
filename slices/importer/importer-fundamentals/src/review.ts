@@ -8,7 +8,7 @@ import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
  * interactive `ReviewBody` a format's React package renders is a view over
  * these transitions — see this package's AGENTS.md for the model's rationale
  * (per-response choices, serializable name-keyed overrides, untouched review ==
- * what `Extraction.run` would write).
+ * what the `runExtraction` reference model would write).
  *
  * @packageDocumentation
  */

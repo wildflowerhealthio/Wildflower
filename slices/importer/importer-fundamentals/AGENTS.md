@@ -50,7 +50,9 @@ a view over these transitions). Never imports a `*-importer-core`, a
 - **Recognition is per-response.** A review is a set of choices _per response_,
   not one winning source for a whole archive. The default pick for a response is
   the top-specificity candidate among the enabled kinds — exactly what routing
-  would choose — so an untouched review writes what `Extraction.run` would have.
+  would choose — so an untouched review writes what the archive-runner
+  reference model (`runExtraction`, in `http-extraction-fundamentals`'
+  test-helpers) would have.
 - **Choose-then-persist.** `Review.chosen` decodes only the responses a review
   resolved to a pick; a response with no chosen pick is never decoded, so a
   confirm writes only what the reviewer opted into. `Extraction.parseWith` folds

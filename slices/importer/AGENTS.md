@@ -56,7 +56,7 @@ The HAR import is assembled from pieces that each already have a home, and the
 assembly belongs to none of them:
 
 - **`http-extraction-fundamentals`** (in `slices/http-extraction`) owns the
-  FHIR-agnostic machinery (`Extraction.run` / `recognize` / `parseWith`,
+  FHIR-agnostic machinery (`Extraction.routeTo` / `recognize` / `parseWith`,
   `HttpResponseKind`, `Specificity`) but names no archive format and no resource
   type.
 - **`fhir-r4-source`** (same slice) owns the pre-adopted FHIR R4 response kinds

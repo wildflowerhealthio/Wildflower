@@ -26,7 +26,8 @@ before adding one.
   from best-effort `diagnostics`. No registry, no HTTP runtime, no React.
   Everything else in the slice depends on it; within the slice it depends on
   nothing, and outside it only on `http-extraction-fundamentals` — the
-  archive-driven counterpart of the tracker (`Extraction.run`) lives there, and
+  archive-driven counterpart of the tracker (`runExtraction`, the reference
+  model in that package's test-helpers) lives there, and
   `src/handler/extraction-parity.test.ts` here pins that the two route and
   decode identically. Deliberately FHIR-agnostic — nothing here names a
   resource type.
@@ -124,7 +125,7 @@ before adding one.
   can't also match a single-resource URL (see `UrlMatch`). `specificity` only
   disambiguates a **cross-source** pool (the importer's flat pool); within one
   collector plan every kind sits at the same tier, so intra-plan disjointness is
-  still required. `http-extraction-fundamentals`' `Extraction.run` routes through
+  still required. An archive import routes through
   the same `routeTo`, so an entity list shadows identically live and in an
   archive import — that is deliberate: a source must not decode one thing through
   a webview and another through an archive.
@@ -278,7 +279,7 @@ AwaitUserDismiss | EnsureWindowVisible` union.** Two variants reach the wire —
   shape is untouched), and `followUpSteps` receives the **raw** parse output —
   generation runs before the hook — so a generator that opens a link per
   resource does not also fire for a provenance record. **An archive import never
-  invokes it at all** — `http-extraction-fundamentals`' `Extraction.run` knows
+  invokes it at all** — `http-extraction-fundamentals`' extraction path knows
   only the base `HttpResponseKind`, so neither `captureProvenance` nor
   `followUpSteps` exists on that path (an import already has its source as one artifact, and
   there is nothing to navigate).

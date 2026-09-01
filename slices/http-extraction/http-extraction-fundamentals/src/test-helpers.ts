@@ -106,7 +106,7 @@ const AnotherResponseKind: HttpResponseKind.HttpResponseKind<typeof AnotherSchem
  * the generated body was.
  */
 interface Echo {
-  readonly entityName: string
+  readonly responseKindName: string
   readonly id: string
   readonly url: string
   readonly status: number
@@ -145,7 +145,7 @@ const echoResponseKind = (
           )
         : Effect.succeed([
             {
-              entityName: name,
+              responseKindName: name,
               id: response.id,
               url: response.url,
               status: response.status,
@@ -190,3 +190,7 @@ export {
   SimpleResponseKind,
 }
 export type { Echo, HttpResponseOverrides }
+// The archive-runner reference model — demoted from `Extraction` when the
+// interactive review replaced it in production; see run-extraction.ts.
+export { runExtraction } from './run-extraction.ts'
+export type { ExtractionResult } from './run-extraction.ts'

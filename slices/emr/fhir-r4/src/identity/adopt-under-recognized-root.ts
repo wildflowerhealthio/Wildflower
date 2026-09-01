@@ -61,8 +61,8 @@ const unrecognizedAst = Schema.String.ast
 
 /**
  * Re-raise "this kind does not adopt an identity for this URL" as a
- * `ParseError` — the same channel a decode failure uses, so `Extraction.run`
- * reports it as an ordinary per-response `parseFailure`, never a widened
+ * `ParseError` — the same channel a decode failure uses, so `Extraction.parseWith`
+ * folds it to an ordinary per-response `parseError` outcome, never a widened
  * channel or a defect.
  */
 const notAdoptableError = (name: string, url: string, reason: string): ParseResult.ParseError =>

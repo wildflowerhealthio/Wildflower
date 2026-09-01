@@ -215,8 +215,8 @@ Consequences worth knowing:
   `ParseError` naming the real reason ("URL not recognized by this kind — cannot
   adopt an identity"), on the same channel a decode failure uses. It is the
   `web-trace` `digestFailureAsParseError` precedent: no channel widening, no
-  defect, and `Extraction.run` reports it as an ordinary per-response
-  `parseFailure`. In practice routing only ever hands a kind a URL it recognized,
+  defect, and `Extraction.parseWith` folds it to an ordinary per-response
+  `parseError` outcome. In practice routing only ever hands a kind a URL it recognized,
   so this arm guards a misconfiguration, not a normal response.
 - **`followUpSteps` receives adopted resources.** No entity defines one today,
   but a future generator that needs the source's id to build a source-server URL

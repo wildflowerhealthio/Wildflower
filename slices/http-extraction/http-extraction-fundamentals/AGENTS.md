@@ -10,8 +10,8 @@ both build on this package, never the reverse.
 
 One namespace per module, in the `effect` style: the file is the noun, the
 principal type shares the namespace's name (`HttpResponseKind.HttpResponseKind`),
-and functions read in the namespace's context (`Extraction.run`, not
-`runExtraction`). All are exported from the **flat root entry**:
+and functions read in the namespace's context (`Extraction.routeTo`, not
+`routeExtractionTo`). All are exported from the **flat root entry**:
 `import { HttpResponseKind, Extraction, Specificity, UrlMatch } from 'http-extraction-fundamentals'`.
 
 - **`HttpResponseKind`** (`src/http-response-kind.ts`) — the recipe for
@@ -40,17 +40,18 @@ and functions read in the namespace's context (`Extraction.run`, not
   `collector-fundamentals`' `CollectorHttpResponse` implements it over streamed
   chunks (the live path) — that `implements` clause is the compile-time pin
   that both paths hand entities the same surface.
-- **`Extraction`** (`src/extraction.ts`) — run archived responses through a
-  source's entities. `routeTo(pool, url)` picks the one claiming kind of highest
+- **`Extraction`** (`src/extraction.ts`) — recognize and decode archived
+  responses. `routeTo(pool, url)` picks the one claiming kind of highest
   specificity (ties → list order); `recognize(pool, responses)` keeps **every**
   claiming kind per response, ranked (the input an interactive picker needs);
   `parseWith(kind, response)` decodes one response, folding every outcome —
-  resources, `parseError`, `bodyAbsent` — to data. `run(entities, inputs)` is
-  the map-then-group rebuilt on `routeTo` + `parseWith`: it folds each
-  `Extraction.Input` (an `HttpResponse.Data` + `bodyAbsent`) into an
-  `Extraction.Result`, the four-way accounting of `batches` / `unmatched` /
-  `parseFailures` / `bodyAbsent`, every input in exactly one bucket, in input
-  order. Infallible — failures are data, not errors. It never persists.
+  resources, `parseError`, `bodyAbsent` — to data, over `Extraction.Input`s (an
+  `HttpResponse.Data` + `bodyAbsent`). Infallible — failures are data, not
+  errors. It never persists. The batch runner that used to live here
+  (`runExtraction`, the four-way `batches` / `unmatched` / `parseFailures` /
+  `bodyAbsent` accounting) was demoted to `test-helpers` when the interactive
+  review replaced it in production — it survives as the executable reference
+  model the parity and fixture suites pin against.
 - **`Specificity`** (`src/specificity.ts`) — the exported cross-source tier
   constants a kind's `tryRecognize` draws its `specificity` from and routing
   ranks by, **highest wins**: `PORTAL` (100, a named patient portal) > `PROTOCOL`
@@ -61,8 +62,10 @@ and functions read in the namespace's context (`Extraction.run`, not
 
 `http-extraction-fundamentals/test-helpers` is the one sub-entry:
 `makeHttpResponse`, `makeExtractionInput`, the `SimpleResponseKind` /
-`AnotherResponseKind` sample response kinds, and the `echoResponseKind` provenance-asserting
-builders shared with `collector-fundamentals`' parity test.
+`AnotherResponseKind` sample response kinds, the `echoResponseKind` provenance-asserting
+builders shared with `collector-fundamentals`' parity test, and `runExtraction`
+(`src/run-extraction.ts`) — the archive-runner reference model returning the
+four-way `ExtractionResult` accounting.
 
 ## Layering
 
@@ -71,7 +74,7 @@ builders shared with `collector-fundamentals`' parity test.
   `collector-fundamentals` (which depends on this package), any
   `*-client-collector`, a `*-source` package, or anything in
   `slices/importer`.
-- The live-vs-archive parity pin — that `Extraction.run` and the collector's
+- The live-vs-archive parity pin — that `runExtraction` and the collector's
   `SnifferResponseTracker` route and decode identically — lives in
   `collector-fundamentals/src/handler/extraction-parity.test.ts`, the one
   package that can see both halves. A test here that wants `CollectorHttpResponse`
@@ -87,8 +90,8 @@ builders shared with `collector-fundamentals`' parity test.
   sync** (`index`, `test-helpers`). A missing entry silently ships no dist for
   that subpath and only fails downstream on a fresh `vp run pack`.
 - **`Extraction.Input.bodyAbsent` is not an empty body.** An archive can
-  record an exchange while omitting its content; `run` reports that as its
-  own bucket and never calls `parse` — decoding it as an empty payload would
+  record an exchange while omitting its content; `parseWith` folds that to its
+  own outcome and never calls `parse` — decoding it as an empty payload would
   manufacture a parse failure for a response that was never in evidence.
 - **`bytes()` returns a fresh copy each call** (both `HttpResponse.make`
   and the live implementation) so a caller cannot mutate the body out from

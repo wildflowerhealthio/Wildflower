@@ -5,6 +5,7 @@ import { Extraction, type HttpResponseKind, Specificity } from 'http-extraction-
 import {
   echoResponseKind,
   makeExtractionInput,
+  runExtraction,
   type Echo,
 } from 'http-extraction-fundamentals/test-helpers'
 import { runHandlerSync } from './collector-bridge-message-handler.test-helpers.ts'
@@ -19,9 +20,10 @@ const responseKinds = [AlphaEntity, BetaEntity]
  * a multi-byte body, and a body that is not valid UTF-8.
  *
  * This suite is THE live-vs-offline parity pin: `http-extraction-fundamentals`'
- * `Extraction.run` and this package's `SnifferResponseTracker` must route and
- * decode a set of responses identically, and only this package can see both
- * halves (the dependency points from here to `http-extraction-fundamentals`).
+ * `runExtraction` (the archive-runner reference model in its test-helpers) and
+ * this package's `SnifferResponseTracker` must route and decode a set of
+ * responses identically, and only this package can see both halves (the
+ * dependency points from here to `http-extraction-fundamentals`).
  */
 const exchanges: readonly Extraction.Input[] = [
   makeExtractionInput({ id: 'r1', url: 'https://example.com/alpha/1', body: '{"a":1}' }),
@@ -102,9 +104,9 @@ const resourcesViaTracker = (
  * and the echo entities deliberately don't read it, so the comparison is over
  * everything else a `CollectorHttpResponse` carries.
  */
-describe('Extraction.run / SnifferResponseTracker parity', () => {
+describe('runExtraction / SnifferResponseTracker parity', () => {
   it('produces the same resources as driving the live tracker with the equivalent events', () => {
-    const viaExtraction = Effect.runSync(Extraction.run(responseKinds, exchanges)).batches.map(
+    const viaExtraction = Effect.runSync(runExtraction(responseKinds, exchanges)).batches.map(
       (batch) => batch.resources
     )
 
@@ -114,7 +116,7 @@ describe('Extraction.run / SnifferResponseTracker parity', () => {
   })
 
   it('accounts for the response the tracker cancels as unmatched', () => {
-    const outcome = Effect.runSync(Extraction.run(responseKinds, exchanges))
+    const outcome = Effect.runSync(runExtraction(responseKinds, exchanges))
 
     expect(outcome.unmatched).toEqual([{ id: 'r3', url: 'https://example.com/gamma/3' }])
     expect(resourcesViaTracker(exchanges)).toHaveLength(outcome.batches.length)
@@ -131,8 +133,8 @@ describe('Extraction.run / SnifferResponseTracker parity', () => {
       makeExtractionInput({ id: 'o1', url: 'https://example.com/alpha/1', body: '{"a":1}' }),
     ]
 
-    const viaExtraction = Effect.runSync(Extraction.run(overlapping, overlap))
-    expect(viaExtraction.batches.map((batch) => batch.entityName)).toEqual(['NarrowEntity'])
+    const viaExtraction = Effect.runSync(runExtraction(overlapping, overlap))
+    expect(viaExtraction.batches.map((batch) => batch.responseKindName)).toEqual(['NarrowEntity'])
     expect(viaExtraction.batches.map((batch) => batch.resources)).toEqual(
       resourcesViaTracker(overlap, overlapping)
     )

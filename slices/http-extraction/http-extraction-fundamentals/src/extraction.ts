@@ -1,4 +1,4 @@
-import { Array as Arr, Effect, Match, Option, type ParseResult, pipe } from 'effect'
+import { Array as Arr, Effect, Option, type ParseResult, pipe } from 'effect'
 
 import type * as HttpResponseKind from './http-response-kind.ts'
 import type { RecognizedUrlData } from './http-response-kind.ts'
@@ -12,15 +12,15 @@ import * as HttpResponse from './http-response.ts'
  * @remarks
  * An archive reader's parsed entry lines up with this *by shape only*: this
  * package names no archive format and depends on nothing that does, so a HAR
- * entry, a fixture, a proxy log, or a future capture format feeds {@link run}
- * just as well.
+ * entry, a fixture, a proxy log, or a future capture format feeds
+ * {@link recognize} and {@link parseWith} just as well.
  *
  * `bodyAbsent` is the source's "the body was not captured" flag — distinct
  * from a genuinely empty body (`body: new Uint8Array()`, `bodyAbsent: false`).
  * An archive can record an exchange while omitting its content, and decoding
  * that as an empty payload would manufacture a parse failure for a response
- * that was never in evidence — so {@link run} reports it as its own outcome
- * instead.
+ * that was never in evidence — so {@link parseWith} folds it to its own
+ * outcome instead.
  */
 interface Input extends HttpResponse.Data {
   readonly bodyAbsent: boolean
@@ -30,52 +30,6 @@ interface Input extends HttpResponse.Data {
 interface ResponseRef {
   readonly id: string
   readonly url: string
-}
-
-/**
- * What one matched, parsed response produced.
- *
- * @remarks
- * Per-response rather than one flat resource array: an import preview shows
- * which response yielded what, and flattening is a `flatMap` away for a
- * caller that doesn't care.
- */
-interface Batch<TParsed> extends ResponseRef {
-  readonly entityName: string
-  readonly resources: readonly TParsed[]
-}
-
-/** A matched response whose `parse` failed. Data, not a fold-aborting error. */
-interface ParseFailure extends ResponseRef {
-  readonly entityName: string
-  readonly error: ParseResult.ParseError
-}
-
-/**
- * A matched response the archive carried no body for — see
- * {@link Input.bodyAbsent}. `parse` was never called.
- */
-interface BodyAbsent extends ResponseRef {
-  readonly entityName: string
-}
-
-/**
- * The complete accounting of one extraction — `Extraction.Result` at use
- * sites: every input response lands in exactly one of the four arrays, each
- * in input order.
- *
- * @remarks
- * Nothing here is an error channel. A response no entity claimed
- * (`unmatched`), one whose decode failed (`parseFailures`), and one the
- * archive recorded without a body (`bodyAbsent`) are all ordinary outcomes of
- * extracting from traffic that was never captured for this purpose — a caller
- * reports them, it does not recover from them.
- */
-interface Result<TParsed> {
-  readonly batches: readonly Batch<TParsed>[]
-  readonly unmatched: readonly ResponseRef[]
-  readonly parseFailures: readonly ParseFailure[]
-  readonly bodyAbsent: readonly BodyAbsent[]
 }
 
 /**
@@ -94,7 +48,7 @@ interface RecognitionCandidate<K> {
 }
 
 /** The one field routing reads off a kind. */
-type Recognizes = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'tryRecognize'>
+type Recognizes = Pick<HttpResponseKind.HttpResponseKind<never>, 'tryRecognize'>
 
 /**
  * Every kind that claims `url`, most specific first — the single place the
@@ -109,10 +63,10 @@ type Recognizes = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'tryRecognize
  * few), so short-circuiting would buy nothing.
  */
 const candidatesFor = <K extends Recognizes>(
-  pool: readonly K[],
+  recognizers: readonly K[],
   url: string
 ): readonly RecognitionCandidate<K>[] =>
-  Arr.filterMap(pool, (kind) =>
+  Arr.filterMap(recognizers, (kind) =>
     Option.map(kind.tryRecognize(url), (recognized) => ({ kind, recognized }))
   ).toSorted((a, b) => b.recognized.specificity - a.recognized.specificity)
 
@@ -122,15 +76,15 @@ const candidatesFor = <K extends Recognizes>(
  *
  * @typeParam K - The caller's concrete kind type — see
  *   {@link RecognitionCandidate}
- * @param pool - The candidate kinds, in list order
+ * @param recognizers - The candidate kinds, in list order
  * @param url - The response URL to route
  * @returns The claiming kind of maximal `specificity` paired with its
  *   {@link RecognizedUrlData}, or `None` when none claims
  */
 const routeTo = <K extends Recognizes>(
-  pool: readonly K[],
+  recognizers: readonly K[],
   url: string
-): Option.Option<RecognitionCandidate<K>> => Arr.head(candidatesFor(pool, url))
+): Option.Option<RecognitionCandidate<K>> => Arr.head(candidatesFor(recognizers, url))
 
 /** Every kind that claimed one response, sorted most-specific first. */
 interface RecognizedResponse<K> {
@@ -145,18 +99,18 @@ interface RecognizedResponse<K> {
  *
  * @typeParam K - The caller's concrete kind type — see
  *   {@link RecognitionCandidate}
- * @param pool - The candidate kinds, in list order
+ * @param recognizers - The candidate kinds, in list order
  * @param responses - The responses to recognize, in input order
  * @returns One {@link RecognizedResponse} per input response, its `candidates`
  *   most specific first, `[]` when no kind claimed
  */
 const recognize = <K extends Recognizes>(
-  pool: readonly K[],
+  recognizers: readonly K[],
   responses: readonly Input[]
 ): readonly RecognizedResponse<K>[] =>
   responses.map((response) => ({
     ref: { id: response.id, url: response.url },
-    candidates: candidatesFor(pool, response.url),
+    candidates: candidatesFor(recognizers, response.url),
   }))
 
 /**
@@ -192,106 +146,5 @@ const parseWith = <TParsed>(
         })
       )
 
-/**
- * One response's landing spot in the four-way {@link Result} accounting,
- * tagged so {@link run} can group what {@link outcomeOf} mapped.
- */
-type RunOutcome<TParsed> =
-  | { readonly _tag: 'batch'; readonly value: Batch<TParsed> }
-  | { readonly _tag: 'unmatched'; readonly value: ResponseRef }
-  | { readonly _tag: 'parseFailure'; readonly value: ParseFailure }
-  | { readonly _tag: 'bodyAbsent'; readonly value: BodyAbsent }
-
-/** Route one response and decode it if claimed — the map {@link run} folds. */
-const outcomeOf = <TParsed>(
-  responseKinds: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
-  response: Input
-): Effect.Effect<RunOutcome<TParsed>> => {
-  const ref: ResponseRef = { id: response.id, url: response.url }
-  return pipe(
-    routeTo(responseKinds, response.url),
-    Option.match({
-      onNone: () => Effect.succeed<RunOutcome<TParsed>>({ _tag: 'unmatched', value: ref }),
-      onSome: ({ kind }) =>
-        Effect.map(parseWith(kind, response), (outcome): RunOutcome<TParsed> =>
-          Match.value(outcome).pipe(
-            Match.tag('bodyAbsent', () => ({
-              _tag: 'bodyAbsent' as const,
-              value: { ...ref, entityName: kind.name },
-            })),
-            Match.tag('parseError', ({ error }) => ({
-              _tag: 'parseFailure' as const,
-              value: { ...ref, entityName: kind.name, error },
-            })),
-            Match.tag('resources', ({ resources }) => ({
-              _tag: 'batch' as const,
-              value: { ...ref, entityName: kind.name, resources },
-            })),
-            Match.exhaustive
-          )
-        ),
-    })
-  )
-}
-
-/**
- * Run a static set of archived responses through a source's entities.
- *
- * @typeParam TParsed - The resource type the entities decode to
- * @param responseKinds - The source's entities, in list order; the kind whose
- *   `tryRecognize` claims a response's URL with the **highest specificity**
- *   claims it (ties → list order)
- * @param responses - The responses to extract from, in the order they should
- *   be seen
- * @returns The four-way {@link Result} accounting — batches, unmatched,
- *   parse failures, absent bodies — each in input order
- *
- * @remarks
- * A deterministic map-then-group over {@link routeTo} + {@link parseWith}, so
- * the live tracker and this archive runner route through the one function
- * (`collector-fundamentals`' `extraction-parity.test.ts` pins it) and one bad
- * response never takes the run down.
- *
- * **The runner does not persist.** It hands back what it decoded; writing is
- * the caller's separate, opt-in step — that is what makes preview-then-confirm
- * possible. The `Effect` is infallible: every failure mode is data, and the
- * effect is only there because `parse` is effectful.
- */
-const run = <TParsed>(
-  responseKinds: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
-  responses: readonly Input[]
-): Effect.Effect<Result<TParsed>> =>
-  pipe(
-    // Sequential (Effect.forEach's default), so outcomes — and therefore each
-    // of the four groups below — keep input order.
-    Effect.forEach(responses, (response) => outcomeOf(responseKinds, response)),
-    // `Array.groupBy` is string-keyed (`Record<string, …>`) and would lose the
-    // union's narrowing, so the group-by is one typed filterMap per arm.
-    Effect.map((outcomes) => ({
-      batches: Arr.filterMap(outcomes, (outcome) =>
-        outcome._tag === 'batch' ? Option.some(outcome.value) : Option.none()
-      ),
-      unmatched: Arr.filterMap(outcomes, (outcome) =>
-        outcome._tag === 'unmatched' ? Option.some(outcome.value) : Option.none()
-      ),
-      parseFailures: Arr.filterMap(outcomes, (outcome) =>
-        outcome._tag === 'parseFailure' ? Option.some(outcome.value) : Option.none()
-      ),
-      bodyAbsent: Arr.filterMap(outcomes, (outcome) =>
-        outcome._tag === 'bodyAbsent' ? Option.some(outcome.value) : Option.none()
-      ),
-    }))
-  )
-
-export { parseWith, recognize, routeTo, run }
-export type {
-  Batch,
-  BodyAbsent,
-  Input,
-  ParseFailure,
-  ParseOutcome,
-  RecognitionCandidate,
-  RecognizedResponse,
-  ResponseRef,
-  Result,
-}
+export { parseWith, recognize, routeTo }
+export type { Input, ParseOutcome, RecognitionCandidate, RecognizedResponse, ResponseRef }
