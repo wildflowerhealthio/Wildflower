@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
 import { useCallback, useEffect, useState } from 'react'
+import { useLastRendersValue } from 'react-kitchen-sink'
 import type { TraceExchange } from 'web-trace-core'
 import { emitHar } from 'web-trace-core/har'
 import {
@@ -147,25 +148,22 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
   // Flip isBuilding to true in the same render as the inputs change,
   // rather than in the rebuild useEffect below — a setState-in-effect
   // would render the previous preview as fresh for one paint, and it's
-  // what react/set-state-in-effect forbids. Prev-value guard adjusted
-  // during render, per the React docs.
-  const [prevBuildInputs, setPrevBuildInputs] = useState({
-    salt,
-    exchanges,
-    enumCarveOut,
-    enumThreshold,
-    namespaceUris,
-    overrides,
-  })
+  // what react/set-state-in-effect forbids. Adjust state during render
+  // via useLastRendersValue on each build input, then compare each pair.
+  const prevSalt = useLastRendersValue(salt)
+  const prevExchanges = useLastRendersValue(exchanges)
+  const prevEnumCarveOut = useLastRendersValue(enumCarveOut)
+  const prevEnumThreshold = useLastRendersValue(enumThreshold)
+  const prevNamespaceUris = useLastRendersValue(namespaceUris)
+  const prevOverrides = useLastRendersValue(overrides)
   const buildInputsChanged =
-    prevBuildInputs.salt !== salt ||
-    prevBuildInputs.exchanges !== exchanges ||
-    prevBuildInputs.enumCarveOut !== enumCarveOut ||
-    prevBuildInputs.enumThreshold !== enumThreshold ||
-    prevBuildInputs.namespaceUris !== namespaceUris ||
-    prevBuildInputs.overrides !== overrides
+    prevSalt !== salt ||
+    prevExchanges !== exchanges ||
+    prevEnumCarveOut !== enumCarveOut ||
+    prevEnumThreshold !== enumThreshold ||
+    prevNamespaceUris !== namespaceUris ||
+    prevOverrides !== overrides
   if (buildInputsChanged && salt !== null) {
-    setPrevBuildInputs({ salt, exchanges, enumCarveOut, enumThreshold, namespaceUris, overrides })
     setIsBuilding(true)
   }
 
