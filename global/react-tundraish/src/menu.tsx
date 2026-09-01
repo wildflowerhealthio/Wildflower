@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type JSX, type ReactNode } from 'react'
-import { cn, useLastRendersValue } from 'react-kitchen-sink'
+import { cn, usePreviousDistinctValue } from 'react-kitchen-sink'
 
 import styles from './menu.module.css'
 
@@ -57,10 +57,10 @@ const Menu = ({
   // Reset the highlighted index when the menu opens (or when the first
   // enabled item shifts while open). Adjust state during render — a
   // useEffect version cascades a render and paints the stale index for
-  // one frame. `useLastRendersValue` (react-kitchen-sink) hands back
+  // one frame. `usePreviousDistinctValue` (react-kitchen-sink) hands back
   // the value from the last render in which it differed.
-  const prevOpen = useLastRendersValue(open)
-  const prevFirstEnabledIndex = useLastRendersValue(firstEnabledIndex)
+  const prevOpen = usePreviousDistinctValue(open)
+  const prevFirstEnabledIndex = usePreviousDistinctValue(firstEnabledIndex)
   if (open && (open !== prevOpen || firstEnabledIndex !== prevFirstEnabledIndex)) {
     setActiveIndex(firstEnabledIndex)
   }

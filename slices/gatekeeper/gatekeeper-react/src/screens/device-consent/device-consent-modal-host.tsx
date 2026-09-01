@@ -24,7 +24,7 @@ import {
 import {
   isAuthed,
   useAuthStateSubscribable,
-  useLastRendersValue,
+  usePreviousDistinctValue,
   useSubscribable,
 } from 'react-kitchen-sink'
 import { Dialog } from 'react-tundraish'
@@ -159,11 +159,11 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
   const [handledUserCode, setHandledUserCode] = useState<string | null>(null)
 
   // Reset handledUserCode when the host's active userCode changes. Adjust
-  // state during render (via useLastRendersValue) — a useEffect version
+  // state during render (via usePreviousDistinctValue) — a useEffect version
   // trips react/set-state-in-effect and paints the stale "already handled"
   // state for one frame after the host publishes a new active code,
   // briefly showing the closed popup as still closed.
-  const prevActiveUserCode = useLastRendersValue(activeUserCode)
+  const prevActiveUserCode = usePreviousDistinctValue(activeUserCode)
   if (activeUserCode !== prevActiveUserCode) {
     setHandledUserCode(null)
   }

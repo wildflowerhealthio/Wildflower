@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import { useCallback, useEffect, useState } from 'react'
-import { useLastRendersValue } from 'react-kitchen-sink'
+import { usePreviousDistinctValue } from 'react-kitchen-sink'
 import type { TraceExchange } from 'web-trace-core'
 import { emitHar } from 'web-trace-core/har'
 import {
@@ -149,13 +149,13 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
   // rather than in the rebuild useEffect below — a setState-in-effect
   // would render the previous preview as fresh for one paint, and it's
   // what react/set-state-in-effect forbids. Adjust state during render
-  // via useLastRendersValue on each build input, then compare each pair.
-  const prevSalt = useLastRendersValue(salt)
-  const prevExchanges = useLastRendersValue(exchanges)
-  const prevEnumCarveOut = useLastRendersValue(enumCarveOut)
-  const prevEnumThreshold = useLastRendersValue(enumThreshold)
-  const prevNamespaceUris = useLastRendersValue(namespaceUris)
-  const prevOverrides = useLastRendersValue(overrides)
+  // via usePreviousDistinctValue on each build input, then compare each pair.
+  const prevSalt = usePreviousDistinctValue(salt)
+  const prevExchanges = usePreviousDistinctValue(exchanges)
+  const prevEnumCarveOut = usePreviousDistinctValue(enumCarveOut)
+  const prevEnumThreshold = usePreviousDistinctValue(enumThreshold)
+  const prevNamespaceUris = usePreviousDistinctValue(namespaceUris)
+  const prevOverrides = usePreviousDistinctValue(overrides)
   const buildInputsChanged =
     prevSalt !== salt ||
     prevExchanges !== exchanges ||
