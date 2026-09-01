@@ -1,6 +1,6 @@
 import type { HttpResponseKind } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
-import type { JSX } from 'react'
+import { type JSX, useMemo } from 'react'
 
 import type { ReviewBodyProps } from 'har-importer-react'
 
@@ -58,25 +58,6 @@ const UNREADABLE_FILE_MESSAGE = 'This file could not be read as a HAR.'
 
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
-
-/** How many responses one read file has currently chosen to import. */
-const chosenCountOf = (
-  file: Extract<FileReadOutcome, { readonly _tag: 'read' }>,
-  pool: PreviewPanelProps['pool'],
-  selectionFor: PreviewPanelProps['selectionFor']
-): number => Review.chosenCount(Review.recognize(pool, file.responses), selectionFor(file.id))
-
-/** The responses a batch of read files has currently chosen, summed across them. */
-const writableCountOf = (
-  files: readonly FileReadOutcome[],
-  pool: PreviewPanelProps['pool'],
-  selectionFor: PreviewPanelProps['selectionFor']
-): number =>
-  files.reduce(
-    (total, file) =>
-      file._tag === 'read' ? total + chosenCountOf(file, pool, selectionFor) : total,
-    0
-  )
 
 /** One file's whole outcome, under its own name — the unit the batch is built from. */
 const FileSection = ({
@@ -148,7 +129,21 @@ const PreviewPanel = ({
   onCancel,
   confirming,
 }: PreviewPanelProps): JSX.Element => {
-  const writableCount = writableCountOf(files, pool, selectionFor)
+  const recognizedByFile = useMemo(
+    () =>
+      new Map(
+        files.flatMap((file) =>
+          file._tag === 'read' ? [[file.id, Review.recognize(pool, file.responses)] as const] : []
+        )
+      ),
+    [pool, files]
+  )
+  const writableCount = files.reduce((total, file) => {
+    const recognized = recognizedByFile.get(file.id)
+    return recognized !== undefined
+      ? total + Review.chosenCount(recognized, selectionFor(file.id))
+      : total
+  }, 0)
   return (
     <section aria-label="Import preview" className={styles.panel}>
       <h2 className={styles.heading}>
