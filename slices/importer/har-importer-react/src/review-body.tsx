@@ -108,9 +108,13 @@ const ReviewBody = ({
     onChange(next)
   }
 
-  const matched = recognized.filter((response) => response.candidates.length > 0)
-  const unmatched = recognized.filter((response) => response.candidates.length === 0)
-  const urlGroups = groupByUrl(matched)
+  const { unmatched, urlGroups } = useMemo(() => {
+    const matched = recognized.filter((response) => response.candidates.length > 0)
+    return {
+      unmatched: recognized.filter((response) => response.candidates.length === 0),
+      urlGroups: groupByUrl(matched),
+    }
+  }, [recognized])
 
   return (
     <div className={styles.review} aria-label="Review responses">
