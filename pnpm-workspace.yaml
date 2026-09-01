@@ -89,10 +89,12 @@ catalog:
   tundra-css: ^0.14.0
 
   typescript: 7.0.2
-  vite: npm:@voidzero-dev/vite-plus-core@^0.2.2
+  vite: npm:@voidzero-dev/vite-plus-core@^0.3.0
   vite-plus: ^0.3.0
-  # vite-plus 0.2.x depends on real vitest (the @voidzero-dev/vite-plus-test
-  # alias line ended at 0.1.24); pin to the version `vp --version` bundles.
+  # vite-plus depends on real vitest (the @voidzero-dev/vite-plus-test alias
+  # line ended at 0.1.24); pin to the version `vp --version` bundles, and
+  # re-pin here plus in the root package.json overrides on every vite-plus
+  # bump — see docs/Dependencies/Version Override Explanation.md.
   vitest: 4.1.11
   why-is-node-running: ^3.2.2
 catalogMode: prefer
