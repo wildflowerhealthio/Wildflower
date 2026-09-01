@@ -52,7 +52,7 @@ parking_lot = "0.12"
 jsonwebtoken = { version = "10", features = ["rust_crypto"] }
 rsa = { version = "0.9", features = ["sha2"] }
 sha2 = "0.11"
-argon2 = "0.5"
+argon2 = "0.6"
 subtle = "2"
 # Scrub plaintext client secrets and RSA private-key material from memory on
 # drop (`Zeroizing<…>` wrappers and `#[derive(ZeroizeOnDrop)]`). Already resolved
@@ -64,6 +64,10 @@ zeroize = { version = "1.8", features = ["derive"] }
 # match arms so the variant set and its wire spellings can't drift apart.
 strum = { version = "0.28", features = ["derive"] }
 rand = "0.10"
+# rsa 0.9 bounds key generation on rand_core 0.6's CryptoRngCore; rand 0.10
+# re-exports rand_core 0.10 whose OsRng does not satisfy that bound. Pin
+# rand_core 0.6 directly so signing_key.rs can construct the compatible OsRng.
+rand_core = { version = "0.6", features = ["getrandom"] }
 uuid = { version = "1", features = ["v4"] }
 base64 = "0.23"
 percent-encoding = "2"
