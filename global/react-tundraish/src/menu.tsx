@@ -54,10 +54,27 @@ const Menu = ({
   const firstEnabledIndex = findFirstEnabled(items)
   const lastEnabledIndex = findLastEnabled(items)
 
+  // Reset the highlighted index when the menu opens (or when the first
+  // enabled item shifts while open). Adjusting the state during render
+  // via a previous-value guard — rather than in a useEffect — keeps the
+  // reset inside the same render as the open transition, so we don't
+  // pay a cascading render for what is really a derived-value refresh.
+  // The React docs call this "adjusting state while rendering":
+  // https://react.dev/reference/eslint-plugin-react-hooks/lints/set-state-in-effect
+  const [prevOpen, setPrevOpen] = useState(open)
+  const [prevFirstEnabledIndex, setPrevFirstEnabledIndex] = useState(firstEnabledIndex)
+  if (open !== prevOpen || firstEnabledIndex !== prevFirstEnabledIndex) {
+    setPrevOpen(open)
+    setPrevFirstEnabledIndex(firstEnabledIndex)
+    if (open) {
+      setActiveIndex(firstEnabledIndex)
+    }
+  }
+
+  // Focus follows the highlight — a genuine DOM side effect that has to
+  // live in a useEffect, but it no longer also carries a setState.
   useEffect(() => {
-    if (!open) return
-    setActiveIndex(firstEnabledIndex)
-    if (firstEnabledIndex >= 0) {
+    if (open && firstEnabledIndex >= 0) {
       itemRefs.current[firstEnabledIndex]?.focus()
     }
   }, [open, firstEnabledIndex])
