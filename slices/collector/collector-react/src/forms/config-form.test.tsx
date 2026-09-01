@@ -12,7 +12,7 @@ import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
 import { AccountFormScreen } from './account-form.tsx'
-import { configForms, configFormForTag } from './config-form.tsx'
+import { configForms } from './config-form.tsx'
 
 afterEach(() => {
   cleanup()
@@ -35,11 +35,9 @@ const renderWithRouter = (content: ReactNode): ReturnType<typeof render> => {
 describe('config form registry', () => {
   test('every registered collector descriptor has a config form (backs the compile-time exhaustiveness lock)', () => {
     // The `Record<CollectorTag, …>` annotation on `configForms` makes a missing
-    // form a *compile* error; this asserts the same total coverage at runtime,
-    // and that the lookup helper is a view over the same map.
+    // form a *compile* error; this asserts the same total coverage at runtime.
     for (const descriptor of descriptors) {
       expect(configForms[descriptor.tag]).toBeTypeOf('function')
-      expect(configFormForTag(descriptor.tag)).toBe(configForms[descriptor.tag])
     }
   })
 })

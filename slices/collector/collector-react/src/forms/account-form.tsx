@@ -1,9 +1,9 @@
 import { descriptorForTag, type CollectorTag, type ConfigForTag } from 'collector-registry/registry'
-import { createElement, useState, type JSX } from 'react'
+import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, PageHeader } from 'react-tundraish'
 
-import { configFormForTag } from './config-form.tsx'
+import { renderConfigForm } from './config-form.tsx'
 import styles from './account-form.module.css'
 
 interface AccountFormScreenProps<T extends CollectorTag> {
@@ -34,7 +34,7 @@ interface AccountFormScreenProps<T extends CollectorTag> {
  * The generic account create/edit screen. It owns the chrome shared across
  * every collector — the page header, the type badge, the account-name field,
  * the mutation-error banner, and the Save/Cancel row — and hosts the
- * per-collector {@link configFormForTag | config form} for `tag`, handing it the
+ * per-collector {@link renderConfigForm | config form} for `tag`, handing it the
  * name field + type badge as its `header` and the Save/Cancel row as its
  * `footer`. The config form owns its fields and decodes on submit; this screen
  * only fills in the account name (defaulting an empty name to
@@ -72,18 +72,7 @@ function AccountFormScreen<T extends CollectorTag>({
 
       <ErrorBanner error={error} />
 
-      {/*
-        `configFormForTag(tag)` is a stable per-tag lookup off a frozen
-        module-scope record — the returned component reference does not
-        change across renders for a given tag, so its state isn't reset.
-        React Compiler can't prove that from a JSX site with a
-        render-local component variable, so it flags
-        react/static-components on `<ConfigForm .../>`. Use
-        React.createElement here so no render-local component name enters
-        the JSX and the rule has nothing to fire on; the runtime is
-        identical to `<ConfigForm .../>`.
-      */}
-      {createElement(configFormForTag(tag), {
+      {renderConfigForm(tag, {
         initial,
         prefill,
         disabled,
