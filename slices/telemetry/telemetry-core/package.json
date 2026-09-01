@@ -50,7 +50,7 @@
     "@sentry/opentelemetry": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "bumpp": "^12.2.1",
+    "bumpp": "^12.2.2",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
