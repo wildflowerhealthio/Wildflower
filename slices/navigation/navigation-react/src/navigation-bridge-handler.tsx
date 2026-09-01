@@ -47,7 +47,10 @@ const useRouteChangeWatcher = (send: RouteChangeSender): void => {
         canGoBack,
       })
     )
-  }, [location.pathname, location.state, canGoBack])
+    // `location.state` is deliberately absent — the RouteChanged payload
+    // reads only `pathname` and `canGoBack`, so tracking `state` here would
+    // fire the effect on transitions the host doesn't need to hear about.
+  }, [location.pathname, canGoBack])
 }
 
 /**
