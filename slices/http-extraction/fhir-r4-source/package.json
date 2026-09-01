@@ -2,7 +2,7 @@
   "name": "fhir-r4-source",
   "version": "0.0.0",
   "private": true,
-  "description": "The FHIR R4 source: the Patient / Observation / Observation-list entities that define how FHIR R4 traffic decodes into resources, the fhirR4Recognizer / fhirRootOf recognition surface, and the assembled fhirR4Source value consumers extract with. No DOM, no fs, no React.",
+  "description": "The FHIR R4 source: the Patient / Observation / Observation-list response kinds that define how FHIR R4 traffic decodes into resources, each with its own tryRecognize, and the assembled fhirR4Source descriptor consumers extract with. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
