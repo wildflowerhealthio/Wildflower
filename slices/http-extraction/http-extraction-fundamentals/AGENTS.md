@@ -52,6 +52,12 @@ and functions read in the namespace's context (`Extraction.routeTo`, not
   `bodyAbsent` accounting) was demoted to `test-helpers` when the interactive
   review replaced it in production — it survives as the executable reference
   model the parity and fixture suites pin against.
+- **`SourceDescriptor`** (`src/source-descriptor.ts`) — "a source package" as
+  one first-class value: `name`, `display` strings, and the `responseKinds` the
+  source contributes, the per-source analogue of `CollectorDescriptor` /
+  `FileImporterDescriptor`. Packaging **only** — recognition and identity stay
+  on each kind's `tryRecognize`; this must never grow back the deleted
+  recognition-carrying `Source`'s role. `make` shallow-clones and deep-freezes.
 - **`Specificity`** (`src/specificity.ts`) — the exported cross-source tier
   constants a kind's `tryRecognize` draws its `specificity` from and routing
   ranks by, **highest wins**: `PORTAL` (100, a named patient portal) > `PROTOCOL`

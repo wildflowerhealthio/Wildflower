@@ -197,8 +197,8 @@ sourced differently — a live `adoptSourceIdentity(constant)(plan)` that keyed
 under a config constant, and an archive per-URL-root wrapper. There is now one
 seam, and it is applied per kind at **module load**, not per plan: a collector
 `.map`s its kind list through the combinator once, and `fhir-r4-source` exports
-the result (`fhirR4ResponseKinds`) that both the live plan and the archive
-importer consume. See the
+the result (as its `fhirR4Source` descriptor's `responseKinds`) that both the
+live plan and the archive importer consume. See the
 [Adding a Collector How-To](./Adding%20a%20Collector%20How-To.md).
 
 Consequences worth knowing:
@@ -246,7 +246,7 @@ ids with no changes to `capture-provenance.ts`.
 ### The three FHIR-family collectors
 
 - **`fhir-r4-client-collector`** consumes `fhir-r4-source`'s
-  `fhirR4ResponseKinds` directly — the same single pre-adopted definition the
+  `fhirR4Source.responseKinds` directly — the same single pre-adopted definition the
   archive importer runs, so live and archive are now reference identity and
   cannot disagree. Each resource keys under `{ system: root, baseUrl: root }`
   where `root` is the URL-derived root of the response it arrived on. `baseUrl`

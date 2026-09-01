@@ -1,9 +1,10 @@
 # AGENTS.md — slices/http-extraction/fhir-r4-source
 
 The **FHIR R4 source**: the single definition of how FHIR R4 traffic decodes
-into resources — the pre-adopted `fhirR4ResponseKinds` an archive import
-extracts with. The live `fhir-r4-client-collector` scraping plan (browser-driven,
-in `slices/collector`) consumes the same response-kind tuple, so the two
+into resources, exported as one `SourceDescriptor` value — `fhirR4Source`,
+whose pre-adopted `responseKinds` an archive import extracts with. The live
+`fhir-r4-client-collector` scraping plan (browser-driven, in `slices/collector`)
+consumes the same response-kind tuple by reference, so the two
 consumers can never disagree on a decode. It is the first of the per-source
 packages; `rexall-be-well-source`, `shoppers-drugmart-source`, and a possible
 `web-trace-source` follow the same shape.
@@ -23,14 +24,18 @@ root }` (root = the matcher's own capture, so there is no second hand-written
   root regex to keep in step), `None` when the matcher does not claim the URL. A
   FHIR server spells its own references absolutely under that same prefix, which
   is why root rides both `system` and `baseUrl`.
-- `src/response-kinds.ts` — `fhirR4ResponseKinds`, the package's one exported
-  surface: the tuple (Patient, Observation, Observation-list, in that order),
-  widened to `HttpResponseKind<FhirResource>` so the per-kind adoption guard has
-  its element type, and mapped through `adoptUnderRecognizedRoot` — so each
-  resource is keyed under the root of the URL it arrived on, the identity read
-  per response from the kind's own `tryRecognize`, no single system inferred. A
-  module-level constant (the combinator takes no source parameter), so the array
-  is stable by identity, which the config deep-equal suites and the
+- `src/source.ts` — `fhirR4Source`, the package's one exported surface: the
+  `SourceDescriptor` (`name: 'fhir-r4'`, display strings, and the pre-adopted
+  `responseKinds`). Both consumers reach the tuple through
+  `fhirR4Source.responseKinds`, sharing it by reference.
+- `src/response-kinds.ts` — `fhirR4ResponseKinds` (internal, the descriptor's
+  `responseKinds`): the tuple (Patient, Observation, Observation-list, in that
+  order), widened to `HttpResponseKind<FhirResource>` so the per-kind adoption
+  guard has its element type, and mapped through `adoptUnderRecognizedRoot` — so
+  each resource is keyed under the root of the URL it arrived on, the identity
+  read per response from the kind's own `tryRecognize`, no single system
+  inferred. A module-level constant (the combinator takes no source parameter),
+  so the array is stable by identity, which the config deep-equal suites and the
   live==archive parity rest on. Kinds only — no navigation, no provenance.
 - `src/extract-json.ts` — XHR/JSON-viewer body normalizer the entities decode
   through.
@@ -44,7 +49,7 @@ Pure like a `-core`: no DOM, no `fs`, no React. Depends on
 particular it must **never** import anything from `slices/collector`
 (`fhir-r4-client-collector` depends on this package; the live config/plan/form
 are its concern) or `slices/importer` (whose `har-importer-core` consumes this
-package's `fhirR4ResponseKinds`).
+package's `fhirR4Source.responseKinds`).
 
 The source-vs-live **parity** tests — the ones that need the live
 `InstanceConfig`/`scrapingPlan` — therefore live in
@@ -66,7 +71,7 @@ pin only its own surface's behaviour.
   does not. That is FHIR-correct — cross-server references are meant to be
   absolute.
 - **A seam drift guard pins `HttpResponseKind<FhirResource>` against
-  `AdoptableEntity`.** `fhirR4ResponseKinds` maps through
+  `AdoptableEntity`.** The response-kind tuple maps through
   `adoptUnderRecognizedRoot`, whose parameter is `fhir-r4/identity`'s structural
   `AdoptableEntity` (that package sits below `http-extraction` and cannot import
   it). The two shapes are checked against each other here so a drift in either is

@@ -14,15 +14,17 @@ navigation, persistence, HAR, files, or apps.
   namespaces from one flat entry: `HttpResponseKind` / `UrlMatch` /
   `HttpResponse` (how one response is recognized and decoded into resources),
   `Extraction` (`routeTo` / `recognize` / `parseWith` over
-  archived responses), and `Specificity` (the cross-source tier constants
-  routing ranks a claim by). A response kind carries its own recognition +
-  identity on `tryRecognize(url)`; there is no separate `Source` value. Imports
-  from no slice. See its
+  archived responses), `SourceDescriptor` ("a source package" as one value —
+  name, display strings, kinds), and `Specificity` (the cross-source tier
+  constants routing ranks a claim by). A response kind carries its own
+  recognition + identity on `tryRecognize(url)`; there is no separate
+  recognition-carrying `Source` value (a `SourceDescriptor` is packaging only).
+  Imports from no slice. See its
   [AGENTS.md](./http-extraction-fundamentals/AGENTS.md).
-- **`fhir-r4-source`** — the first per-source package: `fhirR4ResponseKinds`,
-  the FHIR R4 response kinds pre-adopted so each resource keys under the root
-  of the URL it arrived on, the single definition both a live plan and an
-  archive import consume. See its
+- **`fhir-r4-source`** — the first per-source package: `fhirR4Source`, a
+  `SourceDescriptor` whose `responseKinds` are the FHIR R4 kinds pre-adopted so
+  each resource keys under the root of the URL it arrived on — the single
+  definition both a live plan and an archive import consume. See its
   [AGENTS.md](./fhir-r4-source/AGENTS.md). The rexall and shoppers entities
   still live inside their collector packages (they already build on the
   fundamentals here); extracting them into sibling `*-source` packages is

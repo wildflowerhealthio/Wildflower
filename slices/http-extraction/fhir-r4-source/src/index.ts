@@ -1,1 +1,1 @@
-export { fhirR4ResponseKinds } from './response-kinds.ts'
+export { fhirR4Source } from './source.ts'

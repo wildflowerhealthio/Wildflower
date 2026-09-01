@@ -16,8 +16,9 @@ that depends on `collector-fundamentals` only.
 
 A source's decode lives in its **source package** under
 `slices/http-extraction/` — `fhir-r4-source` is the worked example — as
-`HttpResponseKind`s (and, when the source supports archive import, a pre-adopted
-kind list like `fhirR4ResponseKinds` a HAR importer's pool consumes).
+`HttpResponseKind`s (and, when the source supports archive import, a
+`SourceDescriptor` like `fhirR4Source` whose pre-adopted kinds a HAR importer's
+pool flattens).
 The collector package layers browser-driving navigation and persistence on top
 of those entities; it depends on its source package, never the reverse.
 
@@ -326,8 +327,8 @@ baseUrl: root }` from `recognizeFhirRoot` (the root of the response's own URL �
 - **Widen before you map.** `adoptUnderRecognizedRoot` refuses a kind whose
   declared output is narrower than the whole `FhirResource` union — adoption
   widens to `FhirResource` and cannot be declared not to. Widen the list to
-  `HttpResponseKind<FhirResource>[]` before the `.map` (a FHIR source's
-  `fhirR4ResponseKinds` is already that wide). The map runs at **module scope**,
+  `HttpResponseKind<FhirResource>[]` before the `.map` (`fhir-r4-source`
+  declares its input tuple that wide). The map runs at **module scope**,
   source-parameter-free, so two plans from one config share the frozen array by
   identity and the per-collector deep-equal suites stay honest — there is no memo.
 - **Nothing for a recorder.** A collector that _mints_ its resources locally
