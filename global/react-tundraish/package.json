@@ -1,7 +1,7 @@
 {
   "name": "react-tundraish",
   "version": "0.0.0",
-  "description": "Tundra-CSS-styled React DOM component primitives.",
+  "description": "Tundra-CSS-styled React DOM component primitives and attribute-driven color-scheme helpers (no prefers-color-scheme CSS fallback).",
   "keywords": [
     "design-system",
     "react",
@@ -51,6 +51,7 @@
     "@tsdown/css": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
+    "fast-check": "catalog:",
     "jsdom": "^30.0.1",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",

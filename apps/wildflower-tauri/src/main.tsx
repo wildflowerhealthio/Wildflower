@@ -9,9 +9,9 @@ import { makeTauriTransport } from 'effect-messaging-tauri'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { makeAwaitEmbeddedAuthReady, makeEmbeddedAuthStateStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
+import { addOsColorSchemeListener } from 'react-tundraish'
 import { renderApp } from 'wildflower-react/app-root'
 import { bridges } from 'wildflower-react/bridges'
-import { addOsColorSchemeListener } from 'wildflower-react/os-color-scheme-listener'
 
 addOsColorSchemeListener()
 

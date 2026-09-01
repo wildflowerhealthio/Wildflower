@@ -3,8 +3,8 @@ import 'tundra-css'
 import 'react-tundraish/styles.css'
 import { createBrowserHistory } from '@tanstack/react-router'
 import './styles/global.css'
+import { addOsColorSchemeListener } from 'react-tundraish'
 import { renderApp } from './app-root.tsx'
-import { addOsColorSchemeListener } from './styles/add-os-color-scheme-listener.ts'
 import { makeWebEntryOptions } from './web-entry.ts'
 
 addOsColorSchemeListener()

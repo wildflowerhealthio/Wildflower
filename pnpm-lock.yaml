@@ -968,6 +968,9 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.2.5(@types/react@19.2.18)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
