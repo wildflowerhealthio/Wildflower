@@ -221,18 +221,6 @@ export default defineConfig({
       'import/no-named-as-default-member': 'warn',
       'import/no-duplicates': 'warn',
 
-      // All nine react-hooks v6 rules vite-plus 0.3 newly enforces are
-      // on: react/set-state-in-effect, react/exhaustive-effect-
-      // dependencies, react/purity, react/static-components,
-      // react/refs, react/memo-dependencies, react/preserve-manual-
-      // memoization, react/globals, react/immutability. Each was
-      // temporarily disabled in the previous PR (#552) so the merge
-      // wasn't blocked; the earlier commits on this branch fix every
-      // flagged site and this restore verifies zero survive under
-      // pre-commit lint. The last two (globals + immutability) had
-      // only test-harness violations and are relaxed by the test-files
-      // override below.
-
       // Enable-only rules (warnings — violations not yet fixed)
       'react/no-array-index-key': 'warn',
       'no-await-in-loop': 'warn',
