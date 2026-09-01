@@ -1,15 +1,15 @@
-import { Effect, type ParseResult } from 'effect'
+import { Effect, type ParseResult, Schema } from 'effect'
 
 import type { Extraction } from 'http-extraction-fundamentals'
-import { type ArchivedExchange, fromHarJson } from 'web-trace-core/har'
+import { HttpArchive } from 'web-trace-core/har'
 
 import type { HarSettings } from './har-settings.ts'
 
 /**
- * One archived exchange as the structural {@link Extraction.Input} the
- * recognizer consumes.
+ * One archive entry as the structural {@link Extraction.Input} the recognizer
+ * consumes.
  *
- * @param exchange - An exchange read out of the HAR archive
+ * @param entry - An entry read out of the HTTP Archive
  * @returns The same eight fields, typed as an `Extraction.Input`
  *
  * @remarks
@@ -17,15 +17,15 @@ import type { HarSettings } from './har-settings.ts'
  * shape is a compile error here — the one seam the two packages (neither of
  * which imports the other) meet.
  */
-const toInput = (exchange: ArchivedExchange): Extraction.Input => ({
-  id: exchange.id,
-  url: exchange.url,
-  status: exchange.status,
-  statusText: exchange.statusText,
-  headers: exchange.headers,
-  startedAt: exchange.startedAt,
-  body: exchange.body,
-  bodyAbsent: exchange.bodyAbsent,
+const toInput = (entry: HttpArchive.Entry): Extraction.Input => ({
+  id: entry.id,
+  url: entry.url,
+  status: entry.status,
+  statusText: entry.statusText,
+  headers: entry.headers,
+  startedAt: entry.startedAt,
+  body: entry.body,
+  bodyAbsent: entry.bodyAbsent,
 })
 
 /**
@@ -35,14 +35,16 @@ const toInput = (exchange: ArchivedExchange): Extraction.Input => ({
  * @param fileText - The text of a `.har` file
  * @param _settings - The HAR settings (none today; accepted so the signature
  *   matches `FileImporterDescriptor.decode`)
- * @returns The archive's exchanges as `Extraction.Input`s, failing only with a
- *   `ParseError` when the text is not a well-formed HAR archive; requires
+ * @returns The archive's entries as `Extraction.Input`s, failing only with a
+ *   `ParseError` when the text is not a well-formed HTTP Archive; requires
  *   nothing, so the write client is unreachable from a decode by construction
  */
 const decodeHar = (
   fileText: string,
   _settings: HarSettings
 ): Effect.Effect<readonly Extraction.Input[], ParseResult.ParseError> =>
-  fromHarJson(fileText).pipe(Effect.map((session) => session.exchanges.map(toInput)))
+  Schema.decodeUnknown(HttpArchive.LogFromHarJson)(fileText).pipe(
+    Effect.map((log) => log.entries.map(toInput))
+  )
 
 export { decodeHar, toInput }

@@ -1,22 +1,26 @@
-import { Effect, ParseResult } from 'effect'
-import { fromHarJson } from 'web-trace-core/har'
+import { Effect, ParseResult, Schema } from 'effect'
+import { HttpArchive } from 'web-trace-core/har'
 
 import { LOCAL_SOURCE, type PickedHar } from './picked-har.ts'
 
 /**
- * Reading a file the user dropped or chose, and rejecting one that is not a HAR
- * *at the picker*, before it becomes the importer's problem.
+ * Reading a file the user dropped or chose, and rejecting one that is not an
+ * HTTP Archive *at the picker*, before it becomes the importer's problem.
  *
  * @remarks
  * A local file is validated the same way an extraction will read it — through
- * `web-trace-core`'s `fromHarJson`, the one HAR parser in the codebase — rather
- * than a second, weaker check here. So a file the picker accepts is a file the
- * importer can parse, and a rejection carries the reason back to the control the
- * user just used instead of surfacing three steps later. This module never
- * *imports* the importer; the parser lives in `web-trace-core`, below both.
+ * `web-trace-core`'s `HttpArchive.LogFromHarJson`, the one HTTP Archive parser
+ * in the codebase — rather than a second, weaker check here. So a file the
+ * picker accepts is a file the importer can parse, and a rejection carries the
+ * reason back to the control the user just used instead of surfacing three
+ * steps later. This module never *imports* the importer; the parser lives in
+ * `web-trace-core`, below both.
  *
  * @packageDocumentation
  */
+
+/** The one parse a picked file is gated on. */
+const parseLog = Schema.decodeUnknown(HttpArchive.LogFromHarJson)
 
 /**
  * The lead sentence shown when a dropped or chosen file is not a HAR.
@@ -91,19 +95,20 @@ interface ReadableFile {
  * @remarks
  * An `Effect` rather than an already-run `Promise`: the validation is a parse
  * that either yields a value or names why it did not — exactly the success/error
- * channels an `Effect` carries — so the pipeline reads as one (`fromHarJson`
+ * channels an `Effect` carries — so the pipeline reads as one (the parse
  * succeeds into the pick, its `ParseError` is described by
  * {@link describeRejection}) and nothing runs until the caller runs it, where
  * the pick's side effects belong.
- * Validation goes through `fromHarJson`, so a file that is not JSON and a file
- * that is JSON but not a HAR both fail here rather than downstream; the parse
- * result itself is discarded, because the picker hands on the *text* and the
- * extraction parses it again when it runs. This is a gate, not the parse.
+ * Validation goes through `HttpArchive.LogFromHarJson`, so a file that is not
+ * JSON and a file that is JSON but not an HTTP Archive both fail here rather
+ * than downstream; the parse result itself is discarded, because the picker
+ * hands on the *text* and the extraction parses it again when it runs. This is
+ * a gate, not the parse.
  */
 const acceptLocalHar = (file: ReadableFile): Effect.Effect<PickedHar, string> =>
   Effect.promise(() => file.text()).pipe(
     Effect.flatMap((text) =>
-      fromHarJson(text).pipe(
+      parseLog(text).pipe(
         Effect.as<PickedHar>({ fileName: file.name, text, source: LOCAL_SOURCE }),
         Effect.mapError(describeRejection)
       )

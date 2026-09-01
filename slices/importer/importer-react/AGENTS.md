@@ -27,7 +27,8 @@ writes), the review drives `Review`'s pure transitions, and the write half runs
 the descriptor and `Review` expose, widen those rather than reaching around them.
 
 **Presentation and interaction only.** Nothing here parses HAR, encodes an
-archive, runs entities, or writes resources. The parser (`fromHarJson`), the
+archive, runs entities, or writes resources. The parser
+(`HttpArchive.LogFromHarJson`), the
 archive codec, `decode`, the recognition (`Review.recognize`), and the write sink
 (`persist` → `fhir-r4`'s `persistResources`) all live below this package; it
 drives them and reimplements none.
@@ -137,7 +138,8 @@ slice needs.
   web-trace viewer lists traces; this lists archives; `isWebTrace` and
   `isHarArchive` never both hold. The list must never surface a trace.
 - **The picker validates each local file through the real HAR parser, not a
-  second check.** `acceptLocalHar` runs `web-trace-core`'s `fromHarJson`, so a
+  second check.** `acceptLocalHar` runs `web-trace-core`'s
+  `HttpArchive.LogFromHarJson`, so a
   file the picker accepts is a file a `decode` can parse, and a file that is not
   JSON and a file that is JSON-but-not-HAR both fail _at the picker_, next to the
   control the user just used. In a batch the accepted files are handed on together

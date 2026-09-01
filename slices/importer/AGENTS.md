@@ -119,5 +119,5 @@ sits above `http-extraction` and below every binding, exactly as
 - [slices/http-extraction/AGENTS.md](../http-extraction/AGENTS.md) — the
   vocabulary and source packages the HAR importer recognizes and extracts with.
 - [web-trace-core AGENTS.md](../web-trace/web-trace-core/AGENTS.md) — the HAR
-  codec (`fromHarJson`, `ArchivedExchange`) and `withMetaSource`.
+  codec (the `HttpArchive` namespace) and `withMetaSource`.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

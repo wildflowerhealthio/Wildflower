@@ -52,9 +52,10 @@ failure is a malformed file (a `ParseError`); it requires **no services** and
 writes nothing, so a preview can never reach the write client by construction —
 the whole opt-in seam rests on this.
 
-For HAR, `decodeHar` runs `web-trace-core`'s `fromHarJson` and restates each
-`ArchivedExchange` as an `Extraction.Input` field-for-field (restated, not passed
-through, so a drift is a compile error at the one seam the two packages meet).
+For HAR, `decodeHar` runs `web-trace-core`'s `HttpArchive.LogFromHarJson` and
+restates each `HttpArchive.Entry` as an `Extraction.Input` field-for-field
+(restated, not passed through, so a drift is a compile error at the one seam the
+two packages meet).
 
 ## 2. The pool
 

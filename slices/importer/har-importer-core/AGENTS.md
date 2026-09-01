@@ -14,11 +14,12 @@ descriptor's `persist`.
 FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   `HarSettings`.
 - `src/decode-har.ts` — **`decodeHar`** (the read half's only step) and
-  `toInput`. `fromHarJson` (`web-trace-core/har`) decodes the archive into an
-  `ArchivedSession`; each `ArchivedExchange` is restated field-for-field as an
-  `Extraction.Input` via `toInput`. Restated explicitly, not passed through, so a
-  drift between `ArchivedExchange` and `Extraction.Input` is a compile error here
-  — the one seam the two packages (neither of which imports the other) meet.
+  `toInput`. `HttpArchive.LogFromHarJson` (`web-trace-core/har`) decodes the
+  archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated
+  field-for-field as an `Extraction.Input` via `toInput`. Restated explicitly,
+  not passed through, so a drift between `HttpArchive.Entry` and
+  `Extraction.Input` is a compile error here — the one seam the two packages
+  (neither of which imports the other) meet.
   Requires nothing and writes nothing; fails only with a `ParseError` on a
   malformed file.
 - `src/fhir-pool.ts` — **`fhirPool`**, the flat pool responses are recognized and
@@ -42,7 +43,7 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
 
 Depends on `importer-fundamentals` (the contract), `http-extraction-fundamentals`
 (`Extraction.Input`), `fhir-r4-source` (the pre-adopted pool), `web-trace-core`
-(`fromHarJson`, `withMetaSource`), `fhir-r4` (resources + `persistResources`), and
+(`HttpArchive`, `withMetaSource`), `fhir-r4` (resources + `persistResources`), and
 `effect`. Never imports `importer-react`, `har-importer-react`, or
 `slices/collector`.
 
