@@ -75,8 +75,8 @@ interface ImportRun {
  * @returns The read surface: its `state`, the `run` trigger, and a `reset` back
  *   to `idle`
  */
-const useImportRun = <TSettings, TResource, R>(
-  descriptor: FileImporterDescriptor<TSettings, TResource, R>
+const useImportRun = <TSettings, TParsed, R>(
+  descriptor: FileImporterDescriptor<TSettings, TParsed, R>
 ): ImportRun => {
   const runAuthed = useRunAuthed()
   const [state, setState] = useState<ImportRunState>({ _tag: 'idle' })

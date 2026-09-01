@@ -66,7 +66,7 @@ const harTextOf = (exchanges: readonly TraceExchange[]): string =>
   Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' })))
 
 /** The four-way extraction of running the FHIR pool over a decoded HAR. */
-const extract = (harText: string): Extraction.Extraction<FhirResource> =>
+const extract = (harText: string): Extraction.Result<FhirResource> =>
   Effect.runSync(
     decodeHar(harText, defaultHarSettings).pipe(
       Effect.flatMap((inputs) => Extraction.run(fhirPool, inputs))
@@ -75,7 +75,7 @@ const extract = (harText: string): Extraction.Extraction<FhirResource> =>
 
 /** Every decoded resource of one `resourceType`, in batch order. */
 const ofType = (
-  extraction: Extraction.Extraction<FhirResource>,
+  extraction: Extraction.Result<FhirResource>,
   resourceType: string
 ): readonly FhirResource[] =>
   extraction.batches

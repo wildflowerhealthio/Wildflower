@@ -17,7 +17,7 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'fhir-r4', rootUrl, patientId }`)
   with fast-check arbitraries, `defaultConfig` (the public SMART Health IT
   sandbox), the two-page `scrapingPlan`, and the `FhirR4CollectorDescriptor`.
-  The plan's `responseKinds` are `fhir-r4-source`'s `fhirR4SourceEntities`
+  The plan's `responseKinds` are `fhir-r4-source`'s `fhirR4ResponseKinds`
   consumed **directly** — the same pre-adopted definition the archive importer
   runs, so live and archive are reference identity and cannot disagree. The
   response kinds live in that package, the **source package** this collector
@@ -28,7 +28,7 @@ An ordinary `*-client-collector` (`rexall-be-well-collector` and
   `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
-- the source identity — nothing to wire here: `fhirR4SourceEntities` is already
+- the source identity — nothing to wire here: `fhirR4ResponseKinds` is already
   adopted (`adoptUnderRecognizedRoot`), so each resource keys under the root of
   the URL it arrived on, minted by each kind's own `tryRecognize`
   (`recognizeFhirRoot` → `{ system: root, baseUrl: root }`). See
@@ -85,8 +85,8 @@ Lives in [`fhir-r4-source`](../../http-extraction/fhir-r4-source/AGENTS.md)
 (`slices/http-extraction`), together with the response kinds: each kind's
 `tryRecognize` (built from `recognizeFhirRoot`) claims a FHIR URL at
 `Specificity.PROTOCOL` and mints `{ system: root, baseUrl: root }` from the
-matcher's own capture, and `fhirR4SourceEntities` is that kind tuple pre-adopted.
-The live plan here consumes `fhirR4SourceEntities` **directly** — the same
+matcher's own capture, and `fhirR4ResponseKinds` is that kind tuple pre-adopted.
+The live plan here consumes `fhirR4ResponseKinds` **directly** — the same
 single, already-adopted array the archive importer runs — so a resource decodes
 _and_ keys identically through the sniffer and through an archive, by reference.
 `source-parity.test.ts` in this package pins the surviving load-bearing property:

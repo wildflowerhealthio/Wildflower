@@ -52,7 +52,7 @@ import type { SniffResult } from './sniffer-response-tracker.ts'
  * machine reads the other's state. See the
  * [Handler Explanation](../../docs/Handler%20Explanation.md).
  */
-interface RunLifecycleState<TResources> {
+interface RunLifecycleState<TParsed> {
   /**
    * The stream of settled {@link SniffResult}s, surfaced as the handler's
    * result source. The lifecycle closes it on `handleSniffingComplete` (once no
@@ -60,7 +60,7 @@ interface RunLifecycleState<TResources> {
    * drained, a consumer's `take` fails with `NoSuchElementException` — the run's
    * completion signal.
    */
-  readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TResources>>
+  readonly requestSniffingResults: Mailbox.ReadonlyMailbox<SniffResult<TParsed>>
   /**
    * Publish one settled result onto `requestSniffingResults` (a synchronous
    * `unsafeOffer`), then run `endRequestSniffingResultsUnlessMoreExpected` so the
@@ -71,9 +71,7 @@ interface RunLifecycleState<TResources> {
    * `abandoned` set: it force-closes the stream itself, so the per-result
    * end-check is skipped.
    */
-  readonly handleNewSniffResult: (
-    result: SniffResult<TResources>
-  ) => Effect.Effect<void, never, never>
+  readonly handleNewSniffResult: (result: SniffResult<TParsed>) => Effect.Effect<void, never, never>
   /**
    * Run after every settle *and* whenever the machine's queue drains (wired to
    * its `onDrained` hook): if no sniffed request is still incomplete, inject
@@ -101,7 +99,7 @@ interface RunLifecycleState<TResources> {
  * lifecycle owns the close — and `signalNoMoreResultsExpected` injects the
  * completion input into the automatic-navigation machine.
  */
-const make = <TResources>({
+const make = <TParsed>({
   hasIncompleteSniffedRequests,
   failIncompleteSniffedRequests,
   cancelIncompleteSniffedRequests,
@@ -121,9 +119,9 @@ const make = <TResources>({
    * composition (the machine is built after the lifecycle).
    */
   readonly signalNoMoreResultsExpected: Effect.Effect<void, never, never>
-}): Effect.Effect<RunLifecycleState<TResources>, never, never> =>
+}): Effect.Effect<RunLifecycleState<TParsed>, never, never> =>
   Effect.gen(function* () {
-    const requestSniffingResults = yield* Mailbox.make<SniffResult<TResources>>()
+    const requestSniffingResults = yield* Mailbox.make<SniffResult<TParsed>>()
     // Set true once the machine dispatches `SniffingComplete`. The stream closes
     // when this holds *and* no sniffed request is incomplete.
     const sniffingComplete = yield* Ref.make(false)
@@ -144,7 +142,7 @@ const make = <TResources>({
       })
 
     const handleNewSniffResult = (
-      result: SniffResult<TResources>
+      result: SniffResult<TParsed>
     ): Effect.Effect<void, never, never> => {
       requestSniffingResults.unsafeOffer(result)
       // The abandon path (`failIncompleteSniffedRequests`) publishes

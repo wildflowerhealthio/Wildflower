@@ -52,12 +52,12 @@ interface RecognizedUrlData {
  *   need Effect-typed dependencies (clock, randomness, …). `parse`
  *   stays a *pure decode*: it never emits navigation.
  */
-interface HttpResponseKind<out TResources> {
+interface HttpResponseKind<out TParsed> {
   readonly name: string
   readonly tryRecognize: (url: string) => Option.Option<RecognizedUrlData>
   readonly parse: (
     response: HttpResponse
-  ) => Effect.Effect<readonly TResources[], ParseResult.ParseError>
+  ) => Effect.Effect<readonly TParsed[], ParseResult.ParseError>
 }
 
 /**
@@ -68,7 +68,7 @@ interface HttpResponseKind<out TResources> {
  * extra unexpected property on the caller's object is silently
  * dropped.
  */
-const make = <TResources>(definition: HttpResponseKind<TResources>): HttpResponseKind<TResources> =>
+const make = <TParsed>(definition: HttpResponseKind<TParsed>): HttpResponseKind<TParsed> =>
   deepFreeze({
     name: definition.name,
     tryRecognize: definition.tryRecognize,

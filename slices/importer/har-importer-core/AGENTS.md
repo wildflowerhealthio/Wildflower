@@ -10,7 +10,7 @@ descriptor's `persist`.
 ## Shape
 
 - `src/har-importer.ts` — **`harImporterDescriptor`**, the one value the shell's
-  registry lists. Binds `TResource = FhirResource`, `R =
+  registry lists. Binds `TParsed = FhirResource`, `R =
 FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   `HarSettings`.
 - `src/decode-har.ts` — **`decodeHar`** (the read half's only step) and
@@ -22,7 +22,7 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   Requires nothing and writes nothing; fails only with a `ParseError` on a
   malformed file.
 - `src/fhir-pool.ts` — **`fhirPool`**, the flat pool responses are recognized and
-  decoded through: `fhir-r4-source`'s `fhirR4SourceEntities`, consumed
+  decoded through: `fhir-r4-source`'s `fhirR4ResponseKinds`, consumed
   **pre-adopted** (each resource already keyed under the root of the URL it
   arrived on), never re-adopted here. Registering another source is one static
   append of its `HttpResponseKind`s.
@@ -50,7 +50,7 @@ Depends on `importer-fundamentals` (the contract), `http-extraction-fundamentals
 - **The read half never writes.** `decodeHar` requires no services, so the write
   client is unreachable from a decode by construction. Writing is `persistFhir`'s
   separate step behind the descriptor's `persist`, gated on a confirmed review.
-- **The pool is consumed pre-adopted, never re-adopted.** `fhirR4SourceEntities`
+- **The pool is consumed pre-adopted, never re-adopted.** `fhirR4ResponseKinds`
   is already wrapped with `adoptUnderRecognizedRoot` in `fhir-r4-source`; adopting
   again would hash a hash. Live and archive share that single definition by
   reference.
@@ -66,7 +66,7 @@ Depends on `importer-fundamentals` (the contract), `http-extraction-fundamentals
 - [har-importer-react AGENTS.md](../har-importer-react/AGENTS.md) — the HAR UI
   over this descriptor.
 - [fhir-r4-source AGENTS.md](../../http-extraction/fhir-r4-source/AGENTS.md) — the
-  pre-adopted `fhirR4SourceEntities` pool.
+  pre-adopted `fhirR4ResponseKinds` pool.
 - [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the HAR
   codec and `withMetaSource`.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)

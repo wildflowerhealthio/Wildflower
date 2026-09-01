@@ -58,12 +58,12 @@ through, so a drift is a compile error at the one seam the two packages meet).
 
 ## 2. The pool
 
-`pool` is the flat `HttpResponseKind<TResource>[]` every decoded response is
+`pool` is the flat `HttpResponseKind<TParsed>[]` every decoded response is
 recognized and decoded through, routed per response by **highest specificity**
 (ties → list order). Recognition is per-URL: a mixed archive extracts every
 recognized response, not one winning source. For a FHIR format, consume a source
 package's **pre-adopted** kinds directly (HAR uses `fhir-r4-source`'s
-`fhirR4SourceEntities`, already keyed under each response's own root — never
+`fhirR4ResponseKinds`, already keyed under each response's own root — never
 re-adopt). Registering another source in the pool is one static append.
 
 ## 3. The persist sink

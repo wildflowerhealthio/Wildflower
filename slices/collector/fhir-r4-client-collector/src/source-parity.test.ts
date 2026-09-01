@@ -2,10 +2,7 @@ import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Arbitrary, Effect, Option } from 'effect'
 import * as fc from 'fast-check'
 import { fhirR4ResponseKinds } from 'fhir-r4-source'
-import {
-  ObservationListResponseKind,
-  PatientResponseKind,
-} from 'fhir-r4-source/test-helpers'
+import { ObservationListResponseKind, PatientResponseKind } from 'fhir-r4-source/test-helpers'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind } from 'http-extraction-fundamentals'

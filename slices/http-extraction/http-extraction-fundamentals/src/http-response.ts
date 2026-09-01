@@ -56,7 +56,7 @@ interface HttpResponse {
  * The plain data {@link make} builds an {@link HttpResponse} from: the
  * readable fields plus the body, already in hand as one byte array.
  */
-interface Init {
+interface Data {
   readonly id: string
   readonly url: string
   readonly status: number
@@ -69,24 +69,24 @@ interface Init {
 /**
  * Build an {@link HttpResponse} over bytes already in hand.
  *
- * @param source - The response fields and the complete body
+ * @param data - The response fields and the complete body
  * @returns An `HttpResponse` whose `bytes()` returns a fresh copy of
- *   `source.body` and whose `text()` is its UTF-8 decode
+ *   `data.body` and whose `text()` is its UTF-8 decode
  */
-const make = (source: Init): HttpResponse => ({
-  id: source.id,
-  url: source.url,
-  status: source.status,
-  statusText: source.statusText,
-  headers: source.headers,
-  startedAt: source.startedAt,
+const make = (data: Data): HttpResponse => ({
+  id: data.id,
+  url: data.url,
+  status: data.status,
+  statusText: data.statusText,
+  headers: data.headers,
+  startedAt: data.startedAt,
   bytes: () => {
-    const copy = new Uint8Array(source.body.length)
-    copy.set(source.body)
+    const copy = new Uint8Array(data.body.length)
+    copy.set(data.body)
     return copy
   },
-  text: () => new TextDecoder().decode(source.body),
+  text: () => new TextDecoder().decode(data.body),
 })
 
 export { make }
-export type { Headers, HttpResponse, Init }
+export type { Data, Headers, HttpResponse }

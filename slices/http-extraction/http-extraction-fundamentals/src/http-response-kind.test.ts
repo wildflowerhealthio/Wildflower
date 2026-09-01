@@ -13,7 +13,7 @@ const makeResponse = (body: string): HttpResponse.HttpResponse =>
   makeHttpResponse({ headers: [['content-type', 'text']], body })
 
 /**
- * `parse` returns an `Effect<readonly TResources[], ParseError>`. The
+ * `parse` returns an `Effect<readonly TParsed[], ParseError>`. The
  * tests run it via `Effect.runSync(Effect.either(...))` so the
  * existing `expectRight/LeftToEqual` helpers — keyed on the
  * `Either` tag — still apply.

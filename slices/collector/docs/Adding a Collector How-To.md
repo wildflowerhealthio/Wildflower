@@ -17,7 +17,7 @@ that depends on `collector-fundamentals` only.
 A source's decode lives in its **source package** under
 `slices/http-extraction/` — `fhir-r4-source` is the worked example — as
 `HttpResponseKind`s (and, when the source supports archive import, a pre-adopted
-kind list like `fhirR4SourceEntities` a HAR importer's pool consumes).
+kind list like `fhirR4ResponseKinds` a HAR importer's pool consumes).
 The collector package layers browser-driving navigation and persistence on top
 of those entities; it depends on its source package, never the reverse.
 

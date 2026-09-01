@@ -120,7 +120,7 @@ const recognize = Extraction.recognize
 /**
  * Decode only the chosen responses — the confirm's write set.
  *
- * @typeParam TResource - The resource type the pool decodes to
+ * @typeParam TParsed - The resource type the pool decodes to
  * @param pool - The format's response kinds
  * @param responses - The decoded responses, in input order
  * @param selection - The reviewer's choices
@@ -128,15 +128,15 @@ const recognize = Extraction.recognize
  *   input order — total: a response with no chosen pick is never decoded, and
  *   `parseWith` folds a decode error or absent body to `[]`
  */
-const chosen = <TResource>(
-  pool: readonly HttpResponseKind.HttpResponseKind<TResource>[],
+const chosen = <TParsed>(
+  pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[],
   selection: Selection
-): Effect.Effect<readonly TResource[]> =>
+): Effect.Effect<readonly TParsed[]> =>
   pipe(
     Effect.forEach(Arr.zip(responses, recognize(pool, responses)), ([response, recognized]) =>
       Option.match(pickFor(recognized, selection), {
-        onNone: () => Effect.succeed<readonly TResource[]>([]),
+        onNone: () => Effect.succeed<readonly TParsed[]>([]),
         onSome: (candidate) =>
           Extraction.parseWith(candidate.kind, response).pipe(
             Effect.map((outcome) => (outcome._tag === 'resources' ? outcome.resources : []))

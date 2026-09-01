@@ -13,7 +13,7 @@ const AlphaEntity = echoResponseKind('AlphaEntity', 'alpha')
 const BetaEntity = echoResponseKind('BetaEntity', 'beta')
 const responseKinds = [AlphaEntity, BetaEntity]
 
-const extract = (scenarios: readonly Scenario[]): Extraction.Extraction<Echo> =>
+const extract = (scenarios: readonly Scenario[]): Extraction.Result<Echo> =>
   Effect.runSync(
     Extraction.run(
       responseKinds,

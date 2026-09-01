@@ -29,9 +29,9 @@ Part of the offline FHIR HAR importer epic (#489).
 - **`har-importer-core`** (the HAR binding) — the concrete
   `harImporterDescriptor` for format `'har'`, assembled from three seams:
   `web-trace-core`'s HAR codec (`decodeHar`), the FHIR R4 response-kind pool
-  (`fhirPool` = `fhir-r4-source`'s pre-adopted `fhirR4SourceEntities`), and the
+  (`fhirPool` = `fhir-r4-source`'s pre-adopted `fhirR4ResponseKinds`), and the
   FHIR persist sink (`persistFhir` = `withMetaSource` + `persistResources`). Bound
-  to `TResource = FhirResource`, empty `HarSettings`. No DOM, no `fs`, no React.
+  to `TParsed = FhirResource`, empty `HarSettings`. No DOM, no `fs`, no React.
   See its [AGENTS.md](./har-importer-core/AGENTS.md).
 - **`har-importer-react`** (the HAR UI) — `HarSettingsPicker` (a no-op today) and
   the interactive per-URL `ReviewBody`: a per-URL list of the archive's
@@ -59,9 +59,9 @@ assembly belongs to none of them:
   FHIR-agnostic machinery (`Extraction.run` / `recognize` / `parseWith`,
   `HttpResponseKind`, `Specificity`) but names no archive format and no resource
   type.
-- **`fhir-r4-source`** (same slice) owns the FHIR R4 response kinds and their
-  pre-adopted `fhirR4SourceEntities` but knows nothing about HAR or about a
-  registry of formats.
+- **`fhir-r4-source`** (same slice) owns the pre-adopted FHIR R4 response kinds
+  (`fhirR4ResponseKinds`) but knows nothing about HAR or about a registry of
+  formats.
 - **`web-trace-core`** (in `slices/web-trace`) owns the HAR codec but is
   deliberately consumer-agnostic.
 

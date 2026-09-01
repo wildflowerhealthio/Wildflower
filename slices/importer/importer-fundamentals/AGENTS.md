@@ -12,9 +12,9 @@ React package drive.
 ## Shape
 
 - `src/file-importer-descriptor.ts` — **`FileImporterDescriptor<TSettings,
-TResource, R>`**, "a file-format importer" as one value a closed registry lists.
+TParsed, R>`**, "a file-format importer" as one value a closed registry lists.
   `format` (the registry key), `display`, `defaultSettings`, `pool` (the flat
-  `HttpResponseKind<TResource>[]` responses are recognized and decoded through),
+  `HttpResponseKind<TParsed>[]` responses are recognized and decoded through),
   `decode(fileText, settings) → Effect<Extraction.Input[], ParseError>` (requires
   nothing, `R = never` — a preview can never reach the write client), and
   `persist(resources, sourceRef) → Effect<PersistFailure[], never, R>` (the sink,
@@ -40,7 +40,7 @@ TResource, R>`**, "a file-format importer" as one value a closed registry lists.
 
 Depends only on `http-extraction-fundamentals` (`Extraction`, `HttpResponseKind`)
 and `effect`. Names no archive format (`har-importer-core` supplies `decode`), no
-resource type (`TResource`, bound to `FhirResource` in `har-importer-core`), and
+resource type (`TParsed`, bound to `FhirResource` in `har-importer-core`), and
 no UI framework (the interactive `ReviewBody` a format's React package renders is
 a view over these transitions). Never imports a `*-importer-core`, a
 `*-importer-react`, `slices/collector`, or `fhir-r4`.

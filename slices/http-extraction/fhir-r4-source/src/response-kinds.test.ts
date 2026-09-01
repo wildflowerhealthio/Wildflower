@@ -7,9 +7,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import { fhirR4ResponseKinds } from './response-kinds.ts'
 
-const kindNamed = (
-  name: string
-): HttpResponseKind.HttpResponseKind<FhirResource> => {
+const kindNamed = (name: string): HttpResponseKind.HttpResponseKind<FhirResource> => {
   const found = fhirR4ResponseKinds.find((kind) => kind.name === name)
   if (found === undefined) throw new Error(`no kind named ${name}`)
   return found

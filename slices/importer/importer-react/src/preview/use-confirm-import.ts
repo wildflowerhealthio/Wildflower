@@ -96,9 +96,9 @@ const secureSourceRef = (
  * Best-effort — a failed upload is caught into an `uploadFailed` result, never a
  * raised error.
  */
-const importOneFile = <TSettings, TResource>(
+const importOneFile = <TSettings, TParsed>(
   file: FileReadOutcome,
-  descriptor: FileImporterDescriptor<TSettings, TResource, FhirR4ResourcesHttpApiClient>,
+  descriptor: FileImporterDescriptor<TSettings, TParsed, FhirR4ResourcesHttpApiClient>,
   selectionFor: SelectionFor,
   uploadHar: ReturnType<typeof useUploadHar>
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
@@ -147,8 +147,8 @@ const importOneFile = <TSettings, TResource>(
  * @returns The confirm surface: its `state`, the `confirm` trigger, and a `reset`
  *   back to `idle`
  */
-const useConfirmImport = <TSettings, TResource>(
-  descriptor: FileImporterDescriptor<TSettings, TResource, FhirR4ResourcesHttpApiClient>
+const useConfirmImport = <TSettings, TParsed>(
+  descriptor: FileImporterDescriptor<TSettings, TParsed, FhirR4ResourcesHttpApiClient>
 ): ConfirmImport => {
   const runAuthed = useRunAuthed()
   const uploadHar = useUploadHar()

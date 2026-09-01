@@ -28,9 +28,9 @@ type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
  * reroute parsing — the factory now deep-freezes anyway, but this nails the
  * invariant).
  */
-interface IncompleteSniffedRequest<TResources> {
+interface IncompleteSniffedRequest<TParsed> {
   readonly response: CollectorHttpResponse
-  readonly responseKind: CollectorHttpResponseKind.CollectorHttpResponseKind<TResources>
+  readonly responseKind: CollectorHttpResponseKind.CollectorHttpResponseKind<TParsed>
 }
 
 /**
@@ -69,9 +69,9 @@ type SniffFailure = {
  * the run's summary. The split is structural — decided where the batch is
  * built — so no downstream consumer re-derives it from resource shapes.
  */
-interface SniffedBatch<TResources> {
-  readonly resources: readonly TResources[]
-  readonly diagnostics: readonly TResources[]
+interface SniffedBatch<TParsed> {
+  readonly resources: readonly TParsed[]
+  readonly diagnostics: readonly TParsed[]
 }
 
 /**
@@ -82,7 +82,7 @@ interface SniffedBatch<TResources> {
  * everything they need without the full response object — the runner reads
  * only the URL.
  */
-type SniffResult<TResources> = Either.Either<SniffedBatch<TResources>, SniffFailure>
+type SniffResult<TParsed> = Either.Either<SniffedBatch<TParsed>, SniffFailure>
 
 /**
  * The response-tracker half of {@link CollectorBridgeMessageHandler}: the five
@@ -94,10 +94,10 @@ type SniffResult<TResources> = Either.Either<SniffedBatch<TResources>, SniffFail
  * through the supplied `sendMessage` and the injected `handleGeneratedSteps`
  * hook (a successful parse's `followUpSteps`) — no shared state.
  */
-interface SnifferResponseTracker<TResources> {
+interface SnifferResponseTracker<TParsed> {
   readonly incompleteSniffedRequests: MutableHashMap.MutableHashMap<
     string,
-    IncompleteSniffedRequest<TResources>
+    IncompleteSniffedRequest<TParsed>
   >
   readonly handleResponseStart: Service['ResponseStart']
   readonly handleResponseData: Service['ResponseData']
@@ -131,7 +131,7 @@ interface SnifferResponseTracker<TResources> {
   ) => Effect.Effect<void, never, never>
 }
 
-const make = <TResources>({
+const make = <TParsed>({
   matchResponseKind,
   sendMessage,
   handleNewSniffResult,
@@ -140,7 +140,7 @@ const make = <TResources>({
 }: {
   matchResponseKind: (
     url: string
-  ) => Option.Option<CollectorHttpResponseKind.CollectorHttpResponseKind<TResources>>
+  ) => Option.Option<CollectorHttpResponseKind.CollectorHttpResponseKind<TParsed>>
   sendMessage: (
     message: typeof CancelSnifferRequestMessage.Type
   ) => Effect.Effect<void, never, never>
@@ -154,15 +154,15 @@ const make = <TResources>({
    */
   captureProvenance?: (
     response: CollectorHttpResponse,
-    produced: readonly TResources[]
-  ) => Effect.Effect<SniffedBatch<TResources>, unknown>
+    produced: readonly TParsed[]
+  ) => Effect.Effect<SniffedBatch<TParsed>, unknown>
   /**
    * Publish one settled {@link SniffResult} onto the {@link RunLifecycleState}'s
    * stream. Offers the result, then runs the lifecycle's stream-close check —
    * so `offerSniffResultAndUntrack` drops the tracked id *before* calling this,
    * letting that check see the settled request already gone from the map.
    */
-  handleNewSniffResult: (result: SniffResult<TResources>) => Effect.Effect<void, never, never>
+  handleNewSniffResult: (result: SniffResult<TParsed>) => Effect.Effect<void, never, never>
   /**
    * Feed the steps a successfully-parsed entity's `followUpSteps` produced to
    * the automatic-navigation queue (the composition dedups/caps them first).
@@ -173,14 +173,14 @@ const make = <TResources>({
    * more results" before the steps this settle produced.
    */
   handleGeneratedSteps: (steps: readonly Step.Step[]) => Effect.Effect<void, never, never>
-}): Effect.Effect<SnifferResponseTracker<TResources>, never, never> =>
+}): Effect.Effect<SnifferResponseTracker<TParsed>, never, never> =>
   // No effectful setup — the tracker holds only a mutable map and closes over
   // the injected lifecycle seams — so this is a plain `Effect.sync`, not a
   // generator. The results stream and completion latch live on the `RunLifecycleState`.
   Effect.sync(() => {
     const incompleteSniffedRequests = MutableHashMap.empty<
       string,
-      IncompleteSniffedRequest<TResources>
+      IncompleteSniffedRequest<TParsed>
     >()
 
     /**
@@ -195,7 +195,7 @@ const make = <TResources>({
     const withTracked = (
       handlerName: string,
       id: string,
-      body: (entry: IncompleteSniffedRequest<TResources>) => Effect.Effect<void, never, never>
+      body: (entry: IncompleteSniffedRequest<TParsed>) => Effect.Effect<void, never, never>
     ): Effect.Effect<void, never, never> =>
       Effect.gen(function* () {
         const maybe = MutableHashMap.get(id)(incompleteSniffedRequests)
@@ -229,7 +229,7 @@ const make = <TResources>({
       id: string,
       response: CollectorHttpResponse,
       result: Either.Either<
-        SniffedBatch<TResources>,
+        SniffedBatch<TParsed>,
         ParseResult.ParseError | UnknownException | SnifferCancelled
       >
     ): Effect.Effect<void, never, never> =>
@@ -359,7 +359,7 @@ const make = <TResources>({
             ? Either.left(result.left)
             : Either.right(
                 yield* result.right.length === 0 || captureProvenance === undefined
-                  ? Effect.succeed<SniffedBatch<TResources>>({
+                  ? Effect.succeed<SniffedBatch<TParsed>>({
                       resources: result.right,
                       diagnostics: [],
                     })

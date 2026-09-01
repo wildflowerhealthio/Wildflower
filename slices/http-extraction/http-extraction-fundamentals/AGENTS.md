@@ -23,7 +23,7 @@ and functions read in the namespace's context (`Extraction.run`, not
   `SourceIdentity`, on purpose) is the namespace this response's resources key
   under, and is **absent** for a kind that recognizes but mints no identity (a
   recorder records, it does not import). `parse` takes an `HttpResponse` and
-  returns `Effect<readonly TResources[], ParseError>` — a pure decode, never
+  returns `Effect<readonly TParsed[], ParseError>` — a pure decode, never
   navigation. `make` shallow-clones and deep-freezes.
 - **`UrlMatch`** (`src/url-match.ts`) — the declarative URL-recognition regex
   builder a kind's `tryRecognize` is made from (`make` / `literal` / `id`,
@@ -36,7 +36,7 @@ and functions read in the namespace's context (`Extraction.run`, not
 - **`HttpResponse`** (`src/http-response.ts`) — what a `parse` sees: `id` /
   `url` / `status` / `statusText` / `headers` (`Headers`) / `startedAt` /
   `bytes()` / `text()`. An interface, not a class: `make` builds one over
-  bytes already in hand (an `Init`, the extraction path), and
+  bytes already in hand (a `Data`, the extraction path), and
   `collector-fundamentals`' `CollectorHttpResponse` implements it over streamed
   chunks (the live path) — that `implements` clause is the compile-time pin
   that both paths hand entities the same surface.
@@ -47,8 +47,8 @@ and functions read in the namespace's context (`Extraction.run`, not
   `parseWith(kind, response)` decodes one response, folding every outcome —
   resources, `parseError`, `bodyAbsent` — to data. `run(entities, inputs)` is
   the map-then-group rebuilt on `routeTo` + `parseWith`: it folds each
-  `Extraction.Input` (an `HttpResponse.Init` + `bodyAbsent`) into an
-  `Extraction.Extraction`, the four-way accounting of `batches` / `unmatched` /
+  `Extraction.Input` (an `HttpResponse.Data` + `bodyAbsent`) into an
+  `Extraction.Result`, the four-way accounting of `batches` / `unmatched` /
   `parseFailures` / `bodyAbsent`, every input in exactly one bucket, in input
   order. Infallible — failures are data, not errors. It never persists.
 - **`Specificity`** (`src/specificity.ts`) — the exported cross-source tier

@@ -65,9 +65,9 @@ const makeSimpleHandler = (
  * an empty mailbox) so a no-result path drains to `[]`. Replaces the old
  * `onResult` `vi.fn()` spy: assert on the returned array instead of mock calls.
  */
-const drainResults = <TResources>(handler: {
-  readonly requestSniffingResults: CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<TResources>['requestSniffingResults']
-}): ReadonlyArray<SniffResult<TResources>> =>
+const drainResults = <TParsed>(handler: {
+  readonly requestSniffingResults: CollectorBridgeMessageHandler.CollectorBridgeMessageHandler<TParsed>['requestSniffingResults']
+}): ReadonlyArray<SniffResult<TParsed>> =>
   Chunk.toReadonlyArray(Effect.runSync(handler.requestSniffingResults.clear))
 
 type Handler = Effect.Effect.Success<

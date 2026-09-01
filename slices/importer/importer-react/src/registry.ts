@@ -31,11 +31,11 @@ import type { JSX } from 'react'
  * React views the shell mounts around it.
  *
  * @typeParam TSettings - The format's settings shape
- * @typeParam TResource - The resource type the format decodes to
+ * @typeParam TParsed - The resource type the format decodes to
  * @typeParam R - The services the descriptor's `persist` requires
  */
-interface FormatRegistration<TSettings, TResource, R> {
-  readonly descriptor: FileImporterDescriptor<TSettings, TResource, R>
+interface FormatRegistration<TSettings, TParsed, R> {
+  readonly descriptor: FileImporterDescriptor<TSettings, TParsed, R>
   readonly SettingsPicker: (props: SettingsPickerProps<TSettings>) => JSX.Element
   readonly ReviewBody: (props: ReviewBodyProps) => JSX.Element
 }

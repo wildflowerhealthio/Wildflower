@@ -22,7 +22,7 @@ import * as HttpResponse from './http-response.ts'
  * that was never in evidence — so {@link run} reports it as its own outcome
  * instead.
  */
-interface Input extends HttpResponse.Init {
+interface Input extends HttpResponse.Data {
   readonly bodyAbsent: boolean
 }
 
@@ -40,9 +40,9 @@ interface ResponseRef {
  * which response yielded what, and flattening is a `flatMap` away for a
  * caller that doesn't care.
  */
-interface Batch<TResources> extends ResponseRef {
+interface Batch<TParsed> extends ResponseRef {
   readonly entityName: string
-  readonly resources: readonly TResources[]
+  readonly resources: readonly TParsed[]
 }
 
 /** A matched response whose `parse` failed. Data, not a fold-aborting error. */
@@ -60,8 +60,9 @@ interface BodyAbsent extends ResponseRef {
 }
 
 /**
- * The complete accounting of one extraction: every input response lands in
- * exactly one of the four arrays, each in input order.
+ * The complete accounting of one extraction — `Extraction.Result` at use
+ * sites: every input response lands in exactly one of the four arrays, each
+ * in input order.
  *
  * @remarks
  * Nothing here is an error channel. A response no entity claimed
@@ -70,8 +71,8 @@ interface BodyAbsent extends ResponseRef {
  * extracting from traffic that was never captured for this purpose — a caller
  * reports them, it does not recover from them.
  */
-interface Extraction<TResources> {
-  readonly batches: readonly Batch<TResources>[]
+interface Result<TParsed> {
+  readonly batches: readonly Batch<TParsed>[]
   readonly unmatched: readonly ResponseRef[]
   readonly parseFailures: readonly ParseFailure[]
   readonly bodyAbsent: readonly BodyAbsent[]
@@ -162,57 +163,57 @@ const recognize = <K extends Recognizes>(
  * What decoding one response through a chosen kind produced — never failing:
  * every outcome, including a decode error and an absent body, is data.
  */
-type ParseOutcome<TResources> =
-  | { readonly _tag: 'resources'; readonly resources: readonly TResources[] }
+type ParseOutcome<TParsed> =
+  | { readonly _tag: 'resources'; readonly resources: readonly TParsed[] }
   | { readonly _tag: 'parseError'; readonly error: ParseResult.ParseError }
   | { readonly _tag: 'bodyAbsent' }
 
 /**
  * Decode one response through `kind`, folding every outcome into data.
  *
- * @typeParam TResources - The resource type `kind` decodes to
+ * @typeParam TParsed - The resource type `kind` decodes to
  * @param kind - The chosen response kind (only its `parse` is read)
  * @param response - The response to decode
  * @returns A never-failing Effect of the {@link ParseOutcome}: `bodyAbsent`
  *   (checked before `parse` runs, so `parse` never sees an un-captured body),
  *   `parseError`, or `resources`
  */
-const parseWith = <TResources>(
-  kind: Pick<HttpResponseKind.HttpResponseKind<TResources>, 'parse'>,
+const parseWith = <TParsed>(
+  kind: Pick<HttpResponseKind.HttpResponseKind<TParsed>, 'parse'>,
   response: Input
-): Effect.Effect<ParseOutcome<TResources>> =>
+): Effect.Effect<ParseOutcome<TParsed>> =>
   response.bodyAbsent
     ? Effect.succeed({ _tag: 'bodyAbsent' })
     : pipe(
         kind.parse(HttpResponse.make(response)),
         Effect.match({
-          onFailure: (error): ParseOutcome<TResources> => ({ _tag: 'parseError', error }),
-          onSuccess: (resources): ParseOutcome<TResources> => ({ _tag: 'resources', resources }),
+          onFailure: (error): ParseOutcome<TParsed> => ({ _tag: 'parseError', error }),
+          onSuccess: (resources): ParseOutcome<TParsed> => ({ _tag: 'resources', resources }),
         })
       )
 
 /**
- * One response's landing spot in the four-way {@link Extraction} accounting,
+ * One response's landing spot in the four-way {@link Result} accounting,
  * tagged so {@link run} can group what {@link outcomeOf} mapped.
  */
-type RunOutcome<TResources> =
-  | { readonly _tag: 'batch'; readonly value: Batch<TResources> }
+type RunOutcome<TParsed> =
+  | { readonly _tag: 'batch'; readonly value: Batch<TParsed> }
   | { readonly _tag: 'unmatched'; readonly value: ResponseRef }
   | { readonly _tag: 'parseFailure'; readonly value: ParseFailure }
   | { readonly _tag: 'bodyAbsent'; readonly value: BodyAbsent }
 
 /** Route one response and decode it if claimed — the map {@link run} folds. */
-const outcomeOf = <TResources>(
-  responseKinds: readonly HttpResponseKind.HttpResponseKind<TResources>[],
+const outcomeOf = <TParsed>(
+  responseKinds: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   response: Input
-): Effect.Effect<RunOutcome<TResources>> => {
+): Effect.Effect<RunOutcome<TParsed>> => {
   const ref: ResponseRef = { id: response.id, url: response.url }
   return pipe(
     routeTo(responseKinds, response.url),
     Option.match({
-      onNone: () => Effect.succeed<RunOutcome<TResources>>({ _tag: 'unmatched', value: ref }),
+      onNone: () => Effect.succeed<RunOutcome<TParsed>>({ _tag: 'unmatched', value: ref }),
       onSome: ({ kind }) =>
-        Effect.map(parseWith(kind, response), (outcome): RunOutcome<TResources> =>
+        Effect.map(parseWith(kind, response), (outcome): RunOutcome<TParsed> =>
           Match.value(outcome).pipe(
             Match.tag('bodyAbsent', () => ({
               _tag: 'bodyAbsent' as const,
@@ -236,13 +237,13 @@ const outcomeOf = <TResources>(
 /**
  * Run a static set of archived responses through a source's entities.
  *
- * @typeParam TResources - The resource type the entities decode to
+ * @typeParam TParsed - The resource type the entities decode to
  * @param responseKinds - The source's entities, in list order; the kind whose
  *   `tryRecognize` claims a response's URL with the **highest specificity**
  *   claims it (ties → list order)
  * @param responses - The responses to extract from, in the order they should
  *   be seen
- * @returns The four-way {@link Extraction} accounting — batches, unmatched,
+ * @returns The four-way {@link Result} accounting — batches, unmatched,
  *   parse failures, absent bodies — each in input order
  *
  * @remarks
@@ -256,10 +257,10 @@ const outcomeOf = <TResources>(
  * possible. The `Effect` is infallible: every failure mode is data, and the
  * effect is only there because `parse` is effectful.
  */
-const run = <TResources>(
-  responseKinds: readonly HttpResponseKind.HttpResponseKind<TResources>[],
+const run = <TParsed>(
+  responseKinds: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Input[]
-): Effect.Effect<Extraction<TResources>> =>
+): Effect.Effect<Result<TParsed>> =>
   pipe(
     // Sequential (Effect.forEach's default), so outcomes — and therefore each
     // of the four groups below — keep input order.
@@ -286,11 +287,11 @@ export { parseWith, recognize, routeTo, run }
 export type {
   Batch,
   BodyAbsent,
-  Extraction,
   Input,
   ParseFailure,
   ParseOutcome,
   RecognitionCandidate,
   RecognizedResponse,
   ResponseRef,
+  Result,
 }

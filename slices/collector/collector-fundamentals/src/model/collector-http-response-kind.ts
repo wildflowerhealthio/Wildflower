@@ -35,19 +35,17 @@ import type * as Step from './step.ts'
  *   `parse` stays a pure decode with no hidden control flow, and the handler —
  *   not the decode — owns when generation runs.
  */
-interface CollectorHttpResponseKind<
-  TResources,
-> extends HttpResponseKind.HttpResponseKind<TResources> {
+interface CollectorHttpResponseKind<TParsed> extends HttpResponseKind.HttpResponseKind<TParsed> {
   // Declared as a *method* signature, not a `readonly` arrow property, on
-  // purpose: `resources` puts `TResources` in a parameter (contravariant)
+  // purpose: `resources` puts `TParsed` in a parameter (contravariant)
   // position, which would make `CollectorHttpResponseKind` — and thus
-  // `ScrapingPlan` — invariant in `TResources`, breaking the
+  // `ScrapingPlan` — invariant in `TParsed`, breaking the
   // `ScrapingPlan<Resources>` → `ScrapingPlan<unknown>` widening the
   // sealed-`Resources` existential relies on. Method parameters are checked
   // bivariantly, so this keeps the type covariant (as the base
   // `HttpResponseKind` is) while still typing the generator precisely.
   followUpSteps?(
-    resources: readonly TResources[],
+    resources: readonly TParsed[],
     response: CollectorHttpResponse
   ): readonly Step.Step[]
 }
@@ -61,9 +59,9 @@ interface CollectorHttpResponseKind<
  * `followUpSteps`) so an extra unexpected property on the caller's
  * object is silently dropped.
  */
-const make = <TResources>(
-  definition: CollectorHttpResponseKind<TResources>
-): CollectorHttpResponseKind<TResources> =>
+const make = <TParsed>(
+  definition: CollectorHttpResponseKind<TParsed>
+): CollectorHttpResponseKind<TParsed> =>
   deepFreeze({
     name: definition.name,
     tryRecognize: definition.tryRecognize,

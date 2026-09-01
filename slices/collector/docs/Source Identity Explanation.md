@@ -197,7 +197,7 @@ sourced differently — a live `adoptSourceIdentity(constant)(plan)` that keyed
 under a config constant, and an archive per-URL-root wrapper. There is now one
 seam, and it is applied per kind at **module load**, not per plan: a collector
 `.map`s its kind list through the combinator once, and `fhir-r4-source` exports
-the result (`fhirR4SourceEntities`) that both the live plan and the archive
+the result (`fhirR4ResponseKinds`) that both the live plan and the archive
 importer consume. See the
 [Adding a Collector How-To](./Adding%20a%20Collector%20How-To.md).
 
@@ -231,8 +231,9 @@ Consequences worth knowing:
   parameter (`TEntity & EntityParsesEveryResource<TEntity>`) — the constraint
   alone cannot do it, since a narrower kind is a legitimate subtype by
   covariance. The fix is to widen the kind list to
-  `HttpResponseKind<FhirResource>[]` **before** the `.map`: `fhirR4ResponseKinds`
-  is already that wide, and the credential collectors widen at module scope.
+  `HttpResponseKind<FhirResource>[]` **before** the `.map`: `fhir-r4-source`
+  declares its input tuple that wide, and the credential collectors widen at
+  module scope.
 
 Note the variant preservation inside `adoptResource` is real but unchecked: each
 `adoptX` maps a variant to itself **by construction**, and an `adoptX` that
@@ -245,7 +246,7 @@ ids with no changes to `capture-provenance.ts`.
 ### The three FHIR-family collectors
 
 - **`fhir-r4-client-collector`** consumes `fhir-r4-source`'s
-  `fhirR4SourceEntities` directly — the same single pre-adopted definition the
+  `fhirR4ResponseKinds` directly — the same single pre-adopted definition the
   archive importer runs, so live and archive are now reference identity and
   cannot disagree. Each resource keys under `{ system: root, baseUrl: root }`
   where `root` is the URL-derived root of the response it arrived on. `baseUrl`
