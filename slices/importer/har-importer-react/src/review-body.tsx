@@ -1,5 +1,9 @@
 import { Option } from 'effect'
-import type { Extraction, HttpResponseKind } from 'http-extraction-fundamentals'
+import {
+  type Extraction,
+  type HttpResponseKind,
+  SourceDescriptor,
+} from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo, useState } from 'react'
 
@@ -20,8 +24,12 @@ import styles from './review-body.module.css'
 interface ReviewBodyProps {
   /** One HAR file's decoded responses, in input order. */
   readonly responses: readonly Extraction.Input[]
-  /** The format's response-kind pool (the shell passes the descriptor's `pool`). */
-  readonly pool: readonly HttpResponseKind.HttpResponseKind<unknown>[]
+  /**
+   * The format's sources (the shell passes the descriptor's `sources`), each
+   * grouping its own kinds under a name and detail. The include toggles are
+   * grouped by these; recognition runs against their flattened kinds.
+   */
+  readonly sources: readonly SourceDescriptor.SourceDescriptor<unknown>[]
   /** The selection to seed the review with (the shell's default is `Review.initial(pool)`). */
   readonly initialSelection: Review.Selection
   /** Called with the new selection on every toggle or override. */
@@ -39,6 +47,14 @@ interface UrlGroup {
 
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
+
+/**
+ * The display label for a kind: its `name` without the conventional
+ * `ResponseKind` suffix every kind's identity carries (e.g.
+ * `PrescriptionResponseKind` → `Prescription`). The full `name` stays the value
+ * behind the label — selection and overrides key by it.
+ */
+const kindLabel = (name: string): string => name.replace(/ResponseKind$/, '')
 
 /** Group the matched responses by URL, preserving first-seen order. */
 const groupByUrl = (matched: readonly Recognized[]): readonly UrlGroup[] => {
@@ -74,7 +90,7 @@ const ResponsePicker = ({
     onSome: (candidate) => candidate.kind.name,
   })
   if (enabled.length === 1) {
-    return <span className={styles.singleKind}>{pickName}</span>
+    return <span className={styles.singleKind}>{kindLabel(pickName)}</span>
   }
   return (
     <select
@@ -85,7 +101,7 @@ const ResponsePicker = ({
     >
       {enabled.map((candidate) => (
         <option key={candidate.kind.name} value={candidate.kind.name}>
-          {candidate.kind.name}
+          {kindLabel(candidate.kind.name)}
         </option>
       ))}
     </select>
@@ -95,12 +111,25 @@ const ResponsePicker = ({
 /** The interactive review of one file's responses. */
 const ReviewBody = ({
   responses,
-  pool,
+  sources,
   initialSelection,
   onChange,
 }: ReviewBodyProps): JSX.Element => {
   const [selection, setSelection] = useState<Review.Selection>(initialSelection)
+  const pool = useMemo(() => SourceDescriptor.poolOf(sources), [sources])
   const recognized = useMemo(() => Review.recognize(pool, responses), [pool, responses])
+
+  // The kinds at least one of this file's responses recognized — the only kinds a
+  // toggle can affect for this import. A kind that claims nothing here is shown
+  // but disabled, so the menu still lists every source's kinds without offering
+  // a toggle that would do nothing.
+  const usableKinds = useMemo(() => {
+    const names = new Set<string>()
+    for (const response of recognized) {
+      for (const candidate of response.candidates) names.add(candidate.kind.name)
+    }
+    return names
+  }, [recognized])
 
   // Apply a pure transition, hold it, and report it up in one place.
   const update = (next: Review.Selection): void => {
@@ -120,15 +149,38 @@ const ReviewBody = ({
     <div className={styles.review} aria-label="Review responses">
       <fieldset className={styles.kindToggles}>
         <legend className={styles.togglesLegend}>Include</legend>
-        {pool.map((kind) => (
-          <label key={kind.name} className={styles.toggle}>
-            <input
-              type="checkbox"
-              checked={Review.isKindEnabled(selection, kind.name)}
-              onChange={() => update(Review.toggleKind(selection, kind.name))}
-            />
-            {kind.name}
-          </label>
+        {sources.map((source) => (
+          <div
+            key={source.name}
+            role="group"
+            aria-label={source.display.title}
+            className={styles.sourceGroup}
+          >
+            <p className={styles.sourceName}>{source.display.title}</p>
+            <p className={styles.sourceDetail}>{source.display.description}</p>
+            <div className={styles.sourceKinds}>
+              {source.responseKinds.map((kind) => {
+                const usable = usableKinds.has(kind.name)
+                return (
+                  <label
+                    key={kind.name}
+                    className={usable ? styles.toggle : `${styles.toggle} ${styles.toggleDisabled}`}
+                  >
+                    <input
+                      type="checkbox"
+                      disabled={!usable}
+                      // A kind that matches nothing here reads as unchecked, even
+                      // though it stays enabled in the selection — nothing in this
+                      // file would import under it either way.
+                      checked={usable && Review.isKindEnabled(selection, kind.name)}
+                      onChange={() => update(Review.toggleKind(selection, kind.name))}
+                    />
+                    {kindLabel(kind.name)}
+                  </label>
+                )
+              })}
+            </div>
+          </div>
         ))}
       </fieldset>
 

@@ -1,9 +1,9 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -19,8 +19,8 @@ const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 
 const makeResponse = (body: string): HttpResponse.HttpResponse =>
-  makeCollectorHttpResponse({
-    url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc.def`,
+  makeHttpResponse({
+    url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc.def`,
     body,
   })
 
@@ -81,24 +81,29 @@ const customerPayload = (overrides?: Record<string, unknown>): Record<string, un
 describe('CustomerResponseKind', () => {
   describe('tryRecognize', () => {
     it.each([
-      // Both API version segments (the capture shows `p1`, docs say `v1`).
-      { url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}`, match: true },
-      { url: `${CUSTOMERS_BASE}/api/v1/customers/${ACCOUNT_ID}`, match: true },
+      // The exact endpoint: `/api/v1/customers/pcid/<uuid>`.
+      { url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`, match: true },
       // The real request carries an `?expand=…` query.
-      { url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc.def`, match: true },
-      { url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}/`, match: true },
-      // A sub-path of the same resource must NOT match.
+      { url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc.def`, match: true },
+      // A `p1` version segment must NOT match — the pattern pins `v1`.
+      { url: `${CUSTOMERS_BASE}/api/p1/customers/pcid/${ACCOUNT_ID}`, match: false },
+      // The `pcid` path segment is required — the bare `/customers/<uuid>` form does not match.
+      { url: `${CUSTOMERS_BASE}/api/v1/customers/${ACCOUNT_ID}`, match: false },
+      // No suffix room: a bare trailing slash or a sub-path must NOT match.
+      { url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}/`, match: false },
       {
-        url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}/toasts?source=LOGIN`,
+        url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}/toasts?source=LOGIN`,
         match: false,
       },
+      // The exact host is pinned — a foreign host with the same path is rejected.
+      { url: `https://tunnel/api/v1/customers/pcid/${ACCOUNT_ID}`, match: false },
       // The neighbouring entities' URLs must NOT match (disjointness).
       {
-        url: `${CUSTOMERS_BASE}/api/p1/prescriptions/${ACCOUNT_ID}/prescription-status`,
+        url: `${CUSTOMERS_BASE}/api/v1/prescriptions/${ACCOUNT_ID}/prescription-status`,
         match: false,
       },
       {
-        url: `${CUSTOMERS_BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`,
+        url: `${CUSTOMERS_BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`,
         match: false,
       },
     ])('recognizes $match for "$url"', ({ url, match }) => {
@@ -107,7 +112,7 @@ describe('CustomerResponseKind', () => {
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
       expect(
-        CustomerResponseKind.tryRecognize(`${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}`)
+        CustomerResponseKind.tryRecognize(`${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`)
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,

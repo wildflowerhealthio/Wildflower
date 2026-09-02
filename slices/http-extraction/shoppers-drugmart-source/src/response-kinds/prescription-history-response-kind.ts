@@ -1,30 +1,26 @@
 import { Effect, Option, Schema } from 'effect'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, recognizePortal } from 'http-extraction-fundamentals'
+import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime } from '../dates.ts'
-import { extractJson } from '../extract-json.ts'
 import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
 /** The dispensing store as a history entry carries it (all parts optional). */
 const SourceStore = Schema.Struct({
-  // Lenient on string vs number: the portal's typing of the store id is
-  // unconfirmed, and it only ever rides the store-locator URL as a string.
+  // Lenient on string vs number — the portal's typing of the store id is unconfirmed.
   id: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   storeName: Schema.optional(Schema.String),
 })
 
 /**
- * One dispense record inside a `…/api/<seg>/prescription-history?customerId=…`
- * payload's flat `dispenses` array. `dispenseId` keys the emitted resource and
- * `prescriptionId` links it back to its `MedicationRequest`; both are optional
- * here so a malformed entry is dropped-and-counted at {@link dispenseWire}
- * rather than failing the whole payload's decode. `din` is **per-dispense** — it
- * differs across fills of one prescription (a brand ↔ generic swap).
- */
+ * One dispense record in the history payload's flat `dispenses` array.
+ * `dispenseId` keys the emitted resource, `prescriptionId` links it to its request;
+ * both optional so a malformed entry drops-and-counts. `din` is **per-dispense**
+ * (differs across fills).
+ * */
 const SourceHistoryDispense = Schema.Struct({
   prescriptionId: Schema.optional(Schema.String),
   dispenseId: Schema.optional(Schema.String),
@@ -49,12 +45,10 @@ const decodeSourceHistoryDispense = Schema.decodeUnknownOption(SourceHistoryDisp
 const decodeDispense = Schema.decodeUnknown(MedicationDispense.Schema)
 
 /**
- * The `authorizingPrescription` wire linking a history dispense back to its
- * request: a relative `MedicationRequest/<prescriptionId>` reference (re-keyed by
- * adoption onto the request {@link !PrescriptionResponseKind} wrote), carrying the
- * human-facing `prescriptionNumber` as the reference's own `identifier` (that
- * number names the prescription, not the dispense, so it belongs here rather than
- * on the dispense's `identifier`). `undefined` when neither is present.
+ * The `authorizingPrescription` wire linking a dispense to its request: a
+ * relative `MedicationRequest/<prescriptionId>` reference carrying
+ * `prescriptionNumber` as the reference's own `identifier`. `undefined` when
+ * neither is present.
  */
 const authorizingPrescriptionWire = (
   dispense: SourceHistoryDispense
@@ -73,11 +67,9 @@ const authorizingPrescriptionWire = (
 }
 
 /**
- * The `location` wire: a `Reference` whose `reference` is the public
- * store-locator URL for the dispensing store's id (absolute, so adoption leaves
- * it untouched — the same convention as the request's `supportingInformation`),
- * with the store name as `display`. `undefined` when no (non-empty) store id is
- * present.
+ * The `location` wire: a `Reference` to the public store-locator URL for the
+ * store id (absolute, so adoption leaves it untouched), with the store name as
+ * `display`. `undefined` when no store id is present.
  */
 const locationWire = (
   store: typeof SourceStore.Type | undefined
@@ -92,14 +84,9 @@ const locationWire = (
 }
 
 /**
- * Build the FHIR R4 `MedicationDispense` **wire** for one history entry. Returns
- * `undefined` when the entry has no `dispenseId` (no logical id to write under),
- * so it is dropped-and-counted rather than silently skipped at the persist sink.
- *
- * `status` is a flat `'completed'`: history entries are completed fills and the
- * payload carries no status field to say otherwise. There is **no `subject`** —
- * the history payload carries no `patientId`, and `MedicationDispense.subject` is
- * 0..1 in R4, so the slot is simply omitted.
+ * Build the R4 `MedicationDispense` **wire** for one history entry; `undefined`
+ * when it has no `dispenseId` (so it drops-and-counts). `status` is a flat
+ * `'completed'` and there is no `subject` — the payload carries no `patientId`.
  */
 const dispenseWire = (dispense: SourceHistoryDispense): Record<string, unknown> | undefined => {
   if (dispense.dispenseId == null) return undefined
@@ -123,34 +110,22 @@ const dispenseWire = (dispense: SourceHistoryDispense): Record<string, unknown> 
 }
 
 /**
- * `…://host/api/<seg>/prescription-history?customerId=…`. Requires the
- * `customerId` query (a hand-rolled `mustHaveQuery`) so it matches the API XHR
- * but **not** the user-facing page `…/en/prescription-history` (which the SPA
- * navigates to and which carries no query). Version-agnostic (`/api/[^/]+/…`):
- * the capture shows `/api/p1/…` while the endpoint is documented as `/api/v1/…`.
- * Disjoint from {@link !CustomerResponseKind} and {@link !PrescriptionResponseKind} by
- * construction — different path segments — so entity order is not load-bearing.
+ * The exact prescription-history XHR URL, anchored and pinned to host + `v1` +
+ * full path; the required `?…customerId=` query matches the API XHR but not the
+ * user-facing page. Disjoint from the sibling kinds.
  */
-const historyUrl = /:\/\/[^/]+\/api\/[^/]+\/prescription-history\/?\?(?:[^#]*&)?customerId=/
+const historyUrl =
+  /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/prescription-history\?(?:[^#]*&)?customerId=/
 
 /**
- * Entity for the Shoppers prescription-history XHR: the
- * `…/api/<seg>/prescription-history?customerId=…` payload the
- * prescription-history page fires once, carrying **every** dispense across all
- * prescriptions (the status endpoint carries at most the latest fill per
- * prescription). Each entry synthesizes one **`MedicationDispense`** — no
- * Patient, no MedicationRequest — linked to its request via
- * `authorizingPrescription`.
- *
- * The latest fill of a prescription appears in both this feed and the
- * status feed; same `dispenseId` → same adopted id → an idempotent upsert.
- * Neither version subsumes the other — this one carries its own `din`,
- * quantity, date and dispensing store, while the status feed's carries the
- * `subject` the history payload has no `patientId` for — and write ordering
- * within a run is not guaranteed, so last-write-wins on the shared id loses
- * whichever fields the winning side omits. A dispense with no `dispenseId` is
- * dropped-and-counted via `Effect.logInfo`. {@link extractJson} normalizes the
- * body across raw-XHR intercepts and the mobile WebView's JSON-viewer wrap.
+ * Entity for the Shoppers prescription-history XHR: one payload carrying **every**
+ * dispense across all prescriptions. Each entry synthesizes one
+ * **`MedicationDispense`** (no Patient, no MedicationRequest), linked to its
+ * request via `authorizingPrescription`. A prescription's latest fill also
+ * appears in the status feed under the same `dispenseId` → same adopted id → an
+ * idempotent upsert; neither version subsumes the other and write order is not
+ * guaranteed, so last-write-wins loses whichever fields the winner omits. A
+ * dispense with no `dispenseId` drops-and-counts via `Effect.logInfo`.
  */
 const PrescriptionHistoryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
