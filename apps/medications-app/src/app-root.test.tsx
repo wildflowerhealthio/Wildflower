@@ -106,6 +106,22 @@ describe('AppRoot', () => {
     expect(screen.queryByTestId('connect-menu')).not.toBeNull()
     expect(screen.queryByTestId('app')).toBeNull()
   })
+
+  it('should keep the SMART app mounted after the callback check turns false', () => {
+    // Arrange — a launch in progress
+    shouldCompleteSmartLaunchMock.mockReturnValue(true)
+    const { rerender } = render(<AppRoot />)
+    expect(screen.queryByTestId('app')).not.toBeNull()
+
+    // Act — fhirclient's `oauth2.ready()` strips `code`/`state` once the
+    // exchange completes; a later re-render must not re-read the URL
+    shouldCompleteSmartLaunchMock.mockReturnValue(false)
+    rerender(<AppRoot />)
+
+    // Assert — still the launched branch
+    expect(screen.queryByTestId('app')).not.toBeNull()
+    expect(screen.queryByTestId('connect-menu')).toBeNull()
+  })
 })
 
 // Helpers
