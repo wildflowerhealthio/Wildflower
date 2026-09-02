@@ -35,6 +35,10 @@ and the host binds one loopback listener per row from that snapshot, so a dev se
 that runs _after_ it gets no listener. Seeding on its own `SqliteAppsStore` before
 `setup_apps` is what makes the rows both migrated and bound.
 
+## `vp pack` (tsdown/rolldown) cannot import binary assets — use a data-URL TS module
+
+`import iconSrc from './assets/app-icon.png'` fails with "stream did not contain valid UTF-8" because tsdown reads every import as text. The workaround is a generated TypeScript module exporting the PNG as a `data:image/png;base64,...` string. At 128x128 the base64 adds ~22 KB to the bundle, acceptable for a single icon. The `branding-react` slice uses this pattern for its `src/assets/app-icon.ts`; the regeneration command is documented in the file's header comment.
+
 ## A self-hosted app's OAuth `client_id` must equal its app id; a cloud app's must not rely on it
 
 The host's `SelfHostedRedirectResolver` resolves an app-relative redirect URI

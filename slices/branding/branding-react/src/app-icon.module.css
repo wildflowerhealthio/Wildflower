@@ -1,0 +1,5 @@
+.app-icon {
+  display: block;
+  border-radius: var(--radius-2);
+  object-fit: cover;
+}
