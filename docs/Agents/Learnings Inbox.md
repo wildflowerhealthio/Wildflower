@@ -83,6 +83,10 @@ and unmounts the authenticated app. Read the URL once in a `useState` initialize
 (`useState(() => prop ?? shouldCompleteSmartLaunch())`); `apps/importer-web`'s
 `AppRoot` is the worked example, with a re-render test that pins the latch.
 
+## Source-only `exports` with no `default` condition work for workspace apps
+
+`medications-app`'s `package.json` exports `{ ".": { "source": "./src/app-root.tsx" } }` with no `default` condition. `vp install`, `vp run pack`, `vp build`, and `vp check` all tolerate this: the `source` condition is sufficient for workspace-internal resolution and Vite's dev/build pipelines. A `default` pointing at a `dist/` entry is only needed if a built consumer outside the workspace resolves the package. This pattern is useful for app packages that export a seam for aggregator-shell composition but have no standalone library build.
+
 ## `web-trace`'s `customConditions: ["source"]` blocks a `tsc` build step
 
 `apps/web-trace`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
