@@ -1,6 +1,6 @@
 import type { Effect, ParseResult } from 'effect'
 
-import type { Extraction, HttpResponseKind } from 'http-extraction-fundamentals'
+import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 
 import type { PersistFailure } from './persist-failure.ts'
 
@@ -33,8 +33,17 @@ interface FileImporterDescriptor<TSettings, TParsed, R> {
   /** A valid settings value to seed a fresh import's settings form. */
   readonly defaultSettings: TSettings
   /**
+   * The sources this format's {@link pool} is assembled from, each grouping its
+   * own response kinds under a user-facing `name` and `display` detail. A
+   * source-labelled review menu reads these; {@link pool} is exactly these
+   * flattened, so a menu grouped by source and the recognizer route can never
+   * disagree on which kinds exist.
+   */
+  readonly sources: readonly SourceDescriptor.SourceDescriptor<TParsed>[]
+  /**
    * The flat pool of response kinds a decoded file's responses are recognized
-   * and decoded through, routed per response by highest specificity.
+   * and decoded through, routed per response by highest specificity. Exactly
+   * {@link sources}' `responseKinds` flattened.
    */
   readonly pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[]
   /**

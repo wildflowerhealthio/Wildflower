@@ -13,8 +13,15 @@ decodes on confirm.
   file's responses. It recognizes the responses against the pool
   (`Review.recognize`) and renders a per-URL list, grouped by URL in first-seen
   order:
-  - **Whole-import kind toggles** (a checkbox per pool kind) disable a kind
-    everywhere at once; every response re-derives its pick from what remains.
+  - **Whole-import kind toggles**, grouped by source: each of the descriptor's
+    `sources` renders its name and detail (`display.title` / `display.description`)
+    over a checkbox per kind. Each checkbox is labelled by the kind's `name` with
+    its conventional `ResponseKind` suffix stripped (`PrescriptionResponseKind` →
+    `Prescription`); the full `name` stays the selection key. Un-checking a kind
+    disables it everywhere at once and every response re-derives its pick from what
+    remains. A kind that recognizes nothing in _this_ file is shown disabled and
+    reads as unchecked (toggling it would do nothing; its underlying selection
+    state is untouched). Recognition runs against the sources' flattened kinds.
   - **A per-response picker** (`ResponsePicker`) — a static label when one kind
     matched, a `<select>` only on a genuine cross-source overlap, defaulting to
     the top-specificity candidate. A response whose every matching kind is toggled
@@ -34,7 +41,8 @@ decodes on confirm.
 
 An adapter: depends on `importer-fundamentals` (`Review`), `har-importer-core`
 (`HarSettings`), `http-extraction-fundamentals` (the `Extraction` /
-`HttpResponseKind` types the props carry), `effect`, and `react`. Never imports
+`HttpResponseKind` / `SourceDescriptor` types the props carry), `effect`, and
+`react`. Never imports
 `importer-react` (the shell depends on this, not the reverse) or
 `slices/collector`. Mirrors the collector slice's `ConfigFormProps` shape with
 `SettingsPickerProps`.

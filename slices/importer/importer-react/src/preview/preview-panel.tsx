@@ -1,4 +1,4 @@
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
+import type { SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo } from 'react'
 
@@ -27,8 +27,12 @@ import styles from './preview-panel.module.css'
 interface PreviewPanelProps {
   /** Every picked file's read outcome, rendered together under one confirm. */
   readonly files: readonly FileReadOutcome[]
-  /** The format's response-kind pool (the descriptor's `pool`), for recognition + the review. */
-  readonly pool: readonly HttpResponseKind.HttpResponseKind<unknown>[]
+  /**
+   * The format's sources (the descriptor's `sources`): the review groups its
+   * include toggles by these, and recognition runs against their flattened
+   * kinds.
+   */
+  readonly sources: readonly SourceDescriptor.SourceDescriptor<unknown>[]
   /** The format's interactive review body, rendered per read file. */
   readonly ReviewBody: (props: ReviewBodyProps) => JSX.Element
   /** The reviewed selection for a file (defaults to `Review.initial(pool)` before any edit). */
@@ -62,13 +66,13 @@ const plural = (count: number, noun: string): string => (count === 1 ? noun : `$
 /** One file's whole outcome, under its own name — the unit the batch is built from. */
 const FileSection = ({
   file,
-  pool,
+  sources,
   ReviewBody,
   selectionFor,
   onSelectionChange,
 }: {
   readonly file: FileReadOutcome
-  readonly pool: PreviewPanelProps['pool']
+  readonly sources: PreviewPanelProps['sources']
   readonly ReviewBody: PreviewPanelProps['ReviewBody']
   readonly selectionFor: PreviewPanelProps['selectionFor']
   readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
@@ -82,7 +86,7 @@ const FileSection = ({
     ) : (
       <ReviewBody
         responses={file.responses}
-        pool={pool}
+        sources={sources}
         initialSelection={selectionFor(file.id)}
         onChange={(selection) => onSelectionChange(file.id, selection)}
       />
@@ -121,7 +125,7 @@ const PreviewActions = ({
  */
 const PreviewPanel = ({
   files,
-  pool,
+  sources,
   ReviewBody,
   selectionFor,
   onSelectionChange,
@@ -129,6 +133,7 @@ const PreviewPanel = ({
   onCancel,
   confirming,
 }: PreviewPanelProps): JSX.Element => {
+  const pool = useMemo(() => sources.flatMap((source) => source.responseKinds), [sources])
   const recognizedByFile = useMemo(
     () =>
       new Map(
@@ -159,7 +164,7 @@ const PreviewPanel = ({
           <FileSection
             key={file.id}
             file={file}
-            pool={pool}
+            sources={sources}
             ReviewBody={ReviewBody}
             selectionFor={selectionFor}
             onSelectionChange={onSelectionChange}

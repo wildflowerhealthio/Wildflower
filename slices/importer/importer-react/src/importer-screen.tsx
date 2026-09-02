@@ -92,7 +92,7 @@ const ImporterScreen = (): JSX.Element => {
     return (
       <PreviewPanel
         files={runState.files}
-        pool={descriptor.pool}
+        sources={descriptor.sources}
         ReviewBody={ReviewBody}
         selectionFor={selectionFor}
         onSelectionChange={onSelectionChange}
