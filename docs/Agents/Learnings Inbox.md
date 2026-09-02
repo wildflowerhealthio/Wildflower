@@ -63,6 +63,16 @@ transport layer constructed the client. When splitting a shared `HttpClient` per
 consumer, check whether the behaviour you care about is a build-time or a
 request-time concern before assuming the split loses it.
 
+## Migrating an app to branding-react chrome: stylesheet import order matters
+
+When adding `branding-react/styles.css` to an app's `main.tsx`, it must come
+_after_ `react-tundraish/styles.css` (the layout tokens reference tundraish's
+`--space-N` ramps) and _before_ the app's own `tokens.css` / `global.css` (so
+the app can override or extend the chrome tokens). The existing `tokens.css`
+values for `--content-max-width`, `--page-padding-x`, `--header-height`, and
+`--radius-pill` must be removed — they are now supplied by `branding-react` and
+duplicating them risks silent drift.
+
 ## Color-scheme helpers live in react-tundraish, not in each app
 
 `applyColorScheme`, `addOsColorSchemeListener`, and the `ColorScheme` type are

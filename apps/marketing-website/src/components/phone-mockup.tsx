@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { AppIcon } from './app-icon.tsx'
+import { AppIcon } from 'branding-react'
 import styles from './phone-mockup.module.css'
 
 /** A source row shown on the mock phone screen, with its dot colour. */
