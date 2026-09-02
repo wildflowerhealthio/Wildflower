@@ -47,7 +47,9 @@ describe('CONNECT_APPS', () => {
   })
 
   it('should publish Web Trace at its assembled GitHub Pages path', () => {
-    // Arrange / Act / Assert — Web Trace is now published at `/web-trace-app`.
+    // Arrange / Act / Assert — `apps/github-pages` stages the Web Trace app's
+    // build (`wildflower-web-trace`) at `/web-trace-app`, so that is the link
+    // the site has to emit.
     const webTrace = CONNECT_APPS.find((app) => app.id === 'webtrace')
     expect(webTrace?.availability).toBe('published')
     expect(webTrace?.href).toBe('/web-trace-app')

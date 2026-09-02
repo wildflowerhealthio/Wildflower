@@ -6,7 +6,7 @@
  * true-neutral surface ramp, the navy accent, Atkinson Hyperlegible as the one
  * family, and the `--space-N` / `--font-size-N` / `--font-weight-N` /
  * `--radius-N` ramps. The chrome layout tokens (`--content-max-width`,
- * `--page-padding-x`, `--header-height`, `--radius-pill`) now come from
+ * `--page-padding-x`, `--header-height`, `--radius-pill`) come from
  * **branding-react/styles.css**, also imported in `main.tsx`. Components read
  * those tokens directly, so this file only declares the few page-composition
  * values neither package provides.

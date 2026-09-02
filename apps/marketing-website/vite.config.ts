@@ -4,8 +4,8 @@ import { defineConfig } from 'vite-plus'
 import base from '../../vite.config.base.ts'
 
 /**
- * The marketing site is a standalone single-page React app with shared chrome
- * from `branding-react` (no router plugin), so it only needs the base config
+ * The marketing site is a standalone single-page React app (no router plugin;
+ * its chrome comes from the `branding` slice), so it only needs the base config
  * plus the React transform. Component logic is exercised under jsdom — the
  * same Vitest environment the rest of the React packages use — and registered
  * in the root `vite.config.ts` `test.projects` list so `vp test` from the
