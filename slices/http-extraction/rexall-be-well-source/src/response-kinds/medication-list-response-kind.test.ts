@@ -1,7 +1,7 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -19,7 +19,7 @@ const LIST_URL =
   'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_count=2147483646'
 
 const makeResponse = (body: string, url = LIST_URL): HttpResponse.HttpResponse =>
-  makeCollectorHttpResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
+  makeHttpResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
 
 const runParse = (
   r: HttpResponse.HttpResponse
