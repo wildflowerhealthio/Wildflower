@@ -10,6 +10,7 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "branding-core": "workspace:*",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
     "marketing-website": "workspace:*",

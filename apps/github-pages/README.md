@@ -14,6 +14,11 @@ that owns it, and this package places those outputs at their public URLs.
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 
+The `destPath` of every section is derived from `SECTION_PATHS` (exported by
+`branding-core`), the single source of truth for the deploy contract. A
+drift-guard test in `assembly.test.ts` asserts that the set of `destPath`s
+matches `Object.values(SECTION_PATHS)` and pins the literal values.
+
 ## Why a separate package
 
 GitHub Pages publishes exactly one artifact per site, so everything served from

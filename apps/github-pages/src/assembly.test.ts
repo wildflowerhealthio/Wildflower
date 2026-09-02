@@ -5,6 +5,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { SECTION_PATHS } from 'branding-core'
+
 import type { SiteSection } from './assembly.ts'
 import {
   escapingPaths,
@@ -139,6 +141,19 @@ describe('site layout', () => {
         expect(missing).toEqual(all.filter((p) => !exists(p)))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should derive every destPath from SECTION_PATHS', () => {
+    const destPaths = new Set(siteSections.map((s) => s.destPath))
+    const sectionPathValues = new Set(Object.values(SECTION_PATHS))
+    expect(destPaths).toEqual(sectionPathValues)
+  })
+
+  it('should pin the deploy-contract paths as literal values', () => {
+    const destPaths = siteSections.map((s) => s.destPath).toSorted()
+    expect(destPaths).toEqual(
+      ['', 'importer-app', 'medications-app', 'web-trace-app', 'wildflower-server-docs'].toSorted()
     )
   })
 })

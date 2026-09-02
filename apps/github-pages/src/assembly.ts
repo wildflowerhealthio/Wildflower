@@ -1,5 +1,7 @@
 import { join, relative, sep } from 'node:path'
 
+import { SECTION_PATHS } from 'branding-core'
+
 /**
  * One already-built tree that gets copied into the assembled GitHub Pages
  * site. The build of each section is owned by its own package; this package
@@ -32,7 +34,7 @@ const siteSections: readonly SiteSection[] = [
   {
     packageName: 'marketing-website',
     sourceDir: 'apps/marketing-website/dist',
-    destPath: '',
+    destPath: SECTION_PATHS.marketing,
     // `CNAME` (copied from the marketing site's `public/`) has to land at the
     // artifact root or GitHub Pages drops the custom-domain setting on deploy.
     requiredFiles: ['index.html', 'CNAME'],
@@ -43,7 +45,7 @@ const siteSections: readonly SiteSection[] = [
     // also ships as a Tauri resource from there); this package consumes that
     // output rather than redirecting it.
     sourceDir: 'slices/apps/self-hosted-apps/medication',
-    destPath: 'medications-app',
+    destPath: SECTION_PATHS.medications,
     // Two entries: the EHR launch endpoint and the app root (the redirect target,
     // which also serves the standalone connect menu on a bare visit).
     requiredFiles: ['index.html', 'launch.html'],
@@ -54,16 +56,16 @@ const siteSections: readonly SiteSection[] = [
     // vendored self-hosted-apps tree (where it also ships as a Tauri resource),
     // and this package consumes that output rather than redirecting it. The
     // folder is `importer` — the `content_folder` its seed migration records —
-    // while the published path is `/importer-app`.
+    // while the published path is `/${SECTION_PATHS.importer}`.
     sourceDir: 'slices/apps/self-hosted-apps/importer',
-    destPath: 'importer-app',
+    destPath: SECTION_PATHS.importer,
     // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
     requiredFiles: ['index.html', 'launch.html'],
   },
   {
     packageName: 'wildflower-server-docs',
     sourceDir: 'apps/wildflower-server-docs/dist',
-    destPath: 'wildflower-server-docs',
+    destPath: SECTION_PATHS.serverDocs,
     // A single-page console; the bundled assets hang off it.
     requiredFiles: ['index.html'],
   },
@@ -73,7 +75,7 @@ const siteSections: readonly SiteSection[] = [
     // the vendored self-hosted-apps tree it ships from as a Tauri resource, and
     // this package copies that output rather than redirecting it.
     sourceDir: 'slices/apps/self-hosted-apps/web-trace',
-    destPath: 'web-trace-app',
+    destPath: SECTION_PATHS.webTrace,
     // Two entries: the EHR launch endpoint and the app root (the redirect target,
     // which also serves the standalone connect menu on a bare visit).
     requiredFiles: ['index.html', 'launch.html'],

@@ -18,6 +18,29 @@ body {
     sans-serif;
 }
 
+.brand-bar {
+  border-bottom: 1px solid light-dark(#d8d8dd, #2a2a30);
+  background: light-dark(#ffffff, #16161a);
+}
+
+.brand-bar__link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  text-decoration: none;
+  color: light-dark(#1a1a1f, #e8e8ee);
+}
+
+.brand-bar__icon {
+  display: block;
+}
+
+.brand-bar__wordmark {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
 .server-bar {
   position: sticky;
   top: 0;
