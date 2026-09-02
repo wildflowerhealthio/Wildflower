@@ -425,6 +425,12 @@ importers:
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.102.8(react@19.2.8)
+      branding-core:
+        specifier: workspace:*
+        version: link:../../slices/branding/branding-core
+      branding-react:
+        specifier: workspace:*
+        version: link:../../slices/branding/branding-react
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
