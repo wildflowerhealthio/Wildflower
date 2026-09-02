@@ -5,36 +5,14 @@
  * from **react-tundraish** (imported in `main.tsx` before this file): the
  * true-neutral surface ramp, the navy accent, Atkinson Hyperlegible as the one
  * family, and the `--space-N` / `--font-size-N` / `--font-weight-N` /
- * `--radius-N` ramps. Components read those tokens directly, so this file only
- * declares the few page-composition values the design system has no concept of.
- *
- * Two relationships are load-bearing:
- *   - `--header-height`: the sticky header's height, which in-page anchors
- *     offset their scroll target by (`scroll-margin-top`).
- *   - `--page-padding-x`: the single horizontal gutter every centered section
- *     reads, retuned once for phones below.
+ * `--radius-N` ramps. The chrome layout tokens (`--content-max-width`,
+ * `--page-padding-x`, `--header-height`, `--radius-pill`) come from
+ * **branding-react/styles.css**, also imported in `main.tsx`. Components read
+ * those tokens directly, so this file only declares the few page-composition
+ * values neither package provides.
  */
 
 :root {
-  /* The editorial measure: wide enough for the two-column stages, narrow
-   * enough that body copy never runs past a readable line length. */
-  --content-max-width: 1080px;
-  --page-padding-x: var(--space-11);
-
-  /* Header padding (--space-8, doubled) + the 34px brand mark + the 1px
-   * bottom hairline. */
-  --header-height: 71px;
-
   /* Hero form and CTA form-wrap share one width so the two beta forms match. */
   --beta-form-width: 28rem;
-
-  /* Fully-round ends — the pill affordances (app selector, header CTA, dots).
-   * Not a ramp step: it is "as round as it gets", not a size. */
-  --radius-pill: 999px;
-}
-
-@media (max-width: 680px) {
-  :root {
-    --page-padding-x: var(--space-9);
-  }
 }

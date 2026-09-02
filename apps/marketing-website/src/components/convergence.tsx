@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { JSX } from 'react'
 
+import { AppIcon } from 'branding-react'
 import {
   AVAILABILITY_LABELS,
   CONNECT_APPS,
@@ -11,7 +12,6 @@ import {
   TYPE_LABELS,
 } from '../data/convergence.ts'
 import type { AppId } from '../data/convergence.ts'
-import { AppIcon } from './app-icon.tsx'
 import styles from './convergence.module.css'
 
 /** Join class names, dropping the modifier when the state is off. */

@@ -5,12 +5,16 @@ import { createRoot } from 'react-dom/client'
 // same palette, type ramp, and dark theme the app renders in. tundra-css
 // supplies the base element classes (`.button`, `.input-4`, the surface/accent
 // plumbing); it must load first so react-tundraish's `styles.css` can re-point
-// tundra's grey defaults on top. The site's own `tokens.css` then adds only
-// page-composition values, and `global.css` layers last. (The app loads
-// tundra-css + react-tundraish the same way; react-tundraish's styles.css
-// deliberately does not re-import tundra-css.)
+// tundra's grey defaults on top. branding-react's `styles.css` then layers the
+// chrome layout tokens (`--content-max-width`, `--page-padding-x`,
+// `--header-height`, `--radius-pill`), referenced by the shared header, footer,
+// and every centered section. The site's own `tokens.css` adds only the
+// remaining page-composition values (`--beta-form-width`), and `global.css`
+// layers last. (The app loads tundra-css + react-tundraish the same way;
+// react-tundraish's styles.css deliberately does not re-import tundra-css.)
 import 'tundra-css'
 import 'react-tundraish/styles.css'
+import 'branding-react/styles.css'
 
 import { addOsColorSchemeListener } from 'react-tundraish'
 import { App } from './app.tsx'

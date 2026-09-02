@@ -13,6 +13,8 @@
   "dependencies": {
     "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
     "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
+    "branding-core": "workspace:*",
+    "branding-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-tundraish": "workspace:*",

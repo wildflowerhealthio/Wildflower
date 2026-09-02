@@ -29,6 +29,12 @@ Nothing loads from a CDN: the Scalar reference comes from its npm package and
 the specs are imported as modules, so the whole console is one self-contained
 bundle.
 
+A static brand bar above the server form links back to the Wildflower home
+page. The icon (`public/app-icon.png`, copied from `apps/marketing-website`)
+and "Wildflower" wordmark match the look of `branding-react`'s `BrandBar`,
+styled with the same palette the server bar already uses — no `branding-react`
+dependency (this page is not React).
+
 ## The `?server=` contract
 
 The console is a static page, so the API it documents is never its own origin.

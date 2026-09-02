@@ -4,7 +4,9 @@ The Wildflower Health marketing landing page — a standalone React + Vite
 single-page site. It renders in the app's design language (react-tundraish:
 true-neutral surfaces, the navy accent, Atkinson Hyperlegible throughout, and
 the shared dark theme) composed as an editorial page rather than an app screen:
-wide measure, generous stage spacing, prose first, no app chrome.
+wide measure, generous stage spacing, prose first. The site header and footer
+come from `slices/branding/branding-react` — the shared chrome every Wildflower
+web surface uses.
 
 ## Develop
 
@@ -17,17 +19,19 @@ vp build    # production build to dist/
 
 ## Structure
 
-- `src/app.tsx` — composes the page sections top to bottom.
-- `src/components/*` — one component per section (`header`, `hero`,
-  `convergence`, `steps`, `privacy`, `cta`, `footer`) plus the shared pieces
-  (`app-icon`, `beta-form`, `phone-mockup`). Each pairs a `.tsx` with its own
-  `*.module.css`.
+- `src/app.tsx` — composes the page sections top to bottom, wrapping them in
+  the shared `SiteHeader` and `SiteFooter` from `branding-react`.
+- `src/components/*` — one component per section (`hero`, `convergence`,
+  `steps`, `privacy`, `cta`) plus the shared pieces (`beta-form`,
+  `phone-mockup`). Each pairs a `.tsx` with its own `*.module.css`.
 - `src/data/convergence.ts` — the pure data + highlighting logic for the
   interactive "collection of apps" section (unit-tested in
   `convergence.test.ts`). It also carries each app's availability and, for an
-  app published on this domain, its link.
-- `src/styles/tokens.css` — the few page-composition variables the design
-  system has no concept of.
+  app published on this domain, its link (derived from `sectionRootPath` in
+  `branding-core`).
+- `src/styles/tokens.css` — the few page-composition variables neither the
+  design system nor `branding-react` provides (currently only
+  `--beta-form-width`).
 - `src/styles/global.css` — page surface and the shared `.card` utility.
 - `public/app-icon.png` (128px logo / apple-touch) and `public/favicon.png`
   (32px tab icon) — scaled from the shared app-icon set in
@@ -45,12 +49,10 @@ vp build    # production build to dist/
 - **Tundra primitives before bespoke CSS**: `.button button-N filled|outline`
   (the `button` class is required on an `<a>`), `.input-N`, `.sr-only`, and the
   site's own `.card`. A module should only add layout the primitive can't.
-- `tokens.css` holds only what the design system has no concept of:
-  - `--content-max-width` and `--page-padding-x` (the section gutter, retuned
-    once at the `680px` breakpoint),
-  - `--header-height` (the sticky header height section anchors offset their
-    scroll target by),
-  - `--beta-form-width` (shared by the hero and CTA forms) and `--radius-pill`.
+- **Chrome layout tokens** (`--content-max-width`, `--page-padding-x`,
+  `--header-height`, `--radius-pill`) come from `branding-react/styles.css`,
+  imported in `main.tsx`. `tokens.css` holds only what neither the design system
+  nor the shared chrome provides (`--beta-form-width`).
 - **Dark mode** is the shared theme: react-tundraish's `addOsColorSchemeListener`
   mirrors the OS preference onto `:root[data-color-scheme='dark']`, which is the
   only trigger react-tundraish's dark palette reads. No module carries a

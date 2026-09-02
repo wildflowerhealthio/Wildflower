@@ -10,6 +10,20 @@ itself holds no viewing logic, only the wiring a self-hosted origin needs.
 a relative `base`, a build straight into the vendored `self-hosted-apps` tree).
 What is _not_ shared with it is the auth wiring below.
 
+## Boot and branding
+
+`main.tsx` loads design-system stylesheets (tundra-css → react-tundraish →
+branding-react), installs the OS colour-scheme listener, and renders `<AppRoot />`
+from `app-root.tsx`. `AppRoot` is the page-level seam: it picks between the
+launched viewer (slim `BrandBar` + `App`) and the standalone connect page (full
+`SiteHeader` + `ConnectMenu` + `SiteFooter`), with a single `QueryClientProvider`
+wrapping both branches. The `launched` prop is read once, on mount: it defaults
+to `shouldCompleteSmartLaunch()` but accepts an explicit boolean so each branch
+is testable without URL games, and it is latched because fhirclient strips
+`code`/`state` from the URL once the exchange completes. The package exports
+`AppRoot` via a source-only `exports` map (`"source": "./src/app-root.tsx"`) with no `default` — a future
+aggregator shell resolves the workspace `source` condition.
+
 ## Why this app has a router and a bearer token
 
 The wiring itself is **not this app's** — it lives in
@@ -162,6 +176,13 @@ than adopting it — you get no dev tile until that app is renamed.
   `Bearer` with nothing after it — is
   [`fhir-r4-react`'s `self-hosted-runtime.test.ts`](../../slices/emr/fhir-r4-react/src/smart/self-hosted-runtime.test.ts),
   moved there with the code it covers.
+- `app-root.test.tsx` — chrome-level tests for `AppRoot`. Mocks `App` and
+  `ConnectMenu` with lightweight stubs (via `vi.mock`) and passes `launched`
+  explicitly so each branch is exercised without URL games. The `launched: true`
+  case asserts the slim `BrandBar` (a link with `aria-label="Wildflower, home"`
+  pointing at `https://wildflowerhealth.io/`) and the absence of full chrome;
+  `launched: false` asserts `SiteHeader`, `ConnectMenu`, `SiteFooter` with
+  absolute nav hrefs.
 - `app.test.tsx` — the whole tree over a stub transport. It asserts the URL and
   the `Authorization` header that actually went on the wire, so the two
   self-hosted-origin facts above are pinned rather than assumed. It also walks
