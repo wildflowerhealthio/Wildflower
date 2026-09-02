@@ -1,0 +1,78 @@
+import { cleanup, render, screen, within } from '@testing-library/react'
+import type { JSX } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+
+vi.mock('./app.tsx', () => ({
+  App: (): JSX.Element => <div data-testid="mock-app">App</div>,
+}))
+
+vi.mock('fhir-r4-react/connect', () => ({
+  ConnectMenu: ({
+    clientId,
+    scope,
+    redirectUri,
+  }: {
+    readonly clientId: string
+    readonly scope: string
+    readonly redirectUri: string
+  }): JSX.Element => (
+    <div data-testid="mock-connect-menu">
+      {clientId} / {scope} / {redirectUri}
+    </div>
+  ),
+}))
+
+afterEach(() => {
+  cleanup()
+})
+
+const { AppRoot } = await import('./app-root.tsx')
+
+describe('AppRoot', () => {
+  it('should render BrandBar and App when launched', () => {
+    // Arrange & Act
+    render(<AppRoot launched />)
+
+    // Assert — the slim brand bar links back to the marketing site
+    const brandLink = screen.getByRole('link', { name: 'Wildflower, home' })
+    expect(brandLink).toBeDefined()
+    expect(brandLink.getAttribute('href')).toBe('https://wildflowerhealth.io/')
+
+    expect(screen.getByTestId('mock-app')).toBeDefined()
+    expect(screen.queryByTestId('mock-connect-menu')).toBeNull()
+  })
+
+  it('should render full site chrome and ConnectMenu when not launched', () => {
+    // Arrange & Act
+    render(<AppRoot launched={false} />)
+
+    // Assert — SiteHeader renders with id="top"
+    expect(document.getElementById('top')).not.toBeNull()
+
+    // SiteHeader nav links resolve to absolute marketing URLs (scoped to
+    // the header, since the footer carries the same link labels)
+    const header = document.getElementById('top')!
+    const howLink = within(header).getByRole('link', { name: 'The apps' })
+    expect(howLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#how')
+
+    const privacyLink = within(header).getByRole('link', { name: 'Privacy' })
+    expect(privacyLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#privacy')
+
+    // ConnectMenu is present
+    expect(screen.getByTestId('mock-connect-menu')).toBeDefined()
+
+    // SiteFooter is present (it contains the copyright)
+    expect(screen.getByText(/Wildflower Health/)).toBeDefined()
+
+    // App is absent
+    expect(screen.queryByTestId('mock-app')).toBeNull()
+  })
+
+  it('should not render SiteHeader or SiteFooter when launched', () => {
+    // Arrange & Act
+    render(<AppRoot launched />)
+
+    // Assert — no full header (id="top" is SiteHeader's marker)
+    expect(document.getElementById('top')).toBeNull()
+  })
+})
