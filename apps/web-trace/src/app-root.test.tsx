@@ -69,8 +69,8 @@ describe('AppRoot', () => {
     const connectMenu = screen.getByTestId('mock-connect-menu')
     expect(connectMenu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/`)
 
-    // SiteFooter is present (it contains the copyright)
-    expect(screen.getByText(/Wildflower Health/)).toBeDefined()
+    // SiteFooter is present (the footer landmark)
+    expect(screen.getByRole('contentinfo')).toBeDefined()
 
     // App is absent
     expect(screen.queryByTestId('mock-app')).toBeNull()
