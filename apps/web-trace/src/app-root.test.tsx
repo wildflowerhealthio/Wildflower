@@ -1,0 +1,102 @@
+import { cleanup, render, screen, within } from '@testing-library/react'
+import type { JSX } from 'react'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
+
+vi.mock('./app.tsx', () => ({
+  App: (): JSX.Element => <div data-testid="mock-app">App</div>,
+}))
+
+vi.mock('fhir-r4-react/connect', () => ({
+  ConnectMenu: ({
+    clientId,
+    scope,
+    redirectUri,
+  }: {
+    readonly clientId: string
+    readonly scope: string
+    readonly redirectUri: string
+  }): JSX.Element => (
+    <div data-testid="mock-connect-menu" data-redirect-uri={redirectUri}>
+      {clientId} / {scope} / {redirectUri}
+    </div>
+  ),
+}))
+
+/** Points jsdom's location at `search` (a `?…` string, or `''` for the bare root). */
+const setSearch = (search: string): void => {
+  window.history.replaceState({}, '', `/${search}`)
+}
+
+afterEach(() => {
+  cleanup()
+  setSearch('')
+})
+
+const { AppRoot } = await import('./app-root.tsx')
+
+describe('AppRoot', () => {
+  it('should render BrandBar and App when launched', () => {
+    // Arrange & Act
+    render(<AppRoot launched />)
+
+    // Assert — the slim brand bar links back to the marketing site
+    const brandLink = screen.getByRole('link', { name: 'Wildflower, home' })
+    expect(brandLink).toBeDefined()
+    expect(brandLink.getAttribute('href')).toBe('https://wildflowerhealth.io/')
+
+    expect(screen.getByTestId('mock-app')).toBeDefined()
+    expect(screen.queryByTestId('mock-connect-menu')).toBeNull()
+  })
+
+  it('should render full site chrome and ConnectMenu when not launched', () => {
+    // Arrange & Act
+    render(<AppRoot launched={false} />)
+
+    // Assert — SiteHeader renders with id="top"
+    expect(document.getElementById('top')).not.toBeNull()
+
+    // SiteHeader nav links resolve to absolute marketing URLs (scoped to
+    // the header, since the footer carries the same link labels)
+    const header = document.getElementById('top')!
+    const howLink = within(header).getByRole('link', { name: 'The apps' })
+    expect(howLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#how')
+
+    const privacyLink = within(header).getByRole('link', { name: 'Privacy' })
+    expect(privacyLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#privacy')
+
+    // ConnectMenu is present, and its redirect target is this page's root
+    // (the OAuth callback lands back on AppRoot, wherever it is served from)
+    const connectMenu = screen.getByTestId('mock-connect-menu')
+    expect(connectMenu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/`)
+
+    // SiteFooter is present (it contains the copyright)
+    expect(screen.getByText(/Wildflower Health/)).toBeDefined()
+
+    // App is absent
+    expect(screen.queryByTestId('mock-app')).toBeNull()
+  })
+
+  it('should not render SiteHeader or SiteFooter when launched', () => {
+    // Arrange & Act
+    render(<AppRoot launched />)
+
+    // Assert — no full header (id="top" is SiteHeader's marker)
+    expect(document.getElementById('top')).toBeNull()
+  })
+
+  it('should keep App mounted after the callback params leave the URL', () => {
+    // Arrange — a launch in progress, with no explicit prop so the URL decides
+    setSearch('?code=abc&state=xyz')
+    const { rerender } = render(<AppRoot />)
+    expect(screen.getByTestId('mock-app')).toBeDefined()
+
+    // Act — fhirclient's `oauth2.ready()` strips `code`/`state` once the
+    // exchange completes; a later re-render must not re-read the URL
+    setSearch('')
+    rerender(<AppRoot />)
+
+    // Assert — still the launched branch
+    expect(screen.getByTestId('mock-app')).toBeDefined()
+    expect(screen.queryByTestId('mock-connect-menu')).toBeNull()
+  })
+})

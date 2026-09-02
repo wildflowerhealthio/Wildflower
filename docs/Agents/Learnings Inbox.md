@@ -75,6 +75,17 @@ values for `--content-max-width`, `--page-padding-x`, `--header-height`, and
 `--radius-pill` must be removed — they are now supplied by `branding-react` and
 duplicating them risks silent drift.
 
+## `web-trace`'s `customConditions: ["source"]` blocks a `tsc` build step
+
+`apps/web-trace`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
+bundler agree on which copy of `QueryClient` a slice's router context refers to.
+Under that condition a package-local `tsc` also re-typechecks other workspace
+packages' sources under this app's strict compiler options (notably
+`erasableSyntaxOnly: true`), which fails on code this app does not own (e.g.
+`kitchen-sink`'s `two-step-external-schema.ts`). Typechecking comes from
+`vp check`, which resolves the same way the bundler does; the `build` script
+stays `vp build` with no `tsc` step.
+
 ## Color-scheme helpers live in react-tundraish, not in each app
 
 `applyColorScheme`, `addOsColorSchemeListener`, and the `ColorScheme` type are
