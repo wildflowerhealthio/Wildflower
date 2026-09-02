@@ -1,8 +1,8 @@
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { addOsColorSchemeListener } from './add-os-color-scheme-listener.ts'
+import { addOsColorSchemeListener, applyColorScheme } from './color-scheme.ts'
 
 /**
  * Install a controllable fake `window.matchMedia`. The returned
@@ -37,8 +37,27 @@ const installMatchMedia = (
   }
 }
 
+// Helpers
+
 const currentScheme = (): string | null =>
   document.documentElement.getAttribute('data-color-scheme')
+
+describe('applyColorScheme', () => {
+  afterEach(() => {
+    delete document.documentElement.dataset.colorScheme
+  })
+
+  it('should write the scheme as the data-color-scheme attribute on the root element', () => {
+    applyColorScheme('dark')
+    expect(document.documentElement.getAttribute('data-color-scheme')).toBe('dark')
+  })
+
+  it('should overwrite the previous scheme rather than accumulating', () => {
+    applyColorScheme('dark')
+    applyColorScheme('light')
+    expect(document.documentElement.getAttribute('data-color-scheme')).toBe('light')
+  })
+})
 
 describe('addOsColorSchemeListener', () => {
   afterEach(() => {
@@ -46,26 +65,26 @@ describe('addOsColorSchemeListener', () => {
     delete document.documentElement.dataset.colorScheme
   })
 
-  test('applies dark immediately when the OS prefers dark', () => {
+  it('should apply dark immediately when the OS prefers dark', () => {
     installMatchMedia(true)
     addOsColorSchemeListener()
     expect(currentScheme()).toBe('dark')
   })
 
-  test('applies light immediately when the OS does not prefer dark', () => {
+  it('should apply light immediately when the OS does not prefer dark', () => {
     installMatchMedia(false)
     addOsColorSchemeListener()
     expect(currentScheme()).toBe('light')
   })
 
-  test('reflects a later preference change onto the attribute', () => {
+  it('should reflect a later preference change onto the attribute', () => {
     const { dispatchChange } = installMatchMedia(false)
     addOsColorSchemeListener()
     dispatchChange(true)
     expect(currentScheme()).toBe('dark')
   })
 
-  test('stops updating and detaches its listener after unsubscribe', () => {
+  it('should stop updating and detach its listener after unsubscribe', () => {
     const { dispatchChange, listeners } = installMatchMedia(false)
     const unsubscribe = addOsColorSchemeListener()
     unsubscribe()
@@ -74,7 +93,7 @@ describe('addOsColorSchemeListener', () => {
     expect(currentScheme()).toBe('light')
   })
 
-  test('the attribute always tracks the latest preference across a sequence of changes', () => {
+  it('should always track the latest preference across a sequence of changes', () => {
     fc.assert(
       fc.property(fc.boolean(), fc.array(fc.boolean()), (initial, changes) => {
         const { dispatchChange } = installMatchMedia(initial)

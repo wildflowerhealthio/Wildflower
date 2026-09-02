@@ -126,7 +126,10 @@ const TunnelScreenContent = (): JSX.Element => {
  */
 export const Route = createFileRoute('/settings/tunnel/')({
   loader: async ({ context }) => {
-    await context.queryClient.ensureQueryData(tunnelStateQueryOptions(context.runAuthed))
+    await context.queryClient.query({
+      ...tunnelStateQueryOptions(context.runAuthed),
+      staleTime: 'static',
+    })
   },
   component: TunnelScreenContent,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Tunnel" />,

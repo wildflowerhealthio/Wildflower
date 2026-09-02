@@ -42,7 +42,7 @@ describe('harArchivesInfiniteQueryOptions', () => {
     const options = harArchivesInfiniteQueryOptions(runAuthedOver([searchset([])]))
 
     // Act
-    await queryClient.fetchInfiniteQuery(options)
+    await queryClient.infiniteQuery(options)
 
     // Assert — the category the codec writes, not the web-trace one
     expect(paramsOf(0)['category']).toBe(HAR_ARCHIVE_CATEGORY_TOKEN)
@@ -58,7 +58,7 @@ describe('harArchivesInfiniteQueryOptions', () => {
     const options = harArchivesInfiniteQueryOptions(runAuthedOver([searchset([])]), { pageSize: 7 })
 
     // Act
-    await queryClient.fetchInfiniteQuery(options)
+    await queryClient.infiniteQuery(options)
 
     // Assert
     expect(paramsOf(0)['_count']).toBe('7')
@@ -72,7 +72,7 @@ describe('harArchivesInfiniteQueryOptions', () => {
     const options = harArchivesInfiniteQueryOptions(runAuthedOver([searchset([wire])]))
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery(options)
+    const data = await queryClient.infiniteQuery(options)
 
     // Assert — read straight off the attachment, without decoding the bytes
     const [page] = data.pages
@@ -96,7 +96,7 @@ describe('harArchivesInfiniteQueryOptions', () => {
     const options = harArchivesInfiniteQueryOptions(runAuthedOver([first, second]))
 
     // Act
-    const data = await queryClient.fetchInfiniteQuery({ ...options, pages: 3 })
+    const data = await queryClient.infiniteQuery({ ...options, pages: 3 })
 
     // Assert — the second request carried the cursor, and the third never happened
     expect(sentRequests).toHaveLength(2)
@@ -113,7 +113,7 @@ describe('harArchivesInfiniteQueryOptions', () => {
     const options = harArchivesInfiniteQueryOptions(failingRunAuthed())
 
     // Act / Assert
-    await expect(queryClient.fetchInfiniteQuery(options)).rejects.toThrow()
+    await expect(queryClient.infiniteQuery(options)).rejects.toThrow()
   })
 })
 

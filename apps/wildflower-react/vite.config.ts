@@ -20,7 +20,6 @@ export default defineConfig({
     entry: {
       'app-root': 'src/app-root.tsx',
       'web-entry': 'src/web-entry.ts',
-      'os-color-scheme-listener': 'src/styles/add-os-color-scheme-listener.ts',
       instrument: 'src/instrument.ts',
     },
   },

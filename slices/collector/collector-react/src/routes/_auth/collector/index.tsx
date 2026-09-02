@@ -209,7 +209,7 @@ function AccountListScreen(): JSX.Element {
  */
 export const Route = createFileRoute('/_auth/collector/')({
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(remotesQueryOptions(context.runAuthed)),
+    context.queryClient.query({ ...remotesQueryOptions(context.runAuthed), staleTime: 'static' }),
   component: AccountListScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Collector" />,
 })

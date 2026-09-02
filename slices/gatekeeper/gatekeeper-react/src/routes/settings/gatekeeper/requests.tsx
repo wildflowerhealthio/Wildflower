@@ -106,7 +106,7 @@ const RequestsListScreen = (): JSX.Element => {
  */
 export const Route = createFileRoute('/settings/gatekeeper/requests')({
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(requestsQueryOptions(context.runAuthed)),
+    context.queryClient.query({ ...requestsQueryOptions(context.runAuthed), staleTime: 'static' }),
   component: RequestsListScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Requests" />,
 })

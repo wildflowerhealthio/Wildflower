@@ -221,22 +221,6 @@ export default defineConfig({
       'import/no-named-as-default-member': 'warn',
       'import/no-duplicates': 'warn',
 
-      // React Compiler / react-hooks v6 rules that vite-plus 0.3 (via its
-      // bundled oxlint) newly enabled under the `react` plugin. Every failure
-      // they surface is real, but fixing them is a separate audit — see the
-      // follow-up on `claude/migrate-deprecated-query-methods`. Keep this list
-      // in sync with that branch's remediation so a rule only comes back once
-      // the corresponding fix lands.
-      'react/set-state-in-effect': 'off',
-      'react/exhaustive-effect-dependencies': 'off',
-      'react/purity': 'off',
-      'react/static-components': 'off',
-      'react/globals': 'off',
-      'react/immutability': 'off',
-      'react/refs': 'off',
-      'react/memo-dependencies': 'off',
-      'react/preserve-manual-memoization': 'off',
-
       // Enable-only rules (warnings — violations not yet fixed)
       'react/no-array-index-key': 'warn',
       'no-await-in-loop': 'warn',
@@ -278,9 +262,21 @@ export default defineConfig({
         // Test files freely hoist small helpers (fixtures, arrange-step
         // builders) inside `describe`/`it` blocks for locality; enforcing
         // module-scope placement there hurts readability for no runtime gain.
+        //
+        // react/globals and react/immutability turn off here for the same
+        // "tests are observers, not renderers" reason: a test harness
+        // legitimately captures the render count or the value a hook
+        // returned by writing into an outer let / ref during a memo'd
+        // component's render — the whole point of the test is often to
+        // prove that a subsequent write does NOT trigger another render,
+        // which useState / useRef would sidestep by design. The rules
+        // stay on in production code; they only relax where "external
+        // side effect during render" is the assertion, not the bug.
         files: ['**/*.test.ts', '**/*.test.tsx', '**/*.test.mts', '**/*.test.cts'],
         rules: {
           'unicorn/consistent-function-scoping': 'off',
+          'react/globals': 'off',
+          'react/immutability': 'off',
         },
       },
     ],

@@ -35,7 +35,10 @@ function SystemAppDetailRoute(): JSX.Element {
 
 const Route = createFileRoute('/settings/apps/system/$id')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(systemAppQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.query({
+      ...systemAppQueryOptions(context.runAuthed, params.id),
+      staleTime: 'static',
+    }),
   component: SystemAppDetailRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })

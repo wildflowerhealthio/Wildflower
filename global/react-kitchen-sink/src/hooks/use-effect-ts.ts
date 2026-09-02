@@ -96,7 +96,11 @@ function useEffectTs<A, E, R>(
     return (): void => {
       Effect.runFork(pipe(Fiber.interrupt(fiber), Effect.andThen(Effect.sync(reset))))
     }
-  }, [effect, provided, resolve, reject, reset])
+    // `effect` reaches the effect only through `provided` (a
+    // useMemo([effect, layer]) above), so it's already tracked by the
+    // `provided` dependency below — listing it here re-runs the effect
+    // for a change that `provided` already handles.
+  }, [provided, resolve, reject, reset])
 
   return promise
 }

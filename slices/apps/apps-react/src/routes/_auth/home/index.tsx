@@ -279,7 +279,7 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
 const Route = createFileRoute('/_auth/home/')({
   validateSearch: validateHomeSearch,
   loader: ({ context }) =>
-    context.queryClient.ensureQueryData(appsListQueryOptions(context.runAuthed)),
+    context.queryClient.query({ ...appsListQueryOptions(context.runAuthed), staleTime: 'static' }),
   component: AppsHomeScreen,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Apps" />,
 })

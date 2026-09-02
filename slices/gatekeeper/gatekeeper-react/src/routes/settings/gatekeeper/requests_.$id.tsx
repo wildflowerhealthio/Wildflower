@@ -122,7 +122,10 @@ function RequestDetailRoute(): JSX.Element {
 
 export const Route = createFileRoute('/settings/gatekeeper/requests_/$id')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(requestQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.query({
+      ...requestQueryOptions(context.runAuthed, params.id),
+      staleTime: 'static',
+    }),
   component: RequestDetailRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Not Found" />,
 })

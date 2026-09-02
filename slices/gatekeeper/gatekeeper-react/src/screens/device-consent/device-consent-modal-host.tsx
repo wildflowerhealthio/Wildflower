@@ -15,14 +15,18 @@ import { unknownErrorToString } from 'kitchen-sink'
 import {
   Component,
   Suspense,
-  useEffect,
   useMemo,
   useState,
   type ErrorInfo,
   type JSX,
   type ReactNode,
 } from 'react'
-import { isAuthed, useAuthStateSubscribable, useSubscribable } from 'react-kitchen-sink'
+import {
+  isAuthed,
+  useAuthStateSubscribable,
+  usePreviousDistinctValue,
+  useSubscribable,
+} from 'react-kitchen-sink'
 import { Dialog } from 'react-tundraish'
 
 import { useActiveDeviceUserCode } from '../../active-device-consent/use-active-device-user-code.ts'
@@ -154,9 +158,15 @@ const DeviceConsentModalHost = (): JSX.Element | null => {
   // again.
   const [handledUserCode, setHandledUserCode] = useState<string | null>(null)
 
-  useEffect(() => {
+  // Reset handledUserCode when the host's active userCode changes. Adjust
+  // state during render (via usePreviousDistinctValue) — a useEffect version
+  // trips react/set-state-in-effect and paints the stale "already handled"
+  // state for one frame after the host publishes a new active code,
+  // briefly showing the closed popup as still closed.
+  const prevActiveUserCode = usePreviousDistinctValue(activeUserCode)
+  if (activeUserCode !== prevActiveUserCode) {
     setHandledUserCode(null)
-  }, [activeUserCode])
+  }
 
   const DeviceConsentErrorFallbackInstance = useMemo(
     () => (error: unknown) => (

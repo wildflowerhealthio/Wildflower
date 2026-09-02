@@ -3,7 +3,7 @@ import { useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, PageHeader } from 'react-tundraish'
 
-import { configFormForTag } from './config-form.tsx'
+import { renderConfigForm } from './config-form.tsx'
 import styles from './account-form.module.css'
 
 interface AccountFormScreenProps<T extends CollectorTag> {
@@ -34,7 +34,7 @@ interface AccountFormScreenProps<T extends CollectorTag> {
  * The generic account create/edit screen. It owns the chrome shared across
  * every collector — the page header, the type badge, the account-name field,
  * the mutation-error banner, and the Save/Cancel row — and hosts the
- * per-collector {@link configFormForTag | config form} for `tag`, handing it the
+ * per-collector {@link renderConfigForm | config form} for `tag`, handing it the
  * name field + type badge as its `header` and the Save/Cancel row as its
  * `footer`. The config form owns its fields and decodes on submit; this screen
  * only fills in the account name (defaulting an empty name to
@@ -56,7 +56,6 @@ function AccountFormScreen<T extends CollectorTag>({
   onCancel,
 }: AccountFormScreenProps<T>): JSX.Element {
   const descriptor = descriptorForTag(tag)
-  const ConfigForm = configFormForTag(tag)
   const [name, setName] = useState(initialName)
 
   const handleSubmit = (config: ConfigForTag<T>): void => {
@@ -73,12 +72,12 @@ function AccountFormScreen<T extends CollectorTag>({
 
       <ErrorBanner error={error} />
 
-      <ConfigForm
-        initial={initial}
-        prefill={prefill}
-        disabled={disabled}
-        onSubmit={handleSubmit}
-        header={
+      {renderConfigForm(tag, {
+        initial,
+        prefill,
+        disabled,
+        onSubmit: handleSubmit,
+        header: (
           <>
             <div className={styles['field']}>
               <label className={cn(styles['field__label'], 'text-label-3')}>Type</label>
@@ -103,8 +102,8 @@ function AccountFormScreen<T extends CollectorTag>({
               />
             </div>
           </>
-        }
-        footer={
+        ),
+        footer: (
           <div className={styles['button-row']}>
             <button type="submit" className="button-2 filled" disabled={disabled}>
               Save
@@ -113,8 +112,8 @@ function AccountFormScreen<T extends CollectorTag>({
               Cancel
             </button>
           </div>
-        }
-      />
+        ),
+      })}
     </>
   )
 }

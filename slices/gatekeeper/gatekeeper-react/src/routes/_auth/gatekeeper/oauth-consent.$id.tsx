@@ -35,7 +35,10 @@ function OAuthConsentRoute(): JSX.Element {
 
 export const Route = createFileRoute('/_auth/gatekeeper/oauth-consent/$id')({
   loader: ({ context, params }) =>
-    context.queryClient.ensureQueryData(oauthConsentQueryOptions(context.runAuthed, params.id)),
+    context.queryClient.query({
+      ...oauthConsentQueryOptions(context.runAuthed, params.id),
+      staleTime: 'static',
+    }),
   component: OAuthConsentRoute,
   errorComponent: ({ error }) => <AsyncErrorView error={error} title="Authorization Request" />,
 })

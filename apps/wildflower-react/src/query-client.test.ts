@@ -16,7 +16,7 @@ describe('buildQueryClient unauthorized redirect', () => {
 
     // Act — mirror a rejected authed queryFn.
     await queryClient
-      .fetchQuery({
+      .query({
         queryKey: ['unauthorized'],
         queryFn: () => Promise.reject(wrapped),
         retry: false,
@@ -35,7 +35,7 @@ describe('buildQueryClient unauthorized redirect', () => {
 
     // Act
     await queryClient
-      .fetchQuery({
+      .query({
         queryKey: ['server-error'],
         queryFn: () => Promise.reject(wrapped),
         retry: false,

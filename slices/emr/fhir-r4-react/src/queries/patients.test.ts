@@ -102,7 +102,7 @@ describe('patientsQueryOptions', () => {
     )
     const queryClient = freshQueryClient()
 
-    const patients = await queryClient.ensureQueryData(options)
+    const patients = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(patients).toHaveLength(2)
     expect(patients.map((p) => p.id)).toEqual(['pat-1', 'pat-2'])
@@ -115,7 +115,7 @@ describe('patientsQueryOptions', () => {
     )
     const queryClient = freshQueryClient()
 
-    const patients = await queryClient.ensureQueryData(options)
+    const patients = await queryClient.query({ ...options, staleTime: 'static' })
 
     expect(patients).toHaveLength(0)
   })
@@ -125,7 +125,7 @@ describe('patientsQueryOptions', () => {
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     disposers.push(() => Promise.resolve(queryClient.clear()))
 
-    await expect(queryClient.ensureQueryData(options)).rejects.toThrow()
+    await expect(queryClient.query({ ...options, staleTime: 'static' })).rejects.toThrow()
     expect(queryClient.getQueryData(PATIENTS_QUERY_KEY)).toBeUndefined()
   })
 })

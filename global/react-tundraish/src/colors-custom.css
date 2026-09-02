@@ -14,7 +14,7 @@
  *
  * Dark mode is keyed solely off `:root[data-color-scheme='dark']`. There is no
  * `prefers-color-scheme` rule — both runtimes resolve the scheme in JS and
- * write that attribute (see `apply-color-scheme.ts`), so the palette lives in
+ * write that attribute (see `color-scheme.ts`), so the palette lives in
  * exactly one declaration block:
  *
  *   - Plain web reads `prefers-color-scheme` via `addOsColorSchemeListener`
