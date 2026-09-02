@@ -16,7 +16,7 @@ vi.mock('fhir-r4-react/connect', () => ({
     readonly scope: string
     readonly redirectUri: string
   }): JSX.Element => (
-    <div data-testid="mock-connect-menu">
+    <div data-testid="mock-connect-menu" data-redirect-uri={redirectUri}>
       {clientId} / {scope} / {redirectUri}
     </div>
   ),
@@ -64,8 +64,10 @@ describe('AppRoot', () => {
     const privacyLink = within(header).getByRole('link', { name: 'Privacy' })
     expect(privacyLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#privacy')
 
-    // ConnectMenu is present
-    expect(screen.getByTestId('mock-connect-menu')).toBeDefined()
+    // ConnectMenu is present, and its redirect target is this page's root
+    // (the OAuth callback lands back on AppRoot, wherever it is served from)
+    const connectMenu = screen.getByTestId('mock-connect-menu')
+    expect(connectMenu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/`)
 
     // SiteFooter is present (it contains the copyright)
     expect(screen.getByText(/Wildflower Health/)).toBeDefined()
