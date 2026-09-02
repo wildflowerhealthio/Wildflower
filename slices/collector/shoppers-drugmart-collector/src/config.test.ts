@@ -8,9 +8,9 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
 
+import { SHOPPERS_DRUGMART_SYSTEM } from 'shoppers-drugmart-source'
 import {
   InstanceConfig,
-  SHOPPERS_DRUGMART_SYSTEM,
   ShoppersDrugMartCollectorDescriptor,
   defaultConfig,
   scrapingPlan,
@@ -334,7 +334,8 @@ describe('source identity', () => {
       responseKindNamed(name).parse(makeCollectorHttpResponse({ url, body: JSON.stringify(body) }))
     )
 
-  const CUSTOMERS_URL = 'https://mypharmacy.shoppersdrugmart.ca/api/v1/customers/pc-uuid-1?expand=x'
+  const CUSTOMERS_URL =
+    'https://mypharmacy.shoppersdrugmart.ca/api/v1/customers/pcid/pc-uuid-1?expand=x'
   const STATUS_URL =
     'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-uuid-1/prescription-status'
 

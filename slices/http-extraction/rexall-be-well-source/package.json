@@ -1,0 +1,48 @@
+{
+  "name": "rexall-be-well-source",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Rexall Be Well source: the carebook STU3 dialect (extension/identifier/coding-system constants, Bundle shapes, extension promotion) and the profile/medication-list response kinds that define how Rexall letsbewell.ca traffic decodes into FHIR R4 resources, assembled as a SourceDescriptor for both live and archive extraction. No DOM, no fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/http-extraction/rexall-be-well-source"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-stu3-as-r4": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "fhir-stu3-as-r4": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*"
+  }
+}

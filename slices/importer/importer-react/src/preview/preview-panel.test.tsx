@@ -2,7 +2,7 @@ import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
 import { ReviewBody } from 'har-importer-react'
-import { type Extraction, HttpResponseKind } from 'http-extraction-fundamentals'
+import { type Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -13,7 +13,7 @@ import type { FileReadOutcome } from './use-import-run.ts'
 /**
  * The preview panel composes the format's interactive `ReviewBody` per file and
  * gates one confirm over the whole batch. Driven directly — props in, DOM out,
- * over a synthetic pool — the point under test is that every file renders
+ * over a synthetic source — the point under test is that every file renders
  * distinctly (a review, an unreadable notice), that the confirm appears only when
  * at least one file has a chosen response, and that it names the batch total.
  */
@@ -29,6 +29,15 @@ const kind = (name: string, token: string): HttpResponseKind.HttpResponseKind<st
   })
 
 const pool = [kind('patient', '/Patient'), kind('observation', '/Observation')]
+
+/** One synthetic source grouping the pool's kinds — the shape the panel now takes. */
+const sources: readonly SourceDescriptor.SourceDescriptor<string>[] = [
+  SourceDescriptor.make({
+    name: 'ehr-source',
+    display: { title: 'EHR source', description: 'Synthetic FHIR source for the panel test.' },
+    responseKinds: pool,
+  }),
+]
 
 /** One decoded response the recognizer reads. */
 const input = (id: string, url: string): Extraction.Input => ({
@@ -153,14 +162,14 @@ const readFile = (
   responses,
 })
 
-/** The shared panel props, with the pool + review wired and the selection at its default. */
+/** The shared panel props, with the sources + review wired and the selection at its default. */
 const panelProps = (
   overrides: {
     readonly onConfirm?: () => void
     readonly confirming?: boolean
   } = {}
 ): {
-  readonly pool: typeof pool
+  readonly sources: typeof sources
   readonly ReviewBody: typeof ReviewBody
   readonly selectionFor: () => Review.Selection
   readonly onSelectionChange: () => void
@@ -168,7 +177,7 @@ const panelProps = (
   readonly onCancel: () => void
   readonly confirming: boolean
 } => ({
-  pool,
+  sources,
   ReviewBody,
   selectionFor: () => Review.initial(pool),
   onSelectionChange: () => undefined,

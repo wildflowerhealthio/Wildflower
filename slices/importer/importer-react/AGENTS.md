@@ -234,7 +234,7 @@ TextEncoder().encode(text)`).
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
   `FileImporterDescriptor` contract and the `Review` model this shell drives.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR
-  descriptor (`decode`, `pool`, `persist`) the registry lists.
+  descriptor (`decode`, `sources`, `persist`) the registry lists.
 - [har-importer-react AGENTS.md](../har-importer-react/AGENTS.md) — the
   interactive `ReviewBody` this shell mounts per file.
 - [slices AGENTS.md](../../AGENTS.md) — the slice layering rules this package
