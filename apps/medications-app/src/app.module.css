@@ -21,6 +21,25 @@
   margin-bottom: var(--space-9);
 }
 
+/*
+ * Standalone (bare-visit) page: a full-height column so the footer sits at the
+ * bottom of the viewport even when the ConnectMenu is shorter than the screen.
+ */
+.standalone-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* The ConnectMenu area: centred horizontally, and it grows to fill the column. */
+.connect-page {
+  flex: 1;
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-13) var(--page-padding-x);
+}
+
 /* Loading / error lines share the body size; only the colour differs. */
 .status {
   font-size: var(--font-size-3);
