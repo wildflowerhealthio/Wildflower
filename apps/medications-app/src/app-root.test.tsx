@@ -15,7 +15,9 @@ vi.mock('./app.tsx', () => ({
   App: () => <div data-testid="app" />,
 }))
 vi.mock('fhir-r4-react/connect', () => ({
-  ConnectMenu: () => <div data-testid="connect-menu" />,
+  ConnectMenu: ({ redirectUri }: { readonly redirectUri: string }) => (
+    <div data-testid="connect-menu" data-redirect-uri={redirectUri} />
+  ),
 }))
 vi.mock('fhir-r4-react/smart', async (importOriginal) => ({
   ...(await importOriginal<typeof SmartModule>()),
@@ -61,7 +63,9 @@ describe('AppRoot', () => {
     expect(screen.queryByRole('contentinfo')).not.toBeNull()
 
     // The connect menu renders inside the main region, not the SMART app
-    expect(within(screen.getByRole('main')).queryByTestId('connect-menu')).not.toBeNull()
+    const connectMenu = within(screen.getByRole('main')).getByTestId('connect-menu')
+    // The OAuth callback must land back on this page root, wherever it is served from
+    expect(connectMenu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/`)
     expect(screen.queryByTestId('app')).toBeNull()
   })
 
