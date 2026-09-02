@@ -4,9 +4,9 @@
 //
 // Everything the registry and the React adapter need is exported from here: the
 // `WebTraceCollectorDescriptor` (config, hand-driven scraping plan, persist
-// sink, display) `collector-registry` assembles, the `WebTraceConfigForm`
-// `collector-react` registers, and the re-exported capture-time body policy and
-// catch-all `RawExchangeResponseKind` factory from `web-trace-source`.
+// sink, display) `collector-registry` assembles, and the `WebTraceConfigForm`
+// `collector-react` registers. The catch-all `RawExchangeResponseKind` factory
+// and the capture-time body policy now live in `web-trace-source`.
 
 export * from './config.ts'
 export * from './web-trace-config-form.tsx'
