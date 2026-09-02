@@ -1,9 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, recognizePortal } from 'http-extraction-fundamentals'
-
-import { extractJson } from '../extract-json.ts'
+import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 
@@ -20,9 +18,8 @@ type SourceAddress = typeof SourceAddress.Type
 
 /**
  * One managed person under an account (`customer.patients[]`). `id` is required
- * — it is the id `MedicationRequest.subject` / `MedicationDispense.subject`
- * resolve to and the key of the demographic Patient this becomes — everything
- * else is optional and lenient.
+ * — the key of the demographic Patient this becomes, and the id `subject`
+ * references resolve to; the rest is optional and lenient.
  */
 const SourcePatient = Schema.Struct({
   id: Schema.String,
@@ -36,13 +33,9 @@ const SourcePatient = Schema.Struct({
 type SourcePatient = typeof SourcePatient.Type
 
 /**
- * Just-enough schema for one `…/api/<seg>/customers/:uuid?expand=…` payload — a
- * bespoke portal JSON shape, **not FHIR**. Only `customer.pcid` (the account id,
- * `== customer.id == the customerId` query param) is required; `patients` is
- * decoded as an array of `Unknown` and each entry re-decoded per-entry so one
- * malformed patient is dropped-and-counted rather than failing the whole
- * account. Everything else is optional and lenient (unknown fields drop on
- * decode).
+ * Just-enough schema for one bespoke (non-FHIR) customers payload. Only
+ * `customer.pcid` (the account id) is required; `patients` is decoded per-entry
+ * so a malformed one drops-and-counts rather than failing the account.
  */
 const CustomerPayload = Schema.Struct({
   customer: Schema.Struct({
@@ -63,10 +56,8 @@ const decodeSourcePatient = Schema.decodeUnknownOption(SourcePatient)
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
 
 /**
- * The R4 `HumanName[]` wire (a single name) for a family/given pair, falling
- * back to a `text`-only name when only a combined display name is present.
- * Returns `undefined` when the source names nothing, so the caller omits the
- * `name` slot entirely.
+ * The R4 `HumanName[]` wire for a family/given pair (or a `text`-only name from a
+ * combined display name); `undefined` when the source names nothing.
  */
 const nameWire = (
   firstName: string | undefined,
@@ -87,9 +78,8 @@ const nameWire = (
 }
 
 /**
- * The R4 `Address[]` wire (a single address) for a source address, emitting only
- * the parts present. Returns `undefined` when the source carries no address
- * parts at all, so the caller omits the slot.
+ * The R4 `Address[]` wire for a source address, emitting only the parts present;
+ * `undefined` when there are none.
  */
 const addressWire = (
   address: SourceAddress | undefined
@@ -117,10 +107,8 @@ const telecomWire = (
 
 /**
  * The demographic `Patient` **wire** for one managed person, keyed by its own
- * `id` — the record `MedicationRequest.subject` / `MedicationDispense.subject`
- * resolve to. Carries name (family/given, with the portal's `displayName` as
- * `text`), a phone telecom, and address when present, with the source
- * `patientId` recorded as `identifier[0]`.
+ * `id` (the record `subject` references resolve to), with `patientId` as
+ * `identifier[0]`.
  */
 const patientWire = (patient: SourcePatient): Record<string, unknown> => {
   const wire: Record<string, unknown> = {
@@ -138,11 +126,9 @@ const patientWire = (patient: SourcePatient): Record<string, unknown> => {
 }
 
 /**
- * The account `Patient` **wire**, keyed by `customer.pcid`, carrying the
- * account-level name, email, phone, and address. It carries a `link.seealso` to
- * each managed person's demographic Patient (`patientIds`) — after
- * `adoptUnderRecognizedRoot` rewrites those relative references, the account↔person
- * join the customers payload asserts is finally materialized in the store.
+ * The account `Patient` **wire**, keyed by `customer.pcid`, with a `link.seealso`
+ * to each managed person's demographic Patient — adoption rewrites those
+ * references, materializing the account↔person join in the store.
  */
 const accountPatientWire = (
   customer: CustomerPayload['customer'],
@@ -169,38 +155,21 @@ const accountPatientWire = (
 }
 
 /**
- * `…://host/api/<seg>/customers/<uuid>` with an optional query. Anchors the uuid
- * as the **final** path segment (`[^/?#]+` then `\/?(?:[?#]|$)`) so it matches
- * `…/customers/<uuid>` and `…/customers/<uuid>?expand=…` but **not**
- * `…/customers/<uuid>/toasts?source=LOGIN` (or any other sub-path). Disjoint
- * from {@link !PrescriptionResponseKind} (`/prescriptions/:uuid/prescription-status`)
- * and {@link !PrescriptionHistoryResponseKind} (`/prescription-history?customerId=…`)
- * by construction — different final segments — so entity order is not
- * load-bearing. Version-agnostic (`/api/[^/]+/…`): the capture shows `/api/p1/…`
- * while the endpoint is documented as `/api/v1/…`.
+ * The exact customers XHR URL, anchored and pinned to host + `v1` + full path
+ * with an optional query; `[^/?#]+(?:\?|$)` keeps the uuid a single segment (so
+ * `…/pcid/<uuid>/toasts` is rejected). Disjoint from the sibling kinds.
  */
-const customerUrl = /:\/\/[^/]+\/api\/[^/]+\/customers\/[^/?#]+\/?(?:[?#]|$)/
+const customerUrl =
+  /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/customers\/pcid\/[^/?#]+(?:\?|$)/
 
 /**
- * Entity for the Shoppers customers XHR: the
- * `…/api/<seg>/customers/:uuid?expand=…` payload the health dashboard and the
- * prescription-history page fire. Each response is one bespoke JSON object (not
- * FHIR) carrying the account and the people it manages, synthesized here into:
- *
- * - one **demographic `Patient` per `customer.patients[]` entry**, keyed by its
- *   `id` (the id the prescription/history `subject` references resolve to); and
- * - one **account `Patient`** keyed by `customer.pcid`, `link.seealso`-ing each
- *   demographic Patient so the account↔person join the payload asserts survives
- *   into the store.
- *
- * This entity — not {@link !PrescriptionResponseKind} — owns the subject Patient
- * records. A run where this customers XHR fails therefore leaves the
- * prescriptions' `subject` references dangling; the store tolerates that
- * (references are not FK-enforced) and the same run always visits a page that
- * fires this XHR, so the dangle is a partial-run edge case, not the norm. A
- * patient entry that fails to decode (no `id`) is dropped-and-counted via
- * `Effect.logInfo`. {@link extractJson} normalizes the body across raw-XHR
- * intercepts and the mobile WebView's JSON-viewer wrap.
+ * Entity for the Shoppers customers XHR: one bespoke JSON object carrying the
+ * account and the people it manages, synthesized into a demographic `Patient`
+ * per `customer.patients[]` entry plus an account `Patient` (`link.seealso`-ing
+ * each). This entity — not {@link !PrescriptionResponseKind} — owns the subject
+ * Patient records, so a run where this XHR fails leaves those `subject`
+ * references dangling (tolerated; not FK-enforced). A patient entry with no `id`
+ * drops-and-counts via `Effect.logInfo`.
  */
 const CustomerResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> = HttpResponseKind.make(
   {

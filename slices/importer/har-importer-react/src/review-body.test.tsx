@@ -1,19 +1,20 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { DateTime, Effect, Option } from 'effect'
-import { type Extraction, HttpResponseKind } from 'http-extraction-fundamentals'
+import { type Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { ReviewBody } from './review-body.tsx'
 
 /**
- * The interactive review is driven directly — props in, DOM out — over a
- * synthetic pool so a real cross-source overlap (which the FHIR pool has none of)
- * can be forced. The points under test are the four the plan names: the default
- * pick is the top-specificity candidate; toggling a kind off re-derives every
- * pick; unrecognized responses fold into the collapsible no-match section; and
- * the selection the body reports up decodes to only the chosen parses.
+ * The interactive review is driven directly — props in, DOM out — over synthetic
+ * sources so a real cross-source overlap (which the FHIR pool has none of) can be
+ * forced. The points under test are: the include toggles are grouped by source
+ * under its name and detail; the default pick is the top-specificity candidate;
+ * toggling a kind off re-derives every pick; unrecognized responses fold into the
+ * collapsible no-match section; and the selection the body reports up decodes to
+ * only the chosen parses.
  */
 
 afterEach(cleanup)
@@ -29,6 +30,23 @@ const kind = (
     tryRecognize: (url) => (url.includes(token) ? Option.some({ specificity }) : Option.none()),
     parse: () => Effect.succeed([name]),
   })
+
+/** A one-source descriptor grouping `kinds` under a name + detail the menu shows. */
+const source = (
+  name: string,
+  ...kinds: readonly HttpResponseKind.HttpResponseKind<string>[]
+): SourceDescriptor.SourceDescriptor<string> =>
+  SourceDescriptor.make({
+    name,
+    display: { title: `${name} title`, description: `${name} detail` },
+    responseKinds: kinds,
+  })
+
+/** The flat pool of a source list — what the shell's `Review.initial` seeds from. */
+const poolOf = (
+  sources: readonly SourceDescriptor.SourceDescriptor<string>[]
+): readonly HttpResponseKind.HttpResponseKind<string>[] =>
+  sources.flatMap((entry) => entry.responseKinds)
 
 /** One decoded response the recognizer reads. */
 const input = (id: string, url: string): Extraction.Input => ({
@@ -48,17 +66,86 @@ const patientKind = kind('patient', 50, '/Patient')
 const observationKind = kind('observation', 50, '/Observation')
 
 describe('ReviewBody', () => {
-  it('should default a per-response picker to the top-specificity candidate', () => {
-    // Arrange
-    const pool = [portalKind, patientKind]
+  it('should group the include toggles by source under its name and detail', () => {
+    // Arrange — two distinct sources, one kind each.
+    const sources = [source('portal-source', portalKind), source('ehr-source', patientKind)]
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
 
     // Act
     render(
       <ReviewBody
         responses={responses}
-        pool={pool}
-        initialSelection={Review.initial(pool)}
+        sources={sources}
+        initialSelection={Review.initial(poolOf(sources))}
+        onChange={() => undefined}
+      />
+    )
+
+    // Assert — each source labels its own group, and its kind's toggle sits inside it.
+    const portalGroup = screen.getByRole('group', { name: 'portal-source title' })
+    const ehrGroup = screen.getByRole('group', { name: 'ehr-source title' })
+    expect(portalGroup.textContent).toContain('portal-source detail')
+    expect(ehrGroup.textContent).toContain('ehr-source detail')
+    expect(within(portalGroup).getByRole('checkbox', { name: 'portal' })).toBeDefined()
+    expect(within(ehrGroup).getByRole('checkbox', { name: 'patient' })).toBeDefined()
+  })
+
+  it('should label a toggle by the kind name without its ResponseKind suffix', () => {
+    // Arrange — a kind whose name carries the conventional suffix.
+    const sources = [source('ehr-source', kind('PrescriptionResponseKind', 50, '/Patient'))]
+    const responses = [input('r0', 'https://ehr.test/Patient/1')]
+
+    // Act
+    render(
+      <ReviewBody
+        responses={responses}
+        sources={sources}
+        initialSelection={Review.initial(poolOf(sources))}
+        onChange={() => undefined}
+      />
+    )
+
+    // Assert — the suffix is stripped from the label, and the un-suffixed name is gone.
+    expect(screen.getByRole('checkbox', { name: 'Prescription' })).toBeDefined()
+    expect(screen.queryByRole('checkbox', { name: 'PrescriptionResponseKind' })).toBeNull()
+  })
+
+  it('should disable a toggle for a kind that recognizes nothing in the file', () => {
+    // Arrange — one file with only a Patient; the Observation kind claims nothing here.
+    const sources = [source('ehr-source', patientKind, observationKind)]
+    const responses = [input('r0', 'https://ehr.test/Patient/1')]
+
+    // Act
+    render(
+      <ReviewBody
+        responses={responses}
+        sources={sources}
+        initialSelection={Review.initial(poolOf(sources))}
+        onChange={() => undefined}
+      />
+    )
+
+    // Assert — the matching kind is togglable and checked; the non-matching one
+    // is disabled and reads as unchecked.
+    const patient = screen.getByRole<HTMLInputElement>('checkbox', { name: 'patient' })
+    const observation = screen.getByRole<HTMLInputElement>('checkbox', { name: 'observation' })
+    expect(patient.disabled).toBe(false)
+    expect(patient.checked).toBe(true)
+    expect(observation.disabled).toBe(true)
+    expect(observation.checked).toBe(false)
+  })
+
+  it('should default a per-response picker to the top-specificity candidate', () => {
+    // Arrange — a broad and a specific kind that overlap on /Patient.
+    const sources = [source('ehr-source', portalKind, patientKind)]
+    const responses = [input('r0', 'https://ehr.test/Patient/1')]
+
+    // Act
+    render(
+      <ReviewBody
+        responses={responses}
+        sources={sources}
+        initialSelection={Review.initial(poolOf(sources))}
         onChange={() => undefined}
       />
     )
@@ -71,13 +158,13 @@ describe('ReviewBody', () => {
 
   it('should re-derive the pick when a kind is toggled off everywhere', async () => {
     // Arrange
-    const pool = [portalKind, patientKind]
+    const sources = [source('ehr-source', portalKind, patientKind)]
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
     render(
       <ReviewBody
         responses={responses}
-        pool={pool}
-        initialSelection={Review.initial(pool)}
+        sources={sources}
+        initialSelection={Review.initial(poolOf(sources))}
         onChange={() => undefined}
       />
     )
@@ -93,7 +180,7 @@ describe('ReviewBody', () => {
 
   it('should fold unrecognized responses into a collapsible no-match section', () => {
     // Arrange — one recognized Patient, one unrecognized asset.
-    const pool = [patientKind]
+    const sources = [source('ehr-source', patientKind)]
     const responses = [
       input('r0', 'https://ehr.test/Patient/1'),
       input('r1', 'https://cdn.test/app.7f3c.js'),
@@ -103,8 +190,8 @@ describe('ReviewBody', () => {
     render(
       <ReviewBody
         responses={responses}
-        pool={pool}
-        initialSelection={Review.initial(pool)}
+        sources={sources}
+        initialSelection={Review.initial(poolOf(sources))}
         onChange={() => undefined}
       />
     )
@@ -116,7 +203,8 @@ describe('ReviewBody', () => {
 
   it('should report a selection that decodes to only the chosen parses', async () => {
     // Arrange
-    const pool = [patientKind, observationKind]
+    const sources = [source('ehr-source', patientKind, observationKind)]
+    const pool = poolOf(sources)
     const responses = [
       input('r0', 'https://ehr.test/Patient/1'),
       input('r1', 'https://ehr.test/Observation?subject=1'),
@@ -125,7 +213,7 @@ describe('ReviewBody', () => {
     render(
       <ReviewBody
         responses={responses}
-        pool={pool}
+        sources={sources}
         initialSelection={Review.initial(pool)}
         onChange={(selection) => {
           reported = selection
