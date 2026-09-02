@@ -32,8 +32,6 @@ non-FHIR portal JSON.
   `sid` URI each kind's `tryRecognize` mints and adoption keys under.
 - `src/dates.ts` — `decodesAsDateTime` / `firstDateTime` date-validation helpers
   shared across entities.
-- `src/extract-json.ts` — XHR/JSON-viewer body normalizer the entities decode
-  through.
 - `src/response-kinds.ts` — `shoppersDrugMartResponseKinds` (internal, the
   descriptor's `responseKinds`): the three kinds widened to
   `HttpResponseKind<FhirResource>` and mapped through `adoptUnderRecognizedRoot`.

@@ -1,9 +1,12 @@
 import { Effect, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
-import { HttpResponseKind, recognizePortal, UrlMatch } from 'http-extraction-fundamentals'
+import {
+  HttpResponseKind,
+  extractJson,
+  recognizePortal,
+  UrlMatch,
+} from 'http-extraction-fundamentals'
 import { nonEmpty } from 'kitchen-sink'
-
-import { extractJson } from '../extract-json.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 
 type PatientType = typeof Patient.Schema.Type

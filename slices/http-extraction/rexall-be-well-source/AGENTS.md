@@ -20,8 +20,6 @@ never disagree on a decode.
 - `src/bundle.ts` — searchset Bundle unwrapping.
 - `src/source-system.ts` — `REXALL_CAREBOOK_SYSTEM`, the Wildflower-minted
   `sid` URI each kind's `tryRecognize` mints and adoption keys under.
-- `src/extract-json.ts` — XHR/JSON-viewer body normalizer the entities decode
-  through.
 - `src/response-kinds.ts` — `rexallBeWellResponseKinds` (internal): the kinds
   mapped through `adoptUnderRecognizedRoot`, stable by identity at module scope.
 - `src/source.ts` — `rexallBeWellSource`, the package's primary export.

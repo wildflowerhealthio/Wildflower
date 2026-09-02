@@ -1,10 +1,9 @@
 import { Effect, Option, Schema } from 'effect'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, recognizePortal } from 'http-extraction-fundamentals'
+import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime } from '../dates.ts'
-import { extractJson } from '../extract-json.ts'
 import { ShoppersIdentifierSystem, shoppersStoreLocatorUrl } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'

@@ -1,10 +1,9 @@
 import { Effect, Option, Schema } from 'effect'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, recognizePortal } from 'http-extraction-fundamentals'
+import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
 import { decodesAsDateTime, firstDateTime } from '../dates.ts'
-import { extractJson } from '../extract-json.ts'
 import {
   PRESCRIPTION_STATUS_TYPE_SYSTEM,
   ShoppersIdentifierSystem,

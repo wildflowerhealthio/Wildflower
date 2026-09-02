@@ -1,8 +1,11 @@
 import { Effect, Schema } from 'effect'
 import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
-import { HttpResponseKind, recognizePortal, UrlMatch } from 'http-extraction-fundamentals'
-
-import { extractJson } from '../extract-json.ts'
+import {
+  HttpResponseKind,
+  extractJson,
+  recognizePortal,
+  UrlMatch,
+} from 'http-extraction-fundamentals'
 import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 

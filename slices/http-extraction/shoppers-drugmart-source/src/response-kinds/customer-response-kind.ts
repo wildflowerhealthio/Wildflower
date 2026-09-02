@@ -1,9 +1,7 @@
 import { Effect, Option, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
-import { HttpResponseKind, recognizePortal } from 'http-extraction-fundamentals'
-
-import { extractJson } from '../extract-json.ts'
+import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 import { ShoppersIdentifierSystem } from '../shoppers.ts'
 import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 
