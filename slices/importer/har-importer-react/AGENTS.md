@@ -64,7 +64,7 @@ An adapter: depends on `importer-fundamentals` (`Review`), `har-importer-core`
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the pure
   `Review` model this package renders.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the descriptor
-  whose `pool` this review recognizes against.
+  whose `sources` this review recognizes against.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that mounts
   this `ReviewBody` per file, under one confirm.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)

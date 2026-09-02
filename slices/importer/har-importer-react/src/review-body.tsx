@@ -1,5 +1,9 @@
 import { Option } from 'effect'
-import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
+import {
+  type Extraction,
+  type HttpResponseKind,
+  SourceDescriptor,
+} from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo, useState } from 'react'
 
@@ -112,7 +116,7 @@ const ReviewBody = ({
   onChange,
 }: ReviewBodyProps): JSX.Element => {
   const [selection, setSelection] = useState<Review.Selection>(initialSelection)
-  const pool = useMemo(() => sources.flatMap((source) => source.responseKinds), [sources])
+  const pool = useMemo(() => SourceDescriptor.poolOf(sources), [sources])
   const recognized = useMemo(() => Review.recognize(pool, responses), [pool, responses])
 
   // The kinds at least one of this file's responses recognized — the only kinds a

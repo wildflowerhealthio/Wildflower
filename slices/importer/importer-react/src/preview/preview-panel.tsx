@@ -1,4 +1,4 @@
-import type { SourceDescriptor } from 'http-extraction-fundamentals'
+import { SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo } from 'react'
 
@@ -133,7 +133,7 @@ const PreviewPanel = ({
   onCancel,
   confirming,
 }: PreviewPanelProps): JSX.Element => {
-  const pool = useMemo(() => sources.flatMap((source) => source.responseKinds), [sources])
+  const pool = useMemo(() => SourceDescriptor.poolOf(sources), [sources])
   const recognizedByFile = useMemo(
     () =>
       new Map(

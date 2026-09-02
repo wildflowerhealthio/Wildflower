@@ -24,13 +24,14 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   malformed file.
 - `src/fhir-pool.ts` — **`fhirSources`**, the registered `SourceDescriptor`s —
   `fhir-r4-source`'s `fhirR4Source`, `rexall-be-well-source`'s
-  `rexallBeWellSource`, and `shoppers-drugmart-source`'s `shoppersDrugMartSource`
-  — and **`fhirPool`**, their kinds flattened: the flat pool responses are
-  recognized and decoded through, consumed **pre-adopted** (each resource already
-  keyed under the root of the URL it arrived on), never re-adopted here. The
-  descriptor exposes both — `sources` so the review menu groups its include
-  toggles by source, `pool` for recognition. Registering another source is one
-  static append to `fhirSources`.
+  `rexallBeWellSource`, and `shoppers-drugmart-source`'s `shoppersDrugMartSource`.
+  The descriptor exposes only these (so the review menu groups its include toggles
+  by source); the flat pool responses are recognized and decoded through is
+  `SourceDescriptor.poolOf(fhirSources)` — derived on demand, never stored, so the
+  menu and the recognizer route can never disagree. The kinds are consumed
+  **pre-adopted** (each resource already keyed under the root of the URL it arrived
+  on), never re-adopted here. Registering another source is one static append to
+  `fhirSources`.
 - `src/persist-fhir.ts` — **`persistFhir`**, the descriptor's write sink:
   `withMetaSource` (`web-trace-core`) stamps each resource's `meta.source` with
   the source archive `sourceRef`, then `fhir-r4`'s `persistResources` writes them

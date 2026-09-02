@@ -1,6 +1,6 @@
 import type { Effect, ParseResult } from 'effect'
 
-import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
+import type { Extraction, SourceDescriptor } from 'http-extraction-fundamentals'
 
 import type { PersistFailure } from './persist-failure.ts'
 
@@ -14,7 +14,7 @@ import type { PersistFailure } from './persist-failure.ts'
  * @typeParam TSettings - The format's per-import settings (HAR has none today, a
  *   minimal record); the shell seeds a form from {@link defaultSettings} and
  *   hands the chosen settings to {@link decode}
- * @typeParam TParsed - The resource type this format's {@link pool} decodes to
+ * @typeParam TParsed - The resource type this format's {@link sources} decode to
  *   (FHIR for HAR)
  * @typeParam R - The services {@link persist}'s write sink requires (the FHIR
  *   write client for HAR); stays visible so the shell provides it
@@ -33,19 +33,14 @@ interface FileImporterDescriptor<TSettings, TParsed, R> {
   /** A valid settings value to seed a fresh import's settings form. */
   readonly defaultSettings: TSettings
   /**
-   * The sources this format's {@link pool} is assembled from, each grouping its
-   * own response kinds under a user-facing `name` and `display` detail. A
-   * source-labelled review menu reads these; {@link pool} is exactly these
-   * flattened, so a menu grouped by source and the recognizer route can never
-   * disagree on which kinds exist.
+   * The sources a decoded file's responses are recognized and decoded through,
+   * each grouping its own response kinds under a user-facing `name` and `display`
+   * detail. A source-labelled review menu reads these directly; the flat pool
+   * routing needs is `SourceDescriptor.poolOf(sources)` — derived on demand, so
+   * a menu grouped by source and the recognizer route can never disagree on
+   * which kinds exist.
    */
   readonly sources: readonly SourceDescriptor.SourceDescriptor<TParsed>[]
-  /**
-   * The flat pool of response kinds a decoded file's responses are recognized
-   * and decoded through, routed per response by highest specificity. Exactly
-   * {@link sources}' `responseKinds` flattened.
-   */
-  readonly pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[]
   /**
    * Decode a picked file's text into the structural responses the recognizer
    * reads. The only failure is a malformed file (a `ParseError`); it requires
