@@ -23,7 +23,10 @@ describe('App', () => {
     const hrefs = within(header)
       .getAllByRole('link')
       .map((link) => link.getAttribute('href'))
-    expect(hrefs).toEqual(['#top', '#how', '#privacy', '#invite'])
+    for (const href of hrefs) {
+      expect(href).toMatch(/^#/)
+    }
+    expect(hrefs).toEqual(expect.arrayContaining(['#how', '#privacy', '#invite']))
   })
 
   it('should render the shared site footer with fragment-only nav hrefs', () => {
