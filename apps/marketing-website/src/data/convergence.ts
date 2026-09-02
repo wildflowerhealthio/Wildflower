@@ -1,3 +1,5 @@
+import { sectionRootPath } from 'branding-core'
+
 /*
  * Data + derivation logic for the "collection of apps" section.
  *
@@ -63,7 +65,7 @@ const CONNECT_APPS: readonly ConnectApp[] = [
     pitch:
       'Your prescriptions in one list — active and completed, each with its prescriber, notes and DIN, the repeats you have left and when the supply runs out. It checks both brand and generic coverage against the innoviCares and RxHelp programs for any province or territory, links the ones you qualify for, and opens the Rexall or Shoppers Drug Mart store that dispensed the script. It launches from your record, or from any EHR that speaks SMART on FHIR.',
     availability: 'published',
-    href: '/medications-app',
+    href: sectionRootPath('medications'),
     reads: ['prescriptions'],
   },
   {
@@ -72,7 +74,7 @@ const CONNECT_APPS: readonly ConnectApp[] = [
     pitch:
       'Import FHIR records from a captured browsing session. Point it at a HAR file — one Wildflower recorded while you were signed in to a portal or a pharmacy site, or one you exported yourself — and it shows you exactly which records it found and what it would write before it writes anything. Nothing is saved until you confirm, and everything it does save is stamped with the archive it came from.',
     availability: 'published',
-    href: '/importer-app',
+    href: sectionRootPath('importer'),
     reads: ['documents'],
   },
   {
@@ -80,7 +82,8 @@ const CONNECT_APPS: readonly ConnectApp[] = [
     title: 'Web Trace',
     pitch:
       'The receipts. Review every browsing session Wildflower recorded while importing from a portal or a pharmacy site, see exactly what was captured, and export any of it as a standard HAR file.',
-    availability: 'in-app',
+    availability: 'published',
+    href: sectionRootPath('webTrace'),
     reads: ['documents'],
   },
   {

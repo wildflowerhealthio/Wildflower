@@ -1,3 +1,4 @@
+import { sectionRootPath } from 'branding-core'
 import * as fc from 'fast-check'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -31,14 +32,28 @@ describe('CONNECT_APPS', () => {
   it('should publish the Medications app at its assembled GitHub Pages path', () => {
     // Arrange / Act / Assert — `apps/github-pages` stages medications-app at
     // `/medications-app`, so that is the link the site has to emit.
-    expect(CONNECT_APPS.find((app) => app.id === 'medications')?.href).toBe('/medications-app')
+    const medications = CONNECT_APPS.find((app) => app.id === 'medications')
+    expect(medications?.href).toBe('/medications-app')
+    expect(medications?.href).toBe(sectionRootPath('medications'))
   })
 
   it('should publish the Importer at its assembled GitHub Pages path', () => {
     // Arrange / Act / Assert — `apps/github-pages` stages the importer app's
     // build (`wildflower-importer`, from `apps/importer-web`) at
     // `/importer-app`, so that is the link the site has to emit.
-    expect(CONNECT_APPS.find((app) => app.id === 'importer')?.href).toBe('/importer-app')
+    const importer = CONNECT_APPS.find((app) => app.id === 'importer')
+    expect(importer?.href).toBe('/importer-app')
+    expect(importer?.href).toBe(sectionRootPath('importer'))
+  })
+
+  it('should publish Web Trace at its assembled GitHub Pages path', () => {
+    // Arrange / Act / Assert — `apps/github-pages` stages the Web Trace app's
+    // build (`wildflower-web-trace`) at `/web-trace-app`, so that is the link
+    // the site has to emit.
+    const webTrace = CONNECT_APPS.find((app) => app.id === 'webtrace')
+    expect(webTrace?.availability).toBe('published')
+    expect(webTrace?.href).toBe('/web-trace-app')
+    expect(webTrace?.href).toBe(sectionRootPath('webTrace'))
   })
 })
 

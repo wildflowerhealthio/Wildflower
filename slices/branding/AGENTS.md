@@ -32,8 +32,10 @@ The brand link in `SiteHeader` checks `marketingBase === ''` to choose between
 ## Consuming the styles
 
 Import `branding-react/styles.css` once at the app root, **after**
-`react-tundraish/styles.css` (the layout tokens reference `--space-N` ramps from
-tundraish). In source mode the `*.module.css` rules arrive through the JS import
+`react-tundraish/styles.css` and **before** the app's own stylesheets. The order
+only governs override precedence for same-named tokens; the layout tokens'
+`var(--space-N)` references resolve at computed-value time whatever the sheet
+order. In source mode the `*.module.css` rules arrive through the JS import
 chain; in built consumers they are bundled into `dist/style.css` via the
 `default` export condition.
 
@@ -53,9 +55,10 @@ the assembled GitHub Pages site. The core tests pin the exact five paths.
 - **`--header-height` must stay in sync with `.site-header__inner` padding and
   the icon size.** The derivation is `padding-top + padding-bottom + icon-size +
 border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
-- **Do not modify `apps/marketing-website` in a branding-slice PR.** The
-  marketing site keeps its local copies until the consumer-migration wave
-  replaces them with imports from this slice.
+- **The marketing site consumes this slice; it has no chrome of its own.**
+  `apps/marketing-website` imports `SiteHeader`, `SiteFooter`, `AppIcon`, and
+  `branding-react/styles.css` from here, so a change to the header, footer,
+  icon, or layout tokens is made in this slice, not in the app.
 
 ## References
 

@@ -42,17 +42,32 @@ describe('Convergence', () => {
     expect(appButton('Medications').getAttribute('aria-pressed')).toBe('false')
   })
 
+  it('should link the published Web Trace app at its path on this domain', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    render(<Convergence />)
+
+    // Act
+    await user.click(appButton('Web Trace'))
+
+    // Assert
+    expect(screen.getByRole('link', { name: 'Open Web Trace' }).getAttribute('href')).toBe(
+      '/web-trace-app'
+    )
+    expect(screen.getByText('Try it now')).not.toBeNull()
+  })
+
   it('should drop the app link when the selected app is not published on this domain', async () => {
     // Arrange
     const user = userEvent.setup()
     render(<Convergence />)
 
-    // Act — Web Trace ships inside the Wildflower app, not at a URL here.
-    await user.click(appButton('Web Trace'))
+    // Act — Visits is a concept, not published at a URL here.
+    await user.click(appButton('Visits'))
 
     // Assert
     expect(screen.queryByRole('link', { name: /^Open / })).toBeNull()
-    expect(screen.getByText('In the Wildflower app')).not.toBeNull()
+    expect(screen.getByText('In design')).not.toBeNull()
   })
 
   it('should list every standardized source', () => {
