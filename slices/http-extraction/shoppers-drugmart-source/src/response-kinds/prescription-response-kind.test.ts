@@ -145,7 +145,7 @@ describe('PrescriptionResponseKind', () => {
         url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1/prescription-status?x=1',
         match: true,
       },
-      // The API version is now pinned to `v1` — the old `p1` capture no longer matches.
+      // A `p1` version segment must NOT match — the pattern pins `v1`.
       {
         url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/prescriptions/rx-1/prescription-status',
         match: false,

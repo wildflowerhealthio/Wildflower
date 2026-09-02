@@ -91,9 +91,8 @@ describe('ProfileResponseKind', () => {
     })
 
     it('reads the name from the nested `names` object, not a flat one', () => {
-      // Regression guard: the schema previously read `data.firstName` /
-      // `data.lastName`, which the payload does not have. Because the decode is
-      // lenient that failed silently, leaving every synthesized Patient nameless.
+      // Names live under `data.names`; a flat `data.firstName`/`lastName` is not
+      // read, and the lenient decode drops it silently — so it yields no name.
       const flat = {
         data: { identifiers: { uid: 'uid-1' }, firstName: 'Jordan', lastName: 'Rivera' },
       }

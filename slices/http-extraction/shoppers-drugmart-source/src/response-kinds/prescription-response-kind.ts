@@ -13,18 +13,10 @@ import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
 /**
- * Just-enough schema for one `…/api/v1/prescriptions/:uuid/prescription-status`
- * payload — a bespoke portal JSON shape, **not FHIR**. Only `id` (the
- * prescription's uuid → `MedicationRequest.id`) and `patientId` (→ the
- * `subject` reference) are required; everything else is optional and lenient
- * (unknown fields are dropped on decode), so a field the capture omits simply
- * leaves its R4 slot at the schema default rather than failing the decode.
- *
- * The shape is reconciled against a redacted real capture. `dispenses` is a
- * **flat** array of `{ dispenseId, quantityDispensed, status, dispenseDate }`;
- * {@link flattenDispenses} is retained only as belt-and-braces (see its remark).
- * `status.type` is a machine enum and the top-level `expired`/`archived`/
- * `renewable` flags drive `MedicationRequest.status` (see {@link requestWire}).
+ * Just-enough schema for one bespoke (non-FHIR) prescription-status payload. Only
+ * `id` (→ `MedicationRequest.id`) and `patientId` (→ the `subject`) are required;
+ * the rest is optional and lenient. `dispenses` is a flat array; the status flags
+ * drive `MedicationRequest.status`.
  */
 const SourcePrescription = Schema.Struct({
   id: Schema.String,
@@ -39,9 +31,7 @@ const SourcePrescription = Schema.Struct({
       label: Schema.optional(Schema.String),
       portalLabel: Schema.optional(Schema.String),
       labelDescription: Schema.optional(Schema.String),
-      // The portal's machine-readable status enum (`READY_FOR_RENEW`,
-      // `UNABLE_TO_RENEW_ONLINE`, `READY_FOR_REFILL_NO_DISPENSE`, …). The set is
-      // open, so it is a free string, not a literal union.
+      // The portal's machine-readable status enum; the set is open, so a free string.
       type: Schema.optional(Schema.String),
     })
   ),
@@ -50,22 +40,18 @@ const SourcePrescription = Schema.Struct({
   refillQuantity: Schema.optional(Schema.Number),
   expiryDate: Schema.optional(Schema.String),
   lastFillDate: Schema.optional(Schema.String),
-  // Only ever one of `lastFillDate` / `nextFillDate` is observed on a payload;
-  // together they bound the fill window (see {@link dispenseRequestWire}).
+  // `lastFillDate` / `nextFillDate` bound the fill window (see {@link dispenseRequestWire}).
   nextFillDate: Schema.optional(Schema.String),
-  // The dispensing store's numeric id → the `…/store-locator/store/:id` link on
-  // `supportingInformation` (see {@link supportingInformationWire}). Lenient on
-  // string vs number since the portal's typing of it is unconfirmed.
+  // The store id → the store-locator link on `supportingInformation`; lenient on
+  // string vs number.
   storeId: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
-  // Top-level status flags. `expired`/`archived` drive `MedicationRequest.status`
-  // → `'stopped'`; `renewable` is decoded for completeness but not mapped (it
-  // asserts a renewal affordance, not a clinical state).
+  // `expired`/`archived` drive `MedicationRequest.status` → `'stopped'`;
+  // `renewable` is decoded but not mapped.
   expired: Schema.optional(Schema.Boolean),
   archived: Schema.optional(Schema.Boolean),
   renewable: Schema.optional(Schema.Boolean),
-  // The prior prescription's human-facing number → an identifier-only
-  // `priorPrescription` reference (see {@link requestWire}). We don't know the
-  // prior rx's uuid, so there is no relative reference to write.
+  // The prior rx's number → an identifier-only `priorPrescription` reference (its
+  // uuid is unknown).
   previousPrescription: Schema.optional(Schema.Number),
   dispenses: Schema.optional(Schema.Array(Schema.Unknown)),
 })
@@ -93,22 +79,11 @@ const isDispenseLike = (value: unknown): boolean =>
 
 /**
  * Unwrap a numeric-keyed dispense wrapper (`[{ "0": { dispenseId, … } }]` →
- * `[{ dispenseId, … }]`). An entry that already looks like a dispense (has a
- * `dispenseId`) passes through untouched, and so does any other entry —
- * including an object whose values are *not* all dispenses. Non-object entries
- * pass through so a malformed one is dropped downstream by
- * {@link decodeSourceDispense} rather than here.
- *
- * @remarks
- * The `every(isDispenseLike)` guard is load-bearing: without it a genuine but
- * `dispenseId`-less dispense (`{ quantityDispensed: 5, status: 'COMPLETE' }`)
- * is mistaken for a wrapper and shredded into its scalar values, turning one
- * dropped entry into several and destroying the entry the drop count reports on.
- *
- * The numeric-key wrapper was **never observed** in the real capture —
- * `dispenses` is a flat array there. This helper is retained purely as
- * belt-and-braces (it passes a flat array through untouched), not because
- * captures use the wrapper.
+ * `[{ dispenseId, … }]`); an entry that already looks like a dispense, or any
+ * other, passes through untouched. The `every(isDispenseLike)` guard is
+ * load-bearing: without it a genuine `dispenseId`-less dispense is mistaken for
+ * a wrapper and shredded into its scalar values. Never observed in a real
+ * capture (flat arrays there) — retained as belt-and-braces.
  */
 const flattenDispenses = (raw: ReadonlyArray<unknown>): ReadonlyArray<unknown> =>
   raw.flatMap((entry) => {
@@ -151,9 +126,7 @@ const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | 
   if (rx.refillQuantity != null && Number.isFinite(rx.refillQuantity)) {
     dr['quantity'] = { value: rx.refillQuantity }
   }
-  // The fill window: `lastFillDate` opens it (`start`), `nextFillDate` closes it
-  // (`end`). `nextFillDate` takes precedence over the prescription `expiryDate`
-  // for `end`, which remains the fallback when no next-fill date is present.
+  // The fill window: `lastFillDate` opens it, `nextFillDate` (else `expiryDate`) closes it.
   const validityStart = firstDateTime(rx.lastFillDate)
   const validityEnd = firstDateTime(rx.nextFillDate, rx.expiryDate)
   if (validityStart != null || validityEnd != null) {
@@ -166,10 +139,8 @@ const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | 
 }
 
 /**
- * The `supportingInformation` wire: a single `Reference` whose `reference` is
- * the public Shoppers store-locator URL for the prescription's `storeId`
- * (`…/store-locator/store/:id`). `undefined` when no (non-empty) store id is
- * present, so the caller omits the slot.
+ * The `supportingInformation` wire: a `Reference` to the public store-locator URL
+ * for the prescription's `storeId`; `undefined` when no store id is present.
  */
 const supportingInformationWire = (
   rx: SourcePrescription
@@ -181,19 +152,18 @@ const supportingInformationWire = (
 }
 
 /**
- * Map the portal's top-level status flags onto the FHIR R4
- * `MedicationRequest.status` value set. `expired` or `archived` → `'stopped'`;
- * everything else stays `'unknown'`. Deliberately conservative — nothing maps to
- * `'active'`, because the portal's enum asserts a renewal/refill affordance, not
- * clinical activity.
+ * Map the portal's status flags onto `MedicationRequest.status`:
+ * `expired`/`archived` → `'stopped'`, else `'unknown'`. Conservative — nothing
+ * maps to `'active'` (the portal's enum asserts an affordance, not clinical
+ * activity).
  */
 const requestStatus = (rx: SourcePrescription): string =>
   rx.expired === true || rx.archived === true ? 'stopped' : 'unknown'
 
 /**
- * The `statusReason` wire: the portal's machine `status.type` as a coding under
- * {@link PRESCRIPTION_STATUS_TYPE_SYSTEM}, plus the human label as `text`.
- * `undefined` when the payload carries neither, so the caller omits the slot.
+ * The `statusReason` wire: the machine `status.type` as a coding under
+ * {@link PRESCRIPTION_STATUS_TYPE_SYSTEM}, plus the human label as `text`;
+ * `undefined` when neither is present.
  */
 const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
   const type = rx.status?.type
@@ -206,11 +176,9 @@ const statusReasonWire = (rx: SourcePrescription): Record<string, unknown> | und
 }
 
 /**
- * Build the FHIR R4 `MedicationRequest` **wire** object from the decoded
- * prescription. `status` is `'stopped'` for an expired/archived prescription and
- * `'unknown'` otherwise (see {@link requestStatus}); the portal's machine
- * `status.type` and human label ride `statusReason` and its longer description a
- * `note`, so nothing is lost. Only slots the payload populates are emitted.
+ * Build the R4 `MedicationRequest` **wire** from the decoded prescription; the
+ * machine `status.type` / label ride `statusReason` and `note`, so nothing is
+ * lost. Only slots the payload populates are emitted.
  */
 const requestWire = (
   rx: SourcePrescription,
@@ -240,9 +208,8 @@ const requestWire = (
     wire['note'] = [{ text: rx.status.labelDescription }]
   }
 
-  // The prior prescription's number, as an identifier-only reference (no
-  // `reference` field): we don't know the prior rx's uuid, and adoption leaves an
-  // identifier-only reference untouched.
+  // The prior rx's number as an identifier-only reference (its uuid is unknown;
+  // adoption leaves it untouched).
   if (rx.previousPrescription != null) {
     wire['priorPrescription'] = {
       identifier: {
@@ -252,9 +219,8 @@ const requestWire = (
     }
   }
 
-  // Only a *past* fill date can stand in for "when the request was initially
-  // authored" — `nextFillDate` is deliberately not a fallback (see the resource
-  // mapping notes in this package's AGENTS.md).
+  // Only a *past* fill date stands in for `authoredOn` — `nextFillDate` is not a
+  // fallback (see this package's AGENTS.md).
   const authoredOn = firstDateTime(rx.lastFillDate)
   if (authoredOn != null) wire['authoredOn'] = authoredOn
   if (rx.direction != null) wire['dosageInstruction'] = [{ text: rx.direction }]
@@ -268,14 +234,9 @@ const requestWire = (
 }
 
 /**
- * Build the FHIR R4 `MedicationDispense` **wire** object for one dispense of a
- * prescription. Returns `undefined` when the dispense has no `dispenseId` (there
- * is no logical id to write it under, so it is dropped-and-counted rather than
- * silently skipped at the persist sink).
- *
- * `medication` is the prescription-level `medicationCodeableConcept`, built once
- * by the caller: the status payload names the drug on the prescription, not
- * per-dispense, so rebuilding it inside the loop produced N identical objects.
+ * Build the R4 `MedicationDispense` **wire** for one dispense; `undefined` when
+ * it has no `dispenseId` (so it drops-and-counts). `medication` is the
+ * prescription-level concept, built once by the caller and shared.
  */
 const dispenseWire = (
   dispense: SourceDispense,
@@ -300,43 +261,21 @@ const dispenseWire = (
 }
 
 /**
- * The exact prescription-status XHR URL —
- * `https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/<uuid>/prescription-status`
- * — with an optional query. Anchored (`^`) and pinned to the exact host, the
- * `v1` version segment, and the full path: no prefix or suffix segment (nor a
- * bare trailing slash) is tolerated, only the `<uuid>` path parameter and the
- * query vary. Disjoint from {@link !CustomerResponseKind}'s
- * `…/customers/pcid/<uuid>` pattern and {@link !PrescriptionHistoryResponseKind}'s
- * `…/prescription-history?customerId=…` pattern (different path segments), so
- * entity order is not load-bearing.
+ * The exact prescription-status XHR URL, anchored and pinned to host + `v1` +
+ * full path with an optional query; only the `<uuid>` path parameter and query
+ * vary. Disjoint from the sibling kinds.
  */
 const prescriptionStatusUrl =
   /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/prescriptions\/[^/?#]+\/prescription-status(?:\?|$)/
 
 /**
- * Entity for one Shoppers prescription XHR: the `…/prescriptions/:uuid/prescription-status`
- * payload the prescription-dashboard page fires once **per prescription**. Each
- * response is a single bespoke JSON object (not FHIR), synthesized here into:
- *
- * - one **`MedicationRequest`** (`status` from the expired/archived flags,
- *   otherwise `'unknown'`; the machine `status.type` and portal label kept in
- *   `statusReason` / `note`); and
- * - one **`MedicationDispense`** per entry in `dispenses`. A dispense with no
- *   `dispenseId` has no logical id to write under, so it is dropped and the loss
- *   surfaced via `Effect.logInfo` rather than silently skipped.
- *
- * **No `Patient`.** The subject Patient records now come from
- * {@link !CustomerResponseKind} (the customers XHR fires on the same run), so the
- * `subject: Patient/<patientId>` references here resolve to the demographic
- * Patient that entity emits — this entity no longer synthesizes a minimal stub.
- * The trade-off: a run where the customers XHR fails leaves those `subject`
- * references dangling, which the store tolerates (references are not
- * FK-enforced).
- *
- * The prescription-dashboard fans out one status XHR per prescription and this
- * entity sniffs each — no per-prescription detail crawl (`followUpSteps`) is
- * emitted. {@link extractJson} normalizes the body across raw-XHR intercepts and
- * the mobile WebView's JSON-viewer wrap.
+ * Entity for one Shoppers prescription XHR: the `prescription-status` payload the
+ * dashboard fires once **per prescription**. Each is one bespoke JSON object
+ * synthesized into one **`MedicationRequest`** plus one **`MedicationDispense`**
+ * per `dispenses` entry (one with no `dispenseId` drops-and-logs). **No
+ * `Patient`** — the subject records come from {@link !CustomerResponseKind}, so a
+ * run where that XHR fails leaves these `subject` references dangling (tolerated;
+ * not FK-enforced). No `followUpSteps`.
  */
 const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
@@ -345,8 +284,7 @@ const PrescriptionResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> 
     parse: (response) =>
       Effect.gen(function* () {
         const rx = yield* decodePrescription(extractJson(response.text()))
-        // The status payload names the drug once, on the prescription — build the
-        // concept once and share it with the request and every dispense.
+        // The drug is named once on the prescription — build the concept once and share it.
         const medication = medicationWire(rx)
         const request = yield* decodeRequest(requestWire(rx, medication))
 

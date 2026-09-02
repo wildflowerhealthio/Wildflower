@@ -16,18 +16,11 @@ import chromeHar from './fixtures/chrome-fhir-capture.har.json' with { type: 'js
 import { defaultHarSettings } from './har-settings.ts'
 
 /**
- * Covers the HAR binding's read half: a HAR archive in, the structural
- * responses the recognizer reads out (`decodeHar`), and the four-way accounting
- * running the FHIR pool over them produces (`runExtraction`, the archive-runner
- * reference model in `http-extraction-fundamentals`' test-helpers). Two fixture
- * routes reach the same assertions — a HAR built through `web-trace-core`'s own
- * `emitHar` from constructed exchanges, and a committed Chrome DevTools export —
- * so the pipeline is held against both an archive shaped like ours and a foreign
- * one carrying browser noise.
- *
- * The critical structural property is here too: `decodeHar` requires no
- * services, so the FHIR write client is unreachable from a decode — asserted at
- * the type level and at runtime.
+ * Covers the HAR binding's read half: `decodeHar` in, the FHIR pool run over it
+ * (`runExtraction`). Two fixture routes reach the same assertions — an `emitHar`
+ * archive shaped like ours and a committed foreign Chrome DevTools export. Also
+ * asserts the structural property that `decodeHar` requires no services (the
+ * FHIR write client is unreachable from a decode), at the type level and at runtime.
  */
 
 /** A base64 SHA-256; the importer never reads it, so any valid digest serves. */

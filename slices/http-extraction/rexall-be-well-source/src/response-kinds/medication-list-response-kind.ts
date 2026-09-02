@@ -4,25 +4,16 @@ import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-
 import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 
-/**
- * A parsed medication resource: the decoded output of either carebook
- * `R4FromStu3Schema` transform — an fhir-r4 `MedicationRequest` or
- * `MedicationDispense`. Both are members of `FhirResource`, so the plan can hold
- * them alongside the profile `Patient` under one `ScrapingPlan<FhirResource>`.
- */
+/** A decoded carebook medication: an fhir-r4 `MedicationRequest` or `MedicationDispense`. */
 type MedicationResource =
   | Schema.Schema.Type<typeof MedicationRequest.R4FromStu3Schema>
   | Schema.Schema.Type<typeof MedicationDispense.R4FromStu3Schema>
 
 /**
- * A searchset entry that is *not* a carebook medication — the matched
- * `Location`, or a `DocumentReference` / `Immunization` `_revinclude`. It
- * decodes to `null` so the whole heterogeneous bundle parses "as is" (a plain
- * two-member medication union would `OrNullAsOptional`-fail the entire bundle on
- * the first non-medication entry); the `null`s are then dropped-and-counted
- * below. `Schema.Unknown` matches anything, so this member **must stay last** in
- * {@link medicationOrNull} — the medication transforms are tried first and only
- * a non-medication resource falls through to here (verified in the entity test).
+ * A non-medication searchset entry (the matched `Location`, or a
+ * `DocumentReference` / `Immunization` `_revinclude`), decoded to `null` so the
+ * heterogeneous bundle parses "as is". `Schema.Unknown` matches anything, so
+ * this **must stay last** in {@link medicationOrNull}.
  */
 const NonMedicationResource: Schema.Schema<null, unknown> = Schema.transform(
   Schema.Unknown,
@@ -35,11 +26,9 @@ const NonMedicationResource: Schema.Schema<null, unknown> = Schema.transform(
 )
 
 /**
- * Per-entry resource schema for the prescriptions searchset: decode a carebook
- * STU3 `MedicationRequest` / `MedicationDispense` straight to its fhir-r4 shape,
- * or `null` for any other resource type. Order matters — the two medication
- * transforms (each pinned to its own `resourceType` literal) are tried before
- * the always-succeeding {@link NonMedicationResource} catch-all.
+ * Per-entry searchset schema: a carebook medication decoded straight to fhir-r4,
+ * else `null`. Order matters — the medication transforms precede the
+ * {@link NonMedicationResource} catch-all.
  */
 const medicationOrNull = Schema.Union(
   MedicationRequest.R4FromStu3Schema,
@@ -54,10 +43,8 @@ const isMedication = (resource: MedicationResource | null): resource is Medicati
   resource !== null
 
 /**
- * Move the carebook extensions that have a conventional R4 home into it. Runs
- * after the generic STU3→R4 transform, so `fhir-stu3-as-r4` stays generic and
- * bidirectional — see `promote.ts` for what moves and what deliberately does
- * not.
+ * Move the carebook extensions that have a conventional R4 home into it, after
+ * the generic STU3→R4 transform. See `promote.ts`.
  */
 const promote = (resource: MedicationResource): MedicationResource =>
   resource.resourceType === 'MedicationRequest'
@@ -65,41 +52,19 @@ const promote = (resource: MedicationResource): MedicationResource =>
     : promoteMedicationDispense(resource)
 
 /**
- * The exact prescriptions-searchset XHR URL —
- * `https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?…`.
- * Anchored (`^`) and pinned to the exact host, the `v1` version segment, and the
- * full path; the trailing `?` requires a query, so a single-resource
- * `…/pharmacy/Location` (no query) and `…/pharmacy/Location/<id>` are both
- * rejected, as is any base-path-prefixed variant. Only the query parameters vary.
- * That keeps this list-searchset pattern disjoint from `ProfileResponseKind`'s
- * `…/profile/v2/me`, so `ScrapingPlan.responseKinds` ordering is not
- * load-bearing.
+ * The exact prescriptions-searchset XHR URL, anchored and pinned to host + `v1`
+ * + full path; the trailing `?` requires a query. Disjoint from
+ * `ProfileResponseKind`.
  */
 const medicationListUrl =
   /^https:\/\/rexall-prd-tunnel\.letsbewell\.ca\/enduser\/health\/v1\/fhir\/stu3\/pharmacy\/Location\?/
 
 /**
- * Response kind for the Rexall prescriptions page's single XHR: the carebook STU3
- * searchset the SPA fires when `app.letsbewell.ca/health/prescriptions` loads
- * (`…/pharmacy/Location?_revinclude=MedicationRequest…`). It is one
- * *heterogeneous* Bundle — the matched `Location` plus `MedicationRequest`,
- * `MedicationDispense`, `DocumentReference`, and `Immunization` `_revinclude`s.
- *
- * `parse` decodes the bundle "as is" through {@link MedicationListBundle} (whose
- * per-entry union transforms carebook medications to R4 and drops everything
- * else to `null`), then splits off just the `MedicationRequest` /
- * `MedicationDispense` resources — the store only writes those. The dropped
- * non-medication entries are surfaced via `Effect.logInfo` so those losses
- * aren't invisible, exactly the `ObservationListResponseKind` drop-and-log pattern.
- * {@link extractJson} normalizes the body across raw-XHR intercepts and the
- * mobile WebView's JSON-viewer wrap.
- *
- * `followUpSteps` is intentionally omitted: v1 ships list-only. The list
- * `_revinclude` already carries `MedicationDispense`, so the per-medication
- * detail crawl (one `Open` per `MedicationRequest.id` →
- * `…/prescriptions/details/{id}`) is deferred until a capture diff proves the
- * detail XHR is richer. Adding it later is a pure, additive `followUpSteps`
- * method here — no structural change (see issue #339).
+ * Response kind for the Rexall prescriptions page's single XHR: one
+ * heterogeneous carebook STU3 searchset (matched `Location` plus medication and
+ * other `_revinclude`s). `parse` decodes it "as is", keeps only the
+ * `MedicationRequest` / `MedicationDispense` resources, and drops-and-logs the
+ * rest. `followUpSteps` is omitted — v1 is list-only (#339).
  */
 const MedicationListResponseKind: HttpResponseKind.HttpResponseKind<MedicationResource> =
   HttpResponseKind.make({

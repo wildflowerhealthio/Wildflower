@@ -85,7 +85,7 @@ describe('CustomerResponseKind', () => {
       { url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`, match: true },
       // The real request carries an `?expand=…` query.
       { url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc.def`, match: true },
-      // The API version is now pinned to `v1` — the old `p1` capture no longer matches.
+      // A `p1` version segment must NOT match — the pattern pins `v1`.
       { url: `${CUSTOMERS_BASE}/api/p1/customers/pcid/${ACCOUNT_ID}`, match: false },
       // The `pcid` path segment is required — the bare `/customers/<uuid>` form does not match.
       { url: `${CUSTOMERS_BASE}/api/v1/customers/${ACCOUNT_ID}`, match: false },

@@ -309,8 +309,8 @@ describe('source identity', () => {
   })
 
   it('rewrites every medication subject onto the id the profile Patient is adopted to', () => {
-    // The link only held before because the two entities happened to agree on
-    // carebook's uid; now it holds because both go through one derivation.
+    // The link holds because the medication subject and the profile Patient both
+    // go through one derivation on carebook's uid.
     const patientId = adoptedPatient().id
     const medications = parseFixture('MedicationListResponseKind', LIST_URL, prescriptions)
     expect(medications.length).toBeGreaterThan(0)

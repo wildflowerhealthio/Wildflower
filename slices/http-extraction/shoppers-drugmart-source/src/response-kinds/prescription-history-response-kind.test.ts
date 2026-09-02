@@ -73,7 +73,7 @@ describe('PrescriptionHistoryResponseKind', () => {
       { url: `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`, match: true },
       // `customerId` need not be the first query parameter.
       { url: `${BASE}/api/v1/prescription-history?lang=en&customerId=${ACCOUNT_ID}`, match: true },
-      // The API version is now pinned to `v1` — the old `p1` capture no longer matches.
+      // A `p1` version segment must NOT match — the pattern pins `v1`.
       { url: `${BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`, match: false },
       // The user-facing page (no `customerId` query) must NOT match.
       { url: `${BASE}/en/prescription-history`, match: false },
