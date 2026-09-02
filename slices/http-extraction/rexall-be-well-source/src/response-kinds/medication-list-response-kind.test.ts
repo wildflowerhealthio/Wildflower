@@ -1,7 +1,7 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -19,7 +19,7 @@ const LIST_URL =
   'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_count=2147483646'
 
 const makeResponse = (body: string, url = LIST_URL): HttpResponse.HttpResponse =>
-  makeCollectorHttpResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
+  makeHttpResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
 
 const runParse = (
   r: HttpResponse.HttpResponse
@@ -28,23 +28,28 @@ const runParse = (
 
 describe('MedicationListResponseKind', () => {
   describe('tryRecognize', () => {
+    const LIST_BASE = 'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3'
     it.each([
       // The real prescriptions-page searchset (Location + _revincludes).
       { url: LIST_URL, match: true },
+      { url: `${LIST_BASE}/pharmacy/Location?subject=x`, match: true },
+      // The exact host is pinned — a foreign host with the same path is rejected.
       {
         url: 'https://tunnel/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=x',
-        match: true,
-      },
-      // The profile neighbour must NOT match (disjointness the plan relies on).
-      { url: 'https://tunnel/enduser/profile/v2/me', match: false },
-      // A single-resource Location URL (no query) is excluded by `mustHaveQuery`.
-      { url: 'https://tunnel/enduser/health/v1/fhir/stu3/pharmacy/Location', match: false },
-      { url: 'https://tunnel/enduser/health/v1/fhir/stu3/pharmacy/Location/loc-1', match: false },
-      // A bare MedicationRequest search is not this pattern.
-      {
-        url: 'https://tunnel/enduser/health/v1/fhir/stu3/MedicationRequest?patient=x',
         match: false,
       },
+      // No prefix room: a base-path-prefixed variant on the real host is rejected.
+      {
+        url: 'https://rexall-prd-tunnel.letsbewell.ca/proxy/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=x',
+        match: false,
+      },
+      // The profile neighbour must NOT match (disjointness the plan relies on).
+      { url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me', match: false },
+      // A single-resource Location URL (no query) is excluded — the pattern requires a query.
+      { url: `${LIST_BASE}/pharmacy/Location`, match: false },
+      { url: `${LIST_BASE}/pharmacy/Location/loc-1`, match: false },
+      // A bare MedicationRequest search is not this pattern.
+      { url: `${LIST_BASE}/MedicationRequest?patient=x`, match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
       expect(Option.isSome(MedicationListResponseKind.tryRecognize(url))).toBe(match)
     })

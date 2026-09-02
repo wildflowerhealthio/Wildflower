@@ -1,0 +1,21 @@
+{
+  "data": {
+    "identifiers": {
+      "email": "jordan.rivera@example.com",
+      "uid": "uid-abc-123",
+      "reportingGuid": "915b0eed-c724-49b2-bf40-cb8c681ac7f3"
+    },
+    "names": {
+      "firstName": "Jordan",
+      "lastName": "Rivera"
+    },
+    "birthDate": "1985-07-14",
+    "zipPostalCode": "M5V 2T6",
+    "accountState": "Validated",
+    "createdOn": "2009-10-02T08:27:10+00:00",
+    "updatedOn": "2010-05-03T19:39:36+00:00"
+  },
+  "related": {
+    "profiles": []
+  }
+}

@@ -44,5 +44,17 @@ const make = <TParsed>(descriptor: SourceDescriptor<TParsed>): SourceDescriptor<
     responseKinds: [...descriptor.responseKinds],
   })
 
-export { make }
+/**
+ * Flatten a list of sources into the single pool of response kinds a consumer
+ * routes or reviews against — every source's `responseKinds`, in source-then-kind
+ * order. The one place the "pool is exactly its sources flattened" relation is
+ * spelled, so a menu grouped by source and the recognizer route can never
+ * disagree on which kinds exist.
+ */
+const poolOf = <TParsed>(
+  sources: readonly SourceDescriptor<TParsed>[]
+): readonly HttpResponseKind.HttpResponseKind<TParsed>[] =>
+  sources.flatMap((source) => source.responseKinds)
+
+export { make, poolOf }
 export type { SourceDescriptor }

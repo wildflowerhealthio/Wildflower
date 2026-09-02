@@ -39,7 +39,7 @@ const REXALL_STORE_URL_BASE = 'https://www.rexall.ca/storelocator/store/'
 const SHOPPERS_STORE_URL_BASE = 'https://www.shoppersdrugmart.ca/store-locator/store/'
 // Shoppers puts the DIN inline on `medicationCodeableConcept.coding` rather than
 // on a contained Medication. Keep in sync with the collector's
-// `DIN_CODE_SYSTEM` (`shoppers-drugmart-collector/src/shoppers.ts`).
+// `DIN_CODE_SYSTEM` (`shoppers-drugmart-source/src/shoppers.ts`).
 const SHOPPERS_DIN_CODING_SYSTEM = 'https://mypharmacy.shoppersdrugmart.ca/fhir/CodeSystem/din'
 // The coding systems whose `code` genuinely *is* a DIN — see `conceptDinOf`.
 const DIN_CODING_SYSTEMS: readonly string[] = [DIN_CODING_SYSTEM, SHOPPERS_DIN_CODING_SYSTEM]

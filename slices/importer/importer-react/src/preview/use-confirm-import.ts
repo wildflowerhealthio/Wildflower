@@ -3,6 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
+import { SourceDescriptor } from 'http-extraction-fundamentals'
 import { type FileImporterDescriptor, Review } from 'importer-fundamentals'
 
 import { useUploadHar } from '../mutations/upload-har.ts'
@@ -110,9 +111,10 @@ const importOneFile = <TSettings, TParsed>(
     Match.tag('unreadable', () => skip('unreadable')),
     Match.tag('read', ({ responses }) => {
       const selection = selectionFor(id)
-      const recognized = Review.recognize(descriptor.pool, responses)
+      const pool = SourceDescriptor.poolOf(descriptor.sources)
+      const recognized = Review.recognize(pool, responses)
       if (Review.chosenCount(recognized, selection) === 0) return skip('nothing')
-      return Review.chosen(descriptor.pool, responses, selection).pipe(
+      return Review.chosen(pool, responses, selection).pipe(
         Effect.flatMap(({ resources }) =>
           secureSourceRef(picked, uploadHar).pipe(
             Effect.flatMap((sourceRef) =>
@@ -143,7 +145,7 @@ const importOneFile = <TSettings, TParsed>(
  * and the upload mutation both come from router context via `fhir-r4-react`, so
  * mount this inside the host app's router and `QueryClientProvider`.
  *
- * @param descriptor - The file format's descriptor (its `pool` + `persist`)
+ * @param descriptor - The file format's descriptor (its `sources` + `persist`)
  * @returns The confirm surface: its `state`, the `confirm` trigger, and a `reset`
  *   back to `idle`
  */

@@ -1,9 +1,9 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -17,8 +17,8 @@ const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 
 const makeResponse = (body: string): HttpResponse.HttpResponse =>
-  makeCollectorHttpResponse({
-    url: `${BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`,
+  makeHttpResponse({
+    url: `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`,
     body,
   })
 
@@ -70,17 +70,19 @@ const historyPayload = (): Record<string, unknown> => ({
 describe('PrescriptionHistoryResponseKind', () => {
   describe('tryRecognize', () => {
     it.each([
-      // Both API version segments (the capture shows `p1`, docs say `v1`).
-      { url: `${BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`, match: true },
       { url: `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`, match: true },
       // `customerId` need not be the first query parameter.
-      { url: `${BASE}/api/p1/prescription-history?lang=en&customerId=${ACCOUNT_ID}`, match: true },
+      { url: `${BASE}/api/v1/prescription-history?lang=en&customerId=${ACCOUNT_ID}`, match: true },
+      // A `p1` version segment must NOT match — the pattern pins `v1`.
+      { url: `${BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`, match: false },
       // The user-facing page (no `customerId` query) must NOT match.
       { url: `${BASE}/en/prescription-history`, match: false },
-      { url: `${BASE}/api/p1/prescription-history`, match: false },
+      { url: `${BASE}/api/v1/prescription-history`, match: false },
+      // The exact host is pinned — a foreign host with the same path is rejected.
+      { url: `https://tunnel/api/v1/prescription-history?customerId=${ACCOUNT_ID}`, match: false },
       // The neighbouring entities' URLs must NOT match (disjointness).
-      { url: `${BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc`, match: false },
-      { url: `${BASE}/api/p1/prescriptions/rx-1/prescription-status`, match: false },
+      { url: `${BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc`, match: false },
+      { url: `${BASE}/api/v1/prescriptions/rx-1/prescription-status`, match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
       expect(Option.isSome(PrescriptionHistoryResponseKind.tryRecognize(url))).toBe(match)
     })
@@ -88,7 +90,7 @@ describe('PrescriptionHistoryResponseKind', () => {
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
       expect(
         PrescriptionHistoryResponseKind.tryRecognize(
-          `${BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`
+          `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`
         )
       ).toStrictEqual(
         Option.some({

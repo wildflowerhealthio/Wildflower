@@ -2,7 +2,7 @@ import { Effect, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { Extraction } from 'http-extraction-fundamentals'
+import { type Extraction, SourceDescriptor } from 'http-extraction-fundamentals'
 import { type ExtractionResult, runExtraction } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
@@ -11,23 +11,16 @@ import { HarFromJson, emitHar } from 'web-trace-core/har'
 import { CAPTURE_FLOOR, arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 import { decodeHar } from './decode-har.ts'
-import { fhirPool } from './fhir-pool.ts'
+import { fhirSources } from './fhir-pool.ts'
 import chromeHar from './fixtures/chrome-fhir-capture.har.json' with { type: 'json' }
 import { defaultHarSettings } from './har-settings.ts'
 
 /**
- * Covers the HAR binding's read half: a HAR archive in, the structural
- * responses the recognizer reads out (`decodeHar`), and the four-way accounting
- * running the FHIR pool over them produces (`runExtraction`, the archive-runner
- * reference model in `http-extraction-fundamentals`' test-helpers). Two fixture
- * routes reach the same assertions — a HAR built through `web-trace-core`'s own
- * `emitHar` from constructed exchanges, and a committed Chrome DevTools export —
- * so the pipeline is held against both an archive shaped like ours and a foreign
- * one carrying browser noise.
- *
- * The critical structural property is here too: `decodeHar` requires no
- * services, so the FHIR write client is unreachable from a decode — asserted at
- * the type level and at runtime.
+ * Covers the HAR binding's read half: `decodeHar` in, the FHIR pool run over it
+ * (`runExtraction`). Two fixture routes reach the same assertions — an `emitHar`
+ * archive shaped like ours and a committed foreign Chrome DevTools export. Also
+ * asserts the structural property that `decodeHar` requires no services (the
+ * FHIR write client is unreachable from a decode), at the type level and at runtime.
  */
 
 /** A base64 SHA-256; the importer never reads it, so any valid digest serves. */
@@ -66,6 +59,9 @@ const encodeHar = Schema.encode(HarFromJson)
 /** Serialize constructed exchanges into `.har` file text through `emitHar`. */
 const harTextOf = (exchanges: readonly TraceExchange[]): string =>
   Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' })))
+
+/** The registered sources' kinds flattened — the flat pool recognition routes against. */
+const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
 /** The four-way extraction of running the FHIR pool over a decoded HAR. */
 const extract = (harText: string): ExtractionResult<FhirResource> =>
@@ -177,6 +173,90 @@ describe('decodeHar + runExtraction', () => {
         localResourceId(root, 'Observation', 'obs-a'),
         localResourceId(root, 'Observation', 'obs-b'),
       ])
+    })
+  })
+
+  describe('a Shoppers Drug Mart prescription-history archive', () => {
+    // A hand-built history payload, not a real capture. Replace this synthetic
+    // exchange with an anonymized `.har` fixture — see #562.
+    it('should decode re-keyed MedicationDispense resources from a portal capture', () => {
+      const extraction = extract(
+        harTextOf([
+          traceExchange({
+            requestId: 'req-0',
+            url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescription-history?customerId=acct-1',
+            headers: [['content-type', 'application/json']],
+            body: storedJson({
+              dispenses: [
+                {
+                  prescriptionId: 'rx-1',
+                  dispenseId: 'disp-1',
+                  prescriptionNumber: 9534360,
+                  dispenseDate: '2033-05-13',
+                  chemicalName: 'Amoxicillin 500mg',
+                  brandName: 'Amoxil',
+                  quantityDispensed: 30,
+                  din: '51480840',
+                  isArchive: false,
+                  store: { id: 9000, storeName: 'SDM #9000' },
+                },
+              ],
+            }),
+            startedAtMillis: CAPTURE_FLOOR,
+          }),
+        ])
+      )
+
+      expect(extraction.unmatched).toHaveLength(0)
+      expect(extraction.bodyAbsent).toHaveLength(0)
+      expect(extraction.parseFailures).toEqual([])
+      expect(ofType(extraction, 'MedicationDispense')).toHaveLength(1)
+      const [dispense] = ofType(extraction, 'MedicationDispense')
+      expect(dispense?.id).toBe(
+        localResourceId(
+          'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart',
+          'MedicationDispense',
+          'disp-1'
+        )
+      )
+    })
+  })
+
+  describe('a Rexall Be Well profile archive', () => {
+    // A hand-built carebook profile payload, not a real capture. Replace this
+    // synthetic exchange with an anonymized `.har` fixture — see #562.
+    it('should synthesize a re-keyed Patient from a carebook profile capture', () => {
+      const extraction = extract(
+        harTextOf([
+          traceExchange({
+            requestId: 'req-0',
+            url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me',
+            headers: [['content-type', 'application/json']],
+            body: storedJson({
+              data: {
+                identifiers: { uid: 'uid-abc-123', email: 'jordan.rivera@example.com' },
+                names: { firstName: 'Jordan', lastName: 'Rivera' },
+                birthDate: '1985-07-14',
+                zipPostalCode: 'M5V 2T6',
+              },
+            }),
+            startedAtMillis: CAPTURE_FLOOR,
+          }),
+        ])
+      )
+
+      expect(extraction.unmatched).toHaveLength(0)
+      expect(extraction.bodyAbsent).toHaveLength(0)
+      expect(extraction.parseFailures).toEqual([])
+      expect(ofType(extraction, 'Patient')).toHaveLength(1)
+      const [synthesizedPatient] = ofType(extraction, 'Patient')
+      expect(synthesizedPatient?.id).toBe(
+        localResourceId(
+          'https://wildflowerhealth.io/fhir/sid/rexall-carebook',
+          'Patient',
+          'uid-abc-123'
+        )
+      )
     })
   })
 

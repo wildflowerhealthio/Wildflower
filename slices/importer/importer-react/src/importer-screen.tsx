@@ -1,5 +1,6 @@
 import { type JSX, useCallback, useState } from 'react'
 
+import { SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
@@ -38,6 +39,9 @@ const READING_MESSAGE = 'Reading the archives…'
 /** The one registered format today. Its descriptor + interactive review drive the flow. */
 const { descriptor, ReviewBody } = formatRegistry.har
 
+/** The descriptor's sources flattened once — what a default selection seeds from. */
+const pool = SourceDescriptor.poolOf(descriptor.sources)
+
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(descriptor)
@@ -48,7 +52,7 @@ const ImporterScreen = (): JSX.Element => {
   const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection>>(new Map())
 
   const selectionFor = useCallback(
-    (fileId: string): Review.Selection => selections.get(fileId) ?? Review.initial(descriptor.pool),
+    (fileId: string): Review.Selection => selections.get(fileId) ?? Review.initial(pool),
     [selections]
   )
 
@@ -92,7 +96,7 @@ const ImporterScreen = (): JSX.Element => {
     return (
       <PreviewPanel
         files={runState.files}
-        pool={descriptor.pool}
+        sources={descriptor.sources}
         ReviewBody={ReviewBody}
         selectionFor={selectionFor}
         onSelectionChange={onSelectionChange}

@@ -8,13 +8,9 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
 
-import {
-  InstanceConfig,
-  REXALL_CAREBOOK_SYSTEM,
-  RexallCollectorDescriptor,
-  defaultConfig,
-  scrapingPlan,
-} from './config.ts'
+import { REXALL_CAREBOOK_SYSTEM } from 'rexall-be-well-source'
+
+import { InstanceConfig, RexallCollectorDescriptor, defaultConfig, scrapingPlan } from './config.ts'
 import prescriptions from './fixtures/prescriptions-searchset.json' with { type: 'json' }
 import profileFixture from './fixtures/profile-me.json' with { type: 'json' }
 
@@ -313,8 +309,8 @@ describe('source identity', () => {
   })
 
   it('rewrites every medication subject onto the id the profile Patient is adopted to', () => {
-    // The link only held before because the two entities happened to agree on
-    // carebook's uid; now it holds because both go through one derivation.
+    // The link holds because the medication subject and the profile Patient both
+    // go through one derivation on carebook's uid.
     const patientId = adoptedPatient().id
     const medications = parseFixture('MedicationListResponseKind', LIST_URL, prescriptions)
     expect(medications.length).toBeGreaterThan(0)
