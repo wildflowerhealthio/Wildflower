@@ -23,11 +23,11 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   Requires nothing and writes nothing; fails only with a `ParseError` on a
   malformed file.
 - `src/fhir-pool.ts` — **`fhirPool`**, the flat pool responses are recognized and
-  decoded through: the registered `SourceDescriptor`s' kinds flattened — today
-  `fhir-r4-source`'s `fhirR4Source` — consumed
-  **pre-adopted** (each resource already keyed under the root of the URL it
-  arrived on), never re-adopted here. Registering another source is one static
-  append of its descriptor to the `sources` list.
+  decoded through: the registered `SourceDescriptor`s' kinds flattened —
+  `fhir-r4-source`'s `fhirR4Source` and `rexall-be-well-source`'s
+  `rexallBeWellSource` — consumed **pre-adopted** (each resource already keyed
+  under the root of the URL it arrived on), never re-adopted here. Registering
+  another source is one static append of its descriptor to the `sources` list.
 - `src/persist-fhir.ts` — **`persistFhir`**, the descriptor's write sink:
   `withMetaSource` (`web-trace-core`) stamps each resource's `meta.source` with
   the source archive `sourceRef`, then `fhir-r4`'s `persistResources` writes them
@@ -42,20 +42,20 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
 ## Layering
 
 Depends on `importer-fundamentals` (the contract), `http-extraction-fundamentals`
-(`Extraction.Input`), `fhir-r4-source` (the pre-adopted pool), `web-trace-core`
-(`HttpArchive`, `withMetaSource`), `fhir-r4` (resources + `persistResources`), and
-`effect`. Never imports `importer-react`, `har-importer-react`, or
-`slices/collector`.
+(`Extraction.Input`), `fhir-r4-source` and `rexall-be-well-source` (the
+pre-adopted pools), `web-trace-core` (`HttpArchive`, `withMetaSource`), `fhir-r4`
+(resources + `persistResources`), and `effect`. Never imports `importer-react`,
+`har-importer-react`, or `slices/collector`.
 
 ## Guardrails
 
 - **The read half never writes.** `decodeHar` requires no services, so the write
   client is unreachable from a decode by construction. Writing is `persistFhir`'s
   separate step behind the descriptor's `persist`, gated on a confirmed review.
-- **The pool is consumed pre-adopted, never re-adopted.** `fhirR4Source`'s
-  `responseKinds` are already wrapped with `adoptUnderRecognizedRoot` in
-  `fhir-r4-source`; adopting again would hash a hash. Live and archive share
-  that single definition by reference.
+- **The pool is consumed pre-adopted, never re-adopted.** Each source's
+  `responseKinds` are already wrapped with `adoptUnderRecognizedRoot` in their
+  source package (`fhir-r4-source`, `rexall-be-well-source`); adopting again
+  would hash a hash. Live and archive share each definition by reference.
 - **Per-URL, not per-archive.** Recognition against `fhirPool` is per response
   (highest specificity wins), so a mixed archive extracts every recognized URL.
 

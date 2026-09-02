@@ -1,0 +1,167 @@
+{
+  "resourceType": "Bundle",
+  "type": "searchset",
+  "total": 2,
+  "link": [
+    {
+      "relation": "self",
+      "url": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest?patient=redacted"
+    },
+    {
+      "relation": "next",
+      "url": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest?patient=redacted&page=2"
+    }
+  ],
+  "entry": [
+    {
+      "fullUrl": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest/mr-0001",
+      "search": { "mode": "match" },
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "mr-0001",
+        "carebookInternalFlag": true,
+        "extension": [
+          {
+            "url": "http://schemas.carebook.com/v1/fhir/when-requested",
+            "valueDateTime": "2026-05-30T09:00:00Z"
+          },
+          {
+            "url": "http://schemas.carebook.com/v1/fhir/external-system-source",
+            "valueString": "REXALL-RX"
+          },
+          { "url": "http://schemas.carebook.com/v1/fhir/input-source", "valueString": "pharmacy" },
+          { "url": "http://schemas.carebook.com/v1/fhir/request-type", "valueString": "order" },
+          { "url": "http://schemas.carebook.com/v1/fhir/renewable", "valueBoolean": true },
+          {
+            "url": "http://schemas.carebook.com/v1/fhir/external-store-id",
+            "valueString": "store-4821"
+          },
+          {
+            "url": "http://example.org/unknown-future-extension",
+            "valueString": "should-not-fail-decode"
+          }
+        ],
+        "identifier": [
+          {
+            "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
+            "value": "EX-0001"
+          },
+          {
+            "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-authorizing-id",
+            "value": "AUTH-9001"
+          }
+        ],
+        "status": "active",
+        "intent": "order",
+        "contained": [
+          {
+            "resourceType": "Medication",
+            "id": "med-0001",
+            "code": {
+              "coding": [
+                {
+                  "system": "http://schema.carebook.com/v1/fhir/CodeSystem/din",
+                  "code": "02241497",
+                  "display": "Atorvastatin 20 mg tablet"
+                }
+              ],
+              "text": "Atorvastatin 20 mg tablet"
+            },
+            "form": {
+              "coding": [
+                {
+                  "system": "http://hl7.org/fhir/v3/orderableDrugForm",
+                  "code": "TAB",
+                  "display": "Tablet"
+                }
+              ]
+            },
+            "extension": [
+              {
+                "url": "http://schemas.carebook.com/v1/fhir/medication-strength",
+                "valueString": "20 mg"
+              },
+              {
+                "url": "http://schemas.carebook.com/v1/fhir/medication-description",
+                "valueString": "Lipid-lowering agent"
+              }
+            ]
+          }
+        ],
+        "medicationReference": { "reference": "#med-0001", "display": "Atorvastatin 20 mg tablet" },
+        "subject": { "reference": "Patient/local-patient-1", "display": "REDACTED" },
+        "context": { "reference": "Encounter/enc-0001" },
+        "authoredOn": "2026-05-30T09:00:00Z",
+        "requester": {
+          "agent": { "reference": "Practitioner/dr-smith", "display": "Dr. Jane Smith" },
+          "onBehalfOf": { "reference": "Organization/rexall-4821", "display": "Rexall #4821" }
+        },
+        "note": [{ "text": "Take one tablet daily at bedtime." }],
+        "dispenseRequest": {
+          "modifierExtension": [
+            {
+              "url": "http://schemas.carebook.com/v1/fhir/number-of-repeats-available",
+              "valueInteger": 2
+            }
+          ],
+          "numberOfRepeatsAllowed": 3,
+          "quantity": {
+            "value": 30,
+            "unit": "tablet",
+            "system": "http://unitsofmeasure.org",
+            "code": "{tbl}"
+          },
+          "expectedSupplyDuration": {
+            "value": 30,
+            "unit": "days",
+            "system": "http://unitsofmeasure.org",
+            "code": "d"
+          },
+          "validityPeriod": { "start": "2026-05-30T00:00:00Z", "end": "2027-05-30T00:00:00Z" }
+        }
+      }
+    },
+    {
+      "fullUrl": "https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/MedicationRequest/mr-0002",
+      "search": { "mode": "match" },
+      "resource": {
+        "resourceType": "MedicationRequest",
+        "id": "mr-0002",
+        "extension": [
+          { "url": "http://schemas.carebook.com/v1/fhir/request-type", "valueString": "refill" },
+          {
+            "url": "http://schemas.carebook.com/v1/fhir/medication-processor",
+            "valueString": "auto"
+          }
+        ],
+        "identifier": [
+          {
+            "system": "http://schema.carebook.com/v1/fhir/identifier/medicationrequest-external-id",
+            "value": "EX-0002"
+          }
+        ],
+        "status": "completed",
+        "intent": "order",
+        "medicationCodeableConcept": {
+          "coding": [
+            {
+              "system": "http://schema.carebook.com/v1/fhir/CodeSystem/din",
+              "code": "02248610",
+              "display": "Metformin 500 mg tablet"
+            }
+          ],
+          "text": "Metformin 500 mg tablet"
+        },
+        "subject": { "reference": "Patient/local-patient-1", "display": "REDACTED" },
+        "authoredOn": "2026-04-15T13:00:00Z",
+        "requester": {
+          "agent": { "reference": "Practitioner/dr-lee", "display": "Dr. Alex Lee" }
+        },
+        "dispenseRequest": {
+          "numberOfRepeatsAllowed": 0,
+          "quantity": { "value": 60, "unit": "tablet" }
+        }
+      }
+    }
+  ]
+}

@@ -1,61 +1,27 @@
 # AGENTS.md — slices/collector/rexall-be-well-collector
 
 The **Rexall Be Well collector**: logs into Rexall's `letsbewell.ca` portal and
-pulls the user's prescriptions into the on-device FHIR **R4** store. The Rexall
-tunnel API (`rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/…`)
-serves FHIR **STU3** searchset Bundles in a narrow, extension-heavy carebook
-dialect; this package holds everything Rexall/carebook-specific, from the dialect
-constants up to the registered `CollectorDescriptor`. The generic STU3⇄R4 schema
-machinery lives in `slices/emr/fhir-stu3-as-r4`.
+pulls the user's prescriptions into the on-device FHIR **R4** store. The
+carebook STU3 dialect, response kinds, and source descriptor live in
+`rexall-be-well-source` (in `slices/http-extraction/`); this package layers
+navigation, provenance, and persistence on top, mirroring
+`fhir-r4-client-collector`. The generic STU3⇄R4 schema machinery lives in
+`slices/emr/fhir-stu3-as-r4`.
 
-## Two layers
-
-**1. carebook dialect** (the original scope of this package):
-
-- `src/carebook.ts` — the dialect catalogue: carebook extension URLs, identifier
-  systems, and coding systems. **Reconciled against a real capture** — see
-  [Extension Promotion](#extension-promotion) for the shape and its traps.
-- `src/promote.ts` — the dialect post-step that moves carebook extensions into
-  the conventional R4 fields that already exist for them.
-- `src/bundle.ts` — the concrete carebook searchset Bundles (`MedicationRequestBundle`,
-  `MedicationDispenseBundle`, mixed `MedicationBundle`), built by feeding the
-  `fhir-stu3-as-r4/schemas` resource schemas through that slice's generic
-  `Bundle.searchsetBundle` factory.
-
-**2. the collector** (mirrors `fhir-r4-client-collector`; wired into
-`collector-registry` + `collector-react`):
+## Shape
 
 - `src/config.ts` — `InstanceConfig` (`{ _tag: 'rexall', email, password }`) with
   fast-check arbitraries, `defaultConfig`, the login-and-prescriptions
-  `scrapingPlan`, and the `RexallCollectorDescriptor`.
-- `src/response-kinds/profile-response-kind.ts` — recognizes `…/profile/v2/me` and synthesizes
-  an R4 `Patient` from the (non-FHIR) carebook profile JSON.
-- `src/response-kinds/medication-list-response-kind.ts` — recognizes the prescriptions page's
-  `…/pharmacy/Location?…_revinclude=…` searchset and decodes the **heterogeneous**
-  bundle "as is" (a `Schema.Union` of the two carebook `R4FromStu3Schema`
-  transforms plus a `null` catch-all for non-medication entries), then splits off
-  just `MedicationRequest` / `MedicationDispense`, dropping-and-counting the rest
-  and running each survivor through `promote.ts`.
+  `scrapingPlan`, and the `RexallCollectorDescriptor`. The response kinds come
+  from `rexallBeWellSource.responseKinds` (pre-adopted in the source package).
 - the provenance hook — `web-trace-core`'s `makeFhirProvenanceCapture('rexall')`,
   one module-level line in `src/config.ts`, stated as the plan's
   `captureProvenance`.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
-- the source identity — `REXALL_CAREBOOK_SYSTEM` (in `src/source-system.ts`, a
-  Wildflower-minted `sid` URI) rides each kind's own `tryRecognize` as
-  `source: { system: REXALL_CAREBOOK_SYSTEM }` (no `baseUrl`: carebook references
-  are relative). The kind list is widened to `HttpResponseKind<FhirResource>[]`
-  and mapped through `adoptUnderRecognizedRoot` **once at module scope** in
-  `config.ts` (source-parameter-free, so two plans from one config share the
-  frozen array by identity). Adoption keys under that constant `sid`, which is
-  what stops the request/dispense pair that shares a carebook id from collapsing
-  onto one row. See the
-  [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
-- `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a copy of
-  `fhir-r4-client-collector`'s; slice layering forbids importing it).
 - `src/rexall-config-form.tsx` (+ `.module.css`) — the email/password
   `ConfigFormProps` form `collector-react` registers.
-- `src/index.ts` — the barrel re-exporting both layers.
+- `src/index.ts` — the barrel re-exporting config and form.
 
 Only user-facing `letsbewell.ca` pages are ever navigated (the login page, then
 the prescriptions page); the collector only **sniffs** the XHRs those pages fire.
@@ -313,11 +279,13 @@ Observed, not acted on — worth knowing before trusting a field:
 
 ## References
 
+- [rexall-be-well-source](../../http-extraction/rexall-be-well-source/AGENTS.md)
+  — the carebook dialect, response kinds, and source descriptor this collector
+  consumes
 - [Adding a Collector How-To](../docs/Adding%20a%20Collector%20How-To.md) — the
   recipe this collector follows, including the provenance step
 - [fhir-r4-client-collector](../fhir-r4-client-collector/AGENTS.md) — the worked
-  example mirrored, and the source of the duplicated `provenance.ts` /
-  `extract-json.ts`
+  example mirrored
 - [web-trace-core](../../web-trace/web-trace-core/AGENTS.md) — the codec and the
   two body policies the provenance capture picks between
 - [fhir-stu3-as-r4](../../emr/fhir-stu3-as-r4) — the STU3⇄R4 schemas the bundles decode with

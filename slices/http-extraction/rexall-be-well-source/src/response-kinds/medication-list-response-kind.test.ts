@@ -1,7 +1,7 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -19,7 +19,7 @@ const LIST_URL =
   'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=Patient/uid-abc-123&_query=lastActiveOnly&_revinclude=MedicationRequest:extension.medicationrecord-processor&_count=2147483646'
 
 const makeResponse = (body: string, url = LIST_URL): HttpResponse.HttpResponse =>
-  makeCollectorHttpResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
+  makeHttpResponse({ url, headers: [['content-type', 'application/fhir+json']], body })
 
 const runParse = (
   r: HttpResponse.HttpResponse
@@ -62,11 +62,6 @@ describe('MedicationListResponseKind', () => {
   describe('parse', () => {
     it('keeps only MedicationRequest + MedicationDispense, dropping the other resources', () => {
       const result = runParse(makeResponse(JSON.stringify(prescriptions)))
-      // The fixture has 7 entries: Location (match) + two MedicationRequests +
-      // two MedicationDispenses + DocumentReference + Immunization. Only the
-      // four medications survive; the Location / DocumentReference /
-      // Immunization decode to null through the catch-all union member and are
-      // dropped.
       expectRightToEqual(result, [
         expect.objectContaining({ resourceType: 'MedicationRequest', id: 'mr-0001' }),
         expect.objectContaining({ resourceType: 'MedicationRequest', id: 'mr-0002' }),
@@ -79,8 +74,6 @@ describe('MedicationListResponseKind', () => {
       const result = runParse(makeResponse(JSON.stringify(prescriptions)))
       if (result._tag !== 'Right') throw new Error('expected a successful parse')
       const request = result.right.find((r) => r.resourceType === 'MedicationRequest')
-      // STU3 requester.agent flattens to the R4 requester reference — proof the
-      // R4FromStu3 transform ran (not a raw passthrough).
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
       expect(request.requester?.reference).toBe('Practitioner/dr-smith')
@@ -94,7 +87,6 @@ describe('MedicationListResponseKind', () => {
       if (request?.resourceType !== 'MedicationRequest')
         throw new Error('missing MedicationRequest')
 
-      // Promoted into conventional fields, and gone from `extension`.
       expect(request.doNotPerform).toBe(false)
       expect(request.category[0]?.coding[0]?.code).toBe('refill')
       expect(request.dispenseRequest?.performer?.identifier?.value).toBe('pharmacy-4821')
@@ -102,11 +94,9 @@ describe('MedicationListResponseKind', () => {
         'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/do-not-perform'
       )
 
-      // The orphaned contained Medication is now reachable.
       expect(request.medicationReference?.reference).toBe('#med-0001')
       expect(request.medicationCodeableConcept).toBeNull()
 
-      // Rexall sends supply durations bare; the day unit is spelled out.
       expect(request.dispenseRequest?.expectedSupplyDuration).toMatchObject({
         value: 30,
         unit: 'day',
@@ -125,14 +115,12 @@ describe('MedicationListResponseKind', () => {
       expect(urls).toContain(
         'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable'
       )
-      // Read downstream by medication-sponsorship-react's store-locator link.
       expect(urls).toContain(
         'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id'
       )
       expect(urls).toContain(
         'http://schemas.carebook.com/v1/fhir/common/extension/external-system-source'
       )
-      // An unrecognized extension is never disturbed.
       expect(urls).toContain('http://example.org/unknown-future-extension')
     })
 

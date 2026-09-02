@@ -166,7 +166,7 @@ const captureProvenance = makeFhirProvenanceCapture('rexall')<FhirResource>
  * left out until a capture diff proves the detail XHR is richer (issue #339).
  *
  * `responseKinds` is the module-level {@link responseKinds}, pre-adopted under
- * {@link REXALL_CAREBOOK_SYSTEM}, so every resource it parses is re-keyed under
+ * `REXALL_CAREBOOK_SYSTEM`, so every resource it parses is re-keyed under
  * a derived local id with the carebook id kept as `identifier[0]`. No `baseUrl`:
  * carebook's references are relative. This is what separates a
  * `MedicationRequest` from the `MedicationDispense` that shares its carebook id

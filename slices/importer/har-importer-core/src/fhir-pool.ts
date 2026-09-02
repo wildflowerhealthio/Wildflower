@@ -19,7 +19,7 @@ const sources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[] = [
  * Each response is recognized independently against this whole pool — per-URL,
  * never one winning source claiming the archive (see this package's AGENTS.md).
  * Registering another source is one static append of its `SourceDescriptor` to
- * {@link sources}; only `fhir-r4` is registered so far.
+ * {@link sources}.
  */
 const fhirPool: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = sources.flatMap(
   (source) => source.responseKinds

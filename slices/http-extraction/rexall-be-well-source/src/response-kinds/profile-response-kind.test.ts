@@ -1,8 +1,8 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, Option, type ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { Patient } from 'fhir-r4/resources'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -15,7 +15,7 @@ const { expectLeftToEqual } = utilityExpectations(expect)
 const PROFILE_URL = 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me'
 
 const makeResponse = (body: string, url = PROFILE_URL): HttpResponse.HttpResponse =>
-  makeCollectorHttpResponse({ url, body })
+  makeHttpResponse({ url, body })
 
 const runParse = (
   r: HttpResponse.HttpResponse
@@ -79,9 +79,6 @@ describe('ProfileResponseKind', () => {
     })
 
     it('reads the name from the nested `names` object, not a flat one', () => {
-      // Regression guard: the schema previously read `data.firstName` /
-      // `data.lastName`, which the payload does not have. Because the decode is
-      // lenient that failed silently, leaving every synthesized Patient nameless.
       const flat = {
         data: { identifiers: { uid: 'uid-1' }, firstName: 'Jordan', lastName: 'Rivera' },
       }
@@ -91,7 +88,6 @@ describe('ProfileResponseKind', () => {
     })
 
     it('ignores blank names rather than synthesizing an empty Patient.name', () => {
-      // The carebook profile sends `""` for a name it holds no value for.
       const blank = {
         data: { identifiers: { uid: 'uid-1' }, names: { firstName: '', lastName: '' } },
       }
