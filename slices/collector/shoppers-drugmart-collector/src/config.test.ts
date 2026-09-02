@@ -8,13 +8,13 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
 
+import { SHOPPERS_DRUGMART_SYSTEM } from 'shoppers-drugmart-source'
 import {
   InstanceConfig,
   ShoppersDrugMartCollectorDescriptor,
   defaultConfig,
   scrapingPlan,
 } from './config.ts'
-import { SHOPPERS_DRUGMART_SYSTEM } from './source-system.ts'
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 

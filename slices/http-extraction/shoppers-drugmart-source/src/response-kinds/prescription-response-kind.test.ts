@@ -5,8 +5,8 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
 import {
   DIN_CODE_SYSTEM,
@@ -26,7 +26,7 @@ const decodeRequest = Schema.decodeUnknownSync(MedicationRequest.Schema)
 const decodeDispense = Schema.decodeUnknownSync(MedicationDispense.Schema)
 
 const makeResponse = (body: string): HttpResponse.HttpResponse =>
-  makeCollectorHttpResponse({ url: STATUS_URL, body })
+  makeHttpResponse({ url: STATUS_URL, body })
 
 const parse = (body: string): readonly FhirResource[] =>
   Effect.runSync(PrescriptionResponseKind.parse(makeResponse(body)))

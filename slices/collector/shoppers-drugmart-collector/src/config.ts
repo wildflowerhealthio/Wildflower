@@ -209,7 +209,7 @@ const captureProvenance = makeFhirProvenanceCapture('shoppers-drugmart')<FhirRes
  * order is not load-bearing.
  *
  * `responseKinds` is the module-level {@link responseKinds}, pre-adopted under
- * {@link SHOPPERS_DRUGMART_SYSTEM}, so every resource its entities synthesize is
+ * `SHOPPERS_DRUGMART_SYSTEM`, so every resource its entities synthesize is
  * re-keyed under a derived local id, with the portal's own id kept as
  * `identifier[0]`. No `baseUrl`: the collector only ever writes relative
  * references (`subject: Patient/<patientId>`). This is what keeps the

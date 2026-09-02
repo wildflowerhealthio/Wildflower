@@ -1,9 +1,9 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -19,7 +19,7 @@ const ACCOUNT_ID = 'a7353645-83bf-4371-8b87-486b3d5b9802'
 const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 
 const makeResponse = (body: string): HttpResponse.HttpResponse =>
-  makeCollectorHttpResponse({
+  makeHttpResponse({
     url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc.def`,
     body,
   })

@@ -180,6 +180,50 @@ describe('decodeHar + runExtraction', () => {
     })
   })
 
+  describe('a Shoppers Drug Mart prescription-history archive', () => {
+    it('should decode re-keyed MedicationDispense resources from a portal capture', () => {
+      const extraction = extract(
+        harTextOf([
+          traceExchange({
+            requestId: 'req-0',
+            url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/prescription-history?customerId=acct-1',
+            headers: [['content-type', 'application/json']],
+            body: storedJson({
+              dispenses: [
+                {
+                  prescriptionId: 'rx-1',
+                  dispenseId: 'disp-1',
+                  prescriptionNumber: 9534360,
+                  dispenseDate: '2033-05-13',
+                  chemicalName: 'Amoxicillin 500mg',
+                  brandName: 'Amoxil',
+                  quantityDispensed: 30,
+                  din: '51480840',
+                  isArchive: false,
+                  store: { id: 9000, storeName: 'SDM #9000' },
+                },
+              ],
+            }),
+            startedAtMillis: CAPTURE_FLOOR,
+          }),
+        ])
+      )
+
+      expect(extraction.unmatched).toHaveLength(0)
+      expect(extraction.bodyAbsent).toHaveLength(0)
+      expect(extraction.parseFailures).toEqual([])
+      expect(ofType(extraction, 'MedicationDispense')).toHaveLength(1)
+      const [dispense] = ofType(extraction, 'MedicationDispense')
+      expect(dispense?.id).toBe(
+        localResourceId(
+          'https://wildflowerhealth.io/fhir/sid/shoppers-drugmart',
+          'MedicationDispense',
+          'disp-1'
+        )
+      )
+    })
+  })
+
   describe('when no response kind recognizes the traffic', () => {
     it('should count every response as unmatched for a non-FHIR archive', () => {
       const extraction = extract(
