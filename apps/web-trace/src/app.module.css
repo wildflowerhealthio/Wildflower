@@ -19,6 +19,28 @@
   margin-bottom: var(--space-9);
 }
 
+/*
+ * Standalone (not-launched) page: a full-height flex column so the connect
+ * area below can grow and push the SiteFooter to the bottom of the viewport.
+ */
+.standalone-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* The ConnectMenu area: fills the column and centres the menu within it. */
+.connect-page {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-11) var(--page-padding-x);
+}
+
 .subtitle {
   margin-top: var(--space-3);
   color: var(--color-neutral-5);

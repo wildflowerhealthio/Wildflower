@@ -6,6 +6,7 @@ import { useState, type JSX } from 'react'
 
 import { App } from './app.tsx'
 import { standaloneSmartConfig } from './config.ts'
+import styles from './app.module.css'
 
 /**
  * The page-level root: picks between the launched viewer (with a slim brand
@@ -44,19 +45,9 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
           <App />
         </>
       ) : (
-        <>
+        <div className={styles['standalone-page']}>
           <SiteHeader nav={fromApp} />
-          <main
-            style={{
-              flex: 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              maxWidth: 'var(--content-max-width)',
-              margin: '0 auto',
-              padding: 'var(--space-11) var(--page-padding-x)',
-            }}
-          >
+          <main className={styles['connect-page']}>
             <ConnectMenu
               clientId={standaloneSmartConfig.clientId}
               scope={standaloneSmartConfig.scope}
@@ -64,7 +55,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
             />
           </main>
           <SiteFooter nav={fromApp} />
-        </>
+        </div>
       )}
     </QueryClientProvider>
   )
