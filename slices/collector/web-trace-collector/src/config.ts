@@ -5,7 +5,7 @@ import { persistResources } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind } from 'http-extraction-fundamentals'
 
-import { makeRawExchangeResponseKind } from './response-kinds/raw-exchange-response-kind.ts'
+import { makeRawExchangeResponseKind } from 'web-trace-source'
 
 /**
  * An absolute `http(s)` URL — the page the recording starts on. Validated by
@@ -47,8 +47,8 @@ const SessionLabelSchema = Schema.String.pipe(Schema.maxLength(200))
 /**
  * One `bodyContentTypes` entry: a bare token matched against a response's media
  * type (`json`, `text`, `html`, `xml`, or something narrower like `fhir+json`).
- * Not a full media type with a `/` — see `body-policy.ts`'s token table for how
- * an entry is matched.
+ * Not a full media type with a `/` — see `web-trace-source`'s `contentTypeTokens`
+ * for how an entry is matched.
  */
 const BodyContentTypeSchema = Schema.String.pipe(
   Schema.pattern(/^[a-z0-9][a-z0-9!#$&^_.+-]*$/, {

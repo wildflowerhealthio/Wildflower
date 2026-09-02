@@ -32,7 +32,7 @@ import { type BodyDigestUnavailable, contentTypeOf, sha256Base64 } from 'web-tra
  * answers to its top-level type, its subtype, and — when the subtype carries a
  * structured suffix (RFC 6839's `+json`, `+xml`, …) — both halves of that
  * subtype, making `application/fhir+json` answer to all of `application`,
- * `fhir+json`, `fhir`, and `json`. The example table in `body-policy.test.ts` is
+ * `fhir+json`, `fhir`, and `json`. The example table in the body-policy test is
  * the readable statement of the rule; extend it when you touch this.
  *
  * The top-level type being a token is what makes the default `text` entry mean

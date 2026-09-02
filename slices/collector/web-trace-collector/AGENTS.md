@@ -19,14 +19,15 @@ An ordinary `*-client-collector`, mirroring `rexall-be-well-collector`'s layout:
   (`{ _tag: 'web-trace', rootUrl, sessionLabel?, bodyContentTypes, maxBodyBytes }`)
   with fast-check arbitraries, `defaultConfig`, the hand-driven `scrapingPlan`,
   and the `WebTraceCollectorDescriptor`.
-- `src/body-policy.ts` — the capture-time body policy: content-type extraction,
-  allowlist token matching, the size cap, and the SHA-256 every body carries.
-- `src/response-kinds/raw-exchange-response-kind.ts` — the catch-all response kind. One
-  `DocumentReference` per exchange, encoded by `web-trace-core`'s codec.
 - the persist sink — `fhir-r4`'s `persistResources`, imported in `src/config.ts`
   and handed straight to the descriptor.
 - `src/web-trace-config-form.tsx` (+ `.module.css`) — the `ConfigFormProps` form
   `collector-react` registers.
+
+The catch-all response kind (`makeRawExchangeResponseKind`) and the capture-time
+body policy (`decideBody`, `contentTypeTokens`, `isAllowlisted`) live in
+[`web-trace-source`](../../http-extraction/web-trace-source/AGENTS.md), the
+per-source package under `http-extraction` — imported here via `web-trace-source`.
 
 ## Invariants
 
@@ -123,7 +124,7 @@ artifact for designing a collector against a search API — are not captured.
   is matched against the type, the subtype, and both halves of a structured
   suffix, so `json` covers `application/fhir+json` — which is the single most
   interesting body in a health-portal trace and the one nobody thinks to add by
-  hand. See the token table in `body-policy.ts`. A consequence worth knowing:
+  hand. See `web-trace-source`'s `contentTypeTokens`. A consequence worth knowing:
   the default `text` entry means "any `text/*`", including `text/javascript`;
   `maxBodyBytes` is what keeps a bundle from dominating a recording.
 - **The content-type check runs before the size check.** A body that is both

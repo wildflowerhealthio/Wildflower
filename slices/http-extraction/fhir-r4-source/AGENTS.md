@@ -6,7 +6,7 @@ whose pre-adopted `responseKinds` an archive import extracts with. The live
 `fhir-r4-client-collector` scraping plan (browser-driven, in `slices/collector`)
 consumes the same response-kind tuple by reference, so the two
 consumers can never disagree on a decode. It is the first of the per-source
-packages; `rexall-be-well-source`, `shoppers-drugmart-source`, and a possible
+packages; `rexall-be-well-source`, `shoppers-drugmart-source`, and
 `web-trace-source` follow the same shape.
 
 ## Shape
