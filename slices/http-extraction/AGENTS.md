@@ -31,6 +31,14 @@ navigation, persistence, HAR, files, or apps.
   (`makeRawExchangeResponseKind`) parameterized per-run rather than a static
   `SourceDescriptor`, because the recording entity closes over a per-session id
   and body policy. See its [AGENTS.md](./web-trace-source/AGENTS.md).
+- **`rexall-be-well-source`** — the Rexall Be Well source: three response kinds
+  (Patient, MedicationRequest, MedicationDispense) that decode Rexall's carebook
+  STU3 dialect into FHIR R4 resources. See its
+  [AGENTS.md](./rexall-be-well-source/AGENTS.md).
+- **`shoppers-drugmart-source`** — the Shoppers Drug Mart source: three response
+  kinds (Customer, Prescription, PrescriptionHistory) that synthesize FHIR R4
+  Patient / MedicationRequest / MedicationDispense from the portal's bespoke
+  JSON. See its [AGENTS.md](./shoppers-drugmart-source/AGENTS.md).
 
 ## There is deliberately no `http-extraction-core`
 

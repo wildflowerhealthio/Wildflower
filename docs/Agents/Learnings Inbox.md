@@ -63,6 +63,26 @@ transport layer constructed the client. When splitting a shared `HttpClient` per
 consumer, check whether the behaviour you care about is a build-time or a
 request-time concern before assuming the split loses it.
 
+## Adding `tsc` to a SMART app's build script fails on other packages' sources
+
+`apps/importer-web` (and the other SMART apps) set `customConditions: ["source"]`
+in their tsconfig so `tsc` and the bundler agree on the `QueryClient` type. A
+side effect is that a package-local `tsc` also typechecks every workspace
+package's raw source under **this app's** compiler options — e.g.
+`erasableSyntaxOnly: true` rejects syntax in `kitchen-sink`. The build script
+stays `vp build` only; typechecking comes from the workspace-wide `vp check`,
+which is CI's gate.
+
+## A URL-derived render decision must be latched on mount, not a default parameter
+
+`launched = shouldCompleteSmartLaunch()` as a React default parameter re-reads
+`window.location` on every render. fhirclient's `oauth2.ready()` calls
+`history.replaceState` to strip `code`/`state` once the token exchange completes
+(`replaceBrowserHistory` is on by default), so any later re-render flips the gate
+and unmounts the authenticated app. Read the URL once in a `useState` initializer
+(`useState(() => prop ?? shouldCompleteSmartLaunch())`); `apps/importer-web`'s
+`AppRoot` is the worked example, with a re-render test that pins the latch.
+
 ## Color-scheme helpers live in react-tundraish, not in each app
 
 `applyColorScheme`, `addOsColorSchemeListener`, and the `ColorScheme` type are

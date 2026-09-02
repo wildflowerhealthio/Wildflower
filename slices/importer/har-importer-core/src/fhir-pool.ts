@@ -1,24 +1,22 @@
 import { fhirR4Source } from 'fhir-r4-source'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
-
-/** The registered sources whose kinds this importer's pool flattens. */
-const sources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[] = [fhirR4Source]
+import type { SourceDescriptor } from 'http-extraction-fundamentals'
+import { rexallBeWellSource } from 'rexall-be-well-source'
+import { shoppersDrugMartSource } from 'shoppers-drugmart-source'
 
 /**
- * The flat pool of `HttpResponseKind`s a HAR archive's traffic is recognized and
- * decoded through — every registered source's kinds, already keyed under the
- * root of the URL each resource arrived on (consumed pre-adopted, never
- * re-adopted here).
- *
- * @remarks
- * Each response is recognized independently against this whole pool — per-URL,
- * never one winning source claiming the archive (see this package's AGENTS.md).
- * Registering another source is one static append of its `SourceDescriptor` to
- * {@link sources}; only `fhir-r4` is registered so far.
+ * The registered sources a HAR archive's traffic is recognized and decoded
+ * through — each grouping its pre-adopted kinds under a user-facing name and
+ * detail (recognition is per-URL against the kinds flattened, never one source
+ * claiming the archive). The review menu groups its include toggles by these,
+ * and the flat pool routing needs is `SourceDescriptor.poolOf(fhirSources)` —
+ * derived on demand, so there is no second copy to keep in sync. Registering
+ * another source is one static append here.
  */
-const fhirPool: readonly HttpResponseKind.HttpResponseKind<FhirResource>[] = sources.flatMap(
-  (source) => source.responseKinds
-)
+const fhirSources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[] = [
+  fhirR4Source,
+  rexallBeWellSource,
+  shoppersDrugMartSource,
+]
 
-export { fhirPool }
+export { fhirSources }

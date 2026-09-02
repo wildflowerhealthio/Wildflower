@@ -5,39 +5,45 @@ portal (`mypharmacy.shoppersdrugmart.ca`, via the shared `accounts.pcid.ca`
 login), **pauses for the user's 2FA**, and pulls their prescriptions into the
 on-device FHIR **R4** store. Unlike `rexall-be-well-collector` (whose tunnel API
 serves FHIR STU3 the `fhir-stu3-as-r4` slice decodes), the Shoppers portal serves
-**bespoke, non-FHIR JSON**; this package **synthesizes** R4 resources from it
-directly with the `fhir-r4` schemas. Independent of the Rexall collector — it
-shares no code with it. The write sink is `fhir-r4/clients`' shared
-`persistResources` (the same one every FHIR collector uses); the JSON extractor
-is a verbatim copy, per slice layering.
+**bespoke, non-FHIR JSON**; the source package (`shoppers-drugmart-source` in
+`slices/http-extraction/`) **synthesizes** R4 resources from it directly with the
+`fhir-r4` schemas — this collector layers navigation and persistence on top.
+Independent of the Rexall collector — it shares no code with it. The write sink
+is `fhir-r4/clients`' shared `persistResources` (the same one every FHIR
+collector uses).
 
 Like every other FHIR-family collector, its resources are re-keyed under derived
 local ids: `SHOPPERS_DRUGMART_SYSTEM` rides each kind's own `tryRecognize` as
 `source: { system: SHOPPERS_DRUGMART_SYSTEM }` (no `baseUrl`), and the kind list
-is mapped through `adoptUnderRecognizedRoot` once at module scope in `config.ts`
-— see [account vs patient records](#account-vs-patient-records) and the
+is mapped through `adoptUnderRecognizedRoot` once at module scope in
+`shoppers-drugmart-source`'s `response-kinds.ts` — see
+[account vs patient records](#account-vs-patient-records) and the
 [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 
-## The endpoints (version-agnostic)
+## The endpoints (exact, host- and version-pinned)
 
-The capture shows an `/api/p1/…` version segment while the portal is documented
-elsewhere as `/api/v1/…` — the two disagree, so **every recognizer matches
-`/api/<anything>/…`** (`/api/[^/]+/…`), never a literal `p1`/`v1`. The four real
+Each recognizer is an **exact, anchored full-URL regex**: the host
+(`mypharmacy.shoppersdrugmart.ca`), the `v1` version segment, and the whole path
+are pinned, so no prefix or suffix segment (nor a bare trailing slash) is
+tolerated — only the `:uuid` path parameter and the query vary. The four real
 XHRs the collector cares about, and which page fires each:
 
-- `GET …/api/<seg>/customers/:uuid?expand=…` — the account and the people it
+- `GET …/api/v1/customers/pcid/:uuid?expand=…` — the account and the people it
   manages. Fired by the health dashboard **and** the prescription-history page.
   → `CustomerResponseKind`.
-- `GET …/api/<seg>/prescriptions/:uuid/prescription-status` — one **per
+- `GET …/api/v1/prescriptions/:uuid/prescription-status` — one **per
   prescription**, fired by the prescription-dashboard page. → `PrescriptionResponseKind`.
-- `GET …/api/<seg>/prescription-history?customerId=…` — **every** dispense across
+- `GET …/api/v1/prescription-history?customerId=…` — **every** dispense across
   all prescriptions (the status endpoint carries at most the latest fill per
   prescription), fired by the prescription-history page. → `PrescriptionHistoryResponseKind`.
-- `…/customers/:uuid/toasts?source=LOGIN` and other sub-paths are **not** claimed
-  — the `customers` recognizer anchors the uuid as the final path segment.
+- `…/customers/pcid/:uuid/toasts?source=LOGIN` and other sub-paths are **not**
+  claimed — the `customers` recognizer anchors the uuid as the final path segment.
 
 The three recognizers are **disjoint by construction** (different path segments),
-so `responseKinds` order is not load-bearing.
+so `responseKinds` order is not load-bearing. The response kinds themselves live
+in `shoppers-drugmart-source` — see its
+[AGENTS.md](../../http-extraction/shoppers-drugmart-source/AGENTS.md) for the
+entity shapes, resource mapping notes, and coding-system catalogue.
 
 ## The collector
 
@@ -48,27 +54,6 @@ Mirrors `fhir-r4-client-collector`; wired into `collector-registry` +
 password }`) with fast-check arbitraries, `defaultConfig`, the
   login-pause-for-2FA-then-visit-dashboard-and-history `scrapingPlan`, and the
   `ShoppersDrugMartCollectorDescriptor`.
-- `src/response-kinds/customer-response-kind.ts` — recognizes `…/customers/<uuid>` and
-  synthesizes, from the account payload, one demographic `Patient` per managed
-  person (keyed by `patients[].id`) plus a linked account `Patient` (keyed by
-  `pcid`).
-- `src/response-kinds/prescription-response-kind.ts` — recognizes
-  `…/prescriptions/:uuid/prescription-status` (one XHR per prescription) and
-  synthesizes one `MedicationRequest` and one `MedicationDispense` per
-  `dispenses` entry. No Patient (the subject records come from `CustomerResponseKind`).
-- `src/response-kinds/prescription-history-response-kind.ts` — recognizes
-  `…/prescription-history?customerId=…` and synthesizes one `MedicationDispense`
-  per history entry (no Patient, no MedicationRequest).
-- `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept` builder
-  (brand/chemical text + DIN coding) shared by the two dispense-emitting entities;
-  the DIN is per-payload (fills of one rx can differ).
-- `src/dates.ts` — the `decodesAsDateTime` / `firstDateTime` date-validation
-  helpers shared across entities.
-- `src/shoppers.ts` — the identifier/coding-system URL catalogue
-  (`ShoppersIdentifierSystem`, `DIN_CODE_SYSTEM`, `PRESCRIPTION_STATUS_TYPE_SYSTEM`),
-  plus `SHOPPERS_DRUGMART_SYSTEM` (in `src/source-system.ts`) — the
-  Wildflower-minted `sid` URI each kind's `tryRecognize` mints and adoption keys
-  under, mirroring Rexall's `REXALL_CAREBOOK_SYSTEM`.
 - the write sink — `fhir-r4/clients`' shared `persistResources`, imported in
   `config.ts` and handed straight to the descriptor (no per-collector copy).
 - provenance — the plan-level `captureProvenance` hook
@@ -77,8 +62,6 @@ password }`) with fast-check arbitraries, `defaultConfig`, the
   `DocumentReference`. It matters more here than for a FHIR source: these
   resources are **synthesized** against a hand-reconciled schema, so the raw
   payload is the only way to check a mapping after the fact.
-- `src/extract-json.ts` — XHR/JSON-viewer body normalizer (a verbatim copy, per
-  slice layering).
 - `src/shoppers-drugmart-config-form.tsx` (+ `.module.css`) — the email/password
   `ConfigFormProps` form `collector-react` registers.
 - `src/index.ts` — the barrel.
@@ -151,58 +134,6 @@ The trade-off (documented in the entity): a run where the customers XHR fails
 leaves the prescriptions' `subject` references dangling, which the store tolerates
 (references are not FK-enforced).
 
-## Resource mapping notes
-
-- **`MedicationRequest.status`** is `'stopped'` when the payload's top-level
-  `expired` or `archived` flag is set, and `'unknown'` otherwise — deliberately
-  conservative (nothing maps to `'active'`; the portal enum asserts a
-  renewal/refill affordance, not clinical activity).
-- **`statusReason`** carries the portal's machine `status.type` as a coding under
-  `PRESCRIPTION_STATUS_TYPE_SYSTEM` (an **open** code set — `READY_FOR_RENEW`,
-  `UNABLE_TO_RENEW_ONLINE`, `READY_FOR_REFILL_NO_DISPENSE`, …) plus the human
-  label as `text`; the longer `labelDescription` rides a `note`.
-- **`priorPrescription`** is an **identifier-only** reference built from
-  `previousPrescription` (the prior rx's human number) — we don't know its uuid,
-  and adoption leaves an identifier-only reference untouched.
-- **Dates are validated before use** (`decodesAsDateTime`), so a malformed date
-  drops just that slot rather than failing the whole resource decode. The portal
-  uses date-only strings (`YYYY-MM-DD`), which decode as midnight UTC.
-- **The fill window is `dispenseRequest.validityPeriod`** — `lastFillDate` opens
-  it (`start`), `nextFillDate` closes it (`end`), with the prescription
-  `expiryDate` as the `end` fallback. Only one of `lastFillDate` / `nextFillDate`
-  is ever present.
-- **`authoredOn` comes from `lastFillDate` only.** `nextFillDate` is deliberately
-  _not_ a fallback: it is a future date, and `authoredOn` means "when the request
-  was initially authored" — future-dating it would float the prescription to the
-  top of the medications list (sorted newest-authored first) and skew
-  `medication-sponsorship-react`'s `authoredOn + expectedSupplyDuration`
-  next-fill estimate. A payload carrying only `nextFillDate` leaves the slot unset.
-- **The dispensing store becomes a store-locator reference** to the public
-  `…/store-locator/store/:id` URL (`SHOPPERS_STORE_LOCATOR_BASE`) — on
-  `MedicationRequest.supportingInformation` (from the status `storeId`) and on
-  `MedicationDispense.location` (from the history `store.id`, with `store.storeName`
-  as `display`). Absolute URLs, so adoption leaves them untouched. The
-  medication-sponsorship UI prefix-matches that same base — keep the constants in
-  sync. It likewise matches `DIN_CODE_SYSTEM` by value to decide whether an inline
-  `medicationCodeableConcept.coding` is a DIN (its `SHOPPERS_DIN_CODING_SYSTEM`),
-  so that constant is a second keep-in-sync pair.
-- **History dispenses** get `status: 'completed'` (history entries are completed
-  fills; the payload has no status field to say otherwise) and **no `subject`**
-  (the history payload carries no `patientId`, and `MedicationDispense.subject` is
-  0..1 in R4). They link to their request via `authorizingPrescription` (a
-  relative `MedicationRequest/<prescriptionId>` reference carrying the human
-  `prescriptionNumber` as the reference's own `identifier`).
-- **Status/history dispense overlap.** The latest fill of a prescription appears
-  in both the status feed and the history feed; same `dispenseId` → same adopted
-  id → an idempotent upsert. Neither version subsumes the other — the history
-  one carries its own `din`, quantity, date and dispensing store; the status one
-  carries the `subject` the history payload has no `patientId` for — and write
-  ordering within a run is not guaranteed, so last-write-wins on the shared id
-  loses whichever fields the winning side omits.
-- A **dispense with no `dispenseId`** (and a **patient with no `id`**) has no
-  logical id to write under, so it is dropped-and-counted (`Effect.logInfo`)
-  rather than silently skipped at the sink.
-
 ## Fixtures & open questions caveat
 
 The entity schemas are **reconciled against a redacted real capture** of the
@@ -214,13 +145,17 @@ decoded body is committed. Remaining unknowns:
   was **not** captured, so `config.ts`'s selectors are unchanged best-guesses;
   reconcile against the real DOM.
 - **`p1` vs `v1` API version segment** — the HAR shows `p1`, the endpoint is
-  documented as `v1`; recognizers are version-agnostic on purpose.
+  documented as `v1`. The recognizers now **pin the literal `v1`** (the exact
+  URLs the portal serves), so a real `/api/p1/…` capture would no longer match —
+  reconcile against the live version segment if the portal actually serves `p1`.
 - **System URIs** (`shoppers.ts`) — best-guess namespaces under the portal host;
   the canonical Health Canada / Infoway DIN system URI in particular should be
   reconciled.
 
 ## References
 
+- [shoppers-drugmart-source AGENTS.md](../../http-extraction/shoppers-drugmart-source/AGENTS.md)
+  — the response kinds and resource mapping this collector consumes
 - [Adding a Collector How-To](../docs/Adding%20a%20Collector%20How-To.md) — the
   recipe this collector follows
 - [fhir-r4-client-collector](../fhir-r4-client-collector) — the worked example mirrored
