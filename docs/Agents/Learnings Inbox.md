@@ -73,6 +73,16 @@ package's raw source under **this app's** compiler options — e.g.
 stays `vp build` only; typechecking comes from the workspace-wide `vp check`,
 which is CI's gate.
 
+## A URL-derived render decision must be latched on mount, not a default parameter
+
+`launched = shouldCompleteSmartLaunch()` as a React default parameter re-reads
+`window.location` on every render. fhirclient's `oauth2.ready()` calls
+`history.replaceState` to strip `code`/`state` once the token exchange completes
+(`replaceBrowserHistory` is on by default), so any later re-render flips the gate
+and unmounts the authenticated app. Read the URL once in a `useState` initializer
+(`useState(() => prop ?? shouldCompleteSmartLaunch())`); `apps/importer-web`'s
+`AppRoot` is the worked example, with a re-render test that pins the latch.
+
 ## Color-scheme helpers live in react-tundraish, not in each app
 
 `applyColorScheme`, `addOsColorSchemeListener`, and the `ColorScheme` type are

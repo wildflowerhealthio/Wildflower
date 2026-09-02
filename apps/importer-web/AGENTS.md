@@ -194,8 +194,16 @@ the `QueryClientProvider` and the chrome gate:
 
 - **launched** (`shouldCompleteSmartLaunch()` or the prop) → `<BrandBar />` +
   `<App />`.
-- **not launched** → `<SiteHeader nav={fromApp} />` + `<ConnectMenu …/>` +
-  `<SiteFooter nav={fromApp} />`.
+- **not launched** → `<SiteHeader nav={fromApp} />` + `<main>` (the same `.app`
+  shell class `App` uses, so the menu is centred and padded under the chrome)
+  wrapping `<ConnectMenu …/>` + `<SiteFooter nav={fromApp} />`.
+
+The decision is **latched on mount** (`useState` initializer), not derived per
+render: fhirclient's `oauth2.ready()` strips `code`/`state` from the URL once the
+exchange completes, so a re-render that re-read the URL would flip a completed
+launch back to the connect menu. `ConnectMenu`'s `redirectUri` is derived from
+`window.location` inside render rather than at module load, so this module reads
+`window` only once a tree is mounting, never as a side effect of being imported.
 
 The `source`-only export (`"exports": { ".": { "source": "…" } }`) has no
 `default` condition — no lib build ships. A future aggregator shell resolves the
@@ -212,7 +220,11 @@ workspace `source` condition at bundle time.
 - `app-root.test.tsx` — chrome-level tests: `launched: true` renders `BrandBar`
   (the link with `aria-label="Wildflower, home"` pointing to
   `https://wildflowerhealth.io/`); `launched: false` renders `SiteHeader`,
-  `ConnectMenu`, and `SiteFooter` with absolute nav hrefs. `./app.tsx` and
+  `ConnectMenu` inside the `main` landmark, and `SiteFooter` with absolute nav
+  hrefs. With no prop, a table of `location.search` values pins which branch
+  mounts, and one case strips the callback params after mount to pin that the
+  decision is latched. The `ConnectMenu` stub echoes its props, so the
+  `clientId` / `scope` / `redirectUri` wiring is asserted too. `./app.tsx` and
   `fhir-r4-react/connect` are stubbed — this file tests the chrome gate, not the
   SMART handshake or the router.
 - `app.test.tsx` — the whole tree over a recording stub transport, through the
