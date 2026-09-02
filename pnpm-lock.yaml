@@ -231,6 +231,9 @@ importers:
 
   apps/github-pages:
     devDependencies:
+      branding-core:
+        specifier: workspace:*
+        version: link:../../slices/branding/branding-core
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
