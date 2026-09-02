@@ -1,8 +1,9 @@
 import { sectionUrl } from './site.ts'
 
 /**
- * Hash anchors on the marketing page. Each maps to a `<section id="…">`
- * on the landing page.
+ * Hash anchors on the marketing page. Most map to `<section id="…">`
+ * elements; `about-the-company` gates a hash-conditional UI element
+ * in the footer rather than a page section.
  */
 const MARKETING_ANCHORS = ['top', 'how', 'privacy', 'invite', 'about-the-company'] as const
 

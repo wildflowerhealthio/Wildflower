@@ -28,9 +28,10 @@ function resolveLink(link: NavLink, nav: NavContext): FooterLink {
 }
 
 /** Hash-gated blurb that appears beside the "About" footer link. */
-const AboutTheCompany = (): JSX.Element => {
+const AboutTheCompany = (): JSX.Element | null => {
   const href = useHref()
-  if (!href.includes('#about-the-company')) return <></>
+  const hash = new URL(href, 'http://localhost').hash
+  if (hash !== '#about-the-company') return null
 
   return (
     <>
