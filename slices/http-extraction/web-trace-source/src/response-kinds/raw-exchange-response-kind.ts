@@ -62,6 +62,8 @@ const makeRawExchangeResponseKind = (
 ): HttpResponseKind.HttpResponseKind<DocumentReferenceType> =>
   HttpResponseKind.make({
     name: 'RawExchangeResponseKind',
+    // Total catch-all: `Some` for every URL, no `source`, never throws — see the
+    // remarks above before narrowing this.
     tryRecognize: () => Option.some({ specificity: Specificity.CATCH_ALL }),
     parse: (response) =>
       Effect.gen(function* () {
@@ -74,14 +76,25 @@ const makeRawExchangeResponseKind = (
           yield* toDocumentReference({
             ...toExchangeFields(options.sessionId, response),
             timings: {
+              // Nothing observes the request side, so there is no wait to
+              // report and none is invented.
               wait: null,
+              // Response start → body complete. Read here rather than threaded
+              // through the tracker, so it includes the handler's dispatch of
+              // this parse; that is a sub-millisecond overstatement on a real
+              // capture, and it is a measurement rather than a guess.
               receive: DateTime.distanceDuration(response.startedAt, settledAt),
             },
             body,
+            // A recording decodes nothing, so it produces nothing to link. The
+            // provenance direction belongs to the production collectors.
             producedResources: [],
           }),
         ]
       }),
+    // No `followUpSteps`: a recording follows the user, never the other way
+    // round. Generating navigation here would put pages in the trace that the
+    // user never visited, and move the browser under them while they browse.
   })
 
 export {

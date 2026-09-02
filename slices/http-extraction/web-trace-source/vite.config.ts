@@ -11,4 +11,8 @@ export default defineConfig({
       index: 'src/index.ts',
     },
   },
+  test: {
+    include: ['src/**/*.test.ts'],
+    exclude: ['**/node_modules/**', '**/dist/**'],
+  },
 })

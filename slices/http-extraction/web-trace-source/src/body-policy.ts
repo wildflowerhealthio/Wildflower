@@ -30,9 +30,9 @@ import { type BodyDigestUnavailable, contentTypeOf, sha256Base64 } from 'web-tra
  * interesting body in a health portal trace is `application/fhir+json`, which no
  * one thinks to add to a list they were told defaults to "json". So a media type
  * answers to its top-level type, its subtype, and — when the subtype carries a
- * structured suffix (RFC 6839's `+json`, `+xml`, ...) — both halves of that
+ * structured suffix (RFC 6839's `+json`, `+xml`, …) — both halves of that
  * subtype, making `application/fhir+json` answer to all of `application`,
- * `fhir+json`, `fhir`, and `json`. The example table in `body-policy.test.ts` is
+ * `fhir+json`, `fhir`, and `json`. The example table in the body-policy test is
  * the readable statement of the rule; extend it when you touch this.
  *
  * The top-level type being a token is what makes the default `text` entry mean
@@ -119,6 +119,8 @@ const decideBody = (
     return {
       _tag: 'StoredBody',
       contentType,
+      // Base64 of the raw bytes, never of `text()`: a body that is not UTF-8
+      // decodable is stored as it arrived rather than dropped or mangled.
       data: Encoding.encodeBase64(bytes),
       size,
       hash,

@@ -1,8 +1,8 @@
-import { makeCollectorHttpResponse } from 'collector-fundamentals/test-helpers'
 import { DateTime, Duration, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { DocumentReference } from 'fhir-r4/resources'
 import { Specificity } from 'http-extraction-fundamentals'
+import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
@@ -14,8 +14,7 @@ import {
   type BodyPolicy,
   digestFailureAsParseError,
   makeRawExchangeResponseKind,
-} from 'web-trace-source'
-import { DEFAULT_BODY_CONTENT_TYPES, DEFAULT_MAX_BODY_BYTES } from '../config.ts'
+} from '../index.ts'
 
 const { expectRightToEqual } = utilityExpectations(expect)
 
@@ -25,6 +24,9 @@ const encodeResource = Schema.encode(DocumentReference.Schema)
 const SESSION_ID = 'session-abc'
 const STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
 
+const DEFAULT_BODY_CONTENT_TYPES: readonly string[] = ['json', 'text', 'html', 'xml']
+const DEFAULT_MAX_BODY_BYTES = 1024 * 1024
+
 const defaultPolicy: BodyPolicy = {
   bodyContentTypes: DEFAULT_BODY_CONTENT_TYPES,
   maxBodyBytes: DEFAULT_MAX_BODY_BYTES,
@@ -33,16 +35,14 @@ const defaultPolicy: BodyPolicy = {
 const entity = makeRawExchangeResponseKind({ sessionId: SESSION_ID, policy: defaultPolicy })
 
 const parse = (
-  overrides: Parameters<typeof makeCollectorHttpResponse>[0] = {},
+  overrides: Parameters<typeof makeHttpResponse>[0] = {},
   definition = entity
 ): Promise<readonly DocumentReferenceType[]> =>
-  Effect.runPromise(
-    definition.parse(makeCollectorHttpResponse({ startedAt: STARTED_AT, ...overrides }))
-  )
+  Effect.runPromise(definition.parse(makeHttpResponse({ startedAt: STARTED_AT, ...overrides })))
 
 /** The single resource a parse of one exchange produces. */
 const parseOne = async (
-  overrides: Parameters<typeof makeCollectorHttpResponse>[0] = {},
+  overrides: Parameters<typeof makeHttpResponse>[0] = {},
   definition = entity
 ): Promise<DocumentReferenceType> => {
   const resources = await parse(overrides, definition)
@@ -281,7 +281,7 @@ describe('digestFailureAsParseError', () => {
     )
   })
 
-  it('lands in parse’s error channel rather than dying, so one exchange fails and the run drains', async () => {
+  it("lands in parse's error channel rather than dying, so one exchange fails and the run drains", async () => {
     // The tracker runs `parse` under `Effect.either`, so a typed failure costs
     // this one exchange; a defect would take the run with it.
     const failing = digestFailureAsParseError(new BodyDigestUnavailable({ reason: 'nope' }))
