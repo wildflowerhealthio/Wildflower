@@ -3,6 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/app-root.tsx"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "build": "vp build",
     "check": "vp check",
@@ -16,6 +22,8 @@
     "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "branding-core": "workspace:*",
+    "branding-react": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-react": "workspace:*",

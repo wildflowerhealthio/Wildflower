@@ -58,9 +58,11 @@ The app is reachable two ways, both wired here:
   `launch.html`, which starts the SMART authorize redirect against the FHIR base
   the host names (`iss={origin}/fhir-r4`). `index.html` is the redirect target.
 - **Standalone launch** — a visitor lands on the published `index.html` directly.
-  With no OAuth callback in the URL, `main.tsx` renders `ConnectMenu`
-  (`fhir-r4-react/connect`), where the user picks the FHIR server to import into.
-  `shouldCompleteSmartLaunch()` is the gate between the two.
+  With no OAuth callback in the URL, `app-root.tsx`'s `AppRoot` renders
+  `SiteHeader` + `ConnectMenu` (`fhir-r4-react/connect`) + `SiteFooter` in shared
+  Wildflower chrome, where the user picks the FHIR server to import into.
+  `shouldCompleteSmartLaunch()` is the gate between the two; the EHR-launched
+  branch renders `BrandBar` + `App` instead.
 
 Both run through the one registered client (`importer-app`, or `importer-app-dev`
 in a vite dev build), whose redirect URI is the app root — so the same handshake
@@ -125,9 +127,9 @@ update-as-create — no `POST` create `.c`, no `DELETE` `.d`).
   `customConditions: ["source"]` so `tsc` and the bundler agree on which copy of
   `QueryClient` a slice's router context refers to. But under that condition a
   package-local `tsc` also re-typechecks _other_ workspace packages' sources
-  under this app's compiler options, which fails on code this app does not own.
-  Typechecking comes from `vp check`, which is CI's gate and resolves the same
-  way the bundler does.
+  under this app's compiler options (e.g. `erasableSyntaxOnly` rejects syntax in
+  `kitchen-sink`), which fails on code this app does not own. Typechecking comes
+  from `vp check`, which is CI's gate and resolves the same way the bundler does.
 - **The app owns no importing surface.** `ImporterScreen` takes no props and
   owns every level — source pick, preview, confirm, results. This app renders a
   heading and mounts it. Splitting a flow across that boundary is the mistake
@@ -183,6 +185,30 @@ fallback is needed: the router is a memory history, so the site has no deep link
 into it. The marketing site links there from its "collection of apps" section
 (`apps/marketing-website/src/data/convergence.ts`).
 
+## Boot and chrome
+
+`main.tsx` imports stylesheets (tundra → tundraish → branding → fonts), calls
+`addOsColorSchemeListener()`, and renders `<AppRoot />`. `AppRoot` (exported from
+`app-root.tsx` and from the package's `"."` export as a `source`-only seam) owns
+the `QueryClientProvider` and the chrome gate:
+
+- **launched** (`shouldCompleteSmartLaunch()` or the prop) → `<BrandBar />` +
+  `<App />`.
+- **not launched** → `<SiteHeader nav={fromApp} />` + `<main>` (the same `.app`
+  shell class `App` uses, so the menu is centred and padded under the chrome)
+  wrapping `<ConnectMenu …/>` + `<SiteFooter nav={fromApp} />`.
+
+The decision is **latched on mount** (`useState` initializer), not derived per
+render: fhirclient's `oauth2.ready()` strips `code`/`state` from the URL once the
+exchange completes, so a re-render that re-read the URL would flip a completed
+launch back to the connect menu. `ConnectMenu`'s `redirectUri` is derived from
+`window.location` inside render rather than at module load, so this module reads
+`window` only once a tree is mounting, never as a side effect of being imported.
+
+The `source`-only export (`"exports": { ".": { "source": "…" } }`) has no
+`default` condition — no lib build ships. A future aggregator shell resolves the
+workspace `source` condition at bundle time.
+
 ## Testing
 
 - The auth wiring in isolation — prefix derivation, the relative/absolute split,
@@ -191,6 +217,16 @@ into it. The marketing site links there from its "collection of apps" section
 - The import flow's own semantics — zero writes to reach a preview, `meta.source`
   on every written resource, partial results, cancel — are
   [`importer-react`'s `importer-screen.test.tsx`](../../slices/importer/importer-react/src/importer-screen.test.tsx).
+- `app-root.test.tsx` — chrome-level tests: `launched: true` renders `BrandBar`
+  (the link with `aria-label="Wildflower, home"` pointing to
+  `https://wildflowerhealth.io/`); `launched: false` renders `SiteHeader`,
+  `ConnectMenu` inside the `main` landmark, and `SiteFooter` with absolute nav
+  hrefs. With no prop, a table of `location.search` values pins which branch
+  mounts, and one case strips the callback params after mount to pin that the
+  decision is latched. The `ConnectMenu` stub echoes its props, so the
+  `clientId` / `scope` / `redirectUri` wiring is asserted too. `./app.tsx` and
+  `fhir-r4-react/connect` are stubbed — this file tests the chrome gate, not the
+  SMART handshake or the router.
 - `app.test.tsx` — the whole tree over a recording stub transport, through the
   real `buildSmartRouterContext`. It walks a synthesized HAR (built with
   `web-trace-core`'s `emitHar` + `test-helpers`, the established pattern —
