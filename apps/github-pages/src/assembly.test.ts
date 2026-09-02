@@ -145,8 +145,10 @@ describe('site layout', () => {
   })
 
   it('should derive every destPath from SECTION_PATHS', () => {
-    const destPaths = new Set(siteSections.map((s) => s.destPath))
-    const sectionPathValues = new Set(Object.values(SECTION_PATHS))
+    // Sorted arrays, not Sets: a new SECTION_PATHS key whose value collides
+    // with an existing path would leave the Set unchanged but must still fail.
+    const destPaths = siteSections.map((s) => s.destPath).toSorted()
+    const sectionPathValues = Object.values(SECTION_PATHS).toSorted()
     expect(destPaths).toEqual(sectionPathValues)
   })
 
