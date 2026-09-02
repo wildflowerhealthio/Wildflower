@@ -63,33 +63,6 @@ transport layer constructed the client. When splitting a shared `HttpClient` per
 consumer, check whether the behaviour you care about is a build-time or a
 request-time concern before assuming the split loses it.
 
-## Migrating an app to branding-react chrome: stylesheet import order matters
-
-When adding `branding-react/styles.css` to an app's `main.tsx`, it must come
-_after_ `react-tundraish/styles.css` and _before_ the app's own `tokens.css` /
-`global.css`. Order matters for override precedence only — a later `:root`
-block wins for a same-named token — not for `var()` references (custom
-properties resolve at computed-value time, so the layout tokens' use of
-tundraish's `--space-N` ramps works regardless of sheet order). The existing `tokens.css`
-values for `--content-max-width`, `--page-padding-x`, `--header-height`, and
-`--radius-pill` must be removed — they are now supplied by `branding-react` and
-duplicating them risks silent drift.
-
-## `web-trace`'s `customConditions: ["source"]` blocks a `tsc` build step
-
-`apps/web-trace`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
-bundler agree on which copy of `QueryClient` a slice's router context refers to.
-Under that condition a package-local `tsc` also re-typechecks other workspace
-packages' sources under this app's strict compiler options (notably
-`erasableSyntaxOnly: true`), which fails on code this app does not own (e.g.
-`kitchen-sink`'s `two-step-external-schema.ts`). Typechecking comes from
-`vp check`, which resolves the same way the bundler does; the `build` script
-stays `vp build` with no `tsc` step.
-
-## Source-only `exports` with no `default` condition work for workspace apps
-
-`medications-app`'s `package.json` exports `{ ".": { "source": "./src/app-root.tsx" } }` with no `default` condition. `vp install`, `vp run pack`, `vp build`, and `vp check` all tolerate this: the `source` condition is sufficient for workspace-internal resolution and Vite's dev/build pipelines. A `default` pointing at a `dist/` entry is only needed if a built consumer outside the workspace resolves the package. This pattern is useful for app packages that export a seam for aggregator-shell composition but have no standalone library build.
-
 ## Adding `tsc` to a SMART app's build script fails on other packages' sources
 
 `apps/importer-web` (and the other SMART apps) set `customConditions: ["source"]`
@@ -113,6 +86,29 @@ and unmounts the authenticated app. Read the URL once in a `useState` initialize
 ## Source-only `exports` with no `default` condition work for workspace apps
 
 `medications-app`'s `package.json` exports `{ ".": { "source": "./src/app-root.tsx" } }` with no `default` condition. `vp install`, `vp run pack`, `vp build`, and `vp check` all tolerate this: the `source` condition is sufficient for workspace-internal resolution and Vite's dev/build pipelines. A `default` pointing at a `dist/` entry is only needed if a built consumer outside the workspace resolves the package. This pattern is useful for app packages that export a seam for aggregator-shell composition but have no standalone library build.
+
+## Migrating an app to branding-react chrome: stylesheet import order matters
+
+When adding `branding-react/styles.css` to an app's `main.tsx`, it must come
+_after_ `react-tundraish/styles.css` and _before_ the app's own `tokens.css` /
+`global.css`. Order matters for override precedence only — a later `:root`
+block wins for a same-named token — not for `var()` references (custom
+properties resolve at computed-value time, so the layout tokens' use of
+tundraish's `--space-N` ramps works regardless of sheet order). The existing `tokens.css`
+values for `--content-max-width`, `--page-padding-x`, `--header-height`, and
+`--radius-pill` must be removed — they are now supplied by `branding-react` and
+duplicating them risks silent drift.
+
+## `web-trace`'s `customConditions: ["source"]` blocks a `tsc` build step
+
+`apps/web-trace`'s tsconfig sets `customConditions: ["source"]` so `tsc` and the
+bundler agree on which copy of `QueryClient` a slice's router context refers to.
+Under that condition a package-local `tsc` also re-typechecks other workspace
+packages' sources under this app's strict compiler options (notably
+`erasableSyntaxOnly: true`), which fails on code this app does not own (e.g.
+`kitchen-sink`'s `two-step-external-schema.ts`). Typechecking comes from
+`vp check`, which resolves the same way the bundler does; the `build` script
+stays `vp build` with no `tsc` step.
 
 ## Color-scheme helpers live in react-tundraish, not in each app
 
