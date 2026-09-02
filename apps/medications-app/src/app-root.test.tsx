@@ -1,88 +1,120 @@
-import { QueryClient } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-// Stub the two leaf components that `AppRoot` branches between: the SMART app
-// and the standalone connect menu. The branding chrome (`BrandBar`, `SiteHeader`,
-// `SiteFooter`) renders for real so we can assert on its DOM output.
+import type * as SmartModule from 'fhir-r4-react/smart'
+
+// Stub the two leaf components `AppRoot` branches between (the SMART app and the
+// standalone connect menu) and the live URL check that picks the branch. The
+// branding chrome (`BrandBar`, `SiteHeader`, `SiteFooter`) and the query client
+// render for real so the assertions run against their actual DOM output.
+const { shouldCompleteSmartLaunchMock } = vi.hoisted(() => ({
+  shouldCompleteSmartLaunchMock: vi.fn<() => boolean>(),
+}))
 vi.mock('./app.tsx', () => ({
   App: () => <div data-testid="app" />,
 }))
 vi.mock('fhir-r4-react/connect', () => ({
   ConnectMenu: () => <div data-testid="connect-menu" />,
 }))
-vi.mock('fhir-r4-react/smart', () => ({
-  buildSmartQueryClient: () => new QueryClient({ defaultOptions: { queries: { retry: false } } }),
-  shouldCompleteSmartLaunch: () => false,
+vi.mock('fhir-r4-react/smart', async (importOriginal) => ({
+  ...(await importOriginal<typeof SmartModule>()),
+  shouldCompleteSmartLaunch: () => shouldCompleteSmartLaunchMock(),
 }))
 
 const { AppRoot } = await import('./app-root.tsx')
 
+const MARKETING_ORIGIN = 'https://wildflowerhealth.io/'
+
 afterEach(() => {
   cleanup()
+  shouldCompleteSmartLaunchMock.mockReset()
 })
 
 describe('AppRoot', () => {
-  it('should render BrandBar and App when launched', () => {
+  it('should render the brand bar over the SMART app when launched', () => {
     // Arrange / Act
-    render(
-      <StrictMode>
-        <AppRoot launched />
-      </StrictMode>
-    )
+    renderAppRoot({ launched: true })
 
-    // Assert — the brand bar is a link back to the marketing site
-    const brandLink = screen.getByLabelText('Wildflower, home')
-    expect(brandLink.tagName).toBe('A')
-    expect(brandLink.getAttribute('href')).toBe('https://wildflowerhealth.io/')
+    // Assert — the brand bar is a single link back to the marketing site
+    const brandLink = within(screen.getByRole('banner')).getByRole('link', {
+      name: 'Wildflower, home',
+    })
+    expect(brandLink.getAttribute('href')).toBe(MARKETING_ORIGIN)
 
     // The SMART app renders, not the connect menu
-    expect(screen.getByTestId('app')).toBeDefined()
+    expect(screen.queryByTestId('app')).not.toBeNull()
     expect(screen.queryByTestId('connect-menu')).toBeNull()
 
-    // No full site header or footer in the launched branch
+    // No full site header, nav, or footer in the launched branch
     expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
+    expect(screen.queryByRole('contentinfo')).toBeNull()
   })
 
-  it('should render SiteHeader, ConnectMenu, and SiteFooter when not launched', () => {
+  it('should render the site header, connect menu, and footer when not launched', () => {
     // Arrange / Act
-    render(
-      <StrictMode>
-        <AppRoot launched={false} />
-      </StrictMode>
-    )
+    renderAppRoot({ launched: false })
 
-    // Assert — full site header with #top anchor
-    expect(document.getElementById('top')).not.toBeNull()
+    // Assert — full site chrome: header with the primary nav, a main region, a footer
+    expect(screen.getByRole('banner').id).toBe('top')
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeNull()
+    expect(screen.queryByRole('contentinfo')).not.toBeNull()
 
-    // The connect menu renders, not the SMART app
-    expect(screen.getByTestId('connect-menu')).toBeDefined()
+    // The connect menu renders inside the main region, not the SMART app
+    expect(within(screen.getByRole('main')).queryByTestId('connect-menu')).not.toBeNull()
     expect(screen.queryByTestId('app')).toBeNull()
-
-    // SiteFooter is present (it renders a <footer>)
-    const footers = document.querySelectorAll('footer')
-    expect(footers.length).toBeGreaterThan(0)
   })
 
-  it('should resolve nav hrefs as absolute URLs from an app', () => {
+  it('should resolve every header nav link as an absolute marketing-site URL', () => {
     // Arrange / Act
-    render(
-      <StrictMode>
-        <AppRoot launched={false} />
-      </StrictMode>
+    renderAppRoot({ launched: false })
+
+    // Assert — the brand link and every nav link leave the app for the marketing site
+    const brandLink = screen.getByRole('link', { name: 'Wildflower, home' })
+    expect(brandLink.getAttribute('href')).toBe(MARKETING_ORIGIN)
+
+    const navLinks = within(screen.getByRole('navigation', { name: 'Primary' })).getAllByRole(
+      'link'
     )
-
-    // Assert — the header's brand link points to the full marketing URL
-    const brandLink = screen.getByLabelText('Wildflower, home')
-    expect(brandLink.getAttribute('href')).toBe('https://wildflowerhealth.io/')
-
-    // Anchor nav links in the header resolve to absolute hrefs
-    const nav = screen.getByRole('navigation', { name: 'Primary' })
-    const links = nav.querySelectorAll('a')
-    const hrefs = Array.from(links, (a) => a.getAttribute('href'))
+    const hrefs = navLinks.map((link) => link.getAttribute('href'))
+    expect(hrefs).not.toHaveLength(0)
     for (const href of hrefs) {
       expect(href).toMatch(/^https:\/\/wildflowerhealth\.io\//)
     }
   })
+
+  it('should default `launched` to the live SMART-callback check', () => {
+    // Arrange
+    shouldCompleteSmartLaunchMock.mockReturnValue(true)
+
+    // Act
+    renderAppRoot({})
+
+    // Assert — a callback in the URL selects the launched branch
+    expect(screen.queryByTestId('app')).not.toBeNull()
+    expect(screen.queryByTestId('connect-menu')).toBeNull()
+  })
+
+  it('should show the connect menu by default when the URL carries no SMART callback', () => {
+    // Arrange
+    shouldCompleteSmartLaunchMock.mockReturnValue(false)
+
+    // Act
+    renderAppRoot({})
+
+    // Assert — a bare visit selects the standalone branch
+    expect(screen.queryByTestId('connect-menu')).not.toBeNull()
+    expect(screen.queryByTestId('app')).toBeNull()
+  })
 })
+
+// Helpers
+
+/** Render `AppRoot` under StrictMode, as `main.tsx` does. */
+function renderAppRoot({ launched }: { readonly launched?: boolean }): void {
+  render(
+    <StrictMode>
+      <AppRoot launched={launched} />
+    </StrictMode>
+  )
+}

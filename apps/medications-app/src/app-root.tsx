@@ -15,10 +15,12 @@ const redirectUri = new URL('.', window.location.href).href
 
 /**
  * Top-level app shell: wraps the two branches (SMART-launched app, standalone
- * connect menu) in shared Wildflower chrome.
+ * connect menu) in shared Wildflower chrome and one `QueryClientProvider`.
  *
- * @param launched - Whether the URL carries a SMART callback to complete.
- *   Defaults to the live URL check; pass explicitly in tests to avoid URL games.
+ * @param launched - Whether the URL carries a SMART callback to complete: the
+ *   launched branch renders `BrandBar` over `App`; the standalone branch renders
+ *   the full `SiteHeader` / `ConnectMenu` / `SiteFooter` page. Defaults to the
+ *   live URL check (`shouldCompleteSmartLaunch`); tests pass it explicitly.
  */
 function AppRoot({
   launched = shouldCompleteSmartLaunch(),
@@ -39,7 +41,7 @@ function AppRoot({
           <App />
         </>
       ) : (
-        <>
+        <div className={styles['standalone-page']}>
           <SiteHeader nav={fromApp} />
           <main className={styles['connect-page']}>
             <ConnectMenu
@@ -49,7 +51,7 @@ function AppRoot({
             />
           </main>
           <SiteFooter nav={fromApp} />
-        </>
+        </div>
       )}
     </QueryClientProvider>
   )
