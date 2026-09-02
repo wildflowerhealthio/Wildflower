@@ -17,10 +17,11 @@ branding-react), installs the OS colour-scheme listener, and renders `<AppRoot /
 from `app-root.tsx`. `AppRoot` is the page-level seam: it picks between the
 launched viewer (slim `BrandBar` + `App`) and the standalone connect page (full
 `SiteHeader` + `ConnectMenu` + `SiteFooter`), with a single `QueryClientProvider`
-wrapping both branches. The `launched` prop defaults to
-`shouldCompleteSmartLaunch()` but accepts an explicit boolean so each branch is
-testable without URL games. The package exports `AppRoot` via a source-only
-`exports` map (`"source": "./src/app-root.tsx"`) with no `default` — a future
+wrapping both branches. The `launched` prop is read once, on mount: it defaults
+to `shouldCompleteSmartLaunch()` but accepts an explicit boolean so each branch
+is testable without URL games, and it is latched because fhirclient strips
+`code`/`state` from the URL once the exchange completes. The package exports
+`AppRoot` via a source-only `exports` map (`"source": "./src/app-root.tsx"`) with no `default` — a future
 aggregator shell resolves the workspace `source` condition.
 
 ## Why this app has a router and a bearer token
