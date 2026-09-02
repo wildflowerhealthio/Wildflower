@@ -17,7 +17,7 @@ const SourceStore = Schema.Struct({
 })
 
 /**
- * One dispense record inside a `…/api/<seg>/prescription-history?customerId=…`
+ * One dispense record inside a `…/api/v1/prescription-history?customerId=…`
  * payload's flat `dispenses` array. `dispenseId` keys the emitted resource and
  * `prescriptionId` links it back to its `MedicationRequest`; both are optional
  * here so a malformed entry is dropped-and-counted at {@link dispenseWire}
@@ -122,19 +122,22 @@ const dispenseWire = (dispense: SourceHistoryDispense): Record<string, unknown> 
 }
 
 /**
- * `…://host/api/<seg>/prescription-history?customerId=…`. Requires the
- * `customerId` query (a hand-rolled `mustHaveQuery`) so it matches the API XHR
- * but **not** the user-facing page `…/en/prescription-history` (which the SPA
- * navigates to and which carries no query). Version-agnostic (`/api/[^/]+/…`):
- * the capture shows `/api/p1/…` while the endpoint is documented as `/api/v1/…`.
- * Disjoint from {@link !CustomerResponseKind} and {@link !PrescriptionResponseKind} by
- * construction — different path segments — so entity order is not load-bearing.
+ * The exact prescription-history XHR URL —
+ * `https://mypharmacy.shoppersdrugmart.ca/api/v1/prescription-history?customerId=…`.
+ * Anchored (`^`) and pinned to the exact host, the `v1` version segment, and the
+ * full path; the `?` immediately after the path requires a query, so it matches
+ * the API XHR but **not** the user-facing page `…/en/prescription-history` (no
+ * query) or a bare trailing slash. `customerId` need not be the first query
+ * parameter; only the query varies. Disjoint from {@link !CustomerResponseKind}
+ * and {@link !PrescriptionResponseKind} by construction — different path segments —
+ * so entity order is not load-bearing.
  */
-const historyUrl = /:\/\/[^/]+\/api\/[^/]+\/prescription-history\/?\?(?:[^#]*&)?customerId=/
+const historyUrl =
+  /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/prescription-history\?(?:[^#]*&)?customerId=/
 
 /**
  * Entity for the Shoppers prescription-history XHR: the
- * `…/api/<seg>/prescription-history?customerId=…` payload the
+ * `…/api/v1/prescription-history?customerId=…` payload the
  * prescription-history page fires once, carrying **every** dispense across all
  * prescriptions (the status endpoint carries at most the latest fill per
  * prescription). Each entry synthesizes one **`MedicationDispense`** — no

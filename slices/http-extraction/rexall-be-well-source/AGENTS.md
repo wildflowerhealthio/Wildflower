@@ -10,11 +10,12 @@ never disagree on a decode.
 
 ## Shape
 
-- `src/response-kinds/profile-response-kind.ts` — `…/carebook/profile` → one R4
+- `src/response-kinds/profile-response-kind.ts` —
+  `https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me` → one R4
   `Patient`.
 - `src/response-kinds/medication-list-response-kind.ts` —
-  `…/carebook/medications` → R4 `MedicationRequest` + `MedicationDispense`
-  resources.
+  `https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?…`
+  → R4 `MedicationRequest` + `MedicationDispense` resources.
 - `src/carebook.ts` — the carebook STU3 dialect decoder.
 - `src/promote.ts` — STU3-to-R4 promotion helpers.
 - `src/bundle.ts` — searchset Bundle unwrapping.

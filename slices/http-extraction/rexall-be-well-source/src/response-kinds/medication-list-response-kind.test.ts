@@ -28,23 +28,28 @@ const runParse = (
 
 describe('MedicationListResponseKind', () => {
   describe('tryRecognize', () => {
+    const LIST_BASE = 'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3'
     it.each([
       // The real prescriptions-page searchset (Location + _revincludes).
       { url: LIST_URL, match: true },
+      { url: `${LIST_BASE}/pharmacy/Location?subject=x`, match: true },
+      // The exact host is pinned — a foreign host with the same path is rejected.
       {
         url: 'https://tunnel/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=x',
-        match: true,
-      },
-      // The profile neighbour must NOT match (disjointness the plan relies on).
-      { url: 'https://tunnel/enduser/profile/v2/me', match: false },
-      // A single-resource Location URL (no query) is excluded by `mustHaveQuery`.
-      { url: 'https://tunnel/enduser/health/v1/fhir/stu3/pharmacy/Location', match: false },
-      { url: 'https://tunnel/enduser/health/v1/fhir/stu3/pharmacy/Location/loc-1', match: false },
-      // A bare MedicationRequest search is not this pattern.
-      {
-        url: 'https://tunnel/enduser/health/v1/fhir/stu3/MedicationRequest?patient=x',
         match: false,
       },
+      // No prefix room: a base-path-prefixed variant on the real host is rejected.
+      {
+        url: 'https://rexall-prd-tunnel.letsbewell.ca/proxy/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=x',
+        match: false,
+      },
+      // The profile neighbour must NOT match (disjointness the plan relies on).
+      { url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me', match: false },
+      // A single-resource Location URL (no query) is excluded — the pattern requires a query.
+      { url: `${LIST_BASE}/pharmacy/Location`, match: false },
+      { url: `${LIST_BASE}/pharmacy/Location/loc-1`, match: false },
+      // A bare MedicationRequest search is not this pattern.
+      { url: `${LIST_BASE}/MedicationRequest?patient=x`, match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
       expect(Option.isSome(MedicationListResponseKind.tryRecognize(url))).toBe(match)
     })

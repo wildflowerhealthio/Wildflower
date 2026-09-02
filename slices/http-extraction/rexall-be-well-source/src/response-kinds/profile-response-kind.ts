@@ -1,11 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
-import {
-  HttpResponseKind,
-  extractJson,
-  recognizePortal,
-  UrlMatch,
-} from 'http-extraction-fundamentals'
+import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 import { nonEmpty } from 'kitchen-sink'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 
@@ -91,10 +86,15 @@ const patientWire = (profile: Profile): Record<string, unknown> => {
   return wire
 }
 
-/** `…://host/…/profile/v2/me` — the carebook patient-identity endpoint. */
-const profileUrl = UrlMatch.make({
-  segments: [UrlMatch.literal('profile'), UrlMatch.literal('v2'), UrlMatch.literal('me')],
-})
+/**
+ * The exact carebook profile-identity XHR URL —
+ * `https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me` — with an
+ * optional query. Anchored (`^`) and pinned to the exact host and the full
+ * `/enduser/profile/v2/me` path: no prefix or suffix segment is tolerated, so a
+ * base-path-prefixed variant or a sibling like `…/profile/v2/settings` is
+ * rejected. Only the query varies.
+ */
+const profileUrl = /^https:\/\/rexall-prd-tunnel\.letsbewell\.ca\/enduser\/profile\/v2\/me(?:\?|$)/
 
 /**
  * Response kind for the carebook profile response (`…/enduser/profile/v2/me`). `parse`

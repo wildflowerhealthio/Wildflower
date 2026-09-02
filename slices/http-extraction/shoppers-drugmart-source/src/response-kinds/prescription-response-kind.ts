@@ -13,7 +13,7 @@ import { SHOPPERS_DRUGMART_SYSTEM } from '../source-system.ts'
 import { medicationWire } from './medication-wire.ts'
 
 /**
- * Just-enough schema for one `…/api/<seg>/prescriptions/:uuid/prescription-status`
+ * Just-enough schema for one `…/api/v1/prescriptions/:uuid/prescription-status`
  * payload — a bespoke portal JSON shape, **not FHIR**. Only `id` (the
  * prescription's uuid → `MedicationRequest.id`) and `patientId` (→ the
  * `subject` reference) are required; everything else is optional and lenient
@@ -300,15 +300,18 @@ const dispenseWire = (
 }
 
 /**
- * `…://host/…/prescriptions/<uuid>/prescription-status`. Hand-rolled (not
- * `UrlMatch.make`) so it tolerates an optional trailing slash / query and stays
- * disjoint from {@link !CustomerResponseKind}'s `…/customers/<uuid>` pattern and
- * {@link !PrescriptionHistoryResponseKind}'s `…/prescription-history?customerId=…`
- * pattern (different path segments) — entity order is therefore not
- * load-bearing.
+ * The exact prescription-status XHR URL —
+ * `https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/<uuid>/prescription-status`
+ * — with an optional query. Anchored (`^`) and pinned to the exact host, the
+ * `v1` version segment, and the full path: no prefix or suffix segment (nor a
+ * bare trailing slash) is tolerated, only the `<uuid>` path parameter and the
+ * query vary. Disjoint from {@link !CustomerResponseKind}'s
+ * `…/customers/pcid/<uuid>` pattern and {@link !PrescriptionHistoryResponseKind}'s
+ * `…/prescription-history?customerId=…` pattern (different path segments), so
+ * entity order is not load-bearing.
  */
 const prescriptionStatusUrl =
-  /:\/\/[^/]+(?:\/[^/?#]+)*?\/prescriptions\/[^/?#]+\/prescription-status\/?(?:[?#]|$)/
+  /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/prescriptions\/[^/?#]+\/prescription-status(?:\?|$)/
 
 /**
  * Entity for one Shoppers prescription XHR: the `…/prescriptions/:uuid/prescription-status`

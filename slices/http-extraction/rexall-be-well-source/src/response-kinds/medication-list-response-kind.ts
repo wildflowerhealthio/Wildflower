@@ -1,11 +1,6 @@
 import { Effect, Schema } from 'effect'
 import { Bundle, MedicationDispense, MedicationRequest } from 'fhir-stu3-as-r4/schemas'
-import {
-  HttpResponseKind,
-  extractJson,
-  recognizePortal,
-  UrlMatch,
-} from 'http-extraction-fundamentals'
+import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 import { promoteMedicationDispense, promoteMedicationRequest } from '../promote.ts'
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 
@@ -70,15 +65,18 @@ const promote = (resource: MedicationResource): MedicationResource =>
     : promoteMedicationDispense(resource)
 
 /**
- * `…://host/…/pharmacy/Location?…`. The `mustHaveQuery` boundary keeps this
- * list-searchset pattern disjoint from any single-resource pattern (and from
- * `ProfileResponseKind`'s `…/profile/v2/me`), so `ScrapingPlan.responseKinds`
- * ordering is not load-bearing.
+ * The exact prescriptions-searchset XHR URL —
+ * `https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?…`.
+ * Anchored (`^`) and pinned to the exact host, the `v1` version segment, and the
+ * full path; the trailing `?` requires a query, so a single-resource
+ * `…/pharmacy/Location` (no query) and `…/pharmacy/Location/<id>` are both
+ * rejected, as is any base-path-prefixed variant. Only the query parameters vary.
+ * That keeps this list-searchset pattern disjoint from `ProfileResponseKind`'s
+ * `…/profile/v2/me`, so `ScrapingPlan.responseKinds` ordering is not
+ * load-bearing.
  */
-const medicationListUrl = UrlMatch.make({
-  segments: [UrlMatch.literal('pharmacy'), UrlMatch.literal('Location')],
-  end: 'mustHaveQuery',
-})
+const medicationListUrl =
+  /^https:\/\/rexall-prd-tunnel\.letsbewell\.ca\/enduser\/health\/v1\/fhir\/stu3\/pharmacy\/Location\?/
 
 /**
  * Response kind for the Rexall prescriptions page's single XHR: the carebook STU3

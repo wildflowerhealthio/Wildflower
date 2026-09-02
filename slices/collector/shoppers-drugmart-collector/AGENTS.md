@@ -20,23 +20,24 @@ is mapped through `adoptUnderRecognizedRoot` once at module scope in
 [account vs patient records](#account-vs-patient-records) and the
 [Source Identity Explanation](../docs/Source%20Identity%20Explanation.md).
 
-## The endpoints (version-agnostic)
+## The endpoints (exact, host- and version-pinned)
 
-The capture shows an `/api/p1/…` version segment while the portal is documented
-elsewhere as `/api/v1/…` — the two disagree, so **every recognizer matches
-`/api/<anything>/…`** (`/api/[^/]+/…`), never a literal `p1`/`v1`. The four real
+Each recognizer is an **exact, anchored full-URL regex**: the host
+(`mypharmacy.shoppersdrugmart.ca`), the `v1` version segment, and the whole path
+are pinned, so no prefix or suffix segment (nor a bare trailing slash) is
+tolerated — only the `:uuid` path parameter and the query vary. The four real
 XHRs the collector cares about, and which page fires each:
 
-- `GET …/api/<seg>/customers/:uuid?expand=…` — the account and the people it
+- `GET …/api/v1/customers/pcid/:uuid?expand=…` — the account and the people it
   manages. Fired by the health dashboard **and** the prescription-history page.
   → `CustomerResponseKind`.
-- `GET …/api/<seg>/prescriptions/:uuid/prescription-status` — one **per
+- `GET …/api/v1/prescriptions/:uuid/prescription-status` — one **per
   prescription**, fired by the prescription-dashboard page. → `PrescriptionResponseKind`.
-- `GET …/api/<seg>/prescription-history?customerId=…` — **every** dispense across
+- `GET …/api/v1/prescription-history?customerId=…` — **every** dispense across
   all prescriptions (the status endpoint carries at most the latest fill per
   prescription), fired by the prescription-history page. → `PrescriptionHistoryResponseKind`.
-- `…/customers/:uuid/toasts?source=LOGIN` and other sub-paths are **not** claimed
-  — the `customers` recognizer anchors the uuid as the final path segment.
+- `…/customers/pcid/:uuid/toasts?source=LOGIN` and other sub-paths are **not**
+  claimed — the `customers` recognizer anchors the uuid as the final path segment.
 
 The three recognizers are **disjoint by construction** (different path segments),
 so `responseKinds` order is not load-bearing. The response kinds themselves live
@@ -144,7 +145,9 @@ decoded body is committed. Remaining unknowns:
   was **not** captured, so `config.ts`'s selectors are unchanged best-guesses;
   reconcile against the real DOM.
 - **`p1` vs `v1` API version segment** — the HAR shows `p1`, the endpoint is
-  documented as `v1`; recognizers are version-agnostic on purpose.
+  documented as `v1`. The recognizers now **pin the literal `v1`** (the exact
+  URLs the portal serves), so a real `/api/p1/…` capture would no longer match —
+  reconcile against the live version segment if the portal actually serves `p1`.
 - **System URIs** (`shoppers.ts`) — best-guess namespaces under the portal host;
   the canonical Health Canada / Infoway DIN system URI in particular should be
   reconciled.

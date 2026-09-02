@@ -34,7 +34,7 @@ const SourcePatient = Schema.Struct({
 type SourcePatient = typeof SourcePatient.Type
 
 /**
- * Just-enough schema for one `…/api/<seg>/customers/:uuid?expand=…` payload — a
+ * Just-enough schema for one `…/api/v1/customers/pcid/:uuid?expand=…` payload — a
  * bespoke portal JSON shape, **not FHIR**. Only `customer.pcid` (the account id,
  * `== customer.id == the customerId` query param) is required; `patients` is
  * decoded as an array of `Unknown` and each entry re-decoded per-entry so one
@@ -167,21 +167,24 @@ const accountPatientWire = (
 }
 
 /**
- * `…://host/api/<seg>/customers/<uuid>` with an optional query. Anchors the uuid
- * as the **final** path segment (`[^/?#]+` then `\/?(?:[?#]|$)`) so it matches
- * `…/customers/<uuid>` and `…/customers/<uuid>?expand=…` but **not**
- * `…/customers/<uuid>/toasts?source=LOGIN` (or any other sub-path). Disjoint
- * from {@link !PrescriptionResponseKind} (`/prescriptions/:uuid/prescription-status`)
- * and {@link !PrescriptionHistoryResponseKind} (`/prescription-history?customerId=…`)
- * by construction — different final segments — so entity order is not
- * load-bearing. Version-agnostic (`/api/[^/]+/…`): the capture shows `/api/p1/…`
- * while the endpoint is documented as `/api/v1/…`.
+ * The exact customers XHR URL —
+ * `https://mypharmacy.shoppersdrugmart.ca/api/v1/customers/pcid/<uuid>` — with an
+ * optional query (`?expand=…`). Anchored (`^`) at the scheme and pinned to the
+ * exact host, the `v1` version segment, and the full `/api/v1/customers/pcid/…`
+ * path: no prefix or suffix segment is tolerated, only the trailing `<uuid>` path
+ * parameter and the query vary. The closing `[^/?#]+(?:\?|$)` keeps the uuid a
+ * single segment, so `…/customers/pcid/<uuid>/toasts` (or any sub-path, or a bare
+ * trailing slash) is rejected. Disjoint from {@link !PrescriptionResponseKind}
+ * (`/prescriptions/:uuid/prescription-status`) and
+ * {@link !PrescriptionHistoryResponseKind} (`/prescription-history?customerId=…`)
+ * by construction, so entity order is not load-bearing.
  */
-const customerUrl = /:\/\/[^/]+\/api\/[^/]+\/customers\/[^/?#]+\/?(?:[?#]|$)/
+const customerUrl =
+  /^https:\/\/mypharmacy\.shoppersdrugmart\.ca\/api\/v1\/customers\/pcid\/[^/?#]+(?:\?|$)/
 
 /**
  * Entity for the Shoppers customers XHR: the
- * `…/api/<seg>/customers/:uuid?expand=…` payload the health dashboard and the
+ * `…/api/v1/customers/pcid/:uuid?expand=…` payload the health dashboard and the
  * prescription-history page fire. Each response is one bespoke JSON object (not
  * FHIR) carrying the account and the people it manages, synthesized here into:
  *

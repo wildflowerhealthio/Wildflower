@@ -20,7 +20,7 @@ const decodePatient = Schema.decodeUnknownSync(Patient.Schema)
 
 const makeResponse = (body: string): HttpResponse.HttpResponse =>
   makeHttpResponse({
-    url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc.def`,
+    url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc.def`,
     body,
   })
 
@@ -81,24 +81,29 @@ const customerPayload = (overrides?: Record<string, unknown>): Record<string, un
 describe('CustomerResponseKind', () => {
   describe('tryRecognize', () => {
     it.each([
-      // Both API version segments (the capture shows `p1`, docs say `v1`).
-      { url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}`, match: true },
-      { url: `${CUSTOMERS_BASE}/api/v1/customers/${ACCOUNT_ID}`, match: true },
+      // The exact endpoint: `/api/v1/customers/pcid/<uuid>`.
+      { url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`, match: true },
       // The real request carries an `?expand=…` query.
-      { url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}?expand=abc.def`, match: true },
-      { url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}/`, match: true },
-      // A sub-path of the same resource must NOT match.
+      { url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc.def`, match: true },
+      // The API version is now pinned to `v1` — the old `p1` capture no longer matches.
+      { url: `${CUSTOMERS_BASE}/api/p1/customers/pcid/${ACCOUNT_ID}`, match: false },
+      // The `pcid` path segment is required — the bare `/customers/<uuid>` form does not match.
+      { url: `${CUSTOMERS_BASE}/api/v1/customers/${ACCOUNT_ID}`, match: false },
+      // No suffix room: a bare trailing slash or a sub-path must NOT match.
+      { url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}/`, match: false },
       {
-        url: `${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}/toasts?source=LOGIN`,
+        url: `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}/toasts?source=LOGIN`,
         match: false,
       },
+      // The exact host is pinned — a foreign host with the same path is rejected.
+      { url: `https://tunnel/api/v1/customers/pcid/${ACCOUNT_ID}`, match: false },
       // The neighbouring entities' URLs must NOT match (disjointness).
       {
-        url: `${CUSTOMERS_BASE}/api/p1/prescriptions/${ACCOUNT_ID}/prescription-status`,
+        url: `${CUSTOMERS_BASE}/api/v1/prescriptions/${ACCOUNT_ID}/prescription-status`,
         match: false,
       },
       {
-        url: `${CUSTOMERS_BASE}/api/p1/prescription-history?customerId=${ACCOUNT_ID}`,
+        url: `${CUSTOMERS_BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`,
         match: false,
       },
     ])('recognizes $match for "$url"', ({ url, match }) => {
@@ -107,7 +112,7 @@ describe('CustomerResponseKind', () => {
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
       expect(
-        CustomerResponseKind.tryRecognize(`${CUSTOMERS_BASE}/api/p1/customers/${ACCOUNT_ID}`)
+        CustomerResponseKind.tryRecognize(`${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`)
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,

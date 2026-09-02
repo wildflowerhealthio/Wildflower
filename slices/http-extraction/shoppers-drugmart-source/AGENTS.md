@@ -13,9 +13,9 @@ non-FHIR portal JSON.
 
 ## Shape
 
-- `src/response-kinds/customer-response-kind.ts` — `…/customers/<uuid>` → one
-  demographic `Patient` per managed person + a linked account `Patient` keyed by
-  `pcid`.
+- `src/response-kinds/customer-response-kind.ts` —
+  `…/api/v1/customers/pcid/<uuid>` → one demographic `Patient` per managed person,
+  plus a linked account `Patient` keyed by `pcid`.
 - `src/response-kinds/prescription-response-kind.ts` —
   `…/prescriptions/:uuid/prescription-status` → one `MedicationRequest` + one
   `MedicationDispense` per dispense entry.
@@ -56,11 +56,15 @@ config/plan/form are its concern) or `slices/importer` (whose
 
 - **`responseKinds` order is not load-bearing, and should stay that way.** The
   three recognizers are disjoint by construction (different path segments:
-  `customers/<uuid>`, `prescriptions/<uuid>/prescription-status`,
+  `customers/pcid/<uuid>`, `prescriptions/<uuid>/prescription-status`,
   `prescription-history?customerId=…`), so specificity-based routing never
   reaches the tie-breaking list order.
-- **Every recognizer matches `/api/<anything>/…`**, not a literal `p1`/`v1` —
-  the capture shows `p1`, the docs say `v1`, so the pattern is version-agnostic.
+- **Each recognizer is an exact, anchored full-URL regex.** The host
+  (`mypharmacy.shoppersdrugmart.ca`), the `v1` version segment, and the whole
+  path are pinned — no prefix or suffix segment (nor a bare trailing slash) is
+  tolerated, only the `<uuid>` path parameter and the query vary. This is
+  deliberately stricter than the earlier version-agnostic `/api/<anything>/…`
+  matchers: an old `/api/p1/…` capture would no longer match.
 
 ## References
 

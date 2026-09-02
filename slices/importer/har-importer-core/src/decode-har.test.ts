@@ -186,7 +186,7 @@ describe('decodeHar + runExtraction', () => {
         harTextOf([
           traceExchange({
             requestId: 'req-0',
-            url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/prescription-history?customerId=acct-1',
+            url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescription-history?customerId=acct-1',
             headers: [['content-type', 'application/json']],
             body: storedJson({
               dispenses: [

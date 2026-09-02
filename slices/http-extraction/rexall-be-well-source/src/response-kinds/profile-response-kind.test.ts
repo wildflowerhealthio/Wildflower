@@ -26,14 +26,26 @@ describe('ProfileResponseKind', () => {
   describe('tryRecognize', () => {
     it.each([
       { url: PROFILE_URL, match: true },
-      { url: 'https://tunnel/enduser/profile/v2/me?x=1', match: true },
+      { url: `${PROFILE_URL}?x=1`, match: true },
+      // The exact host is pinned — a foreign host with the same path is rejected.
+      { url: 'https://tunnel/enduser/profile/v2/me', match: false },
+      // No prefix room: a base-path-prefixed variant on the real host is rejected.
+      {
+        url: 'https://rexall-prd-tunnel.letsbewell.ca/proxy/enduser/profile/v2/me',
+        match: false,
+      },
+      // No suffix room: a trailing sub-path is not the identity endpoint.
+      {
+        url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me/settings',
+        match: false,
+      },
       // The medication-list neighbour must NOT match (disjointness).
       {
-        url: 'https://tunnel/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=x',
+        url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/health/v1/fhir/stu3/pharmacy/Location?subject=x',
         match: false,
       },
       // A different profile sub-path is not the identity endpoint.
-      { url: 'https://tunnel/enduser/profile/v2/settings', match: false },
+      { url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/settings', match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
       expect(Option.isSome(ProfileResponseKind.tryRecognize(url))).toBe(match)
     })

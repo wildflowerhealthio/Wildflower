@@ -140,27 +140,30 @@ describe('PrescriptionResponseKind', () => {
   describe('tryRecognize', () => {
     it.each([
       { url: STATUS_URL, match: true },
-      // Both API version segments (the capture shows `p1`, docs say `v1`).
-      {
-        url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/prescriptions/rx-1/prescription-status',
-        match: true,
-      },
-      // Trailing slash / query still match.
-      {
-        url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1/prescription-status/',
-        match: true,
-      },
+      // A query still matches.
       {
         url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1/prescription-status?x=1',
         match: true,
       },
+      // The API version is now pinned to `v1` — the old `p1` capture no longer matches.
+      {
+        url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/prescriptions/rx-1/prescription-status',
+        match: false,
+      },
+      // No suffix room: a bare trailing slash must NOT match.
+      {
+        url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1/prescription-status/',
+        match: false,
+      },
+      // The exact host is pinned — a foreign host with the same path is rejected.
+      { url: 'https://tunnel/api/v1/prescriptions/rx-1/prescription-status', match: false },
       // Disjoint from the neighbouring entities and from the bare prescription URL.
       {
-        url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/customers/cust-1?expand=abc',
+        url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/customers/pcid/cust-1?expand=abc',
         match: false,
       },
       {
-        url: 'https://mypharmacy.shoppersdrugmart.ca/api/p1/prescription-history?customerId=c1',
+        url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescription-history?customerId=c1',
         match: false,
       },
       { url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1', match: false },

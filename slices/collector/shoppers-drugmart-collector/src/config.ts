@@ -107,7 +107,7 @@ const REDIRECT_TIMEOUT = Duration.seconds(30)
  * dashboard *arrives* (`DOMContentLoaded`). Arrival, not settlement, on
  * purpose: the dashboard was observed to keep loading past the sniffer's
  * settle detector, so an `AwaitPageSettled` here sat out its whole timeout
- * with the page visibly up. Its `…/api/<seg>/customers/:uuid?expand=…` XHR may
+ * with the page visibly up. Its `…/api/v1/customers/pcid/:uuid?expand=…` XHR may
  * not have fired by the time the hold releases — acceptable, because the
  * prescription-history page fires the customers XHR again later in the run.
  * {@link TWO_FA_TIMEOUT} bounds the human-in-the-loop wait so a stalled login
@@ -143,8 +143,8 @@ const SETTLE = Duration.seconds(8)
 
 /**
  * The user-facing prescription-history page. Visiting it makes the SPA fire the
- * `…/api/<seg>/prescription-history?customerId=…` XHR (every dispense across all
- * prescriptions) **and** the `…/api/<seg>/customers/:id?expand=…` XHR (the
+ * `…/api/v1/prescription-history?customerId=…` XHR (every dispense across all
+ * prescriptions) **and** the `…/api/v1/customers/pcid/:id?expand=…` XHR (the
  * account + its managed people) automatically — one page visit feeds both the
  * {@link PrescriptionHistoryResponseKind} and {@link CustomerResponseKind} recognizers.
  */
@@ -203,7 +203,7 @@ const captureProvenance = makeFhirProvenanceCapture('shoppers-drugmart')<FhirRes
  * dispatches and advances immediately (a `PageAction` fires no `PageLoaded`), so
  * the short `Delay`s between them are the only thing pacing the login form.
  * `CustomerResponseKind` recognizes
- * `…/customers/<uuid>`; `PrescriptionResponseKind` recognizes
+ * `…/customers/pcid/<uuid>`; `PrescriptionResponseKind` recognizes
  * `…/prescriptions/:uuid/prescription-status`; `PrescriptionHistoryResponseKind`
  * recognizes `…/prescription-history?customerId=…` — disjoint patterns, so entity
  * order is not load-bearing.
