@@ -6,6 +6,26 @@ The first-party Medications SMART-on-FHIR app: two HTML entries, `launch.html`
 and renders the app when a callback is in the URL, and the standalone connect
 menu, where the user picks a FHIR server, on a bare visit).
 
+## Boot structure
+
+`src/main.tsx` is the HTML entry point: it loads style sheets (tundra-css,
+react-tundraish, branding-react layout tokens, self-hosted fonts), wires the OS
+colour-scheme listener, and renders `<AppRoot />` inside `<StrictMode>`.
+
+`src/app-root.tsx` exports `AppRoot`, the top-level component that wraps
+everything in a single `QueryClientProvider` and branches on whether a SMART
+callback is in the URL:
+
+- **Launched** (OAuth callback present) — renders `<BrandBar />` (a slim brand
+  link back to the marketing site) above `<App />`.
+- **Standalone** (bare visit) — renders the full Wildflower chrome:
+  `<SiteHeader>`, `<ConnectMenu>`, `<SiteFooter>`, with nav links resolving as
+  absolute URLs back to `wildflowerhealth.io`.
+
+`AppRoot` accepts an optional `launched` prop (defaults to the live URL check)
+so both branches are testable without URL manipulation. The package exports
+`AppRoot` via the `source` condition for future aggregator-shell composition.
+
 ## Where the bundle is served
 
 Both places come from the same build output (`outDir`

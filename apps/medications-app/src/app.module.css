@@ -21,6 +21,14 @@
   margin-bottom: var(--space-9);
 }
 
+/* Standalone connect page: centres the ConnectMenu between header and footer. */
+.connect-page {
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-13) var(--page-padding-x);
+  flex: 1;
+}
+
 /* Loading / error lines share the body size; only the colour differs. */
 .status {
   font-size: var(--font-size-3);
