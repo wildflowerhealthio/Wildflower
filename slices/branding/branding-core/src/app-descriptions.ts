@@ -26,6 +26,19 @@ interface AppDescription {
   readonly status?: string
   /** First-person paragraphs on why the app exists, in reading order. */
   readonly paragraphs: readonly string[]
+  /**
+   * A short numbered how-to shown on the landing page only (the homepage
+   * presents the app, not its instructions): what a visitor has to do before
+   * the app is useful to them.
+   */
+  readonly guide?: {
+    /** The how-to's heading. */
+    readonly title: string
+    /** The steps, in order, one plain sentence or two each. */
+    readonly steps: readonly string[]
+    /** A caution or aside after the steps. */
+    readonly note?: string
+  }
   /** The homepage section the app's row sits in, where the rest of the project is. */
   readonly anchor: MarketingAnchor
   /** The homepage's text-link call to action into the app. */
@@ -79,6 +92,26 @@ const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
         'The Importer can then process those results to produce FHIR compatible records, ' +
         'and save them on your server.',
     ],
+    guide: {
+      title: 'Collecting a HAR file from your browser',
+      steps: [
+        'Open the pharmacy, lab, or patient-portal website and sign in.',
+        'Open the network panel. In Chrome or Edge, press Ctrl+Shift+I (Cmd+Option+I on a Mac) ' +
+          'and click the Network tab. In Firefox, press Ctrl+Shift+E (Cmd+Option+E on a Mac) ' +
+          'to open the Network Monitor.',
+        'Keep requests across page loads. In Chrome or Edge, check the "Preserve log" checkbox. ' +
+          'In Firefox, open the gear menu at the right of the toolbar and check "Persist Logs".',
+        'Click through the pages whose data you want: prescriptions, results, visit summaries. ' +
+          'Every request the site makes is recorded.',
+        'Save the recording as a HAR file. In Chrome or Edge, right-click any request in the list ' +
+          'and select "Save all as HAR with content". In Firefox, open the same gear menu and ' +
+          'select "Save All As HAR".',
+        'Come back here, connect to your server, and pick the saved .har file.',
+      ],
+      note:
+        'A HAR file holds everything the site sent, including sign-in cookies and tokens. ' +
+        'Keep it to yourself and to servers you control.',
+    },
     anchor: 'try',
     launch: {
       label: 'Open the Importer',

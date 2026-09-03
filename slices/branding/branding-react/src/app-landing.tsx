@@ -6,9 +6,10 @@ import styles from './app-landing.module.css'
 
 /**
  * The standalone landing content for one SMART app: its `APP_DESCRIPTIONS`
- * introduction (the name as the page's `h1`, the tagline, the paragraphs, and
- * a link to the rest of the homepage; no status line — an app someone has
- * reached is usable) with the action area. See "The app landing page" in
+ * introduction (the name as the page's `h1`, the tagline, the paragraphs, the
+ * landing-only numbered `guide` when the app has one, and a link to the rest
+ * of the homepage; no status line — an app someone has reached is usable)
+ * with the action area. See "The app landing page" in
  * `slices/branding/AGENTS.md`.
  *
  * @param app - Which app's description to render.
@@ -28,7 +29,7 @@ function AppLanding({
   readonly app: AppSectionId
   readonly children: ReactNode
 }): JSX.Element {
-  const { name, tagline, paragraphs, anchor } = APP_DESCRIPTIONS[app]
+  const { name, tagline, paragraphs, guide, anchor } = APP_DESCRIPTIONS[app]
 
   return (
     <section className={styles['app-landing']} aria-labelledby="app-landing-title">
@@ -43,6 +44,19 @@ function AppLanding({
         {paragraphs.map((paragraph) => (
           <p key={paragraph}>{paragraph}</p>
         ))}
+        {guide === undefined ? null : (
+          <section className={styles['app-landing__guide']} aria-label={guide.title}>
+            <h2 className={styles['app-landing__guide-title']}>{guide.title}</h2>
+            <ol className={styles['app-landing__steps']}>
+              {guide.steps.map((step) => (
+                <li key={step}>{step}</li>
+              ))}
+            </ol>
+            {guide.note === undefined ? null : (
+              <p className={styles['app-landing__guide-note']}>{guide.note}</p>
+            )}
+          </section>
+        )}
         <a className={styles['app-landing__more']} href={anchorHref(fromApp, anchor)}>
           Read about the rest of the project on wildflowerhealth.io
         </a>

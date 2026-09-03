@@ -90,6 +90,10 @@ describe('AppRoot', () => {
     // The homepage's copy and a link to its section sit in the same main region
     const main = within(screen.getByRole('main'))
     expect(main.getByText(APP_DESCRIPTIONS.importer.paragraphs[0])).toBeDefined()
+    // The HAR-capture how-to is landing-only, and this is the landing
+    expect(
+      main.getByRole('region', { name: APP_DESCRIPTIONS.importer.guide?.title ?? '' })
+    ).toBeDefined()
     expect(main.getByRole('link', { name: /rest of the project/ }).getAttribute('href')).toBe(
       'https://wildflowerhealth.io/#try'
     )

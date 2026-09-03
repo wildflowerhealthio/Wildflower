@@ -31,7 +31,9 @@ and its connect menu as children: it lays out the introduction from
 the paragraphs, and a "Read about the rest of the project" link to the app's
 homepage anchor via `anchorHref(fromApp, …)`) beside the connect menu on the
 right, stacking on phones. The status line is homepage-only: an app someone
-has reached is usable. The connect menu's own heading is an `h2` for this
+has reached is usable. The optional `guide` (a titled, numbered how-to with a
+closing note — the Importer's HAR-capture steps) is the reverse: landing-only,
+rendered after the paragraphs, never on the homepage. The connect menu's own heading is an `h2` for this
 reason.
 
 ## The NavContext idea

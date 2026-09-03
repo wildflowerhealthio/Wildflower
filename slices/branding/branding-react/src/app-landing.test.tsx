@@ -70,6 +70,37 @@ describe('AppLanding', () => {
     )
   })
 
+  it('should render the numbered guide, with every step and the note, only for apps that have one', () => {
+    fc.assert(
+      fc.property(appSectionIdArb, (app) => {
+        // Arrange
+        const { guide } = APP_DESCRIPTIONS[app]
+
+        // Act
+        render(
+          <AppLanding app={app}>
+            <div />
+          </AppLanding>
+        )
+
+        // Assert
+        if (guide === undefined) {
+          expect(screen.queryByRole('list')).toBeNull()
+        } else {
+          const section = within(screen.getByRole('region', { name: guide.title }))
+          const items = section.getAllByRole('listitem').map((item) => item.textContent)
+          expect(items).toStrictEqual([...guide.steps])
+          if (guide.note !== undefined) {
+            expect(section.getByText(guide.note)).toBeDefined()
+          }
+        }
+
+        cleanup()
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
   it("should link to the rest of the project at the app's section on the marketing site", () => {
     fc.assert(
       fc.property(appSectionIdArb, (app) => {
