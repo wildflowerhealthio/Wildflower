@@ -1,0 +1,471 @@
+/*
+ * Interactions view: three sections of collapsible group cards. A header is a
+ * toggle button on the left (the disclosure) beside a strip of named severity
+ * pips (one per interacting counterpart, each a button that unfolds it, with a
+ * hover tooltip). Rows (only while open) are a name | badge | link grid that
+ * ellipsises the name rather than wrapping.
+ * Tundra's `text-heading-2` for section headings, `--font-size-2` in
+ * `--color-neutral-5` for every secondary line; the badge is a design-system
+ * `StatusBadge` and the dots read the same tundra ramps.
+ */
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-11);
+}
+
+.intro {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+/* Severity key — always visible, one line that wraps on narrow screens. */
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  background: var(--color-background);
+}
+
+.legend-label {
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-5);
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-3);
+}
+
+/* Dots: 10px in the legend and level-1 strips, 8px in nested strips. */
+.dot {
+  display: block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+}
+
+.dot-small {
+  width: var(--space-4);
+  height: var(--space-4);
+}
+
+/*
+ * A pip: the dot plus a hover/focus tooltip naming its counterpart. When it can
+ * unfold that counterpart it is a <button>; either way it anchors the tooltip.
+ */
+.pip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  line-height: 0;
+  border-radius: 999px;
+}
+
+button.pip {
+  cursor: pointer;
+}
+
+button.pip:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* The tooltip box: a small dark card with a down-caret, shown at once on hover. */
+/*
+ * The tooltip box + down-caret. Rendered (in the DOM) only while its pip is
+ * hovered/focused, so hidden tooltips never widen the page; a small layout
+ * effect then nudges a shown box back inside the viewport via `--tip-shift`,
+ * with the caret offset the opposite way (`--caret-shift`) so it still points
+ * at the pip.
+ */
+.tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(calc(-50% + var(--tip-shift, 0px)));
+  z-index: 20;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-2);
+  background: var(--color-neutral-8);
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-2);
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: calc(50% - var(--caret-shift, 0px));
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--color-neutral-8);
+}
+
+.dot-major {
+  background: var(--color-red-5);
+}
+
+.dot-moderate {
+  background: var(--color-yellow-5);
+}
+
+.dot-minor {
+  background: var(--color-blue-5);
+}
+
+.dot-unknown {
+  background: var(--color-neutral-5);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.section-heading {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-5);
+}
+
+.section-summary {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+.groups,
+.groups-nested,
+.rows,
+.rows-nested {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/*
+ * Level-1 card: a medication, a non-drug, or an OTC category. Overflow stays
+ * visible so a pip's tooltip can escape the card; the only backgrounds that
+ * reach a corner are the toggle's, and those corners are rounded to match.
+ */
+.card {
+  background: var(--color-background);
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+  overflow: visible;
+}
+
+/*
+ * Level-2 card: an OTC active inside its category. One step darker than its
+ * parent, which is what makes depth legible without a per-level indent.
+ */
+.card-nested {
+  background: var(--color-canvas);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  overflow: visible;
+}
+
+/* Header row: the toggle on the left, the pip strip on the right. */
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding-right: var(--space-6);
+}
+
+.card-nested .card-header {
+  padding-right: var(--space-5);
+}
+
+/*
+ * The disclosure toggle — only the left of the header, so the pips beside it are
+ * their own controls rather than nested clickables. Its left corners round to
+ * the card so its hover fill never squares them; the bottom-left rounds only
+ * when the card is collapsed (the header is then the card's last child).
+ */
+.card-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-4) var(--space-5) var(--space-6);
+  background: none;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-top-left-radius: var(--card-border-radius);
+}
+
+.card-nested .card-toggle {
+  padding: var(--space-4) var(--space-3) var(--space-4) var(--space-5);
+  border-top-left-radius: var(--radius-3);
+}
+
+.card > .card-header:last-child .card-toggle {
+  border-bottom-left-radius: var(--card-border-radius);
+}
+
+.card-nested > .card-header:last-child .card-toggle {
+  border-bottom-left-radius: var(--radius-3);
+}
+
+.card-toggle:hover {
+  background: var(--color-raised);
+}
+
+.card-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+/* Disclosure triangles: pure CSS borders on a zero-size box; state is on `aria-expanded`. */
+.triangle-closed,
+.triangle-open {
+  flex: none;
+  width: 0;
+  height: 0;
+  margin: 0 1px;
+}
+
+.triangle-closed {
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 6px solid var(--color-neutral-5);
+}
+
+.triangle-open {
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid var(--color-neutral-3);
+}
+
+.card-nested .triangle-closed {
+  border-top-width: 4px;
+  border-bottom-width: 4px;
+  border-left-width: 5px;
+}
+
+.card-nested .triangle-open {
+  border-left-width: 4px;
+  border-right-width: 4px;
+  border-top-width: 5px;
+}
+
+.card-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.card-name {
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-2);
+}
+
+.card-name-nested {
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-3);
+}
+
+.card-aside,
+.card-meta {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+}
+
+.card-meta {
+  flex: none;
+}
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.strip-more {
+  font-size: var(--font-size-2);
+  color: var(--color-neutral-5);
+  padding-left: var(--space-1);
+  white-space: nowrap;
+}
+
+/*
+ * Narrow screens: stack the pip strip under the title rather than crowding it
+ * to the right, and let the pips wrap. The strip is inset to sit under the
+ * name, and the toggle spans the full width for an easy tap target.
+ */
+@media (max-width: 640px) {
+  .card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-right: 0;
+  }
+
+  .strip {
+    flex-wrap: wrap;
+    padding: 0 var(--space-6) var(--space-5) var(--space-9);
+  }
+
+  .card-nested .strip {
+    padding: 0 var(--space-5) var(--space-4) var(--space-8);
+  }
+
+  /* The toggle now spans the full width, so round both top corners and drop the
+     collapsed bottom-left rounding (the pip strip sits below it). */
+  .card-toggle {
+    border-top-right-radius: var(--card-border-radius);
+  }
+
+  .card-nested .card-toggle {
+    border-top-right-radius: var(--radius-3);
+  }
+
+  .card > .card-header:last-child .card-toggle,
+  .card-nested > .card-header:last-child .card-toggle {
+    border-bottom-left-radius: 0;
+  }
+}
+
+/* Category body: the one indent step for nested cards. */
+.groups-nested {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-5) var(--space-9);
+  border-top: 1px solid var(--color-divider);
+}
+
+.rows {
+  padding: 0 var(--space-6) var(--space-5);
+  border-top: 1px solid var(--color-divider);
+}
+
+.rows-nested {
+  padding: 0 var(--space-5) var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+/*
+ * The leaf: name | badge | link. `min-width: 0` on the name cell is what lets
+ * the ellipsis engage instead of the row growing; nothing here wraps.
+ */
+.row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.rows-nested .row {
+  padding: var(--space-4) 0;
+}
+
+.row:last-child {
+  border-bottom: 0;
+}
+
+/* Name cell: an optional leading avatar, then the ellipsising name. */
+.row-name-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.row-name {
+  min-width: 0;
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Narrow screens: a designed two-line row — the name on its own line, then
+ * badge left and link right — rather than a wrap.
+ */
+@media (max-width: 380px) {
+  .row {
+    grid-template-columns: 1fr auto;
+    gap: var(--space-3) var(--space-5);
+  }
+
+  .row-name-cell {
+    grid-column: 1 / -1;
+  }
+}
+
+.link {
+  padding: var(--space-1) var(--space-5);
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.link:hover {
+  filter: brightness(1.08);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.disclaimer,
+.empty,
+.notice {
+  margin: 0;
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}
+
+.notice {
+  color: var(--color-red-3);
+}

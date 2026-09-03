@@ -53,7 +53,7 @@ The header toggle switches `<App />` between two views over the same loaded
   The script (`scripts/convert-ddinter.ts`) runs `node --conditions=source` so
   the core's converter resolves from source without a build; the file is
   single-line JSON and is excluded from `vp fmt` in the root `vite.config.ts`.
-  See [slices/medication-interaction/AGENTS.md](../../slices/medication-interaction/AGENTS.md)
+  See [slices/medication/AGENTS.md](../../slices/medication/AGENTS.md)
   for the bundled data's provenance and coverage.
 
 ## Where the bundle is served
