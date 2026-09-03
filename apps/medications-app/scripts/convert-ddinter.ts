@@ -1,15 +1,7 @@
 /**
- * Convert DDInter's download CSVs into the compact JSON the app bundles.
- *
- * Usage (from the repo root, after `vp run pack` or with source resolution):
- *
- *   vp run -F medications-app data:ddinter -- <dir-with-ddinter_downloads_code_*.csv>
- *
- * Reads every `ddinter_downloads_code_<letter>.csv` in the directory, dedupes
- * the pairs across the per-ATC files (most severe level wins) and writes
- * `src/data/ddinter/ddinter.json` next to the other bundled catalogs. The
- * conversion itself lives in `medication-interaction-core` (and is tested
- * there); this file only does the file I/O.
+ * Convert DDInter's download CSVs into the compact JSON the app bundles:
+ * `vp run -F medications-app data:ddinter -- <dir>` (see the README). Only the
+ * file I/O lives here; the conversion is `medication-interaction-core`'s.
  */
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
