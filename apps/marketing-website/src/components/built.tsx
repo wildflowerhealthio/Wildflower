@@ -51,8 +51,12 @@ function Built(): JSX.Element {
             title="Synthesized Health Viewer"
             status="Status: demo, rough edges"
             paragraphs={[
-              "I'm on medications that require lab monitoring to make sure I've got a therapeutic dose, to watch for side effects, and to make sure my blood isn't poisoning me.",
-              "This tool plots data from several sources on one chart, and an on-device AI model can answer questions. Because sometimes it's unclear how exactly my dose is affecting my levels, and if that new medication is having a meaningful effect on my liver enzymes.",
+              "I'm on medications that require lab monitoring to make sure I've got a therapeutic dose, " +
+                "to watch for side effects, and to make sure my blood isn't poisoning me.",
+              'This tool plots data from several sources on one chart, ' +
+                'and an on-device AI model can answer questions. ' +
+                "Because sometimes it's unclear how exactly my dose is affecting my levels, " +
+                'and if that new medication is having a meaningful effect on my liver enzymes.',
             ]}
             placeholderLabel="screenshot — meds and labs timeline"
           />

@@ -1,8 +1,8 @@
+/* Fills whatever column the landing page gives it; the container sets the width. */
 .connect {
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  max-width: 28rem;
 }
 
 .presets {

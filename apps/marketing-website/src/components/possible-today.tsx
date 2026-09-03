@@ -26,7 +26,8 @@ function PossibleToday(): JSX.Element {
           <AppRow
             title={<>A personal SMART compatible&nbsp;FHIR&nbsp;server</>}
             paragraphs={[
-              "Providers rarely offer open, interoperable storage — so I've packaged open-source FHIR servers into an app that runs on a phone or laptop.",
+              "Providers rarely offer open, interoperable storage — so I've packaged open-source " +
+                'FHIR servers into an app that runs on a phone or laptop.',
             ]}
             placeholderLabel="screenshot — Wildflower server"
             launcher={

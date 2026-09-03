@@ -49,11 +49,17 @@ const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
   medications: {
     name: 'Medication Viewer',
     tagline:
-      "Every prescription on a patient's FHIR record, arranged around refill day, from any server that speaks SMART on FHIR.",
+      "Every prescription on a patient's FHIR record, arranged around refill day, " +
+      'from any server that speaks SMART on FHIR.',
     status: 'Status: in use',
     paragraphs: [
-      'My prescriptions are chaotic. My most reliable refill reminder is noticing a bottle is empty. This viewer shows all my prescriptions, arranged the way I need them: countdowns to refill day and alarming red text.',
-      "Once you've got all of your medications in an app, other things become really easy, like checking for interactions or seeing if any drug companies have a program that'll give you a discount.",
+      'My prescriptions are chaotic. ' +
+        'My most reliable refill reminder is noticing a bottle is empty. ' +
+        'This viewer shows all my prescriptions, arranged the way I need them: ' +
+        'countdowns to refill day and alarming red text.',
+      "Once you've got all of your medications in an app, other things become really easy, " +
+        "like checking for interactions or seeing if any drug companies have a program that'll " +
+        'give you a discount.',
     ],
     anchor: 'built',
     launch: {
@@ -64,9 +70,13 @@ const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
   importer: {
     name: 'Importer',
     tagline:
-      'Turns what your browser saw on a pharmacy, lab, or patient-portal website into FHIR records on a server you control.',
+      'Turns what your browser saw on a pharmacy, lab, or patient-portal website ' +
+      'into FHIR records on a server you control.',
     paragraphs: [
-      "You can use your own browser, click around in your pharmacy / lab result / patient record's website and save everything their server sent. The Importer can then process those results to produce FHIR compatible records, and save them on your server.",
+      "You can use your own browser, click around in your pharmacy / lab result / patient record's " +
+        'website and save everything their server sent. ' +
+        'The Importer can then process those results to produce FHIR compatible records, ' +
+        'and save them on your server.',
     ],
     anchor: 'try',
     launch: {
@@ -77,9 +87,15 @@ const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
   webTrace: {
     name: 'Web Trace Viewer',
     tagline:
-      'Views the browser traces the Importer captures, stored as records on your FHIR server, and scrubs them so the shapes can be shared.',
+      'Views the browser traces the Importer captures, stored as records on your FHIR server, ' +
+      'and scrubs them so the shapes can be shared.',
     paragraphs: [
-      "The Importer is built so that writing a module for a new site is easy. This app stores the traces you capture as records on your FHIR server, where you can view and edit them. If you can scrub your data on device, it's easy enough to share the data shape with a developer or coding LLM. It replaces all your identifiers and data, with request and response shapes intact.",
+      'The Importer is built so that writing a module for a new site is easy. ' +
+        'This app stores the traces you capture as records on your FHIR server, ' +
+        'where you can view and edit them. ' +
+        "If you can scrub your data on device, it's easy enough to share the data shape " +
+        'with a developer or coding LLM. ' +
+        'It replaces all your identifiers and data, with request and response shapes intact.',
     ],
     anchor: 'developers',
     launch: {

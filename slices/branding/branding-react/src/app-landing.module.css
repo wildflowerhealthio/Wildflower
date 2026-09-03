@@ -61,17 +61,26 @@
   font-weight: var(--font-weight-4);
 }
 
-/* The connect menu sits on a raised card so the form reads as the action. */
+/*
+ * The connect menu sits on a card, on the design system's card surface so it
+ * matches every other card on the page's canvas. The menu fills the card's
+ * width: `ConnectMenu` sets no width of its own, so the column decides.
+ */
 .app-landing__action {
   padding: var(--space-9);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-3);
-  background-color: var(--color-raised);
+  background-color: var(--card-color-background);
 }
 
 @media (max-width: 768px) {
-  /* The connect menu stacks under the introduction. */
+  /* The connect menu stacks under the introduction, and its card loses the
+   * desktop inset so the form runs the full content width. */
   .app-landing {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-landing__action {
+    padding: var(--space-7);
   }
 }
