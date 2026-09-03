@@ -2,7 +2,7 @@ import { useState, type JSX, type SubmitEvent } from 'react'
 import { ErrorBanner, TextField } from 'react-tundraish'
 
 import { normalizeServerUrl, startStandaloneLaunch } from '../smart/standalone-launch.ts'
-import { DEFAULT_SERVER_PRESETS, type ServerPreset } from './server-presets.ts'
+import { DEFAULT_SERVER_PRESET_GROUPS, type ServerPresetGroup } from './server-presets.ts'
 
 import styles from './connect-menu.module.css'
 
@@ -17,8 +17,8 @@ interface ConnectMenuProps {
    * `readySmartClient()`. Shared with the EHR launch's callback.
    */
   readonly redirectUri: string
-  /** The one-click choices; defaults to {@link DEFAULT_SERVER_PRESETS}. */
-  readonly presets?: readonly ServerPreset[]
+  /** The one-click choices, grouped by server; defaults to {@link DEFAULT_SERVER_PRESET_GROUPS}. */
+  readonly presetGroups?: readonly ServerPresetGroup[]
 }
 
 /**
@@ -37,8 +37,9 @@ type ConnectState =
   | { readonly kind: 'error'; readonly message: string }
 
 /**
- * The standalone connect menu: pick a FHIR server (a preset or a typed URL) and
- * start a Standalone SMART App Launch against it.
+ * The standalone connect menu: launch buttons grouped under each known server's
+ * name and address, then, last, a free-entry URL for any other server. Picking one starts a
+ * Standalone SMART App Launch against it.
  *
  * @remarks
  * The free-entry input is a plain `type="text"` with its own validation via
@@ -46,12 +47,15 @@ type ConnectState =
  * validation that blocks the submit handler before it runs, which would mask our
  * own message. An `unreachable` probe (CORS/network) surfaces as an error with
  * the menu still available to retry — never a silent open-access connection.
+ *
+ * The heading is an `h2`: the menu sits inside an app's landing page, whose
+ * `h1` is the app's name.
  */
 const ConnectMenu = ({
   clientId,
   scope,
   redirectUri,
-  presets = DEFAULT_SERVER_PRESETS,
+  presetGroups = DEFAULT_SERVER_PRESET_GROUPS,
 }: ConnectMenuProps): JSX.Element => {
   const [state, setState] = useState<ConnectState>({ kind: 'idle' })
   const [url, setUrl] = useState('')
@@ -94,25 +98,32 @@ const ConnectMenu = ({
 
   return (
     <section className={styles['connect']}>
-      <h1 className="text-heading-3">Connect to a FHIR server</h1>
+      <h2 className={styles['connect__heading']}>Connect to a FHIR server</h2>
 
-      <div className={styles['presets']}>
-        {presets.map((preset) => (
-          <button
-            key={preset.url}
-            type="button"
-            className="button-2"
-            disabled={launching}
-            onClick={(): void => {
-              connectTo(preset.url)
-            }}
-          >
-            {preset.label}
-          </button>
-        ))}
-      </div>
+      {presetGroups.map((group) => (
+        <section key={group.name} className={styles['group']} aria-label={group.name}>
+          <h3 className={styles['group__name']}>{group.name}</h3>
+          <span className={styles['group__address']}>{group.address}</span>
+          <div className={styles['group__presets']}>
+            {group.presets.map((preset) => (
+              <button
+                key={preset.url}
+                type="button"
+                className="button-2"
+                disabled={launching}
+                onClick={(): void => {
+                  connectTo(preset.url)
+                }}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        </section>
+      ))}
 
-      <form className={styles['form']} onSubmit={onSubmit}>
+      <form className={styles['group']} onSubmit={onSubmit} aria-label="Any other server">
+        <h3 className={styles['group__name']}>Any other server</h3>
         <TextField
           label="FHIR server URL"
           type="text"
@@ -128,7 +139,11 @@ const ConnectMenu = ({
         </div>
       </form>
 
-      {state.kind === 'error' && <ErrorBanner error={state.message} />}
+      {state.kind === 'error' && (
+        <div className={styles['error']}>
+          <ErrorBanner error={state.message} />
+        </div>
+      )}
     </section>
   )
 }

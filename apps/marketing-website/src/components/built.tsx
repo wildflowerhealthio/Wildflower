@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { sectionRootPath } from 'branding-core'
+import { APP_DESCRIPTIONS, sectionRootPath } from 'branding-core'
 
 import { AppRow } from './app-row.tsx'
 import { Launcher } from './launcher.tsx'
@@ -10,11 +10,14 @@ import layout from './layout.module.css'
 /**
  * "Building on an open personal health record" — the two patient-facing
  * apps, presented as things that exist rather than products being sold. The
- * Synthesized Health Viewer intentionally has no launcher: there is no
- * public route for it yet (add one in the same pattern when a route
- * appears).
+ * Medication Viewer's copy is the shared `APP_DESCRIPTIONS` entry its own
+ * landing page renders. The Synthesized Health Viewer intentionally has no
+ * launcher: there is no public route for it yet (add one in the same pattern
+ * when a route appears).
  */
 function Built(): JSX.Element {
+  const medications = APP_DESCRIPTIONS.medications
+
   return (
     <section className={layout['section']} id="built">
       <div className={layout['column']}>
@@ -32,39 +35,31 @@ function Built(): JSX.Element {
         </div>
         <div className={`${rows['rows']} ${rows['rows--after-intro']}`}>
           <AppRow
-            title="Medication Viewer"
-            status="Status: in use"
+            title={medications.name}
+            status={medications.status}
+            paragraphs={medications.paragraphs}
             placeholderLabel="screenshot — prescription list"
             launcher={
               <Launcher
                 href={sectionRootPath('medications')}
-                label="Open the Medication Viewer"
-                note="View the medications for a patient on any FHIR server, including our demo"
+                label={medications.launch.label}
+                note={medications.launch.note}
               />
             }
-          >
-            My prescriptions are chaotic. My most reliable refill reminder is noticing a bottle is
-            empty. This viewer shows all my prescriptions, arranged the way I need them: countdowns
-            to refill day and alarming red text.
-            <br />
-            <br />
-            Once you've got all of your medications in an app, other things become really easy, like
-            checking for interactions or seeing if any drug companies have a program that'll give
-            you a discount.
-          </AppRow>
+          />
           <AppRow
             title="Synthesized Health Viewer"
             status="Status: demo, rough edges"
+            paragraphs={[
+              "I'm on medications that require lab monitoring to make sure I've got a therapeutic dose, " +
+                "to watch for side effects, and to make sure my blood isn't poisoning me.",
+              'This tool plots data from several sources on one chart, ' +
+                'and an on-device AI model can answer questions. ' +
+                "Because sometimes it's unclear how exactly my dose is affecting my levels, " +
+                'and if that new medication is having a meaningful effect on my liver enzymes.',
+            ]}
             placeholderLabel="screenshot — meds and labs timeline"
-          >
-            I'm on medications that require lab monitoring to make sure I've got a therapeutic dose,
-            to watch for side effects, and to make sure my blood isn't poisoning me.&nbsp;
-            <br />
-            <br />
-            This tool plots data from several sources on one chart, and an on-device AI model can
-            answer questions. Because sometimes it's unclear how exactly my dose is affecting my
-            levels, and if that new medication is having a meaningful effect on my liver enzymes.
-          </AppRow>
+          />
         </div>
       </div>
     </section>

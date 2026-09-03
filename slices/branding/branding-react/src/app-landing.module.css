@@ -1,0 +1,128 @@
+/*
+ * The standalone landing layout. Three blocks — the lede (name + tagline),
+ * the action (connect menu), and the story (paragraphs + link) — placed by
+ * named grid areas: two columns with the action beside both text blocks,
+ * collapsing to one column with the action between them. Type roles mirror
+ * the homepage's app rows (`apps/marketing-website/src/components/
+ * app-row.module.css`) so the landing page and the homepage row read as the
+ * same thing: body copy on the second neutral tone, the homepage's text-link
+ * call to action as the link.
+ */
+
+.app-landing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'lede action'
+    'story action';
+  gap: var(--space-8) clamp(var(--space-9), 4vw, var(--space-12));
+  align-items: start;
+}
+
+.app-landing__lede {
+  grid-area: lede;
+  display: grid;
+  gap: var(--space-6);
+}
+
+.app-landing__action {
+  grid-area: action;
+}
+
+.app-landing__story {
+  grid-area: story;
+  display: grid;
+  gap: var(--space-6);
+  justify-items: start;
+}
+
+.app-landing__title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: clamp(var(--font-size-6), 3vw, var(--font-size-8));
+  font-weight: var(--font-weight-4);
+  line-height: var(--line-height-2);
+  letter-spacing: var(--letter-spacing-1);
+}
+
+.app-landing__tagline {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-4);
+  line-height: var(--line-height-5);
+}
+
+.app-landing__story > p {
+  margin: 0;
+  color: var(--color-neutral-2);
+  line-height: var(--line-height-5);
+}
+
+/* The landing-only how-to: a hairline-separated block, like the connect menu's groups. */
+.app-landing__guide {
+  display: grid;
+  gap: var(--space-6);
+  margin-top: var(--space-3);
+  padding-top: var(--space-9);
+  border-top: 1px solid var(--color-divider);
+}
+
+.app-landing__guide-title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
+}
+
+.app-landing__steps {
+  display: grid;
+  gap: var(--space-5);
+  margin: 0;
+  padding-left: var(--space-9);
+  color: var(--color-neutral-2);
+  line-height: var(--line-height-5);
+}
+
+.app-landing__guide-note {
+  margin: 0;
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+}
+
+/* A plain text link, sized as body copy: it leads sideways to the homepage, not deeper. */
+.app-landing__more {
+  font-size: var(--font-size-4);
+}
+
+/*
+ * The connect menu sits on a card, on the design system's card surface so it
+ * matches every other card on the page's canvas. The menu fills the card's
+ * width: `ConnectMenu` sets no width of its own, so the column decides.
+ */
+.app-landing__action {
+  padding: var(--space-9);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  background-color: var(--card-color-background);
+}
+
+@media (max-width: 768px) {
+  /* One column: the connect card sits under the tagline, before the story,
+   * and loses the desktop inset so the form runs the full content width. */
+  .app-landing {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'lede'
+      'action'
+      'story';
+    row-gap: var(--space-9);
+  }
+
+  .app-landing__action {
+    padding: var(--space-7);
+  }
+}

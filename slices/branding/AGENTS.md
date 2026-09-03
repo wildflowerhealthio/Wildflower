@@ -11,12 +11,30 @@ consumes only `AppIcon` and `branding-core`'s section paths from here.)
 - **`branding-core`** — the pure layer: site origin, section paths (the deploy
   contract matching `apps/github-pages/src/assembly.ts`), navigation link data
   as discriminated unions, the `NavContext` type that lets the same header/footer
-  resolve hrefs differently on the marketing site vs. from an app, and the
-  `anchorHref` resolver.
+  resolve hrefs differently on the marketing site vs. from an app, the
+  `anchorHref` resolver, and `APP_DESCRIPTIONS` — the per-app introduction copy
+  (name, tagline, status, first-person "why" paragraphs, homepage anchor, and
+  launch link text) that the homepage's app rows and each app's landing page
+  both render.
 - **`branding-react`** — the browser UI adapter: `SiteHeader`, `SiteFooter`,
-  `BrandBar`, `AppIcon`, `useHref`, and the `branding-react/styles.css` layout
-  tokens (`--content-max-width`, `--page-padding-x`, `--header-height`,
+  `BrandBar`, `AppIcon`, `AppLanding`, and the `branding-react/styles.css`
+  layout tokens (`--content-max-width`, `--page-padding-x`, `--header-height`,
   `--radius-pill`).
+
+## The app landing page
+
+A SMART app visited without a launch (`apps/medications-app`,
+`apps/importer-web`, `apps/web-trace`) renders `SiteHeader`, then `AppLanding`
+inside `main`, then `SiteFooter`. `AppLanding` takes the app's `AppSectionId`
+and its connect menu as children: it lays out the introduction from
+`APP_DESCRIPTIONS` on the left (the app name as the page's `h1`, the tagline,
+the paragraphs, and a "Read about the rest of the project" link to the app's
+homepage anchor via `anchorHref(fromApp, …)`) beside the connect menu on the
+right, stacking on phones. The status line is homepage-only: an app someone
+has reached is usable. The optional `guide` (a titled, numbered how-to with a
+closing note — the Importer's HAR-capture steps) is the reverse: landing-only,
+rendered after the paragraphs, never on the homepage. The connect menu's own heading is an `h2` for this
+reason.
 
 ## The NavContext idea
 
@@ -57,6 +75,11 @@ the assembled GitHub Pages site. The core tests pin the exact five paths.
 - **`--header-height` must stay in sync with `.site-header__inner` padding and
   the icon size.** The derivation is `padding-top + padding-bottom + icon-size +
 border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
+- **App copy lives in `APP_DESCRIPTIONS`, not in a component.** The homepage
+  rows (`built`, `possible-today`, `dev-tools`) and the apps' landing pages
+  render the same entries; editing the copy in one component would fork the
+  story. The Synthesized Health Viewer and the server-docs row are not SMART
+  apps with a landing page, so their copy stays inline on the homepage.
 - **`SiteHeader`/`SiteFooter` are the apps' chrome; the homepage's is its
   own.** The homepage redesign gave `apps/marketing-website` a page-local
   header and footer (its design demands them), so it imports only `AppIcon`

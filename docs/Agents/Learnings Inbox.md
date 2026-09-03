@@ -136,3 +136,12 @@ creating a new local copy.
 **Discovered during**: claude/medication-interaction-checking-mxcbbl (DDInter compact catalog)
 **Learning**: The root `vp check` formats every JSON file, so a large generated data file (a compact array-of-arrays catalog) would be pretty-printed into hundreds of thousands of lines on the next `vp fmt` / pre-commit. Add its path to `fmt.ignorePatterns` in the root `vite.config.ts` next to the OpenAPI snapshot entry, and say so in the slice docs so nobody hand-formats it.
 **Suggested destination**: Strategies
+
+## Shared app copy lives in `branding-core`, and the connect menu's heading is an `h2`
+
+The homepage's per-app rows and each SMART app's standalone landing page render
+the same `APP_DESCRIPTIONS` entry from `branding-core`, so a copy edit in one
+place changes both. `branding-react`'s `AppLanding` takes the app's
+`AppSectionId` and the connect menu as children; it owns the page's `h1` (the
+app name), which is why `fhir-r4-react`'s `ConnectMenu` heading is an `h2`. A
+test that looks for the connect page's heading by level should use level 2.

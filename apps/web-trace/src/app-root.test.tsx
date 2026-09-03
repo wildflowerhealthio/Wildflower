@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import { APP_DESCRIPTIONS } from 'branding-core'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -74,6 +75,23 @@ describe('AppRoot', () => {
 
     // App is absent
     expect(screen.queryByTestId('mock-app')).toBeNull()
+  })
+
+  it('should introduce the Web Trace Viewer beside the connect menu when not launched', () => {
+    // Arrange & Act
+    render(<AppRoot launched={false} />)
+
+    // Assert — the app name is the page's only h1 (the site header's brand is a div)
+    const headings = screen.getAllByRole('heading', { level: 1 })
+    expect(headings).toHaveLength(1)
+    expect(headings[0].textContent).toBe(APP_DESCRIPTIONS.webTrace.name)
+
+    // The homepage's copy and a link to its section sit in the same main region
+    const main = within(screen.getByRole('main'))
+    expect(main.getByText(APP_DESCRIPTIONS.webTrace.paragraphs[0])).toBeDefined()
+    expect(main.getByRole('link', { name: /rest of the project/ }).getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/#developers'
+    )
   })
 
   it('should not render SiteHeader or SiteFooter when launched', () => {

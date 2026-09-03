@@ -29,16 +29,13 @@
   min-height: 100vh;
 }
 
-/* The ConnectMenu area: fills the column and centres the menu within it. */
+/* The landing area (intro beside the ConnectMenu): fills the column. */
 .connect-page {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
   width: 100%;
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: var(--space-11) var(--page-padding-x);
+  padding: var(--space-13) var(--page-padding-x);
 }
 
 .subtitle {

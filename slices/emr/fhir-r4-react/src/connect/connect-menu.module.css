@@ -1,23 +1,63 @@
+/*
+ * The connect menu slots into an app's landing page, so it borrows that page's
+ * vocabulary rather than tundra's app-chrome classes: the title role of the
+ * homepage's app rows, quiet mono side-notes for server addresses, and
+ * hairline rules between server groups (the homepage's only section
+ * separator). It fills whatever column the landing page gives it; the
+ * container sets the width.
+ */
+
 .connect {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
-  max-width: 28rem;
 }
 
-.presets {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+.connect__heading {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
 }
 
-.form {
+/* Each server group (and the free-entry form) is a hairline-separated block. */
+.group {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-6);
+  margin-top: var(--space-9);
+  padding-top: var(--space-9);
+  border-top: 1px solid var(--color-divider);
+}
+
+.group__name {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-4);
+}
+
+/* Quiet mono side-note under the group name: the server address. */
+.group__address {
+  margin-top: calc(-1 * var(--space-4));
+  color: var(--color-neutral-5);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  overflow-wrap: anywhere;
+}
+
+.group__presets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
 }
 
 .actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.error {
+  margin-top: var(--space-9);
 }
