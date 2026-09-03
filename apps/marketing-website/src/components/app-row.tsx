@@ -11,29 +11,33 @@ import layout from './layout.module.css'
  *
  * @param title - The `h3` row title.
  * @param status - The mono status line (omitted for infrastructure rows).
+ * @param paragraphs - Body copy, one entry per paragraph, in reading order.
  * @param placeholderLabel - Mono label inside the striped screenshot slot.
  * @param launcher - An optional `<Launcher>` block after the body copy.
- * @param children - Body copy paragraph content.
  */
 function AppRow({
   title,
   status,
+  paragraphs,
   placeholderLabel,
   launcher,
-  children,
 }: {
   readonly title: ReactNode
   readonly status?: string
+  readonly paragraphs: readonly string[]
   readonly placeholderLabel: string
   readonly launcher?: ReactNode
-  readonly children: ReactNode
 }): JSX.Element {
   return (
     <article className={styles['app-row']}>
       <div className={styles['app-row__text']}>
         <h3 className={styles['app-row__title']}>{title}</h3>
         {status === undefined ? null : <span className={layout['mono-note']}>{status}</span>}
-        <p className={styles['app-row__body']}>{children}</p>
+        <div className={styles['app-row__body']}>
+          {paragraphs.map((paragraph) => (
+            <p key={paragraph}>{paragraph}</p>
+          ))}
+        </div>
         {launcher}
       </div>
       <div className={styles['app-row__slot']}>

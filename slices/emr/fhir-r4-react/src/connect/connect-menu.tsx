@@ -46,6 +46,9 @@ type ConnectState =
  * validation that blocks the submit handler before it runs, which would mask our
  * own message. An `unreachable` probe (CORS/network) surfaces as an error with
  * the menu still available to retry — never a silent open-access connection.
+ *
+ * The heading is an `h2`: the menu sits inside an app's landing page, whose
+ * `h1` is the app's name.
  */
 const ConnectMenu = ({
   clientId,
@@ -94,7 +97,7 @@ const ConnectMenu = ({
 
   return (
     <section className={styles['connect']}>
-      <h1 className="text-heading-3">Connect to a FHIR server</h1>
+      <h2 className="text-heading-3">Connect to a FHIR server</h2>
 
       <div className={styles['presets']}>
         {presets.map((preset) => (

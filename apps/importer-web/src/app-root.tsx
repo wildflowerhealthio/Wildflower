@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BrandBar, fromApp, SiteFooter, SiteHeader } from 'branding-react'
+import { AppLanding, BrandBar, fromApp, SiteFooter, SiteHeader } from 'branding-react'
 import { ConnectMenu } from 'fhir-r4-react/connect'
 import { buildSmartQueryClient, shouldCompleteSmartLaunch } from 'fhir-r4-react/smart'
 import { useState, type JSX } from 'react'
@@ -20,7 +20,8 @@ import styles from './app.module.css'
  * @remarks
  * The app root is both the OAuth redirect target and the standalone landing
  * page. A callback in the URL (`code`/`state`, no `error`) means there is a
- * handshake to complete, so render `App`; otherwise show the connect menu.
+ * handshake to complete, so render `App`; otherwise show the landing page:
+ * the Importer's introduction (`AppLanding`) beside the connect menu.
  *
  * The decision is latched on mount rather than derived per render: fhirclient's
  * `oauth2.ready()` strips `code`/`state` from the URL once the exchange
@@ -52,11 +53,13 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
         <>
           <SiteHeader nav={fromApp} />
           <main className={styles['app']}>
-            <ConnectMenu
-              clientId={standaloneSmartConfig.clientId}
-              scope={standaloneSmartConfig.scope}
-              redirectUri={redirectUri}
-            />
+            <AppLanding app="importer">
+              <ConnectMenu
+                clientId={standaloneSmartConfig.clientId}
+                scope={standaloneSmartConfig.scope}
+                redirectUri={redirectUri}
+              />
+            </AppLanding>
           </main>
           <SiteFooter nav={fromApp} />
         </>

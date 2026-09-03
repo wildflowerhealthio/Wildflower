@@ -19,10 +19,16 @@
   letter-spacing: var(--letter-spacing-2);
 }
 
+/* Paragraphs are separated by about one blank line, as the essay is. */
 .app-row__body {
-  margin: 0;
+  display: grid;
+  gap: var(--space-10);
   color: var(--color-neutral-2);
   line-height: var(--line-height-5);
+}
+
+.app-row__body > p {
+  margin: 0;
 }
 
 /* Striped placeholder awaiting a real 4:3 screenshot. */

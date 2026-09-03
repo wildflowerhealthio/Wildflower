@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import { APP_DESCRIPTIONS } from 'branding-core'
 import type { ConnectMenuProps } from 'fhir-r4-react/connect'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -75,6 +76,23 @@ describe('AppRoot', () => {
 
     // No App in the standalone branch
     expect(screen.queryByTestId('app-stub')).toBeNull()
+  })
+
+  it('should introduce the Importer beside the connect menu when not launched', () => {
+    // Arrange / Act
+    render(<AppRoot launched={false} />)
+
+    // Assert — the app name is the page's only h1 (the site header's brand is a div)
+    const headings = screen.getAllByRole('heading', { level: 1 })
+    expect(headings).toHaveLength(1)
+    expect(headings[0].textContent).toBe(APP_DESCRIPTIONS.importer.name)
+
+    // The homepage's copy and a link to its section sit in the same main region
+    const main = within(screen.getByRole('main'))
+    expect(main.getByText(APP_DESCRIPTIONS.importer.paragraphs[0])).toBeDefined()
+    expect(main.getByRole('link', { name: /Read the whole story/ }).getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/#try'
+    )
   })
 
   it('should hand ConnectMenu the standalone client config and this root as its redirect', () => {

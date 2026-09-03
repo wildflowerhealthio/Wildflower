@@ -1,0 +1,77 @@
+/*
+ * The standalone landing layout: introduction on the left, the connect menu
+ * on the right. Type roles mirror the homepage's app rows
+ * (`apps/marketing-website/src/components/app-row.module.css`) so the app's
+ * landing page and its homepage row read as the same thing: the title on
+ * `--font-size-5`, body copy on the second neutral tone, and quiet mono
+ * side-notes on the fifth.
+ */
+
+.app-landing {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(var(--space-9), 4vw, var(--space-12));
+  align-items: start;
+}
+
+.app-landing__intro {
+  display: grid;
+  gap: var(--space-6);
+  justify-items: start;
+}
+
+.app-landing__title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: clamp(var(--font-size-6), 3vw, var(--font-size-8));
+  font-weight: var(--font-weight-4);
+  line-height: var(--line-height-2);
+  letter-spacing: var(--letter-spacing-1);
+}
+
+.app-landing__tagline {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-4);
+  line-height: var(--line-height-5);
+}
+
+.app-landing__prose {
+  display: grid;
+  gap: var(--space-6);
+}
+
+.app-landing__prose > p {
+  margin: 0;
+  color: var(--color-neutral-2);
+  line-height: var(--line-height-5);
+}
+
+/* Quiet mono side-note: the status line. */
+.app-landing__mono-note {
+  color: var(--color-neutral-5);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+}
+
+/* The homepage's only call-to-action shape: a bold text link with an arrow. */
+.app-landing__more {
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-4);
+}
+
+/* The connect menu sits on a raised card so the form reads as the action. */
+.app-landing__action {
+  padding: var(--space-9);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  background-color: var(--color-raised);
+}
+
+@media (max-width: 768px) {
+  /* The connect menu stacks under the introduction. */
+  .app-landing {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

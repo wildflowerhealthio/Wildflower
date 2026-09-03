@@ -2,7 +2,7 @@
   "name": "branding-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Shared Wildflower chrome for every web surface: the full site header and footer (marketing site), a slim brand bar (SMART apps and Tauri), the app icon, and layout tokens.",
+  "description": "Shared Wildflower chrome for every web surface: the full site header and footer, the SMART apps' landing layout (introduction beside the connect menu), a slim brand bar (SMART apps and Tauri), the app icon, and layout tokens.",
   "type": "module",
   "exports": {
     ".": {
