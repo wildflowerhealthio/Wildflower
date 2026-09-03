@@ -15,7 +15,7 @@ import type { JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { catalogs } from './catalogs.ts'
-import { interactionCatalog } from './interaction-catalog.ts'
+import { getInteractionCatalog } from './interaction-catalog.ts'
 import styles from './app.module.css'
 
 /** The two views the header toggle switches between. */
@@ -152,7 +152,7 @@ export const App = (): JSX.Element => {
         {tab === 'medications' ? (
           <MedicationsView medications={views} province={province} catalogs={catalogs} />
         ) : (
-          <InteractionsView medications={activeMedications} catalog={interactionCatalog} />
+          <InteractionsView medications={activeMedications} catalog={getInteractionCatalog()} />
         )}
         {isFetchingNextPage && <p className={styles.status}>Loading more…</p>}
         {medications.isFetchNextPageError && <ErrorLine error={medications.error} />}

@@ -38,6 +38,7 @@ const primaryTokens = (name: string): readonly string[] => tokenize(name.replace
  * removed.
  */
 const matchCatalogDrugs = (name: string, catalog: InteractionCatalog): readonly CatalogMatch[] => {
+  const nameTokens = tokenize(name)
   const contained: CatalogMatch[] = []
   const partial: CatalogMatch[] = []
   for (const drug of catalog.drugs) {
@@ -45,7 +46,7 @@ const matchCatalogDrugs = (name: string, catalog: InteractionCatalog): readonly 
     if (confidence === null) continue
     if (confidenceRank[confidence] >= confidenceRank.strong) {
       contained.push({ drug, confidence })
-    } else if (isTokenSubset(tokenize(name), primaryTokens(drug.name))) {
+    } else if (isTokenSubset(nameTokens, primaryTokens(drug.name))) {
       partial.push({ drug, confidence })
     }
   }

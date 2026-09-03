@@ -1,9 +1,11 @@
 import { severityBetween } from 'medication-interaction-core'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { interactionCatalog } from './interaction-catalog.ts'
+import { getInteractionCatalog } from './interaction-catalog.ts'
 
 describe('bundled interaction catalog', () => {
+  const interactionCatalog = getInteractionCatalog()
+
   test('attributes DDInter as its source', () => {
     expect(interactionCatalog.source.name).toBe('DDInter')
     expect(interactionCatalog.source.url).toBe('https://ddinter.scbdd.com/')
