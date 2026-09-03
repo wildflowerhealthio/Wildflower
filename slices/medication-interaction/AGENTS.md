@@ -36,11 +36,12 @@ hand-edited file fails to decode rather than misreporting. The converter throws
 on an unrecognised `Level` or a missing column instead of dropping rows — the
 data is expected to be exactly DDInter's.
 
-**The bundled file is currently the empty placeholder** (`drugs: []`,
-`pairs: []`): DDInter's host was unreachable from the agent environment when
-the slice was written. The view shows a "no interaction database is bundled"
-notice until the real file lands. Two things to verify against the live site
-when it does: DDInter's licence / terms (record them here), and the
+The bundled file holds DDInter's full set (all eight per-ATC download CSVs —
+A, B, D, H, L, P, R, V), retrieved 2026-09-03: 1,939 drugs and 160,235 pairs.
+Of `nonDrugNames`, the data carries Activated charcoal, Caffeine, Cannabidiol,
+Ethanol and Nicotine; Alcohol, Grapefruit, Grapefruit juice, Tobacco, Food and
+Cannabis are not present under those names. Two things remain to verify
+against the live site: DDInter's licence / terms (record them here), and the
 drug-detail URL scheme assumed in `ddinterDrugUrl` (`ddinter.ts`).
 
 ## Rules

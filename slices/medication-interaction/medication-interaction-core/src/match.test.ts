@@ -36,6 +36,20 @@ describe('matchCatalogDrugs', () => {
   it('should resolve nothing for an empty name', () => {
     expect(matchCatalogDrugs('', catalog)).toEqual([])
   })
+
+  it('should drop a partial match that only holds via a parenthetical qualifier', () => {
+    // "Insulin human (zinc)" is a zinc-formulated insulin, not a zinc product;
+    // the bare "Zinc" entry must not resolve to it.
+    expect(matchCatalogDrugs('Zinc', catalog)).toEqual([])
+  })
+
+  it('should still partial-match when the shared token is outside parentheses', () => {
+    // The qualifier here disambiguates a route, not a different drug, so the
+    // bare name should still find it.
+    const matches = matchCatalogDrugs('Oxymetazoline', catalog)
+    expect(matches.map((match) => match.drug.name)).toEqual(['Oxymetazoline (nasal)'])
+    expect(matches[0]?.confidence).toBe('partial')
+  })
 })
 
 // Helpers
@@ -47,6 +61,8 @@ const catalog = decodeDdinterFile({
     ['DDInter2', 'Acetaminophen'],
     ['DDInter3', 'Codeine'],
     ['DDInter4', 'Iron sucrose'],
+    ['DDInter5', 'Insulin human (zinc)'],
+    ['DDInter6', 'Oxymetazoline (nasal)'],
   ],
   pairs: [],
 })

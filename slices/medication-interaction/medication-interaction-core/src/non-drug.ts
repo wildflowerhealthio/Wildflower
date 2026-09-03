@@ -16,6 +16,7 @@ const nonDrugNames: readonly string[] = [
   'Food',
   'Cannabis',
   'Cannabidiol',
+  'Activated charcoal',
 ]
 
 export { nonDrugNames }

@@ -16,7 +16,7 @@ const otcDrugs: readonly OtcDrug[] = [
   { name: 'Acetaminophen', brands: 'Tylenol' },
   { name: 'Ibuprofen', brands: 'Advil, Motrin' },
   { name: 'Naproxen', brands: 'Aleve' },
-  { name: 'Aspirin', brands: 'Aspirin, ASA' },
+  { name: 'Acetylsalicylic acid', brands: 'Aspirin, ASA' },
   { name: 'Diclofenac', brands: 'Voltaren Emulgel' },
   // Allergy
   { name: 'Diphenhydramine', brands: 'Benadryl, Nytol' },
@@ -54,9 +54,11 @@ const otcDrugs: readonly OtcDrug[] = [
   { name: 'Nicotine', brands: 'Nicorette, Nicoderm' },
   // Supplements / natural health products
   { name: "St. John's Wort" },
+  { name: 'Vitamin A' },
   { name: 'Vitamin D' },
-  { name: 'Vitamin C' },
+  { name: 'Ascorbic acid', brands: 'Vitamin C' },
   { name: 'Vitamin E' },
+  { name: 'Niacin' },
   { name: 'Calcium' },
   { name: 'Magnesium' },
   { name: 'Iron' },
@@ -65,11 +67,20 @@ const otcDrugs: readonly OtcDrug[] = [
   { name: 'Omega-3 fatty acids', brands: 'fish oil' },
   { name: 'Ginkgo' },
   { name: 'Glucosamine' },
+  { name: 'Valerian' },
+  { name: 'Echinacea' },
+  { name: 'Licorice' },
+  { name: 'Garlic' },
+  { name: 'Ginger' },
+  { name: 'Kava' },
+  { name: 'Goldenseal' },
   // Topical / other
   { name: 'Hydrocortisone', brands: 'Cortate' },
   { name: 'Minoxidil', brands: 'Rogaine' },
   { name: 'Miconazole', brands: 'Micozole, Monistat' },
   { name: 'Clotrimazole', brands: 'Canesten' },
+  { name: 'Benzocaine', brands: 'Anbesol, Orajel' },
+  { name: 'Salicylic acid', brands: 'Compound W' },
 ]
 
 export { type OtcDrug, otcDrugs }
