@@ -335,7 +335,7 @@ const Row = ({
       className={styles.link}
       href={row.url}
       target="_blank"
-      rel="noreferrer"
+      rel="noopener noreferrer"
       aria-label={`Details for ${row.drug.name} on DDInter`}
     >
       Details
@@ -591,7 +591,7 @@ export const InteractionsView = ({
       <div className={styles.intro}>
         <p className={styles.disclaimer}>
           Interactions listed by{' '}
-          <a href={catalog.source.url} target="_blank" rel="noreferrer">
+          <a href={catalog.source.url} target="_blank" rel="noopener noreferrer">
             {catalog.source.name}
           </a>
           . For information only — talk to a pharmacist or prescriber before changing any
