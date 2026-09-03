@@ -1,23 +1,97 @@
-/* Fills whatever column the landing page gives it; the container sets the width. */
+/*
+ * The connect menu slots into an app's landing page, so it borrows that page's
+ * vocabulary rather than tundra's app-chrome classes: the title role and
+ * secondary prose tone of the homepage's app rows, hairline rules between
+ * server groups (the homepage's only section separator), and quiet mono
+ * side-notes for machine strings like server addresses. It fills whatever
+ * column the landing page gives it; the container sets the width.
+ */
+
 .connect {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
 }
 
-.presets {
+.connect__heading {
+  margin: 0 0 var(--space-6);
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
+}
+
+/* Explanatory copy steps down one text tone, as the homepage's section intros do. */
+.connect__prose {
+  margin: 0;
+  color: var(--color-neutral-3);
+  line-height: var(--line-height-5);
+}
+
+/* Each server group (and the free-entry form) is a hairline-separated block. */
+.group {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
+  gap: var(--space-5);
+  margin-top: var(--space-9);
+  padding-top: var(--space-9);
+  border-top: 1px solid var(--color-divider);
+}
+
+.group__name {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-4);
+}
+
+/* Quiet mono side-note: the server address. */
+.group__address {
+  color: var(--color-neutral-5);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  overflow-wrap: anywhere;
+}
+
+.group__presets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  margin-top: var(--space-3);
+}
+
+/* One shortcut: the button on the left, what it does beside it. */
+.preset {
+  display: grid;
+  grid-template-columns: minmax(11rem, auto) minmax(0, 1fr);
+  gap: var(--space-6);
+  align-items: center;
+}
+
+.preset__description {
+  margin: 0;
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
 }
 
 .form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
+  gap: var(--space-6);
 }
 
 .actions {
   display: flex;
   justify-content: flex-end;
+}
+
+.error {
+  margin-top: var(--space-9);
+}
+
+@media (max-width: 480px) {
+  /* Narrow columns stack the description under its button. */
+  .preset {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-3);
+  }
 }

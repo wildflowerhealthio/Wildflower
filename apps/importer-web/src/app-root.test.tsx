@@ -90,7 +90,7 @@ describe('AppRoot', () => {
     // The homepage's copy and a link to its section sit in the same main region
     const main = within(screen.getByRole('main'))
     expect(main.getByText(APP_DESCRIPTIONS.importer.paragraphs[0])).toBeDefined()
-    expect(main.getByRole('link', { name: /Read the whole story/ }).getAttribute('href')).toBe(
+    expect(main.getByRole('link', { name: /rest of the project/ }).getAttribute('href')).toBe(
       'https://wildflowerhealth.io/#try'
     )
   })

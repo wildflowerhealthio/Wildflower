@@ -1,10 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type * as StandaloneLaunch from '../smart/standalone-launch.ts'
 import { ConnectMenu } from './connect-menu.tsx'
-import { DEFAULT_SERVER_PRESETS } from './server-presets.ts'
+import { DEFAULT_SERVER_PRESET_GROUPS, DEFAULT_SERVER_PRESETS } from './server-presets.ts'
 
 // Stub only the launch seam; keep the real `normalizeServerUrl` so the
 // validation path under test is the production one, not a mock.
@@ -32,14 +32,23 @@ afterEach(() => {
 })
 
 describe('ConnectMenu', () => {
-  it('renders one button per preset and launches against the picked preset URL', async () => {
+  it('renders one button per preset, under its server group, and launches against the picked preset URL', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    // A button for every default preset (assertions derive from the presets
-    // themselves, so editing the list never silently outdates this test).
-    for (const preset of DEFAULT_SERVER_PRESETS) {
-      expect(screen.getByRole('button', { name: preset.label })).toBeDefined()
+    // Every default group is a labelled region carrying its description, and
+    // holds a button per preset whose accessible name is just the label — the
+    // description sits beside the button, not inside it. Assertions derive
+    // from the presets themselves, so editing the list never silently
+    // outdates this test.
+    for (const group of DEFAULT_SERVER_PRESET_GROUPS) {
+      const region = within(screen.getByRole('region', { name: group.name }))
+      expect(region.getByText(group.description)).toBeDefined()
+      expect(region.getByText(group.address)).toBeDefined()
+      for (const preset of group.presets) {
+        expect(region.getByRole('button', { name: preset.label })).toBeDefined()
+        expect(region.getByText(preset.description)).toBeDefined()
+      }
     }
 
     // Act — pick a non-Local preset and launch against exactly its URL.

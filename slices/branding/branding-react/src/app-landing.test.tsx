@@ -41,7 +41,7 @@ describe('AppLanding', () => {
     )
   })
 
-  it('should render the tagline, the status when present, and every paragraph', () => {
+  it('should render the tagline and every paragraph, but never the homepage status line', () => {
     fc.assert(
       fc.property(appSectionIdArb, (app) => {
         // Arrange
@@ -54,11 +54,11 @@ describe('AppLanding', () => {
           </AppLanding>
         )
 
-        // Assert
+        // Assert — an app someone has reached is usable, so no status caveat
         const intro = within(screen.getByRole('region', { name }))
         expect(intro.getByText(tagline)).toBeDefined()
         if (status !== undefined) {
-          expect(intro.getByText(status)).toBeDefined()
+          expect(intro.queryByText(status)).toBeNull()
         }
         for (const paragraph of paragraphs) {
           expect(intro.getByText(paragraph)).toBeDefined()
@@ -70,7 +70,7 @@ describe('AppLanding', () => {
     )
   })
 
-  it("should link back to the app's section on the marketing site as an absolute URL", () => {
+  it("should link to the rest of the project at the app's section on the marketing site", () => {
     fc.assert(
       fc.property(appSectionIdArb, (app) => {
         // Arrange / Act
@@ -81,7 +81,7 @@ describe('AppLanding', () => {
         )
 
         // Assert
-        const link = screen.getByRole('link', { name: /Read the whole story/ })
+        const link = screen.getByRole('link', { name: /Read about the rest of the project/ })
         expect(link.getAttribute('href')).toBe(anchorHref(fromApp, APP_DESCRIPTIONS[app].anchor))
         expect(link.getAttribute('href')).toMatch(/^https:\/\/wildflowerhealth\.io\/#/)
 
@@ -91,19 +91,37 @@ describe('AppLanding', () => {
     )
   })
 
-  it('should render its children as the action area beside the intro', () => {
-    // Arrange / Act
-    render(
-      <AppLanding app="medications">
-        <button type="button">Connect</button>
-      </AppLanding>
-    )
+  it('should place its children after the tagline and before the story, in DOM order', () => {
+    fc.assert(
+      fc.property(appSectionIdArb, (app) => {
+        // Arrange
+        const { tagline, paragraphs } = APP_DESCRIPTIONS[app]
 
-    // Assert — the action area is outside the intro region
-    const button = screen.getByRole('button', { name: 'Connect' })
-    expect(
-      within(screen.getByRole('region', { name: 'Medication Viewer' })).queryByRole('button')
-    ).toBeNull()
-    expect(button).toBeDefined()
+        // Act
+        render(
+          <AppLanding app={app}>
+            <button type="button">Connect</button>
+          </AppLanding>
+        )
+
+        // Assert — on one column this is the reading order: what the app is,
+        // then the way in, then the longer story
+        const button = screen.getByRole('button', { name: 'Connect' })
+        const taglineNode = screen.getByText(tagline)
+        const firstParagraph = screen.getByText(paragraphs[0])
+        expect(follows(button, taglineNode)).toBe(true)
+        expect(follows(firstParagraph, button)).toBe(true)
+
+        cleanup()
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
   })
 })
+
+// Helpers
+
+/** Whether `later` comes after `earlier` in document order. */
+function follows(later: Element, earlier: Element): boolean {
+  return (earlier.compareDocumentPosition(later) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0
+}

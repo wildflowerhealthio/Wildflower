@@ -19,13 +19,14 @@ interface AppDescription {
   /** One plain sentence saying what the app does. */
   readonly tagline: string
   /**
-   * The honest mono status line (`Status: in use`). Absent for apps the
-   * homepage presents as infrastructure rather than as a finished app.
+   * The honest mono status line (`Status: in use`) on the homepage row only;
+   * the landing page omits it, since an app someone has reached is usable.
+   * Absent for apps the homepage presents as infrastructure.
    */
   readonly status?: string
   /** First-person paragraphs on why the app exists, in reading order. */
   readonly paragraphs: readonly string[]
-  /** The homepage section that tells the app's story in full. */
+  /** The homepage section the app's row sits in, where the rest of the project is. */
   readonly anchor: MarketingAnchor
   /** The homepage's text-link call to action into the app. */
   readonly launch: {

@@ -28,10 +28,11 @@ A SMART app visited without a launch (`apps/medications-app`,
 inside `main`, then `SiteFooter`. `AppLanding` takes the app's `AppSectionId`
 and its connect menu as children: it lays out the introduction from
 `APP_DESCRIPTIONS` on the left (the app name as the page's `h1`, the tagline,
-the status line, the paragraphs, and a "Read the whole story" link to the
-app's homepage anchor via `anchorHref(fromApp, …)`) beside the connect menu
-on the right, stacking on phones. The connect menu's own heading is an `h2`
-for this reason.
+the paragraphs, and a "Read about the rest of the project" link to the app's
+homepage anchor via `anchorHref(fromApp, …)`) beside the connect menu on the
+right, stacking on phones. The status line is homepage-only: an app someone
+has reached is usable. The connect menu's own heading is an `h2` for this
+reason.
 
 ## The NavContext idea
 

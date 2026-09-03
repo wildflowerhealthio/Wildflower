@@ -1,20 +1,37 @@
 /*
- * The standalone landing layout: introduction on the left, the connect menu
- * on the right. Type roles mirror the homepage's app rows
- * (`apps/marketing-website/src/components/app-row.module.css`) so the app's
- * landing page and its homepage row read as the same thing: the title on
- * `--font-size-5`, body copy on the second neutral tone, and quiet mono
- * side-notes on the fifth.
+ * The standalone landing layout. Three blocks — the lede (name + tagline),
+ * the action (connect menu), and the story (paragraphs + link) — placed by
+ * named grid areas: two columns with the action beside both text blocks,
+ * collapsing to one column with the action between them. Type roles mirror
+ * the homepage's app rows (`apps/marketing-website/src/components/
+ * app-row.module.css`) so the landing page and the homepage row read as the
+ * same thing: body copy on the second neutral tone, the homepage's text-link
+ * call to action as the link.
  */
 
 .app-landing {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: clamp(var(--space-9), 4vw, var(--space-12));
+  grid-template-rows: auto 1fr;
+  grid-template-areas:
+    'lede action'
+    'story action';
+  gap: var(--space-8) clamp(var(--space-9), 4vw, var(--space-12));
   align-items: start;
 }
 
-.app-landing__intro {
+.app-landing__lede {
+  grid-area: lede;
+  display: grid;
+  gap: var(--space-6);
+}
+
+.app-landing__action {
+  grid-area: action;
+}
+
+.app-landing__story {
+  grid-area: story;
   display: grid;
   gap: var(--space-6);
   justify-items: start;
@@ -36,29 +53,15 @@
   line-height: var(--line-height-5);
 }
 
-.app-landing__prose {
-  display: grid;
-  gap: var(--space-6);
-}
-
-.app-landing__prose > p {
+.app-landing__story > p {
   margin: 0;
   color: var(--color-neutral-2);
   line-height: var(--line-height-5);
 }
 
-/* Quiet mono side-note: the status line. */
-.app-landing__mono-note {
-  color: var(--color-neutral-5);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-2);
-  line-height: var(--line-height-4);
-}
-
-/* The homepage's only call-to-action shape: a bold text link with an arrow. */
+/* A plain text link, sized as body copy: it leads sideways to the homepage, not deeper. */
 .app-landing__more {
   font-size: var(--font-size-4);
-  font-weight: var(--font-weight-4);
 }
 
 /*
@@ -74,10 +77,16 @@
 }
 
 @media (max-width: 768px) {
-  /* The connect menu stacks under the introduction, and its card loses the
-   * desktop inset so the form runs the full content width. */
+  /* One column: the connect card sits under the tagline, before the story,
+   * and loses the desktop inset so the form runs the full content width. */
   .app-landing {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
+    grid-template-areas:
+      'lede'
+      'action'
+      'story';
+    row-gap: var(--space-9);
   }
 
   .app-landing__action {
