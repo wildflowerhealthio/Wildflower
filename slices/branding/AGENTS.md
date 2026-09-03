@@ -60,7 +60,7 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
 - **`SiteHeader`/`SiteFooter` are the apps' chrome; the homepage's is its
   own.** The homepage redesign gave `apps/marketing-website` a page-local
   header and footer (its design demands them), so it imports only `AppIcon`
-  and `branding-core` from here. A change to the chrome the *apps* render —
+  and `branding-core` from here. A change to the chrome the _apps_ render —
   header, footer, brand bar, icon, layout tokens — is still made in this
   slice, not in an app. The anchors in `HEADER_NAV_LINKS`/`FOOTER_*_LINKS`
   must exist as `id`s on the homepage (`branding-core`'s `MARKETING_ANCHORS`
