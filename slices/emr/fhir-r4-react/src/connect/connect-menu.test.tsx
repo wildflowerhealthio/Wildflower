@@ -36,18 +36,14 @@ describe('ConnectMenu', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    // Every default group is a labelled region carrying its description, and
-    // holds a button per preset whose accessible name is just the label — the
-    // description sits beside the button, not inside it. Assertions derive
-    // from the presets themselves, so editing the list never silently
-    // outdates this test.
+    // Every default group is a region labelled with the server's name that
+    // shows the server's address and holds a button per preset. Assertions derive from the presets
+    // themselves, so editing the list never silently outdates this test.
     for (const group of DEFAULT_SERVER_PRESET_GROUPS) {
       const region = within(screen.getByRole('region', { name: group.name }))
-      expect(region.getByText(group.description)).toBeDefined()
       expect(region.getByText(group.address)).toBeDefined()
       for (const preset of group.presets) {
         expect(region.getByRole('button', { name: preset.label })).toBeDefined()
-        expect(region.getByText(preset.description)).toBeDefined()
       }
     }
 
@@ -97,13 +93,13 @@ describe('ConnectMenu', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    await user.click(screen.getByRole('button', { name: 'Local' }))
+    await user.click(screen.getByRole('button', { name: 'Launch' }))
 
     await waitFor(() => {
       expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080\/fhir-r4/i)).toBeDefined()
     })
     // The menu is still there — the launch was attempted, and a retry is possible.
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('button', { name: 'Local' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Launch' })).toBeDefined()
   })
 })

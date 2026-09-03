@@ -37,10 +37,9 @@ type ConnectState =
   | { readonly kind: 'error'; readonly message: string }
 
 /**
- * The standalone connect menu: explains that the app reads from whichever FHIR
- * server the visitor points it at, then offers shortcuts grouped by server
- * (each with what picking it does) and a free-entry URL for any other server.
- * Picking one starts a Standalone SMART App Launch against it.
+ * The standalone connect menu: launch buttons grouped under each known server's
+ * name and address, then, last, a free-entry URL for any other server. Picking one starts a
+ * Standalone SMART App Launch against it.
  *
  * @remarks
  * The free-entry input is a plain `type="text"` with its own validation via
@@ -50,8 +49,7 @@ type ConnectState =
  * the menu still available to retry — never a silent open-access connection.
  *
  * The heading is an `h2`: the menu sits inside an app's landing page, whose
- * `h1` is the app's name. Each shortcut's description sits beside its button,
- * not inside it, so the button's accessible name stays the short label.
+ * `h1` is the app's name.
  */
 const ConnectMenu = ({
   clientId,
@@ -101,47 +99,31 @@ const ConnectMenu = ({
   return (
     <section className={styles['connect']}>
       <h2 className={styles['connect__heading']}>Connect to a FHIR server</h2>
-      <p className={styles['connect__prose']}>
-        This app has no records of its own. It reads from whichever FHIR server you point it at:
-        pick one below and you will be sent to that server to sign in and approve access, then
-        brought back here with the record loaded. The shortcuts fill in the server address for you.
-      </p>
 
       {presetGroups.map((group) => (
         <section key={group.name} className={styles['group']} aria-label={group.name}>
           <h3 className={styles['group__name']}>{group.name}</h3>
           <span className={styles['group__address']}>{group.address}</span>
-          <p className={styles['connect__prose']}>{group.description}</p>
           <div className={styles['group__presets']}>
             {group.presets.map((preset) => (
-              <div key={preset.url} className={styles['preset']}>
-                <button
-                  type="button"
-                  className="button-2"
-                  disabled={launching}
-                  onClick={(): void => {
-                    connectTo(preset.url)
-                  }}
-                >
-                  {preset.label}
-                </button>
-                <p className={styles['preset__description']}>{preset.description}</p>
-              </div>
+              <button
+                key={preset.url}
+                type="button"
+                className="button-2"
+                disabled={launching}
+                onClick={(): void => {
+                  connectTo(preset.url)
+                }}
+              >
+                {preset.label}
+              </button>
             ))}
           </div>
         </section>
       ))}
 
-      <form
-        className={`${styles['group']} ${styles['form']}`}
-        onSubmit={onSubmit}
-        aria-label="Any other server"
-      >
+      <form className={styles['group']} onSubmit={onSubmit} aria-label="Any other server">
         <h3 className={styles['group__name']}>Any other server</h3>
-        <p className={styles['connect__prose']}>
-          Paste the base URL of any FHIR R4 server. If it supports SMART you will be sent there to
-          sign in; if it is an open server, the app connects to it directly.
-        </p>
         <TextField
           label="FHIR server URL"
           type="text"
