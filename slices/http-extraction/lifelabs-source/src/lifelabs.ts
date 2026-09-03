@@ -1,0 +1,32 @@
+/**
+ * Constants for the LifeLabs MyCareCompass portal
+ * (`mycarecompass.lifelabs.com`): the FHIR identifier and coding systems this
+ * source stamps onto the resources it synthesizes from the portal's bespoke
+ * (non-FHIR) `GetAnalyticSummary` JSON.
+ *
+ * @remarks
+ * These system URIs are best-guess namespaces under the portal host, *not*
+ * captured from a canonical registry. LifeLabs publishes no OID for its
+ * internal test codes (`testCode`, e.g. `TR10477-8W`), so
+ * {@link LIFELABS_TEST_SYSTEM} is a namespaced placeholder — `code.text` (the
+ * human-readable analyte name) is the load-bearing field and the coding is
+ * supplementary. Reconcile against a real system URL if one is confirmed.
+ */
+
+/** Base URL every LifeLabs identifier/coding system is built from. */
+const SYSTEM_BASE = 'https://mycarecompass.lifelabs.com/fhir'
+
+/** LifeLabs identifier systems for the ids the portal JSON carries. */
+const LifeLabsIdentifierSystem = {
+  /**
+   * The portal's numeric patient id (`entity.selectedPatient`, also each
+   * `entity.patients[].value`) — the id every synthesized Observation's
+   * `subject` references.
+   */
+  PatientId: `${SYSTEM_BASE}/identifier/patient-id`,
+} as const
+
+/** The coding system for LifeLabs' internal test codes (`analytics[].testCode`). */
+const LIFELABS_TEST_SYSTEM = `${SYSTEM_BASE}/test-code`
+
+export { LifeLabsIdentifierSystem, LIFELABS_TEST_SYSTEM }

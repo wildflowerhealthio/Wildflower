@@ -1,0 +1,76 @@
+{
+  "entity": {
+    "testItems": [
+      { "code": "All", "name": "Show all test results" },
+      { "code": "TR10477-8W", "name": "Complete Blood Count" }
+    ],
+    "visitDateRange": [
+      { "code": "All", "name": "All", "text": "All" },
+      { "code": "Last30Days", "name": "D|30", "text": "Last 30 Days" }
+    ],
+    "analytics": [
+      {
+        "abnormal": false,
+        "collectionDate": "/Date(1696606500000-0400)/",
+        "collectionPostedDate": "2023-10-06T11:35:00",
+        "referenceRange": null,
+        "testCode": "TRCHEM",
+        "testItemId": "VFJDSEVNX19SRUY7",
+        "testItemName": "Reference Interval Note:",
+        "testName": "Reference Interval Note",
+        "testResultValue": "See report for reference interval notes.",
+        "abnormalFlag": null,
+        "sectionId": "GENERAL",
+        "testGroup": "GENERAL",
+        "organization": "OLIFELABS"
+      },
+      {
+        "abnormal": false,
+        "collectionDate": "/Date(1779297900000-0400)/",
+        "collectionPostedDate": "2026-05-20T13:25:00",
+        "referenceRange": "4.0 - 11.0",
+        "testCode": "TR10477-8W",
+        "testItemId": "VFIxMDQ3Ny04V19fNjY5MC0yOw==",
+        "testItemName": "WBC",
+        "testName": "Complete Blood Count",
+        "testResultValue": "7.5",
+        "abnormalFlag": null,
+        "sectionId": "HAEM",
+        "testGroup": "HAEM1",
+        "organization": "OLIFELABS"
+      },
+      {
+        "abnormal": true,
+        "collectionDate": "/Date(1779297900000-0400)/",
+        "collectionPostedDate": "2026-05-20T13:25:00",
+        "referenceRange": "120- 160",
+        "testCode": "TR10477-8W",
+        "testItemId": "VFIxMDQ3Ny04V19fNzE4LTc7",
+        "testItemName": "Hemoglobin",
+        "testName": "Complete Blood Count",
+        "testResultValue": "175",
+        "abnormalFlag": "H",
+        "sectionId": "HAEM",
+        "testGroup": "HAEM1",
+        "organization": "OLIFELABS"
+      }
+    ],
+    "selectedPatient": "31653025",
+    "selectedReports": null,
+    "patients": [
+      {
+        "text": "Test Patient",
+        "value": "31653025",
+        "isPrimary": true,
+        "ageCategory": "Adult",
+        "isSharedPatient": false,
+        "patientMap": [31653025]
+      }
+    ]
+  },
+  "caseId": null,
+  "isFailed": false,
+  "message": "Succeeded",
+  "statusCode": 5000,
+  "additionalData": null
+}
