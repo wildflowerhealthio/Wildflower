@@ -1,0 +1,46 @@
+{
+  "name": "lifelabs-source",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The LifeLabs source: the AnalyticSummary response kind that synthesizes a FHIR R4 Patient plus one Observation per lab analytic from the MyCareCompass portal's bespoke GetAnalyticSummary JSON, with its own tryRecognize, and the assembled lifeLabsSource descriptor consumers extract with. No DOM, no fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/http-extraction/lifelabs-source"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*"
+  }
+}
