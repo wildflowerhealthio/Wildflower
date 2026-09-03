@@ -9,7 +9,7 @@ export {
 
 export { coversProvince, SponsoredDrug, SponsorProgram, sponsorProgramLabels } from './sponsor.ts'
 
-// The matcher fundamentals live in `medication-matching-core`; re-exported so
+// The matcher fundamentals live in `medication-core`; re-exported so
 // this package's public surface is unchanged for its consumers.
 export {
   dedupeMedicationsByName,
@@ -17,7 +17,7 @@ export {
   type Medication,
   normalizeName,
   tokenize,
-} from 'medication-matching-core'
+} from 'medication-core'
 
 export { type DrugMatch, matchDrug, type MatchField, matchMedication } from './match.ts'
 

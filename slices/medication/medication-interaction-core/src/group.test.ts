@@ -1,7 +1,7 @@
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import type { Medication } from 'medication-matching-core'
-import { tokenize } from 'medication-matching-core'
+import type { Medication } from 'medication-core'
+import { tokenize } from 'medication-core'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { type DdinterFile, decodeDdinterFile, type InteractionCatalog } from './ddinter.ts'

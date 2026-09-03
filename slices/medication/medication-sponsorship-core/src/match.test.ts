@@ -1,7 +1,7 @@
 import { Arbitrary } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { normalizeName } from 'medication-matching-core'
+import { normalizeName } from 'medication-core'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { matchDrug, matchMedication } from './match.ts'

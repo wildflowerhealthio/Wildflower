@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { normalizeName } from 'medication-matching-core'
+import { normalizeName } from 'medication-core'
 
 import { nonDrugNames } from './non-drug.ts'
 import { type Severity, SeverityCode, severityFromCode } from './severity.ts'

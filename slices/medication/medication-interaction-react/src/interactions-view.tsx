@@ -2,6 +2,7 @@ import type { JSX, ReactNode } from 'react'
 import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { cn } from 'react-kitchen-sink'
 
+import type { Medication } from 'medication-core'
 import {
   findInteractions,
   type InteractionCatalog,
@@ -18,7 +19,6 @@ import {
   tallyTotal,
   worstSeverity,
 } from 'medication-interaction-core'
-import type { Medication } from 'medication-matching-core'
 
 import { PrescriberAvatar } from './prescriber-avatar.tsx'
 import { SeverityBadge } from './severity-badge.tsx'

@@ -24,12 +24,12 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "medication-matching-core": "workspace:*",
+    "medication-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "medication-matching-core": "workspace:*"
+    "medication-core": "workspace:*"
   }
 }

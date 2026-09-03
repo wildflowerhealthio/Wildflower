@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import type { Medication } from 'medication-matching-core'
+import type { Medication } from 'medication-core'
 
 import { Province } from './province.ts'
 

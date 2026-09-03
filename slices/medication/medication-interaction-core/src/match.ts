@@ -4,7 +4,7 @@ import {
   type MatchConfidence,
   scoreName,
   tokenize,
-} from 'medication-matching-core'
+} from 'medication-core'
 
 import type { CatalogDrug, InteractionCatalog } from './ddinter.ts'
 

@@ -1,9 +1,4 @@
-import {
-  confidenceRank,
-  type MatchConfidence,
-  type Medication,
-  scoreName,
-} from 'medication-matching-core'
+import { confidenceRank, type MatchConfidence, type Medication, scoreName } from 'medication-core'
 
 import type { SponsoredDrug } from './sponsor.ts'
 
@@ -19,7 +14,7 @@ interface DrugMatch {
 /**
  * Best match of a medication against a single drug, preferring the brand name
  * over the generic at equal confidence. `null` when neither name matches.
- * Confidence is `medication-matching-core`'s {@link scoreName} grade.
+ * Confidence is `medication-core`'s {@link scoreName} grade.
  */
 const matchDrug = (med: Medication, drug: SponsoredDrug): DrugMatch | null => {
   const brand = scoreName(med.displayName, drug.brandName)

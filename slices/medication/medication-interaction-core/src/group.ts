@@ -1,4 +1,4 @@
-import type { Medication } from 'medication-matching-core'
+import type { Medication } from 'medication-core'
 
 import {
   type CatalogDrug,

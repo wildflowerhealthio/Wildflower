@@ -27,8 +27,8 @@
     "fast-check": "catalog:",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
+    "medication-core": "workspace:*",
     "medication-interaction-core": "workspace:*",
-    "medication-matching-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-tundraish": "workspace:*",
@@ -36,8 +36,8 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "medication-core": "workspace:*",
     "medication-interaction-core": "workspace:*",
-    "medication-matching-core": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*"
