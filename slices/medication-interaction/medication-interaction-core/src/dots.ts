@@ -36,57 +36,16 @@ const compareTallies = (a: SeverityTally, b: SeverityTally): number => {
   return 0
 }
 
-/** The most dots a group header shows before it switches to a proportional mix. */
-const dotCap = 14
-
-/**
- * The severities to paint as a group header's dot strip, most severe first.
- *
- * @param tally - The group's interaction counts
- * @param cap - The most dots to return (defaults to {@link dotCap}); at least
- *   the number of severities present in `tally`
- * @returns One severity per dot, Major dots first
- *
- * @remarks
- * Within `cap`, one dot per interaction. Past it, every severity present keeps
- * one dot and the remaining slots are shared by largest remainder (ties most
- * severe first), so a rare Major stays visible where a fill-then-truncate
- * would hide the tail.
- */
-const allocateDots = (tally: SeverityTally, cap: number = dotCap): readonly Severity[] => {
-  const present = severityCodes.filter((severity) => tally[severity] > 0)
-  const total = tallyTotal(tally)
-  const perSeverity = new Map<Severity, number>()
-  if (total <= cap) {
-    for (const severity of present) perSeverity.set(severity, tally[severity])
-  } else {
-    const spare = cap - present.length
-    const shares = present.map((severity) => {
-      const exact = (tally[severity] / total) * spare
-      const whole = Math.floor(exact)
-      return { severity, whole, remainder: exact - whole }
-    })
-    let left = spare - shares.reduce((sum, share) => sum + share.whole, 0)
-    // Stable sort: equal remainders keep their most-severe-first order.
-    for (const share of shares.toSorted((x, y) => y.remainder - x.remainder)) {
-      if (left === 0) break
-      share.whole += 1
-      left -= 1
-    }
-    for (const share of shares) perSeverity.set(share.severity, share.whole + 1)
-  }
-  return present.flatMap((severity) =>
-    Array.from<Severity>({ length: perSeverity.get(severity) ?? 0 }).fill(severity)
-  )
-}
+/** The most severe severity present in a tally, or `null` when it is empty. */
+const worstSeverity = (tally: SeverityTally): Severity | null =>
+  severityCodes.find((severity) => tally[severity] > 0) ?? null
 
 export {
   addTallies,
-  allocateDots,
   compareTallies,
-  dotCap,
   emptyTally,
   type SeverityTally,
   tallyOf,
   tallyTotal,
+  worstSeverity,
 }

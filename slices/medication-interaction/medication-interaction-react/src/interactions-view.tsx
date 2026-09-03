@@ -1,9 +1,8 @@
 import type { JSX, ReactNode } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { cn } from 'react-kitchen-sink'
 
 import {
-  allocateDots,
-  dotCap,
   findInteractions,
   type InteractionCatalog,
   type InteractionRow,
@@ -12,16 +11,21 @@ import {
   type OtcCategory,
   type OtcCategoryGroup,
   otcCategories,
+  type OtcDrug,
   type OtcDrugGroup,
   type Severity,
   severityLabels,
-  type SeverityTally,
   tallyTotal,
+  worstSeverity,
 } from 'medication-interaction-core'
 import type { Medication } from 'medication-matching-core'
 
+import { PrescriberAvatar } from './prescriber-avatar.tsx'
 import { SeverityBadge } from './severity-badge.tsx'
 import styles from './interactions-view.module.css'
+
+/** Resolves a medication to its prescriber's display name, or `null` if unknown. */
+type PrescriberLookup = (medication: Medication) => string | null
 
 interface InteractionsViewProps {
   /** The medications to check — the caller decides which statuses qualify. */
@@ -29,6 +33,12 @@ interface InteractionsViewProps {
   readonly catalog: InteractionCatalog
   /** The OTC categories to check against; defaults to the curated list. */
   readonly otc?: readonly OtcCategory[] | undefined
+  /**
+   * Prescriber lookup for the "Between your medications" section: supplies each
+   * medication's prescriber avatar and lets a cross-prescriber interaction be
+   * flagged. Omitted (the default) hides avatars entirely.
+   */
+  readonly prescriberOf?: PrescriberLookup | undefined
 }
 
 /** `n` with its noun, pluralised with a plain `s` (or the given plural). */
@@ -44,19 +54,99 @@ const dotClass: Readonly<Record<Severity, string>> = {
   unknown: styles['dot-unknown'],
 }
 
-/** A severity-coloured dot; decorative, so hidden from assistive tech. */
-const Dot = ({
-  severity,
-  small = false,
-}: {
+/**
+ * One pip on a group header: an interacting counterpart, its worst severity, and
+ * — when set — a click that unfolds the counterpart it names, however deeply
+ * nested.
+ */
+interface Pip {
+  /** The counterpart named on hover (the other medication, or the OTC brand). */
+  readonly name: string
   readonly severity: Severity
-  readonly small?: boolean
-}): JSX.Element => (
-  <i
-    className={[styles.dot, dotClass[severity], small ? styles['dot-small'] : ''].join(' ')}
-    aria-hidden="true"
-  />
+  /** Reveal the item this pip stands for; the pip is a plain marker without it. */
+  readonly onActivate?: (() => void) | undefined
+}
+
+/** The most pips a header shows before the rest collapse into a `+N more` marker. */
+const pipCap = 12
+
+/** A severity-coloured dot; decorative, so hidden from assistive tech. */
+const Dot = ({ severity }: { readonly severity: Severity }): JSX.Element => (
+  <i className={[styles.dot, dotClass[severity]].join(' ')} aria-hidden="true" />
 )
+
+/** Keep a shown tooltip inside the viewport, offsetting its caret to compensate. */
+const clampTip = (tip: HTMLElement | null): void => {
+  if (tip === null) return
+  tip.style.setProperty('--tip-shift', '0px')
+  tip.style.setProperty('--caret-shift', '0px')
+  const rect = tip.getBoundingClientRect()
+  const margin = 8
+  let shift = 0
+  if (rect.right > window.innerWidth - margin) shift = window.innerWidth - margin - rect.right
+  else if (rect.left < margin) shift = margin - rect.left
+  if (shift !== 0) {
+    tip.style.setProperty('--tip-shift', `${shift}px`)
+    tip.style.setProperty('--caret-shift', `${shift}px`)
+  }
+}
+
+/**
+ * A named pip: a severity-coloured dot with a tooltip that names its counterpart
+ * on hover/focus (a small box with a down-caret, kept inside the page). When the
+ * pip can unfold its counterpart it is a button — a sibling of, never nested in,
+ * the card's toggle — carrying the name and severity as its accessible label.
+ * The tooltip is only in the DOM while shown, so hidden ones never widen the page.
+ */
+const PipDot = ({ pip, small }: { readonly pip: Pip; readonly small?: boolean }): JSX.Element => {
+  const [shown, setShown] = useState(false)
+  const tipRef = useRef<HTMLSpanElement | null>(null)
+  useLayoutEffect(() => {
+    if (shown) clampTip(tipRef.current)
+  }, [shown])
+  const show = useCallback(() => {
+    setShown(true)
+  }, [])
+  const hide = useCallback(() => {
+    setShown(false)
+  }, [])
+
+  const dot = (
+    <span
+      className={cn(styles.dot, dotClass[pip.severity], small && styles['dot-small'])}
+      aria-hidden="true"
+    />
+  )
+  const tip = shown ? (
+    <span ref={tipRef} className={styles.tip}>
+      {pip.name}
+    </span>
+  ) : null
+  const pipClass = cn(styles.pip, small && styles['pip-small'])
+  if (pip.onActivate === undefined) {
+    return (
+      <span className={pipClass} aria-hidden="true" onMouseEnter={show} onMouseLeave={hide}>
+        {dot}
+        {tip}
+      </span>
+    )
+  }
+  return (
+    <button
+      type="button"
+      className={pipClass}
+      onClick={pip.onActivate}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      aria-label={`${pip.name} — ${severityLabels[pip.severity]}`}
+    >
+      {dot}
+      {tip}
+    </button>
+  )
+}
 
 /** The always-visible key to the dot and badge colours. */
 const Legend = (): JSX.Element => (
@@ -72,33 +162,67 @@ const Legend = (): JSX.Element => (
 )
 
 /**
- * A group header's summary of its interactions as a strip of dots: one per
- * interaction up to {@link dotCap}, then a proportional mix (see
- * {@link allocateDots}) followed by the true total.
+ * A group header's summary as a strip of pips: one per interacting counterpart,
+ * most severe first, each naming that counterpart on hover and unfolding it on
+ * click. Past {@link pipCap} the remainder collapses into a `+N more` marker —
+ * the full set is still one disclosure away.
  */
-const DotStrip = ({
-  tally,
+const PipStrip = ({
+  pips,
   small,
 }: {
-  readonly tally: SeverityTally
+  readonly pips: readonly Pip[]
   readonly small?: boolean
 }): JSX.Element => {
-  const total = tallyTotal(tally)
+  const shown = pips.slice(0, pipCap)
+  const overflow = pips.length - shown.length
   return (
     <span className={styles.strip}>
-      {allocateDots(tally).map((severity, index) => (
-        // oxlint-disable-next-line react/no-array-index-key -- dots are identical and stateless; their position is their identity
-        <Dot key={index} severity={severity} small={small} />
+      {shown.map((pip) => (
+        <PipDot key={`${pip.name}:${pip.severity}`} pip={pip} small={small} />
       ))}
-      {total > dotCap && <span className={styles['strip-total']}>{total} total</span>}
+      {overflow > 0 && <span className={styles['strip-more']}>+{overflow} more</span>}
     </span>
   )
 }
+
+/**
+ * The pips for a group whose children are the patient's interacting medications;
+ * each unfolds the group it sits on (`onExpand`), revealing the rows.
+ */
+const rowPips = (rows: readonly InteractionRow[], onExpand: () => void): readonly Pip[] =>
+  rows.map((row) => ({
+    name: row.medication.displayName,
+    severity: row.severity,
+    onActivate: onExpand,
+  }))
+
+/** An OTC active labelled with its brands, e.g. `"Doxylamine (Unisom)"`. */
+const otcLabel = (entry: OtcDrug): string =>
+  entry.brands === undefined ? entry.name : `${entry.name} (${entry.brands})`
+
+/**
+ * The pips for an OTC category: one per interacting active, its worst severity,
+ * each unfolding the category and that specific active's nested card.
+ */
+const categoryPips = (
+  group: OtcCategoryGroup,
+  categoryKey: string,
+  expand: (...keys: readonly string[]) => void
+): readonly Pip[] =>
+  group.drugs.map((drug) => ({
+    name: otcLabel(drug.entry),
+    severity: worstSeverity(drug.tally) ?? 'unknown',
+    onActivate: () => {
+      expand(categoryKey, `${categoryKey}/${drug.entry.name}`)
+    },
+  }))
 
 /** Which groups are open, keyed by a stable id; nothing is open at first. */
 const useDisclosures = (): {
   readonly isOpen: (key: string) => boolean
   readonly toggle: (key: string) => void
+  readonly expand: (...keys: readonly string[]) => void
 } => {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set())
   const isOpen = useCallback((key: string) => open.has(key), [open])
@@ -109,7 +233,14 @@ const useDisclosures = (): {
       return next
     })
   }, [])
-  return { isOpen, toggle }
+  const expand = useCallback((...keys: readonly string[]) => {
+    setOpen((previous) => {
+      const next = new Set(previous)
+      for (const key of keys) next.add(key)
+      return next
+    })
+  }, [])
+  return { isOpen, toggle, expand }
 }
 
 interface GroupCardProps {
@@ -118,9 +249,11 @@ interface GroupCardProps {
   readonly name: string
   /** Muted text beside the name: brands, or the group's interaction count. */
   readonly aside?: string | undefined
-  /** Muted text right-aligned before the dots (level 2 only). */
+  /** Muted text right-aligned before the pips (level 2 only). */
   readonly meta?: string | undefined
-  readonly tally: SeverityTally
+  readonly pips: readonly Pip[]
+  /** A leading element before the name — the prescriber avatar in level 1. */
+  readonly leading?: ReactNode
   /** Level 2: the nested card inside an OTC category. */
   readonly nested?: boolean
   /** Rendered only while open. */
@@ -128,9 +261,10 @@ interface GroupCardProps {
 }
 
 /**
- * A collapsible group: a full-width header button carrying the name, a
- * summary and the dot strip, with the body rendered only while open so a
- * large report keeps a small DOM.
+ * A collapsible group. Only the left of the header — name, summary, avatar — is
+ * the disclosure toggle; the pip strip sits beside it as its own controls, so
+ * the two never nest. The body is rendered only while open, keeping a large
+ * report's DOM small.
  */
 const GroupCard = ({
   open,
@@ -138,23 +272,32 @@ const GroupCard = ({
   name,
   aside,
   meta,
-  tally,
+  pips,
+  leading,
   nested = false,
   children,
 }: GroupCardProps): JSX.Element => (
   <li className={nested ? styles['card-nested'] : styles.card}>
-    <button type="button" className={styles['card-header']} aria-expanded={open} onClick={onToggle}>
-      <span
-        className={open ? styles['triangle-open'] : styles['triangle-closed']}
-        aria-hidden="true"
-      />
-      <span className={styles['card-title']}>
-        <span className={nested ? styles['card-name-nested'] : styles['card-name']}>{name}</span>
-        {aside !== undefined && <span className={styles['card-aside']}>{aside}</span>}
-      </span>
-      {meta !== undefined && <span className={styles['card-meta']}>{meta}</span>}
-      <DotStrip tally={tally} small={nested} />
-    </button>
+    <div className={styles['card-header']}>
+      <button
+        type="button"
+        className={styles['card-toggle']}
+        aria-expanded={open}
+        onClick={onToggle}
+      >
+        <span
+          className={open ? styles['triangle-open'] : styles['triangle-closed']}
+          aria-hidden="true"
+        />
+        {leading}
+        <span className={styles['card-title']}>
+          <span className={nested ? styles['card-name-nested'] : styles['card-name']}>{name}</span>
+          {aside !== undefined && <span className={styles['card-aside']}>{aside}</span>}
+        </span>
+        {meta !== undefined && <span className={styles['card-meta']}>{meta}</span>}
+      </button>
+      <PipStrip pips={pips} small={nested} />
+    </div>
     {open && children}
   </li>
 )
@@ -162,12 +305,22 @@ const GroupCard = ({
 /**
  * The leaf: the medication on the far side, its worst severity, and a link to
  * the DDInter page of the drug that pair is listed on. The name column
- * ellipsises rather than wrapping, so a row never stacks.
+ * ellipsises rather than wrapping, so a row never stacks. An optional `leading`
+ * element (the prescriber avatar) sits before the name.
  */
-const Row = ({ row }: { readonly row: InteractionRow }): JSX.Element => (
+const Row = ({
+  row,
+  leading,
+}: {
+  readonly row: InteractionRow
+  readonly leading?: JSX.Element | undefined
+}): JSX.Element => (
   <li className={styles.row}>
-    <span className={styles['row-name']} title={row.medication.displayName}>
-      {row.medication.displayName}
+    <span className={styles['row-name-cell']}>
+      {leading}
+      <span className={styles['row-name']} title={row.medication.displayName}>
+        {row.medication.displayName}
+      </span>
     </span>
     <SeverityBadge severity={row.severity} />
     <a
@@ -193,6 +346,36 @@ const Rows = ({
     {rows.map((row) => (
       <Row key={row.medication.id} row={row} />
     ))}
+  </ul>
+)
+
+/**
+ * The rows of a "Between your medications" card: like {@link Rows}, but each
+ * leads with the far medication's prescriber avatar, ringed when that
+ * prescriber differs from the one this card sits under.
+ */
+const MedicationRows = ({
+  rows,
+  prescriberOf,
+  groupPrescriber,
+}: {
+  readonly rows: readonly InteractionRow[]
+  readonly prescriberOf: PrescriberLookup
+  readonly groupPrescriber: string | null
+}): JSX.Element => (
+  <ul className={styles.rows}>
+    {rows.map((row) => {
+      const prescriber = prescriberOf(row.medication)
+      const differs =
+        groupPrescriber !== null && prescriber !== null && prescriber !== groupPrescriber
+      return (
+        <Row
+          key={row.medication.id}
+          row={row}
+          leading={<PrescriberAvatar name={prescriber} ringed={differs} />}
+        />
+      )
+    })}
   </ul>
 )
 
@@ -225,37 +408,54 @@ const MedicationCard = ({
   group,
   open,
   onToggle,
+  onExpandSelf,
+  prescriberOf,
 }: {
   readonly group: MedicationGroup
   readonly open: boolean
   readonly onToggle: () => void
-}): JSX.Element => (
-  <GroupCard
-    open={open}
-    onToggle={onToggle}
-    name={group.medication.displayName}
-    aside={interactions(group.rows.length)}
-    tally={group.tally}
-  >
-    <Rows rows={group.rows} />
-  </GroupCard>
-)
+  readonly onExpandSelf: () => void
+  readonly prescriberOf?: PrescriberLookup | undefined
+}): JSX.Element => {
+  const groupPrescriber = prescriberOf?.(group.medication) ?? null
+  return (
+    <GroupCard
+      open={open}
+      onToggle={onToggle}
+      name={group.medication.displayName}
+      aside={interactions(group.rows.length)}
+      pips={rowPips(group.rows, onExpandSelf)}
+      leading={prescriberOf !== undefined && <PrescriberAvatar name={groupPrescriber} />}
+    >
+      {prescriberOf === undefined ? (
+        <Rows rows={group.rows} />
+      ) : (
+        <MedicationRows
+          rows={group.rows}
+          prescriberOf={prescriberOf}
+          groupPrescriber={groupPrescriber}
+        />
+      )}
+    </GroupCard>
+  )
+}
 
 const NonDrugCard = ({
   group,
   open,
   onToggle,
+  onExpandSelf,
 }: {
   readonly group: NonDrugGroup
   readonly open: boolean
   readonly onToggle: () => void
+  readonly onExpandSelf: () => void
 }): JSX.Element => (
   <GroupCard
     open={open}
     onToggle={onToggle}
     name={group.drug.name}
-    aside={`${group.rows.length} of your medications`}
-    tally={group.tally}
+    pips={rowPips(group.rows, onExpandSelf)}
   >
     <Rows rows={group.rows} />
   </GroupCard>
@@ -265,10 +465,12 @@ const OtcDrugCard = ({
   group,
   open,
   onToggle,
+  onExpandSelf,
 }: {
   readonly group: OtcDrugGroup
   readonly open: boolean
   readonly onToggle: () => void
+  readonly onExpandSelf: () => void
 }): JSX.Element => (
   <GroupCard
     open={open}
@@ -276,7 +478,7 @@ const OtcDrugCard = ({
     name={group.entry.name}
     aside={group.entry.brands}
     meta={`${group.rows.length} of your medications`}
-    tally={group.tally}
+    pips={rowPips(group.rows, onExpandSelf)}
     nested
   >
     <Rows rows={group.rows} nested />
@@ -287,10 +489,12 @@ const OtcCategoryCard = ({
   group,
   isOpen,
   toggle,
+  expand,
 }: {
   readonly group: OtcCategoryGroup
   readonly isOpen: (key: string) => boolean
   readonly toggle: (key: string) => void
+  readonly expand: (...keys: readonly string[]) => void
 }): JSX.Element => {
   const key = `c:${group.category.name}`
   return (
@@ -301,7 +505,7 @@ const OtcCategoryCard = ({
       }}
       name={group.category.name}
       aside={`${count(group.drugs.length, 'drug')} with potential interactions`}
-      tally={group.tally}
+      pips={categoryPips(group, key, expand)}
     >
       <ul className={styles['groups-nested']}>
         {group.drugs.map((drug) => {
@@ -314,6 +518,9 @@ const OtcCategoryCard = ({
               onToggle={() => {
                 toggle(drugKey)
               }}
+              onExpandSelf={() => {
+                expand(drugKey)
+              }}
             />
           )
         })}
@@ -325,29 +532,34 @@ const OtcCategoryCard = ({
 /**
  * The interactions report for a set of medications: three sections of
  * collapsible groups (each medication, each non-drug, each OTC category with
- * its actives nested) whose headers carry a severity dot strip and whose
- * rows, rendered only while open, name the far-side medication with a badge
- * and a "Details" link to DDInter. Computed via `medication-interaction-core`'s
- * {@link findInteractions}, memoized on its inputs; open state is local and
- * starts fully collapsed.
+ * its actives nested) whose headers carry a strip of named severity pips —
+ * hover names the counterpart, click unfolds it, however deeply nested — and
+ * whose rows, rendered only while open, name the far-side medication with a
+ * badge and a "Details" link to DDInter. Computed via
+ * `medication-interaction-core`'s {@link findInteractions}, memoized on its
+ * inputs; open state is local and starts fully collapsed.
  *
  * @remarks
- * An empty catalog renders a single notice instead of the sections. The
- * non-drug section explains itself when the catalog carries no non-drug
- * entries (DDInter is a drug–drug database), and any other empty section
- * keeps its heading with a "none listed" line.
+ * With {@link InteractionsViewProps.prescriberOf} supplied, the "Between your
+ * medications" section shows each medication's prescriber as an initials avatar
+ * and rings the avatar of any interaction whose two medications were prescribed
+ * by different doctors. An empty catalog renders a single notice instead of the
+ * sections. The non-drug section explains itself when the catalog carries no
+ * non-drug entries (DDInter is a drug–drug database), and any other empty
+ * section keeps its heading with a "none listed" line.
  */
 export const InteractionsView = ({
   medications,
   catalog,
   otc = otcCategories,
+  prescriberOf,
 }: InteractionsViewProps): JSX.Element => {
   const report = useMemo(
     () => findInteractions(medications, catalog, otc),
     [medications, catalog, otc]
   )
   const hasNonDrugEntries = useMemo(() => catalog.drugs.some((drug) => drug.nonDrug), [catalog])
-  const { isOpen, toggle } = useDisclosures()
+  const { isOpen, toggle, expand } = useDisclosures()
 
   if (catalog.drugs.length === 0) {
     return (
@@ -398,6 +610,10 @@ export const InteractionsView = ({
               onToggle={() => {
                 toggle(key)
               }}
+              onExpandSelf={() => {
+                expand(key)
+              }}
+              prescriberOf={prescriberOf}
             />
           )
         })}
@@ -425,6 +641,9 @@ export const InteractionsView = ({
               onToggle={() => {
                 toggle(key)
               }}
+              onExpandSelf={() => {
+                expand(key)
+              }}
             />
           )
         })}
@@ -444,6 +663,7 @@ export const InteractionsView = ({
             group={group}
             isOpen={isOpen}
             toggle={toggle}
+            expand={expand}
           />
         ))}
       </Section>
@@ -451,4 +671,4 @@ export const InteractionsView = ({
   )
 }
 
-export type { InteractionsViewProps }
+export type { InteractionsViewProps, PrescriberLookup }

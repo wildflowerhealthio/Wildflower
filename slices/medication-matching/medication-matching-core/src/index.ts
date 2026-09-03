@@ -8,6 +8,8 @@
  */
 export type { Medication } from './medication.ts'
 
+export { dedupeMedicationsByName } from './dedupe.ts'
+
 export { normalizeName, tokenize } from './normalize.ts'
 
 export { confidenceRank, isTokenSubset, type MatchConfidence, scoreName } from './score.ts'

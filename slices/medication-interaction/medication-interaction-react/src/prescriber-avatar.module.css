@@ -1,0 +1,59 @@
+/*
+ * Prescriber avatar: a small initials circle whose colour is hashed from the
+ * name so each doctor is visually stable. Shown only in the "Between your
+ * medications" section; a `ringed` variant flags a cross-prescriber pair. See
+ * `prescriber-avatar.tsx`.
+ */
+
+.avatar {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-3);
+  line-height: 1;
+  color: var(--color-on-accent);
+  user-select: none;
+}
+
+/*
+ * The accent ring, laid outside the fill with a background-coloured gap so it
+ * stays visible whatever hue the fill is.
+ */
+.ringed {
+  box-shadow:
+    0 0 0 2px var(--color-background),
+    0 0 0 4px var(--color-accent);
+}
+
+.hue-0 {
+  background: var(--color-blue-6);
+}
+
+.hue-1 {
+  background: var(--color-cyan-6);
+}
+
+.hue-2 {
+  background: var(--color-green-6);
+}
+
+.hue-3 {
+  background: var(--color-orange-6);
+}
+
+.hue-4 {
+  background: var(--color-pink-6);
+}
+
+.hue-5 {
+  background: var(--color-purple-6);
+}
+
+.hue-unknown {
+  background: var(--color-neutral-6);
+}

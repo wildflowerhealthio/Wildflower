@@ -10,8 +10,10 @@ support programs) and `medication-interaction` (DDInter drug interactions).
 - `medication-matching-core` — the pure layer, and currently the only package.
   The minimal `Medication` value type adapters map their resources onto,
   `normalizeName` / `tokenize` (markup, marks, diacritics and dosage tokens
-  stripped), and `scoreName` — the exact / strong / partial containment scoring
-  every consumer's matcher is built from. No DOM, no FHIR, no platform imports.
+  stripped), `scoreName` — the exact / strong / partial containment scoring
+  every consumer's matcher is built from — and `dedupeMedicationsByName`, which
+  collapses exact-name duplicates to the most recent (`authoredOn`) instance. No
+  DOM, no FHIR, no platform imports.
 
 ## Rules
 

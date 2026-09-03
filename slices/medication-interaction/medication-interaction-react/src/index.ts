@@ -1,4 +1,10 @@
-export { InteractionsView, type InteractionsViewProps } from './interactions-view.tsx'
+export {
+  InteractionsView,
+  type InteractionsViewProps,
+  type PrescriberLookup,
+} from './interactions-view.tsx'
+
+export { PrescriberAvatar, type PrescriberAvatarProps } from './prescriber-avatar.tsx'
 
 export { SeverityBadge, type SeverityBadgeProps } from './severity-badge.tsx'
 

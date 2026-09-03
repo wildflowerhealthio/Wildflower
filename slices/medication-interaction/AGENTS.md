@@ -17,13 +17,18 @@ actives nested inside.
   categories (`otcCategories`, each a name plus its `OtcDrug` actives) and
   non-drug names (`nonDrugNames`); `matchCatalogDrugs` (every ingredient of a
   name, via `medication-matching-core`'s scoring); `findInteractions`, the
-  grouped report; and the severity tally helpers plus `allocateDots`, the
-  capped dot-strip allocation the UI paints. No DOM, no FHIR, no platform
-  imports.
+  grouped report; and the severity tally helpers plus `worstSeverity`. No DOM,
+  no FHIR, no platform imports.
 - `medication-interaction-react` — browser UI: `InteractionsView` (three
-  sections of collapsible group cards with dot strips, rows only while a group
-  is open, severity `StatusBadge`, a "Details" link per row to DDInter) and
-  `SeverityBadge`. It takes the core `Medication` values; the FHIR
+  sections of collapsible group cards. A header is a disclosure toggle on the
+  left beside a strip of named severity pips — one per interacting counterpart,
+  each a button naming it on hover and unfolding it on click, however deeply
+  nested; the toggle and pips never nest. Rows show only while a group is open,
+  with a severity `StatusBadge` and a "Details" link per row to DDInter). With a
+  `prescriberOf` lookup it shows a
+  `PrescriberAvatar` per medication in the "Between your medications" section
+  and rings any cross-prescriber interaction. It takes the core `Medication`
+  values; the FHIR
   `MedicationRequest` adapter is `medication-sponsorship-react`'s, which the
   app already runs for the medications list.
 
@@ -70,9 +75,10 @@ drug-detail URL scheme assumed in `ddinterDrugUrl` (`ddinter.ts`).
 - Every list is in **severity-count order**: more Major first, ties by
   Moderate, then Minor, then Unknown, then name. Rows within a group are
   most-severe first, then name. `compareTallies` is the one comparator.
-- The dot strip caps at `dotCap` (14): past that, every severity present keeps
-  one dot and the rest are shared by largest remainder, so a rare Major stays
-  visible — never fill-then-truncate.
+- The pip strip is one pip per interacting counterpart (a card's other
+  medications, or a category's OTC actives), most severe first, capped at 12 in
+  the UI; the remainder collapses into a `+N more` marker. Because the lists are
+  already in severity-count order, the cap keeps the most severe.
 - Open/closed state is local to `InteractionsView`, keyed by medication id,
   catalog index, or category/entry name; nothing persists.
 - The compact JSON is excluded from formatting in the root `vite.config.ts`

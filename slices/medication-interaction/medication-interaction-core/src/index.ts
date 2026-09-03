@@ -3,7 +3,7 @@
  * bundled file into an {@link InteractionCatalog}, match a patient's
  * medications onto it, and report interactions as three sections of groups
  * (each of the patient's medications, each non-drug, each OTC category and
- * active) with severity tallies and the dot-strip allocation the UI paints.
+ * active) with the severity tallies the UI paints as pips.
  *
  * @packageDocumentation
  */
@@ -46,13 +46,12 @@ export { type OtcCategory, otcCategories, type OtcDrug } from './otc.ts'
 
 export {
   addTallies,
-  allocateDots,
   compareTallies,
-  dotCap,
   emptyTally,
   type SeverityTally,
   tallyOf,
   tallyTotal,
+  worstSeverity,
 } from './dots.ts'
 
 export { type CatalogMatch, matchCatalogDrugs } from './match.ts'

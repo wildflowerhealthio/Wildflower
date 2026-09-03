@@ -1,7 +1,9 @@
 /*
- * Interactions view: three sections of collapsible group cards. A header
- * carries a dot strip of the group's severity mix; rows (only while open) are
- * a name | badge | link grid that ellipsises the name rather than wrapping.
+ * Interactions view: three sections of collapsible group cards. A header is a
+ * toggle button on the left (the disclosure) beside a strip of named severity
+ * pips (one per interacting counterpart, each a button that unfolds it, with a
+ * hover tooltip). Rows (only while open) are a name | badge | link grid that
+ * ellipsises the name rather than wrapping.
  * Tundra's `text-heading-2` for section headings, `--font-size-2` in
  * `--color-neutral-5` for every secondary line; the badge is a design-system
  * `StatusBadge` and the dots read the same tundra ramps.
@@ -45,18 +47,80 @@
   color: var(--color-neutral-3);
 }
 
-/* Dots: 7px in the legend and level-1 strips, 6px in nested strips. */
+/* Dots: 10px in the legend and level-1 strips, 8px in nested strips. */
 .dot {
   display: block;
   flex: none;
-  width: 7px;
-  height: 7px;
+  width: 10px;
+  height: 10px;
   border-radius: 999px;
 }
 
 .dot-small {
-  width: var(--space-3);
-  height: var(--space-3);
+  width: var(--space-4);
+  height: var(--space-4);
+}
+
+/*
+ * A pip: the dot plus a hover/focus tooltip naming its counterpart. When it can
+ * unfold that counterpart it is a <button>; either way it anchors the tooltip.
+ */
+.pip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  line-height: 0;
+  border-radius: 999px;
+}
+
+button.pip {
+  cursor: pointer;
+}
+
+button.pip:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+/* The tooltip box: a small dark card with a down-caret, shown at once on hover. */
+/*
+ * The tooltip box + down-caret. Rendered (in the DOM) only while its pip is
+ * hovered/focused, so hidden tooltips never widen the page; a small layout
+ * effect then nudges a shown box back inside the viewport via `--tip-shift`,
+ * with the caret offset the opposite way (`--caret-shift`) so it still points
+ * at the pip.
+ */
+.tip {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(calc(-50% + var(--tip-shift, 0px)));
+  z-index: 20;
+  max-width: min(260px, calc(100vw - 16px));
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-2);
+  background: var(--color-neutral-8);
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-2);
+  line-height: 1.2;
+  pointer-events: none;
+}
+
+.tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: calc(50% - var(--caret-shift, 0px));
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--color-neutral-8);
 }
 
 .dot-major {
@@ -108,12 +172,16 @@
   gap: var(--space-4);
 }
 
-/* Level-1 card: a medication, a non-drug, or an OTC category. */
+/*
+ * Level-1 card: a medication, a non-drug, or an OTC category. Overflow stays
+ * visible so a pip's tooltip can escape the card; the only backgrounds that
+ * reach a corner are the toggle's, and those corners are rounded to match.
+ */
 .card {
   background: var(--color-background);
   border: 1px solid var(--card-color-border);
   border-radius: var(--card-border-radius);
-  overflow: hidden;
+  overflow: visible;
 }
 
 /*
@@ -124,32 +192,61 @@
   background: var(--color-canvas);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-3);
-  overflow: hidden;
+  overflow: visible;
 }
 
+/* Header row: the toggle on the left, the pip strip on the right. */
 .card-header {
-  width: 100%;
   display: flex;
   align-items: center;
   gap: var(--space-5);
-  padding: var(--space-5) var(--space-6);
+  padding-right: var(--space-6);
+}
+
+.card-nested .card-header {
+  padding-right: var(--space-5);
+}
+
+/*
+ * The disclosure toggle — only the left of the header, so the pips beside it are
+ * their own controls rather than nested clickables. Its left corners round to
+ * the card so its hover fill never squares them; the bottom-left rounds only
+ * when the card is collapsed (the header is then the card's last child).
+ */
+.card-toggle {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-4) var(--space-5) var(--space-6);
   background: none;
   border: 0;
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
+  border-top-left-radius: var(--card-border-radius);
 }
 
-.card-nested .card-header {
-  padding: var(--space-4) var(--space-5);
+.card-nested .card-toggle {
+  padding: var(--space-4) var(--space-3) var(--space-4) var(--space-5);
+  border-top-left-radius: var(--radius-3);
 }
 
-.card-header:hover {
+.card > .card-header:last-child .card-toggle {
+  border-bottom-left-radius: var(--card-border-radius);
+}
+
+.card-nested > .card-header:last-child .card-toggle {
+  border-bottom-left-radius: var(--radius-3);
+}
+
+.card-toggle:hover {
   background: var(--color-raised);
 }
 
-.card-header:focus-visible {
+.card-toggle:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: -2px;
 }
@@ -220,15 +317,53 @@
 .strip {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   flex: none;
-  padding-left: var(--space-2);
 }
 
-.strip-total {
+.strip-more {
   font-size: var(--font-size-2);
   color: var(--color-neutral-5);
   padding-left: var(--space-1);
+  white-space: nowrap;
+}
+
+/*
+ * Narrow screens: stack the pip strip under the title rather than crowding it
+ * to the right, and let the pips wrap. The strip is inset to sit under the
+ * name, and the toggle spans the full width for an easy tap target.
+ */
+@media (max-width: 640px) {
+  .card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding-right: 0;
+  }
+
+  .strip {
+    flex-wrap: wrap;
+    padding: 0 var(--space-6) var(--space-5) var(--space-9);
+  }
+
+  .card-nested .strip {
+    padding: 0 var(--space-5) var(--space-4) var(--space-8);
+  }
+
+  /* The toggle now spans the full width, so round both top corners and drop the
+     collapsed bottom-left rounding (the pip strip sits below it). */
+  .card-toggle {
+    border-top-right-radius: var(--card-border-radius);
+  }
+
+  .card-nested .card-toggle {
+    border-top-right-radius: var(--radius-3);
+  }
+
+  .card > .card-header:last-child .card-toggle,
+  .card-nested > .card-header:last-child .card-toggle {
+    border-bottom-left-radius: 0;
+  }
 }
 
 /* Category body: the one indent step for nested cards. */
@@ -271,6 +406,14 @@
   border-bottom: 0;
 }
 
+/* Name cell: an optional leading avatar, then the ellipsising name. */
+.row-name-cell {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
 .row-name {
   min-width: 0;
   font-size: var(--font-size-3);
@@ -290,7 +433,7 @@
     gap: var(--space-3) var(--space-5);
   }
 
-  .row-name {
+  .row-name-cell {
     grid-column: 1 / -1;
   }
 }

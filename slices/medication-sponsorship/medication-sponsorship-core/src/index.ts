@@ -12,6 +12,7 @@ export { coversProvince, SponsoredDrug, SponsorProgram, sponsorProgramLabels } f
 // The matcher fundamentals live in `medication-matching-core`; re-exported so
 // this package's public surface is unchanged for its consumers.
 export {
+  dedupeMedicationsByName,
   type MatchConfidence,
   type Medication,
   normalizeName,

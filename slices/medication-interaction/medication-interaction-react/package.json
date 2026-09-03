@@ -39,6 +39,7 @@
     "medication-interaction-core": "workspace:*",
     "medication-matching-core": "workspace:*",
     "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*"
   }
 }

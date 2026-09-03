@@ -4,91 +4,28 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   addTallies,
-  allocateDots,
   compareTallies,
-  dotCap,
   type SeverityTally,
   tallyOf,
   tallyTotal,
+  worstSeverity,
 } from './dots.ts'
-import { type Severity, severityCodes, severityRank } from './severity.ts'
+import { severityCodes } from './severity.ts'
 
-describe('allocateDots', () => {
-  it('should give every interaction its own dot while the cap allows', () => {
-    // Arrange
-    const tally: SeverityTally = { major: 1, moderate: 2, minor: 0, unknown: 3 }
-
-    // Act
-    const dots = allocateDots(tally)
-
-    // Assert
-    expect(dots).toEqual(['major', 'moderate', 'moderate', 'unknown', 'unknown', 'unknown'])
+describe('worstSeverity', () => {
+  it('should return the most severe severity present', () => {
+    expect(worstSeverity({ major: 0, moderate: 2, minor: 0, unknown: 3 })).toBe('moderate')
   })
 
-  it('should keep a lone Major visible in a group dominated by Unknowns', () => {
-    const dots = allocateDots({ major: 1, moderate: 0, minor: 0, unknown: 99 })
-    expect(dots).toEqual(['major', ...Array.from<Severity>({ length: 13 }).fill('unknown')])
+  it('should return null for an empty tally', () => {
+    expect(worstSeverity({ major: 0, moderate: 0, minor: 0, unknown: 0 })).toBeNull()
   })
 
-  it('should return no dots for an empty tally', () => {
-    expect(allocateDots({ major: 0, moderate: 0, minor: 0, unknown: 0 })).toEqual([])
-  })
-
-  it('should always return exactly one dot per interaction up to the cap', () => {
+  it('should always return the first severity, in rank order, with a nonzero count', () => {
     fc.assert(
-      fc.property(tallyArb, capArb, (tally, cap) => {
-        const dots = allocateDots(tally, cap)
-        expect(dots).toHaveLength(Math.min(tallyTotal(tally), cap))
-      }),
-      { numRuns: numRunsFor({ base: 200 }) }
-    )
-  })
-
-  it('should always paint the exact counts when the total is within the cap', () => {
-    fc.assert(
-      fc.property(
-        capArb.chain((cap) => fc.tuple(fc.constant(cap), withinCapArb(cap))),
-        ([cap, tally]) => {
-          expect(tallyOf(allocateDots(tally, cap).map((severity) => ({ severity })))).toEqual(tally)
-        }
-      ),
-      { numRuns: numRunsFor({ base: 200 }) }
-    )
-  })
-
-  it('should always show every severity present when the total exceeds the cap', () => {
-    fc.assert(
-      fc.property(tallyArb, capArb, (tally, cap) => {
-        fc.pre(tallyTotal(tally) > cap)
-        const painted = tallyOf(allocateDots(tally, cap).map((severity) => ({ severity })))
-        for (const severity of severityCodes) {
-          if (tally[severity] > 0) expect(painted[severity]).toBeGreaterThanOrEqual(1)
-          else expect(painted[severity]).toBe(0)
-        }
-      }),
-      { numRuns: numRunsFor({ base: 200 }) }
-    )
-  })
-
-  it('should never give a severity more dots than a more frequent one, beyond rounding', () => {
-    fc.assert(
-      fc.property(tallyArb, capArb, (tally, cap) => {
-        const painted = tallyOf(allocateDots(tally, cap).map((severity) => ({ severity })))
-        for (const a of severityCodes) {
-          for (const b of severityCodes) {
-            if (tally[a] > tally[b]) expect(painted[a]).toBeGreaterThanOrEqual(painted[b])
-          }
-        }
-      }),
-      { numRuns: numRunsFor({ base: 200 }) }
-    )
-  })
-
-  it('should always order dots most severe first', () => {
-    fc.assert(
-      fc.property(tallyArb, capArb, (tally, cap) => {
-        const ranks = allocateDots(tally, cap).map((severity) => severityRank[severity])
-        expect(ranks).toEqual(ranks.toSorted((x, y) => x - y))
+      fc.property(tallyArb, (tally) => {
+        const expected = severityCodes.find((severity) => tally[severity] > 0) ?? null
+        expect(worstSeverity(tally)).toBe(expected)
       }),
       { numRuns: numRunsFor({ base: 200 }) }
     )
@@ -150,12 +87,3 @@ const tallyArb: fc.Arbitrary<SeverityTally> = fc.record({
   minor: fc.nat(),
   unknown: fc.nat(),
 })
-
-/** A tally of at most `cap` interactions. */
-const withinCapArb = (cap: number): fc.Arbitrary<SeverityTally> =>
-  fc
-    .array(fc.constantFrom(...severityCodes), { maxLength: cap })
-    .map((severities) => tallyOf(severities.map((severity) => ({ severity }))))
-
-/** Caps from the smallest that can show all four severities up to the production value. */
-const capArb = fc.integer({ min: severityCodes.length, max: dotCap })

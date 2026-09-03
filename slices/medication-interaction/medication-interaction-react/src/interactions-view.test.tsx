@@ -20,11 +20,9 @@ describe('InteractionsView', () => {
     // Assert
     const section = sectionNamed('Between your medications')
     expect(section.textContent).toContain('2 of your medications · 1 potential interaction')
-    const headers = within(section).getAllByRole('button')
-    expect(headers.map((header) => header.getAttribute('aria-expanded'))).toEqual([
-      'false',
-      'false',
-    ])
+    // Only the disclosure toggles carry aria-expanded; the pip buttons do not.
+    const headers = within(section).getAllByRole('button', { expanded: false })
+    expect(headers).toHaveLength(2)
     expect(within(section).queryByRole('link')).toBeNull()
     expect(sectionNamed('With common over-the-counter drugs').textContent).toContain(
       '1 category · 3 potential interactions'
@@ -42,7 +40,10 @@ describe('InteractionsView', () => {
       />
     )
     const section = sectionNamed('Between your medications')
-    const warfarin = within(section).getByRole('button', { name: /Warfarin 5 mg tablet/ })
+    const warfarin = within(section).getByRole('button', {
+      name: /Warfarin 5 mg tablet/,
+      expanded: false,
+    })
 
     // Act
     await user.click(warfarin)
@@ -88,6 +89,22 @@ describe('InteractionsView', () => {
     expect(within(section).getByRole('link', { name: /Details for Warfarin/ })).toBeDefined()
   })
 
+  it('should unfold the named nested active when its category pip is clicked', async () => {
+    // Arrange
+    const user = userEvent.setup()
+    render(<InteractionsView medications={[med('1', 'Warfarin')]} catalog={catalog} otc={otc} />)
+    const section = sectionNamed('With common over-the-counter drugs')
+
+    // Act: click the category's pip for Aspirin (category starts collapsed).
+    await user.click(
+      within(section).getByRole('button', { name: 'Aspirin (Aspirin, ASA) — Major' })
+    )
+
+    // Assert: the category and that specific active both opened, to its rows.
+    expect(within(section).getByRole('button', { name: /Aspirin/, expanded: true })).toBeDefined()
+    expect(within(section).getByRole('link', { name: /Details for Warfarin/ })).toBeDefined()
+  })
+
   it('should keep an active open when its category is collapsed and reopened', async () => {
     // Arrange
     const user = userEvent.setup()
@@ -95,7 +112,7 @@ describe('InteractionsView', () => {
     const section = sectionNamed('With common over-the-counter drugs')
     const category = within(section).getByRole('button', { name: /^Pain/ })
     await user.click(category)
-    await user.click(within(section).getByRole('button', { name: /Aspirin/ }))
+    await user.click(within(section).getByRole('button', { name: /Aspirin/, expanded: false }))
 
     // Act
     await user.click(category)
@@ -105,7 +122,7 @@ describe('InteractionsView', () => {
     // Assert
     expect(
       within(section)
-        .getByRole('button', { name: /Aspirin/ })
+        .getByRole('button', { name: /Aspirin/, expanded: true })
         .getAttribute('aria-expanded')
     ).toBe('true')
     expect(within(section).getByRole('link', { name: /Details for Warfarin/ })).toBeDefined()
@@ -160,6 +177,141 @@ describe('InteractionsView', () => {
     )
     expect(screen.getByText(/No interaction database is bundled/)).toBeDefined()
     expect(screen.queryByRole('heading')).toBeNull()
+  })
+
+  it('should name each header pip by the counterpart it stands for', () => {
+    render(
+      <InteractionsView
+        medications={[med('1', 'Warfarin'), med('2', 'Ibuprofen')]}
+        catalog={catalog}
+        otc={otc}
+      />
+    )
+
+    // Between: the Warfarin card's pip names the far-side medication and severity.
+    const between = sectionNamed('Between your medications')
+    expect(within(between).getByRole('button', { name: 'Ibuprofen — Major' })).toBeDefined()
+    // OTC: a category pip names the active with its brand, at its worst severity.
+    const otcSection = sectionNamed('With common over-the-counter drugs')
+    expect(
+      within(otcSection).getByRole('button', { name: 'Aspirin (Aspirin, ASA) — Major' })
+    ).toBeDefined()
+  })
+
+  it('should reveal a pip tooltip only while hovered', async () => {
+    const user = userEvent.setup()
+    render(
+      <InteractionsView
+        medications={[med('1', 'Warfarin'), med('2', 'Ibuprofen')]}
+        catalog={catalog}
+        otc={otc}
+      />
+    )
+    const between = sectionNamed('Between your medications')
+    const pip = within(between).getByRole('button', { name: 'Ibuprofen — Major' })
+
+    expect(within(pip).queryByText('Ibuprofen')).toBeNull()
+    await user.hover(pip)
+    expect(within(pip).getByText('Ibuprofen')).toBeDefined()
+    await user.unhover(pip)
+    expect(within(pip).queryByText('Ibuprofen')).toBeNull()
+  })
+
+  it('should not label non-drug rows with a medication count', () => {
+    render(<InteractionsView medications={[med('1', 'Warfarin')]} catalog={catalog} otc={otc} />)
+    const section = sectionNamed('With food, alcohol and other non-drugs')
+    expect(section.textContent).not.toContain('of your medications')
+  })
+
+  it('should cap the pip strip and mark the remainder with "+N more"', () => {
+    // A hub medication interacting with 13 others exceeds the 12-pip cap.
+    const names = ['Interacterol', ...Array.from({ length: 13 }, (_, index) => `Spoke${index}`)]
+    const hubCatalog = decodeDdinterFile({
+      source,
+      drugs: names.map((name, index): [string, string] => [`DDInter${index}`, name]),
+      pairs: names.slice(1).map((_, index): [number, number, number] => [0, index + 1, 3]),
+    })
+
+    render(
+      <InteractionsView
+        medications={names.map((name, index) => med(String(index), name))}
+        catalog={hubCatalog}
+        otc={[]}
+      />
+    )
+
+    const between = sectionNamed('Between your medications')
+    const hubCard = within(between)
+      .getByRole('button', { name: /Interacterol/, expanded: false })
+      .closest('li')
+    expect(hubCard?.textContent).toContain('+1 more')
+    // Only the hub overflows; the 13 single-interaction spokes show no marker.
+    expect(between.textContent?.match(/\+1 more/g)).toHaveLength(1)
+  })
+
+  it('should ring the avatar of an interaction between two different prescribers', async () => {
+    const user = userEvent.setup()
+    const prescribers = new Map([
+      ['1', 'Alice Smith'],
+      ['2', 'Bob Jones'],
+    ])
+    render(
+      <InteractionsView
+        medications={[med('1', 'Warfarin'), med('2', 'Ibuprofen')]}
+        catalog={catalog}
+        otc={otc}
+        prescriberOf={(medication) => prescribers.get(medication.id) ?? null}
+      />
+    )
+
+    const section = sectionNamed('Between your medications')
+    await user.click(within(section).getByRole('button', { name: /Warfarin/, expanded: false }))
+
+    // Warfarin (Alice) interacts with Ibuprofen (Bob) — a cross-prescriber row.
+    expect(
+      within(section).getByRole('img', { name: 'Dr. Bob Jones — different prescriber' })
+    ).toBeDefined()
+  })
+
+  it('should not ring avatars when both medications share a prescriber', async () => {
+    const user = userEvent.setup()
+    render(
+      <InteractionsView
+        medications={[med('1', 'Warfarin'), med('2', 'Ibuprofen')]}
+        catalog={catalog}
+        otc={otc}
+        prescriberOf={() => 'Alice Smith'}
+      />
+    )
+
+    const section = sectionNamed('Between your medications')
+    await user.click(within(section).getByRole('button', { name: /Warfarin/, expanded: false }))
+
+    expect(within(section).queryByRole('img', { name: /different prescriber/ })).toBeNull()
+    expect(within(section).getAllByRole('img', { name: 'Dr. Alice Smith' }).length).toBeGreaterThan(
+      0
+    )
+  })
+
+  it('should show prescriber avatars only in the between-medications section', async () => {
+    const user = userEvent.setup()
+    render(
+      <InteractionsView
+        medications={[med('1', 'Warfarin'), med('2', 'Ibuprofen')]}
+        catalog={catalog}
+        otc={otc}
+        prescriberOf={() => 'Alice Smith'}
+      />
+    )
+
+    const otcSection = sectionNamed('With common over-the-counter drugs')
+    await user.click(within(otcSection).getByRole('button', { name: /^Pain/ }))
+    await user.click(within(otcSection).getByRole('button', { name: /Aspirin/, expanded: false }))
+
+    // No prescriber avatar (role img, label starts "Dr.") outside the between section.
+    expect(within(otcSection).queryByRole('img', { name: /^Dr\./ })).toBeNull()
+    const nonDrug = sectionNamed('With food, alcohol and other non-drugs')
+    expect(within(nonDrug).queryByRole('img', { name: /^Dr\./ })).toBeNull()
   })
 })
 
