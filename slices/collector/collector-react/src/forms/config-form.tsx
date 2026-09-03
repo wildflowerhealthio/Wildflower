@@ -1,6 +1,7 @@
 import type { ConfigFormProps } from 'collector-fundamentals/config-form'
 import { type CollectorTag, type ConfigForTag } from 'collector-registry/registry'
 import { FhirR4ConfigForm } from 'fhir-r4-client-collector'
+import { LifeLabsConfigForm } from 'lifelabs-collector'
 import { createElement, type JSX } from 'react'
 import { RexallConfigForm } from 'rexall-be-well-collector'
 import { ShoppersDrugMartConfigForm } from 'shoppers-drugmart-collector'
@@ -34,6 +35,7 @@ const configForms: { readonly [T in CollectorTag]: ConfigFormComponent<T> } = {
   'fhir-r4': FhirR4ConfigForm,
   rexall: RexallConfigForm,
   'shoppers-drugmart': ShoppersDrugMartConfigForm,
+  lifelabs: LifeLabsConfigForm,
   'web-trace': WebTraceConfigForm,
 }
 

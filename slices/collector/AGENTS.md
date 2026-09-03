@@ -45,15 +45,19 @@ before adding one.
   `slices/http-extraction/` (`fhir-r4-source` is the worked example); the
   collector package layers navigation and persistence on top of those
   entities, depending on `collector-fundamentals` and its source package —
-  never on `collector-react`, and never the reverse direction. Three today:
+  never on `collector-react`, and never the reverse direction. Five today:
   [`fhir-r4-client-collector`](./fhir-r4-client-collector/AGENTS.md),
-  [`rexall-be-well-collector`](./rexall-be-well-collector/AGENTS.md) (which also
-  carries the Rexall carebook dialect it decodes with), and
+  [`rexall-be-well-collector`](./rexall-be-well-collector/AGENTS.md) (over the
+  Rexall carebook dialect in `rexall-be-well-source`),
+  [`shoppers-drugmart-collector`](./shoppers-drugmart-collector/AGENTS.md) and
+  [`lifelabs-collector`](./lifelabs-collector/AGENTS.md) (both over bespoke
+  portal JSON their source packages synthesize R4 from; LifeLabs is
+  captcha-gated, so its plan never clicks submit), and
   [`web-trace-collector`](./web-trace-collector/AGENTS.md) — the odd one out, a
   development-purposes _recorder_ that decodes nothing, claims every response,
   and writes each exchange as a FHIR `DocumentReference` via `web-trace-core`'s
   codec. It is also the only collector whose run ends when the **user** closes
-  the sniffer window rather than when a script finishes. The two _production_
+  the sniffer window rather than when a script finishes. The _production_
   collectors keep the source of what they produce too: each states one
   plan-level `captureProvenance` hook
   (`web-trace-core`'s `makeFhirProvenanceCapture('<prefix>')`), so every
