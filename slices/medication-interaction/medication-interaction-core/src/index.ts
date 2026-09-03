@@ -1,8 +1,9 @@
 /**
  * Drug-interaction checking against the DDInter database: decode the compact
  * bundled file into an {@link InteractionCatalog}, match a patient's
- * medications onto it, and report interactions in three groups (between the
- * patient's own drugs, with non-drugs, with common OTC actives).
+ * medications onto it, and report interactions as three sections of groups
+ * (each of the patient's medications, each non-drug, each OTC category and
+ * active) with severity tallies and the dot-strip allocation the UI paints.
  *
  * @packageDocumentation
  */
@@ -41,13 +42,29 @@ export {
 
 export { nonDrugNames } from './non-drug.ts'
 
-export { type OtcDrug, otcDrugs } from './otc.ts'
+export { type OtcCategory, otcCategories, type OtcDrug } from './otc.ts'
+
+export {
+  addTallies,
+  allocateDots,
+  compareTallies,
+  dotCap,
+  emptyTally,
+  type SeverityTally,
+  tallyOf,
+  tallyTotal,
+} from './dots.ts'
 
 export { type CatalogMatch, matchCatalogDrugs } from './match.ts'
 
 export {
   findInteractions,
-  type Interaction,
-  type InteractionParty,
   type InteractionReport,
+  type InteractionRow,
+  type MedicationGroup,
+  type NonDrugGroup,
+  type OtcCategoryGroup,
+  type OtcDrugGroup,
+  type PatientMedication,
+  type RowGroup,
 } from './group.ts'

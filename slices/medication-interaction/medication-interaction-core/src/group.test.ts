@@ -4,12 +4,14 @@ import type { Medication } from 'medication-matching-core'
 import { tokenize } from 'medication-matching-core'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { type DdinterFile, decodeDdinterFile, type InteractionCatalog, pairKey } from './ddinter.ts'
-import { findInteractions, type Interaction } from './group.ts'
+import { type DdinterFile, decodeDdinterFile, type InteractionCatalog } from './ddinter.ts'
+import { compareTallies, tallyOf, tallyTotal } from './dots.ts'
+import { findInteractions, type InteractionRow, type RowGroup } from './group.ts'
+import type { OtcCategory } from './otc.ts'
 import { SeverityCode, severityRank } from './severity.ts'
 
 describe('findInteractions', () => {
-  it('should report each pair among the patient drugs once, most severe first', () => {
+  it('should list each interacting pair under both medications', () => {
     // Arrange
     const medications = [med('1', 'Ibuprofen 200 mg'), med('2', 'Warfarin 5 mg tablet')]
 
@@ -17,106 +19,181 @@ describe('findInteractions', () => {
     const report = findInteractions(medications, catalog, otc)
 
     // Assert
-    expect(report.knownDrugs.map(summary)).toEqual(['Ibuprofen + Warfarin: major'])
-    expect(report.knownDrugs[0]?.a.medication?.id).toBe('1')
-    expect(report.knownDrugs[0]?.b.medication?.id).toBe('2')
-    expect(report.knownDrugs[0]?.url).toContain('DDInter2')
+    expect(report.medications.map(summary)).toEqual([
+      'Ibuprofen 200 mg: Warfarin 5 mg tablet (major)',
+      'Warfarin 5 mg tablet: Ibuprofen 200 mg (major)',
+    ])
+    // The link opens the partner's drug page.
+    expect(report.medications[0]?.rows[0]?.url).toContain('DDInter1')
+    expect(report.medications[1]?.rows[0]?.url).toContain('DDInter2')
   })
 
-  it('should pair patient drugs with non-drug catalog entries', () => {
+  it('should merge a combination product into one row carrying its worst pair', () => {
+    // Arrange: the combination resolves to Aspirin and Warfarin; against
+    // Ibuprofen those pairs are moderate and major respectively.
+    const medications = [med('1', 'Aspirin / Warfarin'), med('2', 'Ibuprofen')]
+
+    // Act
+    const report = findInteractions(medications, catalog, otc)
+
+    // Assert
+    const ibuprofen = report.medications.find((group) => group.medication.id === '2')
+    expect(ibuprofen?.rows.map(rowSummary)).toEqual(['Aspirin / Warfarin (major)'])
+    expect(ibuprofen?.rows[0]?.drug.name).toBe('Warfarin')
+    expect(ibuprofen?.tally).toEqual({ major: 1, moderate: 0, minor: 0, unknown: 0 })
+  })
+
+  it('should group non-drug interactions under the non-drug', () => {
     const report = findInteractions([med('2', 'Warfarin')], catalog, otc)
-    expect(report.nonDrugs.map(summary)).toEqual(['Warfarin + Caffeine: minor'])
-    expect(report.nonDrugs[0]?.b.medication).toBeNull()
+    expect(
+      report.nonDrugs.map((group) => `${group.drug.name}: ${group.rows.map(rowSummary).join(', ')}`)
+    ).toEqual(['Caffeine: Warfarin (minor)'])
   })
 
-  it('should pair patient drugs with OTC actives that are not already patient drugs', () => {
-    // Arrange: ibuprofen is on the OTC list but also a patient drug, so it only
-    // ever appears as the patient side.
+  it('should group OTC interactions by category then active, skipping actives already prescribed', () => {
+    // Arrange: ibuprofen is on the OTC list but also a patient drug, so it is
+    // never an OTC side; loratadine is on the list but interacts with nothing.
     const medications = [med('1', 'Ibuprofen 200 mg'), med('2', 'Warfarin 5 mg tablet')]
 
     // Act
     const report = findInteractions(medications, catalog, otc)
 
-    // Assert: major first, then moderate rows by the patient drug's name.
-    expect(report.otc.map(summary)).toEqual([
-      'Warfarin + Aspirin: major',
-      'Ibuprofen + Aspirin: moderate',
-      'Warfarin + Acetaminophen: moderate',
+    // Assert: one category (Allergy yields no rows), Aspirin's Major first.
+    expect(report.otc.map((group) => group.category.name)).toEqual(['Pain'])
+    const pain = report.otc[0]
+    expect(pain?.drugs.map((group) => group.entry.name)).toEqual(['Aspirin', 'Acetaminophen'])
+    expect(pain?.drugs[0]?.entry.brands).toBe('Aspirin, ASA')
+    expect(pain?.drugs[0]?.rows.map(rowSummary)).toEqual([
+      'Warfarin 5 mg tablet (major)',
+      'Ibuprofen 200 mg (moderate)',
     ])
-    expect(report.otc[0]?.b.otc?.brands).toBe('Aspirin, ASA')
+    expect(pain?.tally).toEqual({ major: 1, moderate: 2, minor: 0, unknown: 0 })
   })
 
-  it('should leave every group empty for medications DDInter does not carry', () => {
+  it('should leave every section empty for medications DDInter does not carry', () => {
     const report = findInteractions([med('1', 'Tylenol')], catalog, otc)
-    expect(report).toEqual({ knownDrugs: [], nonDrugs: [], otc: [] })
+    expect(report).toEqual({ medications: [], nonDrugs: [], otc: [] })
   })
 
-  it('should leave every group empty for an empty catalog', () => {
+  it('should leave every section empty for an empty catalog', () => {
     const report = findInteractions([med('1', 'Warfarin')], emptyCatalog, otc)
-    expect(report).toEqual({ knownDrugs: [], nonDrugs: [], otc: [] })
+    expect(report).toEqual({ medications: [], nonDrugs: [], otc: [] })
   })
 
-  it('should always report the same pairs whatever the medication order', () => {
+  it('should always report the same rows whatever the medication order', () => {
     fc.assert(
       fc.property(scenarioArb, ({ catalog: generated, medications }) => {
-        // Act
         const forward = findInteractions(medications, generated, otc)
         const backward = findInteractions(medications.toReversed(), generated, otc)
-
-        // Assert
-        expect(pairsOf(backward.knownDrugs)).toEqual(pairsOf(forward.knownDrugs))
-        expect(pairsOf(backward.nonDrugs)).toEqual(pairsOf(forward.nonDrugs))
-        expect(pairsOf(backward.otc)).toEqual(pairsOf(forward.otc))
+        expect(backward).toEqual(forward)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
-  it('should always report exactly the catalog pairs among the patient drugs, each once', () => {
+  it('should always list a medication pair under both sides with the same severity', () => {
+    fc.assert(
+      fc.property(scenarioArb, ({ catalog: generated, medications }) => {
+        const report = findInteractions(medications, generated, otc)
+        const seen = new Map(
+          report.medications.map((group) => [group.medication.id, group.rows] as const)
+        )
+        for (const [id, rows] of seen) {
+          for (const row of rows) {
+            const mirror = seen.get(row.medication.id)?.find((r) => r.medication.id === id)
+            expect(mirror?.severity).toBe(row.severity)
+          }
+        }
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should always list exactly the catalog pairs among the patient drugs', () => {
     fc.assert(
       fc.property(scenarioArb, ({ catalog: generated, medications, selected }) => {
         // Act
         const report = findInteractions(medications, generated, otc)
 
-        // Assert: one row per listed pair with both ends in the patient set.
+        // Assert: each medication resolves to one drug, so rows are drug pairs.
         const chosen = new Set(selected)
         const expected = [...generated.pairs.keys()].filter((key) =>
           key.split(':').every((index) => chosen.has(Number(index)))
         )
-        const seen = report.knownDrugs.map(({ a, b }) => pairKey(a.drug.index, b.drug.index))
-        expect(new Set(seen).size).toBe(seen.length)
-        expect(seen.toSorted()).toEqual(expected.toSorted())
-        for (const { a, b } of report.knownDrugs) {
-          expect(chosen.has(a.drug.index)).toBe(true)
-          expect(chosen.has(b.drug.index)).toBe(true)
+        const seen = new Set<string>()
+        for (const group of report.medications) {
+          for (const row of group.rows) {
+            const [a, b] = [group.drugs[0]?.index ?? -1, row.drug.index]
+            seen.add(a < b ? `${a}:${b}` : `${b}:${a}`)
+          }
         }
+        expect([...seen].toSorted()).toEqual(expected.toSorted())
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
-  it('should always sort every group most-severe first', () => {
+  it('should always sort groups in severity-count order and rows most severe first', () => {
     fc.assert(
       fc.property(scenarioArb, ({ catalog: generated, medications }) => {
         const report = findInteractions(medications, generated, otc)
-        for (const group of [report.knownDrugs, report.nonDrugs, report.otc]) {
-          const ranks = group.map((row) => severityRank[row.severity])
-          expect(ranks).toEqual(ranks.toSorted((x, y) => x - y))
+        expectSortedByTally(report.otc)
+        const rowGroups: readonly (readonly RowGroup[])[] = [
+          report.medications,
+          report.nonDrugs,
+          ...report.otc.map((category) => category.drugs),
+        ]
+        for (const list of rowGroups) {
+          expectSortedByTally(list)
+          for (const group of list) {
+            const ranks = group.rows.map((row) => severityRank[row.severity])
+            expect(ranks).toEqual(ranks.toSorted((x, y) => x - y))
+          }
         }
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
-  it('should never put a patient drug on the far side of an OTC or non-drug row', () => {
+  it('should always tally exactly its rows and omit empty groups', () => {
+    fc.assert(
+      fc.property(scenarioArb, ({ catalog: generated, medications }) => {
+        const report = findInteractions(medications, generated, otc)
+        const rowGroups = [
+          ...report.medications,
+          ...report.nonDrugs,
+          ...report.otc.flatMap((category) => category.drugs),
+        ]
+        for (const group of rowGroups) {
+          expect(group.rows.length).toBeGreaterThan(0)
+          expect(group.tally).toEqual(tallyOf(group.rows))
+        }
+        for (const category of report.otc) {
+          expect(category.drugs.length).toBeGreaterThan(0)
+          expect(tallyTotal(category.tally)).toBe(
+            category.drugs.reduce((sum, group) => sum + tallyTotal(group.tally), 0)
+          )
+        }
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should never put a patient drug on the near side of a non-drug or OTC group', () => {
     fc.assert(
       fc.property(scenarioArb, ({ catalog: generated, medications, selected }) => {
         const report = findInteractions(medications, generated, otc)
         const chosen = new Set(selected)
-        for (const row of [...report.nonDrugs, ...report.otc]) {
-          expect(chosen.has(row.a.drug.index)).toBe(true)
-          expect(chosen.has(row.b.drug.index)).toBe(false)
-          expect(row.b.medication).toBeNull()
+        for (const group of report.nonDrugs) expect(chosen.has(group.drug.index)).toBe(false)
+        for (const category of report.otc) {
+          for (const group of category.drugs) {
+            for (const drug of group.drugs) expect(chosen.has(drug.index)).toBe(false)
+          }
+        }
+        // Rows, on the other hand, are always patient medications.
+        const ids = new Set(medications.map((m) => m.id))
+        for (const group of [...report.nonDrugs, ...report.otc.flatMap((c) => c.drugs)]) {
+          for (const row of group.rows) expect(ids.has(row.medication.id)).toBe(true)
         }
       }),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -149,20 +226,34 @@ const catalog = decodeDdinterFile({
   ],
 })
 
-const otc = [
-  { name: 'Aspirin', brands: 'Aspirin, ASA' },
-  { name: 'Ibuprofen', brands: 'Advil' },
-  { name: 'Acetaminophen' },
-  { name: 'Loratadine' },
+const otc: readonly OtcCategory[] = [
+  {
+    name: 'Pain',
+    drugs: [
+      { name: 'Aspirin', brands: 'Aspirin, ASA' },
+      { name: 'Ibuprofen', brands: 'Advil' },
+      { name: 'Acetaminophen' },
+    ],
+  },
+  { name: 'Allergy', drugs: [{ name: 'Loratadine' }] },
 ]
 
 const med = (id: string, displayName: string): Medication => ({ id, displayName })
 
-const summary = (row: Interaction): string =>
-  `${row.a.drug.name} + ${row.b.drug.name}: ${row.severity}`
+const rowSummary = (row: InteractionRow): string =>
+  `${row.medication.displayName} (${row.severity})`
 
-const pairsOf = (rows: readonly Interaction[]): readonly string[] =>
-  rows.map((row) => `${row.a.drug.index}:${row.b.drug.index}:${row.severity}`)
+const summary = (group: { readonly medication: Medication } & RowGroup): string =>
+  `${group.medication.displayName}: ${group.rows.map(rowSummary).join(', ')}`
+
+const expectSortedByTally = (groups: readonly { readonly tally: RowGroup['tally'] }[]): void => {
+  for (let i = 1; i < groups.length; i += 1) {
+    const previous = groups[i - 1]
+    const current = groups[i]
+    if (previous === undefined || current === undefined) continue
+    expect(compareTallies(previous.tally, current.tally)).toBeLessThanOrEqual(0)
+  }
+}
 
 /**
  * Single-token drug names that survive normalization unchanged, so a

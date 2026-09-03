@@ -145,3 +145,20 @@ place changes both. `branding-react`'s `AppLanding` takes the app's
 `AppSectionId` and the connect menu as children; it owns the page's `h1` (the
 app name), which is why `fhir-r4-react`'s `ConnectMenu` heading is an `h2`. A
 test that looks for the connect page's heading by level should use level 2.
+
+## A design handoff's "`--radius-5` = 18px" is `--card-border-radius`, not tundra's ramp
+
+Design handoffs read token values out of a DOM snapshot, where the app's
+`colors-custom.css` has already re-pinned some tundra ramps. Tundra's own
+`--radius-5` is 48px; the 18px card radius the snapshot reports is
+`--card-border-radius`. Before binding a handoff's quoted token, grep
+`global/react-tundraish/src/colors-custom.css` for the semantic alias and use
+that — the ramp step alone can be a different number.
+
+## Nested `<ul>`s make `getAllByRole('listitem')` return the parents too
+
+In a collapsible tree (group `<li>` containing a `<ul>` of row `<li>`s), a
+row query by `listitem` role also matches every ancestor `<li>`, and a
+`querySelector('a')` filter still matches the parent because it _contains_ the
+row's link. Filter on a direct child (`item.querySelector(':scope > a')`) or on
+the row's own class to select leaves only.

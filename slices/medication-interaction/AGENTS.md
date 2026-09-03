@@ -1,10 +1,11 @@
 # AGENTS.md — slices/medication-interaction
 
 Checks a patient's medications for drug interactions against the **DDInter**
-database (<https://ddinter.scbdd.com/>) and reports them in three groups:
-between the patient's own medications, with non-drugs (food, alcohol,
-caffeine, …), and with a curated list of common Canadian over-the-counter
-actives.
+database (<https://ddinter.scbdd.com/>) and reports them in three sections of
+groups: each of the patient's medications and the others it interacts with,
+each non-drug (food, alcohol, caffeine, …) and the medications it interacts
+with, and each category of common Canadian over-the-counter actives with its
+actives nested inside.
 
 ## Packages
 
@@ -12,13 +13,16 @@ actives.
   schema (`DdinterFile`: a drug table plus `[indexA, indexB, severityCode]`
   triples) and its decoder to an `InteractionCatalog`; the CSV-to-compact
   converter (`parseDdinterCsv` / `buildDdinterFile`); the severity model
-  (Major > Moderate > Minor > Unknown, rank = file code); the curated OTC list
-  (`otcDrugs`) and non-drug names (`nonDrugNames`); `matchCatalogDrugs` (every
-  ingredient of a name, via `medication-matching-core`'s scoring); and
-  `findInteractions`, the three-group report. No DOM, no FHIR, no platform
+  (Major > Moderate > Minor > Unknown, rank = file code); the curated OTC
+  categories (`otcCategories`, each a name plus its `OtcDrug` actives) and
+  non-drug names (`nonDrugNames`); `matchCatalogDrugs` (every ingredient of a
+  name, via `medication-matching-core`'s scoring); `findInteractions`, the
+  grouped report; and the severity tally helpers plus `allocateDots`, the
+  capped dot-strip allocation the UI paints. No DOM, no FHIR, no platform
   imports.
 - `medication-interaction-react` — browser UI: `InteractionsView` (three
-  sections, severity `StatusBadge`, a "Details" link per row to DDInter) and
+  sections of collapsible group cards with dot strips, rows only while a group
+  is open, severity `StatusBadge`, a "Details" link per row to DDInter) and
   `SeverityBadge`. It takes the core `Medication` values; the FHIR
   `MedicationRequest` adapter is `medication-sponsorship-react`'s, which the
   app already runs for the medications list.
@@ -51,11 +55,26 @@ drug-detail URL scheme assumed in `ddinterDrugUrl` (`ddinter.ts`).
 - Matching returns **every** contained catalog drug (a combination product
   yields each ingredient), falling back to partial matches only when nothing
   is contained. New heuristics belong in `match.ts` with tests.
-- Groups never repeat a pair: a drug that is both a patient drug and an OTC
-  entry is only ever the patient side, and a pair already reported between
-  patient drugs is not repeated under OTC / non-drugs. The non-drug group is
-  data-driven — it holds whatever `nonDrugNames` entries the bundled catalog
-  actually carries, and the UI explains an empty group when it carries none.
+- Rows are medications, groups are what they interact with. A row summarises
+  every ingredient pair between two drug sets as the worst severity listed
+  (a combination product is one row, not one per ingredient), and the drug
+  on that worst pair is the row's "Details" link target. In the medications
+  section a pair is listed twice, once under each medication (the UI halves
+  the row total for its summary).
+- The far side of a non-drug or OTC group is never a patient drug: a drug any
+  medication resolved to is reported under `medications` only, an OTC entry
+  that is also a non-drug (nicotine) under `nonDrugs` only. The non-drug
+  section is data-driven — it holds whatever `nonDrugNames` entries the
+  bundled catalog actually carries, and the UI explains an empty section when
+  it carries none. Empty groups and categories are omitted from the report.
+- Every list is in **severity-count order**: more Major first, ties by
+  Moderate, then Minor, then Unknown, then name. Rows within a group are
+  most-severe first, then name. `compareTallies` is the one comparator.
+- The dot strip caps at `dotCap` (14): past that, every severity present keeps
+  one dot and the rest are shared by largest remainder, so a rare Major stays
+  visible — never fill-then-truncate.
+- Open/closed state is local to `InteractionsView`, keyed by medication id,
+  catalog index, or category/entry name; nothing persists.
 - The compact JSON is excluded from formatting in the root `vite.config.ts`
   (`fmt.ignorePatterns`); regenerate it with the script, never edit by hand.
 
