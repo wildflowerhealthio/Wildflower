@@ -1,6 +1,7 @@
 import { fhirR4Source } from 'fhir-r4-source'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { SourceDescriptor } from 'http-extraction-fundamentals'
+import { lifeLabsSource } from 'lifelabs-source'
 import { rexallBeWellSource } from 'rexall-be-well-source'
 import { shoppersDrugMartSource } from 'shoppers-drugmart-source'
 
@@ -17,6 +18,7 @@ const fhirSources: readonly SourceDescriptor.SourceDescriptor<FhirResource>[] = 
   fhirR4Source,
   rexallBeWellSource,
   shoppersDrugMartSource,
+  lifeLabsSource,
 ]
 
 export { fhirSources }

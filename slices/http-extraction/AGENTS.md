@@ -39,6 +39,10 @@ navigation, persistence, HAR, files, or apps.
   kinds (Customer, Prescription, PrescriptionHistory) that synthesize FHIR R4
   Patient / MedicationRequest / MedicationDispense from the portal's bespoke
   JSON. See its [AGENTS.md](./shoppers-drugmart-source/AGENTS.md).
+- **`lifelabs-source`** — the LifeLabs source: one response kind
+  (AnalyticSummary) that synthesizes a FHIR R4 Patient plus one Observation per
+  lab analytic from the MyCareCompass portal's bespoke JSON. See its
+  [AGENTS.md](./lifelabs-source/AGENTS.md).
 
 ## There is deliberately no `http-extraction-core`
 

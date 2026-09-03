@@ -52,6 +52,7 @@
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "lifelabs-source": "workspace:*",
     "rexall-be-well-source": "workspace:*",
     "shoppers-drugmart-source": "workspace:*",
     "typescript": "catalog:",
@@ -65,6 +66,7 @@
     "fhir-r4-source": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
+    "lifelabs-source": "workspace:*",
     "rexall-be-well-source": "workspace:*",
     "shoppers-drugmart-source": "workspace:*",
     "web-trace-core": "workspace:*"
