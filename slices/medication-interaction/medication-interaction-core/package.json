@@ -1,8 +1,8 @@
 {
-  "name": "medication-sponsorship-core",
+  "name": "medication-interaction-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure logic for the sponsored-drug programs (innoviCares / RxHelp): raw-list decoders, province coverage, brand+generic matching of medications (scored by medication-matching-core), and grouping. No DOM, no FHIR, no platform imports.",
+  "description": "Pure logic for drug-interaction checking against the DDInter database: the compact bundled-file schema and decoder, the CSV-to-compact converter, severity model, curated OTC / non-drug lists, medication-to-catalog matching, and the three-group interaction report. No DOM, no FHIR, no platform imports.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -30,7 +30,6 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "kitchen-sink": "workspace:*",
     "medication-matching-core": "workspace:*"
   }
 }

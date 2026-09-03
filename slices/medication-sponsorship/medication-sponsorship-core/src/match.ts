@@ -1,18 +1,14 @@
-import { normalizeName, tokenize } from './normalize.ts'
-import type { Medication, SponsoredDrug } from './sponsor.ts'
+import {
+  confidenceRank,
+  type MatchConfidence,
+  type Medication,
+  scoreName,
+} from 'medication-matching-core'
+
+import type { SponsoredDrug } from './sponsor.ts'
 
 /** Which name on the drug produced the match. */
 type MatchField = 'brand' | 'generic'
-
-/**
- * How confident the match is:
- * - `exact`   — the medication name normalizes to exactly the drug name.
- * - `strong`  — the drug's (brand/generic) name is fully contained in the med
- *   name, e.g. `"Abilify"` inside `"Abilify 5 mg tablet"`.
- * - `partial` — the med name is fully contained in the drug's name, e.g. med
- *   `"risedronate"` against generic `"risedronate sodium"`.
- */
-type MatchConfidence = 'exact' | 'strong' | 'partial'
 
 interface DrugMatch {
   readonly drug: SponsoredDrug
@@ -20,39 +16,10 @@ interface DrugMatch {
   readonly confidence: MatchConfidence
 }
 
-/** Numeric rank so matches can be compared / maximized. */
-const confidenceRank: Readonly<Record<MatchConfidence, number>> = {
-  exact: 3,
-  strong: 2,
-  partial: 1,
-}
-
-/** Is every token of `needle` present in `haystack`? (empty needle → false). */
-const isTokenSubset = (needle: readonly string[], haystack: readonly string[]): boolean => {
-  if (needle.length === 0) return false
-  const present = new Set(haystack)
-  return needle.every((token) => present.has(token))
-}
-
-/**
- * Score one candidate name (a drug's brand or generic) against a medication
- * name. Returns `null` when there is no reasonable match.
- */
-const scoreName = (medName: string, candidate: string): MatchConfidence | null => {
-  const med = normalizeName(medName)
-  const cand = normalizeName(candidate)
-  if (med.length === 0 || cand.length === 0) return null
-  if (med === cand) return 'exact'
-  const medTokens = tokenize(medName)
-  const candTokens = tokenize(candidate)
-  if (isTokenSubset(candTokens, medTokens)) return 'strong'
-  if (isTokenSubset(medTokens, candTokens)) return 'partial'
-  return null
-}
-
 /**
  * Best match of a medication against a single drug, preferring the brand name
  * over the generic at equal confidence. `null` when neither name matches.
+ * Confidence is `medication-matching-core`'s {@link scoreName} grade.
  */
 const matchDrug = (med: Medication, drug: SponsoredDrug): DrugMatch | null => {
   const brand = scoreName(med.displayName, drug.brandName)

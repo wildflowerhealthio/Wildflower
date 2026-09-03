@@ -1,8 +1,8 @@
 {
-  "name": "medication-sponsorship-core",
+  "name": "medication-matching-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure logic for the sponsored-drug programs (innoviCares / RxHelp): raw-list decoders, province coverage, brand+generic matching of medications (scored by medication-matching-core), and grouping. No DOM, no FHIR, no platform imports.",
+  "description": "Fuzzy medication-name matching shared by the medication slices: the minimal `Medication` value type, name normalization / tokenization, and the exact / strong / partial containment scoring. No DOM, no FHIR, no platform imports.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -21,16 +21,9 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "medication-matching-core": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
-  },
-  "peerDependencies": {
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "medication-matching-core": "workspace:*"
   }
 }

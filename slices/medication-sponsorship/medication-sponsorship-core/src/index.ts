@@ -7,23 +7,18 @@ export {
   provinceNames,
 } from './province.ts'
 
-export {
-  coversProvince,
-  type Medication,
-  SponsoredDrug,
-  SponsorProgram,
-  sponsorProgramLabels,
-} from './sponsor.ts'
+export { coversProvince, SponsoredDrug, SponsorProgram, sponsorProgramLabels } from './sponsor.ts'
 
-export { normalizeName, tokenize } from './normalize.ts'
-
+// The matcher fundamentals live in `medication-matching-core`; re-exported so
+// this package's public surface is unchanged for its consumers.
 export {
-  type DrugMatch,
-  matchDrug,
   type MatchConfidence,
-  type MatchField,
-  matchMedication,
-} from './match.ts'
+  type Medication,
+  normalizeName,
+  tokenize,
+} from 'medication-matching-core'
+
+export { type DrugMatch, matchDrug, type MatchField, matchMedication } from './match.ts'
 
 export {
   groupMedications,
