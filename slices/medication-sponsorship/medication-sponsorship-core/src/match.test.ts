@@ -1,10 +1,10 @@
 import { Arbitrary } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
+import { normalizeName } from 'medication-matching-core'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { matchDrug, matchMedication } from './match.ts'
-import { normalizeName } from './normalize.ts'
 import { allProvinces } from './province.ts'
 import type { Medication, SponsoredDrug } from './sponsor.ts'
 import { SponsoredDrug as SponsoredDrugSchema } from './sponsor.ts'

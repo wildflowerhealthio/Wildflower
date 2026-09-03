@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, cleanup, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import type Client from 'fhirclient/lib/Client'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
@@ -101,6 +101,57 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.getByText('Could not load medications: read failed')).toBeDefined()
     })
+  })
+
+  it('should show the medications view with the province picker by default', async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue(lastPage)
+
+    // Act
+    renderApp()
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.queryByText('Loading medications…')).toBeNull()
+    })
+    expect(screen.getByRole('button', { name: 'Medications' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    )
+    expect(screen.getByRole('button', { name: 'Interactions' }).getAttribute('aria-pressed')).toBe(
+      'false'
+    )
+    expect(screen.getByRole('combobox', { name: 'Province' })).toBeDefined()
+    expect(screen.getByText('No medications found.')).toBeDefined()
+  })
+
+  it('should switch to the interactions view, hiding the province picker, when Interactions is pressed', async () => {
+    // Arrange
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock.mockResolvedValue(lastPage)
+    renderApp()
+    await waitFor(() => {
+      expect(screen.queryByText('Loading medications…')).toBeNull()
+    })
+
+    // Act
+    fireEvent.click(screen.getByRole('button', { name: 'Interactions' }))
+
+    // Assert
+    expect(screen.getByRole('button', { name: 'Interactions' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    )
+    expect(screen.getByRole('button', { name: 'Medications' }).getAttribute('aria-pressed')).toBe(
+      'false'
+    )
+    expect(screen.queryByRole('combobox', { name: 'Province' })).toBeNull()
+    expect(screen.queryByText('No medications found.')).toBeNull()
+
+    // Act: and back again.
+    fireEvent.click(screen.getByRole('button', { name: 'Medications' }))
+
+    // Assert
+    expect(screen.getByRole('combobox', { name: 'Province' })).toBeDefined()
   })
 
   it('should load the next page when the bottom sentinel scrolls into view', async () => {

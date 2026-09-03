@@ -30,10 +30,14 @@
   min-height: 100vh;
 }
 
-/* The landing area (intro beside the ConnectMenu): on the site's content column, matching the header and footer. */
+/*
+ * The landing area (intro beside the ConnectMenu): centred horizontally, and
+ * it grows to fill the column. No `width: 100%` — a block already fills its
+ * container, and under content-box sizing an explicit 100% plus the horizontal
+ * padding overflows the viewport on phones and makes the page scroll sideways.
+ */
 .connect-page {
   flex: 1;
-  width: 100%;
   max-width: var(--content-max-width);
   margin: 0 auto;
   padding: var(--space-13) var(--page-padding-x);

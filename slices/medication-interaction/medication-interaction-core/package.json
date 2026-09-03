@@ -1,0 +1,35 @@
+{
+  "name": "medication-interaction-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure logic for drug-interaction checking against the DDInter database: the compact bundled-file schema and decoder, the CSV-to-compact converter, severity model, curated OTC / non-drug lists, medication-to-catalog matching, and the three-group interaction report. No DOM, no FHIR, no platform imports.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "medication-matching-core": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "medication-matching-core": "workspace:*"
+  }
+}

@@ -1,4 +1,5 @@
 import { Schema } from 'effect'
+import type { Medication } from 'medication-matching-core'
 
 import { Province } from './province.ts'
 
@@ -32,21 +33,6 @@ const SponsoredDrug = Schema.Struct({
   url: Schema.optional(Schema.String),
 })
 type SponsoredDrug = typeof SponsoredDrug.Type
-
-/**
- * The minimal medication shape the core matches and groups. Adapters map a
- * FHIR `MedicationRequest` (or anything else) onto this — the core stays
- * FHIR-agnostic and trivially testable.
- */
-interface Medication {
-  readonly id: string
-  /** Best available human-readable medication name (used for matching). */
-  readonly displayName: string
-  /** FHIR `MedicationRequest.status`, if known. */
-  readonly status?: string | undefined
-  /** ISO date the request was authored, if known. */
-  readonly authoredOn?: string | undefined
-}
 
 /** Whether this drug's coverage includes the given province. */
 const coversProvince = (drug: SponsoredDrug, province: Province): boolean =>

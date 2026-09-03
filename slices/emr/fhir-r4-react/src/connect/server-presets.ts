@@ -40,7 +40,7 @@ const DEFAULT_SERVER_PRESET_GROUPS: readonly ServerPresetGroup[] = [
       },
       {
         label: 'Launch with login process',
-        url: 'https://launch.smarthealthit.org/v/r4/sim/WzIsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMiwiIl0/fhir',
+        url: 'https://launch.smarthealthit.org/v/r4/sim/WzMsIiIsIiIsIkFVVE8iLDAsMCwwLCIiLCIiLCIiLCIiLCIiLCIiLCIiLDAsMSwiIl0/fhir',
       },
     ],
   },

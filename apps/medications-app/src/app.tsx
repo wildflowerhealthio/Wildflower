@@ -4,6 +4,7 @@ import {
   type MedicationRequestCursor,
   useSmartHandshake,
 } from 'fhir-r4-react/smart'
+import { InteractionsView } from 'medication-interaction-react'
 import type { Province } from 'medication-sponsorship-core'
 import {
   MedicationsView,
@@ -14,7 +15,43 @@ import type { JSX } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { catalogs } from './catalogs.ts'
+import { getInteractionCatalog } from './interaction-catalog.ts'
 import styles from './app.module.css'
+
+/** The two views the header toggle switches between. */
+type Tab = 'medications' | 'interactions'
+
+const tabs: readonly Tab[] = ['medications', 'interactions']
+
+const tabLabels: Readonly<Record<Tab, string>> = {
+  medications: 'Medications',
+  interactions: 'Interactions',
+}
+
+/** The header's two-way view toggle: a group of pressed / unpressed buttons. */
+const TabToggle = ({
+  value,
+  onChange,
+}: {
+  readonly value: Tab
+  readonly onChange: (tab: Tab) => void
+}): JSX.Element => (
+  <div className={styles.tabs} role="group" aria-label="View">
+    {tabs.map((tab) => (
+      <button
+        key={tab}
+        type="button"
+        className={styles.tab}
+        aria-pressed={tab === value}
+        onClick={() => {
+          onChange(tab)
+        }}
+      >
+        {tabLabels[tab]}
+      </button>
+    ))}
+  </div>
+)
 
 /** The load-failure line, shown for a failed token exchange or a failed read. */
 const ErrorLine = ({ error }: { readonly error: unknown }): JSX.Element => (
@@ -29,8 +66,9 @@ const initialCursor: MedicationRequestCursor = { patientId: null }
 
 /**
  * The redirect-target app: completes the SMART handshake, loads the patient's
- * MedicationRequests a page at a time, and renders them grouped by sponsorship
- * program with a province filter.
+ * MedicationRequests a page at a time, and renders them either as the
+ * medications list (sponsorship chips, province filter) or as the
+ * interactions report over the active ones, per the header toggle.
  *
  * @remarks
  * Both async legs are TanStack Queries on the page's shared client: the token
@@ -46,6 +84,7 @@ const initialCursor: MedicationRequestCursor = { patientId: null }
  */
 export const App = (): JSX.Element => {
   const [province, setProvince] = useState<Province>('ON')
+  const [tab, setTab] = useState<Tab>('medications')
   const handshake = useSmartHandshake()
   const client = handshake.kind === 'ready' ? handshake.client : undefined
 
@@ -93,6 +132,11 @@ export const App = (): JSX.Element => {
       ),
     [medications.data]
   )
+  // Interactions are checked over what the patient currently takes.
+  const activeMedications = useMemo(
+    () => views.flatMap((view) => (view.medication.status === 'active' ? [view.medication] : [])),
+    [views]
+  )
   const hasPages = (medications.data?.pages.length ?? 0) > 0
 
   // Either leg can fail — the token exchange or the read that follows it. Surface
@@ -105,7 +149,11 @@ export const App = (): JSX.Element => {
     if (!hasPages) return <p className={styles.status}>Loading medications…</p>
     return (
       <>
-        <MedicationsView medications={views} province={province} catalogs={catalogs} />
+        {tab === 'medications' ? (
+          <MedicationsView medications={views} province={province} catalogs={catalogs} />
+        ) : (
+          <InteractionsView medications={activeMedications} catalog={getInteractionCatalog()} />
+        )}
         {isFetchingNextPage && <p className={styles.status}>Loading more…</p>}
         {medications.isFetchNextPageError && <ErrorLine error={medications.error} />}
         {hasNextPage && <div ref={sentinelRef} aria-hidden="true" />}
@@ -117,7 +165,10 @@ export const App = (): JSX.Element => {
     <main className={styles.app}>
       <header className={styles.header}>
         <h1 className="text-heading-3">Medications</h1>
-        <ProvincePicker value={province} onChange={setProvince} />
+        <div className={styles.controls}>
+          <TabToggle value={tab} onChange={setTab} />
+          {tab === 'medications' && <ProvincePicker value={province} onChange={setProvince} />}
+        </div>
       </header>
       {body}
     </main>

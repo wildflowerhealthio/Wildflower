@@ -89,7 +89,7 @@ const ConnectMenu = ({
     if (normalized === undefined) {
       setState({
         kind: 'error',
-        message: 'Enter a valid http(s) FHIR server URL, e.g. https://example.org/fhir.',
+        message: 'Enter a valid http(s) FHIR base URL, e.g. https://example.org/fhir.',
       })
       return
     }
@@ -98,7 +98,7 @@ const ConnectMenu = ({
 
   return (
     <section className={styles['connect']}>
-      <h2 className={styles['connect__heading']}>Connect to a FHIR server</h2>
+      <h2 className={styles['connect__heading']}>Launch with a FHIR server</h2>
 
       {presetGroups.map((group) => (
         <section key={group.name} className={styles['group']} aria-label={group.name}>
@@ -122,10 +122,10 @@ const ConnectMenu = ({
         </section>
       ))}
 
-      <form className={styles['group']} onSubmit={onSubmit} aria-label="Any other server">
-        <h3 className={styles['group__name']}>Any other server</h3>
+      <form className={styles['group']} onSubmit={onSubmit} aria-label="Another FHIR R4 server">
+        <h3 className={styles['group__name']}>Another FHIR R4 server</h3>
         <TextField
-          label="FHIR server URL"
+          label="FHIR base URL"
           type="text"
           value={url}
           onChange={setUrl}

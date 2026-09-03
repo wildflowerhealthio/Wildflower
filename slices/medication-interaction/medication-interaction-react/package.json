@@ -1,0 +1,44 @@
+{
+  "name": "medication-interaction-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser UI for the medication-interaction slice: the three-group interactions view (between the patient's medications, with non-drugs, with common OTC actives) with severity badges and DDInter links.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "medication-interaction-core": "workspace:*",
+    "medication-matching-core": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-tundraish": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "medication-interaction-core": "workspace:*",
+    "medication-matching-core": "workspace:*",
+    "react": "catalog:",
+    "react-tundraish": "workspace:*"
+  }
+}

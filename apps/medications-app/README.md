@@ -26,6 +26,36 @@ callback is in the URL:
 so both branches are testable without URL manipulation. The package exports
 `AppRoot` via the `source` condition for future aggregator-shell composition.
 
+## Views
+
+The header toggle switches `<App />` between two views over the same loaded
+`MedicationRequest`s:
+
+- **Medications** — `medication-sponsorship-react`'s list with sponsorship
+  chips and the province picker (the picker only shows on this view).
+- **Interactions** — `medication-interaction-react`'s three-group report over
+  the _active_ medications, checked against the bundled DDInter catalog.
+
+### Bundled catalogs
+
+`src/data/` holds the build-time data, each decoded once at module load:
+
+- `innovicares.json` / `rxhelp.json` → `src/catalogs.ts` (sponsor programs).
+- `ddinter/ddinter.json` → `src/interaction-catalog.ts` (drug interactions).
+  Regenerate it from DDInter's download CSVs
+  (<https://ddinter.scbdd.com/download/>, `ddinter_downloads_code_<letter>.csv`)
+  with
+
+  ```bash
+  vp run -F medications-app data:ddinter -- <directory holding the CSVs>
+  ```
+
+  The script (`scripts/convert-ddinter.ts`) runs `node --conditions=source` so
+  the core's converter resolves from source without a build; the file is
+  single-line JSON and is excluded from `vp fmt` in the root `vite.config.ts`.
+  See [slices/medication-interaction/AGENTS.md](../../slices/medication-interaction/AGENTS.md)
+  for the bundled data's provenance and coverage.
+
 ## Where the bundle is served
 
 Both places come from the same build output (`outDir`

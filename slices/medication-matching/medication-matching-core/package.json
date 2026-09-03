@@ -1,0 +1,29 @@
+{
+  "name": "medication-matching-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Fuzzy medication-name matching shared by the medication slices: the minimal `Medication` value type, name normalization / tokenization, and the exact / strong / partial containment scoring. No DOM, no FHIR, no platform imports.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "fast-check": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

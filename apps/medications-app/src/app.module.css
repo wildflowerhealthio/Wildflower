@@ -21,6 +21,49 @@
   margin-bottom: var(--space-9);
 }
 
+/* Header controls: the view toggle and (on the medications view) the province picker. */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
+}
+
+/*
+ * Segmented view toggle. Two pressed/unpressed buttons sharing one pill
+ * outline; the pressed one is painted in the accent so the current view reads
+ * at a glance. Tokens only, so dark mode needs no rule here.
+ */
+.tabs {
+  display: inline-flex;
+  padding: var(--space-1);
+  border: 1px solid var(--color-divider);
+  border-radius: 999px;
+  background: var(--color-chip-background);
+}
+
+.tab {
+  padding: var(--space-2) var(--space-5);
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-neutral-3);
+  font: inherit;
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  cursor: pointer;
+}
+
+.tab[aria-pressed='true'] {
+  background: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+.tab:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 /*
  * Standalone (bare-visit) page: a full-height column so the footer sits at the
  * bottom of the viewport even when the ConnectMenu is shorter than the screen.
@@ -31,10 +74,14 @@
   min-height: 100vh;
 }
 
-/* The landing area (intro beside the ConnectMenu): centred horizontally, and it grows to fill the column. */
+/*
+ * The landing area (intro beside the ConnectMenu): centred horizontally, and
+ * it grows to fill the column. No `width: 100%` — a block already fills its
+ * container, and under content-box sizing an explicit 100% plus the horizontal
+ * padding overflows the viewport on phones and makes the page scroll sideways.
+ */
 .connect-page {
   flex: 1;
-  width: 100%;
   max-width: var(--content-max-width);
   margin: 0 auto;
   padding: var(--space-13) var(--page-padding-x);
