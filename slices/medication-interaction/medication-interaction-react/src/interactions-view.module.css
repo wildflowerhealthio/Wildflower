@@ -69,6 +69,14 @@
   color: var(--color-neutral-5);
 }
 
+/* The "+" and the second name wrap as one unit. */
+.second {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
 .plus {
   color: var(--color-neutral-6);
   font-size: var(--font-size-4);

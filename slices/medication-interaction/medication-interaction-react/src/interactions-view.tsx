@@ -46,10 +46,13 @@ const Row = ({ row }: { readonly row: Interaction }): JSX.Element => (
     <SeverityBadge severity={row.severity} />
     <span className={styles.pair}>
       <Party party={row.a} />
-      <span className={styles.plus} aria-hidden="true">
-        +
+      {/* The "+" travels with the second name so a wrapped pair never ends a line on it. */}
+      <span className={styles.second}>
+        <span className={styles.plus} aria-hidden="true">
+          +
+        </span>
+        <Party party={row.b} />
       </span>
-      <Party party={row.b} />
     </span>
     <a className={styles.link} href={row.url} target="_blank" rel="noreferrer">
       Details
