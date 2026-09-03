@@ -60,6 +60,12 @@ const dotClass: Readonly<Record<Severity, string>> = {
  * nested.
  */
 interface Pip {
+  /**
+   * A stable identity for React keying, unique within a single strip (a
+   * medication id, or an OTC active name). Distinct from {@link Pip.name}, which
+   * can repeat across counterparts that happen to share a display name.
+   */
+  readonly key: string
   /** The counterpart named on hover (the other medication, or the OTC brand). */
   readonly name: string
   readonly severity: Severity
@@ -122,7 +128,7 @@ const PipDot = ({ pip, small }: { readonly pip: Pip; readonly small?: boolean })
       {pip.name}
     </span>
   ) : null
-  const pipClass = cn(styles.pip, small && styles['pip-small'])
+  const pipClass = styles.pip
   if (pip.onActivate === undefined) {
     return (
       <span className={pipClass} aria-hidden="true" onMouseEnter={show} onMouseLeave={hide}>
@@ -179,7 +185,7 @@ const PipStrip = ({
   return (
     <span className={styles.strip}>
       {shown.map((pip) => (
-        <PipDot key={`${pip.name}:${pip.severity}`} pip={pip} small={small} />
+        <PipDot key={pip.key} pip={pip} small={small} />
       ))}
       {overflow > 0 && <span className={styles['strip-more']}>+{overflow} more</span>}
     </span>
@@ -192,6 +198,7 @@ const PipStrip = ({
  */
 const rowPips = (rows: readonly InteractionRow[], onExpand: () => void): readonly Pip[] =>
   rows.map((row) => ({
+    key: row.medication.id,
     name: row.medication.displayName,
     severity: row.severity,
     onActivate: onExpand,
@@ -211,6 +218,7 @@ const categoryPips = (
   expand: (...keys: readonly string[]) => void
 ): readonly Pip[] =>
   group.drugs.map((drug) => ({
+    key: drug.entry.name,
     name: otcLabel(drug.entry),
     severity: worstSeverity(drug.tally) ?? 'unknown',
     onActivate: () => {

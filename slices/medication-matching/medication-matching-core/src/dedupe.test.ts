@@ -25,6 +25,23 @@ describe('dedupeMedicationsByName', () => {
     expect(dedupeMedicationsByName([dated, undated])).toEqual([dated])
   })
 
+  it('should order instants across timezone offsets, not lexically', () => {
+    // 2024-06-01T23:00-05:00 is 2024-06-02T04:00Z — later than 2024-06-02T01:00Z,
+    // even though it sorts earlier as a raw string.
+    const earlierText: Medication = {
+      id: 'a',
+      displayName: 'Tylenol',
+      authoredOn: '2024-06-01T23:00:00-05:00',
+    }
+    const laterText: Medication = {
+      id: 'b',
+      displayName: 'Tylenol',
+      authoredOn: '2024-06-02T01:00:00Z',
+    }
+    expect(dedupeMedicationsByName([earlierText, laterText])).toEqual([earlierText])
+    expect(dedupeMedicationsByName([laterText, earlierText])).toEqual([earlierText])
+  })
+
   it('should keep distinct names apart, even when they only differ by strength', () => {
     const plain: Medication = { id: 'a', displayName: 'Tylenol' }
     const strength: Medication = { id: 'b', displayName: 'Tylenol 500mg' }
