@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import { MARKETING_ANCHORS } from 'branding-core'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { App } from './app.tsx'
@@ -19,6 +20,20 @@ afterEach(() => {
 })
 
 describe('App', () => {
+  it('should render an element for every anchor the app chrome links to', () => {
+    // Arrange — the apps' SiteHeader/SiteFooter resolve their hrefs from
+    // `MARKETING_ANCHORS`, so every one of those has to land on this page.
+    const { container } = render(<App />)
+
+    // Act
+    const missing = MARKETING_ANCHORS.filter(
+      (anchor) => container.querySelector(`#${anchor}`) === null
+    )
+
+    // Assert
+    expect(missing).toStrictEqual([])
+  })
+
   it('should render the site title as the only h1, linking back to #top', () => {
     // Arrange / Act
     render(<App />)

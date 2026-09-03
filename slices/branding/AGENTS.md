@@ -64,7 +64,17 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   header, footer, brand bar, icon, layout tokens — is still made in this
   slice, not in an app. The anchors in `HEADER_NAV_LINKS`/`FOOTER_*_LINKS`
   must exist as `id`s on the homepage (`branding-core`'s `MARKETING_ANCHORS`
-  lists them; `apps/marketing-website`'s `app.test.tsx` pins the ids).
+  lists them; `apps/marketing-website`'s `app.test.tsx` asserts the homepage
+  renders an element for every one of them).
+- **`SiteHeader` matches the homepage header's look.** Static, no backdrop,
+  one hairline — the two are meant to read as the same bar, so a visual
+  change to either belongs in both `site-header.module.css` files. The two
+  still differ in what they link to: the shared header carries
+  `HEADER_NAV_LINKS` (back to the homepage's sections), the homepage's
+  carries direct links into the four apps. `titleAs` picks the element
+  wrapping the brand lockup — `'div'` by default so an app's own page
+  heading stays the only `h1`; a surface whose brand _is_ the page heading
+  passes `'h1'`.
 
 ## References
 

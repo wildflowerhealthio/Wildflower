@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { fromApp, onMarketingSite, sectionUrl } from 'branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
@@ -50,6 +50,24 @@ describe('SiteHeader', () => {
     // Assert
     const brandLink = screen.getByLabelText('Wildflower, home')
     expect(brandLink.getAttribute('href')).toBe('#top')
+  })
+
+  it('should wrap the brand in a div by default', () => {
+    // Arrange / Act
+    const { container } = render(<SiteHeader nav={onMarketingSite} />)
+
+    // Assert — an app's own page heading stays the only h1.
+    expect(container.querySelector('h1')).toBeNull()
+    expect(screen.getByLabelText('Wildflower, home').parentElement?.tagName).toBe('DIV')
+  })
+
+  it('should wrap the brand in the component given by titleAs', () => {
+    // Arrange / Act — the marketing homepage's brand is its page heading.
+    render(<SiteHeader nav={onMarketingSite} titleAs="h1" />)
+
+    // Assert
+    const heading = screen.getByRole('heading', { level: 1 })
+    expect(within(heading).getByLabelText('Wildflower, home')).toBeDefined()
   })
 
   it('should link the brand to the marketing URL from an app', () => {

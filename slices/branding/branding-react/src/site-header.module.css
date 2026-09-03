@@ -1,36 +1,53 @@
+/*
+ * The header matches the marketing homepage's treatment: static, no
+ * background of its own, a single hairline against the page. Keep this in
+ * step with `apps/marketing-website/src/components/site-header.module.css`.
+ */
+
 .site-header {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background: color-mix(in srgb, var(--color-background) 86%, transparent);
-  backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--color-divider);
 }
 
 .site-header__inner {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-9);
   max-width: var(--content-max-width);
   margin: 0 auto;
   /* 18px + 18px + 34px brand mark + 1px border = 71px = --header-height. */
   padding: var(--space-8) var(--page-padding-x);
 }
 
+.site-header__title {
+  margin: 0;
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
+}
+
+/* The wordmark keeps the heading ink instead of the global link accent. */
 .site-header__brand {
   display: flex;
   align-items: center;
   gap: var(--space-5);
+  color: var(--color-neutral-1);
   text-decoration: none;
 }
 
+.site-header__brand:hover {
+  color: var(--color-neutral-1);
+}
+
 .site-header__wordmark {
-  font-size: var(--font-size-5);
-  font-weight: var(--font-weight-3);
+  font-size: inherit;
+  font-weight: inherit;
 }
 
 .site-header__nav {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-11);
   color: var(--color-neutral-3);
@@ -44,15 +61,4 @@
 
 .site-header__link:hover {
   color: var(--app-accent-text);
-}
-
-.site-header__cta {
-  border-radius: var(--radius-pill);
-  text-decoration: none;
-}
-
-@media (max-width: 680px) {
-  .site-header__link--text {
-    display: none;
-  }
 }
