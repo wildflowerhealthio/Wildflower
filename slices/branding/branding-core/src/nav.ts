@@ -1,11 +1,12 @@
 import { sectionUrl } from './site.ts'
 
 /**
- * Hash anchors on the marketing page. Most map to `<section id="…">`
- * elements; `about-the-company` gates a hash-conditional UI element
- * in the footer rather than a page section.
+ * Hash anchors on the marketing homepage, in section order: the hero
+ * (`top`), the patient-facing apps (`built`), the infrastructure (`try`),
+ * the policy asks (`asks`), developer tooling (`developers`), and the
+ * footer's "not a company" note (`note`).
  */
-const MARKETING_ANCHORS = ['top', 'how', 'privacy', 'invite', 'about-the-company'] as const
+const MARKETING_ANCHORS = ['top', 'built', 'try', 'asks', 'developers', 'note'] as const
 
 /** A hash anchor defined on the marketing landing page. */
 type MarketingAnchor = (typeof MARKETING_ANCHORS)[number]
@@ -16,9 +17,9 @@ type MarketingAnchor = (typeof MARKETING_ANCHORS)[number]
  *
  * @remarks
  * `marketingBase` is the empty string when the component is rendered on
- * the marketing site itself (hrefs become fragment-only, e.g. `#how`),
+ * the marketing site itself (hrefs become fragment-only, e.g. `#built`),
  * and the full marketing URL when rendered from an app (hrefs become
- * absolute, e.g. `https://wildflowerhealth.io/#how`).
+ * absolute, e.g. `https://wildflowerhealth.io/#built`).
  */
 type NavContext = { readonly marketingBase: string }
 
@@ -57,24 +58,27 @@ type AbsoluteNavLink = {
 /** A navigation link: either an anchor reference or a fixed URL. */
 type NavLink = AnchorNavLink | AbsoluteNavLink
 
-/** Primary nav links rendered in the site header. */
+/**
+ * Primary nav links rendered in the app site headers. (The marketing
+ * homepage renders its own header — direct links into the four apps — so
+ * these resolve from apps back to the homepage's sections. The homepage
+ * redesign has no invite flow, hence no CTA link.)
+ */
 const HEADER_NAV_LINKS: readonly NavLink[] = [
-  { kind: 'anchor', label: 'The apps', anchor: 'how' },
-  { kind: 'anchor', label: 'Privacy', anchor: 'privacy' },
-  { kind: 'anchor', label: 'Request invite', anchor: 'invite', cta: true },
+  { kind: 'anchor', label: 'The apps', anchor: 'built' },
+  { kind: 'anchor', label: 'For developers', anchor: 'developers' },
 ]
 
-/** Product-column links rendered in the site footer. */
+/** Product-column links rendered in the app site footers. */
 const FOOTER_PRODUCT_LINKS: readonly NavLink[] = [
-  { kind: 'anchor', label: 'The apps', anchor: 'how' },
-  { kind: 'anchor', label: 'Privacy', anchor: 'privacy' },
-  { kind: 'anchor', label: 'Request invite', anchor: 'invite' },
+  { kind: 'anchor', label: 'The apps', anchor: 'built' },
+  { kind: 'anchor', label: 'For developers', anchor: 'developers' },
   { kind: 'absolute', label: 'Server API docs', href: sectionUrl('serverDocs') },
 ]
 
-/** Company-column links rendered in the site footer. */
+/** Company-column links rendered in the app site footers. */
 const FOOTER_COMPANY_LINKS: readonly NavLink[] = [
-  { kind: 'anchor', label: 'About', anchor: 'about-the-company' },
+  { kind: 'anchor', label: 'About', anchor: 'note' },
   { kind: 'absolute', label: 'Contact', href: 'mailto:ruthmarks151@gmail.com' },
 ]
 

@@ -18,12 +18,12 @@ const contextArb = fc.constantFrom(onMarketingSite, fromApp)
 
 describe('anchorHref', () => {
   it('should produce fragment-only hrefs on the marketing site', () => {
-    expect(anchorHref(onMarketingSite, 'how')).toBe('#how')
+    expect(anchorHref(onMarketingSite, 'built')).toBe('#built')
     expect(anchorHref(onMarketingSite, 'top')).toBe('#top')
   })
 
   it('should produce absolute hrefs from an app', () => {
-    expect(anchorHref(fromApp, 'how')).toBe('https://wildflowerhealth.io/#how')
+    expect(anchorHref(fromApp, 'built')).toBe('https://wildflowerhealth.io/#built')
   })
 
   it('should always end with #<anchor>', () => {
@@ -58,19 +58,15 @@ describe('anchorHref', () => {
 })
 
 describe('HEADER_NAV_LINKS', () => {
-  it('should contain three links: The apps, Privacy, Request invite', () => {
+  it('should contain two links: The apps, For developers', () => {
     const labels = HEADER_NAV_LINKS.map((l) => l.label)
-    expect(labels).toStrictEqual(['The apps', 'Privacy', 'Request invite'])
+    expect(labels).toStrictEqual(['The apps', 'For developers'])
   })
 
-  it('should mark only Request invite as a CTA', () => {
+  it('should have no CTA link (the homepage redesign has no invite flow)', () => {
     for (const link of HEADER_NAV_LINKS) {
       if (link.kind === 'anchor') {
-        if (link.label === 'Request invite') {
-          expect(link.cta).toBe(true)
-        } else {
-          expect(link.cta).toBeUndefined()
-        }
+        expect(link.cta).toBeUndefined()
       }
     }
   })

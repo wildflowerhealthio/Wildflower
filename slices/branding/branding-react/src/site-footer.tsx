@@ -1,4 +1,4 @@
-import type { ComponentType, JSX } from 'react'
+import type { JSX } from 'react'
 
 import {
   FOOTER_COMPANY_LINKS,
@@ -9,39 +9,18 @@ import {
 } from 'branding-core'
 
 import { AppIcon } from './app-icon.tsx'
-import { useHref } from './use-href.ts'
 import styles from './site-footer.module.css'
 
 type FooterLink = {
   readonly label: string
   readonly href: string
-  readonly extra?: ComponentType
 }
 
 function resolveLink(link: NavLink, nav: NavContext): FooterLink {
   return {
     label: link.label,
     href: link.kind === 'anchor' ? anchorHref(nav, link.anchor) : link.href,
-    extra:
-      link.kind === 'anchor' && link.anchor === 'about-the-company' ? AboutTheCompany : undefined,
   }
-}
-
-/** Hash-gated blurb that appears beside the "About" footer link. */
-const AboutTheCompany = (): JSX.Element | null => {
-  const href = useHref()
-  const hash = new URL(href, 'http://localhost').hash
-  if (hash !== '#about-the-company') return null
-
-  return (
-    <>
-      <br />
-      <div className={styles['site-footer__blurb']} style={{ maxWidth: '200px' }}>
-        There is no company! It's just me, Ruth Marks. I've been writing health tech software for 7
-        years, and this is what I've been indirectly dreaming about since the beginning.
-      </div>
-    </>
-  )
 }
 
 function FooterColumn({
@@ -59,7 +38,6 @@ function FooterColumn({
           <a className={styles['site-footer__link']} href={link.href}>
             {link.label}
           </a>
-          {link.extra ? <link.extra /> : null}
         </div>
       ))}
     </div>
@@ -106,4 +84,4 @@ function SiteFooter({ nav }: { readonly nav: NavContext }): JSX.Element {
   )
 }
 
-export { AboutTheCompany, SiteFooter }
+export { SiteFooter }

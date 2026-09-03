@@ -1,8 +1,10 @@
 # AGENTS.md — slices/branding
 
-Shared Wildflower chrome for every web surface: the marketing site's full header
-and footer, a slim brand bar for SMART-launched apps and the Tauri desktop shell,
-the app icon, and the layout tokens that position them.
+Shared Wildflower chrome for the app web surfaces: the full site header and
+footer the apps render, a slim brand bar for SMART-launched apps and the Tauri
+desktop shell, the app icon, and the layout tokens that position them. (The
+marketing homepage renders its own page-local header/footer per its design; it
+consumes only `AppIcon` and `branding-core`'s section paths from here.)
 
 ## Package roles
 
@@ -22,9 +24,9 @@ All chrome components take a `NavContext` that says where the marketing page
 lives relative to the current surface:
 
 - `onMarketingSite` (`{ marketingBase: '' }`) — anchors resolve to fragment-only
-  hrefs like `#how`.
+  hrefs like `#built`.
 - `fromApp` (`{ marketingBase: 'https://wildflowerhealth.io/' }`) — anchors
-  resolve to absolute URLs like `https://wildflowerhealth.io/#how`.
+  resolve to absolute URLs like `https://wildflowerhealth.io/#built`.
 
 The brand link in `SiteHeader` checks `marketingBase === ''` to choose between
 `#top` (same page) and the full marketing URL.
@@ -55,10 +57,24 @@ the assembled GitHub Pages site. The core tests pin the exact five paths.
 - **`--header-height` must stay in sync with `.site-header__inner` padding and
   the icon size.** The derivation is `padding-top + padding-bottom + icon-size +
 border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
-- **The marketing site consumes this slice; it has no chrome of its own.**
-  `apps/marketing-website` imports `SiteHeader`, `SiteFooter`, `AppIcon`, and
-  `branding-react/styles.css` from here, so a change to the header, footer,
-  icon, or layout tokens is made in this slice, not in the app.
+- **`SiteHeader`/`SiteFooter` are the apps' chrome; the homepage's is its
+  own.** The homepage redesign gave `apps/marketing-website` a page-local
+  header and footer (its design demands them), so it imports only `AppIcon`
+  and `branding-core` from here. A change to the chrome the _apps_ render —
+  header, footer, brand bar, icon, layout tokens — is still made in this
+  slice, not in an app. The anchors in `HEADER_NAV_LINKS`/`FOOTER_*_LINKS`
+  must exist as `id`s on the homepage (`branding-core`'s `MARKETING_ANCHORS`
+  lists them; `apps/marketing-website`'s `app.test.tsx` asserts the homepage
+  renders an element for every one of them).
+- **`SiteHeader` matches the homepage header's look.** Static, no backdrop,
+  one hairline — the two are meant to read as the same bar, so a visual
+  change to either belongs in both `site-header.module.css` files. The two
+  still differ in what they link to: the shared header carries
+  `HEADER_NAV_LINKS` (back to the homepage's sections), the homepage's
+  carries direct links into the four apps. `titleAs` picks the element
+  wrapping the brand lockup — `'div'` by default so an app's own page
+  heading stays the only `h1`; a surface whose brand _is_ the page heading
+  passes `'h1'`.
 
 ## References
 

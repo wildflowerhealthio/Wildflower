@@ -1,0 +1,49 @@
+.app-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: clamp(var(--space-9), 4vw, var(--space-12));
+  align-items: start;
+}
+
+.app-row__text {
+  display: grid;
+  gap: var(--space-6);
+  justify-items: start;
+}
+
+.app-row__title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
+}
+
+.app-row__body {
+  margin: 0;
+  color: var(--color-neutral-2);
+  line-height: var(--line-height-5);
+}
+
+/* Striped placeholder awaiting a real 4:3 screenshot. */
+.app-row__slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 4 / 3;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  background-color: var(--color-background);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(231, 231, 231, 0.05) 0 8px,
+    transparent 8px 16px
+  );
+}
+
+@media (max-width: 768px) {
+  /* The screenshot stacks under the text. */
+  .app-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

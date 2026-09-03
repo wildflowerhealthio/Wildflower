@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { fromApp, onMarketingSite, sectionUrl } from 'branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
@@ -6,7 +6,6 @@ import { SiteFooter } from './site-footer.tsx'
 
 afterEach(() => {
   cleanup()
-  history.replaceState(null, '', window.location.pathname)
 })
 
 describe('SiteFooter', () => {
@@ -25,7 +24,7 @@ describe('SiteFooter', () => {
 
     // Assert
     const appsLink = screen.getByText('The apps')
-    expect(appsLink.getAttribute('href')).toBe('#how')
+    expect(appsLink.getAttribute('href')).toBe('#built')
 
     const serverDocsLink = screen.getByText('Server API docs')
     expect(serverDocsLink.getAttribute('href')).toBe(sectionUrl('serverDocs'))
@@ -37,31 +36,16 @@ describe('SiteFooter', () => {
 
     // Assert
     const appsLink = screen.getByText('The apps')
-    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#how')
+    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#built')
   })
 
-  it('should toggle the About blurb when hash changes to #about-the-company', () => {
-    // Arrange — render first, blurb should be absent
+  it('should link About to the homepage footer note', () => {
+    // Arrange / Act
     render(<SiteFooter nav={onMarketingSite} />)
-    expect(screen.queryByText(/There is no company/)).toBeNull()
 
-    // Act — set hash to about-the-company
-    act(() => {
-      window.location.hash = '#about-the-company'
-      window.dispatchEvent(new HashChangeEvent('hashchange'))
-    })
-
-    // Assert — blurb appears
-    expect(screen.getByText(/There is no company/)).toBeDefined()
-
-    // Act — change hash away
-    act(() => {
-      window.location.hash = '#how'
-      window.dispatchEvent(new HashChangeEvent('hashchange'))
-    })
-
-    // Assert — blurb disappears
-    expect(screen.queryByText(/There is no company/)).toBeNull()
+    // Assert — the redesigned homepage carries the "not a company" copy in
+    // its footer (`#note`); the old hash-gated blurb is gone.
+    expect(screen.getByText('About').getAttribute('href')).toBe('#note')
   })
 
   it('should render company links including About and Contact', () => {

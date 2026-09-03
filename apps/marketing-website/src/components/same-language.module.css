@@ -1,0 +1,81 @@
+.steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(var(--space-6), 2vw, var(--space-9));
+  margin-top: clamp(var(--space-12), 4.5vw, var(--space-13));
+}
+
+/* `align-content: start` keeps all four captions on the same baseline when
+ * one wraps to two lines. */
+.steps__step {
+  display: grid;
+  gap: var(--space-5);
+  align-content: start;
+  margin: 0;
+}
+
+/* `align-self: start` + `height: auto` stop the grid from stretching and
+ * squashing the screenshots. */
+.steps__image {
+  width: 100%;
+  height: auto;
+  align-self: start;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+}
+
+.steps__caption {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  gap: var(--space-4);
+  align-items: baseline;
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+}
+
+.steps__numeral {
+  color: var(--app-accent-text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+}
+
+/*
+ * ≤640px: the row becomes a snap-scrolling horizontal strip. Captions move
+ * above the images on a fixed-height row so every screenshot starts at the
+ * same height; the strip bleeds past the page gutter so it is visibly
+ * scrollable.
+ */
+@media (max-width: 640px) {
+  .steps {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: max-content;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    padding-bottom: var(--space-5);
+    scrollbar-width: thin;
+    margin-right: calc(-1 * var(--page-gutter));
+    padding-right: var(--page-gutter);
+  }
+
+  .steps__step {
+    scroll-snap-align: start;
+    max-width: 72vw;
+    grid-template-rows: 50px auto;
+    align-items: start;
+  }
+
+  .steps__caption {
+    order: -1;
+    max-width: 22ch;
+    align-content: start;
+  }
+
+  .steps__image {
+    width: auto;
+    max-width: 100%;
+    max-height: 400px;
+    justify-self: start;
+  }
+}

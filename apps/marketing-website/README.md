@@ -1,12 +1,18 @@
 # marketing-website
 
-The Wildflower Health marketing landing page — a standalone React + Vite
-single-page site. It renders in the app's design language (react-tundraish:
-true-neutral surfaces, the navy accent, Atkinson Hyperlegible throughout, and
-the shared dark theme) composed as an editorial page rather than an app screen:
-wide measure, generous stage spacing, prose first. The site header and footer
-come from `slices/branding/branding-react` — the shared chrome every Wildflower
-web surface uses.
+The Wildflower Health Project homepage — a standalone React + Vite single-page
+site. It is a first-person essay, deliberately not a startup landing page: it
+establishes the problem through the author's own medical record, explains FHIR
+and SMART on FHIR, presents the apps as things that exist rather than products
+being sold, makes three policy asks, and ends on a plain contact line. There is
+no signup form, no pricing, and no marketing CTA buttons — every call to action
+is a text link into an app. Keep that restraint; it is the design (see
+`.local-notes/design_handoff_wildflower_home`).
+
+It renders in the app's design language (react-tundraish: true-neutral
+surfaces, the navy accent, Atkinson Hyperlegible Next/Mono), pinned to the
+**dark scheme only** — `index.html` sets `data-color-scheme="dark"` on
+`<html>`, and no OS-scheme listener runs.
 
 ## Develop
 
@@ -19,23 +25,25 @@ vp build    # production build to dist/
 
 ## Structure
 
-- `src/app.tsx` — composes the page sections top to bottom, wrapping them in
-  the shared `SiteHeader` and `SiteFooter` from `branding-react`.
-- `src/components/*` — one component per section (`hero`, `convergence`,
-  `steps`, `privacy`, `cta`) plus the shared pieces (`beta-form`,
-  `phone-mockup`). Each pairs a `.tsx` with its own `*.module.css`.
-- `src/data/convergence.ts` — the pure data + highlighting logic for the
-  interactive "collection of apps" section (unit-tested in
-  `convergence.test.ts`). It also carries each app's availability and, for an
-  app published on this domain, its link (derived from `sectionRootPath` in
-  `branding-core`).
-- `src/styles/tokens.css` — the few page-composition variables neither the
-  design system nor `branding-react` provides (currently only
-  `--beta-form-width`).
-- `src/styles/global.css` — page surface and the shared `.card` utility.
-- `public/app-icon.png` (128px logo / apple-touch) and `public/favicon.png`
-  (32px tab icon) — scaled from the shared app-icon set in
-  `apps/wildflower-tauri/src-tauri/icons`; `public/CNAME` — the custom domain.
+- `src/app.tsx` — composes the page top to bottom: header, hero (`#top`), the
+  FHIR explainer, the apps (`#built`), the infrastructure (`#try`), the policy
+  asks (`#asks`), dev tooling (`#developers`), footer (`#note`).
+- `src/components/*` — one component per section (`hero`, `same-language`,
+  `built`, `possible-today`, `asks`, `dev-tools`) plus the page's own chrome
+  (`site-header`, `site-footer`) and shared pieces (`app-row`, `launcher`,
+  `layout.module.css`). Each `.tsx` pairs with a `*.module.css`.
+- `src/count-up.ts` — the stats count-up animation (reads its targets from the
+  rendered DOM; respects `prefers-reduced-motion`; unit- and property-tested in
+  `count-up.test.ts`).
+- `src/assets/remote-images.ts` — **temporary** remote URLs for the portrait
+  and the four consent-flow screenshots; swap to committed assets here once a
+  home for them is decided.
+- `src/styles/tokens.css` — the page-composition variables the design system
+  does not provide (content column, gutter, prose measures).
+- `src/styles/global.css` — page surface, global link/hover/selection styling.
+- `public/app-icon.png` / `public/favicon.png` — scaled from the shared
+  app-icon set in `apps/wildflower-tauri/src-tauri/icons`; `public/CNAME` — the
+  custom domain.
 
 ## Styling conventions
 
@@ -44,20 +52,18 @@ vp build    # production build to dist/
 - **Design-system tokens first**: colours, type sizes, weights, spacing and
   radii come from react-tundraish's ramps (`--color-*`, `--font-size-N`,
   `--font-weight-N`, `--space-N`, `--radius-N`), read directly by the component
-  modules. There is no site palette layered on top, and no bespoke type scale —
-  a new value belongs on a ramp step, not in a literal.
-- **Tundra primitives before bespoke CSS**: `.button button-N filled|outline`
-  (the `button` class is required on an `<a>`), `.input-N`, `.sr-only`, and the
-  site's own `.card`. A module should only add layout the primitive can't.
-- **Chrome layout tokens** (`--content-max-width`, `--page-padding-x`,
-  `--header-height`, `--radius-pill`) come from `branding-react/styles.css`,
-  imported in `main.tsx`. `tokens.css` holds only what neither the design system
-  nor the shared chrome provides (`--beta-form-width`).
-- **Dark mode** is the shared theme: react-tundraish's `addOsColorSchemeListener`
-  mirrors the OS preference onto `:root[data-color-scheme='dark']`, which is the
-  only trigger react-tundraish's dark palette reads. No module carries a
-  `prefers-color-scheme` block — a surface that must flip reads a token that
-  already does.
+  modules. The homepage design was derived from the dark palette, so its
+  colours map 1:1; freehand sizes from the handoff are rounded onto ramp rungs.
+  The handful of values with no rung (the 92px section-padding ceiling, the
+  stats card's ambient shadow, the 28px stat line-height) stay literal, with a
+  comment.
+- **Page chrome is page-local.** The homepage renders its own static header
+  (the `h1` wordmark plus direct links into the four apps) and its own quiet
+  footer; only `AppIcon` and the `branding-core` section paths come from the
+  branding slice. The shared `SiteHeader`/`SiteFooter` in `branding-react`
+  remain the chrome for the _apps_, which link back to this page's anchors.
+- **Dark only.** The scheme attribute is pinned in `index.html`; no module
+  carries a `prefers-color-scheme` block.
 
 ## Deployment
 

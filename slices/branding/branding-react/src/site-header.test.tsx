@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { fromApp, onMarketingSite, sectionUrl } from 'branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
@@ -24,13 +24,10 @@ describe('SiteHeader', () => {
 
     // Assert
     const appsLink = screen.getByText('The apps')
-    expect(appsLink.getAttribute('href')).toBe('#how')
+    expect(appsLink.getAttribute('href')).toBe('#built')
 
-    const privacyLink = screen.getByText('Privacy')
-    expect(privacyLink.getAttribute('href')).toBe('#privacy')
-
-    const ctaLink = screen.getByText('Request invite')
-    expect(ctaLink.getAttribute('href')).toBe('#invite')
+    const developersLink = screen.getByText('For developers')
+    expect(developersLink.getAttribute('href')).toBe('#developers')
   })
 
   it('should render all nav links with absolute hrefs from an app', () => {
@@ -39,13 +36,10 @@ describe('SiteHeader', () => {
 
     // Assert
     expect(screen.getByText('The apps').getAttribute('href')).toBe(
-      'https://wildflowerhealth.io/#how'
+      'https://wildflowerhealth.io/#built'
     )
-    expect(screen.getByText('Privacy').getAttribute('href')).toBe(
-      'https://wildflowerhealth.io/#privacy'
-    )
-    expect(screen.getByText('Request invite').getAttribute('href')).toBe(
-      'https://wildflowerhealth.io/#invite'
+    expect(screen.getByText('For developers').getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/#developers'
     )
   })
 
@@ -56,6 +50,24 @@ describe('SiteHeader', () => {
     // Assert
     const brandLink = screen.getByLabelText('Wildflower, home')
     expect(brandLink.getAttribute('href')).toBe('#top')
+  })
+
+  it('should wrap the brand in a div by default', () => {
+    // Arrange / Act
+    const { container } = render(<SiteHeader nav={onMarketingSite} />)
+
+    // Assert — an app's own page heading stays the only h1.
+    expect(container.querySelector('h1')).toBeNull()
+    expect(screen.getByLabelText('Wildflower, home').parentElement?.tagName).toBe('DIV')
+  })
+
+  it('should wrap the brand in the component given by titleAs', () => {
+    // Arrange / Act — the marketing homepage's brand is its page heading.
+    render(<SiteHeader nav={onMarketingSite} titleAs="h1" />)
+
+    // Assert
+    const heading = screen.getByRole('heading', { level: 1 })
+    expect(within(heading).getByLabelText('Wildflower, home')).toBeDefined()
   })
 
   it('should link the brand to the marketing URL from an app', () => {

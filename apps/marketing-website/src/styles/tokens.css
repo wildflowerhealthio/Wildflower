@@ -1,18 +1,28 @@
 /*
- * Layout tokens for the Wildflower Health landing page.
+ * Layout tokens for the Wildflower Health Project homepage.
  *
  * The site's colour, type, spacing, radius and dark-mode language all come
  * from **react-tundraish** (imported in `main.tsx` before this file): the
- * true-neutral surface ramp, the navy accent, Atkinson Hyperlegible as the one
- * family, and the `--space-N` / `--font-size-N` / `--font-weight-N` /
- * `--radius-N` ramps. The chrome layout tokens (`--content-max-width`,
- * `--page-padding-x`, `--header-height`, `--radius-pill`) come from
- * **branding-react/styles.css**, also imported in `main.tsx`. Components read
- * those tokens directly, so this file only declares the few page-composition
- * values neither package provides.
+ * true-neutral surface ramp, the navy accent, Atkinson Hyperlegible Next/Mono,
+ * and the `--space-N` / `--font-size-N` / `--font-weight-N` / `--radius-N`
+ * ramps. The homepage design (`.local-notes/design_handoff_wildflower_home`)
+ * was derived from that palette, so components read the ramps directly; this
+ * file only declares the page-composition values the design system has no
+ * concept of.
  */
 
 :root {
-  /* Hero form and CTA form-wrap share one width so the two beta forms match. */
-  --beta-form-width: 28rem;
+  /* The essay's single content column. Narrower than the app chrome's
+   * `--content-max-width` (1080px) on purpose: the page is a prose document
+   * and its measure is part of the design. */
+  --column-max-width: 940px;
+
+  /* Horizontal page gutter, also bled past by the mobile step scroller. */
+  --page-gutter: var(--space-9);
+
+  /* Prose measure caps. The column is 940px wide but body copy folds much
+   * narrower; the two caps in the design (640/660px) are unified at 660px,
+   * with the wider 700px cap kept for the asks/dev-tools blocks. */
+  --prose-max-width: 660px;
+  --prose-wide-max-width: 700px;
 }

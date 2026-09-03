@@ -389,9 +389,6 @@ importers:
       '@testing-library/react':
         specifier: 'catalog:'
         version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      '@testing-library/user-event':
-        specifier: 'catalog:'
-        version: 14.6.6(@testing-library/dom@10.4.1)
       '@types/react':
         specifier: 'catalog:'
         version: 19.2.18
@@ -407,6 +404,9 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/kitchen-sink
       typescript:
         specifier: 5.9.3
         version: 5.9.3
