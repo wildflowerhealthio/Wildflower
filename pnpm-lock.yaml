@@ -440,6 +440,12 @@ importers:
       fhir-r4-react:
         specifier: workspace:*
         version: link:../../slices/emr/fhir-r4-react
+      medication-interaction-core:
+        specifier: workspace:*
+        version: link:../../slices/medication-interaction/medication-interaction-core
+      medication-interaction-react:
+        specifier: workspace:*
+        version: link:../../slices/medication-interaction/medication-interaction-react
       medication-sponsorship-core:
         specifier: workspace:*
         version: link:../../slices/medication-sponsorship/medication-sponsorship-core
@@ -2493,6 +2499,57 @@ importers:
       medication-matching-core:
         specifier: workspace:*
         version: link:../../medication-matching/medication-matching-core
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.0(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.50.0)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.2.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.50.0)(yaml@2.9.0))(yaml@2.9.0)
+
+  slices/medication-interaction/medication-interaction-react:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.5(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.6(@testing-library/dom@10.4.1)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.5(@types/react@19.2.18)
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.0.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      medication-interaction-core:
+        specifier: workspace:*
+        version: link:../medication-interaction-core
+      medication-matching-core:
+        specifier: workspace:*
+        version: link:../../medication-matching/medication-matching-core
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+      react-tundraish:
+        specifier: workspace:*
+        version: link:../../../global/react-tundraish
       typescript:
         specifier: 5.9.3
         version: 5.9.3

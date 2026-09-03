@@ -30,113 +30,62 @@ Interactions come from the **DDInter** database
 
 ## What's done
 
-**No code has been written.** The session was spent on orientation and
-clarifying questions. What exists:
+Everything except the data. All of it is committed on the branch and green
+(`vp check`, `vp run lint:docs`, `vp run test:changed`):
 
-- The branch `claude/medication-interaction-checking-mxcbbl` (clean, tracks origin).
-- Orientation of the medication slice and app (summarised below).
-- Confirmation that DDInter's host is **blocked by the egress proxy** in the
-  previous session, even after the user said they had allowlisted it.
+- **`slices/medication-matching/medication-matching-core`** — the sponsorship
+  matcher's fundamentals extracted (`Medication` type, `normalizeName` /
+  `tokenize`, `scoreName` + `confidenceRank` + `isTokenSubset`).
+  `medication-sponsorship-core` builds on it and re-exports the same public API.
+- **`slices/medication-interaction/medication-interaction-core`** — `DdinterFile`
+  compact schema + `decodeDdinterFile` → `InteractionCatalog`; `parseDdinterCsv`
+  / `buildDdinterFile` converter; severity model; `otcDrugs`, `nonDrugNames`;
+  `matchCatalogDrugs`; `findInteractions` (three groups). Property tests throughout.
+- **`medication-interaction-react`** — `InteractionsView` (three sections,
+  `StatusBadge` severity, "Details" link per row), `SeverityBadge`.
+- **`apps/medications-app`** — header toggle Medications | Interactions
+  (`TabToggle` in `app.tsx`; province picker only on the medications view;
+  interactions over _active_ meds), `src/interaction-catalog.ts`,
+  `scripts/convert-ddinter.ts` (`vp run -F medications-app data:ddinter -- <dir>`,
+  smoke-tested on a synthetic CSV directory), tests, README.
+- Docs: `slices/medication-interaction/AGENTS.md`, `slices/medication-matching/AGENTS.md`,
+  `slices/AGENTS.md`, sponsorship AGENTS.md, Learnings Inbox entries.
+- Draft PR #565 describes the state.
 
 ## What remains
 
-Everything. Suggested order:
-
-1. **Fetch DDInter.** `curl -L https://ddinter.scbdd.com/download/` and follow the
-   links. Expected (from memory — verify): per-ATC-letter CSVs
-   (`ddinter_downloads_code_A.csv`, `_B`, `_D`, `_H`, `_L`, `_P`, `_R`, `_V`) with
-   columns `DDInterID_A, Drug_A, DDInterID_B, Drug_B, Level` where `Level` is
-   `Major | Moderate | Minor | Unknown`. ~236k pairs, ~1.8k drugs. There is no
-   mechanism/management text in the download; the DDInter site has a per-pair
-   detail page that the UI can link to. Record the licence/terms found on the page
-   in the slice README. Check whether any drug names are food/alcohol/caffeine
-   (e.g. `Ethanol`, `Caffeine`, `Grapefruit`) — that decides whether group 2 has data.
-   If the host is still blocked, ask the user to commit the CSVs or start yet
-   another session; **do not** build around the block silently.
-2. **Compact encoding + conversion script.** Write a script (run as a temporary
-   `*.test.ts` through `vp test`, or a `scripts/` node script — `node` directly
-   can't resolve workspace packages) that turns the CSVs into a compact JSON:
-   a drug table (`id → name`) plus a pair list of `[indexA, indexB, level]`.
-   Dedupe pairs that appear in several ATC files. Commit the generated JSON under
-   `apps/medications-app/src/data/ddinter/` (matching how `innovicares.json` /
-   `rxhelp.json` are bundled) and document the regeneration command.
-3. **`medication-interaction-core`** (pure, FHIR-agnostic, Effect `Schema`):
-   - `ddinter.ts`: raw-file schema + decoder to an `InteractionCatalog`
-     (drug lookup + severity-indexed pair map).
-   - `severity.ts`: `Severity` literal + labels + sort rank (Major > Moderate > Minor > Unknown).
-   - `otc.ts`: curated OTC list (name + optional note), exported as data.
-   - `match.ts`: map a `Medication` (same minimal shape as sponsorship's) to zero
-     or more DDInter drug ids via the shared fuzzy matcher.
-   - `group.ts`: `findInteractions(medications, catalog, otcList)` →
-     `{ knownDrugs, nonDrugs, otc }` groups, each row `{ a, b, severity, url }`,
-     sorted by severity then name; known-drug pairs deduped (unordered).
-   - Property tests with fast-check for symmetry, dedupe, sort order, idempotent
-     normalization (see `docs/Testing/Property Testing Reference.md`).
-4. **Shared matcher extraction.** Move `normalize.ts` and the scoring half of
-   `match.ts` from `medication-sponsorship-core` to a shared location and re-export
-   from sponsorship so its public API is unchanged. Keep sponsorship's tests green.
-   `kitchen-sink` is the existing shared utility package (a peer dep of sponsorship-core).
-5. **`medication-interaction-react`**: `InteractionsView` with three sections,
-   severity badge, DDInter link per row, empty-state text for the non-drug group.
-   Reuse the sponsorship react package's CSS-module conventions and its
-   `MedicationRequest → Medication` adapter (`medication.ts` there exports
-   `medicationRequestsToMedicationViews`; the `Medication` value inside a view is
-   the matching input).
-6. **App integration** in `apps/medications-app/src/app.tsx`: header toggle
-   ("Medications" | "Interactions"), decode the bundled DDInter JSON once in a
-   `catalogs.ts`-style module, pass the loaded views to `InteractionsView`.
-   Add tests beside `app.test.tsx` / `catalogs.test.ts`.
-7. **Docs**: `slices/medication-interaction/AGENTS.md` (mirror sponsorship's),
-   update `slices/AGENTS.md` slice list, `apps/medications-app/README.md`,
-   `slices/medication-sponsorship/AGENTS.md` if the matcher moves.
-8. `vp install` after adding packages, `vp run pack`, `vp run ready`, then commit,
-   push with `git push -u origin claude/medication-interaction-checking-mxcbbl`,
-   open a **draft PR**. Read `docs/Agents/Review Standards Reference.md` first.
-
-## Key files to read first
-
-- `slices/medication-sponsorship/AGENTS.md` — the slice this one mirrors.
-- `slices/medication-sponsorship/medication-sponsorship-core/src/{normalize,match,group,sponsor}.ts` — the matcher to share and the shape/grouping patterns to copy.
-- `slices/medication-sponsorship/medication-sponsorship-react/src/medication.ts` — the FHIR `MedicationRequest` → `Medication` adapter (already handles carebook/Shoppers DIN dialects).
-- `apps/medications-app/src/app.tsx` and `src/catalogs.ts` — where the tab and bundled catalog go.
-- `apps/medications-app/README.md` — boot structure and where the bundle is served.
-- Required reading per `CLAUDE.md`: `docs/Testing/Testing Reference.md`, `docs/Documentation/Doc Comments Reference.md`, `docs/Agents/Review Standards Reference.md`, `docs/Agents/Strategies.md`, `docs/Agents/Learnings Inbox.md`.
+1. **Get the DDInter CSVs.** `ddinter.scbdd.com` was _still_ blocked by the
+   egress proxy in the second session (403 on CONNECT, via both `curl` and
+   `WebFetch`), so no data has been fetched. Either allowlist the host in the
+   environment's network policy and start a fresh session, or download
+   `ddinter_downloads_code_*.csv` locally and commit them / run the script.
+2. **Generate the bundle**: `vp run -F medications-app data:ddinter -- <dir>`
+   overwrites `apps/medications-app/src/data/ddinter/ddinter.json` (currently the
+   empty placeholder; the Interactions view shows a "no database bundled" notice).
+   The converter throws on any column / `Level` it does not recognise — if it
+   does, the CSV shape differs from the assumed
+   `DDInterID_A, Drug_A, DDInterID_B, Drug_B, Level`; adjust `ddinter-csv.ts`.
+3. **Verify two assumptions against the live site** and fix in one place each:
+   the drug-detail URL scheme in `medication-interaction-core/src/ddinter.ts`
+   (`ddinterDrugUrl`), and DDInter's licence / terms (record in the slice
+   `AGENTS.md`). Also check which `nonDrugNames` entries DDInter actually carries
+   (`Caffeine`, `Ethanol`, …) — that decides whether group 2 has data.
+4. Look at the real matching quality once data is in (brand names such as
+   `Tylenol` do not match DDInter's generic names — expected, documented).
+5. Delete this file in the final commit; flip PR #565 from draft after reading
+   `docs/Agents/Review Standards Reference.md`.
 
 ## Gotchas and context the next agent needs
 
-- **Egress block.** `ddinter.scbdd.com` returned 403 on CONNECT from the egress
-  gateway three times, including after the user allowlisted it. Environment
-  network policy is most likely read at container start, so a _fresh session_
-  should see the new policy. Verify with
-  `curl -sS "$HTTPS_PROXY/__agentproxy/status"` (shows `recentRelayFailures`).
-  The download links may point at a different host/subdomain — that host would
-  need allowlisting too.
+- **Egress block.** Environment network policy is read at container start; a
+  mid-session allowlist change does not take effect. Verify with
+  `curl -sS "$HTTPS_PROXY/__agentproxy/status"` (`recentRelayFailures`).
 - **Never invoke `pnpm`/`npm` directly** — everything via `vp`. Run `vp run pack`
-  before `vp check` / workspace-wide `vp test` on a fresh container, otherwise
-  hundreds of unrelated failures from missing `dist/`.
-- **Test utilities import from `vite-plus/test`**, not `vitest`. Use the
-  `/javascript-testing-expert` skill when writing tests; property tests are the
-  default in this slice family.
-- **Slice layering**: `-core` is pure (no DOM, no FHIR, no fs). FHIR mapping lives
-  in `-react`. The core `Medication` type is `{ id, displayName, status?, authoredOn? }`.
-- **Decoded FHIR resources** carry `URL` objects in `uri` slots, not strings —
-  the sponsorship adapter already coerces via `nullableUri`; reuse it rather than
-  re-decoding.
-- **New package boilerplate**: copy `package.json` / `vite.config.ts` /
-  `tsconfig.json` from `medication-sponsorship-core` and `-react` (core uses
-  `platform: 'neutral'`, `dts: { tsgo: true }`, `exports` with `source` + `default: ./dist`).
-  Run `vp install` after adding them.
-- **No `any` / casts**. Surface any unavoidable cast in the PR description.
-- **Branch naming** for the PR is fixed by the task: keep working on
-  `claude/medication-interaction-checking-mxcbbl`.
-- The user asked for questions up front and has answered them (table above);
-  they said "Yes, go". Don't re-run the clarification cycle unless the DDInter
-  data turns out materially different from the expected shape.
-
-## Current state
-
-- Branch: `claude/medication-interaction-checking-mxcbbl`, checked out, up to date
-  with `origin`, **clean working tree** apart from this `Handoff.md` and the
-  Learnings Inbox entry.
-- Nothing staged, nothing committed this session.
-- No PR exists for the branch yet.
+  before `vp check` / workspace-wide `vp test` on a fresh container.
+- **Run a single package's tests from inside its directory** (`cd <pkg> && vp test`);
+  `vp test --config <pkg>/vite.config.ts` from the root finds no files.
+- **The compact JSON is excluded from `vp fmt`** (root `vite.config.ts`
+  `fmt.ignorePatterns`) — it is single-line and must stay generated.
+- **`vp run … -- <dir>` forwards the `--`** to the script; `convert-ddinter.ts`
+  filters it out.
+- **No `any` / casts.** None were needed; keep it that way.

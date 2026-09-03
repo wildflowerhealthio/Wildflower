@@ -78,10 +78,13 @@ describe('isTokenSubset', () => {
   })
 
   it("should always accept a name's own tokens as a subset of a longer name", () => {
+    // Angle brackets are excluded: joining two strings can otherwise form an
+    // HTML tag (`"<" + " " + "A>"`), which normalization strips as markup.
+    const plainArb = fc.string().map((s) => s.replaceAll(/[<>]/g, ''))
     fc.assert(
       fc.property(
-        fc.string().filter((name) => tokenize(name).length > 0),
-        fc.string(),
+        plainArb.filter((name) => tokenize(name).length > 0),
+        plainArb,
         (name, extra) => {
           expect(isTokenSubset(tokenize(name), tokenize(`${extra} ${name}`))).toBe(true)
         }

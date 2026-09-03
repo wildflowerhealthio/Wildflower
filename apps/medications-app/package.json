@@ -12,6 +12,7 @@
   "scripts": {
     "build": "tsc && vp build",
     "check": "vp check",
+    "data:ddinter": "node --conditions=source scripts/convert-ddinter.ts",
     "dev": "vp dev",
     "preview": "vp preview",
     "test": "vp test --passWithNoTests"
@@ -24,6 +25,8 @@
     "branding-react": "workspace:*",
     "effect": "catalog:",
     "fhir-r4-react": "workspace:*",
+    "medication-interaction-core": "workspace:*",
+    "medication-interaction-react": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
     "medication-sponsorship-react": "workspace:*",
     "react": "catalog:",

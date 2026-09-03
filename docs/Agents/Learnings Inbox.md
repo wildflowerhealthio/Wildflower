@@ -124,3 +124,15 @@ creating a new local copy.
 **Discovered during**: claude/medication-interaction-checking-mxcbbl (DDInter data fetch)
 **Learning**: Adding a host to the environment's network policy mid-session did not unblock it — the egress gateway kept answering 403 to CONNECT for `ddinter.scbdd.com`. Treat the policy as fixed at container start: allowlist first, then start a fresh session (or have the user commit the files). `curl -sS "$HTTPS_PROXY/__agentproxy/status"` shows `recentRelayFailures` with the denied host, which is the quickest way to tell a policy denial from a flaky download.
 **Suggested destination**: Strategies
+
+### `vp test --config <pkg>/vite.config.ts` from the repo root finds no tests
+
+**Discovered during**: claude/medication-interaction-checking-mxcbbl
+**Learning**: The `javascript-testing-expert` skill suggests `vp test --config <pkg>/vite.config.ts` to run one package's suite, but from the repo root that resolves the package's relative `test.include` (`src/**/*.test.ts`) against the root and reports "No test files found". Run `vp test` from inside the package directory instead (`cd <pkg> && vp test`) — its own `vite.config.ts` is picked up and `include` resolves correctly.
+**Suggested destination**: Testing Reference (Test Runners table)
+
+### Generated single-line JSON data files must be added to the root `fmt.ignorePatterns`
+
+**Discovered during**: claude/medication-interaction-checking-mxcbbl (DDInter compact catalog)
+**Learning**: The root `vp check` formats every JSON file, so a large generated data file (a compact array-of-arrays catalog) would be pretty-printed into hundreds of thousands of lines on the next `vp fmt` / pre-commit. Add its path to `fmt.ignorePatterns` in the root `vite.config.ts` next to the OpenAPI snapshot entry, and say so in the slice docs so nobody hand-formats it.
+**Suggested destination**: Strategies
