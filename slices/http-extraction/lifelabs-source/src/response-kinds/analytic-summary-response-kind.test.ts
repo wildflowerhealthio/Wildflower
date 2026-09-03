@@ -214,13 +214,14 @@ describe('AnalyticSummaryResponseKind', () => {
             // Act
             const [observation] = ofType(parse(payload), 'Observation')
 
-            // Assert
+            // Assert — against the number the wire string round-trips to
+            // (`-0` stringifies as "0" and comes back as `+0`).
             expect(observation?.valueQuantity).toStrictEqual(
               decodeObservation({
                 resourceType: 'Observation',
                 status: 'final',
                 code: { text: 'X' },
-                valueQuantity: { value },
+                valueQuantity: { value: Number(String(value)) },
               }).valueQuantity
             )
             expect(observation?.valueString).toBeNull()
