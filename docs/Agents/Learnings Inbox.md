@@ -118,3 +118,9 @@ media query (or a bridge-relayed scheme) into the `data-color-scheme` attribute
 that the stylesheet keys its dark palette off. Previously five near-identical
 copies lived in individual apps; import from `react-tundraish` instead of
 creating a new local copy.
+
+### Egress allowlist changes do not reach a running session
+
+**Discovered during**: claude/medication-interaction-checking-mxcbbl (DDInter data fetch)
+**Learning**: Adding a host to the environment's network policy mid-session did not unblock it — the egress gateway kept answering 403 to CONNECT for `ddinter.scbdd.com`. Treat the policy as fixed at container start: allowlist first, then start a fresh session (or have the user commit the files). `curl -sS "$HTTPS_PROXY/__agentproxy/status"` shows `recentRelayFailures` with the denied host, which is the quickest way to tell a policy denial from a flaky download.
+**Suggested destination**: Strategies
