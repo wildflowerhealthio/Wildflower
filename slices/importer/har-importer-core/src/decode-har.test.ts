@@ -222,6 +222,54 @@ describe('decodeHar + runExtraction', () => {
     })
   })
 
+  describe('a LifeLabs analytic-summary archive', () => {
+    // A hand-built summary payload, not a real capture. Replace this synthetic
+    // exchange with an anonymized `.har` fixture — see #562.
+    it('should synthesize a re-keyed Patient and Observation from a portal capture', () => {
+      const extraction = extract(
+        harTextOf([
+          traceExchange({
+            requestId: 'req-0',
+            url: 'https://on-api.mycarecompass.lifelabs.com/api/Report/GetAnalyticSummary?patientId=31653025',
+            headers: [['content-type', 'application/json']],
+            body: storedJson({
+              entity: {
+                selectedPatient: '31653025',
+                patients: [{ text: 'Test Patient', value: '31653025', isPrimary: true }],
+                analytics: [
+                  {
+                    testCode: 'TR10477-8W',
+                    testItemId: 'VFIxMDQ3Ny04V19fNjY5MC0yOw==',
+                    testItemName: 'WBC',
+                    testName: 'Complete Blood Count',
+                    testResultValue: '7.5',
+                    referenceRange: '4.0 - 11.0',
+                    collectionDate: '/Date(1779297900000-0400)/',
+                  },
+                ],
+              },
+            }),
+            startedAtMillis: CAPTURE_FLOOR,
+          }),
+        ])
+      )
+
+      expect(extraction.unmatched).toHaveLength(0)
+      expect(extraction.bodyAbsent).toHaveLength(0)
+      expect(extraction.parseFailures).toEqual([])
+      const system = 'https://wildflowerhealth.io/fhir/sid/lifelabs'
+      const patientId = localResourceId(system, 'Patient', '31653025')
+      expect(ofType(extraction, 'Patient').map((r) => r.id)).toEqual([patientId])
+      const [labResult] = ofType(extraction, 'Observation')
+      expect(labResult?.id).toBe(
+        localResourceId(system, 'Observation', 'VFIxMDQ3Ny04V19fNjY5MC0yOw-1779297900000')
+      )
+      expect(labResult?.resourceType === 'Observation' && labResult.subject?.reference).toBe(
+        `Patient/${patientId}`
+      )
+    })
+  })
+
   describe('a Rexall Be Well profile archive', () => {
     // A hand-built carebook profile payload, not a real capture. Replace this
     // synthetic exchange with an anonymized `.har` fixture — see #562.

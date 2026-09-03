@@ -1,13 +1,13 @@
 {
-  "name": "har-importer-core",
+  "name": "lifelabs-source",
   "version": "0.0.0",
   "private": true,
-  "description": "The HAR binding of the importer slice: the concrete FileImporterDescriptor for format 'har' — HAR decode via web-trace-core's codec, the FHIR R4 response-kind pool, HAR settings, and the FHIR persist sink (withMetaSource + persistResources). No DOM, no fs, no React.",
+  "description": "The LifeLabs source: the AnalyticSummary response kind that synthesizes a FHIR R4 Patient plus one Observation per lab analytic from the MyCareCompass portal's bespoke GetAnalyticSummary JSON, with its own tryRecognize, and the assembled lifeLabsSource descriptor consumers extract with. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/importer/har-importer-core"
+    "directory": "slices/http-extraction/lifelabs-source"
   },
   "files": [
     "dist"
@@ -27,32 +27,20 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
-    "fhir-r4-source": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
-    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "lifelabs-source": "workspace:*",
-    "rexall-be-well-source": "workspace:*",
-    "shoppers-drugmart-source": "workspace:*",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
-    "fhir-r4-source": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "lifelabs-source": "workspace:*",
-    "rexall-be-well-source": "workspace:*",
-    "shoppers-drugmart-source": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "kitchen-sink": "workspace:*"
   }
 }

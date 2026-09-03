@@ -162,3 +162,9 @@ row query by `listitem` role also matches every ancestor `<li>`, and a
 `querySelector('a')` filter still matches the parent because it _contains_ the
 row's link. Filter on a direct child (`item.querySelector(':scope > a')`) or on
 the row's own class to select leaves only.
+
+### Rebasing a pre-`http-extraction` collector PR is a rewrite, not a rebase
+
+**Discovered during**: claude/pr-421-rebase-refactor-22kfvo (LifeLabs, PR #421)
+**Learning**: A collector PR authored before #546/#556 uses `EntityDefinition.make({ isFoundAt })`, `firstPage`, unnamed steps, and local `persist.ts` / `extract-json.ts` copies — none of which exist on `main` any more. Replaying such a commit conflicts only on the registry, form map, and lockfile, but the result does not compile. Start a fresh branch from `origin/main`, port the decode into a `slices/http-extraction/<name>-source` package (`HttpResponseKind.make` + `recognizePortal` + `adoptUnderRecognizedRoot`, registered in `har-importer-core`'s `fhirSources`), and land the collector (config, plan, form, `captureProvenance`, shared `persistResources`) as a second stacked PR. `shoppers-drugmart-source` is the closest template for a bespoke-JSON source.
+**Suggested destination**: Strategies (Git workflows)
