@@ -1,31 +1,34 @@
 import type { JSX } from 'react'
 
-import { onMarketingSite, SiteFooter, SiteHeader } from 'branding-react'
-
-import { Convergence } from './components/convergence.tsx'
-import { Cta } from './components/cta.tsx'
+import { Asks } from './components/asks.tsx'
+import { Built } from './components/built.tsx'
+import { DevTools } from './components/dev-tools.tsx'
 import { Hero } from './components/hero.tsx'
-import { Privacy } from './components/privacy.tsx'
-import { Steps } from './components/steps.tsx'
+import { PossibleToday } from './components/possible-today.tsx'
+import { SameLanguage } from './components/same-language.tsx'
+import { SiteFooter } from './components/site-footer.tsx'
+import { SiteHeader } from './components/site-header.tsx'
 
 /**
- * The landing page, top to bottom: the shared site header (sticky, from
- * `branding-react`) over the marketing sections, with the shared site footer
- * outside `<main>`. Section order and ids match the in-page nav targets
- * (`#how`, `#privacy`, `#invite`).
+ * The homepage, top to bottom: header, hero (`#top`), the FHIR explainer, the
+ * apps (`#built`), the infrastructure (`#try`), the policy asks (`#asks`),
+ * dev tooling (`#developers`), and the footer (`#note`). A first-person
+ * essay, deliberately not a startup landing page: no signup form, no pricing,
+ * no marketing CTA buttons — every call to action is a text link into an app.
  */
 function App(): JSX.Element {
   return (
     <>
-      <SiteHeader nav={onMarketingSite} />
+      <SiteHeader />
       <main>
         <Hero />
-        <Convergence />
-        <Steps />
-        <Privacy />
-        <Cta />
+        <SameLanguage />
+        <Built />
+        <PossibleToday />
+        <Asks />
+        <DevTools />
       </main>
-      <SiteFooter nav={onMarketingSite} />
+      <SiteFooter />
     </>
   )
 }

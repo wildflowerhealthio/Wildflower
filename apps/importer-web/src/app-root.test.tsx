@@ -65,7 +65,7 @@ describe('AppRoot', () => {
     // Primary nav links resolve as absolute hrefs
     const primaryNav = screen.getByRole('navigation', { name: 'Primary' })
     const appsLink = within(primaryNav).getByRole('link', { name: 'The apps' })
-    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#how')
+    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#built')
 
     // ConnectMenu is present, inside the page's main landmark
     expect(within(screen.getByRole('main')).getByTestId('connect-menu-stub')).toBeDefined()

@@ -1,0 +1,58 @@
+/*
+ * Shared page scaffolding: the 940px content column, the hairline-separated
+ * section rhythm, and the shared type roles (section titles, prose blocks,
+ * mono side-notes). Hairline rules and vertical space are the only section
+ * separators — no eyebrows, kickers, or background alternations; that
+ * restraint is the design.
+ *
+ * Type roles round the handoff's freehand sizes onto the react-tundraish
+ * ramps: body copy 17–17.5px → `--font-size-4`, titles 20–21px →
+ * `--font-size-5`, mono notes 11.5–13px → `--font-size-2`, captions 15.5px →
+ * `--font-size-3`. The section-title clamp lands on ramp rungs 24→34px
+ * (design: 26→36px).
+ */
+
+.column {
+  max-width: var(--column-max-width);
+  margin: 0 auto;
+  padding: 0 var(--page-gutter);
+}
+
+.section {
+  border-top: 1px solid var(--color-divider);
+  /* Ramp has no stage rung past 64px; the 92px ceiling stays literal. */
+  padding: clamp(var(--space-13), 7vw, 92px) 0;
+}
+
+.section-title {
+  margin: 0 0 clamp(var(--space-9), 3vw, var(--space-11));
+  color: var(--color-neutral-1);
+  font-size: clamp(var(--font-size-6), 3vw, var(--font-size-8));
+  font-weight: var(--font-weight-4);
+  line-height: var(--line-height-2);
+  letter-spacing: var(--letter-spacing-1);
+}
+
+.prose {
+  display: grid;
+  gap: var(--space-8);
+  max-width: var(--prose-max-width);
+}
+
+.prose > p {
+  margin: 0;
+  line-height: var(--line-height-5);
+}
+
+/* Section intros and other secondary prose step down one text tone. */
+.prose--secondary > p {
+  color: var(--color-neutral-3);
+}
+
+/* Quiet mono side-note: status lines, launcher notes, placeholder labels. */
+.mono-note {
+  color: var(--color-neutral-5);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+}

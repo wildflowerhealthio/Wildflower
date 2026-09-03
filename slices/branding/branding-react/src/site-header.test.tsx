@@ -24,13 +24,10 @@ describe('SiteHeader', () => {
 
     // Assert
     const appsLink = screen.getByText('The apps')
-    expect(appsLink.getAttribute('href')).toBe('#how')
+    expect(appsLink.getAttribute('href')).toBe('#built')
 
-    const privacyLink = screen.getByText('Privacy')
-    expect(privacyLink.getAttribute('href')).toBe('#privacy')
-
-    const ctaLink = screen.getByText('Request invite')
-    expect(ctaLink.getAttribute('href')).toBe('#invite')
+    const developersLink = screen.getByText('For developers')
+    expect(developersLink.getAttribute('href')).toBe('#developers')
   })
 
   it('should render all nav links with absolute hrefs from an app', () => {
@@ -39,13 +36,10 @@ describe('SiteHeader', () => {
 
     // Assert
     expect(screen.getByText('The apps').getAttribute('href')).toBe(
-      'https://wildflowerhealth.io/#how'
+      'https://wildflowerhealth.io/#built'
     )
-    expect(screen.getByText('Privacy').getAttribute('href')).toBe(
-      'https://wildflowerhealth.io/#privacy'
-    )
-    expect(screen.getByText('Request invite').getAttribute('href')).toBe(
-      'https://wildflowerhealth.io/#invite'
+    expect(screen.getByText('For developers').getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/#developers'
     )
   })
 

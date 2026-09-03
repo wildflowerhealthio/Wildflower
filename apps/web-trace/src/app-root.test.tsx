@@ -58,11 +58,11 @@ describe('AppRoot', () => {
     // SiteHeader nav links resolve to absolute marketing URLs (scoped to
     // the header, since the footer carries the same link labels)
     const header = document.getElementById('top')!
-    const howLink = within(header).getByRole('link', { name: 'The apps' })
-    expect(howLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#how')
+    const appsLink = within(header).getByRole('link', { name: 'The apps' })
+    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#built')
 
-    const privacyLink = within(header).getByRole('link', { name: 'Privacy' })
-    expect(privacyLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#privacy')
+    const developersLink = within(header).getByRole('link', { name: 'For developers' })
+    expect(developersLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#developers')
 
     // ConnectMenu is present, and its redirect target is this page's root
     // (the OAuth callback lands back on AppRoot, wherever it is served from)

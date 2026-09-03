@@ -23,12 +23,12 @@
   "devDependencies": {
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
-    "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"

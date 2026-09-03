@@ -1,0 +1,23 @@
+.dev-tools {
+  display: grid;
+  gap: var(--space-5);
+  max-width: var(--prose-wide-max-width);
+}
+
+.dev-tools__title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
+}
+
+.dev-tools__body {
+  margin: 0;
+  color: var(--color-neutral-2);
+  line-height: var(--line-height-5);
+}
+
+.dev-tools__launcher {
+  margin-top: var(--space-3);
+}

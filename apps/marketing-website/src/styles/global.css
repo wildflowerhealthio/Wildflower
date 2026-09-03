@@ -1,9 +1,10 @@
 /*
  * Global, non-module styling: the handful of rules that have to sit on
  * `:root`, `body`, or a bare element selector. react-tundraish's `reset.css`
- * already zeroes margins, sets the body family and colour, and pins the
- * surfaces, so only the page's own additions live here. Everything scoped to a
- * component lives in that component's `*.module.css`.
+ * already zeroes margins, sets the body family, and paints `html`/`body` with
+ * `--color-canvas` — which is the page's `#161616` because the site pins the
+ * dark scheme (`data-color-scheme="dark"` on `<html>` in `index.html`).
+ * Everything scoped to a component lives in that component's `*.module.css`.
  */
 
 *,
@@ -16,35 +17,38 @@ html {
   scroll-behavior: smooth;
 }
 
-/*
- * The page reads on the raised "paper" surface rather than the recessed canvas
- * the app uses — a document, not an app shell. Both tokens flip with
- * `:root[data-color-scheme='dark']`.
- */
 body {
   min-height: 100vh;
-  background: var(--color-background);
   font-size: var(--font-size-4);
   line-height: var(--line-height-5);
+  color: var(--color-neutral-2);
+}
+
+/*
+ * The page's only hover treatment, by design: links brighten one accent step
+ * and underline. No card hovers, no lifts, no transitions.
+ */
+a {
+  color: var(--app-accent-text);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--color-accent-2);
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
 ::selection {
-  background: var(--color-accent-9);
-  color: var(--color-foreground);
+  background: var(--color-accent-8);
+  color: var(--color-on-accent);
 }
 
-a {
-  color: inherit;
-}
-
-/*
- * Shared card surface — the raised tile the marketing sections group content
- * in, drawn from react-tundraish's card tokens so the site's cards match the
- * app's. Apply `.card` and let the component keep only its own padding.
- */
-.card {
-  background: var(--card-color-background);
-  border: 1px solid var(--card-color-border);
-  border-radius: var(--card-border-radius);
-  box-shadow: var(--card-box-shadow);
+p,
+h1,
+h2,
+h3,
+figcaption,
+blockquote {
+  text-wrap: pretty;
 }
