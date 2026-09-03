@@ -210,22 +210,12 @@ const analyticSummaryUrl =
 /**
  * Entity for the MyCareCompass analytics page's single XHR: the
  * `GetAnalyticSummary` payload the SPA fires when
- * `www.on.mycarecompass.lifelabs.com/analytics` loads. A **bespoke, non-FHIR
- * JSON** shape, so this kind decodes it and **synthesizes R4 resources**:
- *
- * - one `Patient` (`id = entity.selectedPatient`, name from the primary patient
- *   row) — only the selected patient, since it is the one the observations
- *   link to; the other `patients[]` rows name people whose results this
- *   response does not carry, and
- * - one `Observation` per `entity.analytics[]` row (`code` from the analyte
- *   name, value as `Quantity`/`String`, effective time from the .NET collection
- *   date, reference range and abnormal flag when present), each `subject`ing the
- *   synthesized Patient.
- *
- * Analytics with no `testCode`/`testItemId` to key a stable logical id are
- * dropped and counted via `Effect.logInfo`, so those losses aren't invisible.
- * {@link extractJson} normalizes the body across raw-XHR intercepts and the
- * mobile WebView's JSON-viewer wrap.
+ * `www.on.mycarecompass.lifelabs.com/analytics` loads. A bespoke, non-FHIR
+ * JSON shape, decoded and **synthesized** into the selected `Patient` plus one
+ * `Observation` per `entity.analytics[]` row — the field-by-field mapping is
+ * in the package AGENTS.md. Analytics with nothing to key a stable logical id
+ * are dropped and counted via `Effect.logInfo`. {@link extractJson} normalizes
+ * the body across raw-XHR intercepts and the mobile WebView's JSON-viewer wrap.
  */
 const AnalyticSummaryResponseKind: HttpResponseKind.HttpResponseKind<FhirResource> =
   HttpResponseKind.make({
