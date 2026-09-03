@@ -61,6 +61,21 @@ describe('countUpStats', () => {
     expect(host.dataset['counted']).toBe('1')
   })
 
+  it('should stay eligible when the host has no number cells yet', () => {
+    // Arrange — an empty host, as rendered before the stats markup arrives.
+    const host = document.createElement('div')
+    document.body.append(host)
+
+    // Act
+    countUpStats(host, { schedule: () => {}, now: () => 0 })
+
+    // Assert — no `data-counted` flag, so a later call still animates.
+    expect(host.dataset['counted']).toBeUndefined()
+    host.append(textCell('18'), textCell('vaccinations'))
+    runToCompletion(host)
+    expect(numberCellTexts(host)).toStrictEqual(['18'])
+  })
+
   it('should skip the animation entirely under prefers-reduced-motion', () => {
     // Arrange
     vi.stubGlobal('matchMedia', (query: string): Pick<MediaQueryList, 'matches' | 'media'> => ({
@@ -112,6 +127,13 @@ describe('countUpStats', () => {
 })
 
 // Helpers
+
+/** A single cell carrying `text`. */
+function textCell(text: string): HTMLElement {
+  const element = document.createElement('span')
+  element.textContent = text
+  return element
+}
 
 /** Builds the expected host shape: children alternate number cell, label cell. */
 function statsHost(rows: readonly { text: string; label: string }[]): HTMLElement {

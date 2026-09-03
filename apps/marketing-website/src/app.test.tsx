@@ -105,6 +105,7 @@ describe('App', () => {
     expect(footer.getByRole('link', { name: 'ruthmarks151@gmail.com' }).getAttribute('href')).toBe(
       'mailto:ruthmarks151@gmail.com'
     )
-    expect(footer.getByText(/Wildflower Health Project · Ruth Marks · 2026/)).toBeDefined()
+    const year = new Date().getFullYear()
+    expect(footer.getByText(`Wildflower Health Project · Ruth Marks · ${year}`)).toBeDefined()
   })
 })

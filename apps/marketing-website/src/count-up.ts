@@ -51,7 +51,6 @@ function countUpStats(host: HTMLElement, options: CountUpOptions = {}): void {
   if (once && host.dataset['counted'] === '1') return
   // `matchMedia` is absent in some non-browser environments (e.g. jsdom).
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-  if (once) host.dataset['counted'] = '1'
 
   // Even-indexed children are the number cells.
   const cells = Array.from(host.children).filter((_, index) => index % 2 === 0)
@@ -69,6 +68,10 @@ function countUpStats(host: HTMLElement, options: CountUpOptions = {}): void {
   })
 
   if (items.length === 0) return
+
+  // Only mark the host as counted once there was something to animate, so a
+  // host rendered before its number cells exist stays eligible for a retry.
+  if (once) host.dataset['counted'] = '1'
 
   for (const item of items) {
     item.node.nodeValue = `0${item.suffix}`

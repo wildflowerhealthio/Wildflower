@@ -9,6 +9,8 @@ import styles from './site-footer.module.css'
  * speaks.
  */
 function SiteFooter(): JSX.Element {
+  const year = new Date().getFullYear()
+
   return (
     <footer className={styles['site-footer']} id="note">
       <div className={`${layout['column']} ${styles['site-footer__inner']}`}>
@@ -21,7 +23,7 @@ function SiteFooter(): JSX.Element {
           <a href="mailto:ruthmarks151@gmail.com">ruthmarks151@gmail.com</a>
         </p>
         <p className={`${layout['mono-note']} ${styles['site-footer__stamp']}`}>
-          Wildflower Health Project &middot; Ruth Marks &middot; 2026
+          Wildflower Health Project &middot; Ruth Marks &middot; {year}
         </p>
       </div>
     </footer>
