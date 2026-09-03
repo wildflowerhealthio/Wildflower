@@ -1,4 +1,4 @@
-import { skipToken, useInfiniteQuery } from '@tanstack/react-query'
+import { skipToken, useInfiniteQuery, useQuery } from '@tanstack/react-query'
 import {
   fetchMedicationRequestPage,
   type MedicationRequestCursor,
@@ -160,7 +160,41 @@ export const App = (): JSX.Element => {
     (medication: Medication): string | null => prescriberById.get(medication.id) ?? null,
     [prescriberById]
   )
+  // The interaction catalog is a ~2 MB asset fetched (and decoded once) only
+  // when the Interactions tab is first opened — `enabled` keeps it off the
+  // Medications-tab path entirely, and it never goes stale within a session.
+  const interactionCatalog = useQuery({
+    queryKey: ['interaction-catalog'],
+    queryFn: getInteractionCatalog,
+    enabled: tab === 'interactions',
+    staleTime: Number.POSITIVE_INFINITY,
+    gcTime: Number.POSITIVE_INFINITY,
+  })
   const hasPages = (medications.data?.pages.length ?? 0) > 0
+
+  // The interactions panel waits on its catalog asset: a load failure and the
+  // in-flight fetch each get their own line before the report can render.
+  const interactionsPanel = ((): JSX.Element => {
+    if (interactionCatalog.isError) {
+      return (
+        <p className={styles.error}>
+          {interactionCatalog.error instanceof Error
+            ? interactionCatalog.error.message
+            : 'Could not load the interaction database.'}
+        </p>
+      )
+    }
+    if (interactionCatalog.data === undefined) {
+      return <p className={styles.status}>Loading interaction database…</p>
+    }
+    return (
+      <InteractionsView
+        medications={interactionMedications}
+        catalog={interactionCatalog.data}
+        prescriberOf={prescriberOf}
+      />
+    )
+  })()
 
   // Either leg can fail — the token exchange or the read that follows it. Surface
   // whichever did; loading covers both the exchange and the first page. A failure
@@ -175,11 +209,7 @@ export const App = (): JSX.Element => {
         {tab === 'medications' ? (
           <MedicationsView medications={views} province={province} catalogs={catalogs} />
         ) : (
-          <InteractionsView
-            medications={interactionMedications}
-            catalog={getInteractionCatalog()}
-            prescriberOf={prescriberOf}
-          />
+          interactionsPanel
         )}
         {isFetchingNextPage && <p className={styles.status}>Loading more…</p>}
         {medications.isFetchNextPageError && <ErrorLine error={medications.error} />}
