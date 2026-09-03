@@ -67,7 +67,7 @@ describe('ConnectMenu', () => {
     render(<ConnectMenu {...PROPS} />)
 
     // A trailing slash the normalizer strips — the launch must see the canonical form.
-    await user.type(screen.getByLabelText('FHIR server URL'), 'https://example.org/fhir/')
+    await user.type(screen.getByLabelText('FHIR base URL'), 'https://example.org/fhir/')
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
@@ -81,10 +81,10 @@ describe('ConnectMenu', () => {
     render(<ConnectMenu {...PROPS} />)
 
     // A value the text input accepts but `normalizeServerUrl` rejects (no scheme).
-    await user.type(screen.getByLabelText('FHIR server URL'), 'not-a-real-url')
+    await user.type(screen.getByLabelText('FHIR base URL'), 'not-a-real-url')
     await user.click(screen.getByRole('button', { name: 'Connect' }))
 
-    expect(screen.getByText(/valid http\(s\) FHIR server URL/i)).toBeDefined()
+    expect(screen.getByText(/valid http\(s\) FHIR base URL/i)).toBeDefined()
     expect(startStandaloneLaunchMock).not.toHaveBeenCalled()
   })
 

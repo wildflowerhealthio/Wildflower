@@ -1,10 +1,9 @@
 /*
  * The connect menu slots into an app's landing page, so it borrows that page's
  * vocabulary rather than tundra's app-chrome classes: the title role of the
- * homepage's app rows, quiet mono side-notes for server addresses, and
- * hairline rules between server groups (the homepage's only section
- * separator). It fills whatever column the landing page gives it; the
- * container sets the width.
+ * homepage's app rows and quiet mono side-notes for server addresses, with
+ * server groups separated by space alone. It fills whatever column the
+ * landing page gives it; the container sets the width.
  */
 
 .connect {
@@ -20,14 +19,12 @@
   letter-spacing: var(--letter-spacing-2);
 }
 
-/* Each server group (and the free-entry form) is a hairline-separated block. */
+/* Each server group (and the free-entry form) is a block set off by space. */
 .group {
   display: flex;
   flex-direction: column;
   gap: var(--space-6);
-  margin-top: var(--space-9);
-  padding-top: var(--space-9);
-  border-top: 1px solid var(--color-divider);
+  margin-top: var(--space-10);
 }
 
 .group__name {
