@@ -50,9 +50,9 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
           <App />
         </>
       ) : (
-        <>
+        <div className={styles['standalone-page']}>
           <SiteHeader nav={fromApp} />
-          <main className={styles['app']}>
+          <main className={styles['connect-page']}>
             <AppLanding app="importer">
               <ConnectMenu
                 clientId={standaloneSmartConfig.clientId}
@@ -62,7 +62,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
             </AppLanding>
           </main>
           <SiteFooter nav={fromApp} />
-        </>
+        </div>
       )}
     </QueryClientProvider>
   )

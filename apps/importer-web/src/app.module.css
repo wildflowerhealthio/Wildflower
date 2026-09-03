@@ -20,6 +20,25 @@
   margin-bottom: var(--space-9);
 }
 
+/*
+ * Standalone (bare-visit) page: a full-height column so the footer sits at the
+ * bottom of the viewport even when the landing content is shorter than the screen.
+ */
+.standalone-page {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+/* The landing area (intro beside the ConnectMenu): on the site's content column, matching the header and footer. */
+.connect-page {
+  flex: 1;
+  width: 100%;
+  max-width: var(--content-max-width);
+  margin: 0 auto;
+  padding: var(--space-13) var(--page-padding-x);
+}
+
 .subtitle {
   margin-top: var(--space-3);
   color: var(--color-neutral-5);

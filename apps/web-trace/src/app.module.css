@@ -35,7 +35,7 @@
   width: 100%;
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: var(--space-11) var(--page-padding-x);
+  padding: var(--space-13) var(--page-padding-x);
 }
 
 .subtitle {
