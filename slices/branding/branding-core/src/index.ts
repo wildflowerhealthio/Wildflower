@@ -1,3 +1,5 @@
+export { APP_DESCRIPTIONS, APP_SECTION_IDS } from './app-descriptions.ts'
+export type { AppDescription, AppSectionId } from './app-descriptions.ts'
 export {
   FOOTER_COMPANY_LINKS,
   FOOTER_PRODUCT_LINKS,

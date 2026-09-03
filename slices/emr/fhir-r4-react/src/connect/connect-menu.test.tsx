@@ -1,10 +1,10 @@
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type * as StandaloneLaunch from '../smart/standalone-launch.ts'
 import { ConnectMenu } from './connect-menu.tsx'
-import { DEFAULT_SERVER_PRESETS } from './server-presets.ts'
+import { DEFAULT_SERVER_PRESET_GROUPS, DEFAULT_SERVER_PRESETS } from './server-presets.ts'
 
 // Stub only the launch seam; keep the real `normalizeServerUrl` so the
 // validation path under test is the production one, not a mock.
@@ -32,14 +32,19 @@ afterEach(() => {
 })
 
 describe('ConnectMenu', () => {
-  it('renders one button per preset and launches against the picked preset URL', async () => {
+  it('renders one button per preset, under its server group, and launches against the picked preset URL', async () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    // A button for every default preset (assertions derive from the presets
-    // themselves, so editing the list never silently outdates this test).
-    for (const preset of DEFAULT_SERVER_PRESETS) {
-      expect(screen.getByRole('button', { name: preset.label })).toBeDefined()
+    // Every default group is a region labelled with the server's name that
+    // shows the server's address and holds a button per preset. Assertions derive from the presets
+    // themselves, so editing the list never silently outdates this test.
+    for (const group of DEFAULT_SERVER_PRESET_GROUPS) {
+      const region = within(screen.getByRole('region', { name: group.name }))
+      expect(region.getByText(group.address)).toBeDefined()
+      for (const preset of group.presets) {
+        expect(region.getByRole('button', { name: preset.label })).toBeDefined()
+      }
     }
 
     // Act — pick a non-Local preset and launch against exactly its URL.
@@ -88,13 +93,13 @@ describe('ConnectMenu', () => {
     const user = userEvent.setup()
     render(<ConnectMenu {...PROPS} />)
 
-    await user.click(screen.getByRole('button', { name: 'Local' }))
+    await user.click(screen.getByRole('button', { name: 'Launch' }))
 
     await waitFor(() => {
       expect(screen.getByText(/Could not reach http:\/\/127\.0\.0\.1:8080\/fhir-r4/i)).toBeDefined()
     })
     // The menu is still there — the launch was attempted, and a retry is possible.
     expect(startStandaloneLaunchMock).toHaveBeenCalledTimes(1)
-    expect(screen.getByRole('button', { name: 'Local' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Launch' })).toBeDefined()
   })
 })

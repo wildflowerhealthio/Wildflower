@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BrandBar, SiteFooter, SiteHeader, fromApp } from 'branding-react'
+import { AppLanding, BrandBar, SiteFooter, SiteHeader, fromApp } from 'branding-react'
 import { ConnectMenu } from 'fhir-r4-react/connect'
 import { buildSmartQueryClient, shouldCompleteSmartLaunch } from 'fhir-r4-react/smart'
 import type { JSX } from 'react'
@@ -15,7 +15,8 @@ import styles from './app.module.css'
  *
  * @param launched - Whether the URL carries a SMART callback to complete: the
  *   launched branch renders `BrandBar` over `App`; the standalone branch renders
- *   the full `SiteHeader` / `ConnectMenu` / `SiteFooter` page. Read once, on
+ *   the full `SiteHeader` / `AppLanding` (the app's introduction beside the
+ *   `ConnectMenu`) / `SiteFooter` page. Read once, on
  *   mount: defaults to the live URL check (`shouldCompleteSmartLaunch`); tests
  *   pass it explicitly. A later change to the prop is ignored, for the reason
  *   below.
@@ -52,11 +53,13 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
         <div className={styles['standalone-page']}>
           <SiteHeader nav={fromApp} />
           <main className={styles['connect-page']}>
-            <ConnectMenu
-              clientId={standaloneSmartConfig.clientId}
-              scope={standaloneSmartConfig.scope}
-              redirectUri={redirectUri}
-            />
+            <AppLanding app="medications">
+              <ConnectMenu
+                clientId={standaloneSmartConfig.clientId}
+                scope={standaloneSmartConfig.scope}
+                redirectUri={redirectUri}
+              />
+            </AppLanding>
           </main>
           <SiteFooter nav={fromApp} />
         </div>

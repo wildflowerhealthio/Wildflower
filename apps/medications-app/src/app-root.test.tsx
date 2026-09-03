@@ -1,4 +1,5 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
+import { APP_DESCRIPTIONS } from 'branding-core'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -67,6 +68,23 @@ describe('AppRoot', () => {
     // The OAuth callback must land back on this page root, wherever it is served from
     expect(connectMenu.getAttribute('data-redirect-uri')).toBe(`${window.location.origin}/`)
     expect(screen.queryByTestId('app')).toBeNull()
+  })
+
+  it('should introduce the Medication Viewer beside the connect menu when not launched', () => {
+    // Arrange / Act
+    renderAppRoot({ launched: false })
+
+    // Assert — the app name is the page's only h1 (the site header's brand is a div)
+    const headings = screen.getAllByRole('heading', { level: 1 })
+    expect(headings).toHaveLength(1)
+    expect(headings[0].textContent).toBe(APP_DESCRIPTIONS.medications.name)
+
+    // The homepage's copy and a link to its section sit in the same main region
+    const main = within(screen.getByRole('main'))
+    expect(main.getByText(APP_DESCRIPTIONS.medications.paragraphs[0])).toBeDefined()
+    expect(main.getByRole('link', { name: /rest of the project/ }).getAttribute('href')).toBe(
+      `${MARKETING_ORIGIN}#built`
+    )
   })
 
   it('should resolve every header nav link as an absolute marketing-site URL', () => {

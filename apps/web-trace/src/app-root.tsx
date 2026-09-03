@@ -1,5 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
-import { BrandBar, SiteFooter, SiteHeader, fromApp } from 'branding-react'
+import { AppLanding, BrandBar, SiteFooter, SiteHeader, fromApp } from 'branding-react'
 import { ConnectMenu } from 'fhir-r4-react/connect'
 import { buildSmartQueryClient, shouldCompleteSmartLaunch } from 'fhir-r4-react/smart'
 import { useState, type JSX } from 'react'
@@ -48,11 +48,13 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
         <div className={styles['standalone-page']}>
           <SiteHeader nav={fromApp} />
           <main className={styles['connect-page']}>
-            <ConnectMenu
-              clientId={standaloneSmartConfig.clientId}
-              scope={standaloneSmartConfig.scope}
-              redirectUri={redirectUri}
-            />
+            <AppLanding app="webTrace">
+              <ConnectMenu
+                clientId={standaloneSmartConfig.clientId}
+                scope={standaloneSmartConfig.scope}
+                redirectUri={redirectUri}
+              />
+            </AppLanding>
           </main>
           <SiteFooter nav={fromApp} />
         </div>
