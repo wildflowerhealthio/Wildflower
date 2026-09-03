@@ -1,6 +1,7 @@
 import type { CollectorDescriptor } from 'collector-fundamentals/model'
 import { Schema } from 'effect'
 import { FhirR4CollectorDescriptor } from 'fhir-r4-client-collector'
+import { LifeLabsCollectorDescriptor } from 'lifelabs-collector'
 import { RexallCollectorDescriptor } from 'rexall-be-well-collector'
 import { ShoppersDrugMartCollectorDescriptor } from 'shoppers-drugmart-collector'
 import { WebTraceCollectorDescriptor } from 'web-trace-collector'
@@ -25,6 +26,7 @@ const descriptors = [
   FhirR4CollectorDescriptor,
   RexallCollectorDescriptor,
   ShoppersDrugMartCollectorDescriptor,
+  LifeLabsCollectorDescriptor,
   WebTraceCollectorDescriptor,
 ] as const
 
