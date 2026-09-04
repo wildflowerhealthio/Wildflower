@@ -1,4 +1,4 @@
-/* The stack of app rows inside sections 4 and 5. */
+/* The stack of app rows inside the Built and Infrastructure sections. */
 .rows {
   display: grid;
   gap: clamp(var(--space-10), 4vw, var(--space-12));

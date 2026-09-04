@@ -16,7 +16,7 @@ import layout from './layout.module.css'
  * own landing page renders; the row keeps its own title because here the
  * Importer is framed as infrastructure ("on-device scraping"), not by name.
  */
-function PossibleToday(): JSX.Element {
+function Infrastructure(): JSX.Element {
   const importer = APP_DESCRIPTIONS.importer
 
   return (
@@ -64,4 +64,4 @@ function PossibleToday(): JSX.Element {
   )
 }
 
-export { PossibleToday }
+export { Infrastructure }

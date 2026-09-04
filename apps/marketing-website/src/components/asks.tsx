@@ -90,7 +90,7 @@ function Ask({
 }): JSX.Element {
   return (
     <div className={styles['ask']}>
-      <h3 className={styles['ask__title']}>{title}</h3>
+      <h3 className={layout['block-title']}>{title}</h3>
       {children}
     </div>
   )

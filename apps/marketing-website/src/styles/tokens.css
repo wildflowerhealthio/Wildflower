@@ -25,4 +25,11 @@
    * with the wider 700px cap kept for the asks/dev-tools blocks. */
   --prose-max-width: 660px;
   --prose-wide-max-width: 700px;
+
+  /* Ambient float shadows for raised page elements. The design system's card
+   * ramp has nothing this deep, so these black-and-ambient shadows live here.
+   * `panel` lifts opaque surfaces off the page (stats tally, header dropdown);
+   * `frame` is the shallower depth the outlined device frames float on. */
+  --shadow-float-panel: 0 20px 44px -16px rgba(0, 0, 0, 0.7);
+  --shadow-float-frame: 0 20px 44px -16px rgba(0, 0, 0, 0.5);
 }

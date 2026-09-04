@@ -13,6 +13,8 @@
  *  - skipped entirely under `prefers-reduced-motion: reduce`
  */
 
+import { prefersReducedMotion } from 'react-kitchen-sink'
+
 type CountUpOptions = {
   readonly duration?: number
   readonly stagger?: number
@@ -49,8 +51,7 @@ function countUpStats(host: HTMLElement, options: CountUpOptions = {}): void {
   } = options
 
   if (once && host.dataset['counted'] === '1') return
-  // `matchMedia` is absent in some non-browser environments (e.g. jsdom).
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
+  if (prefersReducedMotion()) return
 
   // Even-indexed children are the number cells.
   const cells = Array.from(host.children).filter((_, index) => index % 2 === 0)

@@ -96,13 +96,9 @@
   visibility: hidden;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   .ruth {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .ruth__lockup {
-    grid-column: 1;
   }
 
   /* The stats block is hidden on narrow screens — see the file-level note. */

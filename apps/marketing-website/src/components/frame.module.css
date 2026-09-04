@@ -1,0 +1,13 @@
+/*
+ * The outlined-device frame shared by the hero's swiping phone and the app-row
+ * screenshots: a rounded rectangle in the neutral-2 hairline over the page
+ * background, floating on the ambient frame shadow. Composed into
+ * `.hero__phone-frame` and `.app-row__figure`.
+ */
+.device-frame {
+  border: 2px solid var(--color-neutral-2);
+  border-radius: 28px;
+  overflow: hidden;
+  background: var(--color-background);
+  box-shadow: var(--shadow-float-frame);
+}

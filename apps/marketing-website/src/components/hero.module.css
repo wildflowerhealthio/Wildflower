@@ -1,7 +1,7 @@
 /*
  * The hero sits in the essay's regular content column, same width as every
- * other section. At ≥1024px the phone frame tucks in beside the lines within
- * that column; below 1024px the phone is hidden and the lines take the width.
+ * other section. At ≥840px the phone frame tucks in beside the lines within
+ * that column; below 840px the phone is hidden and the lines take the width.
  */
 .hero {
   padding: clamp(var(--space-13), 7vw, 92px) 0 clamp(var(--space-12), 5vw, var(--space-14));
@@ -72,14 +72,9 @@
   white-space: nowrap;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .hero__line {
     font-size: var(--font-size-3);
-  }
-}
-
-@media (max-width: 640px) {
-  .hero__line {
     white-space: normal;
   }
 }
@@ -90,11 +85,36 @@
 }
 
 /*
+ * The phone: a minimal outlined frame around a strip of the nine "other apps"
+ * screenshots. The strip shifts `-100%` per step via a CSS transition so each
+ * swipe reads as a lazy scroll. These sit inert below 840px (the phone is
+ * `display: none`); the ≥840px block below reveals and places it.
+ */
+.hero__phone-frame {
+  composes: device-frame from './frame.module.css';
+  width: 160px;
+  aspect-ratio: 9 / 19;
+}
+
+.hero__phone-strip {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 1.1s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.hero__phone-image {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/*
  * ≥840px: the body becomes a two-column grid — the lines fill the left column
- * top to bottom, the phone sits top-right, and the caption is anchored to the
- * bottom-right corner. The frame is a minimal outlined rounded rectangle
- * around a strip of the nine "other apps" screenshots; the strip shifts
- * `-100%` per step via a CSS transition so each swipe reads as a lazy scroll.
+ * top to bottom, the phone (styled above) sits top-right, and the caption is
+ * anchored to the bottom-right corner.
  */
 @media (min-width: 840px) {
   .hero__body {
@@ -130,30 +150,5 @@
     font-style: italic;
     line-height: var(--line-height-4);
     text-align: center;
-  }
-
-  .hero__phone-frame {
-    width: 160px;
-    aspect-ratio: 9 / 19;
-    border: 2px solid var(--color-neutral-2);
-    border-radius: 28px;
-    overflow: hidden;
-    background: var(--color-background);
-    box-shadow: 0 20px 44px -16px rgba(0, 0, 0, 0.5);
-  }
-
-  .hero__phone-strip {
-    display: flex;
-    width: 100%;
-    height: 100%;
-    transition: transform 1.1s cubic-bezier(0.65, 0, 0.35, 1);
-  }
-
-  .hero__phone-image {
-    flex: 0 0 100%;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
   }
 }

@@ -4,7 +4,7 @@ import { Asks } from './components/asks.tsx'
 import { Built } from './components/built.tsx'
 import { DevTools } from './components/dev-tools.tsx'
 import { Hero } from './components/hero.tsx'
-import { PossibleToday } from './components/possible-today.tsx'
+import { Infrastructure } from './components/infrastructure.tsx'
 import { RuthIntro } from './components/ruth-intro.tsx'
 import { SameLanguage } from './components/same-language.tsx'
 import { SiteFooter } from './components/site-footer.tsx'
@@ -12,7 +12,7 @@ import { SiteHeader } from './components/site-header.tsx'
 
 /**
  * The homepage, top to bottom: header, hero (`#top`) with the manifesto
- * lines, the "I'm Ruth" intro (portrait, stats, bio), the FHIR explainer,
+ * lines, the "I'm Ruth" intro (bio, stats), the FHIR explainer,
  * the apps (`#built`), the infrastructure (`#try`), the policy asks
  * (`#asks`), dev tooling (`#developers`), and the footer (`#note`). A
  * first-person essay, deliberately not a startup landing page: no signup
@@ -28,7 +28,7 @@ function App(): JSX.Element {
         <RuthIntro />
         <SameLanguage />
         <Built />
-        <PossibleToday />
+        <Infrastructure />
         <Asks />
         <DevTools />
       </main>

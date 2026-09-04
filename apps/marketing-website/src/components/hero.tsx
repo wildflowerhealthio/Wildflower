@@ -1,5 +1,7 @@
 import { useEffect, useState, type JSX } from 'react'
 
+import { prefersReducedMotion } from 'react-kitchen-sink'
+
 import { otherAppImages } from '../assets/remote-images.ts'
 import styles from './hero.module.css'
 
@@ -105,12 +107,6 @@ function OtherAppsPhone(): JSX.Element {
       </p>
     </>
   )
-}
-
-/** Whether the viewer has asked for reduced motion (false in non-browser environments). */
-function prefersReducedMotion(): boolean {
-  if (typeof window === 'undefined') return false
-  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 }
 
 export { Hero }

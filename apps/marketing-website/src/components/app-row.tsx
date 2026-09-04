@@ -53,7 +53,7 @@ function AppRow({
   return (
     <article className={rowClass}>
       <div className={styles['app-row__text']}>
-        <h3 className={styles['app-row__title']}>{title}</h3>
+        <h3 className={layout['block-title']}>{title}</h3>
         {status === undefined ? null : <span className={layout['mono-note']}>{status}</span>}
         <div className={styles['app-row__body']}>
           {paragraphs.map((paragraph) => (

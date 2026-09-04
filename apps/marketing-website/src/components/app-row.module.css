@@ -16,14 +16,6 @@
   justify-items: start;
 }
 
-.app-row__title {
-  margin: 0;
-  color: var(--color-neutral-1);
-  font-size: var(--font-size-5);
-  font-weight: var(--font-weight-4);
-  letter-spacing: var(--letter-spacing-2);
-}
-
 /* Paragraphs are separated by about one blank line, as the essay is. */
 .app-row__body {
   display: grid;
@@ -81,14 +73,10 @@
   object-fit: contain;
 }
 
-/* Each screenshot wears the hero phone's outlined device frame. */
+/* Each screenshot wears the shared outlined device frame (see frame.module.css). */
 .app-row__figure {
+  composes: device-frame from './frame.module.css';
   margin: 0;
-  border: 2px solid var(--color-neutral-2);
-  border-radius: 28px;
-  overflow: hidden;
-  background: var(--color-background);
-  box-shadow: 0 20px 44px -16px rgba(0, 0, 0, 0.5);
 }
 
 .app-row__image {
@@ -97,7 +85,7 @@
   display: block;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 767.98px) {
   /*
    * The screenshots stack under the text and fill the column width, keeping
    * their aspect ratio (never cropped): a single landscape shot goes shorter

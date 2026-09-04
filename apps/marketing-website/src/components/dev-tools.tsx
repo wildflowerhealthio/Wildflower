@@ -19,7 +19,7 @@ function DevTools(): JSX.Element {
       <div className={layout['column']}>
         <h2 className={layout['section-title']}>Some extra tooling for developers</h2>
         <div className={styles['dev-tools']}>
-          <h3 className={styles['dev-tools__title']}>{webTrace.name}</h3>
+          <h3 className={layout['block-title']}>{webTrace.name}</h3>
           {webTrace.paragraphs.map((paragraph) => (
             <p key={paragraph} className={styles['dev-tools__body']}>
               {paragraph}
