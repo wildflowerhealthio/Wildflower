@@ -1,0 +1,115 @@
+name: PR Preview
+
+# Builds the same assembled static site as deploy-github-pages.yml
+# (apps/github-pages/dist) and publishes it to the `wildflowerhealthio/staging`
+# repo under `pr-<n>/` on the `main` branch, which that repo serves via GitHub
+# Pages. On PR close the preview is torn down.
+#
+# Prerequisites (one-time):
+#   - The `wildflowerhealthio/staging` repo exists and has GitHub Pages
+#     configured to serve from `main` at `/`.
+#   - A GitHub App exists in the `wildflowerhealthio` org and is installed on
+#     `wildflowerhealthio/staging` with `Contents: Read and write`. The App's
+#     numeric ID goes in the `STAGING_APP_ID` secret; its private key (the
+#     .pem file, contents included) goes in `STAGING_APP_PRIVATE_KEY`. The App
+#     token is minted per run and lives for one hour — no long-lived PAT sits
+#     in a secret. A fine-grained PAT was tried first and hit a GitHub quirk:
+#     JamesIves' underlying action hard-codes the `x-access-token` username in
+#     the deploy URL, and GitHub only accepts that username with an App
+#     installation token (`ghs_...`), not with a fine-grained PAT.
+#
+# Known limitation: `branding-core`'s `SITE_ORIGIN` and `sectionRootPath` are
+# hardcoded to https://wildflowerhealth.io / absolute `/…` paths, so
+# cross-section links in the preview point at production. The marketing site
+# itself previews fine (relative `base: './'`). Making cross-section links
+# preview-aware is a separate follow-up.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, closed]
+
+# One preview build per PR. Cancelling in-progress runs is safe here (unlike
+# the production deploy): the preview is disposable, and the newest push is
+# what a reviewer wants to see.
+concurrency:
+  group: pr-preview-${{ github.event.number }}
+  cancel-in-progress: true
+
+# `pull-requests: write` lets the action post/update the preview comment on
+# this repo's PR. Contents write on the target repo comes from the App
+# installation token minted below, not `GITHUB_TOKEN`.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  deploy-preview:
+    name: Deploy PR preview
+    runs-on: ubuntu-latest
+    # Fork PRs don't have access to repository secrets, so the App-token mint
+    # would fail before the deploy step even ran. Skip the job entirely on
+    # fork PRs rather than surfacing a red check for every one.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    steps:
+      - name: Mint staging-repo App token
+        id: staging-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ secrets.STAGING_APP_ID }}
+          private-key: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
+          owner: wildflowerhealthio
+          repositories: staging
+
+      # persist-credentials:false is load-bearing. The default persists
+      # GITHUB_TOKEN as an extraheader on github.com, threaded into the
+      # workspace's .git/config via an includeif.gitdir entry. That
+      # extraheader is then sent on every HTTPS request git makes from the
+      # workspace, and GitHub honors it over the URL-embedded credentials
+      # JamesIves' deploy action builds. GITHUB_TOKEN has no access to
+      # `wildflowerhealthio/staging`, so with the extraheader active every
+      # `git ls-remote` inside the deploy step comes back as
+      # `Repository not found`. This workflow never pushes back to
+      # `wildflowerhealthio/Wildflower`, so we can safely drop the persisted
+      # credentials.
+      - name: Checkout code
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Vite+
+        if: github.event.action != 'closed'
+        uses: voidzero-dev/setup-vp@v1.18.0
+        with:
+          cache: true
+
+      - name: Install dependencies
+        if: github.event.action != 'closed'
+        run: vp install
+
+      # Same build as the production deploy: `vp run pack` runs in workspace
+      # dependency order so every assembled section is built before
+      # github-pages stages them into apps/github-pages/dist.
+      - name: Build site
+        if: github.event.action != 'closed'
+        run: vp run pack
+
+      # Strip the marketing site's CNAME from the preview artifact. It only
+      # exists at pr-<n>/CNAME in the target repo (Pages reads CNAME only from
+      # the branch root), so it is inert — but removing it keeps the deployed
+      # tree from claiming the production custom domain if anyone ever
+      # repoints it.
+      - name: Strip production CNAME from preview
+        if: github.event.action != 'closed'
+        run: rm -f apps/github-pages/dist/CNAME
+
+      - name: Deploy preview
+        uses: rossjrw/pr-preview-action@v1.8.1
+        with:
+          source-dir: apps/github-pages/dist
+          preview-branch: main
+          # Umbrella at the repo root (not the action default `pr-preview/`)
+          # so previews land at `wildflowerhealthio.github.io/staging/pr-<n>/`
+          # — the URL shape the staging repo is set up for.
+          umbrella-dir: '.'
+          deploy-repository: wildflowerhealthio/staging
+          token: ${{ steps.staging-token.outputs.token }}
+          pages-base-url: wildflowerhealthio.github.io/staging
