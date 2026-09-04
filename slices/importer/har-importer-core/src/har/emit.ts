@@ -1,6 +1,6 @@
 import { DateTime, Duration, Schema } from 'effect'
 
-import type { TraceExchange } from '../trace-exchange.ts'
+import type { TraceExchange } from 'web-trace-core'
 import {
   type Har,
   type HarBody,

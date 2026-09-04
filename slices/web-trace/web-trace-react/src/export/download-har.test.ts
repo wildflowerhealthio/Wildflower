@@ -1,8 +1,8 @@
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
+import { emitHar } from 'har-importer-core/har'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import { emitHar } from 'web-trace-core/har'
 import { traceExchange } from 'web-trace-core/test-helpers'
 
 import { HAR_MEDIA_TYPE, harBlob, harFileName } from './download-har.ts'

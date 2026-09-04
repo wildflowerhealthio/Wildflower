@@ -18,6 +18,14 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./har": {
+      "source": "./src/har/index.ts",
+      "default": "./dist/har/index.js"
+    },
+    "./archive": {
+      "source": "./src/archive/index.ts",
+      "default": "./dist/archive/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -30,10 +38,13 @@
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "ajv": "catalog:",
+    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-source": "workspace:*",
+    "har-schema": "catalog:",
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
@@ -44,6 +55,7 @@
     "web-trace-core": "workspace:*"
   },
   "peerDependencies": {
+    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-source": "workspace:*",

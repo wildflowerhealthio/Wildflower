@@ -24,9 +24,12 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`src/codec/`** — `TraceExchange` ⇄ FHIR R4 `DocumentReference`.
   `systems.ts` holds the private systems and extension URLs;
   `fhir-duration.ts` is the `Duration` ⇄ FHIR `Duration` unit conversion.
-  `har-archive-codec.ts` is the _second_, deliberately disjoint encoding:
-  a whole uploaded `.har` file as one attachment (`HarArchive`), for the
-  importer to read back and parse.
+  The `har-archive` codec (a whole uploaded `.har` file as one attachment)
+  moved to `har-importer-core/archive` in M1 of #578; the shared systems
+  constants it still reaches for (`HAR_ARCHIVE_CODE`, `WEB_TRACE_CODE_SYSTEM`,
+  `WEB_TRACE_RAW_CODE`, `WEB_TRACE_REDACTION_SYSTEM`) stay here — a trace and
+  an archive sit on the same axis under different codes, and `isWebTrace` and
+  `isHarArchive` never both hold.
 - **`src/capture/`** — the capture-side primitives both consumers share:
   the content-type rule, the SHA-256 every body carries, and `storeBodyVerbatim`.
   Policy is _not_ here — see the trap below.
@@ -43,15 +46,11 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   what a value looks like and generates another value that looks the same,
   `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
   policy/rewrite engine, and `hmac.ts` is the Web Crypto seam.
-- **`src/har/`** — HAR 1.2, as a schema read in both directions. `har.ts` is
-  the format itself (`Har`, and `HarFromJson` for a file's text): encoded side
-  the JSON the spec describes, type side the same structure with its values
-  decoded. `emit.ts` builds an archive from `TraceExchange`es;
-  `http-archive.ts` is the projection an importer and a replay consume, as the
-  `HttpArchive` namespace (`Entry`, `Log`, `LogFromHarJson`), and it encodes
-  back.
-  `fixtures/chrome-devtools.har.json` is a synthetic DevTools export the tests
-  hold themselves to.
+- **`src/har/` — moved to `har-importer-core/har`** in M1 of #578. The
+  format definition and the `HttpArchive` projection now live with the
+  importer slice's HAR binding. `emitHar` still takes `TraceExchange` (its one
+  caller, `web-trace-react`'s export flow, still speaks that vocabulary until
+  R2 dissolves it), and reaches back here for the type.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 

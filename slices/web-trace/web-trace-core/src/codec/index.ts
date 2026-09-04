@@ -30,17 +30,6 @@ export {
 } from './document-reference-codec.ts'
 export { DurationFromFhirDuration, UCUM_TIME_CODES } from './fhir-duration.ts'
 export {
-  HAR_ARCHIVE_CONTENT_TYPE,
-  HarArchive,
-  HarArchiveFromDocumentReference,
-  HarArchiveFromFhirJson,
-  harArchiveFromDocumentReference,
-  HarArchiveId,
-  harArchiveToDocumentReference,
-  harArchiveToWire,
-  isHarArchive,
-} from './har-archive-codec.ts'
-export {
   BODY_SKIPPED_REASON_EXTENSION,
   HAR_ARCHIVE_CODE,
   RESPONSE_HEADER_EXTENSION,

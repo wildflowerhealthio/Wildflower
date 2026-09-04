@@ -3,14 +3,14 @@ import { DocumentReference } from 'fhir-r4/resources'
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
-import { sha256Base64 } from '../capture/body.ts'
-import type { DocumentReferenceType } from './document-reference-codec.ts'
+import { sha256Base64 } from 'web-trace-core/capture'
 import {
+  type DocumentReferenceType,
   HAR_ARCHIVE_CODE,
   WEB_TRACE_CODE_SYSTEM,
   WEB_TRACE_RAW_CODE,
   WEB_TRACE_REDACTION_SYSTEM,
-} from './systems.ts'
+} from 'web-trace-core/codec'
 
 /**
  * The single definition of how a whole `.har` file is stored as a FHIR R4

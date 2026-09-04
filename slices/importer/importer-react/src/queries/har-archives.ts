@@ -15,8 +15,8 @@ import {
   harArchiveFromDocumentReference,
   isHarArchive,
   WEB_TRACE_CODE_SYSTEM,
-  type DocumentReferenceType,
-} from 'web-trace-core/codec'
+} from 'har-importer-core/archive'
+import type { DocumentReferenceType } from 'web-trace-core/codec'
 
 import { type PickedHar, serverSource } from '../sources/picked-har.ts'
 import { HAR_ARCHIVES_QUERY_KEY } from './keys.ts'

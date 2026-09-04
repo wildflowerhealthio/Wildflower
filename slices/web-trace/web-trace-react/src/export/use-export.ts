@@ -1,8 +1,8 @@
 import { Effect } from 'effect'
+import { emitHar } from 'har-importer-core/har'
 import { useCallback, useEffect, useState } from 'react'
 import { usePreviousDistinctValue } from 'react-kitchen-sink'
 import type { TraceExchange } from 'web-trace-core'
-import { emitHar } from 'web-trace-core/har'
 import {
   DEFAULT_ENUM_THRESHOLD,
   mintExportSalt,

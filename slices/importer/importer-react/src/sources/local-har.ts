@@ -1,5 +1,5 @@
 import { Effect, ParseResult, Schema } from 'effect'
-import { HttpArchive } from 'web-trace-core/har'
+import { HttpArchive } from 'har-importer-core/har'
 
 import { LOCAL_SOURCE, type PickedHar } from './picked-har.ts'
 
