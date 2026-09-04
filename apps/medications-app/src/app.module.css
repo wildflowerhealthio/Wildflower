@@ -21,7 +21,17 @@
   margin-bottom: var(--space-9);
 }
 
-/* Header controls: the view toggle and (on the medications view) the province picker. */
+/* The H1 with the page-chunk progress bar stacked directly beneath it. The
+ * stack hugs the title's width, so the bar starts left-aligned under it (and
+ * may grow past it on long lists — intended). */
+.titleStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: fit-content;
+}
+
+/* Header controls: the view toggle. */
 .controls {
   display: flex;
   flex-wrap: wrap;

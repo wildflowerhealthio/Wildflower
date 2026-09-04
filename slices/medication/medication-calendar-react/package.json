@@ -1,8 +1,8 @@
 {
-  "name": "medication-sponsorship-react",
+  "name": "medication-calendar-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser UI for the medication-sponsorship slice: the province picker, the grouped medication view and sponsor cards, plus the FHIR `MedicationRequest` -> `medication-sponsorship-core` `Medication` adapter.",
+  "description": "Browser UI for the medication-calendar slice: the month-grid calendar view of upcoming pickups, renewal appointments and supply-exhaustion markers derived from the patient's prescriptions.",
   "type": "module",
   "exports": {
     ".": {
@@ -25,23 +25,22 @@
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "medication-calendar-core": "workspace:*",
-    "medication-sponsorship-core": "workspace:*",
+    "medication-sponsorship-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
     "medication-calendar-core": "workspace:*",
-    "medication-sponsorship-core": "workspace:*",
+    "medication-sponsorship-react": "workspace:*",
     "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*"
   }
 }

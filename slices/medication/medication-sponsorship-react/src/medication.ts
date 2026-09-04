@@ -1,6 +1,7 @@
 import { DateTime, Option, Schema } from 'effect'
 import type { MedicationRequest } from 'fhir-r4/resources'
 import { nonEmpty } from 'kitchen-sink'
+import { nextFillDate } from 'medication-calendar-core'
 import type { Medication } from 'medication-sponsorship-core'
 
 /** The decoded FHIR R4 `MedicationRequest` resource. */
@@ -394,56 +395,13 @@ const repeatsOf = (
   return { allowed, available }
 }
 
-// UCUM time codes and their spelled-out `unit` fallbacks → a builder for the
-// matching `DateTime.add` part. Supply durations are almost always days, but
-// weeks/months are valid; an unrecognized or absent unit falls back to days
-// (see `supplyToParts`). `Partial` keeps index access `Builder | undefined`.
-type PartBuilder = (amount: number) => Partial<DateTime.DateTime.PartsForMath>
-const UCUM_UNIT: Partial<Record<string, PartBuilder>> = {
-  s: (n) => ({ seconds: n }),
-  min: (n) => ({ minutes: n }),
-  h: (n) => ({ hours: n }),
-  d: (n) => ({ days: n }),
-  wk: (n) => ({ weeks: n }),
-  mo: (n) => ({ months: n }),
-  a: (n) => ({ years: n }),
-}
-const SPELLED_UNIT: Partial<Record<string, PartBuilder>> = {
-  second: UCUM_UNIT.s,
-  seconds: UCUM_UNIT.s,
-  minute: UCUM_UNIT.min,
-  minutes: UCUM_UNIT.min,
-  hour: UCUM_UNIT.h,
-  hours: UCUM_UNIT.h,
-  day: UCUM_UNIT.d,
-  days: UCUM_UNIT.d,
-  week: UCUM_UNIT.wk,
-  weeks: UCUM_UNIT.wk,
-  month: UCUM_UNIT.mo,
-  months: UCUM_UNIT.mo,
-  year: UCUM_UNIT.a,
-  years: UCUM_UNIT.a,
-}
-
-/** The `expectedSupplyDuration` as `DateTime.add` parts, or `null` if unusable. */
-const supplyToParts = (supply: SupplyDuration): Partial<DateTime.DateTime.PartsForMath> | null => {
-  const { value } = supply
-  if (value === null || value === undefined || value <= 0) return null
-  const fromCode =
-    supply.code === null || supply.code === undefined ? undefined : UCUM_UNIT[supply.code]
-  const fromUnit =
-    supply.unit === null || supply.unit === undefined
-      ? undefined
-      : SPELLED_UNIT[supply.unit.toLowerCase()]
-  const build = fromCode ?? fromUnit ?? UCUM_UNIT.d
-  return build === undefined ? null : build(Math.round(value))
-}
-
 /**
  * Estimated next-fill date as an ISO instant: `authoredOn` advanced by the
  * `dispenseRequest.expectedSupplyDuration` (i.e. when the current supply runs
  * out). `null` unless both the authored date and a usable supply duration are
- * present.
+ * present. The date math lives in `medication-calendar-core`; this reads the
+ * two slots off the decoded resource (the authored `DateTime` formatted to ISO)
+ * and delegates.
  */
 const nextFillDateOf = (
   request: MedicationRequestResource,
@@ -454,33 +412,13 @@ const nextFillDateOf = (
   if (Option.isNone(dispenseRequest)) return null
   const supply = dispenseRequest.value.expectedSupplyDuration
   if (supply === null || supply === undefined) return null
-  const parts = supplyToParts(supply)
-  if (parts === null) return null
-  return DateTime.formatIso(DateTime.add(authored, parts))
-}
-
-/**
- * A coarse, human-readable distance from `nowMillis` (epoch ms) to an ISO
- * instant, for a next-fill hint: `"today"`, `"in 3 days"`, `"in 2 weeks"`,
- * `"in 5 months"` (and the past `"… ago"` forms). Rounds to whole days, then
- * collapses to weeks past ~10 days and months past ~8 weeks — deliberately
- * imprecise, matching how a fill reminder reads.
- */
-// Round a whole-day magnitude to a coarse (count, unit): days up to ~10, then
-// weeks up to ~8 weeks, then months.
-const coarsen = (days: number): readonly [number, string] => {
-  if (days <= 10) return [days, 'day']
-  if (days <= 56) return [Math.floor(days / 7), 'week']
-  return [Math.floor(days / 30), 'month']
-}
-
-const describeDayFromNow = (iso: string, nowMillis: number): string => {
-  const target = DateTime.toEpochMillis(DateTime.unsafeMake(iso))
-  const days = Math.round((target - nowMillis) / 86_400_000)
-  if (days === 0) return 'today'
-  const [count, unit] = coarsen(Math.abs(days))
-  const phrase = `${count} ${count === 1 ? unit : `${unit}s`}`
-  return days > 0 ? `in ${phrase}` : `${phrase} ago`
+  // Rebuild as a `medication-calendar-core` `SupplyDuration`: the decoded slots
+  // are optional properties, which core requires present (each nullable).
+  return nextFillDate(DateTime.formatIso(authored), {
+    value: supply.value,
+    unit: supply.unit,
+    code: supply.code,
+  })
 }
 
 /**
@@ -540,6 +478,14 @@ interface MedicationView {
   readonly shoppersStoreUrl: string | null
 }
 
+/**
+ * Whether a medication still has a refill to pick up: repeats are allowed and at
+ * least one remains. With a refill left the supply-runout date is the next fill;
+ * with none, that date is simply when the supply is exhausted.
+ */
+const hasRefill = (view: MedicationView): boolean =>
+  view.repeatsAllowed !== null && view.repeatsAllowed > 0 && (view.repeatsAvailable ?? 0) > 0
+
 /** Build the rich {@link MedicationView} for one request. */
 const medicationRequestToMedicationView = (
   request: MedicationRequestResource,
@@ -580,7 +526,7 @@ const medicationRequestsToMedicationViews = (
   )
 
 export {
-  describeDayFromNow,
+  hasRefill,
   medicationRequestToMedication,
   medicationRequestsToMedications,
   medicationRequestToMedicationView,

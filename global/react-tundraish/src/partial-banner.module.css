@@ -1,0 +1,70 @@
+/*
+ * PartialBanner skin — the amber still-loading banner. The warning tone has
+ * no semantic tokens; the per-scheme trios below are the same literals the
+ * yellow `status-badge` uses (see status-badge.css), so the two warning
+ * surfaces stay in lockstep. Everything else reads the ramps.
+ */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid #e0c46b;
+  border-radius: var(--radius-3);
+  background: #f6ecc7;
+}
+
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill, 999px);
+  background: #c99617;
+  animation: breathe 1.5s ease-in-out infinite;
+}
+
+.message {
+  margin: 0;
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  color: #755610;
+}
+
+/* The inline action inherits the banner's size; colour stays the link tone. */
+.action {
+  font-size: inherit;
+}
+
+:root[data-color-scheme='dark'] .banner {
+  border-color: #55471e;
+  background: #33290e;
+}
+
+:root[data-color-scheme='dark'] .dot {
+  background: #d99e1a;
+}
+
+:root[data-color-scheme='dark'] .message {
+  color: #d9b661;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scaleY(0.5);
+  }
+
+  50% {
+    opacity: 0.95;
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}

@@ -3,7 +3,7 @@ import { MedicationRequest } from 'fhir-r4/resources'
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
-  describeDayFromNow,
+  hasRefill,
   medicationRequestsToMedications,
   medicationRequestToMedication,
   medicationRequestToMedicationView,
@@ -427,21 +427,36 @@ describe('medicationRequestToMedicationView', () => {
   })
 })
 
-describe('describeDayFromNow', () => {
-  // A fixed "now" keeps these deterministic — no wall clock is read.
-  const now = Date.parse('2026-06-01T00:00:00Z')
-  const at = (iso: string): string => describeDayFromNow(iso, now)
+describe('hasRefill', () => {
+  const view = (
+    repeatsAllowed: number | null,
+    repeatsAvailable: number | null
+  ): Parameters<typeof hasRefill>[0] =>
+    medicationRequestToMedicationView(
+      decode({
+        ...base,
+        dispenseRequest: {
+          ...(repeatsAllowed === null ? {} : { numberOfRepeatsAllowed: repeatsAllowed }),
+          modifierExtension:
+            repeatsAvailable === null
+              ? []
+              : [
+                  {
+                    url: 'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available',
+                    valueDecimal: repeatsAvailable,
+                  },
+                ],
+        },
+      }),
+      'fallback'
+    )
 
-  test('rounds coarsely: days, then weeks past ~10 days, then months', () => {
-    expect(at('2026-06-01T05:00:00Z')).toBe('today')
-    expect(at('2026-06-02T00:00:00Z')).toBe('in 1 day')
-    expect(at('2026-06-04T00:00:00Z')).toBe('in 3 days')
-    expect(at('2026-06-15T00:00:00Z')).toBe('in 2 weeks')
-    expect(at('2026-07-31T00:00:00Z')).toBe('in 2 months')
-  })
-
-  test('describes past dates with an "ago" suffix', () => {
-    expect(at('2026-05-29T00:00:00Z')).toBe('3 days ago')
-    expect(at('2026-05-18T00:00:00Z')).toBe('2 weeks ago')
+  test('is true only when repeats are allowed and at least one remains', () => {
+    expect(hasRefill(view(3, 2))).toBe(true)
+    // Repeats allowed but none left → no refill (supply merely exhausts).
+    expect(hasRefill(view(3, 0))).toBe(false)
+    // No repeats allowed at all.
+    expect(hasRefill(view(0, 0))).toBe(false)
+    expect(hasRefill(view(null, null))).toBe(false)
   })
 })

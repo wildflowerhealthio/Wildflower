@@ -1,0 +1,61 @@
+/*
+ * GateCard skin — a centered loader/paused card on the standard card surface
+ * (`--color-background` + `--card-color-border` + `--card-border-radius`, the
+ * trio every card reads). The spinner arc takes the accent; track and text
+ * read the divider/neutral tokens so the card flips schemes on its own.
+ */
+
+.card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-6);
+  padding: var(--space-14) var(--space-9);
+  text-align: center;
+  border: 1px solid var(--card-color-border);
+  border-radius: var(--card-border-radius);
+  background: var(--color-background);
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border-radius: var(--radius-pill, 999px);
+  border: 2px solid var(--color-divider);
+  border-top-color: var(--color-accent);
+  animation: spin 900ms linear infinite;
+}
+
+.title {
+  margin: 0;
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-2);
+  letter-spacing: var(--letter-spacing-2);
+  color: var(--color-foreground);
+}
+
+.body {
+  margin: 0;
+  max-width: 32ch;
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-5);
+  color: var(--color-neutral-5);
+}
+
+.action {
+  margin-top: var(--space-1);
+  font-size: var(--font-size-3);
+  align-self: center;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}
