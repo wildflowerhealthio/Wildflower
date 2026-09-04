@@ -3,29 +3,41 @@ import type { JSX, ReactNode } from 'react'
 import styles from './app-row.module.css'
 import layout from './layout.module.css'
 
+/** A screenshot for an app row: an `<img>` source and its alt text. */
+type AppRowImage = {
+  readonly src: string
+  readonly alt: string
+}
+
 /**
  * One app/infrastructure row: title, honest mono status line, body copy and
- * an optional launcher on the left; the screenshot slot on the right. Until
- * real screenshots exist the slot is a striped placeholder with a mono label —
- * that reads as intentionally unfinished, which suits the project.
+ * an optional launcher on the left; the screenshot slot on the right. Rows
+ * that already have a real screenshot pass one through `image`; the rest
+ * fall back to a striped placeholder with a mono label, which reads as
+ * intentionally unfinished and suits the project.
  *
  * @param title - The `h3` row title.
  * @param status - The mono status line (omitted for infrastructure rows).
  * @param paragraphs - Body copy, one entry per paragraph, in reading order.
- * @param placeholderLabel - Mono label inside the striped screenshot slot.
+ * @param image - A real screenshot to render in the slot. Takes precedence
+ *   over `placeholderLabel`.
+ * @param placeholderLabel - Mono label inside the striped screenshot slot,
+ *   shown when no `image` is provided.
  * @param launcher - An optional `<Launcher>` block after the body copy.
  */
 function AppRow({
   title,
   status,
   paragraphs,
+  image,
   placeholderLabel,
   launcher,
 }: {
   readonly title: ReactNode
   readonly status?: string
   readonly paragraphs: readonly string[]
-  readonly placeholderLabel: string
+  readonly image?: AppRowImage
+  readonly placeholderLabel?: string
   readonly launcher?: ReactNode
 }): JSX.Element {
   return (
@@ -40,11 +52,18 @@ function AppRow({
         </div>
         {launcher}
       </div>
-      <div className={styles['app-row__slot']}>
-        <span className={layout['mono-note']}>{placeholderLabel}</span>
-      </div>
+      {image === undefined ? (
+        <div className={styles['app-row__slot']}>
+          <span className={layout['mono-note']}>{placeholderLabel ?? ''}</span>
+        </div>
+      ) : (
+        <figure className={styles['app-row__figure']}>
+          <img className={styles['app-row__image']} src={image.src} alt={image.alt} />
+        </figure>
+      )}
     </article>
   )
 }
 
 export { AppRow }
+export type { AppRowImage }

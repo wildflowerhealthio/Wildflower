@@ -8,12 +8,12 @@ import rows from './app-rows.module.css'
 import layout from './layout.module.css'
 
 /**
- * "How I make this all possible today" — the two pieces of infrastructure
- * that make the apps usable without cooperative providers: the personal FHIR
- * server first, the Importer second (that order is deliberate). The
- * Importer's copy is the shared `APP_DESCRIPTIONS` entry its own landing
- * page renders; the row keeps its own title because here the Importer is
- * presented as infrastructure, not by name.
+ * "What can we do until this exists?" — the awkward-but-real workarounds
+ * that make the apps usable today, without cooperative providers: a personal
+ * FHIR server first, then the on-device browser scraper. The Importer's copy
+ * is the shared `APP_DESCRIPTIONS` entry its own landing page renders; the
+ * row keeps its own title because here the Importer is framed as
+ * infrastructure ("on-device scraping"), not by name.
  */
 function PossibleToday(): JSX.Element {
   const importer = APP_DESCRIPTIONS.importer
@@ -21,13 +21,13 @@ function PossibleToday(): JSX.Element {
   return (
     <section className={layout['section']} id="try">
       <div className={layout['column']}>
-        <h2 className={layout['section-title']}>How I make this all possible today</h2>
+        <h2 className={layout['section-title']}>What can we do until this exists?</h2>
         <div className={rows['rows']}>
           <AppRow
-            title={<>A personal SMART compatible&nbsp;FHIR&nbsp;server</>}
+            title="Run a FHIR server on your phone or computer"
             paragraphs={[
-              "Providers rarely offer open, interoperable storage — so I've packaged open-source " +
-                'FHIR servers into an app that runs on a phone or laptop.',
+              "I've taken an open-source FHIR server, added SMART authentication, and packaged " +
+                'it into an app that runs on a phone or laptop.',
             ]}
             placeholderLabel="screenshot — Wildflower server"
             launcher={
@@ -39,8 +39,14 @@ function PossibleToday(): JSX.Element {
             }
           />
           <AppRow
-            title="Import what the browser sees directly"
-            paragraphs={importer.paragraphs}
+            title="Use on-device scraping to pull in data"
+            paragraphs={[
+              'Building server-to-server integrations is hard, especially without permission. ' +
+                'You can instead click around in your pharmacy, lab-result, or patient-record ' +
+                'website in your own browser and save the data as the server sent it.',
+              'The Importer, another SMART on FHIR app, then processes those results into ' +
+                'FHIR-compatible records and saves them onto your server.',
+            ]}
             placeholderLabel="screenshot — Importer"
             launcher={
               <Launcher

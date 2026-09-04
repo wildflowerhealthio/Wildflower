@@ -17,8 +17,9 @@ const NAV_LINKS: readonly { readonly label: string; readonly section: SectionId 
 /**
  * Static (not sticky) top bar: the site title on the left, direct entry to
  * the four apps on the right. The `<h1>` here is the page's only `h1` by
- * design (SEO + a11y), even though the hero's "Hi, I'm Ruth." is visually
- * larger — do not demote it or add a hidden `h1`.
+ * design (SEO + a11y), even though the hero's manifesto title ("Patients
+ * deserve health data freedom") is visually larger — do not demote it or
+ * add a hidden `h1`.
  */
 function SiteHeader(): JSX.Element {
   return (

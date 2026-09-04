@@ -47,6 +47,20 @@
   );
 }
 
+/*
+ * Real-screenshot slot. No border or aspect-ratio box — the image's own
+ * chrome (device frame, browser chrome) already reads as a screenshot.
+ */
+.app-row__figure {
+  margin: 0;
+}
+
+.app-row__image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
 @media (max-width: 768px) {
   /* The screenshot stacks under the text. */
   .app-row {

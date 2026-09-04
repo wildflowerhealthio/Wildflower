@@ -39,7 +39,8 @@ describe('App', () => {
     render(<App />)
 
     // Assert — the wordmark is the page's only h1 by design, even though the
-    // hero's "Hi, I'm Ruth." is visually larger.
+    // hero's manifesto title ("Patients deserve health data freedom") is
+    // visually larger.
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     const title = headings[0]
