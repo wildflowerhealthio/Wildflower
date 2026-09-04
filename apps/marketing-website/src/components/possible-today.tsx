@@ -2,18 +2,19 @@ import type { JSX } from 'react'
 
 import { APP_DESCRIPTIONS, sectionRootPath } from 'branding-core'
 
+import { wildflowerServerImages } from '../assets/remote-images.ts'
 import { AppRow } from './app-row.tsx'
 import { Launcher } from './launcher.tsx'
 import rows from './app-rows.module.css'
 import layout from './layout.module.css'
 
 /**
- * "What can we do until this exists?" — the awkward-but-real workarounds
- * that make the apps usable today, without cooperative providers: a personal
- * FHIR server first, then the on-device browser scraper. The Importer's copy
- * is the shared `APP_DESCRIPTIONS` entry its own landing page renders; the
- * row keeps its own title because here the Importer is framed as
- * infrastructure ("on-device scraping"), not by name.
+ * "How do you get a personal health record?" — the awkward-but-real
+ * workarounds that make the apps usable today, without cooperative
+ * providers: a personal FHIR server first, then the on-device browser
+ * scraper. The Importer's copy is the shared `APP_DESCRIPTIONS` entry its
+ * own landing page renders; the row keeps its own title because here the
+ * Importer is framed as infrastructure ("on-device scraping"), not by name.
  */
 function PossibleToday(): JSX.Element {
   const importer = APP_DESCRIPTIONS.importer
@@ -21,15 +22,15 @@ function PossibleToday(): JSX.Element {
   return (
     <section className={layout['section']} id="try">
       <div className={layout['column']}>
-        <h2 className={layout['section-title']}>What can we do until this exists?</h2>
+        <h2 className={layout['section-title']}>How do you get a personal health record?</h2>
         <div className={rows['rows']}>
           <AppRow
-            title="Run a FHIR server on your phone or computer"
+            title="Run your own on device FHIR server"
             paragraphs={[
               "I've taken an open-source FHIR server, added SMART authentication, and packaged " +
                 'it into an app that runs on a phone or laptop.',
             ]}
-            placeholderLabel="screenshot — Wildflower server"
+            images={wildflowerServerImages}
             launcher={
               <Launcher
                 href={sectionRootPath('serverDocs')}

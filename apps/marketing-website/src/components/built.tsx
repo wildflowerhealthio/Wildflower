@@ -23,12 +23,13 @@ function Built(): JSX.Element {
   return (
     <section className={layout['section']} id="built">
       <div className={layout['column']}>
-        <h2 className={layout['section-title']}>Building on an open personal health record</h2>
+        <h2 className={layout['section-title']}>
+          What would you do if the data was all connected?
+        </h2>
         <div className={`${layout['prose']} ${layout['prose--secondary']}`}>
           <p>
-            I've built a few apps that use SMART on FHIR to reach a server carrying my combined
-            personal health record — some because I wanted them for myself, and some to imagine what
-            becomes possible once your "one place" is built on open standards.
+            I've collected my personal health record onto a FHIR server and started building the
+            health apps I've really wanted with it.
           </p>
         </div>
         <div className={`${rows['rows']} ${rows['rows--after-intro']}`}>
@@ -48,7 +49,7 @@ function Built(): JSX.Element {
             title={medications.name}
             status={medications.status}
             paragraphs={medications.paragraphs}
-            image={medicationsHomeImage}
+            images={[medicationsHomeImage]}
             launcher={
               <Launcher
                 href={sectionRootPath('medications')}

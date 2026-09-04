@@ -1,8 +1,8 @@
 /*
- * The "I'm Ruth" intro: the portrait dissolves into the page background via
- * a bottom mask (matching the original hero treatment), the bio prose sits
- * beside it on wide screens, and the stats grid sits under both on its own
- * row so it can breathe.
+ * The "I'm Ruth" intro: bio prose on the left, the stats tally on the right
+ * at the same row. The stats block only reads as a "tally card" when it
+ * fits beside the prose, so it's hidden below the two-column breakpoint —
+ * the bio carries the story on narrow screens.
  */
 .ruth {
   display: grid;
@@ -28,44 +28,31 @@
   gap: var(--space-6);
 }
 
-.ruth__photo {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: flex-end;
-  margin: 0;
-  mask-image: linear-gradient(to bottom, #000 58%, rgba(0, 0, 0, 0.35) 94%, transparent 100%);
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 58%,
-    rgba(0, 0, 0, 0.35) 94%,
-    transparent 100%
-  );
-}
-
-.ruth__photo > img {
-  width: 100%;
-  height: auto;
-}
-
 .ruth__stats-block {
-  grid-column: 1 / -1;
+  grid-column: 2;
+  align-self: start;
   display: grid;
-  gap: var(--space-6);
+  gap: var(--space-5);
   justify-items: start;
 }
 
-.ruth__lead-in {
-  margin: 0;
-  color: var(--color-neutral-2);
-  font-size: clamp(var(--font-size-4), 1.95vw, var(--font-size-5));
+/*
+ * The tally's casual title. Handwritten-feeling italics keep it out of the
+ * heading hierarchy without a caption ceremony.
+ */
+.ruth__stats-title {
+  margin: 0 var(--space-4);
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-3);
+  font-style: italic;
   line-height: var(--line-height-4);
 }
 
 /*
- * The stats grid: one CSS grid, two max-content columns, sized to its content
- * and centered. It reads as a raised card, so it takes the card tokens; the
- * shadow stays literal — on this background shadows must be black and
- * ambient, and the card ramp has nothing this deep.
+ * The stats grid: one CSS grid, two max-content columns, sized to its content.
+ * It reads as a raised card, so it takes the card tokens; the shadow stays
+ * literal — on this background shadows must be black and ambient, and the
+ * card ramp has nothing this deep.
  */
 .ruth__stats {
   display: grid;
@@ -73,7 +60,6 @@
   column-gap: var(--space-8);
   width: max-content;
   max-width: 100%;
-  margin: 0 auto;
   padding: var(--space-3) var(--space-10);
   background: var(--color-background);
   border: 1px solid var(--color-divider);
@@ -119,19 +105,12 @@
     grid-template-columns: minmax(0, 1fr);
   }
 
-  /* The portrait is dropped entirely on small screens. */
-  .ruth__photo {
-    display: none;
-  }
-
-  .ruth__lockup,
-  .ruth__stats-block {
+  .ruth__lockup {
     grid-column: 1;
   }
 
-  /* The stats grid stops being auto-centered and goes full width/left. */
-  .ruth__stats {
-    margin-left: 0;
-    margin-right: 0;
+  /* The stats block is hidden on narrow screens — see the file-level note. */
+  .ruth__stats-block {
+    display: none;
   }
 }

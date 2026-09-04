@@ -3,18 +3,15 @@
  * (`wildflowerhealthio.github.io/assets/marketing-site/...`). They are still
  * remote — routing every `<img src>` through this module keeps swapping to
  * committed local assets a one-file change.
- *
- * The portrait must stay a PNG with alpha — its bottom fade relies on
- * transparency plus a CSS mask.
  */
 
 const ASSET_BASE = 'https://wildflowerhealthio.github.io/assets/marketing-site'
 
-/** Portrait for the "I'm Ruth" intro: cut-out on transparent, bottom-faded via mask. */
-const portraitImage = {
-  src: `${ASSET_BASE}/photos/ruth_marks_headshot_full_alpha.png`,
-  alt: 'Ruth Marks',
-}
+/** The nine "other apps" screenshots the hero's phone frame cycles through. */
+const otherAppImages = Array.from({ length: 9 }, (_, index) => ({
+  src: `${ASSET_BASE}/other-apps/other_app_${index + 1}.png`,
+  alt: `Another patient portal or health app, screen ${index + 1} of 9`,
+})) as readonly { readonly src: string; readonly alt: string }[]
 
 /** The four SMART on FHIR consent-flow iPhone screenshots, in step order. */
 const stepImages = [
@@ -42,4 +39,16 @@ const medicationsHomeImage = {
   alt: 'Medication Viewer home screen, showing prescription interactions',
 }
 
-export { medicationsHomeImage, portraitImage, stepImages }
+/** The two Wildflower FHIR server screenshots, in demo order. */
+const wildflowerServerImages = [
+  {
+    src: `${ASSET_BASE}/wildflower/app_authorization.png`,
+    alt: 'Wildflower personal FHIR server — SMART app authorization prompt',
+  },
+  {
+    src: `${ASSET_BASE}/wildflower/app_home.png`,
+    alt: 'Wildflower personal FHIR server — home screen',
+  },
+] as const
+
+export { medicationsHomeImage, otherAppImages, stepImages, wildflowerServerImages }

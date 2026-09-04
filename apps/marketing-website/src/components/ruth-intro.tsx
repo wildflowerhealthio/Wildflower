@@ -1,6 +1,5 @@
 import { useEffect, useRef, type JSX } from 'react'
 
-import { portraitImage } from '../assets/remote-images.ts'
 import { countUpStats } from '../count-up.ts'
 import layout from './layout.module.css'
 import styles from './ruth-intro.module.css'
@@ -25,14 +24,16 @@ const STAT_ROWS: readonly StatRow[] = [
 ]
 
 /**
- * The introduction under the hero: portrait, animated stats grid establishing
- * the scale of one patient's record, and the bio that turns the manifesto
- * lines into a story. Sits between the hero and the FHIR explainer.
+ * The introduction under the hero: bio prose on the left, the animated
+ * stats grid on the right at the same row, establishing the scale of one
+ * patient's record. The stats grid is hidden on narrow screens — it does
+ * not survive a single-column stack, and the bio carries the story
+ * on its own there.
  *
- * The stats grid's number cells each end in an invisible "+" unless the value
- * renders one for real — that reserves the plus sign's width so all digits
- * right-align against the "10+" rows. The count-up reads its targets back out
- * of the rendered cells (see `count-up.ts`).
+ * The stats grid's number cells each end in an invisible "+" unless the
+ * value renders one for real — that reserves the plus sign's width so all
+ * digits right-align against the "10+" rows. The count-up reads its targets
+ * back out of the rendered cells (see `count-up.ts`).
  */
 function RuthIntro(): JSX.Element {
   const statsRef = useRef<HTMLDivElement>(null)
@@ -56,27 +57,27 @@ function RuthIntro(): JSX.Element {
             <p>
               All of those tools had a handful of integrations that made each of them a little more
               useful — a few islands of connected services, but no real information sharing that
-              reaches me as a patient. My pharmacies, diagnostic labs, and doctors won't even let me
+              reaches me as a patient. My pharmacies, diagnostic labs, and doctors can't even let me
               export a spreadsheet.
             </p>
             <p>
-              A real "one place for all your health needs" should store data from everywhere and let
-              you reach it with whatever apps you like. There are tools and apps that haven't been
-              imagined yet, because of how spread out the data is.
+              A real "one place" would store data from everywhere and let you reach it with whatever
+              apps you like. There are tools and apps that haven't been imagined yet, because of how
+              spread out the data is.
             </p>
           </div>
         </div>
-        <figure className={styles['ruth__photo']}>
-          <img src={portraitImage.src} alt={portraitImage.alt} />
-        </figure>
-        <div className={styles['ruth__stats-block']}>
-          <p className={styles['ruth__lead-in']}>I'm also a complex-care patient with:</p>
+        <aside
+          className={styles['ruth__stats-block']}
+          aria-label="My personal tally of health data"
+        >
+          <p className={styles['ruth__stats-title']}>My personal tally of health data</p>
           <div className={styles['ruth__stats']} ref={statsRef}>
             {STAT_ROWS.map((row) => (
               <StatCells key={row.label} row={row} />
             ))}
           </div>
-        </div>
+        </aside>
       </div>
     </section>
   )

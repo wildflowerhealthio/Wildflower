@@ -1,50 +1,54 @@
-import type { JSX } from 'react'
+import { useEffect, useState, type JSX } from 'react'
 
+import { otherAppImages } from '../assets/remote-images.ts'
 import styles from './hero.module.css'
-import layout from './layout.module.css'
 
-/**
- * A single staccato line at the top of the hero. Rendered as its own
- * paragraph rather than a bullet — the notes read as a manifesto, not a
- * list.
- */
-type HeroLine = {
-  /** The plain sentence for this line. `emphasis`, if given, is italicised inside it. */
-  readonly text: string
-  /** Optional word or phrase from `text` to render in italics. */
-  readonly emphasis?: string
-}
+/** How long each "other app" screenshot holds before the phone swipes on. */
+const SWIPE_INTERVAL_MS = 3800
 
-const HERO_LINES: readonly HeroLine[] = [
-  {
-    text: "I've worked at three different health-tech startups that wanted to be the one place for all your health needs.",
-  },
-  { text: "I've got health data stored with eight different websites." },
-  { text: 'I can record my vaccination history in five of them.' },
-  { text: 'I built the vaccination history tool in one of them.', emphasis: 'built' },
-  {
-    text: 'My vaccination history is a JPEG attached to an email from my mom, because why would I bother typing it in somewhere.',
-  },
+/** The staccato lines under the manifesto title, grouped into stanzas. */
+const HERO_STANZAS: readonly (readonly string[])[] = [
+  [
+    'Nine different websites store my health information.',
+    'They all want to be the one place for all my health needs.',
+  ],
+  [
+    'I can store my vaccination history in five of them.',
+    'Storing history is the only vaccination related feature.',
+  ],
+  [
+    'I built the vaccination history tool in one of them.',
+    "I don't store my vaccination history in any of them.",
+  ],
+  ['My vaccination history is a JPEG attached to an email from my mom.'],
 ]
 
 /**
- * The opening banner: a single manifesto title and the five short, punchy
- * lines that set up the essay. Deliberately spare — no portrait, no stats,
- * no CTA. Those live in the "I'm Ruth" section immediately below.
+ * The opening banner: the manifesto title, the staccato stanzas that set up
+ * the essay, and — from 1024px up — a minimal outlined phone lazily swiping
+ * through screenshots of the "other apps" the stanzas describe. The phone
+ * disappears below 1024px so the stanzas own narrow screens.
  */
 function Hero(): JSX.Element {
   return (
     <section className={styles['hero']} id="top">
-      <div className={`${layout['column']} ${styles['hero__inner']}`}>
+      <div className={styles['hero__inner']}>
         <h2 className={styles['hero__title']}>
           Patients <i>deserve</i> health data freedom
         </h2>
-        <div className={styles['hero__lines']}>
-          {HERO_LINES.map((line) => (
-            <p key={line.text} className={styles['hero__line']}>
-              {renderLine(line)}
-            </p>
-          ))}
+        <div className={styles['hero__body']}>
+          <div className={styles['hero__lines']}>
+            {HERO_STANZAS.map((stanza) => (
+              <div key={stanza[0]} className={styles['hero__stanza']}>
+                {stanza.map((line) => (
+                  <p key={line} className={styles['hero__line']}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            ))}
+          </div>
+          <OtherAppsPhone />
         </div>
       </div>
     </section>
@@ -52,23 +56,54 @@ function Hero(): JSX.Element {
 }
 
 /**
- * Renders a hero line, italicising `emphasis` in place if it appears in
- * `text`. Falls back to plain text so a typo in `emphasis` never drops the
- * sentence.
+ * A minimal outlined phone frame lazily swiping through the nine
+ * "other apps" screenshots. The images sit in a flex row that shifts
+ * `-100%` per step; CSS transitions carry the swipe. Under
+ * `prefers-reduced-motion` the phone holds on the first screenshot.
+ *
+ * `prefers-reduced-motion` is sampled once at mount via a lazy initializer,
+ * which is enough for a decorative animation and keeps the effect free of a
+ * synchronous `setState`.
  */
-function renderLine(line: HeroLine): JSX.Element | string {
-  if (line.emphasis === undefined) return line.text
-  const index = line.text.indexOf(line.emphasis)
-  if (index === -1) return line.text
-  const before = line.text.slice(0, index)
-  const after = line.text.slice(index + line.emphasis.length)
+function OtherAppsPhone(): JSX.Element {
+  const [reducedMotion] = useState(prefersReducedMotion)
+  const [index, setIndex] = useState(0)
+
+  useEffect(() => {
+    if (reducedMotion) return undefined
+    const timer = window.setInterval(() => {
+      setIndex((current) => (current + 1) % otherAppImages.length)
+    }, SWIPE_INTERVAL_MS)
+    return () => {
+      window.clearInterval(timer)
+    }
+  }, [reducedMotion])
+
   return (
-    <>
-      {before}
-      <i>{line.emphasis}</i>
-      {after}
-    </>
+    <div className={styles['hero__phone']} aria-hidden="true">
+      <div className={styles['hero__phone-frame']}>
+        <div
+          className={styles['hero__phone-strip']}
+          style={{ transform: `translateX(-${index * 100}%)` }}
+        >
+          {otherAppImages.map((image) => (
+            <img
+              key={image.src}
+              className={styles['hero__phone-image']}
+              src={image.src}
+              alt={image.alt}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
   )
+}
+
+/** Whether the viewer has asked for reduced motion (false in non-browser environments). */
+function prefersReducedMotion(): boolean {
+  if (typeof window === 'undefined') return false
+  return window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false
 }
 
 export { Hero }

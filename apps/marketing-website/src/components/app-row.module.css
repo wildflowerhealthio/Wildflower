@@ -49,8 +49,20 @@
 
 /*
  * Real-screenshot slot. No border or aspect-ratio box — the image's own
- * chrome (device frame, browser chrome) already reads as a screenshot.
+ * chrome (device frame, browser chrome) already reads as a screenshot. Two
+ * screenshots sit side-by-side; one spans the whole slot.
  */
+.app-row__figures {
+  display: grid;
+  gap: clamp(var(--space-6), 2vw, var(--space-9));
+  align-items: start;
+}
+
+.app-row__figures[data-count='multi'] {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
 .app-row__figure {
   margin: 0;
 }
