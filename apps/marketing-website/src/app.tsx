@@ -1,3 +1,4 @@
+import { SiteFooter, SiteHeader, onMarketingSite } from 'branding-react'
 import type { JSX } from 'react'
 
 import { Asks } from './components/asks.tsx'
@@ -7,8 +8,6 @@ import { Hero } from './components/hero.tsx'
 import { Infrastructure } from './components/infrastructure.tsx'
 import { RuthIntro } from './components/ruth-intro.tsx'
 import { SameLanguage } from './components/same-language.tsx'
-import { SiteFooter } from './components/site-footer.tsx'
-import { SiteHeader } from './components/site-header.tsx'
 
 /**
  * The homepage, top to bottom: header, hero (`#top`) with the manifesto
@@ -22,7 +21,7 @@ import { SiteHeader } from './components/site-header.tsx'
 function App(): JSX.Element {
   return (
     <>
-      <SiteHeader />
+      <SiteHeader nav={onMarketingSite} />
       <main>
         <Hero />
         <RuthIntro />

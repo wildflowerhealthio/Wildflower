@@ -1,25 +1,28 @@
 # AGENTS.md — slices/branding
 
-Shared Wildflower chrome for the app web surfaces: the full site header and
-footer the apps render, a slim brand bar for SMART-launched apps and the Tauri
-desktop shell, the app icon, and the layout tokens that position them. (The
-marketing homepage renders its own page-local header/footer per its design; it
-consumes only `AppIcon` and `branding-core`'s section paths from here.)
+Shared Wildflower chrome for every web surface — the marketing homepage and the
+apps alike: the full site header and footer, a slim brand bar for SMART-launched
+apps and the Tauri desktop shell, the app icon, and the layout tokens that
+position them. The homepage and the apps render the **same** `SiteHeader` /
+`SiteFooter`; only the `NavContext` differs, so links resolve root-relative on
+the homepage and absolute from an app.
 
 ## Package roles
 
 - **`branding-core`** — the pure layer: site origin, section paths (the deploy
   contract matching `apps/github-pages/src/assembly.ts`), navigation link data
-  as discriminated unions, the `NavContext` type that lets the same header/footer
-  resolve hrefs differently on the marketing site vs. from an app, the
-  `anchorHref` resolver, and `APP_DESCRIPTIONS` — the per-app introduction copy
+  as discriminated unions (anchor, absolute, and section links), the `NavContext`
+  type that lets the same header/footer resolve hrefs differently on the
+  marketing site vs. from an app, the `anchorHref` / `sectionHref` / `navHref`
+  resolvers, and `APP_DESCRIPTIONS` — the per-app introduction copy
   (name, tagline, status, first-person "why" paragraphs, homepage anchor, and
   launch link text) that the homepage's app rows and each app's landing page
   both render.
 - **`branding-react`** — the browser UI adapter: `SiteHeader`, `SiteFooter`,
   `BrandBar`, `AppIcon`, `AppLanding`, and the `branding-react/styles.css`
   layout tokens (`--content-max-width`, `--page-padding-x`, `--header-height`,
-  `--radius-pill`).
+  `--radius-pill`, `--prose-max-width`, and the `--shadow-float-panel` used by
+  the header's collapsed nav dropdown).
 
 ## The app landing page
 
@@ -42,12 +45,15 @@ All chrome components take a `NavContext` that says where the marketing page
 lives relative to the current surface:
 
 - `onMarketingSite` (`{ marketingBase: '' }`) — anchors resolve to fragment-only
-  hrefs like `#built`.
+  hrefs like `#built`; section links resolve to root-relative paths like
+  `/medications-app` (so they keep working on preview/staging deploys).
 - `fromApp` (`{ marketingBase: 'https://wildflowerhealth.io/' }`) — anchors
-  resolve to absolute URLs like `https://wildflowerhealth.io/#built`.
+  resolve to absolute URLs like `https://wildflowerhealth.io/#built`; section
+  links to absolute URLs like `https://wildflowerhealth.io/medications-app` (so a
+  self-hosted app bundle points back at the canonical site).
 
-The brand link in `SiteHeader` checks `marketingBase === ''` to choose between
-`#top` (same page) and the full marketing URL.
+`navHref` dispatches over the link kind; the brand link and section links both
+check `marketingBase === ''` to choose between the same-origin and absolute form.
 
 ## Consuming the styles
 
@@ -80,24 +86,22 @@ border = 71px`; see the comments in `styles.css` and `site-header.module.css`.
   render the same entries; editing the copy in one component would fork the
   story. The Synthesized Health Viewer and the server-docs row are not SMART
   apps with a landing page, so their copy stays inline on the homepage.
-- **`SiteHeader`/`SiteFooter` are the apps' chrome; the homepage's is its
-  own.** The homepage redesign gave `apps/marketing-website` a page-local
-  header and footer (its design demands them), so it imports only `AppIcon`
-  and `branding-core` from here. A change to the chrome the _apps_ render —
-  header, footer, brand bar, icon, layout tokens — is still made in this
-  slice, not in an app. The anchors in `HEADER_NAV_LINKS`/`FOOTER_*_LINKS`
-  must exist as `id`s on the homepage (`branding-core`'s `MARKETING_ANCHORS`
-  lists them; `apps/marketing-website`'s `app.test.tsx` asserts the homepage
-  renders an element for every one of them).
-- **`SiteHeader` matches the homepage header's look.** Static, no backdrop,
-  one hairline — the two are meant to read as the same bar, so a visual
-  change to either belongs in both `site-header.module.css` files. The two
-  still differ in what they link to: the shared header carries
-  `HEADER_NAV_LINKS` (back to the homepage's sections), the homepage's
-  carries direct links into the four apps. `titleAs` picks the element
-  wrapping the brand lockup — `'div'` by default so an app's own page
-  heading stays the only `h1`; a surface whose brand _is_ the page heading
-  passes `'h1'`.
+- **`SiteHeader`/`SiteFooter` are the one chrome, used by the homepage and the
+  apps.** `apps/marketing-website` consumes them just like the apps do (passing
+  `onMarketingSite`); it no longer keeps a page-local header/footer. A change to
+  the chrome — header, footer, brand bar, icon, layout tokens — is made once, in
+  this slice, and every surface picks it up. Both the homepage and the apps show
+  `HEADER_NAV_LINKS` (direct links into the four apps); only href resolution
+  differs by `NavContext`. The `SiteFooter` is the minimal "not a company"
+  footer (paragraph + contact + mono stamp) carrying `id="note"`; the homepage's
+  `app.test.tsx` asserts an element exists for every `MARKETING_ANCHORS` id
+  (`#note` among them, plus the anchors `AppLanding`'s "rest of the project"
+  links resolve to).
+- **`SiteHeader` is static, no backdrop, one hairline.** The four app links sit
+  inline at ≥840px and collapse behind a hamburger dropdown below that. `titleAs`
+  picks the element wrapping the brand lockup — `'div'` by default so an app's
+  own page heading (and the homepage's hero manifesto) stays the only `h1`; a
+  surface whose brand _is_ the page heading passes `'h1'`.
 
 ## References
 

@@ -20,9 +20,10 @@ afterEach(() => {
 })
 
 describe('App', () => {
-  it('should render an element for every anchor the app chrome links to', () => {
-    // Arrange — the apps' SiteHeader/SiteFooter resolve their hrefs from
-    // `MARKETING_ANCHORS`, so every one of those has to land on this page.
+  it('should render an element for every marketing anchor', () => {
+    // Arrange — the apps' chrome and the homepage's own in-page references
+    // resolve hrefs against `MARKETING_ANCHORS`, so every one of those has to
+    // land on this page (e.g. the footer's `#note`).
     const { container } = render(<App />)
 
     // Act
@@ -39,13 +40,15 @@ describe('App', () => {
     render(<App />)
 
     // Assert — the hero's manifesto title is the page's only h1; the header
-    // wordmark is a plain link (not a heading) back to the top.
+    // wordmark is a plain link (not a heading) back to the top. Its accessible
+    // name is the shared header's concise "Wildflower, home" aria-label; the
+    // visible text is "Wildflower Health Project".
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
     expect(headings[0].textContent).toBe('Patients deserve health data freedom')
-    expect(
-      screen.getByRole('link', { name: /Wildflower Health Project/ }).getAttribute('href')
-    ).toBe('#top')
+    const wordmark = screen.getByRole('link', { name: 'Wildflower, home' })
+    expect(wordmark.textContent).toContain('Wildflower Health Project')
+    expect(wordmark.getAttribute('href')).toBe('#top')
   })
 
   it('should link the header nav to the four app routes', () => {
