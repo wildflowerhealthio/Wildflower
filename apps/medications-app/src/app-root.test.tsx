@@ -50,7 +50,7 @@ describe('AppRoot', () => {
     expect(screen.queryByTestId('connect-menu')).toBeNull()
 
     // No full site header, nav, or footer in the launched branch
-    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Apps' })).toBeNull()
     expect(screen.queryByRole('contentinfo')).toBeNull()
   })
 
@@ -60,7 +60,7 @@ describe('AppRoot', () => {
 
     // Assert — full site chrome: header with the primary nav, a main region, a footer
     expect(screen.getByRole('banner').id).toBe('top')
-    expect(screen.queryByRole('navigation', { name: 'Primary' })).not.toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Apps' })).not.toBeNull()
     expect(screen.queryByRole('contentinfo')).not.toBeNull()
 
     // The connect menu renders inside the main region, not the SMART app
@@ -95,9 +95,7 @@ describe('AppRoot', () => {
     const brandLink = screen.getByRole('link', { name: 'Wildflower, home' })
     expect(brandLink.getAttribute('href')).toBe(MARKETING_ORIGIN)
 
-    const navLinks = within(screen.getByRole('navigation', { name: 'Primary' })).getAllByRole(
-      'link'
-    )
+    const navLinks = within(screen.getByRole('navigation', { name: 'Apps' })).getAllByRole('link')
     const hrefs = navLinks.map((link) => link.getAttribute('href'))
     expect(hrefs).not.toHaveLength(0)
     for (const href of hrefs) {

@@ -15,6 +15,17 @@
    * bottom hairline. */
   --header-height: 71px;
   --radius-pill: 999px;
+  /* Prose measure for the footer's "not a company" paragraph. */
+  --prose-max-width: 660px;
+  /* Ambient float shadow for the header's collapsed nav dropdown. The design
+   * system's card ramp has nothing this deep. Softer in light, deeper on the
+   * dark surface; the marketing homepage (dark-only) overrides it deeper
+   * still in its own tokens. */
+  --shadow-float-panel: 0 18px 40px -20px rgba(0, 0, 0, 0.25);
+}
+
+:root[data-color-scheme='dark'] {
+  --shadow-float-panel: 0 20px 44px -16px rgba(0, 0, 0, 0.6);
 }
 
 @media (max-width: 680px) {

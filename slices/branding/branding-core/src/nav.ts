@@ -1,4 +1,4 @@
-import { sectionUrl } from './site.ts'
+import { sectionRootPath, sectionUrl, type SectionId } from './site.ts'
 
 /**
  * Hash anchors on the marketing homepage, in section order: the hero
@@ -55,40 +55,61 @@ type AbsoluteNavLink = {
   readonly href: string
 }
 
-/** A navigation link: either an anchor reference or a fixed URL. */
-type NavLink = AnchorNavLink | AbsoluteNavLink
+/**
+ * A navigation link that points to a site section (an app or the server
+ * docs). Resolved by {@link navHref} to a root-relative path on the
+ * marketing site and an absolute URL from an app.
+ */
+type SectionNavLink = {
+  readonly kind: 'section'
+  readonly label: string
+  readonly section: SectionId
+}
+
+/** A navigation link: an anchor reference, a fixed URL, or a site section. */
+type NavLink = AnchorNavLink | AbsoluteNavLink | SectionNavLink
 
 /**
- * Primary nav links rendered in the app site headers. (The marketing
- * homepage renders its own header — direct links into the four apps — so
- * these resolve from apps back to the homepage's sections. The homepage
- * redesign has no invite flow, hence no CTA link.)
+ * Resolves a section link to a full href, respecting the current
+ * navigation context. Root-relative on the marketing site (so links keep
+ * working on preview/staging deploys served off the canonical origin) and
+ * absolute from an app (so a self-hosted bundle still points at the
+ * canonical site).
+ *
+ * @param ctx - Where the caller is rendered relative to the canonical site.
+ * @param section - The target section.
+ */
+function sectionHref(ctx: NavContext, section: SectionId): string {
+  return ctx.marketingBase === '' ? sectionRootPath(section) : sectionUrl(section)
+}
+
+/** Resolves any {@link NavLink} to an href for the given context. */
+function navHref(link: NavLink, ctx: NavContext): string {
+  if (link.kind === 'anchor') return anchorHref(ctx, link.anchor)
+  if (link.kind === 'section') return sectionHref(ctx, link.section)
+  return link.href
+}
+
+/**
+ * Primary nav links rendered in every site header — the marketing homepage
+ * and each app share one bar with direct links into the four apps. The
+ * hrefs resolve per context (root-relative on marketing, absolute from an
+ * app); see {@link navHref}.
  */
 const HEADER_NAV_LINKS: readonly NavLink[] = [
-  { kind: 'anchor', label: 'The apps', anchor: 'built' },
-  { kind: 'anchor', label: 'For developers', anchor: 'developers' },
-]
-
-/** Product-column links rendered in the app site footers. */
-const FOOTER_PRODUCT_LINKS: readonly NavLink[] = [
-  { kind: 'anchor', label: 'The apps', anchor: 'built' },
-  { kind: 'anchor', label: 'For developers', anchor: 'developers' },
-  { kind: 'absolute', label: 'Server API docs', href: sectionUrl('serverDocs') },
-]
-
-/** Company-column links rendered in the app site footers. */
-const FOOTER_COMPANY_LINKS: readonly NavLink[] = [
-  { kind: 'anchor', label: 'About', anchor: 'note' },
-  { kind: 'absolute', label: 'Contact', href: 'mailto:ruthmarks151@gmail.com' },
+  { kind: 'section', label: 'Medications', section: 'medications' },
+  { kind: 'section', label: 'Importer', section: 'importer' },
+  { kind: 'section', label: 'Web traces', section: 'webTrace' },
+  { kind: 'section', label: 'Server docs', section: 'serverDocs' },
 ]
 
 export {
-  FOOTER_COMPANY_LINKS,
-  FOOTER_PRODUCT_LINKS,
   HEADER_NAV_LINKS,
   MARKETING_ANCHORS,
   anchorHref,
   fromApp,
+  navHref,
   onMarketingSite,
+  sectionHref,
 }
-export type { AbsoluteNavLink, AnchorNavLink, MarketingAnchor, NavContext, NavLink }
+export type { AbsoluteNavLink, AnchorNavLink, MarketingAnchor, NavContext, NavLink, SectionNavLink }

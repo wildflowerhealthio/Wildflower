@@ -4,20 +4,20 @@ import styles from './asks.module.css'
 import layout from './layout.module.css'
 
 /**
- * "But what will people who aren't geeks do?" — the three policy/platform
- * asks. This is the page's argument, not a features list; external links
- * open in the same tab, matching the rest of the site.
+ * "How to make these standards, standard" — the three policy/platform asks.
+ * This is the page's argument, not a features list; external links open in
+ * the same tab, matching the rest of the site.
  */
 function Asks(): JSX.Element {
   return (
     <section className={layout['section']} id="asks">
       <div className={layout['column']}>
-        <h2 className={layout['section-title']}>But what will people who aren't geeks do?</h2>
+        <h2 className={layout['section-title']}>How do we make these standards, standard?</h2>
         <div className={`${layout['prose']} ${layout['prose--secondary']}`}>
           <p>
             I don't expect most people to run a FHIR server. These tools should be legislated and
-            built into our devices. Using SMART and FHIR now helps push it as the default
-            interoperability standard for developers and legislators.
+            built into our devices. Using SMART and FHIR now helps push them toward being the
+            default interoperability standard for developers and legislators.
           </p>
         </div>
         <div className={styles['asks']}>
@@ -50,7 +50,7 @@ function Asks(): JSX.Element {
           >
             <p className={styles['ask__body']}>
               Ontario is collecting proposals for a records system that will provide clinicians with
-              a complete view of a patient&rsquo;s health history. The same procurement could
+              a complete view of a patient&rsquo;s health history. The same procurement should
               require patient-facing SMART on FHIR access, instead of producing another silo.
             </p>
           </Ask>
@@ -90,7 +90,7 @@ function Ask({
 }): JSX.Element {
   return (
     <div className={styles['ask']}>
-      <h3 className={styles['ask__title']}>{title}</h3>
+      <h3 className={layout['block-title']}>{title}</h3>
       {children}
     </div>
   )

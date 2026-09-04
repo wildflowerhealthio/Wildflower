@@ -10,14 +10,6 @@
   gap: var(--space-5);
 }
 
-.ask__title {
-  margin: 0;
-  color: var(--color-neutral-1);
-  font-size: var(--font-size-5);
-  font-weight: var(--font-weight-4);
-  letter-spacing: var(--letter-spacing-2);
-}
-
 .ask__body {
   margin: 0;
   color: var(--color-neutral-2);

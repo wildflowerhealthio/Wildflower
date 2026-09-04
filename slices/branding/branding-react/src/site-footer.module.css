@@ -1,94 +1,37 @@
+/*
+ * Minimal footer: a hairline, the "not a company" paragraph, and a mono
+ * stamp. It carries the same content column as the header so the two ends of
+ * the page align. Marketing overrides `--content-max-width` /
+ * `--page-padding-x` to its narrower essay measure; apps keep the app-chrome
+ * width.
+ */
+
 .site-footer {
-  background: var(--color-sunken);
   border-top: 1px solid var(--color-divider);
+  padding: clamp(var(--space-13), 6vw, 76px) 0 var(--space-13);
 }
 
-.site-footer__top {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  flex-wrap: wrap;
-  gap: var(--space-12);
+.site-footer__inner {
+  display: grid;
+  gap: var(--space-7);
+  justify-items: start;
   max-width: var(--content-max-width);
   margin: 0 auto;
-  padding: var(--space-13) var(--page-padding-x);
+  padding: 0 var(--page-padding-x);
 }
 
-.site-footer__brand-col {
-  max-width: 34ch;
+.site-footer__body {
+  margin: 0;
+  max-width: var(--prose-max-width);
+  color: var(--color-neutral-2);
+  line-height: var(--line-height-5);
 }
 
-.site-footer__brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-5);
-  margin-bottom: var(--space-6);
-}
-
-.site-footer__wordmark {
-  font-size: var(--font-size-5);
-  font-weight: var(--font-weight-3);
-}
-
-.site-footer__blurb {
-  color: var(--color-neutral-3);
-  font-size: var(--font-size-3);
-}
-
-.site-footer__em {
-  color: var(--app-accent-text);
-}
-
-.site-footer__cols {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-14);
-}
-
-.site-footer__col {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.site-footer__col-label {
-  margin-bottom: var(--space-1);
+/* Quiet mono side-note, matching the header dropdown's label treatment. */
+.site-footer__stamp {
+  margin: var(--space-7) 0 0;
   color: var(--color-neutral-5);
+  font-family: var(--font-mono);
   font-size: var(--font-size-2);
-  font-weight: var(--font-weight-3);
-  letter-spacing: var(--letter-spacing-4);
-  text-transform: uppercase;
-}
-
-.site-footer__link {
-  font-size: var(--font-size-3);
-  text-decoration: none;
-  transition: color 0.2s ease;
-}
-
-.site-footer__link:hover {
-  color: var(--app-accent-text);
-}
-
-.site-footer__bottom-wrap {
-  border-top: 1px solid var(--color-divider);
-}
-
-.site-footer__bottom {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-9);
-  max-width: var(--content-max-width);
-  margin: 0 auto;
-  padding: var(--space-8) var(--page-padding-x);
-  color: var(--color-neutral-5);
-  font-size: var(--font-size-2);
-}
-
-@media (max-width: 680px) {
-  .site-footer__top {
-    flex-direction: column;
-    gap: var(--space-10);
-  }
+  line-height: var(--line-height-4);
 }

@@ -33,6 +33,15 @@
   letter-spacing: var(--letter-spacing-1);
 }
 
+/* Sub-section title (`h3`): app rows, policy asks, dev tooling. */
+.block-title {
+  margin: 0;
+  color: var(--color-neutral-1);
+  font-size: var(--font-size-5);
+  font-weight: var(--font-weight-4);
+  letter-spacing: var(--letter-spacing-2);
+}
+
 .prose {
   display: grid;
   gap: var(--space-8);
