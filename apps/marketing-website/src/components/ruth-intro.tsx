@@ -45,27 +45,25 @@ function RuthIntro(): JSX.Element {
   return (
     <section className={layout['section']}>
       <div className={`${layout['column']} ${styles['ruth']}`}>
-        <div className={styles['ruth__lockup']}>
-          <h2 className={`${layout['section-title']} ${styles['ruth__title']}`}>
-            I'm Ruth, a health-tech developer and a complex-care patient
-          </h2>
-          <div className={`${layout['prose']} ${styles['ruth__bio']}`}>
-            <p>
-              Over the last seven years I've written software for practice management, virtual
-              healthcare, remote monitoring, and imaging sharing.
-            </p>
-            <p>
-              All of those tools had a handful of integrations that made each of them a little more
-              useful — a few islands of connected services, but no real information sharing that
-              reaches me as a patient. My pharmacies, diagnostic labs, and doctors can't even let me
-              export a spreadsheet.
-            </p>
-            <p>
-              A real "one place" would store data from everywhere and let you reach it with whatever
-              apps you like. There are tools and apps that haven't been imagined yet, because of how
-              spread out the data is.
-            </p>
-          </div>
+        <h2 className={`${layout['section-title']} ${styles['ruth__title']}`}>
+          I'm a health-tech developer and a complex-care patient
+        </h2>
+        <div className={`${layout['prose']} ${styles['ruth__bio']}`}>
+          <p>
+            Over the last seven years I've written software for practice management, virtual
+            healthcare, remote monitoring, and imaging sharing.
+          </p>
+          <p>
+            All of those tools had a handful of integrations that made each of them a little more
+            useful — a few islands of connected services, but no real information sharing that
+            reaches me as a patient. My pharmacies, diagnostic labs, and doctors can't even let me
+            export a spreadsheet.
+          </p>
+          <p>
+            A real "one place" would store data from everywhere and let you reach it with whatever
+            apps you like. There are tools and apps that haven't been imagined yet, because of how
+            spread out the data is.
+          </p>
         </div>
         <aside
           className={styles['ruth__stats-block']}

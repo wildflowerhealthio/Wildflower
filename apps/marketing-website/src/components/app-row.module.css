@@ -5,6 +5,11 @@
   align-items: start;
 }
 
+/* Text column (labels + launcher) centered against the taller screenshot group. */
+.app-row--center {
+  align-items: center;
+}
+
 .app-row__text {
   display: grid;
   gap: var(--space-6);
@@ -48,9 +53,8 @@
 }
 
 /*
- * Real-screenshot slot. No border or aspect-ratio box — the image's own
- * chrome (device frame, browser chrome) already reads as a screenshot. Two
- * screenshots sit side-by-side; one spans the whole slot.
+ * Real-screenshot slot. Two screenshots sit side-by-side; one spans the whole
+ * slot. Each figure wears the same outlined device frame as the hero phone.
  */
 .app-row__figures {
   display: grid;
@@ -63,8 +67,28 @@
   grid-auto-columns: minmax(0, 1fr);
 }
 
+/*
+ * Side-by-side screenshots share one framed box so their heights and widths
+ * match even though the sources differ slightly in ratio. Each image keeps its
+ * own aspect ratio — contained inside the frame, never cropped.
+ */
+.app-row__figures[data-count='multi'] .app-row__figure {
+  aspect-ratio: 788 / 1641;
+}
+
+.app-row__figures[data-count='multi'] .app-row__image {
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Each screenshot wears the hero phone's outlined device frame. */
 .app-row__figure {
   margin: 0;
+  border: 2px solid var(--color-neutral-2);
+  border-radius: 28px;
+  overflow: hidden;
+  background: var(--color-background);
+  box-shadow: 0 20px 44px -16px rgba(0, 0, 0, 0.5);
 }
 
 .app-row__image {
@@ -74,7 +98,11 @@
 }
 
 @media (max-width: 768px) {
-  /* The screenshot stacks under the text. */
+  /*
+   * The screenshots stack under the text and fill the column width, keeping
+   * their aspect ratio (never cropped): a single landscape shot goes shorter
+   * and full-width, and the paired server frames share the row as before.
+   */
   .app-row {
     grid-template-columns: minmax(0, 1fr);
   }

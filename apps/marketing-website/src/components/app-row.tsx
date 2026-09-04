@@ -26,6 +26,8 @@ type AppRowImage = {
  * @param placeholderLabel - Mono label inside the striped screenshot slot,
  *   shown when no `images` are provided.
  * @param launcher - An optional `<Launcher>` block after the body copy.
+ * @param alignCenter - When true, the text column (labels + launcher) is
+ *   vertically centered against the taller screenshot group.
  */
 function AppRow({
   title,
@@ -34,6 +36,7 @@ function AppRow({
   images,
   placeholderLabel,
   launcher,
+  alignCenter = false,
 }: {
   readonly title: ReactNode
   readonly status?: string
@@ -41,9 +44,14 @@ function AppRow({
   readonly images?: readonly AppRowImage[]
   readonly placeholderLabel?: string
   readonly launcher?: ReactNode
+  readonly alignCenter?: boolean
 }): JSX.Element {
+  const rowClass = alignCenter
+    ? `${styles['app-row']} ${styles['app-row--center']}`
+    : styles['app-row']
+
   return (
-    <article className={styles['app-row']}>
+    <article className={rowClass}>
       <div className={styles['app-row__text']}>
         <h3 className={styles['app-row__title']}>{title}</h3>
         {status === undefined ? null : <span className={layout['mono-note']}>{status}</span>}

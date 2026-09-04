@@ -1,39 +1,35 @@
 /*
- * The "I'm Ruth" intro: bio prose on the left, the stats tally on the right
- * at the same row. The stats block only reads as a "tally card" when it
- * fits beside the prose, so it's hidden below the two-column breakpoint —
- * the bio carries the story on narrow screens.
+ * The "I'm Ruth" intro: the section title spans the full content column, then
+ * bio prose on the left and the stats tally on the right share the row below.
+ * The stats block only reads as a "tally card" when it fits beside the prose,
+ * so it's hidden below the two-column breakpoint — the bio carries the story
+ * on narrow screens.
  */
 .ruth {
   display: grid;
   grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr);
   column-gap: clamp(var(--space-9), 4vw, var(--space-12));
   row-gap: clamp(var(--space-10), 4vw, var(--space-12));
-  align-items: start;
+  align-items: center;
 }
 
-.ruth__lockup {
-  grid-column: 1;
-  display: grid;
-  gap: clamp(var(--space-9), 3vw, var(--space-11));
-  justify-items: start;
-}
-
+/* Full-width header row above the bio/tally split. */
 .ruth__title {
+  grid-column: 1 / -1;
   margin: 0;
-  max-width: 22ch;
 }
 
 .ruth__bio {
+  grid-column: 1;
   gap: var(--space-6);
 }
 
 .ruth__stats-block {
   grid-column: 2;
-  align-self: start;
   display: grid;
   gap: var(--space-5);
   justify-items: start;
+  margin-right: var(--space-8);
 }
 
 /*

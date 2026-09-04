@@ -1,15 +1,14 @@
 /*
- * The hero breaks out of the standard 940px column at ≥1024px so the
- * outlined phone frame has somewhere to live beside the lines without
- * squeezing the text. Below 1024px the hero drops back to the essay's
- * regular column width and the phone is hidden.
+ * The hero sits in the essay's regular content column, same width as every
+ * other section. At ≥1024px the phone frame tucks in beside the lines within
+ * that column; below 1024px the phone is hidden and the lines take the width.
  */
 .hero {
   padding: clamp(var(--space-13), 7vw, 92px) 0 clamp(var(--space-12), 5vw, var(--space-14));
 }
 
 .hero__inner {
-  max-width: min(1240px, 100%);
+  max-width: var(--column-max-width);
   margin: 0 auto;
   padding: 0 var(--page-gutter);
   display: grid;
@@ -42,18 +41,19 @@
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: clamp(var(--space-8), 3vw, var(--space-11));
-  align-items: end;
+  align-items: center;
 }
 
 .hero__lines {
-  display: grid;
-  gap: clamp(var(--space-6), 2vw, var(--space-8));
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-10);
 }
 
 /* One stanza is a tight pair of lines; stanzas breathe apart via the parent gap. */
 .hero__stanza {
   display: grid;
-  gap: var(--space-2);
 }
 
 /*
@@ -66,9 +66,16 @@
 .hero__line {
   margin: 0;
   color: var(--color-neutral-2);
-  font-size: clamp(var(--font-size-3), 1.65vw, var(--font-size-5));
-  line-height: var(--line-height-4);
+  font-size: var(--font-size-5);
+  font-weight: 300;
+  line-height: var(--line-height-2);
   white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .hero__line {
+    font-size: var(--font-size-3);
+  }
 }
 
 @media (max-width: 640px) {
@@ -77,32 +84,58 @@
   }
 }
 
-.hero__phone {
+.hero__phone,
+.hero__phone-caption {
   display: none;
 }
 
 /*
- * ≥1024px: the phone slides in on the right. The frame is a minimal outlined
- * rounded rectangle around a strip of the nine "other apps" screenshots; the
- * strip shifts `-100%` per step via a CSS transition so each swipe reads as
- * a lazy scroll.
+ * ≥840px: the body becomes a two-column grid — the lines fill the left column
+ * top to bottom, the phone sits top-right, and the caption is anchored to the
+ * bottom-right corner. The frame is a minimal outlined rounded rectangle
+ * around a strip of the nine "other apps" screenshots; the strip shifts
+ * `-100%` per step via a CSS transition so each swipe reads as a lazy scroll.
  */
-@media (min-width: 1024px) {
+@media (min-width: 840px) {
   .hero__body {
-    grid-template-columns: minmax(0, 1fr) 220px;
-    gap: clamp(var(--space-10), 4vw, var(--space-12));
+    grid-template-columns: max-content 160px;
+    grid-template-areas:
+      'text phone'
+      '.    caption';
+    justify-content: start;
+    align-items: start;
+    column-gap: clamp(var(--space-10), 4vw, var(--space-12));
+    row-gap: var(--space-4);
+  }
+
+  /* The lines fill the phone's row and sit vertically centered against it. */
+  .hero__lines {
+    grid-area: text;
+    align-self: stretch;
   }
 
   .hero__phone {
     display: block;
-    justify-self: end;
+    grid-area: phone;
+  }
+
+  /* Tally-caption twin: quiet italic prompt anchored to the bottom-right. */
+  .hero__phone-caption {
+    display: block;
+    grid-area: caption;
     align-self: end;
+    margin: 0;
+    color: var(--color-neutral-3);
+    font-size: var(--font-size-3);
+    font-style: italic;
+    line-height: var(--line-height-4);
+    text-align: center;
   }
 
   .hero__phone-frame {
-    width: 220px;
+    width: 160px;
     aspect-ratio: 9 / 19;
-    border: 1.5px solid var(--color-divider);
+    border: 2px solid var(--color-neutral-2);
     border-radius: 28px;
     overflow: hidden;
     background: var(--color-background);

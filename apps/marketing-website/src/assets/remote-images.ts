@@ -39,15 +39,15 @@ const medicationsHomeImage = {
   alt: 'Medication Viewer home screen, showing prescription interactions',
 }
 
-/** The two Wildflower FHIR server screenshots, in demo order. */
+/** The two Wildflower FHIR server screenshots, in display order. */
 const wildflowerServerImages = [
-  {
-    src: `${ASSET_BASE}/wildflower/app_authorization.png`,
-    alt: 'Wildflower personal FHIR server — SMART app authorization prompt',
-  },
   {
     src: `${ASSET_BASE}/wildflower/app_home.png`,
     alt: 'Wildflower personal FHIR server — home screen',
+  },
+  {
+    src: `${ASSET_BASE}/wildflower/app_authorization.png`,
+    alt: 'Wildflower personal FHIR server — SMART app authorization prompt',
   },
 ] as const
 

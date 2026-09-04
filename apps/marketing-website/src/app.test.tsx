@@ -34,18 +34,18 @@ describe('App', () => {
     expect(missing).toStrictEqual([])
   })
 
-  it('should render the site title as the only h1, linking back to #top', () => {
+  it('should render the hero manifesto title as the only h1, with the wordmark linking back to #top', () => {
     // Arrange / Act
     render(<App />)
 
-    // Assert — the wordmark is the page's only h1 by design, even though the
-    // hero's manifesto title ("Patients deserve health data freedom") is
-    // visually larger.
+    // Assert — the hero's manifesto title is the page's only h1; the header
+    // wordmark is a plain link (not a heading) back to the top.
     const headings = screen.getAllByRole('heading', { level: 1 })
     expect(headings).toHaveLength(1)
-    const title = headings[0]
-    expect(title.textContent).toBe('Wildflower Health Project')
-    expect(within(title).getByRole('link').getAttribute('href')).toBe('#top')
+    expect(headings[0].textContent).toBe('Patients deserve health data freedom')
+    expect(
+      screen.getByRole('link', { name: /Wildflower Health Project/ }).getAttribute('href')
+    ).toBe('#top')
   })
 
   it('should link the header nav to the four app routes', () => {

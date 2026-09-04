@@ -12,7 +12,7 @@ function Asks(): JSX.Element {
   return (
     <section className={layout['section']} id="asks">
       <div className={layout['column']}>
-        <h2 className={layout['section-title']}>How to make these standards, standard</h2>
+        <h2 className={layout['section-title']}>How do we make these standards, standard?</h2>
         <div className={`${layout['prose']} ${layout['prose--secondary']}`}>
           <p>
             I don't expect most people to run a FHIR server. These tools should be legislated and

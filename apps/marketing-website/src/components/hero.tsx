@@ -4,7 +4,7 @@ import { otherAppImages } from '../assets/remote-images.ts'
 import styles from './hero.module.css'
 
 /** How long each "other app" screenshot holds before the phone swipes on. */
-const SWIPE_INTERVAL_MS = 3800
+const SWIPE_INTERVAL_MS = 2200
 
 /** The staccato lines under the manifesto title, grouped into stanzas. */
 const HERO_STANZAS: readonly (readonly string[])[] = [
@@ -25,17 +25,17 @@ const HERO_STANZAS: readonly (readonly string[])[] = [
 
 /**
  * The opening banner: the manifesto title, the staccato stanzas that set up
- * the essay, and — from 1024px up — a minimal outlined phone lazily swiping
+ * the essay, and — from 840px up — a minimal outlined phone lazily swiping
  * through screenshots of the "other apps" the stanzas describe. The phone
- * disappears below 1024px so the stanzas own narrow screens.
+ * disappears below 840px so the stanzas own narrow screens.
  */
 function Hero(): JSX.Element {
   return (
     <section className={styles['hero']} id="top">
       <div className={styles['hero__inner']}>
-        <h2 className={styles['hero__title']}>
+        <h1 className={styles['hero__title']}>
           Patients <i>deserve</i> health data freedom
-        </h2>
+        </h1>
         <div className={styles['hero__body']}>
           <div className={styles['hero__lines']}>
             {HERO_STANZAS.map((stanza) => (
@@ -80,23 +80,30 @@ function OtherAppsPhone(): JSX.Element {
   }, [reducedMotion])
 
   return (
-    <div className={styles['hero__phone']} aria-hidden="true">
-      <div className={styles['hero__phone-frame']}>
-        <div
-          className={styles['hero__phone-strip']}
-          style={{ transform: `translateX(-${index * 100}%)` }}
-        >
-          {otherAppImages.map((image) => (
-            <img
-              key={image.src}
-              className={styles['hero__phone-image']}
-              src={image.src}
-              alt={image.alt}
-            />
-          ))}
+    <>
+      <div className={styles['hero__phone']} aria-hidden="true">
+        <div className={styles['hero__phone-frame']}>
+          <div
+            className={styles['hero__phone-strip']}
+            style={{ transform: `translateX(-${index * 100}%)` }}
+          >
+            {otherAppImages.map((image) => (
+              <img
+                key={image.src}
+                className={styles['hero__phone-image']}
+                src={image.src}
+                alt={image.alt}
+              />
+            ))}
+          </div>
         </div>
       </div>
-    </div>
+      <p className={styles['hero__phone-caption']}>
+        Where is your data?
+        <br />
+        Is it working for you?
+      </p>
+    </>
   )
 }
 

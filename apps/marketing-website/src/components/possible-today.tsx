@@ -31,6 +31,7 @@ function PossibleToday(): JSX.Element {
                 'it into an app that runs on a phone or laptop.',
             ]}
             images={wildflowerServerImages}
+            alignCenter
             launcher={
               <Launcher
                 href={sectionRootPath('serverDocs')}
