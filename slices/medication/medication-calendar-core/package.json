@@ -2,7 +2,7 @@
   "name": "medication-calendar-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure calendar layer for a patient's medication list: supply-duration parsing, next-fill / exhaustion date math, relative-day phrasing, calendar event derivation, and month-grid math. No DOM, no FHIR, no platform imports.",
+  "description": "Pure calendar layer for a patient's medication list: supply-duration parsing, next-fill / exhaustion date math, calendar event derivation, and month-grid math. No DOM, no FHIR, no platform imports.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -28,7 +28,6 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "kitchen-sink": "workspace:*"
+    "effect": "catalog:"
   }
 }

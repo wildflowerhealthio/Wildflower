@@ -12,23 +12,23 @@
   padding: var(--space-9) var(--space-7) var(--space-13);
 }
 
+/* The title row (title + view toggle) with the page-chunk progress bar on its
+ * own full-width row directly beneath it. */
 .header {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: var(--space-7);
+  flex-direction: column;
+  gap: var(--space-6);
   margin-bottom: var(--space-9);
 }
 
-/* The H1 with the page-chunk progress bar stacked directly beneath it. The
- * stack hugs the title's width, so the bar starts left-aligned under it (and
- * may grow past it on long lists — intended). */
-.titleStack {
+/* Top row: the H1 and the view toggle share one line, the toggle pushed to the
+ * far end; both drop to their own lines when the row is too narrow. */
+.topRow {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-  width: fit-content;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-7);
 }
 
 /* Header controls: the view toggle. */

@@ -314,11 +314,23 @@ button.pip:focus-visible {
   flex: none;
 }
 
+/*
+ * The pip strip sticks to the top of the header row, inset from the top by the
+ * toggle's own top padding so a single (unwrapped) line reads centred against
+ * the toggle text; when the pips wrap, the strip keeps that top and grows
+ * downward rather than re-centring the whole (now taller) block.
+ */
 .strip {
   display: flex;
   align-items: center;
   gap: 2px;
   flex: none;
+  align-self: flex-start;
+  margin-top: var(--space-5);
+}
+
+.card-nested .strip {
+  margin-top: var(--space-4);
 }
 
 .strip-more {
@@ -341,12 +353,15 @@ button.pip:focus-visible {
     padding-right: 0;
   }
 
+  /* Stacked under the toggle here, so drop the top-align inset the row uses. */
   .strip {
     flex-wrap: wrap;
+    margin-top: 0;
     padding: 0 var(--space-6) var(--space-5) var(--space-9);
   }
 
   .card-nested .strip {
+    margin-top: 0;
     padding: 0 var(--space-5) var(--space-4) var(--space-8);
   }
 

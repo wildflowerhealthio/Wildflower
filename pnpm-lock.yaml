@@ -440,6 +440,9 @@ importers:
       fhir-r4-react:
         specifier: workspace:*
         version: link:../../slices/emr/fhir-r4-react
+      medication-calendar-core:
+        specifier: workspace:*
+        version: link:../../slices/medication/medication-calendar-core
       medication-calendar-react:
         specifier: workspace:*
         version: link:../../slices/medication/medication-calendar-react

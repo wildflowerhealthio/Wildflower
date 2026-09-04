@@ -49,18 +49,19 @@ catalog onto it.
   on the calendar and savings views), the savings view (`SavingsView`: one
   section per program with its site-sourced description in
   `program-descriptions.ts`, eligible medications chipped per the selected
-  province, then a "No known savings program" section), plus the
+  province — with completed-but-still-eligible prescriptions dimmed at the
+  bottom of each program's list (`pastMedications`; program lists only, never
+  the uncovered section) — then a "No known savings program" section), plus the
   `MedicationRequest → MedicationView` adapter (the core `Medication` for
   matching, plus carebook display fields — DIN, description, prescriber,
   notes, repeat counts) and the `hasRefill` rule shared with the calendar.
 - `medication-calendar-core` — the pure calendar layer: the supply-duration
   parsing and next-fill/exhaustion date math (extracted from the sponsorship
-  adapter; `supplyDurationToParts`, `nextFillDate`), the relative-day phrasing
-  (`describeDayFromNow`), `deriveCalendarEvents` (pickup on the next-fill date
-  with repeats left; a renewal appointment one week before and a marker on the
-  exhaustion day without; same-day events of one kind merge into a single
-  fluently-titled event), and the Sunday-start 42-cell `monthGrid`. No DOM,
-  no FHIR, no platform imports.
+  adapter; `supplyDurationToParts`, `nextFillDate`), `deriveCalendarEvents`
+  (pickup on the next-fill date with repeats left; a renewal appointment one
+  week before and a marker on the exhaustion day without; same-day events of one
+  kind merge into a single fluently-titled event), and the Sunday-start 42-cell
+  `monthGrid`. No DOM, no FHIR, no platform imports.
 - `medication-calendar-react` — browser UI: `CalendarView`, a month grid with
   previous/next navigation rendering the derived events into day cells; below
   640px the grid gives way to a day-grouped schedule stack scrollable both

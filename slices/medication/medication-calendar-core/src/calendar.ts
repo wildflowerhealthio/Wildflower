@@ -5,7 +5,12 @@ interface CalendarMedicationInput {
   readonly id: string
   readonly drugName: string
   readonly prescriber: string | null
-  /** Estimated next-fill date as an ISO instant, or `null` when unknown. */
+  /**
+   * Estimated next-fill date as a **local** calendar day (`YYYY-MM-DD`), or
+   * `null` when unknown. The caller reduces the source instant to the viewer's
+   * local day before passing it here — a wall-clock / time-zone read this pure
+   * layer deliberately avoids (see `calendar-day.ts`).
+   */
   readonly nextFillDate: string | null
   readonly hasRefill: boolean
 }
@@ -73,10 +78,11 @@ const compareEvents = (a: CalendarEvent, b: CalendarEvent): number => {
  * Ramipril"`, `"Book appointment with Dr. Rao and your prescriber"` — with
  * repeated subjects (two renewals under one prescriber) collapsed.
  *
- * The next-fill instant is reduced to its local calendar day by taking the date
- * part of the ISO string; the seven-day-before offset is computed in pure
- * calendar-day arithmetic on that day, avoiding time-zone off-by-ones. Events
- * are returned sorted by day then kind.
+ * The next-fill day is taken as the leading `YYYY-MM-DD` of the input, which
+ * the caller has already reduced to the viewer's local calendar day; the
+ * seven-day-before offset is computed in pure calendar-day arithmetic on that
+ * day, avoiding time-zone off-by-ones. Events are returned sorted by day then
+ * kind.
  */
 const deriveCalendarEvents = (
   medications: readonly CalendarMedicationInput[]

@@ -5,7 +5,7 @@ import { cn } from 'react-kitchen-sink'
 import { LinkButton } from './link-button.tsx'
 import styles from './chunk-bar.module.css'
 
-type ChunkBarPhase = 'idle' | 'loading' | 'locked'
+type ChunkBarPhase = 'idle' | 'loading' | 'locked' | 'error'
 
 interface ChunkBarLabels {
   /** Bar `aria-label` while idle (pages arrived, no fetch running). */
@@ -14,6 +14,8 @@ interface ChunkBarLabels {
   readonly ariaLoading: (pages: number) => string
   /** Bar `aria-label` once every page has arrived. */
   readonly ariaLocked: string
+  /** Bar `aria-label` after a page fetch has failed. */
+  readonly ariaError: (pages: number) => string
   /** Tooltip copy after the bold count (e.g. `"items have been loaded."`). */
   readonly countSuffix: string
   /** The load-everything action's link text. */
@@ -22,17 +24,30 @@ interface ChunkBarLabels {
   readonly loadingNote: string
   /** Tooltip status line once every page has arrived. */
   readonly lockedNote: string
+  /** Tooltip status line after a page fetch has failed. */
+  readonly errorNote: string
+  /** The retry action's link text, shown after a failed fetch. */
+  readonly retry: string
 }
 
 const defaultLabels: ChunkBarLabels = {
   ariaIdle: (pages) => `${pages} pages loaded so far`,
   ariaLoading: (pages) => `Loading — ${pages} pages in so far`,
   ariaLocked: 'Everything is loaded',
+  ariaError: (pages) => `Loading paused after a failed page — ${pages} pages in so far`,
   countSuffix: 'items have been loaded.',
   loadAll: 'Load all the rest?',
   loadingNote: 'Loading the rest now — one block per page as it arrives.',
   lockedNote: 'That is all of them.',
+  errorNote: 'A page failed to load — the list is incomplete.',
+  retry: 'Retry',
 }
+
+/** Pages per row before the bar wraps, so a long load grows down, not sideways. */
+const rowSize = 20
+
+/** Built once, not per render — the tooltip's count formatter is locale-only. */
+const countFormat = new Intl.NumberFormat()
 
 interface ChunkBarProps {
   /** `idle` = pages arrived by scrolling, no fetch running. */
@@ -61,12 +76,16 @@ const lockDelayMillis = (index: number): number => Math.min(index, 20) * 34
  * page. It renders no placeholder slots and no "x of y"; the bar simply grows.
  *
  * Under 4 pages it renders nothing (a short list loads fast enough to need no
- * meter); past 24 pages the blocks tighten so the bar stays in its column.
+ * meter); past 24 pages the blocks tighten, and every {@link rowSize} pages the
+ * bar wraps to a new row so a long load grows downward rather than off the side
+ * of its column.
  *
  * Hovering the bar (or focusing it — the bar is in the tab order) opens a
- * tooltip stating how many items have arrived, with the load-everything
- * action while the fetch is paused. A polite live region announces progress
- * at most once per page.
+ * tooltip stating how many items have arrived, with the load-everything action
+ * while the fetch is paused. When a page fetch fails the bar enters its `error`
+ * phase: the tooltip states the failure and offers a retry (the same
+ * `onLoadAll` callback, which re-requests the failed page). A polite live
+ * region announces progress at most once per page.
  */
 const ChunkBar = ({
   phase,
@@ -82,6 +101,7 @@ const ChunkBar = ({
   const ariaLabel = ((): string => {
     if (phase === 'locked') return copy.ariaLocked
     if (phase === 'loading') return copy.ariaLoading(pagesReceived)
+    if (phase === 'error') return copy.ariaError(pagesReceived)
     return copy.ariaIdle(pagesReceived)
   })()
 
@@ -97,13 +117,22 @@ const ChunkBar = ({
     onLoadAll?.()
   }
 
-  const blocks = Array.from({ length: pagesReceived }, (_, index) => (
-    <i
-      key={index}
-      className={styles['block']}
-      style={phase === 'locked' ? { animationDelay: `${lockDelayMillis(index)}ms` } : undefined}
-    />
-  ))
+  // One cell per received page, plus the trailing in-flight cell while loading.
+  // Cells wrap into rows of `rowSize` so a long load grows downward, not off
+  // the side of its column.
+  const cells = [
+    ...Array.from({ length: pagesReceived }, (_, index) => (
+      <i
+        key={index}
+        className={styles['block']}
+        style={phase === 'locked' ? { animationDelay: `${lockDelayMillis(index)}ms` } : undefined}
+      />
+    )),
+    ...(phase === 'loading' ? [<i key="inflight" className={styles['inflight']} />] : []),
+  ]
+  const rows = Array.from({ length: Math.ceil(cells.length / rowSize) }, (_, row) =>
+    cells.slice(row * rowSize, row * rowSize + rowSize)
+  )
 
   return (
     <div
@@ -129,8 +158,11 @@ const ChunkBar = ({
           setTipOpen(true)
         }}
       >
-        {blocks}
-        {phase === 'loading' && <i key="inflight" className={styles['inflight']} />}
+        {rows.map((row, index) => (
+          <span key={index} className={styles['row']}>
+            {row}
+          </span>
+        ))}
       </div>
       {/* One announcement per page: the label changes only when a page lands
        * or the phase flips, so rendering it live needs no extra throttle. */}
@@ -140,9 +172,7 @@ const ChunkBar = ({
       {tipOpen && (
         <div role="tooltip" className={styles['tooltip']}>
           <p className={styles['countLine']}>
-            <strong className={styles['count']}>
-              {new Intl.NumberFormat().format(loadedCount)}
-            </strong>{' '}
+            <strong className={styles['count']}>{countFormat.format(loadedCount)}</strong>{' '}
             {copy.countSuffix}
           </p>
           {phase === 'idle' && onLoadAll !== undefined && (
@@ -150,6 +180,14 @@ const ChunkBar = ({
           )}
           {phase === 'loading' && <p className={styles['note']}>{copy.loadingNote}</p>}
           {phase === 'locked' && <p className={styles['note']}>{copy.lockedNote}</p>}
+          {phase === 'error' && (
+            <>
+              <p className={styles['note']}>{copy.errorNote}</p>
+              {onLoadAll !== undefined && (
+                <LinkButton onClick={startLoadAll}>{copy.retry}</LinkButton>
+              )}
+            </>
+          )}
         </div>
       )}
     </div>

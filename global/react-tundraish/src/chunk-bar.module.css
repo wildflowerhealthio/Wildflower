@@ -21,11 +21,19 @@
 
 .bar {
   display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  cursor: default;
+  outline: none;
+}
+
+/* One wrapped row of page blocks. */
+.row {
+  display: flex;
   align-items: stretch;
   height: 5px;
   min-height: 5px;
-  cursor: default;
-  outline: none;
 }
 
 .bar:focus-visible {
@@ -56,6 +64,17 @@
 /* Idle: pages arrived by scroll, nothing running — the bar rests dimmed. */
 .idle .block {
   opacity: 0.55;
+}
+
+/* Error: a page fetch failed. The loaded blocks dim back and the last one takes
+ * the warning tone to mark where the load stalled. */
+.error .block {
+  opacity: 0.4;
+}
+
+.error .row:last-child .block:last-child {
+  background: var(--color-warning);
+  opacity: 1;
 }
 
 /* Loading: each received block plays its arrival once. */

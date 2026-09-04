@@ -214,7 +214,9 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Calendar' }))
 
     // Assert: partial banner, no fetch beyond the first page.
-    expect(screen.getByText(/This is showing your 0 most recent medications/)).toBeDefined()
+    expect(
+      screen.getByText(/This list is loaded from your 0 most recent medication requests/)
+    ).toBeDefined()
     expect(fetchMock).toHaveBeenCalledTimes(1)
 
     // Act: the banner's action drains the rest.
@@ -225,6 +227,79 @@ describe('App', () => {
     await waitFor(() => {
       expect(screen.queryByText(/most recent medications/)).toBeNull()
     })
+  })
+
+  it('should surface a failed later page on Calendar and recover on retry', async () => {
+    // Arrange: page 1 points on, page 2 fails, the retry of page 2 finishes the list.
+    stubQuietIntersectionObserver()
+    handshakeMock.mockReturnValue(readyHandshake)
+    fetchMock
+      .mockResolvedValueOnce(pageTo(2))
+      .mockRejectedValueOnce(new Error('boom'))
+      .mockResolvedValueOnce(lastPage)
+    renderApp()
+    await awaitFirstPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Calendar' }))
+
+    // Act: drain the rest — page 2 fails.
+    fireEvent.click(screen.getByRole('button', { name: 'load them all?' }))
+
+    // Assert: the failure is surfaced with a retry, not silently swallowed.
+    await waitFor(() => {
+      expect(screen.getByText(/failed to load/)).toBeDefined()
+    })
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined()
+
+    // Act: retry re-requests just that page, which now succeeds.
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }))
+
+    // Assert: the list completes and the banner clears.
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(3)
+    })
+    await waitFor(() => {
+      expect(screen.queryByText(/failed to load/)).toBeNull()
+    })
+  })
+
+  it('should offer a retry when a page fails while streaming partial Interactions', async () => {
+    // Arrange: page 2 hangs, then rejects once the user is in partial-stream mode.
+    stubQuietIntersectionObserver()
+    handshakeMock.mockReturnValue(readyHandshake)
+    catalogMock.mockResolvedValue(emptyCatalog)
+    let rejectPage2: (error: Error) => void = () => {}
+    fetchMock
+      .mockResolvedValueOnce(pageTo(2))
+      .mockReturnValueOnce(
+        new Promise<MedicationRequestPage>((_, reject) => {
+          rejectPage2 = reject
+        })
+      )
+      .mockResolvedValueOnce(lastPage)
+    renderApp()
+    await awaitFirstPage()
+    fireEvent.click(screen.getByRole('button', { name: 'Interactions' }))
+
+    // Act: escape the gate into live partial results while page 2 is still in flight.
+    await waitFor(() => {
+      expect(screen.getByText('Waiting for your full medication list')).toBeDefined()
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Show me it live as it loads anyway' }))
+    await waitFor(() => {
+      expect(screen.getByText(/Partial list — still loading/)).toBeDefined()
+    })
+
+    // Act: page 2 fails — the "still loading" claim must not persist.
+    act(() => {
+      rejectPage2(new Error('boom'))
+    })
+
+    // Assert: an error banner with a retry replaces the stuck "still loading" copy.
+    await waitFor(() => {
+      expect(screen.getByText(/A page of your medication list failed to load/)).toBeDefined()
+    })
+    expect(screen.queryByText(/still loading/)).toBeNull()
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeDefined()
   })
 
   it('should auto-load every remaining page on entering Interactions', async () => {

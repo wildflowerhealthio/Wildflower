@@ -11,10 +11,11 @@
  * (`accent-red`) tone reads the `--color-red-*` ramp — all in
  * `colors-custom.css` — so they flip with the surface palette automatically;
  * only the danger tint background and dark badge-text step need explicit
- * per-scheme values. The info (blue) and warning (yellow) tones aren't part of
- * the status palette the refresh specifies, so they carry their own
- * true-neutral-friendly trios below (a muted steel blue and a desaturated
- * gold, kept clear of the navy accent).
+ * per-scheme values. The warning (yellow) tone reads the `--color-warning-*`
+ * tokens (also in `colors-custom.css`, shared with `PartialBanner`), so it too
+ * flips with the surface palette. The info (blue) tone isn't part of the status
+ * palette the refresh specifies, so it carries its own true-neutral-friendly
+ * trio below (a muted steel blue, kept clear of the navy accent).
  */
 
 .status-badge {
@@ -101,12 +102,12 @@
 }
 
 .status-badge.accent-yellow {
-  background: #f6ecc7;
-  color: #755610;
-  border-color: #e0c46b;
+  background: var(--color-warning-background);
+  color: var(--color-warning-foreground);
+  border-color: var(--color-warning-border);
 }
 .status-badge.accent-yellow::before {
-  background: #c99617;
+  background: var(--color-warning);
 }
 
 /* Danger tone — a faint red tint over crisp danger text + a red dot, reading
@@ -121,11 +122,11 @@
   background: var(--color-red-5);
 }
 
-/* Dark-mode tones. The neutral (no-class), success (.accent-green), and danger
- * (.accent-red) tones read tokens that already flip with the surface palette,
- * so danger only re-pins its tint background + badge-text step; the dot and
- * border tokens flip on their own. Info (blue) and warning (yellow) still need
- * explicit dark trios. */
+/* Dark-mode tones. The neutral (no-class), success (.accent-green), warning
+ * (.accent-yellow), and danger (.accent-red) tones read tokens that already
+ * flip with the surface palette, so danger only re-pins its tint background +
+ * badge-text step; the dot and border tokens flip on their own. Only info
+ * (blue) still needs an explicit dark trio. */
 :root[data-color-scheme='dark'] .status-badge.accent-blue {
   background: #182636;
   color: #90b4dc;
@@ -133,14 +134,6 @@
 }
 :root[data-color-scheme='dark'] .status-badge.accent-blue::before {
   background: #5487bf;
-}
-:root[data-color-scheme='dark'] .status-badge.accent-yellow {
-  background: #33290e;
-  color: #d9b661;
-  border-color: #55471e;
-}
-:root[data-color-scheme='dark'] .status-badge.accent-yellow::before {
-  background: #d99e1a;
 }
 :root[data-color-scheme='dark'] .status-badge.accent-red {
   background: rgba(234, 86, 77, 0.1);

@@ -49,6 +49,27 @@ describe('ChunkBar', () => {
     expect(labelFor('idle')).toBe('5 pages loaded so far')
     expect(labelFor('loading')).toBe('Loading — 5 pages in so far')
     expect(labelFor('locked')).toBe('Everything is loaded')
+    expect(labelFor('error')).toBe('Loading paused after a failed page — 5 pages in so far')
+  })
+
+  it('wraps page blocks into rows of twenty', () => {
+    render(<ChunkBar phase="idle" pagesReceived={45} loadedCount={450} />)
+
+    // 45 pages → rows of 20, 20 and 5.
+    expect(bar().querySelectorAll('span')).toHaveLength(3)
+    expect(blocksOf(bar())).toHaveLength(45)
+  })
+
+  it('states the failure and offers a retry in the error phase', async () => {
+    const user = userEvent.setup()
+    const onLoadAll = vi.fn()
+    render(<ChunkBar phase="error" pagesReceived={5} loadedCount={50} onLoadAll={onLoadAll} />)
+
+    await user.tab()
+    expect(screen.getByRole('tooltip').textContent).toContain('A page failed to load')
+
+    await user.click(screen.getByRole('button', { name: 'Retry' }))
+    expect(onLoadAll).toHaveBeenCalledTimes(1)
   })
 
   it('opens the tooltip on focus and shows the localized count', async () => {
@@ -118,7 +139,7 @@ describe('ChunkBar', () => {
     fc.assert(
       fc.property(
         fc.integer({ min: 4, max: 60 }),
-        fc.constantFrom<ChunkBarPhase>('idle', 'loading', 'locked'),
+        fc.constantFrom<ChunkBarPhase>('idle', 'loading', 'locked', 'error'),
         (pagesReceived, phase) => {
           const view = render(
             <ChunkBar

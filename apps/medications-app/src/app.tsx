@@ -22,6 +22,7 @@ import { ChunkBar, GateCard, PartialBanner, type ChunkBarPhase } from 'react-tun
 
 import { catalogs } from './catalogs.ts'
 import { getInteractionCatalog } from './interaction-catalog.ts'
+import { pastEligibleMedications } from './past-medications.ts'
 import styles from './app.module.css'
 
 /** The four views the header toggle switches between. */
@@ -41,8 +42,12 @@ const chunkBarLabels = {
   ariaIdle: (pages: number) => `${pages} pages of your medication list loaded so far`,
   ariaLoading: (pages: number) => `Loading your medication list — ${pages} pages in so far`,
   ariaLocked: 'Your full medication list is loaded',
+  ariaError: (pages: number) =>
+    `Loading paused after a failed page — ${pages} pages of your medication list in so far`,
   countSuffix: 'medication requests have been loaded.',
   lockedNote: 'That is all of them. Everything below is checked against the full list.',
+  errorNote: 'A page of your medication list failed to load — the list is incomplete.',
+  retry: 'Retry',
 }
 
 /**
@@ -183,7 +188,12 @@ export const App = (): JSX.Element => {
 
   const startLoadAll = useCallback(() => {
     setLoadAllActive(true)
-  }, [])
+    // A failed later-page fetch halts the driver and nothing else clears the
+    // error, so `setLoadAllActive(true)` alone is inert when it is already set.
+    // Kick the next fetch directly — React Query clears `isFetchNextPageError`
+    // on a fresh attempt, which lets the driver effect resume from there.
+    if (isFetchNextPageError) void fetchNextPage()
+  }, [isFetchNextPageError, fetchNextPage])
 
   // Entering the Interactions tab starts the full fetch automatically — the
   // report cannot be computed from a partial list, so the user never has to
@@ -231,6 +241,9 @@ export const App = (): JSX.Element => {
     () => dedupeMedicationsByName(activeMedications),
     [activeMedications]
   )
+  // Completed prescriptions still eligible for a savings program, shown below
+  // the active rows there (see {@link pastEligibleMedications}).
+  const pastMedications = useMemo(() => pastEligibleMedications(views), [views])
   // Prescriber (requester) display name per medication id, for the avatars the
   // interactions view shows between the patient's own medications.
   const prescriberById = useMemo(() => {
@@ -261,8 +274,9 @@ export const App = (): JSX.Element => {
   // page drops the bar back to idle — nothing is in flight until the retry.
   const barPhase = ((): ChunkBarPhase => {
     if (listComplete) return 'locked'
+    if (isFetchNextPageError) return 'error'
     if (isFetchingNextPage) return 'loading'
-    if (loadAllActive && !isFetchNextPageError) return 'loading'
+    if (loadAllActive) return 'loading'
     return 'idle'
   })()
 
@@ -289,12 +303,7 @@ export const App = (): JSX.Element => {
             title="Couldn't load part of your list"
             body="A page of your medication list failed to load. Interactions stay paused until it arrives — retrying re-requests just that page."
             showSpinner={false}
-            action={{
-              label: 'Retry',
-              onClick: () => {
-                void fetchNextPage()
-              },
-            }}
+            action={{ label: 'Retry', onClick: startLoadAll }}
           />
         )
       }
@@ -333,12 +342,21 @@ export const App = (): JSX.Element => {
     }
     return (
       <>
-        {showPartial && !listComplete && (
-          <PartialBanner>
-            Partial list — still loading. Interactions with medications that haven't loaded yet are
-            missing.
-          </PartialBanner>
-        )}
+        {showPartial &&
+          !listComplete &&
+          (isFetchNextPageError ? (
+            // The stream driver has halted on a failed page: say so and offer a
+            // retry, rather than claiming it is "still loading" indefinitely.
+            <PartialBanner action={{ label: 'Retry', onClick: startLoadAll }}>
+              A page of your medication list failed to load. Interactions with the medications that
+              haven't loaded yet are missing.
+            </PartialBanner>
+          ) : (
+            <PartialBanner>
+              Partial list — still loading. Interactions with medications that haven't loaded yet
+              are missing.
+            </PartialBanner>
+          ))}
         <InteractionsView
           medications={interactionMedications}
           catalog={interactionCatalog.data}
@@ -350,16 +368,26 @@ export const App = (): JSX.Element => {
 
   // Calendar and Savings render from the pages loaded so far; while the list
   // is incomplete they carry the amber banner with the load-everything action.
-  const partialListBanner = !listComplete && (
-    <PartialBanner
-      action={
-        barPhase === 'loading' ? undefined : { label: 'load them all?', onClick: startLoadAll }
+  // A failed later-page fetch is surfaced here too (these tabs have no inline
+  // error line of their own), with a retry in place of "load them all?".
+  const partialBanner = ((): {
+    readonly message: string
+    readonly action?: { readonly label: string; readonly onClick: () => void }
+  } => {
+    if (isFetchNextPageError)
+      return {
+        message:
+          'A page of your medication list failed to load — this list is missing some of your medications.',
+        action: { label: 'Retry', onClick: startLoadAll },
       }
-    >
-      {barPhase === 'loading'
-        ? 'Loading the rest of your medications…'
-        : `This is showing your ${views.length} most recent medications,`}
-    </PartialBanner>
+    if (barPhase === 'loading') return { message: 'Loading the rest of your medications…' }
+    return {
+      message: `This list is loaded from your ${views.length} most recent medication requests,`,
+      action: { label: 'load them all?', onClick: startLoadAll },
+    }
+  })()
+  const partialListBanner = !listComplete && (
+    <PartialBanner action={partialBanner.action}>{partialBanner.message}</PartialBanner>
   )
 
   // Either leg can fail — the token exchange or the read that follows it. Surface
@@ -396,6 +424,7 @@ export const App = (): JSX.Element => {
            * checks, so the two pages agree on what "your medications" means. */}
           <SavingsView
             medications={interactionMedications}
+            pastMedications={pastMedications}
             province={province}
             onProvinceChange={setProvince}
             catalogs={catalogs}
@@ -409,19 +438,19 @@ export const App = (): JSX.Element => {
   return (
     <main className={styles.app}>
       <header className={styles.header}>
-        <div className={styles.titleStack}>
+        <div className={styles.topRow}>
           <h1 className="text-heading-3">Medications</h1>
-          <ChunkBar
-            phase={barPhase}
-            pagesReceived={pagesReceived}
-            loadedCount={views.length}
-            onLoadAll={startLoadAll}
-            labels={chunkBarLabels}
-          />
+          <div className={styles.controls}>
+            <TabToggle value={tab} onChange={selectTab} />
+          </div>
         </div>
-        <div className={styles.controls}>
-          <TabToggle value={tab} onChange={selectTab} />
-        </div>
+        <ChunkBar
+          phase={barPhase}
+          pagesReceived={pagesReceived}
+          loadedCount={views.length}
+          onLoadAll={startLoadAll}
+          labels={chunkBarLabels}
+        />
       </header>
       {body}
     </main>

@@ -16,9 +16,9 @@ interface PartialBannerProps {
  * still filling in. Callers own the copy; the optional action is the
  * load-the-rest affordance.
  *
- * The warning-amber tone mirrors the yellow `StatusBadge` trios — there are
- * no yellow semantic tokens, so the per-scheme literals are shared with that
- * component rather than invented here.
+ * The warning-amber tone reads the shared `--color-warning-*` semantic tokens,
+ * the same ones the yellow `StatusBadge` uses, so the two warning surfaces stay
+ * in lockstep.
  */
 const PartialBanner = ({ children, action }: PartialBannerProps): JSX.Element => (
   <div className={styles['banner']} role="status">
