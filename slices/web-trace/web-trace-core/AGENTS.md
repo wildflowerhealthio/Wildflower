@@ -3,8 +3,11 @@
 The pure layer of the web-trace slice. No DOM, no `fs`, no UI, no store — one
 vocabulary, and the translations built on it.
 
-Read the [Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md) before
-touching anything under `src/pseudonymizer/`.
+The export-boundary anonymizer moved to
+[`har-importer-core/anonymizer`](../../importer/har-importer-core/src/anonymizer/)
+in M2 of #578; read the
+[Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md)
+before touching it.
 
 ## Layering
 
@@ -42,10 +45,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   `collector-fundamentals`' `CollectorHttpResponse` _structurally_ — this package
   sits below the collector slice and must not import it, so the boundary is a
   shape, not a dependency.
-- **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
-  what a value looks like and generates another value that looks the same,
-  `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
-  policy/rewrite engine, and `hmac.ts` is the Web Crypto seam.
+- **`src/pseudonymizer/` — moved to `har-importer-core/src/anonymizer/`** in M2
+  of #578. The export-boundary redactor now lives with the importer slice's HAR
+  binding, on the same per-file-format argument the archive codec does.
 - **`src/har/` — moved to `har-importer-core/har`** in M1 of #578. The
   format definition and the `HttpArchive` projection now live with the
   importer slice's HAR binding. `emitHar` still takes `TraceExchange` (its one
@@ -308,7 +310,8 @@ would satisfy the schema while generating bodies that are not base64 and URLs
 that are not URLs, which exercises nothing anything downstream actually does.
 
 The five properties the privacy boundary rests on live in
-`src/pseudonymizer/redact.test.ts`; the HAR emitter is validated against the
+`har-importer-core/src/anonymizer/redact.test.ts` (moved in M2 of #578); the HAR
+emitter is validated against the
 published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
 The reading direction is held to the emitter — a property in
 `src/har/http-archive.test.ts` round-trips a generated session through

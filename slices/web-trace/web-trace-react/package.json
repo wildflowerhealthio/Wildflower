@@ -2,7 +2,7 @@
   "name": "web-trace-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser UI adapter for the web-trace slice: the recordings viewer the on-device app mounts. Reads trace DocumentReferences through fhir-r4-react's authed runner, decodes them with web-trace-core's codec, and groups them into sessions. Presentation only — the codec, pseudonymizer, and HAR emitter all live in web-trace-core, and the viewer shows raw values because redaction belongs at the export boundary.",
+  "description": "Browser UI adapter for the web-trace slice: the recordings viewer the on-device app mounts. Reads trace DocumentReferences through fhir-r4-react's authed runner, decodes them with web-trace-core's codec, and groups them into sessions. Presentation only — the codec lives in web-trace-core; the HAR emitter and anonymizer live in har-importer-core; the viewer shows raw values because redaction belongs at the export boundary.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
