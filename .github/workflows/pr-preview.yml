@@ -117,8 +117,21 @@ jobs:
           echo "STAGING_DEPLOY_TOKEN prefix: ${STAGING_DEPLOY_TOKEN:0:4}"
           git ls-remote --exit-code -h "https://x-access-token:${STAGING_DEPLOY_TOKEN}@github.com/wildflowerhealthio/staging.git" > /dev/null 2>&1
 
+      # persist-credentials:false is load-bearing. The default persists
+      # GITHUB_TOKEN as an extraheader on github.com, threaded into the
+      # workspace's .git/config via an includeif.gitdir entry. That
+      # extraheader is then sent on every HTTPS request git makes from the
+      # workspace, and GitHub honors it over the URL-embedded credentials
+      # JamesIves' deploy action builds. GITHUB_TOKEN has no access to
+      # `wildflowerhealthio/staging`, so with the extraheader active every
+      # `git ls-remote` inside the deploy step comes back as
+      # `Repository not found`. This workflow never pushes back to
+      # `wildflowerhealthio/Wildflower`, so we can safely drop the persisted
+      # credentials.
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Vite+
         if: github.event.action != 'closed'
