@@ -41,6 +41,9 @@ jobs:
     name: Deploy PR preview
     runs-on: ubuntu-latest
     steps:
+      - name: Verify Access To Staging
+        run: git ls-remote --exit-code -h "https://wildflowerhealthio:{{ secrets.STAGING_DEPLOY_TOKEN }}@github.com/wildflowerhealthio/staging.git" > /dev/null 2>&1
+
       - name: Checkout code
         uses: actions/checkout@v7
 
@@ -71,11 +74,10 @@ jobs:
         run: rm -f apps/github-pages/dist/CNAME
 
       - name: Deploy preview
-        uses: rossjrw/pr-preview-action@v1
+        uses: rossjrw/pr-preview-action@v1.8.1
         with:
           source-dir: apps/github-pages/dist
           preview-branch: main
-          umbrella-dir: '.'
           deploy-repository: wildflowerhealthio/staging
           token: ${{ secrets.STAGING_DEPLOY_TOKEN }}
           pages-base-url: wildflowerhealthio.github.io/staging
