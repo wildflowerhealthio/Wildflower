@@ -54,7 +54,7 @@ a collector.
   and this runs on the user's own device against the user's own data. Nothing in
   this package redacts. Redaction belongs to the export flow, at the boundary
   where data leaves — read the
-  [Redaction Explanation](../web-trace-core/docs/Redaction%20Explanation.md)
+  [Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md)
   before adding anything that touches the pseudonymizer.
 - **A session is a grouping, not a resource.** Exchanges carry their session id
   as a shared `identifier`; nothing joins them, and there is no server-side

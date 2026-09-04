@@ -12,7 +12,6 @@ export default defineConfig({
       'capture/index': 'src/capture/index.ts',
       'codec/index': 'src/codec/index.ts',
       'provenance/index': 'src/provenance/index.ts',
-      'pseudonymizer/index': 'src/pseudonymizer/index.ts',
       'test-helpers': 'src/test-helpers.ts',
     },
   },

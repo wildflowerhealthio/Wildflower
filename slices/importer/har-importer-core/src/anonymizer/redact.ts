@@ -1,6 +1,6 @@
 import { Data, Effect, Schema } from 'effect'
 
-import type { TraceExchange } from '../trace-exchange.ts'
+import type { TraceExchange } from 'web-trace-core'
 import { hmac, importExportKey, type ExportKey, type WebCryptoUnavailable } from './hmac.ts'
 import { type JsonLeaf, type LeafVisitor, mapExchangeLeaves } from './leaves.ts'
 import { detectShape, fakeBase64Url, generateFake, prngFromBytes } from './shapes.ts'

@@ -3,7 +3,7 @@
 The pure layer of the web-trace slice. No DOM, no `fs`, no UI, no store — one
 vocabulary, and the translations built on it.
 
-Read the [Redaction Explanation](./docs/Redaction%20Explanation.md) before
+Read the [Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md) before
 touching anything under `src/pseudonymizer/`.
 
 ## Layering
@@ -322,7 +322,7 @@ specifiers against the workspace root, not against this package.
 
 ## References
 
-- [Redaction Explanation](./docs/Redaction%20Explanation.md) — the pseudonymizer's
+- [Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md) — the pseudonymizer's
   design and its stated limits.
 - [slice AGENTS.md](../AGENTS.md) — why this slice exists at all.
 - [slices/AGENTS.md](../../AGENTS.md) — the layering rules.

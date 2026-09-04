@@ -1,13 +1,13 @@
 import { Effect } from 'effect'
-import { emitHar } from 'har-importer-core/har'
-import { useCallback, useEffect, useState } from 'react'
-import { usePreviousDistinctValue } from 'react-kitchen-sink'
-import type { TraceExchange } from 'web-trace-core'
 import {
   DEFAULT_ENUM_THRESHOLD,
   mintExportSalt,
   type PathOverride,
-} from 'web-trace-core/pseudonymizer'
+} from 'har-importer-core/anonymizer'
+import { emitHar } from 'har-importer-core/har'
+import { useCallback, useEffect, useState } from 'react'
+import { usePreviousDistinctValue } from 'react-kitchen-sink'
+import type { TraceExchange } from 'web-trace-core'
 
 import { downloadBlob, harBlob, harFileName } from './download-har.ts'
 import { buildExportPreview, type ExportPreview } from './redaction-preview.ts'

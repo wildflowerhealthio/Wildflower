@@ -26,6 +26,10 @@
       "source": "./src/archive/index.ts",
       "default": "./dist/archive/index.js"
     },
+    "./anonymizer": {
+      "source": "./src/anonymizer/index.ts",
+      "default": "./dist/anonymizer/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
