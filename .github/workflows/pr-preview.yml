@@ -46,6 +46,53 @@ jobs:
     name: Deploy PR preview
     runs-on: ubuntu-latest
     steps:
+      # Shape checks on the App credential secrets before we ask octokit to
+      # use them. GitHub masks the exact secret values in logs, but not their
+      # lengths or short prefixes — so we can safely surface the signals that
+      # distinguish a valid App-ID/PEM pair from a swapped, truncated, or
+      # newline-flattened one, without revealing the credential itself.
+      #
+      # What we expect for a healthy setup:
+      #   - STAGING_APP_ID is the numeric App ID (github.com/organizations/
+      #     wildflowerhealthio/settings/apps/<slug> → "App ID"), typically 6-8
+      #     digits. Not the client ID (`Iv23li…`).
+      #   - STAGING_APP_PRIVATE_KEY is the full PEM: begins `-----BEGIN` and
+      #     ends `-----END` (line, plus trailing newline). ~1700 chars for a
+      #     2048-bit key, higher for 4096-bit. Newlines preserved.
+      - name: Diagnose App credential shape
+        env:
+          STAGING_APP_ID: ${{ secrets.STAGING_APP_ID }}
+          STAGING_APP_PRIVATE_KEY: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
+        run: |
+          echo "STAGING_APP_ID length: ${#STAGING_APP_ID}"
+          if [[ "$STAGING_APP_ID" =~ ^[0-9]+$ ]]; then
+            echo "STAGING_APP_ID is numeric: yes"
+          else
+            echo "STAGING_APP_ID is numeric: NO (expected a small integer like 1234567; if it starts with 'Iv' it's the client ID, wrong field)"
+          fi
+
+          echo "STAGING_APP_PRIVATE_KEY length: ${#STAGING_APP_PRIVATE_KEY}"
+          echo "STAGING_APP_PRIVATE_KEY starts with: ${STAGING_APP_PRIVATE_KEY:0:11}"
+          echo "STAGING_APP_PRIVATE_KEY ends with:   ${STAGING_APP_PRIVATE_KEY: -25}"
+
+          if [[ "$STAGING_APP_PRIVATE_KEY" == -----BEGIN* ]]; then
+            echo "STAGING_APP_PRIVATE_KEY has BEGIN header: yes"
+          else
+            echo "STAGING_APP_PRIVATE_KEY has BEGIN header: NO (should start with '-----BEGIN')"
+          fi
+
+          if [[ "$STAGING_APP_PRIVATE_KEY" == *"-----END"* ]]; then
+            echo "STAGING_APP_PRIVATE_KEY has END footer: yes"
+          else
+            echo "STAGING_APP_PRIVATE_KEY has END footer: NO (should contain '-----END')"
+          fi
+
+          # A real PEM has real newlines separating the base64 body into
+          # 64-char lines. If it got pasted as one line, newline count is 0
+          # or 1 and octokit's key parser will error or fall back in odd ways.
+          nl=$(printf '%s' "$STAGING_APP_PRIVATE_KEY" | tr -cd '\n' | wc -c)
+          echo "STAGING_APP_PRIVATE_KEY newline count: $nl (expected ~25+ for a 2048-bit key)"
+
       - name: Mint staging-repo App token
         id: staging-token
         uses: actions/create-github-app-token@v2
@@ -55,11 +102,19 @@ jobs:
           owner: wildflowerhealthio
           repositories: staging
 
+      # After minting, confirm the token's shape and that it can reach the
+      # target repo. Prefix (first 4 chars) tells us which token type octokit
+      # actually returned:
+      #   - `ghs_` = installation access token (what we want)
+      #   - `eyJ`  = App bearer JWT (mis-configured — will not work for git
+      #             ops beyond the very first API-style probe)
+      #   - `ghp_` / `github_pat_` = a PAT snuck in via the wrong secret
       - name: Verify Access To Staging
         env:
           STAGING_DEPLOY_TOKEN: ${{ steps.staging-token.outputs.token }}
         run: |
           echo "STAGING_DEPLOY_TOKEN length: ${#STAGING_DEPLOY_TOKEN}"
+          echo "STAGING_DEPLOY_TOKEN prefix: ${STAGING_DEPLOY_TOKEN:0:4}"
           git ls-remote --exit-code -h "https://x-access-token:${STAGING_DEPLOY_TOKEN}@github.com/wildflowerhealthio/staging.git" > /dev/null 2>&1
 
       - name: Checkout code
