@@ -29,6 +29,11 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
   `HarSettingsPicker` (a no-op today) and the interactive per-URL `ReviewBody`,
   presentation over the pure `Review` model.
+- **[`har-anonymizer-react`](./har-anonymizer-react/AGENTS.md)** (the HAR
+  anonymize UI) — `AnonymizePanel`, the surface that reviews the
+  pseudonymizer's decisions over a parsed `HttpArchive.Log` and downloads an
+  anonymized `.har`. Drives `har-importer-core/anonymizer`'s HAR-native
+  `redactLog` and the emitter; presentation and interaction only.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry.

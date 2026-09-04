@@ -1,6 +1,8 @@
-import { DateTime, Duration, Schema } from 'effect'
+import { DateTime, Duration, Encoding, Schema } from 'effect'
 
 import type { TraceExchange } from 'web-trace-core'
+import { contentTypeOf } from 'web-trace-core/capture'
+
 import {
   type Har,
   type HarBody,
@@ -11,6 +13,7 @@ import {
   type HarTimings,
   NOT_MEASURED,
 } from './har.ts'
+import type * as HttpArchive from './http-archive.ts'
 
 /**
  * Turns a set of decoded exchanges into a HAR 1.2 archive — the format the
@@ -177,6 +180,104 @@ const emitHar = (exchanges: readonly TraceExchange[], options: EmitHarOptions): 
   },
 })
 
+/**
+ * Options for {@link emitHarFromLog}.
+ */
+interface EmitHarFromLogOptions {
+  /**
+   * Version string for `log.creator.version`.
+   *
+   * @defaultValue `'0'`
+   */
+  readonly creatorVersion?: string
+  /** Free-text note placed on `log.comment`, e.g. the redaction settings used. */
+  readonly comment?: string
+}
+
+/**
+ * Why the archive states no request side after an anonymize round-trip through
+ * the {@link HttpArchive.Log} projection. Carried on every entry so a reader
+ * learns it from the file itself.
+ */
+const DROPPED_REQUEST_ON_IMPORT_COMMENT =
+  'Only the response half was carried through the anonymizer: the URL is the request, and any method, request headers or request body the source archive held were dropped at import. They are absent rather than guessed.'
+
+const bodyOfEntry = (entry: HttpArchive.Entry): HarBody =>
+  entry.bodyAbsent
+    ? { _tag: 'HarNoBody' }
+    : { _tag: 'HarBase64Body', text: Encoding.encodeBase64(entry.body) }
+
+const requestFromEntry = (entry: HttpArchive.Entry): HarRequest => ({
+  method: 'UNKNOWN',
+  url: entry.url,
+  httpVersion: '',
+  cookies: [],
+  headers: [],
+  queryString: queryStringOf(entry.url),
+  headersSize: NOT_MEASURED,
+  bodySize: NOT_MEASURED,
+  comment: DROPPED_REQUEST_ON_IMPORT_COMMENT,
+})
+
+const entryFromArchiveEntry = (entry: HttpArchive.Entry): HarEntry => ({
+  startedDateTime: entry.startedAt,
+  time: NOT_MEASURED,
+  request: requestFromEntry(entry),
+  response: {
+    status: entry.status,
+    statusText: entry.statusText,
+    httpVersion: '',
+    cookies: [],
+    headers: entry.headers,
+    content: {
+      size: entry.body.length,
+      // The one content fact an entry still holds: its own headers say it.
+      mimeType: contentTypeOf(entry.headers),
+      body: bodyOfEntry(entry),
+      ...(entry.bodyAbsent
+        ? {
+            comment: `${SKIPPED_BODY_COMMENT} Reason: non-JSON body dropped at the redaction boundary`,
+          }
+        : {}),
+    },
+    redirectURL: '',
+    headersSize: NOT_MEASURED,
+    bodySize: entry.body.length,
+  },
+  cache: {},
+  timings: { send: NOT_MEASURED, wait: NOT_MEASURED, receive: NOT_MEASURED },
+})
+
+/**
+ * Emits a HAR 1.2 archive from an already-anonymized {@link HttpArchive.Log}.
+ *
+ * @param log - The entries to include, typically what {@link redactLog} produced
+ * @param options - Creator version and the settings-describing comment
+ * @returns An archive that encodes to one the HAR 1.2 schema validates
+ *
+ * @remarks
+ * The HAR-native counterpart to {@link emitHar}. Entries come out in the order
+ * given — a HAR read is already sorted or is a DevTools export that is not, and
+ * a re-sort would misreport what the source said. Nothing unobserved is
+ * guessed: `request.method` is `UNKNOWN`, timings are `-1`, and a dropped body
+ * is a `HarNoBody` with the archive stating why in the entry `comment`.
+ *
+ * This function does not redact. Pass it a log that has already been through
+ * {@link redactLog} — an archive built from a raw log contains everything the
+ * archive held.
+ */
+const emitHarFromLog = (log: HttpArchive.Log, options: EmitHarFromLogOptions = {}): Har => ({
+  log: {
+    version: '1.2',
+    creator: {
+      name: CREATOR_NAME,
+      version: options.creatorVersion ?? '0',
+    },
+    entries: log.entries.map(entryFromArchiveEntry),
+    ...(options.comment === undefined ? {} : { comment: options.comment }),
+  },
+})
+
 /** Serializes an archive to the text of a `.har` file. */
 const harToJson = Schema.encode(HarFromJson)
 
@@ -185,8 +286,11 @@ const harFromJson = Schema.decodeUnknown(HarFromJson)
 
 export {
   CREATOR_NAME,
+  DROPPED_REQUEST_ON_IMPORT_COMMENT,
+  type EmitHarFromLogOptions,
   type EmitHarOptions,
   emitHar,
+  emitHarFromLog,
   harFromJson,
   harToJson,
   METHOD_COMMENT,

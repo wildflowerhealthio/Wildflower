@@ -4,20 +4,19 @@ import {
   mintExportSalt,
   type PathOverride,
 } from 'har-importer-core/anonymizer'
-import { emitHar } from 'har-importer-core/har'
+import { emitHarFromLog, type HttpArchive } from 'har-importer-core/har'
 import { useCallback, useEffect, useState } from 'react'
 import { usePreviousDistinctValue } from 'react-kitchen-sink'
-import type { TraceExchange } from 'web-trace-core'
 
-import { downloadBlob, harBlob, harFileName } from './download-har.ts'
-import { buildExportPreview, type ExportPreview } from './redaction-preview.ts'
+import { anonymizedFileName, downloadBlob, harBlob } from './download-har.ts'
+import { buildAnonymizePreview, type AnonymizePreview } from './redaction-preview.ts'
 
-/** The reviewer's settings for one export. */
-interface ExportSettings {
+/** The reviewer's settings for one anonymize. */
+interface AnonymizeSettings {
   /**
    * Whether the enum carve-out runs.
    *
-   * @defaultValue true
+   * @defaultValue false
    */
   readonly enumCarveOut: boolean
   /**
@@ -30,7 +29,7 @@ interface ExportSettings {
    * Whether namespace-URI paths — `Coding.system`, `Identifier.system`,
    * `Extension.url` — export as captured.
    *
-   * @defaultValue true
+   * @defaultValue false
    */
   readonly namespaceUris: boolean
   /** Per-path decisions that win over the threshold. */
@@ -38,7 +37,7 @@ interface ExportSettings {
 }
 
 /**
- * The settings an export opens with: **nothing verbatim**, at the core's
+ * The settings an anonymize opens with: **nothing verbatim**, at the core's
  * default threshold for when the carve-out is switched on.
  *
  * @remarks
@@ -53,19 +52,19 @@ interface ExportSettings {
  * own defaults: the core answers "what should redaction do when nobody said",
  * the panel answers "what should leave the device when nobody looked".
  */
-const DEFAULT_EXPORT_SETTINGS: ExportSettings = {
+const DEFAULT_ANONYMIZE_SETTINGS: AnonymizeSettings = {
   enumCarveOut: false,
   enumThreshold: DEFAULT_ENUM_THRESHOLD,
   namespaceUris: false,
   overrides: {},
 }
 
-/** What {@link useExport} hands the export panel. */
-interface ExportState {
+/** What {@link useAnonymize} hands the panel. */
+interface AnonymizeState {
   /** The current settings. */
-  readonly settings: ExportSettings
-  /** The rows to review and the exchanges to emit, or `null` before the first build. */
-  readonly preview: ExportPreview | null
+  readonly settings: AnonymizeSettings
+  /** The rows to review and the archive to emit, or `null` before the first build. */
+  readonly preview: AnonymizePreview | null
   /** Whether a preview is being built — true on open, and after every settings change. */
   readonly isBuilding: boolean
   /** What went wrong building the preview, or `null`. */
@@ -87,7 +86,7 @@ const asError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause))
 
 /** The note placed on the archive's `log.comment`, so the file states how it was made. */
-const describeSettings = (settings: ExportSettings): string => {
+const describeSettings = (settings: AnonymizeSettings): string => {
   const overrides = Object.entries(settings.overrides)
   const carveOut = settings.enumCarveOut
     ? `enum carve-out on, threshold ${settings.enumThreshold}`
@@ -97,33 +96,34 @@ const describeSettings = (settings: ExportSettings): string => {
     overrides.length === 0
       ? 'no per-path overrides'
       : overrides.map(([path, decision]) => `${path}=${decision}`).join('; ')
-  return `Redacted at export: ${carveOut}; ${uris}; ${overrideNote}. Pseudonyms are stable within this archive only — a fresh salt is minted per export, so two exports of one session cannot be linked.`
+  return `Anonymized: ${carveOut}; ${uris}; ${overrideNote}. Request method, request headers and request body were dropped at import — the projection carries the response half only. Pseudonyms are stable within this archive only — a fresh salt is minted per anonymize, so two anonymized archives of one source cannot be linked.`
 }
 
 /**
- * Drives one export: mints its salt, keeps the preview in step with the
+ * Drives one anonymize: mints its salt, keeps the preview in step with the
  * reviewer's settings, and hands the reviewed archive to the browser.
  *
- * @param exchanges - The exchanges being exported. Pass a **stable** reference
- *   (memoise the filtered subset) — its identity is what triggers a rebuild.
- * @param sessionId - The session the archive names
+ * @param log - The archive being anonymized. Pass a **stable** reference (the
+ *   panel memoises the parsed log) — its identity is what triggers a rebuild.
+ * @param fileName - The name of the file the user picked, used to derive the
+ *   output name
  * @returns The settings, the preview, and the controls over both
  *
  * @remarks
- * **The salt is minted once, when the export opens, and threaded through every
- * rebuild**, so changing a control re-redacts under the same salt and the
- * archive downloaded is the one reviewed. See the package `AGENTS.md` for why
- * per-rebuild minting would break the stable-within / independent-across
+ * **The salt is minted once, when the anonymize opens, and threaded through
+ * every rebuild**, so changing a control re-redacts under the same salt and
+ * the archive downloaded is the one reviewed. See the package `AGENTS.md` for
+ * why per-rebuild minting would break the stable-within / independent-across
  * property the design rests on.
  */
-const useExport = (exchanges: readonly TraceExchange[], sessionId: string): ExportState => {
+const useAnonymize = (log: HttpArchive.Log, fileName: string): AnonymizeState => {
   const [salt, setSalt] = useState<string | null>(null)
-  const [settings, setSettings] = useState<ExportSettings>(DEFAULT_EXPORT_SETTINGS)
-  const [preview, setPreview] = useState<ExportPreview | null>(null)
+  const [settings, setSettings] = useState<AnonymizeSettings>(DEFAULT_ANONYMIZE_SETTINGS)
+  const [preview, setPreview] = useState<AnonymizePreview | null>(null)
   const [error, setError] = useState<Error | null>(null)
   const [isBuilding, setIsBuilding] = useState(true)
 
-  // One salt for the life of this export. Deliberately not in the rebuild
+  // One salt for the life of this anonymize. Deliberately not in the rebuild
   // effect below: a fresh salt per settings change would re-pseudonymize
   // everything on every keystroke in the threshold box.
   useEffect(() => {
@@ -151,14 +151,14 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
   // what react/set-state-in-effect forbids. Adjust state during render
   // via usePreviousDistinctValue on each build input, then compare each pair.
   const prevSalt = usePreviousDistinctValue(salt)
-  const prevExchanges = usePreviousDistinctValue(exchanges)
+  const prevLog = usePreviousDistinctValue(log)
   const prevEnumCarveOut = usePreviousDistinctValue(enumCarveOut)
   const prevEnumThreshold = usePreviousDistinctValue(enumThreshold)
   const prevNamespaceUris = usePreviousDistinctValue(namespaceUris)
   const prevOverrides = usePreviousDistinctValue(overrides)
   const buildInputsChanged =
     prevSalt !== salt ||
-    prevExchanges !== exchanges ||
+    prevLog !== log ||
     prevEnumCarveOut !== enumCarveOut ||
     prevEnumThreshold !== enumThreshold ||
     prevNamespaceUris !== namespaceUris ||
@@ -171,7 +171,7 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
     if (salt === null) return undefined
     let cancelled = false
     Effect.runPromise(
-      buildExportPreview(exchanges, {
+      buildAnonymizePreview(log, {
         salt,
         enumCarveOut,
         enumThreshold,
@@ -198,16 +198,15 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
     return (): void => {
       cancelled = true
     }
-  }, [salt, exchanges, enumCarveOut, enumThreshold, namespaceUris, overrides])
+  }, [salt, log, enumCarveOut, enumThreshold, namespaceUris, overrides])
 
   const download = useCallback((): void => {
     if (preview === null) return
-    const archive = emitHar(preview.redacted, {
-      sessionId,
+    const archive = emitHarFromLog(preview.redacted, {
       comment: describeSettings(settings),
     })
-    downloadBlob(harBlob(archive), harFileName(sessionId))
-  }, [preview, sessionId, settings])
+    downloadBlob(harBlob(archive), anonymizedFileName(fileName))
+  }, [preview, fileName, settings])
 
   return {
     settings,
@@ -237,9 +236,9 @@ const useExport = (exchanges: readonly TraceExchange[], sessionId: string): Expo
 }
 
 export {
-  DEFAULT_EXPORT_SETTINGS,
+  type AnonymizeSettings,
+  type AnonymizeState,
+  DEFAULT_ANONYMIZE_SETTINGS,
   describeSettings,
-  type ExportSettings,
-  type ExportState,
-  useExport,
+  useAnonymize,
 }

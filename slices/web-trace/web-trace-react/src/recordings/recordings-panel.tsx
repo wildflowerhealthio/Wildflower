@@ -6,8 +6,7 @@ import { type TraceExchange } from 'web-trace-core'
 import { ExchangeDetail } from '../exchanges/exchange-detail.tsx'
 import { exchangeKey } from '../exchanges/exchange-key.ts'
 import { ExchangeList } from '../exchanges/exchange-list.tsx'
-import { filterExchanges, NO_FILTERS, type ExchangeFilters } from '../exchanges/filter-exchanges.ts'
-import { ExportPanel } from '../export/export-panel.tsx'
+import { NO_FILTERS, type ExchangeFilters } from '../exchanges/filter-exchanges.ts'
 import type { TraceExchangesQueryOptions } from '../queries/index.ts'
 import { SessionsList } from '../sessions/sessions-list.tsx'
 import { useTraceSessions } from '../sessions/use-trace-sessions.ts'
@@ -45,20 +44,20 @@ const sessionHeader = (title: string, backLabel: string, onBack: () => void): JS
 
 /**
  * The recordings tab: the device's sessions, the exchanges of whichever one is
- * open, the full detail of whichever exchange is open, and the export flow for
- * whichever exchanges the filters currently show. Data comes from
- * {@link useTraceSessions}, which reads through router context — mount it inside
- * the host app's router and `QueryClientProvider`.
+ * open, and the full detail of whichever exchange is open. Data comes from
+ * {@link useTraceSessions}, which reads through router context — mount it
+ * inside the host app's router and `QueryClientProvider`.
  *
  * @remarks
- * Four master/detail levels, each replacing the last with a control back.
+ * Three master/detail levels, each replacing the last with a control back.
  * Selection and filter state live here; filters reset per session, and an open
  * id that is no longer present falls back to the level above rather than
  * rendering an empty detail.
  *
- * The export hangs off this panel rather than a tab of its own because its
- * subset — "a session, or a filtered subset of its exchanges" — is the state
- * this panel already holds.
+ * The export flow moved to `har-anonymizer-react` in A1 of #578 — the
+ * anonymizer is HAR-native now, and reaching it from this panel would require
+ * an adapter this slice no longer needs. `web-trace-react` is scheduled for
+ * removal in R2 of the same epic.
  */
 const RecordingsPanel = ({
   onSelectExchange,
@@ -69,7 +68,6 @@ const RecordingsPanel = ({
     useTraceSessions(queryOptions)
   const [openSessionId, setOpenSessionId] = useState<string | null>(null)
   const [openExchangeId, setOpenExchangeId] = useState<string | null>(null)
-  const [isExporting, setIsExporting] = useState(false)
   const [filters, setFilters] = useState<ExchangeFilters>(NO_FILTERS)
 
   const openSession = sessions.find((session) => session.sessionId === openSessionId)
@@ -79,19 +77,6 @@ const RecordingsPanel = ({
   const openExchange = openSession?.exchanges.find(
     (exchange) => exchangeKey(exchange) === openExchangeId
   )
-
-  /**
-   * The exchanges an export would cover: the same pure `filterExchanges` over
-   * the same `ExchangeFilters` the list is showing — the filter is reused, not
-   * rebuilt. React Compiler auto-memoizes this: the previous manual useMemo
-   * kept `openSession` as a dep, which RC flagged (react/preserve-manual-
-   * memoization) as "may be modified later" — a fresh `sessions.find`
-   * result RC couldn't prove stable — and skipped optimizing the whole
-   * component. Letting RC own the memoization keeps the identity as stable
-   * as it can be while restoring compiler-wide memoization on the panel.
-   */
-  const exportableExchanges: readonly TraceExchange[] =
-    openSession === undefined ? [] : filterExchanges(openSession.exchanges, filters)
 
   const body = ((): JSX.Element | null => {
     if (isPending) return <PageLoading message="Loading recordings…" />
@@ -107,7 +92,6 @@ const RecordingsPanel = ({
           onSelectSession={(sessionId: string): void => {
             setOpenSessionId(sessionId)
             setOpenExchangeId(null)
-            setIsExporting(false)
             setFilters(NO_FILTERS)
           }}
           hasMore={hasMore}
@@ -115,20 +99,6 @@ const RecordingsPanel = ({
           onLoadMore={loadMore}
           unreadableCount={unreadableCount}
         />
-      )
-    }
-    if (isExporting) {
-      return (
-        <>
-          {sessionHeader(openSession.sessionId, 'Back to exchanges', (): void => {
-            setIsExporting(false)
-          })}
-          <ExportPanel
-            exchanges={exportableExchanges}
-            sessionExchangeCount={openSession.exchanges.length}
-            sessionId={openSession.sessionId}
-          />
-        </>
       )
     }
     if (openExchange !== undefined) {
@@ -146,18 +116,6 @@ const RecordingsPanel = ({
         {sessionHeader(openSession.sessionId, 'All recordings', (): void => {
           setOpenSessionId(null)
         })}
-        <div className={styles['recordings__session-actions']}>
-          <button
-            type="button"
-            className="button-3 outline"
-            onClick={(): void => {
-              setOpenExchangeId(null)
-              setIsExporting(true)
-            }}
-          >
-            {`Export ${exportableExchanges.length === openSession.exchanges.length ? 'recording' : 'these exchanges'}…`}
-          </button>
-        </div>
         <ExchangeList
           exchanges={openSession.exchanges}
           filters={filters}

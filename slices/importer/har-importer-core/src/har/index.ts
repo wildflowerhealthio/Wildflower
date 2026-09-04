@@ -9,8 +9,11 @@
 export * as HttpArchive from './http-archive.ts'
 export {
   CREATOR_NAME,
+  DROPPED_REQUEST_ON_IMPORT_COMMENT,
+  type EmitHarFromLogOptions,
   type EmitHarOptions,
   emitHar,
+  emitHarFromLog,
   METHOD_COMMENT,
   REQUEST_COMMENT,
   SKIPPED_BODY_COMMENT,

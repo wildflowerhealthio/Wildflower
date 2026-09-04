@@ -207,76 +207,9 @@ describe('RecordingsPanel', () => {
     expect(screen.getByRole('button', { name: 'All recordings' })).toBeDefined()
   })
 
-  /**
-   * Opens a session and enters the export flow. The export hangs off this panel
-   * because its subset — "a session, or a filtered subset of its exchanges" —
-   * is the state this panel already holds.
-   */
-  const openTheExport = async (urls: readonly string[]): Promise<void> => {
-    serve([
-      searchset(
-        urls.map((url, index) => wire({ sessionId: 'morning', requestId: `req-${index}`, url }))
-      ),
-    ])
-    render(<RecordingsPanel />, { wrapper: withQueryClient })
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /morning/ }))
-    await userEvent.click(screen.getByRole('button', { name: /^Export/ }))
-  }
-
-  it('should open the export flow for the whole recording from the exchange list', async () => {
-    // Arrange & Act
-    await openTheExport(['https://portal.example.org/one', 'https://portal.example.org/two'])
-
-    // Assert
-    await waitFor(() => {
-      expect(screen.getByRole('region', { name: 'Fields exported as captured' })).toBeDefined()
-    })
-    expect(screen.getByText('All 2 exchanges')).toBeDefined()
-  })
-
-  it('should export the filtered subset, reusing the list filters rather than a second control', async () => {
-    // Arrange — narrow to one of two exchanges with the list's own URL filter
-    serve([
-      searchset([
-        wire({ sessionId: 'morning', requestId: 'a', url: 'https://portal.example.org/one' }),
-        wire({ sessionId: 'morning', requestId: 'b', url: 'https://api.example.com/two' }),
-      ]),
-    ])
-    render(<RecordingsPanel />, { wrapper: withQueryClient })
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /morning/ })).toBeDefined()
-    })
-    await userEvent.click(screen.getByRole('button', { name: /morning/ }))
-    await userEvent.type(screen.getByLabelText('URL contains'), 'api.example.com')
-
-    // Act — the control renames itself once the subset is narrower
-    await userEvent.click(screen.getByRole('button', { name: 'Export these exchanges…' }))
-
-    // Assert — the export covers what the filters showed, and the export
-    // surface carries no filter bar of its own to disagree with them.
-    await waitFor(() => {
-      expect(screen.getByText('1 of 2 exchanges')).toBeDefined()
-    })
-    expect(screen.queryByLabelText('URL contains')).toBeNull()
-  })
-
-  it('should return from the export flow to the exchange list', async () => {
-    // Arrange
-    await openTheExport(['https://portal.example.org/one'])
-    await waitFor(() => {
-      expect(screen.getByRole('region', { name: 'Fields exported as captured' })).toBeDefined()
-    })
-
-    // Act
-    await userEvent.click(screen.getByRole('button', { name: 'Back to exchanges' }))
-
-    // Assert — one level up, to the list the subset came from
-    expect(screen.getByLabelText('URL contains')).toBeDefined()
-    expect(screen.queryByRole('region', { name: 'Fields exported as captured' })).toBeNull()
-  })
+  // The export flow moved to `har-anonymizer-react` in A1 of #578, so
+  // `RecordingsPanel` no longer opens one — the anonymizer is HAR-native and
+  // reaching it from here would require an adapter this slice does not need.
 })
 
 // Helpers
