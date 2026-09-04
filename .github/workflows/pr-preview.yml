@@ -42,7 +42,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Verify Access To Staging
-        run: git ls-remote --exit-code -h "https://wildflowerhealthio:{{ secrets.STAGING_DEPLOY_TOKEN }}@github.com/wildflowerhealthio/staging.git" > /dev/null 2>&1
+        env:
+          STAGING_DEPLOY_TOKEN: ${{ secrets.STAGING_DEPLOY_TOKEN }}
+        run: |
+          echo "STAGING_DEPLOY_TOKEN length: ${#STAGING_DEPLOY_TOKEN}"
+          git ls-remote --exit-code -h "https://${STAGING_DEPLOY_TOKEN}@github.com/wildflowerhealthio/staging.git" > /dev/null 2>&1
 
       - name: Checkout code
         uses: actions/checkout@v7
