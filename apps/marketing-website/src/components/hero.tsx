@@ -33,7 +33,7 @@ const HERO_STANZAS: readonly (readonly string[])[] = [
  */
 function Hero(): JSX.Element {
   return (
-    <section className={styles['hero']} id="top">
+    <section className={styles['hero']}>
       <div className={styles['hero__inner']}>
         <h1 className={styles['hero__title']}>
           Patients <i>deserve</i> health data freedom
