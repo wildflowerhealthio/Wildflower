@@ -75,7 +75,7 @@ jobs:
         with:
           source-dir: apps/github-pages/dist
           preview-branch: main
-          umbrella-dir: pr-preview
+          umbrella-dir: '.'
           deploy-repository: wildflowerhealthio/staging
           token: ${{ secrets.STAGING_DEPLOY_TOKEN }}
           pages-base-url: wildflowerhealthio.github.io/staging
