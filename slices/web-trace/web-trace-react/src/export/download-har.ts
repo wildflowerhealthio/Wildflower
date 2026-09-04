@@ -1,5 +1,5 @@
 import { Schema } from 'effect'
-import { Har } from 'web-trace-core/har'
+import { Har } from 'har-importer-core/har'
 
 /**
  * Handing a finished archive to the reader — as a blob from the app's own

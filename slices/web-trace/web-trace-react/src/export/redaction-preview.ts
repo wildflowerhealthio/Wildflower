@@ -1,5 +1,4 @@
 import { Effect } from 'effect'
-import type { TraceExchange } from 'web-trace-core'
 import {
   buildRedactionPolicy,
   isJsonContentType,
@@ -10,7 +9,8 @@ import {
   type PathStat,
   type RedactionError,
   type RedactionOptions,
-} from 'web-trace-core/pseudonymizer'
+} from 'har-importer-core/anonymizer'
+import type { TraceExchange } from 'web-trace-core'
 
 /**
  * The before → after the export preview renders, taken from the pseudonymizer's

@@ -3,8 +3,11 @@
 The pure layer of the web-trace slice. No DOM, no `fs`, no UI, no store — one
 vocabulary, and the translations built on it.
 
-Read the [Redaction Explanation](./docs/Redaction%20Explanation.md) before
-touching anything under `src/pseudonymizer/`.
+The export-boundary anonymizer moved to
+[`har-importer-core/anonymizer`](../../importer/har-importer-core/src/anonymizer/)
+in M2 of #578; read the
+[Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md)
+before touching it.
 
 ## Layering
 
@@ -24,9 +27,12 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`src/codec/`** — `TraceExchange` ⇄ FHIR R4 `DocumentReference`.
   `systems.ts` holds the private systems and extension URLs;
   `fhir-duration.ts` is the `Duration` ⇄ FHIR `Duration` unit conversion.
-  `har-archive-codec.ts` is the _second_, deliberately disjoint encoding:
-  a whole uploaded `.har` file as one attachment (`HarArchive`), for the
-  importer to read back and parse.
+  The `har-archive` codec (a whole uploaded `.har` file as one attachment)
+  moved to `har-importer-core/archive` in M1 of #578; the shared systems
+  constants it still reaches for (`HAR_ARCHIVE_CODE`, `WEB_TRACE_CODE_SYSTEM`,
+  `WEB_TRACE_RAW_CODE`, `WEB_TRACE_REDACTION_SYSTEM`) stay here — a trace and
+  an archive sit on the same axis under different codes, and `isWebTrace` and
+  `isHarArchive` never both hold.
 - **`src/capture/`** — the capture-side primitives both consumers share:
   the content-type rule, the SHA-256 every body carries, and `storeBodyVerbatim`.
   Policy is _not_ here — see the trap below.
@@ -39,19 +45,14 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   `collector-fundamentals`' `CollectorHttpResponse` _structurally_ — this package
   sits below the collector slice and must not import it, so the boundary is a
   shape, not a dependency.
-- **`src/pseudonymizer/`** — the export boundary's redactor. `shapes.ts` detects
-  what a value looks like and generates another value that looks the same,
-  `leaves.ts` decides what counts as a leaf, `redact.ts` is the two-step
-  policy/rewrite engine, and `hmac.ts` is the Web Crypto seam.
-- **`src/har/`** — HAR 1.2, as a schema read in both directions. `har.ts` is
-  the format itself (`Har`, and `HarFromJson` for a file's text): encoded side
-  the JSON the spec describes, type side the same structure with its values
-  decoded. `emit.ts` builds an archive from `TraceExchange`es;
-  `http-archive.ts` is the projection an importer and a replay consume, as the
-  `HttpArchive` namespace (`Entry`, `Log`, `LogFromHarJson`), and it encodes
-  back.
-  `fixtures/chrome-devtools.har.json` is a synthetic DevTools export the tests
-  hold themselves to.
+- **`src/pseudonymizer/` — moved to `har-importer-core/src/anonymizer/`** in M2
+  of #578. The export-boundary redactor now lives with the importer slice's HAR
+  binding, on the same per-file-format argument the archive codec does.
+- **`src/har/` — moved to `har-importer-core/har`** in M1 of #578. The
+  format definition and the `HttpArchive` projection now live with the
+  importer slice's HAR binding. `emitHar` still takes `TraceExchange` (its one
+  caller, `web-trace-react`'s export flow, still speaks that vocabulary until
+  R2 dissolves it), and reaches back here for the type.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,
   exported as `web-trace-core/test-helpers` so downstream packages can reuse them.
 
@@ -309,7 +310,8 @@ would satisfy the schema while generating bodies that are not base64 and URLs
 that are not URLs, which exercises nothing anything downstream actually does.
 
 The five properties the privacy boundary rests on live in
-`src/pseudonymizer/redact.test.ts`; the HAR emitter is validated against the
+`har-importer-core/src/anonymizer/redact.test.ts` (moved in M2 of #578); the HAR
+emitter is validated against the
 published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
 The reading direction is held to the emitter — a property in
 `src/har/http-archive.test.ts` round-trips a generated session through
@@ -323,7 +325,7 @@ specifiers against the workspace root, not against this package.
 
 ## References
 
-- [Redaction Explanation](./docs/Redaction%20Explanation.md) — the pseudonymizer's
+- [Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md) — the pseudonymizer's
   design and its stated limits.
 - [slice AGENTS.md](../AGENTS.md) — why this slice exists at all.
 - [slices/AGENTS.md](../../AGENTS.md) — the layering rules.

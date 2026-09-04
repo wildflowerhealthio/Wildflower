@@ -2,7 +2,7 @@
   "name": "har-importer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The HAR binding of the importer slice: the concrete FileImporterDescriptor for format 'har' — HAR decode via web-trace-core's codec, the FHIR R4 response-kind pool, HAR settings, and the FHIR persist sink (withMetaSource + persistResources). No DOM, no fs, no React.",
+  "description": "The HAR binding of the importer slice: the concrete FileImporterDescriptor for format 'har' — the HAR 1.2 format and HttpArchive projection (`/har`), the har-archive DocumentReference codec (`/archive`), the shape-preserving anonymizer that redacts an exchange at the export boundary (`/anonymizer`), the FHIR R4 response-kind pool, HAR settings, and the FHIR persist sink. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -18,6 +18,18 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./har": {
+      "source": "./src/har/index.ts",
+      "default": "./dist/har/index.js"
+    },
+    "./archive": {
+      "source": "./src/archive/index.ts",
+      "default": "./dist/archive/index.js"
+    },
+    "./anonymizer": {
+      "source": "./src/anonymizer/index.ts",
+      "default": "./dist/anonymizer/index.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -30,10 +42,13 @@
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "ajv": "catalog:",
+    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-source": "workspace:*",
+    "har-schema": "catalog:",
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
@@ -44,6 +59,7 @@
     "web-trace-core": "workspace:*"
   },
   "peerDependencies": {
+    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-source": "workspace:*",

@@ -1,8 +1,8 @@
+import type { PathOverride } from 'har-importer-core/anonymizer'
 import { useId, type ChangeEvent, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, Field, PageLoading, StatusBadge, ToggleSwitch } from 'react-tundraish'
 import type { TraceExchange } from 'web-trace-core'
-import type { PathOverride } from 'web-trace-core/pseudonymizer'
 
 import { droppedBodyCount, type PreviewRow } from './redaction-preview.ts'
 import { useExport } from './use-export.ts'

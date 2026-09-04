@@ -2,7 +2,7 @@ import { useMutation, useQueryClient, type UseMutationResult } from '@tanstack/r
 import { DateTime, Effect } from 'effect'
 import { useRunAuthed } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { harArchiveToDocumentReference, type HarArchive } from 'web-trace-core/codec'
+import { harArchiveToDocumentReference, type HarArchive } from 'har-importer-core/archive'
 
 import { HAR_ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
 

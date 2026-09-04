@@ -3,8 +3,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { arbitraries, jsonBody, traceExchange } from '../test-helpers.ts'
-import type { TraceExchange } from '../trace-exchange.ts'
+import type { TraceExchange } from 'web-trace-core'
+import { arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 import { emitHar } from './emit.ts'
 import chromeExport from './fixtures/chrome-devtools.har.json' with { type: 'json' }
 import { Har } from './har.ts'

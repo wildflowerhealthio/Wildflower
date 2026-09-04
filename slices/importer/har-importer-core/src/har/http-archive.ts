@@ -2,7 +2,7 @@ import { Either, Encoding, ParseResult, Schema } from 'effect'
 
 import { HeadersWire } from 'browser-sniffer-core'
 
-import { contentTypeOf } from '../capture/index.ts'
+import { contentTypeOf } from 'web-trace-core/capture'
 import { Har, type HarBody, type HarEntry, NOT_MEASURED } from './har.ts'
 
 /**
