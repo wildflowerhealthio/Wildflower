@@ -45,7 +45,7 @@ const REQUEST_COMMENT =
 
 /** Why a `content` entry has a size but no text. */
 const SKIPPED_BODY_COMMENT =
-  'Body not stored by the capture policy; its size and a pseudonymous digest are recorded so the trace is explicit about what it dropped.'
+  'Body not available; its size is recorded. See the reason field for details.'
 
 /**
  * Options for {@link emitHar}.

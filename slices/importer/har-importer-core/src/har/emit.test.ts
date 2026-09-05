@@ -168,7 +168,7 @@ describe('emitHar', () => {
     expect(entry?.response.content.size).toBe(918_273)
     expect(entry?.response.content.body).toEqual({ _tag: 'HarNoBody' })
     expect(entry?.response.content.comment).toContain('Body exceeds the 2 MiB cap')
-    expect(entry?.response.content.comment).toContain('not stored by the capture policy')
+    expect(entry?.response.content.comment).toContain('See the reason field for details')
   })
 
   test('log.creator names Wildflower and the session', () => {
