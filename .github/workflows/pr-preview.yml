@@ -18,11 +18,6 @@ name: PR Preview
 #     the deploy URL, and GitHub only accepts that username with an App
 #     installation token (`ghs_...`), not with a fine-grained PAT.
 #
-# Known limitation: `branding-core`'s `SITE_ORIGIN` and `sectionRootPath` are
-# hardcoded to https://wildflowerhealth.io / absolute `/…` paths, so
-# cross-section links in the preview point at production. The marketing site
-# itself previews fine (relative `base: './'`). Making cross-section links
-# preview-aware is a separate follow-up.
 on:
   pull_request:
     types: [opened, reopened, synchronize, closed]

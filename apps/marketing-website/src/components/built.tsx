@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { APP_DESCRIPTIONS, sectionRootPath } from 'branding-core'
+import { APP_DESCRIPTIONS, onMarketingSite, sectionHref } from 'branding-core'
 
 import { medicationsHomeImage } from '../assets/remote-images.ts'
 import { AppRow } from './app-row.tsx'
@@ -52,7 +52,7 @@ function Built(): JSX.Element {
             images={[medicationsHomeImage]}
             launcher={
               <Launcher
-                href={sectionRootPath('medications')}
+                href={sectionHref(onMarketingSite, 'medications')}
                 label={medications.launch.label}
                 note={medications.launch.note}
               />

@@ -1,19 +1,5 @@
 import { shiftDay } from './calendar-day.ts'
-
-/** A medication's calendar-relevant fields: the next-fill instant and whether a refill remains. */
-interface CalendarMedicationInput {
-  readonly id: string
-  readonly drugName: string
-  readonly prescriber: string | null
-  /**
-   * Estimated next-fill date as a **local** calendar day (`YYYY-MM-DD`), or
-   * `null` when unknown. The caller reduces the source instant to the viewer's
-   * local day before passing it here — a wall-clock / time-zone read this pure
-   * layer deliberately avoids (see `calendar-day.ts`).
-   */
-  readonly nextFillDate: string | null
-  readonly hasRefill: boolean
-}
+import type { CalendarMedicationInput } from './calendar-medication-input.ts'
 
 /**
  * What a derived event marks: a refill `pickup`, an `appointment` to renew, or
@@ -141,9 +127,4 @@ const deriveCalendarEvents = (
     .toSorted(compareEvents)
 }
 
-export {
-  type CalendarEvent,
-  type CalendarEventKind,
-  type CalendarMedicationInput,
-  deriveCalendarEvents,
-}
+export { type CalendarEvent, type CalendarEventKind, deriveCalendarEvents }

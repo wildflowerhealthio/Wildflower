@@ -1,5 +1,5 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
-import { fromApp, onMarketingSite, sectionRootPath, sectionUrl } from 'branding-core'
+import { fromApp, onMarketingSite, sectionHref, sectionUrl } from 'branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { SiteHeader } from './site-header.tsx'
@@ -17,20 +17,22 @@ describe('SiteHeader', () => {
     expect(container.querySelector('#top')).not.toBeNull()
   })
 
-  it('should link directly into the four apps with root-relative hrefs on the marketing site', () => {
+  it('should link directly into the four apps with current-URL-relative hrefs on the marketing site', () => {
     // Arrange / Act
     render(<SiteHeader nav={onMarketingSite} />)
 
-    // Assert
+    // Assert — plain `./…` references so a preview deploy under a
+    // sub-path routes into sibling preview builds, not the canonical
+    // origin (see `sectionHref` in branding-core).
     const nav = screen.getByRole('navigation', { name: 'Apps' })
     const hrefs = within(nav)
       .getAllByRole('link')
       .map((link) => link.getAttribute('href'))
     expect(hrefs).toStrictEqual([
-      sectionRootPath('medications'),
-      sectionRootPath('importer'),
-      sectionRootPath('webTrace'),
-      sectionRootPath('serverDocs'),
+      sectionHref(onMarketingSite, 'medications'),
+      sectionHref(onMarketingSite, 'importer'),
+      sectionHref(onMarketingSite, 'webTrace'),
+      sectionHref(onMarketingSite, 'serverDocs'),
     ])
   })
 

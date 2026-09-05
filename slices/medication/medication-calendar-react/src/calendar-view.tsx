@@ -6,10 +6,10 @@ import { deriveCalendarEvents, type CalendarEvent } from 'medication-calendar-co
 import type { MedicationView } from 'medication-sponsorship-react'
 
 import { AgendaPane } from './agenda-pane.tsx'
+import * as CalendarMedicationInput from './calendar-medication-input.ts'
 import { useCalendarFormats } from './date-formats.ts'
 import { groupByDay } from './event-days.ts'
 import { MonthGridView, type VisibleMonth } from './month-grid-view.tsx'
-import { toCalendarInput } from './to-calendar-input.ts'
 import styles from './calendar-view.module.css'
 
 interface CalendarViewProps {
@@ -49,7 +49,7 @@ export const CalendarView = ({ medications }: CalendarViewProps): JSX.Element =>
   }
 
   const events = useMemo(
-    () => deriveCalendarEvents(medications.map(toCalendarInput)),
+    () => deriveCalendarEvents(medications.map(CalendarMedicationInput.fromMedicationView)),
     [medications]
   )
   const eventsByDate = useMemo(() => {

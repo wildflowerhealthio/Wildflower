@@ -7,15 +7,18 @@
  * ({@link monthGrid}). No DOM, no FHIR wire schemas, no platform imports —
  * the FHIR-shaped supply-duration parser lives in `fhir-utility`.
  *
+ * `CalendarMedicationInput` — the input shape `deriveCalendarEvents` reads —
+ * is exposed Effect-style as a namespace: `CalendarMedicationInput.CalendarMedicationInput`
+ * is the type, and platform adapters can layer constructors (e.g.
+ * `medication-calendar-react`'s `fromMedicationView`) onto their own
+ * namespace of the same name.
+ *
  * @packageDocumentation
  */
 export { nextFillDate } from './supply.ts'
 
-export {
-  type CalendarEvent,
-  type CalendarEventKind,
-  type CalendarMedicationInput,
-  deriveCalendarEvents,
-} from './calendar.ts'
+export { type CalendarEvent, type CalendarEventKind, deriveCalendarEvents } from './calendar.ts'
 
 export { type CalendarCell, monthGrid } from './month-grid.ts'
+
+export * as CalendarMedicationInput from './calendar-medication-input.ts'

@@ -11,7 +11,7 @@ import {
   onMarketingSite,
   sectionHref,
 } from './nav.ts'
-import { SITE_ORIGIN, sectionRootPath, sectionUrl } from './site.ts'
+import { SECTION_PATHS, SITE_ORIGIN, sectionUrl } from './site.ts'
 
 const anchorArb = fc.constantFrom(...MARKETING_ANCHORS)
 const contextArb = fc.constantFrom(onMarketingSite, fromApp)
@@ -58,22 +58,32 @@ describe('anchorHref', () => {
 })
 
 describe('sectionHref', () => {
-  it('should produce root-relative paths on the marketing site', () => {
-    expect(sectionHref(onMarketingSite, 'medications')).toBe('/medications-app')
-    expect(sectionHref(onMarketingSite, 'serverDocs')).toBe('/wildflower-server-docs')
+  it('should produce current-URL-relative paths on the marketing site', () => {
+    expect(sectionHref(onMarketingSite, 'medications')).toBe('./medications-app')
+    expect(sectionHref(onMarketingSite, 'serverDocs')).toBe('./wildflower-server-docs')
   })
 
   it('should produce absolute URLs from an app', () => {
     expect(sectionHref(fromApp, 'medications')).toBe('https://wildflowerhealth.io/medications-app')
   })
 
-  it('should match sectionRootPath on marketing and sectionUrl from an app', () => {
+  it('should resolve relative-from-marketing under a preview sub-path to sibling builds', () => {
+    // A `./medications-app` reference on `.../staging/pr-N/` resolves into
+    // the same preview build, not the canonical origin — that is the whole
+    // point of the marketing-context change.
+    const previewBase = 'https://wildflowerhealth.io/staging/pr-607/'
+    expect(new URL(sectionHref(onMarketingSite, 'medications'), previewBase).href).toBe(
+      `${previewBase}medications-app`
+    )
+  })
+
+  it('should match SECTION_PATHS on marketing and sectionUrl from an app', () => {
     const sectionArb = fc.constantFrom(
       ...(['medications', 'importer', 'webTrace', 'serverDocs'] as const)
     )
     fc.assert(
       fc.property(sectionArb, (section) => {
-        expect(sectionHref(onMarketingSite, section)).toBe(sectionRootPath(section))
+        expect(sectionHref(onMarketingSite, section)).toBe(`./${SECTION_PATHS[section]}`)
         expect(sectionHref(fromApp, section)).toBe(sectionUrl(section))
       }),
       { numRuns: numRunsFor({ base: 100 }) }

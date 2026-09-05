@@ -2,7 +2,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { type CalendarMedicationInput, deriveCalendarEvents } from './calendar.ts'
+import type { CalendarMedicationInput } from './calendar-medication-input.ts'
+import { deriveCalendarEvents } from './calendar.ts'
 
 const isoInstant = fc
   .date({ min: new Date('2000-01-01T00:00:00Z'), max: new Date('2100-01-01T00:00:00Z') })
