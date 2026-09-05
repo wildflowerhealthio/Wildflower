@@ -48,6 +48,15 @@ one-digit numbers cannot all get distinct one-digit fakes. That raises
 value. Raising the enum threshold or adding a per-path verbatim override is the
 fix.
 
+One exception, on the `freeText` fallback shape: a value with no digits or
+letters — `*/*`, `---`, `:::`, `.` — carries nothing the mapper can rewrite
+(`mapCharClasses` only substitutes `[A-Za-z0-9]`, everything else is preserved
+as structure), so every candidate is byte-identical to the original and the
+`candidate !== original` check would reject the full 64 attempts. The redactor
+passes those values through unchanged: there is no PHI to hide behind a
+pseudonym when the whole string is punctuation, and failing an anonymize over
+an `Accept: */*` header is worse than admitting that a `*/*` was there.
+
 ## Two carve-outs, not one
 
 Pure pseudonymization destroys two different things that are not PHI: the short

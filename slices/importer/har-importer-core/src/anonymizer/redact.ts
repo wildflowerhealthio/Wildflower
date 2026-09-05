@@ -478,6 +478,18 @@ const pseudonymizeString = (
     if (remembered !== undefined) return remembered
 
     const shape = detectShape(original)
+    // A `freeText` value with no digits or letters — `"*/*"`, `"---"`, `":::"` —
+    // is format, not data. `mapCharClasses` only rewrites `[A-Za-z0-9]`, so
+    // every candidate the derivation loop produces is byte-identical to the
+    // original and gets rejected by the `candidate !== original` check;
+    // recording the passthrough here avoids a false `PseudonymSpaceExhausted`
+    // over a value that carries nothing to redact. Every other shape's regex
+    // requires at least one alnum, so this branch is unreachable for them.
+    if (shape === 'freeText' && !/[A-Za-z0-9]/.test(original)) {
+      policy.assignments.set(original, original)
+      return original
+    }
+
     for (let attempt = 0; attempt < MAX_DERIVATION_ATTEMPTS; attempt += 1) {
       const bytes = yield* hmac(policy.key, `${attempt} ${original}`)
       const candidate =
