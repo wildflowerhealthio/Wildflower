@@ -18,10 +18,8 @@
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: var(--color-neutral-3);
+  color: inherit;
   font: inherit;
-  font-size: var(--font-size-2);
-  font-weight: var(--font-weight-3);
   cursor: pointer;
 }
 
