@@ -130,10 +130,12 @@ behaviour to document.
   single-patient case, the twenty-MRN case, the FHIR bundle case, all
   asserted against the **downloaded archive** with its bodies base64-decoded
   first (HAR carries a body as base64 in `content.text`, so searching the raw
-  file finds nothing whether or not it was redacted). Also the committed
-  DevTools fixture (`har-importer-core/src/fixtures/chrome-fhir-capture.har.json`)
-  through the panel, asserting no original leaf value survives and no request
-  headers or body are present.
+  file finds nothing whether or not it was redacted). Also a
+  DevTools-shaped archive with request method, request headers and a request
+  body, decoded through `HttpArchive.LogFromHarJson` and passed through the
+  panel, asserting the downloaded archive has no request side (method
+  `UNKNOWN`, no headers) and none of the request-side or response-side
+  captured leaf values survive.
 - `redaction-preview.test.ts` — the same "the preview is the pseudonymizer's
   own output" properties, over `HttpArchive.Log` inputs.
 - `download-har.test.ts` — `anonymizedFileName` sanitisation and the
