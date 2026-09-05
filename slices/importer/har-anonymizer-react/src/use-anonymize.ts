@@ -1,4 +1,4 @@
-import { Effect } from 'effect'
+import { Cause, Effect, Exit, Option } from 'effect'
 import {
   DEFAULT_ENUM_THRESHOLD,
   mintExportSalt,
@@ -81,9 +81,24 @@ interface AnonymizeState {
   readonly download: () => void
 }
 
-/** Whatever `Effect.runPromise` rejected with, as an `Error` the banner can render. */
-const asError = (cause: unknown): Error =>
-  cause instanceof Error ? cause : new Error(String(cause))
+/**
+ * The underlying failure of an `Exit` as an `Error` the banner can render.
+ *
+ * @remarks
+ * `Effect.runPromise` rejects with a `FiberFailure` wrapper whose `.message`
+ * is Effect's generic "An error has occurred" and whose fields the banner
+ * cannot see. `runPromiseExit` hands back the `Cause` instead, so we can
+ * pull the typed failure (a `Data.TaggedError` like `PseudonymSpaceExhausted`,
+ * its `shape`/`attempts` intact) directly. A defect or an interrupt has no
+ * typed failure to surface, so we render the pretty cause.
+ */
+const causeToError = (cause: Cause.Cause<unknown>): Error => {
+  const failure = Cause.failureOption(cause)
+  if (Option.isSome(failure)) {
+    return failure.value instanceof Error ? failure.value : new Error(String(failure.value))
+  }
+  return new Error(Cause.pretty(cause))
+}
 
 /** The note placed on the archive's `log.comment`, so the file states how it was made. */
 const describeSettings = (settings: AnonymizeSettings): string => {
@@ -128,16 +143,15 @@ const useAnonymize = (log: HttpArchive.Log, fileName: string): AnonymizeState =>
   // everything on every keystroke in the threshold box.
   useEffect(() => {
     let cancelled = false
-    Effect.runPromise(mintExportSalt)
-      .then((minted) => {
-        if (!cancelled) setSalt(minted)
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) {
-          setError(asError(cause))
-          setIsBuilding(false)
-        }
-      })
+    void Effect.runPromiseExit(mintExportSalt).then((exit) => {
+      if (cancelled) return
+      if (Exit.isSuccess(exit)) {
+        setSalt(exit.value)
+        return
+      }
+      setError(causeToError(exit.cause))
+      setIsBuilding(false)
+    })
     return (): void => {
       cancelled = true
     }
@@ -170,7 +184,7 @@ const useAnonymize = (log: HttpArchive.Log, fileName: string): AnonymizeState =>
   useEffect(() => {
     if (salt === null) return undefined
     let cancelled = false
-    Effect.runPromise(
+    void Effect.runPromiseExit(
       buildAnonymizePreview(log, {
         salt,
         enumCarveOut,
@@ -178,23 +192,20 @@ const useAnonymize = (log: HttpArchive.Log, fileName: string): AnonymizeState =>
         namespaceUris,
         overrides,
       })
-    )
-      .then((next) => {
-        if (cancelled) return
-        setPreview(next)
+    ).then((exit) => {
+      if (cancelled) return
+      if (Exit.isSuccess(exit)) {
+        setPreview(exit.value)
         setError(null)
-      })
-      .catch((cause: unknown) => {
-        if (cancelled) return
+      } else {
         // The archive must never be a stale one built under different
         // settings, so a failed rebuild clears the preview rather than
         // leaving the previous one downloadable.
         setPreview(null)
-        setError(asError(cause))
-      })
-      .finally(() => {
-        if (!cancelled) setIsBuilding(false)
-      })
+        setError(causeToError(exit.cause))
+      }
+      setIsBuilding(false)
+    })
     return (): void => {
       cancelled = true
     }

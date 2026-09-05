@@ -1,4 +1,5 @@
 import { cleanup, render, screen } from '@testing-library/react'
+import { Data, Effect } from 'effect'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
@@ -109,21 +110,39 @@ describe('ErrorBanner', () => {
   })
 
   it("serialises a tagged error's own fields into the disclosure", () => {
-    // A `Data.TaggedError`-shape: the interesting data lives on the instance,
-    // `.message` is Effect's generic "An error has occurred".
-    class TaggedLike extends Error {
-      override name = 'PseudonymSpaceExhausted'
+    class Tagged extends Data.TaggedError('PseudonymSpaceExhausted')<{
       readonly shape: string
       readonly attempts: number
-      constructor(fields: { readonly shape: string; readonly attempts: number }) {
-        super('An error has occurred')
-        this.shape = fields.shape
-        this.attempts = fields.attempts
-      }
-    }
-    renderBanner(new TaggedLike({ shape: 'digit(1)', attempts: 100 }))
+    }> {}
+    renderBanner(new Tagged({ shape: 'digit(1)', attempts: 100 }))
     const details = screen.getByText('Show details').closest('details')
     if (details === null) throw new Error('expected a <details> element')
+    expect(details.textContent).toContain('"shape": "digit(1)"')
+    expect(details.textContent).toContain('"attempts": 100')
+  })
+
+  it("unwraps a FiberFailure so the wrapped tagged error's fields surface", async () => {
+    // The path the anonymize screen actually takes: `Effect.runPromise` on a
+    // `Data.TaggedError` failure rejects with a `FiberFailure` whose own
+    // `.message` is Effect's generic "An error has occurred" and whose
+    // instance carries none of the tagged fields — those live inside
+    // `.toJSON().cause.failure`.
+    class Tagged extends Data.TaggedError('PseudonymSpaceExhausted')<{
+      readonly shape: string
+      readonly attempts: number
+    }> {}
+    const rejected = await Effect.runPromise(
+      Effect.fail(new Tagged({ shape: 'digit(1)', attempts: 100 }))
+    ).then(
+      () => {
+        throw new Error('expected the effect to reject')
+      },
+      (cause: unknown) => cause
+    )
+    renderBanner(rejected)
+    const details = screen.getByText('Show details').closest('details')
+    if (details === null) throw new Error('expected a <details> element')
+    expect(details.textContent).toContain('"_tag": "PseudonymSpaceExhausted"')
     expect(details.textContent).toContain('"shape": "digit(1)"')
     expect(details.textContent).toContain('"attempts": 100')
   })
