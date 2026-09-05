@@ -61,11 +61,13 @@ describe('App', () => {
     const hrefs = within(nav)
       .getAllByRole('link')
       .map((link) => link.getAttribute('href'))
+    // Current-URL-relative — see `sectionHref` in branding-core; a preview
+    // deploy under a sub-path resolves these into sibling preview builds.
     expect(hrefs).toStrictEqual([
-      '/medications-app',
-      '/importer-app',
-      '/web-trace-app',
-      '/wildflower-server-docs',
+      './medications-app',
+      './importer-app',
+      './web-trace-app',
+      './wildflower-server-docs',
     ])
   })
 
@@ -100,16 +102,16 @@ describe('App', () => {
     // Assert
     expect(
       screen.getByRole('link', { name: /Open the Medication Viewer/ }).getAttribute('href')
-    ).toBe('/medications-app')
+    ).toBe('./medications-app')
     expect(
       screen.getByRole('link', { name: /Read the Wildflower server docs/ }).getAttribute('href')
-    ).toBe('/wildflower-server-docs')
+    ).toBe('./wildflower-server-docs')
     expect(screen.getByRole('link', { name: /Open the Importer/ }).getAttribute('href')).toBe(
-      '/importer-app'
+      './importer-app'
     )
     expect(
       screen.getByRole('link', { name: /Open the Web Trace Viewer/ }).getAttribute('href')
-    ).toBe('/web-trace-app')
+    ).toBe('./web-trace-app')
     // No public route yet — intentionally no launcher.
     expect(screen.getByText('Synthesized Health Viewer')).toBeDefined()
     expect(screen.queryByRole('link', { name: /Synthesized/ })).toBeNull()

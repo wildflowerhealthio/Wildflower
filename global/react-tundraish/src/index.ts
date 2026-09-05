@@ -10,6 +10,12 @@ export {
   type CheckboxGroupProps,
 } from './checkbox-group.tsx'
 export { Chip, type ChipProps } from './chip.tsx'
+export {
+  ChunkBar,
+  type ChunkBarLabels,
+  type ChunkBarPhase,
+  type ChunkBarProps,
+} from './chunk-bar.tsx'
 export { Dialog, type DialogProps } from './dialog.tsx'
 export { ErrorBanner, type ErrorBannerProps } from './error-banner.tsx'
 export { ErrorBoundary, type ErrorBoundaryProps } from './error-boundary.tsx'
@@ -26,12 +32,15 @@ export {
   type FieldGroupProps,
   type FieldProps,
 } from './field.tsx'
+export { GateCard, type GateCardProps } from './gate-card.tsx'
 export { ItemList, type ItemListItem, type ItemListProps } from './item-list.tsx'
+export { LinkButton, type LinkButtonProps } from './link-button.tsx'
 export { Menu, type MenuItem, type MenuProps } from './menu.tsx'
 export { PageBodyError, type PageBodyErrorProps } from './page-body-error.tsx'
 export { PageHeader, type PageHeaderProps } from './page-header.tsx'
 export { pageLayoutStyles, type PageLayoutClassName } from './page-layout-styles.ts'
 export { PageLoading, type PageLoadingProps } from './page-loading.tsx'
+export { PartialBanner, type PartialBannerProps } from './partial-banner.tsx'
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './radio-group.tsx'
 export {
   SegmentedToggle,

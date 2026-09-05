@@ -1,4 +1,4 @@
-import { sectionRootPath, sectionUrl, type SectionId } from './site.ts'
+import { SECTION_PATHS, sectionUrl, type SectionId } from './site.ts'
 
 /**
  * Hash anchors on the marketing homepage, in section order: the hero
@@ -71,16 +71,25 @@ type NavLink = AnchorNavLink | AbsoluteNavLink | SectionNavLink
 
 /**
  * Resolves a section link to a full href, respecting the current
- * navigation context. Root-relative on the marketing site (so links keep
- * working on preview/staging deploys served off the canonical origin) and
- * absolute from an app (so a self-hosted bundle still points at the
- * canonical site).
+ * navigation context. Current-URL-relative on the marketing site (so a
+ * preview deploy under `/staging/pr-N/` routes into its sibling preview
+ * builds rather than the canonical origin), and absolute from an app (so
+ * a self-hosted bundle still points at the canonical site).
+ *
+ * @remarks
+ * The marketing-site case is a plain relative reference — the browser
+ * resolves it against the document base URL, which is the page's own URL
+ * (or a `<base>` if the page sets one). That is what lets one link work
+ * from `wildflowerhealth.io/` and from `.../staging/pr-N/` without any
+ * build-time base injection.
  *
  * @param ctx - Where the caller is rendered relative to the canonical site.
  * @param section - The target section.
  */
 function sectionHref(ctx: NavContext, section: SectionId): string {
-  return ctx.marketingBase === '' ? sectionRootPath(section) : sectionUrl(section)
+  if (ctx.marketingBase !== '') return sectionUrl(section)
+  const path = SECTION_PATHS[section]
+  return path === '' ? './' : `./${path}`
 }
 
 /** Resolves any {@link NavLink} to an href for the given context. */

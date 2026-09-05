@@ -162,3 +162,13 @@ row query by `listitem` role also matches every ancestor `<li>`, and a
 `querySelector('a')` filter still matches the parent because it _contains_ the
 row's link. Filter on a direct child (`item.querySelector(':scope > a')`) or on
 the row's own class to select leaves only.
+
+## A React Query fetch-to-completion effect must depend on the page count
+
+A "load all pages" driver effect keyed on `[active, hasNextPage,
+isFetchingNextPage, …]` stalls after one page whenever a page resolves within
+a single commit (mocked fetches in tests; a fast server in prod): no committed
+render ever observes `isFetchingNextPage === true`, so the dep array is
+identical before and after the page lands and the effect never re-fires. Add
+`data.pages.length` to the dependencies — it is the one input guaranteed to
+change once per page. See the driver in `apps/medications-app/src/app.tsx`.

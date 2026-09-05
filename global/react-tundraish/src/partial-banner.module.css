@@ -1,0 +1,58 @@
+/*
+ * PartialBanner skin — the amber still-loading banner. The warning tone reads
+ * the `--color-warning-*` semantic tokens (defined in `colors-custom.css` and
+ * shared with the yellow `StatusBadge`), so the two warning surfaces stay in
+ * lockstep and flip with the surface palette automatically — no per-scheme
+ * rule here. Everything else reads the ramps.
+ */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--color-warning-border);
+  border-radius: var(--radius-3);
+  background: var(--color-warning-background);
+}
+
+.dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--color-warning);
+  animation: breathe 1.5s ease-in-out infinite;
+}
+
+.message {
+  margin: 0;
+  font-size: var(--font-size-2);
+  line-height: var(--line-height-4);
+  color: var(--color-warning-foreground);
+}
+
+/* The inline action inherits the banner's size; colour stays the link tone. */
+.action {
+  font-size: inherit;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    opacity: 0.28;
+    transform: scaleY(0.5);
+  }
+
+  50% {
+    opacity: 0.95;
+    transform: scaleY(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}

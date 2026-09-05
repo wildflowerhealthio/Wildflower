@@ -28,6 +28,7 @@
     "fhir-r4": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
+    "medication-calendar-core": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -38,6 +39,7 @@
   "peerDependencies": {
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
+    "medication-calendar-core": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
     "react": "catalog:",
     "react-tundraish": "workspace:*"

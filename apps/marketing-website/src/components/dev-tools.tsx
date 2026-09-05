@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { APP_DESCRIPTIONS, sectionRootPath } from 'branding-core'
+import { APP_DESCRIPTIONS, onMarketingSite, sectionHref } from 'branding-core'
 
 import { Launcher } from './launcher.tsx'
 import styles from './dev-tools.module.css'
@@ -27,7 +27,7 @@ function DevTools(): JSX.Element {
           ))}
           <div className={styles['dev-tools__launcher']}>
             <Launcher
-              href={sectionRootPath('webTrace')}
+              href={sectionHref(onMarketingSite, 'webTrace')}
               label={webTrace.launch.label}
               note={webTrace.launch.note}
             />

@@ -1,0 +1,31 @@
+/*
+ * LinkButton skin — link-styled text on a bare button. Reads the semantic
+ * interactive-text token (`--app-accent-text`) so it matches anchor styling in
+ * both schemes; hover lifts one ramp step (`--color-accent-2`), mirroring how
+ * links behave against the dark canvas.
+ */
+
+.link {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  align-self: flex-start;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: var(--font-weight-2);
+  color: var(--app-accent-text);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.link:hover {
+  color: var(--color-accent-2);
+}
+
+.link:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 1px;
+  border-radius: var(--radius-1);
+}

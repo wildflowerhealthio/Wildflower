@@ -1,6 +1,6 @@
 import type { JSX } from 'react'
 
-import { APP_DESCRIPTIONS, sectionRootPath } from 'branding-core'
+import { APP_DESCRIPTIONS, onMarketingSite, sectionHref } from 'branding-core'
 
 import { wildflowerServerImages } from '../assets/remote-images.ts'
 import { AppRow } from './app-row.tsx'
@@ -34,7 +34,7 @@ function Infrastructure(): JSX.Element {
             alignCenter
             launcher={
               <Launcher
-                href={sectionRootPath('serverDocs')}
+                href={sectionHref(onMarketingSite, 'serverDocs')}
                 label="Read the Wildflower server docs"
                 note="View the docs and available endpoints with tools to send requests to a live server"
               />
@@ -52,7 +52,7 @@ function Infrastructure(): JSX.Element {
             placeholderLabel="screenshot — Importer"
             launcher={
               <Launcher
-                href={sectionRootPath('importer')}
+                href={sectionHref(onMarketingSite, 'importer')}
                 label={importer.launch.label}
                 note={importer.launch.note}
               />

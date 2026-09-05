@@ -1,0 +1,186 @@
+/*
+ * CalendarView skin — a plain month grid on the card surface. Day cells keep
+ * a fixed-ish height so empty weeks don't collapse; events are compact tinted
+ * lines: accent for pickups and appointments, danger for the exhaustion
+ * marker. Tokens only, so dark mode needs no rule here.
+ */
+
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.monthBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.monthTitle {
+  margin: 0;
+}
+
+.monthStep {
+  padding: var(--space-2) var(--space-5);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: var(--color-chip-background);
+  color: var(--color-neutral-3);
+  font: inherit;
+  font-size: var(--font-size-4);
+  line-height: var(--line-height-1);
+  cursor: pointer;
+}
+
+.monthStep:hover {
+  color: var(--color-foreground);
+}
+
+.monthStep:focus-visible {
+  outline: 2px solid var(--color-accent-4);
+  outline-offset: 1px;
+}
+
+.grid {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.weekday {
+  padding: var(--space-2);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  color: var(--color-neutral-5);
+  text-align: center;
+}
+
+.day {
+  height: 5.5rem;
+  padding: var(--space-2);
+  border: 1px solid var(--color-divider);
+  vertical-align: top;
+}
+
+.day[aria-current='date'] .dayNumber {
+  color: var(--color-on-accent);
+  background: var(--color-accent);
+}
+
+.outside {
+  background: var(--color-sunken);
+}
+
+.outside .dayNumber {
+  color: var(--color-neutral-5);
+}
+
+.dayNumber {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.5rem;
+  padding: var(--space-1);
+  border-radius: var(--radius-pill, 999px);
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-2);
+  color: var(--color-neutral-3);
+}
+
+.event {
+  margin: var(--space-1) 0 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-1);
+  font-size: var(--font-size-1);
+  line-height: var(--line-height-3);
+  overflow-wrap: anywhere;
+}
+
+.pickup,
+.appointment {
+  background: var(--color-path-connector);
+  color: var(--app-accent-text);
+}
+
+.exhausted {
+  background: var(--color-red-9);
+  color: var(--color-red-3);
+}
+
+/*
+ * The narrow-screen schedule: a day-grouped stack of every event, scrollable
+ * both ways from the red "Now" line (the pane opens centred on it). Swapped
+ * with the grid + month bar at the 640px breakpoint below.
+ */
+.agenda {
+  display: none;
+  max-height: 70vh;
+  overflow-y: auto;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-3);
+  padding: var(--space-5);
+}
+
+.agendaDay {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-4) 0;
+}
+
+.agendaDate {
+  margin: 0;
+  font-size: var(--font-size-2);
+  font-weight: var(--font-weight-3);
+  color: var(--color-neutral-5);
+}
+
+.agenda .event {
+  margin: 0;
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-4);
+  padding: var(--space-2) var(--space-4);
+}
+
+.agendaEmpty {
+  margin: var(--space-5) 0 0;
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}
+
+.nowLine {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: var(--space-4) 0;
+}
+
+.nowLine::after {
+  content: '';
+  flex: 1;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--color-red-5);
+}
+
+.nowLabel {
+  flex: none;
+  font-size: var(--font-size-1);
+  font-weight: var(--font-weight-3);
+  letter-spacing: var(--letter-spacing-4);
+  text-transform: uppercase;
+  color: var(--color-red-5);
+}
+
+@media (max-width: 639px) {
+  .monthBar,
+  .grid {
+    display: none;
+  }
+
+  .agenda {
+    display: block;
+  }
+}

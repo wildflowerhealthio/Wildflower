@@ -1,0 +1,75 @@
+/*
+ * SavingsView skin — stacked program sections in the same list language as
+ * the medications view: hairline-separated rows, muted descriptions. Tokens
+ * only, so dark mode needs no rule here.
+ */
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-10);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.description {
+  margin: 0;
+  max-width: 60ch;
+  font-size: var(--font-size-3);
+  line-height: var(--line-height-5);
+  color: var(--color-neutral-3);
+}
+
+.source {
+  color: var(--app-accent-text);
+}
+
+.list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-5) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.nameCell {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.name {
+  font-weight: var(--font-weight-2);
+}
+
+/* A completed-but-still-eligible prescription: dimmed, tagged, kept at the
+ * bottom of its program's list so it reads as a past qualification. */
+.past {
+  opacity: 0.6;
+}
+
+.pastLabel {
+  font-size: var(--font-size-1);
+  letter-spacing: var(--letter-spacing-5);
+  text-transform: uppercase;
+  color: var(--color-neutral-5);
+}
+
+.empty {
+  margin: 0;
+  font-size: var(--font-size-3);
+  color: var(--color-neutral-5);
+}

@@ -1,0 +1,35 @@
+{
+  "name": "medication-calendar-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure calendar layer for a patient's medication list: supply-duration parsing, next-fill / exhaustion date math, calendar event derivation, and month-grid math. No DOM, no FHIR, no platform imports.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-utility": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-utility": "workspace:*"
+  }
+}

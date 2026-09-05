@@ -184,6 +184,17 @@
   --color-success-background: #c9f5d7;
   --color-success-foreground: #005f2f; /* badge text */
   --color-success-border: #6bc891;
+
+  /*
+   * Warning tone (amber) — a desaturated gold kept clear of the navy accent.
+   * The still-loading `PartialBanner` and the yellow `StatusBadge` share it;
+   * these were per-component literals before, hoisted here so the two warning
+   * surfaces stay in lockstep from one definition.
+   */
+  --color-warning: #c99617; /* dot / strong */
+  --color-warning-background: #f6ecc7;
+  --color-warning-foreground: #755610; /* banner / badge text */
+  --color-warning-border: #e0c46b;
 }
 
 /* Narrow the `:root` `color-scheme: light dark` default down to the resolved
@@ -281,6 +292,11 @@
   --color-success-background: #0e3721;
   --color-success-foreground: #70d79a; /* badge text */
   --color-success-border: #1f5436;
+
+  --color-warning: #d99e1a; /* dot / strong */
+  --color-warning-background: #33290e;
+  --color-warning-foreground: #d9b661; /* banner / badge text */
+  --color-warning-border: #55471e;
 }
 
 /*
