@@ -46,7 +46,7 @@
  * same height; the strip bleeds past the page gutter so it is visibly
  * scrollable.
  */
-@media (max-width: 640px) {
+@media (max-width: 639.98px) {
   .steps {
     grid-template-columns: none;
     grid-auto-flow: column;

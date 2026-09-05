@@ -3,9 +3,16 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import {
+  HAR_ARCHIVE_CODE,
+  isWebTrace,
+  toDocumentReference,
+  WEB_TRACE_CODE_SYSTEM,
+  WEB_TRACE_RAW_CODE,
+  WEB_TRACE_REDACTION_SYSTEM,
+} from 'web-trace-core/codec'
+import { arbitraries } from 'web-trace-core/test-helpers'
 import { emitHar, HarFromJson, HttpArchive } from '../har/index.ts'
-import { arbitraries } from '../test-helpers.ts'
-import { isWebTrace, toDocumentReference } from './document-reference-codec.ts'
 import type { HarArchive } from './har-archive-codec.ts'
 import {
   HAR_ARCHIVE_CONTENT_TYPE,
@@ -16,12 +23,6 @@ import {
   harArchiveToWire,
   isHarArchive,
 } from './har-archive-codec.ts'
-import {
-  HAR_ARCHIVE_CODE,
-  WEB_TRACE_CODE_SYSTEM,
-  WEB_TRACE_RAW_CODE,
-  WEB_TRACE_REDACTION_SYSTEM,
-} from './systems.ts'
 
 const { exchange: exchangeArbitrary } = arbitraries(fc)
 

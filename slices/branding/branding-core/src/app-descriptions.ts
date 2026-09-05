@@ -67,13 +67,10 @@ const APP_DESCRIPTIONS: { readonly [Id in AppSectionId]: AppDescription } = {
       'from any server that speaks SMART on FHIR.',
     status: 'Status: in use',
     paragraphs: [
-      'My prescriptions are chaotic. ' +
-        'My most reliable refill reminder is noticing a bottle is empty. ' +
-        'This viewer shows all my prescriptions, arranged the way I need them: ' +
-        'countdowns to refill day and alarming red text.',
-      "Once you've got all of your medications in an app, other things become really easy, " +
-        "like checking for interactions or seeing if any drug companies have a program that'll " +
-        'give you a discount.',
+      'I want to get more out of my medication data than my pharmacy gives me.',
+      'The viewer lays every refill and other key date onto a calendar, ' +
+        'flags possible interactions between the prescriptions on the list, ' +
+        'and points at manufacturer benefit programs that can bring the cost down.',
     ],
     anchor: 'built',
     launch: {

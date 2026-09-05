@@ -3,8 +3,8 @@ import { QueryClient } from '@tanstack/react-query'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
+import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/archive'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
-import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'web-trace-core/codec'
 
 import {
   DEFAULT_PAGE_SIZE,

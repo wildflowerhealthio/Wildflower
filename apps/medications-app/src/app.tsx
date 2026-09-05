@@ -20,7 +20,13 @@ import {
 } from 'medication-sponsorship-react'
 import type { JSX } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChunkBar, GateCard, PartialBanner, type ChunkBarPhase } from 'react-tundraish'
+import {
+  ChunkBar,
+  GateCard,
+  PartialBanner,
+  SegmentedToggle,
+  type ChunkBarPhase,
+} from 'react-tundraish'
 
 import { catalogs } from './catalogs.ts'
 import { getInteractionCatalog } from './interaction-catalog.ts'
@@ -30,14 +36,12 @@ import styles from './app.module.css'
 /** The four views the header toggle switches between. */
 type Tab = 'medications' | 'calendar' | 'interactions' | 'savings'
 
-const tabs: readonly Tab[] = ['medications', 'calendar', 'interactions', 'savings']
-
-const tabLabels: Readonly<Record<Tab, string>> = {
-  medications: 'Medications',
-  calendar: 'Calendar',
-  interactions: 'Interactions',
-  savings: 'Savings',
-}
+const tabOptions: readonly { value: Tab; label: string }[] = [
+  { value: 'medications', label: 'Medications' },
+  { value: 'calendar', label: 'Calendar' },
+  { value: 'interactions', label: 'Interactions' },
+  { value: 'savings', label: 'Savings' },
+]
 
 /** The chunk bar's copy — the generic component with this app's wording. */
 const chunkBarLabels = {
@@ -73,31 +77,6 @@ const useDelayedFlag = (active: boolean, delayMs: number): boolean => {
   }, [active, delayMs])
   return passed && active
 }
-
-/** The header's two-way view toggle: a group of pressed / unpressed buttons. */
-const TabToggle = ({
-  value,
-  onChange,
-}: {
-  readonly value: Tab
-  readonly onChange: (tab: Tab) => void
-}): JSX.Element => (
-  <div className={styles.tabs} role="group" aria-label="View">
-    {tabs.map((tab) => (
-      <button
-        key={tab}
-        type="button"
-        className={styles.tab}
-        aria-pressed={tab === value}
-        onClick={() => {
-          onChange(tab)
-        }}
-      >
-        {tabLabels[tab]}
-      </button>
-    ))}
-  </div>
-)
 
 /** The load-failure line, shown for a failed token exchange or a failed read. */
 const ErrorLine = ({ error }: { readonly error: unknown }): JSX.Element => (
@@ -488,7 +467,12 @@ export const App = (): JSX.Element => {
         <div className={styles.topRow}>
           <h1 className="text-heading-3">Medications</h1>
           <div className={styles.controls}>
-            <TabToggle value={tab} onChange={selectTab} />
+            <SegmentedToggle
+              value={tab}
+              options={tabOptions}
+              onChange={selectTab}
+              aria-label="View"
+            />
           </div>
         </div>
         <ChunkBar

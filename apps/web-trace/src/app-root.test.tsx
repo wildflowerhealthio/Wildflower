@@ -56,14 +56,15 @@ describe('AppRoot', () => {
     // Assert — SiteHeader renders with id="top"
     expect(document.getElementById('top')).not.toBeNull()
 
-    // SiteHeader nav links resolve to absolute marketing URLs (scoped to
-    // the header, since the footer carries the same link labels)
+    // SiteHeader nav links resolve into the apps as absolute canonical URLs
     const header = document.getElementById('top')!
-    const appsLink = within(header).getByRole('link', { name: 'The apps' })
-    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#built')
+    const medicationsLink = within(header).getByRole('link', { name: 'Medications' })
+    expect(medicationsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/medications-app')
 
-    const developersLink = within(header).getByRole('link', { name: 'For developers' })
-    expect(developersLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#developers')
+    const serverDocsLink = within(header).getByRole('link', { name: 'Server docs' })
+    expect(serverDocsLink.getAttribute('href')).toBe(
+      'https://wildflowerhealth.io/wildflower-server-docs'
+    )
 
     // ConnectMenu is present, and its redirect target is this page's root
     // (the OAuth callback lands back on AppRoot, wherever it is served from)

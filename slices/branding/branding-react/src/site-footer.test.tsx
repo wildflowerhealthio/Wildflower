@@ -1,5 +1,4 @@
 import { cleanup, render, screen } from '@testing-library/react'
-import { fromApp, onMarketingSite, sectionUrl } from 'branding-core'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import { SiteFooter } from './site-footer.tsx'
@@ -9,63 +8,31 @@ afterEach(() => {
 })
 
 describe('SiteFooter', () => {
-  it('should render Product and Company column headings', () => {
+  it('should render the "not a company" paragraph', () => {
     // Arrange / Act
-    render(<SiteFooter nav={onMarketingSite} />)
+    render(<SiteFooter />)
 
     // Assert
-    expect(screen.getByText('Product')).toBeDefined()
-    expect(screen.getByText('Company')).toBeDefined()
+    expect(screen.getByText(/open source series of connected experiments/)).toBeDefined()
   })
 
-  it('should render product links with marketing-context hrefs', () => {
+  it('should end on the contact line and the mono stamp', () => {
     // Arrange / Act
-    render(<SiteFooter nav={onMarketingSite} />)
+    render(<SiteFooter />)
 
     // Assert
-    const appsLink = screen.getByText('The apps')
-    expect(appsLink.getAttribute('href')).toBe('#built')
-
-    const serverDocsLink = screen.getByText('Server API docs')
-    expect(serverDocsLink.getAttribute('href')).toBe(sectionUrl('serverDocs'))
+    expect(screen.getByRole('link', { name: 'ruthmarks151@gmail.com' }).getAttribute('href')).toBe(
+      'mailto:ruthmarks151@gmail.com'
+    )
+    const year = new Date().getFullYear()
+    expect(screen.getByText(`Wildflower Health Project · Ruth Marks · ${year}`)).toBeDefined()
   })
 
-  it('should render product links with app-context hrefs', () => {
+  it('should expose the #note anchor target the homepage links to', () => {
     // Arrange / Act
-    render(<SiteFooter nav={fromApp} />)
+    const { container } = render(<SiteFooter />)
 
     // Assert
-    const appsLink = screen.getByText('The apps')
-    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#built')
-  })
-
-  it('should link About to the homepage footer note', () => {
-    // Arrange / Act
-    render(<SiteFooter nav={onMarketingSite} />)
-
-    // Assert — the redesigned homepage carries the "not a company" copy in
-    // its footer (`#note`); the old hash-gated blurb is gone.
-    expect(screen.getByText('About').getAttribute('href')).toBe('#note')
-  })
-
-  it('should render company links including About and Contact', () => {
-    // Arrange / Act
-    render(<SiteFooter nav={onMarketingSite} />)
-
-    // Assert
-    expect(screen.getByText('About')).toBeDefined()
-    expect(screen.getByText('Contact')).toBeDefined()
-
-    const contactLink = screen.getByText('Contact')
-    expect(contactLink.getAttribute('href')).toMatch(/^mailto:/)
-  })
-
-  it('should render the brand blurb and copyright', () => {
-    // Arrange / Act
-    render(<SiteFooter nav={onMarketingSite} />)
-
-    // Assert
-    expect(screen.getByText(/personal health record/)).toBeDefined()
-    expect(screen.getByText(/© 2026 Wildflower Health/)).toBeDefined()
+    expect(container.querySelector('#note')).not.toBeNull()
   })
 })

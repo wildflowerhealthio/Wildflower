@@ -5,18 +5,15 @@
   align-items: start;
 }
 
+/* Text column (labels + launcher) centered against the taller screenshot group. */
+.app-row--center {
+  align-items: center;
+}
+
 .app-row__text {
   display: grid;
   gap: var(--space-6);
   justify-items: start;
-}
-
-.app-row__title {
-  margin: 0;
-  color: var(--color-neutral-1);
-  font-size: var(--font-size-5);
-  font-weight: var(--font-weight-4);
-  letter-spacing: var(--letter-spacing-2);
 }
 
 /* Paragraphs are separated by about one blank line, as the essay is. */
@@ -47,8 +44,53 @@
   );
 }
 
-@media (max-width: 768px) {
-  /* The screenshot stacks under the text. */
+/*
+ * Real-screenshot slot. Two screenshots sit side-by-side; one spans the whole
+ * slot. Each figure wears the same outlined device frame as the hero phone.
+ */
+.app-row__figures {
+  display: grid;
+  gap: clamp(var(--space-6), 2vw, var(--space-9));
+  align-items: start;
+}
+
+.app-row__figures[data-count='multi'] {
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+}
+
+/*
+ * Side-by-side screenshots share one framed box so their heights and widths
+ * match even though the sources differ slightly in ratio. Each image keeps its
+ * own aspect ratio — contained inside the frame, never cropped.
+ */
+.app-row__figures[data-count='multi'] .app-row__figure {
+  aspect-ratio: 788 / 1641;
+}
+
+.app-row__figures[data-count='multi'] .app-row__image {
+  height: 100%;
+  object-fit: contain;
+}
+
+/* Each screenshot wears the shared outlined device frame (see frame.module.css). */
+.app-row__figure {
+  composes: device-frame from './frame.module.css';
+  margin: 0;
+}
+
+.app-row__image {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+@media (max-width: 767.98px) {
+  /*
+   * The screenshots stack under the text and fill the column width, keeping
+   * their aspect ratio (never cropped): a single landscape shot goes shorter
+   * and full-width, and the paired server frames share the row as before.
+   */
   .app-row {
     grid-template-columns: minmax(0, 1fr);
   }

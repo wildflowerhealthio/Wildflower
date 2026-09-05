@@ -9,6 +9,20 @@ descriptor's `persist`.
 
 ## Shape
 
+- `src/har/` — **the HAR 1.2 format**, as one schema read in both directions.
+  Moved from `web-trace-core/har` (M1 of #578): `har.ts` is the format
+  (`Har`, `HarFromJson`); `emit.ts` builds an archive from `TraceExchange`es
+  (which still live in `web-trace-core` until the epic dissolves that slice);
+  `http-archive.ts` is the projection an importer and a replay consume, as the
+  `HttpArchive` namespace (`Entry`, `Log`, `LogFromHarJson`). Exported as the
+  `/har` subpath. See its `har/index.ts`.
+- `src/archive/` — **the FHIR encoding of an uploaded `.har` file** as a
+  `DocumentReference`. Moved from `web-trace-core/codec/har-archive-codec.ts`.
+  A whole archive lives as one attachment under the `har-archive` category,
+  disjoint from a trace on the same axis (`isHarArchive` / `isWebTrace` never
+  both hold). Exported as the `/archive` subpath. Re-exports
+  `HAR_ARCHIVE_CODE` and `WEB_TRACE_CODE_SYSTEM` so a downstream reader can
+  build the search token from one import.
 - `src/har-importer.ts` — **`harImporterDescriptor`**, the one value the shell's
   registry lists. Binds `TParsed = FhirResource`, `R =
 FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
@@ -47,9 +61,11 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
 
 Depends on `importer-fundamentals` (the contract), `http-extraction-fundamentals`
 (`Extraction.Input`), `fhir-r4-source` (the pre-adopted pool), `web-trace-core`
-(`HttpArchive`, `withMetaSource`), `fhir-r4` (resources + `persistResources`), and
-`effect`. Never imports `importer-react`, `har-importer-react`, or
-`slices/collector`.
+(`TraceExchange` for `emitHar` — transitional until the slice dissolves —
+`sha256Base64` from `capture`, and the trace-side codec constants the archive
+codec still shares), `browser-sniffer-core` (`HeadersWire` for the archive
+projection), `fhir-r4` (resources + `persistResources`), and `effect`. Never
+imports `importer-react`, `har-importer-react`, or `slices/collector`.
 
 ## Guardrails
 

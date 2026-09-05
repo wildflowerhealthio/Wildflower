@@ -340,6 +340,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
+      har-importer-core:
+        specifier: workspace:*
+        version: link:../../slices/importer/har-importer-core
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -376,6 +379,9 @@ importers:
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
+      react-kitchen-sink:
+        specifier: workspace:*
+        version: link:../../global/react-kitchen-sink
       react-tundraish:
         specifier: workspace:*
         version: link:../../global/react-tundraish
@@ -2319,6 +2325,12 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
+      ajv:
+        specifier: 'catalog:'
+        version: 8.20.0
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../browser-sniffer/browser-sniffer-core
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -2331,6 +2343,9 @@ importers:
       fhir-r4-source:
         specifier: workspace:*
         version: link:../../http-extraction/fhir-r4-source
+      har-schema:
+        specifier: 'catalog:'
+        version: 2.0.0
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../../http-extraction/http-extraction-fundamentals
@@ -3278,9 +3293,6 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
-      ajv:
-        specifier: 'catalog:'
-        version: 8.20.0
       browser-sniffer-core:
         specifier: workspace:*
         version: link:../../browser-sniffer/browser-sniffer-core
@@ -3293,9 +3305,6 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
-      har-schema:
-        specifier: 'catalog:'
-        version: 2.0.0
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -3344,6 +3353,9 @@ importers:
       fhir-r4-react:
         specifier: workspace:*
         version: link:../../emr/fhir-r4-react
+      har-importer-core:
+        specifier: workspace:*
+        version: link:../../importer/har-importer-core
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1

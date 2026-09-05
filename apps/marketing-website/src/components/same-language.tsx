@@ -27,16 +27,17 @@ function SameLanguage(): JSX.Element {
           <p>
             Fast Healthcare Interoperability Resources — FHIR — is a standard way for organizations
             to represent and share health information. A specialist could read results directly from
-            a lab, share a report with your GP, and send a prescription all with a shared language.
+            a lab, share their report with a GP, and send a prescription all with the same shared
+            language.
           </p>
           <p>
             In the United States, providers are required to offer patients secure access to their
             records with&nbsp;FHIR. There's no equivalent requirement in Canada.
           </p>
           <p>
-            You may have used them already. When you add a hospital to Apple Health, you connect it
-            with SMART on FHIR. The same connection could feed any app you trust. Today it's a
-            download locked on your phone.
+            <i>Some</i> hospitals have elected to use it, with <i>some</i> apps. The most likely
+            place you've used it is importing data from a hospital into your phone with Apple Health
+            or Android Health Connect.
           </p>
         </div>
         <div

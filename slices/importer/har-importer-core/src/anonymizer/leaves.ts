@@ -1,7 +1,7 @@
 import { Effect, Schema } from 'effect'
 import { JsonValue } from 'kitchen-sink/schema'
 
-import type { TraceExchange } from '../trace-exchange.ts'
+import type { TraceExchange } from 'web-trace-core'
 import { detectShape } from './shapes.ts'
 
 /**

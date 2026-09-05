@@ -27,11 +27,11 @@ import timingsSchema from 'har-schema/lib/timings.json' with { type: 'json' }
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { toDocumentReference } from '../codec/document-reference-codec.ts'
-import { buildRedactionPolicy, redactSession } from '../pseudonymizer/redact.ts'
-import { arbitraries, jsonBody, traceExchange } from '../test-helpers.ts'
-import { noTimings } from '../trace-exchange.ts'
-import type { TraceExchange } from '../trace-exchange.ts'
+import { noTimings } from 'web-trace-core'
+import type { TraceExchange } from 'web-trace-core'
+import { toDocumentReference } from 'web-trace-core/codec'
+import { arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
+import { buildRedactionPolicy, redactSession } from '../anonymizer/index.ts'
 import { emitHar } from './emit.ts'
 import { Har } from './har.ts'
 

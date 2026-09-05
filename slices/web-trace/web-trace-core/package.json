@@ -26,17 +26,9 @@
       "source": "./src/codec/index.ts",
       "default": "./dist/codec/index.js"
     },
-    "./har": {
-      "source": "./src/har/index.ts",
-      "default": "./dist/har/index.js"
-    },
     "./provenance": {
       "source": "./src/provenance/index.ts",
       "default": "./dist/provenance/index.js"
-    },
-    "./pseudonymizer": {
-      "source": "./src/pseudonymizer/index.ts",
-      "default": "./dist/pseudonymizer/index.js"
     },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",
@@ -53,12 +45,10 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "ajv": "catalog:",
     "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
-    "har-schema": "catalog:",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"

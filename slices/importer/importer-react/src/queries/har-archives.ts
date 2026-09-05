@@ -11,12 +11,11 @@ import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import {
-  HAR_ARCHIVE_CODE,
+  HAR_ARCHIVE_CATEGORY_TOKEN,
   harArchiveFromDocumentReference,
   isHarArchive,
-  WEB_TRACE_CODE_SYSTEM,
-  type DocumentReferenceType,
-} from 'web-trace-core/codec'
+} from 'har-importer-core/archive'
+import type { DocumentReferenceType } from 'web-trace-core/codec'
 
 import { type PickedHar, serverSource } from '../sources/picked-har.ts'
 import { HAR_ARCHIVES_QUERY_KEY } from './keys.ts'
@@ -38,17 +37,6 @@ import { nextPageToken } from './page-token.ts'
  *
  * @packageDocumentation
  */
-
-/**
- * The `category` token the search filters on, in FHIR's `system|code` form so a
- * bare `har-archive` code in some other system cannot match.
- *
- * @remarks
- * Built from `web-trace-core`'s constants rather than spelled out: the archive
- * codec writes this coding, and a second literal here would drift from it the
- * moment either moved.
- */
-const HAR_ARCHIVE_CATEGORY_TOKEN = `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE}`
 
 /**
  * How many archive `DocumentReference`s one page requests.

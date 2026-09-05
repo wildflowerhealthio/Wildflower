@@ -20,9 +20,22 @@
   /* Horizontal page gutter, also bled past by the mobile step scroller. */
   --page-gutter: var(--space-9);
 
+  /* The shared header/footer (branding-react) size to --content-max-width /
+   * --page-padding-x, which default to the wider app-chrome measures. Narrow
+   * them to this page's essay column so the chrome aligns with the body. */
+  --content-max-width: var(--column-max-width);
+  --page-padding-x: var(--page-gutter);
+
   /* Prose measure caps. The column is 940px wide but body copy folds much
    * narrower; the two caps in the design (640/660px) are unified at 660px,
    * with the wider 700px cap kept for the asks/dev-tools blocks. */
   --prose-max-width: 660px;
   --prose-wide-max-width: 700px;
+
+  /* Ambient float shadows for raised page elements. The design system's card
+   * ramp has nothing this deep, so these black-and-ambient shadows live here.
+   * `panel` lifts opaque surfaces off the page (stats tally, header dropdown);
+   * `frame` is the shallower depth the outlined device frames float on. */
+  --shadow-float-panel: 0 20px 44px -16px rgba(0, 0, 0, 0.7);
+  --shadow-float-frame: 0 20px 44px -16px rgba(0, 0, 0, 0.5);
 }

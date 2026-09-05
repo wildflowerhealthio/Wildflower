@@ -61,7 +61,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
               />
             </AppLanding>
           </main>
-          <SiteFooter nav={fromApp} />
+          <SiteFooter />
         </div>
       )}
     </QueryClientProvider>

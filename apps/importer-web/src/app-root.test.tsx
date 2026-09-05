@@ -49,7 +49,7 @@ describe('AppRoot', () => {
 
     // No full chrome or connect menu
     expect(screen.queryByTestId('connect-menu-stub')).toBeNull()
-    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull()
+    expect(screen.queryByRole('navigation', { name: 'Apps' })).toBeNull()
   })
 
   it('should render SiteHeader, ConnectMenu, and SiteFooter when not launched', () => {
@@ -63,16 +63,18 @@ describe('AppRoot', () => {
     const brandLink = screen.getByRole('link', { name: 'Wildflower, home' })
     expect(brandLink.getAttribute('href')).toBe('https://wildflowerhealth.io/')
 
-    // Primary nav links resolve as absolute hrefs
-    const primaryNav = screen.getByRole('navigation', { name: 'Primary' })
-    const appsLink = within(primaryNav).getByRole('link', { name: 'The apps' })
-    expect(appsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/#built')
+    // The nav links resolve into the apps as absolute hrefs
+    const primaryNav = screen.getByRole('navigation', { name: 'Apps' })
+    const medicationsLink = within(primaryNav).getByRole('link', { name: 'Medications' })
+    expect(medicationsLink.getAttribute('href')).toBe('https://wildflowerhealth.io/medications-app')
 
     // ConnectMenu is present, inside the page's main landmark
     expect(within(screen.getByRole('main')).getByTestId('connect-menu-stub')).toBeDefined()
 
-    // SiteFooter is present — the copyright line is a reliable anchor
-    expect(screen.getByText(/© 2026 Wildflower Health/)).toBeDefined()
+    // SiteFooter is present — the contact line is a reliable anchor
+    expect(screen.getByRole('link', { name: 'ruthmarks151@gmail.com' }).getAttribute('href')).toBe(
+      'mailto:ruthmarks151@gmail.com'
+    )
 
     // No App in the standalone branch
     expect(screen.queryByTestId('app-stub')).toBeNull()

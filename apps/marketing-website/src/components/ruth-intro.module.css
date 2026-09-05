@@ -1,0 +1,108 @@
+/*
+ * The "I'm Ruth" intro: the section title spans the full content column, then
+ * bio prose on the left and the stats tally on the right share the row below.
+ * The stats block only reads as a "tally card" when it fits beside the prose,
+ * so it's hidden below the two-column breakpoint — the bio carries the story
+ * on narrow screens.
+ */
+.ruth {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr);
+  column-gap: clamp(var(--space-9), 4vw, var(--space-12));
+  row-gap: clamp(var(--space-10), 4vw, var(--space-12));
+  align-items: center;
+}
+
+/* Full-width header row above the bio/tally split. */
+.ruth__title {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.ruth__bio {
+  grid-column: 1;
+  gap: var(--space-6);
+}
+
+.ruth__stats-block {
+  grid-column: 2;
+  display: grid;
+  gap: var(--space-5);
+  justify-items: start;
+  margin-right: var(--space-8);
+}
+
+/*
+ * The tally's casual title. Handwritten-feeling italics keep it out of the
+ * heading hierarchy without a caption ceremony.
+ */
+.ruth__stats-title {
+  margin: 0 var(--space-4);
+  color: var(--color-neutral-3);
+  font-size: var(--font-size-3);
+  font-style: italic;
+  line-height: var(--line-height-4);
+}
+
+/*
+ * The stats grid: one CSS grid, two max-content columns, sized to its content.
+ * It reads as a raised card, so it takes the card tokens; the shadow stays
+ * literal — on this background shadows must be black and ambient, and the
+ * card ramp has nothing this deep.
+ */
+.ruth__stats {
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: var(--space-8);
+  width: max-content;
+  max-width: 100%;
+  padding: var(--space-3) var(--space-10);
+  background: var(--color-background);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--card-border-radius);
+  box-shadow: 0 20px 44px -16px rgba(0, 0, 0, 0.7);
+}
+
+.ruth__stat-number,
+.ruth__stat-label {
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--color-divider);
+  line-height: 28px;
+}
+
+/* The last row's two cells have no bottom border. */
+.ruth__stat-number:nth-last-child(-n + 2),
+.ruth__stat-label:nth-last-child(-n + 2) {
+  border-bottom: none;
+}
+
+.ruth__stat-number {
+  color: var(--app-accent-text);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-5);
+  text-align: right;
+}
+
+.ruth__stat-label {
+  color: var(--color-neutral-2);
+  font-size: var(--font-size-4);
+}
+
+/*
+ * Reserves the width of a plus sign on non-"+" rows so all digits right-align
+ * against the "10+" rows. `visibility: hidden` keeps screen readers away.
+ */
+.ruth__stat-plus-pad {
+  visibility: hidden;
+}
+
+@media (max-width: 767.98px) {
+  .ruth {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The stats block is hidden on narrow screens — see the file-level note. */
+  .ruth__stats-block {
+    display: none;
+  }
+}

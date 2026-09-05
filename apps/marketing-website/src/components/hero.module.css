@@ -1,156 +1,154 @@
+/*
+ * The hero sits in the essay's regular content column, same width as every
+ * other section. At ≥840px the phone frame tucks in beside the lines within
+ * that column; below 840px the phone is hidden and the lines take the width.
+ */
 .hero {
   padding: clamp(var(--space-13), 7vw, 92px) 0 clamp(var(--space-12), 5vw, var(--space-14));
 }
 
-.hero__grid {
+.hero__inner {
+  max-width: var(--column-max-width);
+  margin: 0 auto;
+  padding: 0 var(--page-gutter);
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 0.9fr);
-  column-gap: 0;
-  row-gap: clamp(var(--space-4), 1vw, var(--space-5));
-  align-items: start;
+  gap: clamp(var(--space-11), 4vw, var(--space-13));
 }
 
-.hero__lockup {
-  display: grid;
-  gap: var(--space-5);
-  justify-items: start;
-}
-
+/*
+ * The manifesto title. No `max-width` — the title should not fold at full
+ * width; on narrow screens the browser wraps it naturally.
+ */
 .hero__title {
   margin: 0;
   color: var(--color-neutral-1);
-  font-size: clamp(var(--font-size-6), 3vw, var(--font-size-8));
+  font-size: clamp(var(--font-size-7), 5vw, var(--font-size-9));
   font-weight: var(--font-weight-4);
   line-height: var(--line-height-2);
   letter-spacing: var(--letter-spacing-1);
 }
 
-/* The hero's mid-size prose tier (intro line and closing story). */
-.hero__tier {
-  margin: 0;
-  color: var(--color-neutral-2);
-  font-size: clamp(var(--font-size-4), 1.95vw, var(--font-size-5));
-  line-height: var(--line-height-4);
-}
-
-/*
- * The portrait spans both rows and dissolves into the page background via the
- * bottom fade — a deliberate treatment (it replaced a framed version). No
- * border, no background, no radius.
- */
-.hero__photo {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: flex-end;
-  margin: 0;
-  mask-image: linear-gradient(to bottom, #000 58%, rgba(0, 0, 0, 0.35) 94%, transparent 100%);
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    #000 58%,
-    rgba(0, 0, 0, 0.35) 94%,
-    transparent 100%
-  );
-}
-
-.hero__photo > img {
-  width: 100%;
-  height: auto;
-}
-
-.hero__body {
-  grid-column: 1;
-  grid-row: 2;
-}
-
-.hero__lead-in {
-  margin: 0 0 var(--space-6);
-  color: var(--color-neutral-2);
-  font-size: clamp(var(--font-size-4), 1.95vw, var(--font-size-5));
-  line-height: var(--line-height-4);
-}
-
-/*
- * The stats grid: one CSS grid, two max-content columns, sized to its content
- * and centered. It reads as a raised card, so it takes the card tokens; the
- * shadow stays literal — on this background shadows must be black and
- * ambient, and the card ramp has nothing this deep.
- */
-.hero__stats {
-  display: grid;
-  grid-template-columns: max-content max-content;
-  column-gap: var(--space-8);
-  width: max-content;
-  max-width: 100%;
-  margin: 0 auto;
-  padding: var(--space-3) var(--space-10);
-  background: var(--color-background);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--card-border-radius);
-  box-shadow: 0 20px 44px -16px rgba(0, 0, 0, 0.7);
-}
-
-.hero__stat-number,
-.hero__stat-label {
-  padding: var(--space-4) 0;
-  border-bottom: 1px solid var(--color-divider);
-  line-height: 28px;
-}
-
-/* The last row's two cells have no bottom border. */
-.hero__stat-number:nth-last-child(-n + 2),
-.hero__stat-label:nth-last-child(-n + 2) {
-  border-bottom: none;
-}
-
-.hero__stat-number {
+.hero__title > i {
   color: var(--app-accent-text);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-5);
-  text-align: right;
-}
-
-.hero__stat-label {
-  color: var(--color-neutral-2);
-  font-size: var(--font-size-4);
+  font-style: italic;
 }
 
 /*
- * Reserves the width of a plus sign on non-"+" rows so all digits right-align
- * against the "10+" rows. `visibility: hidden` keeps screen readers away.
+ * Lines on the left, phone on the right. On narrow screens the phone
+ * collapses out and the lines take the full width.
  */
-.hero__stat-plus-pad {
-  visibility: hidden;
-}
-
-.hero__story {
+.hero__body {
   display: grid;
-  gap: var(--space-5);
-  max-width: var(--prose-max-width);
-  margin-top: clamp(var(--space-11), 4vw, var(--space-13));
+  grid-template-columns: minmax(0, 1fr);
+  gap: clamp(var(--space-8), 3vw, var(--space-11));
+  align-items: center;
 }
 
-/* The closing story reads at full prose leading, unlike the tighter intro. */
-.hero__story > .hero__tier {
-  line-height: var(--line-height-5);
+.hero__lines {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-10);
 }
 
-@media (max-width: 768px) {
-  .hero__grid {
-    grid-template-columns: minmax(0, 1fr);
-  }
+/* One stanza is a tight pair of lines; stanzas breathe apart via the parent gap. */
+.hero__stanza {
+  display: grid;
+}
 
-  /* The portrait is dropped entirely on small screens. */
-  .hero__photo {
-    display: none;
-  }
+/*
+ * The staccato lines. `white-space: nowrap` enforces the deliberate line
+ * breaks in the copy; the font-size clamp scales down enough that the
+ * longest line (66 characters) still fits within the lines column at every
+ * width from 640px up. On very narrow screens `nowrap` is dropped so the
+ * lines wrap naturally rather than overflow.
+ */
+.hero__line {
+  margin: 0;
+  color: var(--color-neutral-2);
+  font-size: var(--font-size-5);
+  font-weight: 300;
+  line-height: var(--line-height-2);
+  white-space: nowrap;
+}
 
+@media (max-width: 639.98px) {
+  .hero__line {
+    font-size: var(--font-size-3);
+    white-space: normal;
+  }
+}
+
+.hero__phone,
+.hero__phone-caption {
+  display: none;
+}
+
+/*
+ * The phone: a minimal outlined frame around a strip of the nine "other apps"
+ * screenshots. The strip shifts `-100%` per step via a CSS transition so each
+ * swipe reads as a lazy scroll. These sit inert below 840px (the phone is
+ * `display: none`); the ≥840px block below reveals and places it.
+ */
+.hero__phone-frame {
+  composes: device-frame from './frame.module.css';
+  width: 160px;
+  aspect-ratio: 9 / 19;
+}
+
+.hero__phone-strip {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  transition: transform 1.1s cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.hero__phone-image {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/*
+ * ≥840px: the body becomes a two-column grid — the lines fill the left column
+ * top to bottom, the phone (styled above) sits top-right, and the caption is
+ * anchored to the bottom-right corner.
+ */
+@media (min-width: 840px) {
   .hero__body {
-    grid-column: 1;
+    grid-template-columns: max-content 160px;
+    grid-template-areas:
+      'text phone'
+      '.    caption';
+    justify-content: start;
+    align-items: start;
+    column-gap: clamp(var(--space-10), 4vw, var(--space-12));
+    row-gap: var(--space-4);
   }
 
-  /* The stats grid stops being auto-centered and goes full width/left. */
-  .hero__stats {
-    margin-left: 0;
-    margin-right: 0;
+  /* The lines fill the phone's row and sit vertically centered against it. */
+  .hero__lines {
+    grid-area: text;
+    align-self: stretch;
+  }
+
+  .hero__phone {
+    display: block;
+    grid-area: phone;
+  }
+
+  /* Tally-caption twin: quiet italic prompt anchored to the bottom-right. */
+  .hero__phone-caption {
+    display: block;
+    grid-area: caption;
+    align-self: end;
+    margin: 0;
+    color: var(--color-neutral-3);
+    font-size: var(--font-size-3);
+    font-style: italic;
+    line-height: var(--line-height-4);
+    text-align: center;
   }
 }
