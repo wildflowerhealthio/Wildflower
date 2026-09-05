@@ -17,6 +17,7 @@ import {
 } from 'medication-sponsorship-react'
 import type { JSX } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { SegmentedToggle } from 'react-tundraish'
 
 import { catalogs } from './catalogs.ts'
 import { getInteractionCatalog } from './interaction-catalog.ts'
@@ -25,37 +26,10 @@ import styles from './app.module.css'
 /** The two views the header toggle switches between. */
 type Tab = 'medications' | 'interactions'
 
-const tabs: readonly Tab[] = ['medications', 'interactions']
-
-const tabLabels: Readonly<Record<Tab, string>> = {
-  medications: 'Medications',
-  interactions: 'Interactions',
-}
-
-/** The header's two-way view toggle: a group of pressed / unpressed buttons. */
-const TabToggle = ({
-  value,
-  onChange,
-}: {
-  readonly value: Tab
-  readonly onChange: (tab: Tab) => void
-}): JSX.Element => (
-  <div className={styles.tabs} role="group" aria-label="View">
-    {tabs.map((tab) => (
-      <button
-        key={tab}
-        type="button"
-        className={styles.tab}
-        aria-pressed={tab === value}
-        onClick={() => {
-          onChange(tab)
-        }}
-      >
-        {tabLabels[tab]}
-      </button>
-    ))}
-  </div>
-)
+const tabOptions: readonly { value: Tab; label: string }[] = [
+  { value: 'medications', label: 'Medications' },
+  { value: 'interactions', label: 'Interactions' },
+]
 
 /** The load-failure line, shown for a failed token exchange or a failed read. */
 const ErrorLine = ({ error }: { readonly error: unknown }): JSX.Element => (
@@ -223,7 +197,7 @@ export const App = (): JSX.Element => {
       <header className={styles.header}>
         <h1 className="text-heading-3">Medications</h1>
         <div className={styles.controls}>
-          <TabToggle value={tab} onChange={setTab} />
+          <SegmentedToggle value={tab} options={tabOptions} onChange={setTab} aria-label="View" />
           {tab === 'medications' && <ProvincePicker value={province} onChange={setProvince} />}
         </div>
       </header>
