@@ -33,6 +33,11 @@ export { PageHeader, type PageHeaderProps } from './page-header.tsx'
 export { pageLayoutStyles, type PageLayoutClassName } from './page-layout-styles.ts'
 export { PageLoading, type PageLoadingProps } from './page-loading.tsx'
 export { RadioGroup, type RadioGroupProps, type RadioOption } from './radio-group.tsx'
+export {
+  SegmentedToggle,
+  type SegmentedToggleOption,
+  type SegmentedToggleProps,
+} from './segmented-toggle.tsx'
 export { StatusBadge, type StatusBadgeProps, type StatusTone } from './status-badge.tsx'
 export { TextField, type TextFieldProps } from './text-field.tsx'
 export { ToggleSwitch, type ToggleSwitchProps } from './toggle-switch.tsx'
