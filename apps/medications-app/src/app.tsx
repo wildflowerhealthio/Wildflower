@@ -1,10 +1,12 @@
 import { skipToken, useInfiniteQuery, useQuery } from '@tanstack/react-query'
+import { Match } from 'effect'
 import {
   fetchMedicationRequestPage,
   type MedicationRequestCursor,
   useSmartHandshake,
 } from 'fhir-r4-react/smart'
 import { CalendarView } from 'medication-calendar-react'
+import type { InteractionCatalog } from 'medication-interaction-core'
 import { InteractionsView } from 'medication-interaction-react'
 import {
   dedupeMedicationsByName,
@@ -108,6 +110,26 @@ const ErrorLine = ({ error }: { readonly error: unknown }): JSX.Element => (
 // then reads across every patient the granted scopes expose (see its `null` case).
 const initialCursor: MedicationRequestCursor = { patientId: null }
 
+// The tagged state the interactions panel renders from — pre-computing it as
+// a discriminated union lets a single `Match.tag` chain render each arm,
+// instead of an if-chain that repeats the gate / catalog / partial checks.
+type InteractionsPanelState =
+  | { readonly _tag: 'catalogError'; readonly error: unknown }
+  | { readonly _tag: 'gateSuppressed' }
+  | { readonly _tag: 'gateFetchError' }
+  | { readonly _tag: 'gateLoading' }
+  | { readonly _tag: 'gatePartial' }
+  | { readonly _tag: 'catalogLoading' }
+  | { readonly _tag: 'ready'; readonly catalog: InteractionCatalog }
+
+// The tagged state the whole body renders from — likewise a discriminated
+// union so `Match.tag` can dispatch to each arm.
+type BodyState =
+  | { readonly _tag: 'handshakeError'; readonly error: unknown }
+  | { readonly _tag: 'firstPageError'; readonly error: unknown }
+  | { readonly _tag: 'loading' }
+  | { readonly _tag: 'tab'; readonly tab: Tab }
+
 /**
  * The redirect-target app: completes the SMART handshake, loads the patient's
  * MedicationRequests a page at a time, and renders them as one of four views
@@ -167,6 +189,16 @@ export const App = (): JSX.Element => {
   // `pagesReceived` is a dependency deliberately: a page can land within a
   // single commit (never showing `isFetchingNextPage`), and the count is the
   // one input guaranteed to change per page, so the drive can't stall.
+  //
+  // Cancellation: the effect is not paired with a `cancelQueries` cleanup on
+  // purpose. Such a cleanup would fire on StrictMode's dev double-mount and
+  // abort the first page's own fetch, forcing a second one on remount — the
+  // opposite of what dedup should give. The loop is bounded by
+  // `hasNextPage` (the terminal page ends it) and `isFetchNextPageError` (a
+  // failed page pauses it until an explicit retry), so it can't run away.
+  // Hard abort of an in-flight page belongs on the queryFn's own `signal`
+  // seam, i.e. in `fetchMedicationRequestPage`; wire it there when its
+  // transport becomes signal-aware.
   useEffect(() => {
     if (
       loadAllActive &&
@@ -272,81 +304,87 @@ export const App = (): JSX.Element => {
   // `loading` covers both the scroll-triggered page pull and the driven
   // fetch-to-completion; the extra breathing block tracks either. A failed
   // page drops the bar back to idle — nothing is in flight until the retry.
-  const barPhase = ((): ChunkBarPhase => {
-    if (listComplete) return 'locked'
-    if (isFetchNextPageError) return 'error'
-    if (isFetchingNextPage) return 'loading'
-    if (loadAllActive) return 'loading'
-    return 'idle'
-  })()
+  const barPhase: ChunkBarPhase = Match.value({
+    listComplete,
+    isFetchNextPageError,
+    isFetchingNextPage,
+    loadAllActive,
+  }).pipe(
+    Match.when({ listComplete: true }, (): ChunkBarPhase => 'locked'),
+    Match.when({ isFetchNextPageError: true }, (): ChunkBarPhase => 'error'),
+    Match.when({ isFetchingNextPage: true }, (): ChunkBarPhase => 'loading'),
+    Match.when({ loadAllActive: true }, (): ChunkBarPhase => 'loading'),
+    Match.orElse((): ChunkBarPhase => 'idle')
+  )
 
   // The interactions body gates on the *full* medication list — a missing
   // medication means a missing interaction — then on the catalog asset. The
   // gate is suppressed for its first 400ms so a short list never flashes it.
   const gated = !listComplete && !showPartial
   const gateVisible = useDelayedFlag(gated && tab === 'interactions', 400)
-  const interactionsPanel = ((): JSX.Element | null => {
-    if (interactionCatalog.isError) {
-      return (
-        <p className={styles.error}>
-          {interactionCatalog.error instanceof Error
-            ? interactionCatalog.error.message
-            : 'Could not load the interaction database.'}
-        </p>
-      )
-    }
-    if (gated) {
-      if (!gateVisible) return null
-      if (isFetchNextPageError) {
-        return (
-          <GateCard
-            title="Couldn't load part of your list"
-            body="A page of your medication list failed to load. Interactions stay paused until it arrives — retrying re-requests just that page."
-            showSpinner={false}
-            action={{ label: 'Retry', onClick: startLoadAll }}
-          />
-        )
-      }
-      if (barPhase === 'loading') {
-        return (
-          <GateCard
-            title="Waiting for your full medication list"
-            body="Interactions are checked against every medication at once — a partial list could miss one."
-            action={{
-              label: 'Show me it live as it loads anyway',
-              onClick: () => {
-                setShowPartial(true)
-              },
-            }}
-          />
-        )
-      }
-      return (
-        <GateCard
-          title="Only part of your medication list is loaded"
-          body="Interactions are checked against every medication at once — a partial list could miss one."
-          showSpinner={false}
-          action={{ label: 'Load the rest of my medications', onClick: startLoadAll }}
-        />
-      )
-    }
-    // The catalog usually resolves long before the medication list; this card
-    // covers the rare visit where the list finishes (or goes partial) first.
-    if (interactionCatalog.data === undefined) {
-      return (
+  const interactionsPanelState: InteractionsPanelState = ((): InteractionsPanelState => {
+    if (interactionCatalog.isError) return { _tag: 'catalogError', error: interactionCatalog.error }
+    if (gated && !gateVisible) return { _tag: 'gateSuppressed' }
+    if (gated && isFetchNextPageError) return { _tag: 'gateFetchError' }
+    if (gated && barPhase === 'loading') return { _tag: 'gateLoading' }
+    if (gated) return { _tag: 'gatePartial' }
+    if (interactionCatalog.data === undefined) return { _tag: 'catalogLoading' }
+    return { _tag: 'ready', catalog: interactionCatalog.data }
+  })()
+  const interactionsPanel = Match.value(interactionsPanelState).pipe(
+    Match.tag('catalogError', ({ error }): JSX.Element => (
+      <p className={styles.error}>
+        {error instanceof Error ? error.message : 'Could not load the interaction database.'}
+      </p>
+    )),
+    Match.tag('gateSuppressed', (): JSX.Element | null => null),
+    Match.tag('gateFetchError', (): JSX.Element => (
+      <GateCard
+        title="Couldn't load part of your list"
+        body="A page of your medication list failed to load. Interactions stay paused until it arrives — retrying re-requests just that page."
+        showSpinner={false}
+        action={{ label: 'Retry', onClick: startLoadAll }}
+      />
+    )),
+    Match.tag('gateLoading', (): JSX.Element => (
+      <GateCard
+        title="Waiting for your full medication list"
+        body="Interactions are checked against every medication at once — a partial list could miss one."
+        action={{
+          label: 'Show me it live as it loads anyway',
+          onClick: () => {
+            setShowPartial(true)
+          },
+        }}
+      />
+    )),
+    Match.tag('gatePartial', (): JSX.Element => (
+      <GateCard
+        title="Only part of your medication list is loaded"
+        body="Interactions are checked against every medication at once — a partial list could miss one."
+        showSpinner={false}
+        action={{ label: 'Load the rest of my medications', onClick: startLoadAll }}
+      />
+    )),
+    Match.tag(
+      // The catalog usually resolves long before the medication list; this
+      // covers the rare visit where the list finishes (or goes partial) first.
+      'catalogLoading',
+      (): JSX.Element => (
         <GateCard
           title="Preparing the interaction checker"
           body="Loading the interaction database — a one-time download for this visit."
         />
       )
-    }
-    return (
+    ),
+    Match.tag('ready', ({ catalog }): JSX.Element => (
       <>
         {showPartial &&
           !listComplete &&
           (isFetchNextPageError ? (
-            // The stream driver has halted on a failed page: say so and offer a
-            // retry, rather than claiming it is "still loading" indefinitely.
+            // The stream driver has halted on a failed page: say so and
+            // offer a retry, rather than claiming it is "still loading"
+            // indefinitely.
             <PartialBanner action={{ label: 'Retry', onClick: startLoadAll }}>
               A page of your medication list failed to load. Interactions with the medications that
               haven't loaded yet are missing.
@@ -359,33 +397,35 @@ export const App = (): JSX.Element => {
           ))}
         <InteractionsView
           medications={interactionMedications}
-          catalog={interactionCatalog.data}
+          catalog={catalog}
           prescriberOf={prescriberOf}
         />
       </>
-    )
-  })()
+    )),
+    Match.exhaustive
+  )
 
   // Calendar and Savings render from the pages loaded so far; while the list
   // is incomplete they carry the amber banner with the load-everything action.
   // A failed later-page fetch is surfaced here too (these tabs have no inline
   // error line of their own), with a retry in place of "load them all?".
-  const partialBanner = ((): {
+  const partialBanner: {
     readonly message: string
     readonly action?: { readonly label: string; readonly onClick: () => void }
-  } => {
-    if (isFetchNextPageError)
-      return {
-        message:
-          'A page of your medication list failed to load — this list is missing some of your medications.',
-        action: { label: 'Retry', onClick: startLoadAll },
-      }
-    if (barPhase === 'loading') return { message: 'Loading the rest of your medications…' }
-    return {
+  } = Match.value({ isFetchNextPageError, barPhase }).pipe(
+    Match.when({ isFetchNextPageError: true }, () => ({
+      message:
+        'A page of your medication list failed to load — this list is missing some of your medications.',
+      action: { label: 'Retry', onClick: startLoadAll },
+    })),
+    Match.when({ barPhase: 'loading' as const }, () => ({
+      message: 'Loading the rest of your medications…',
+    })),
+    Match.orElse(() => ({
       message: `This list is loaded from your ${views.length} most recent medication requests,`,
       action: { label: 'load them all?', onClick: startLoadAll },
-    }
-  })()
+    }))
+  )
   const partialListBanner = !listComplete && (
     <PartialBanner action={partialBanner.action}>{partialBanner.message}</PartialBanner>
   )
@@ -394,46 +434,53 @@ export const App = (): JSX.Element => {
   // whichever did; loading covers both the exchange and the first page. A failure
   // while fetching a *later* page keeps the rows already loaded and shows an inline
   // line rather than discarding them.
-  const body = ((): JSX.Element | null => {
-    if (handshake.kind === 'error') return <ErrorLine error={handshake.error} />
-    if (medications.isError && !hasPages) return <ErrorLine error={medications.error} />
-    if (!hasPages) return <p className={styles.status}>Loading medications…</p>
-    if (tab === 'medications') {
-      return (
-        <>
-          <MedicationsView medications={views} />
-          {isFetchingNextPage && <p className={styles.status}>Loading more…</p>}
-          {medications.isFetchNextPageError && <ErrorLine error={medications.error} />}
-          {hasNextPage && <div ref={sentinelRef} aria-hidden="true" />}
-        </>
-      )
-    }
-    if (tab === 'calendar') {
-      return (
-        <>
-          {partialListBanner}
-          <CalendarView medications={views} />
-        </>
-      )
-    }
-    if (tab === 'savings') {
-      return (
-        <>
-          {partialListBanner}
-          {/* The same deduplicated active list the interactions report
-           * checks, so the two pages agree on what "your medications" means. */}
-          <SavingsView
-            medications={interactionMedications}
-            pastMedications={pastMedications}
-            province={province}
-            onProvinceChange={setProvince}
-            catalogs={catalogs}
-          />
-        </>
-      )
-    }
-    return interactionsPanel
+  const bodyState: BodyState = ((): BodyState => {
+    if (handshake.kind === 'error') return { _tag: 'handshakeError', error: handshake.error }
+    if (medications.isError && !hasPages)
+      return { _tag: 'firstPageError', error: medications.error }
+    if (!hasPages) return { _tag: 'loading' }
+    return { _tag: 'tab', tab }
   })()
+  const body = Match.value(bodyState).pipe(
+    Match.tag('handshakeError', ({ error }): JSX.Element => <ErrorLine error={error} />),
+    Match.tag('firstPageError', ({ error }): JSX.Element => <ErrorLine error={error} />),
+    Match.tag('loading', (): JSX.Element => <p className={styles.status}>Loading medications…</p>),
+    Match.tag('tab', ({ tab: current }): JSX.Element | null =>
+      Match.value(current).pipe(
+        Match.when('medications', (): JSX.Element => (
+          <>
+            <MedicationsView medications={views} />
+            {isFetchingNextPage && <p className={styles.status}>Loading more…</p>}
+            {medications.isFetchNextPageError && <ErrorLine error={medications.error} />}
+            {hasNextPage && <div ref={sentinelRef} aria-hidden="true" />}
+          </>
+        )),
+        Match.when('calendar', (): JSX.Element => (
+          <>
+            {partialListBanner}
+            <CalendarView medications={views} />
+          </>
+        )),
+        Match.when('savings', (): JSX.Element => (
+          <>
+            {partialListBanner}
+            {/* The same deduplicated active list the interactions report
+             * checks, so the two pages agree on what "your medications" means. */}
+            <SavingsView
+              medications={interactionMedications}
+              pastMedications={pastMedications}
+              province={province}
+              onProvinceChange={setProvince}
+              catalogs={catalogs}
+            />
+          </>
+        )),
+        Match.when('interactions', (): JSX.Element | null => interactionsPanel),
+        Match.exhaustive
+      )
+    ),
+    Match.exhaustive
+  )
 
   return (
     <main className={styles.app}>

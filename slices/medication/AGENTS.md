@@ -55,13 +55,15 @@ catalog onto it.
   `MedicationRequest → MedicationView` adapter (the core `Medication` for
   matching, plus carebook display fields — DIN, description, prescriber,
   notes, repeat counts) and the `hasRefill` rule shared with the calendar.
-- `medication-calendar-core` — the pure calendar layer: the supply-duration
-  parsing and next-fill/exhaustion date math (extracted from the sponsorship
-  adapter; `supplyDurationToParts`, `nextFillDate`), `deriveCalendarEvents`
-  (pickup on the next-fill date with repeats left; a renewal appointment one
-  week before and a marker on the exhaustion day without; same-day events of one
-  kind merge into a single fluently-titled event), and the Sunday-start 42-cell
-  `monthGrid`. No DOM, no FHIR, no platform imports.
+- `medication-calendar-core` — the pure calendar layer: the next-fill /
+  exhaustion date math (`nextFillDate`, which reads a `SupplyDuration` from
+  `slices/emr/fhir-utility` — a supply duration is a FHIR concept, not a
+  calendar one), `deriveCalendarEvents` (pickup on the next-fill date with
+  repeats left; a renewal appointment one week before and a marker on the
+  exhaustion day without; same-day events of one kind merge into a single
+  fluently-titled event), and the Sunday-start 42-cell `monthGrid`. Pure
+  date/calendar arithmetic on Effect `DateTime`; no DOM, no FHIR wire
+  schemas, no platform imports.
 - `medication-calendar-react` — browser UI: `CalendarView`, a month grid with
   previous/next navigation rendering the derived events into day cells; below
   640px the grid gives way to a day-grouped schedule stack scrollable both

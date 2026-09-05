@@ -1,3 +1,4 @@
+import { Array as EArray, Option } from 'effect'
 import { dedupeMedicationsByName, type Medication } from 'medication-sponsorship-core'
 import type { MedicationView } from 'medication-sponsorship-react'
 
@@ -15,12 +16,12 @@ export const pastEligibleMedications = (
   views: readonly MedicationView[]
 ): readonly Medication[] => {
   const activeNames = new Set(
-    views.flatMap((view) =>
-      view.medication.status === 'active' ? [view.medication.displayName] : []
+    EArray.filterMap(views, (view) =>
+      view.medication.status === 'active' ? Option.some(view.medication.displayName) : Option.none()
     )
   )
-  const completed = views.flatMap((view) =>
-    view.medication.status === 'completed' ? [view.medication] : []
+  const completed = EArray.filterMap(views, (view) =>
+    view.medication.status === 'completed' ? Option.some(view.medication) : Option.none()
   )
   return dedupeMedicationsByName(completed).filter(
     (medication) => !activeNames.has(medication.displayName)

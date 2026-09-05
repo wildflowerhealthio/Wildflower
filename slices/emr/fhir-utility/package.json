@@ -1,8 +1,8 @@
 {
-  "name": "medication-calendar-core",
+  "name": "fhir-utility",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure calendar layer for a patient's medication list: supply-duration parsing, next-fill / exhaustion date math, calendar event derivation, and month-grid math. No DOM, no FHIR, no platform imports.",
+  "description": "Small FHIR-shaped helpers reused across slices — supply-duration parsing today. Not `fhir-r4`: does not import the wire schemas, and speaks in plain field shapes so a caller can hand it either a decoded resource or its own mirror of the same slot.",
   "license": "MIT",
   "type": "module",
   "exports": {
@@ -23,13 +23,11 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-utility": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-utility": "workspace:*"
+    "effect": "catalog:"
   }
 }

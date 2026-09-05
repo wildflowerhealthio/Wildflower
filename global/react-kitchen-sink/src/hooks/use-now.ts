@@ -1,11 +1,10 @@
+import { pad2 } from 'kitchen-sink'
 import { useSyncExternalStore } from 'react'
 
 // A store that never notifies: "now" is sampled on renders the caller already
 // commits for other reasons, without any clock tick driving a re-render of its
 // own. The freshness this yields matches that render cadence.
 const noopSubscribe = (): (() => void) => (): void => {}
-
-const pad2 = (n: number): string => String(n).padStart(2, '0')
 
 /**
  * A **quantized "now"** in epoch milliseconds, floored to the start of each
@@ -28,6 +27,11 @@ const useNowMillis = (quantumMs: number): number => {
   return useSyncExternalStore(noopSubscribe, snapshot, snapshot)
 }
 
+const nowDaySnapshot = (): string => {
+  const now = new Date()
+  return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
+}
+
 /**
  * Today's **local** calendar day as `YYYY-MM-DD`, read through
  * `useSyncExternalStore` so the component's render stays pure. The day string is
@@ -37,12 +41,6 @@ const useNowMillis = (quantumMs: number): number => {
  *
  * @returns The viewer's current local day, `YYYY-MM-DD`.
  */
-const useNowDay = (): string => {
-  const snapshot = (): string => {
-    const now = new Date()
-    return `${now.getFullYear()}-${pad2(now.getMonth() + 1)}-${pad2(now.getDate())}`
-  }
-  return useSyncExternalStore(noopSubscribe, snapshot, snapshot)
-}
+const useNowDay = (): string => useSyncExternalStore(noopSubscribe, nowDaySnapshot, nowDaySnapshot)
 
 export { useNowDay, useNowMillis }
