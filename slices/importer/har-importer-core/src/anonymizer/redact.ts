@@ -49,7 +49,14 @@ const STRUCTURAL_JWT_CLAIMS: ReadonlySet<string> = new Set(['alg', 'typ', 'cty',
 class PseudonymSpaceExhausted extends Data.TaggedError('PseudonymSpaceExhausted')<{
   readonly shape: string
   readonly attempts: number
-}> {}
+}> {
+  // Data.TaggedError leaves `.message` empty by default; a human-readable
+  // description keeps the alert line useful and the fix guidance visible
+  // without opening the details disclosure.
+  override get message(): string {
+    return `no free pseudonym for shape "${this.shape}" after ${this.attempts} attempts — raise the enum threshold or add a per-path verbatim override`
+  }
+}
 
 /** Errors {@link redactExchange} can fail with. */
 type RedactionError = PseudonymSpaceExhausted | WebCryptoUnavailable
