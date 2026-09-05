@@ -52,6 +52,13 @@ describe('useNowMillis', () => {
     )
   })
 
+  it.each([0, -1, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.NaN])(
+    'throws a RangeError on non-positive or non-finite quantumMs (%s)',
+    (bad) => {
+      expect(() => renderHook(() => useNowMillis(bad))).toThrow(RangeError)
+    }
+  )
+
   it('advances to the next window once the boundary is crossed', () => {
     // Arrange
     const quantumMs = 1000

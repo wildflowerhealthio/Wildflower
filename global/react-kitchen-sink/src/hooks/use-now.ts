@@ -19,10 +19,15 @@ const noopSubscribe = (): (() => void) => (): void => {}
  * live-lock on a slow device) and, in dev, the "getSnapshot should be cached"
  * warning. Pick the coarsest `quantumMs` the caller's granularity allows.
  *
- * @param quantumMs - Window size in ms; the result is `floor(now / quantumMs) * quantumMs`.
+ * @param quantumMs - Window size in ms; the result is `floor(now / quantumMs) * quantumMs`. Must be a positive finite integer — a `0`, negative, `Infinity` or `NaN` value would silently produce `NaN` / meaningless snapshots and defeat the caching contract, so misuse throws instead.
  * @returns The current window's start instant, in epoch ms.
  */
 const useNowMillis = (quantumMs: number): number => {
+  if (!Number.isFinite(quantumMs) || quantumMs <= 0) {
+    throw new RangeError(
+      `useNowMillis: quantumMs must be a positive finite number, got ${String(quantumMs)}`
+    )
+  }
   const snapshot = (): number => Math.floor(Date.now() / quantumMs) * quantumMs
   return useSyncExternalStore(noopSubscribe, snapshot, snapshot)
 }

@@ -98,6 +98,26 @@ describe('SavingsView', () => {
     expect(rows?.[1]?.textContent).toContain('Completed')
   })
 
+  it('renders both rows without a duplicate-key clash when active and past share an id', () => {
+    render(
+      <SavingsView
+        medications={[medication('shared-id', 'Jardiance')]}
+        pastMedications={[completed('shared-id', 'Jardiance')]}
+        province="ON"
+        onProvinceChange={() => {}}
+        catalogs={catalogs}
+      />
+    )
+
+    const rows = screen
+      .getByRole('heading', { name: 'innoviCares' })
+      .closest('section')
+      ?.querySelectorAll('li')
+    expect(rows?.length).toBe(2)
+    expect(rows?.[0]?.textContent).not.toContain('Completed')
+    expect(rows?.[1]?.textContent).toContain('Completed')
+  })
+
   it('re-groups when the province changes', () => {
     const onProvinceChange = vi.fn()
     renderSavings({ province: 'ON', onProvinceChange })

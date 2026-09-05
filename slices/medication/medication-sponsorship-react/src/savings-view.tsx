@@ -47,7 +47,11 @@ const eligibilityRow = (
   item: GroupedMedication,
   past: boolean
 ): JSX.Element => (
-  <li key={item.medication.id} className={past ? `${styles.row} ${styles.past}` : styles.row}>
+  // Namespace by past/active so an id shared across both lists doesn't collide as a React key.
+  <li
+    key={`${past ? 'past' : 'active'}:${item.medication.id}`}
+    className={past ? `${styles.row} ${styles.past}` : styles.row}
+  >
     <span className={styles.nameCell}>
       <span className={styles.name}>{item.medication.displayName}</span>
       {past && <span className={styles.pastLabel}>Completed</span>}
