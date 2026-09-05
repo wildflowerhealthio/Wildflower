@@ -2,6 +2,7 @@ import type { JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 
 import { useErrorBodyRenderer, type ErrorBodyRenderer } from './error-body-renderer.ts'
+import { formatErrorDetails } from './error-details.ts'
 import styles from './error-banner.module.css'
 
 /** An `Error`'s message, or a best-effort string for any other thrown value. */
@@ -55,15 +56,24 @@ const ErrorBanner = ({ error, renderError, className }: ErrorBannerProps): JSX.E
   if (surface !== null) return <>{surface}</>
 
   const message = messageOf(error)
+  const details = formatErrorDetails(error)
   return (
     <div className={cn(styles['banner'], className)} role="alert">
       <span aria-hidden="true" className={styles['icon']}>
         ⚠
       </span>
-      <p className={cn(styles['message'], 'text-body-3')}>
-        <span className="sr-only">Error: </span>
-        {message}
-      </p>
+      <div className={styles['body']}>
+        <p className={cn(styles['message'], 'text-body-3')}>
+          <span className="sr-only">Error: </span>
+          {message}
+        </p>
+        {details === null ? null : (
+          <details className={styles['details']}>
+            <summary className={cn(styles['summary'], 'text-label-3')}>Show details</summary>
+            <pre className={cn(styles['pre'], 'text-body-3')}>{details}</pre>
+          </details>
+        )}
+      </div>
     </div>
   )
 }
