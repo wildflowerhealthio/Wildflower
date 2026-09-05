@@ -154,15 +154,77 @@ describe('ImporterApp', () => {
     expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
   })
 
-  it('should render the app shell around the slice screen it mounts', async () => {
+  it('should render the app shell around the slice screen it mounts, on the Import tab by default', async () => {
     // Arrange / Act
     mount({})
 
-    // Assert — the app owns the title and the subtitle the catalogue registers
-    // it under, and nothing else; the picker below it is the slice's.
+    // Assert — the app owns the title, the Import|Anonymize toggle (pressed on
+    // Import by default) and the subtitle for that tab; the picker below it is
+    // the slice's.
     expect(await screen.findByRole('heading', { name: 'Importer', level: 1 })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe('true')
+    expect(screen.getByRole('button', { name: 'Anonymize' }).getAttribute('aria-pressed')).toBe(
+      'false'
+    )
     expect(screen.getByText('Import FHIR records from a captured browsing session.')).toBeDefined()
     expect(screen.getByRole('region', { name: 'HAR source' })).toBeDefined()
+    // Nothing from the anonymize surface mounts on the Import tab.
+    expect(screen.queryByRole('region', { name: 'Anonymize' })).toBeNull()
+  })
+
+  it('should mount the Anonymize surface — and unmount the Import one — when the toggle flips', async () => {
+    // Arrange
+    mount({})
+    await screen.findByRole('heading', { name: 'Importer', level: 1 })
+
+    // Act — flip to Anonymize
+    await userEvent.click(screen.getByRole('button', { name: 'Anonymize' }))
+
+    // Assert — the subtitle updates, the anonymize picker is up, and the
+    // ImporterScreen's `<div class="screen">` is no longer in the tree (the two
+    // screens' surfaces are disjoint — the picker's `HAR source` region carries
+    // over into anonymize; the identifying anchor is the tab-specific subtitle).
+    expect(
+      await screen.findByText(
+        'Replace every value in a capture with a pseudonym so its shape can be shared.'
+      )
+    ).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Anonymize' }).getAttribute('aria-pressed')).toBe(
+      'true'
+    )
+    expect(screen.getByRole('button', { name: 'Import' }).getAttribute('aria-pressed')).toBe(
+      'false'
+    )
+    expect(screen.queryByText('Import FHIR records from a captured browsing session.')).toBeNull()
+
+    // Flip back — the Import subtitle returns, confirming a re-mount fresh at
+    // the picker (the screen owns its own read state).
+    await userEvent.click(screen.getByRole('button', { name: 'Import' }))
+    expect(
+      await screen.findByText('Import FHIR records from a captured browsing session.')
+    ).toBeDefined()
+    expect(
+      screen.queryByText(
+        'Replace every value in a capture with a pseudonym so its shape can be shared.'
+      )
+    ).toBeNull()
+  })
+
+  it('should reach an anonymize download from a picked HAR with zero writes on the wire', async () => {
+    // Arrange
+    mount({})
+    await userEvent.click(await screen.findByRole('button', { name: 'Anonymize' }))
+
+    // Act — pick a recognized HAR through the Anonymize tab's picker
+    await userEvent.upload(await screen.findByLabelText('HAR file'), harFile('portal-session.har'))
+
+    // Assert — the anonymize panel is up and offers the download; the whole
+    // preview + settings + blob download flow is client-side, so NOT ONE write
+    // went out to reach it.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Download anonymized HAR' })).toBeDefined()
+    })
+    expect(writes()).toHaveLength(0)
   })
 })
 

@@ -28,20 +28,39 @@ import styles from './source-picker.module.css'
  * @packageDocumentation
  */
 
+/**
+ * How many HARs a caller consumes at once.
+ *
+ * @remarks
+ * The picker offers the same three sources either way — dropped, chosen through
+ * the OS picker, uploaded to the FHIR server — and clamps a local batch to the
+ * mode. `'batch'` (the default) is the importer flow: several HARs previewed and
+ * confirmed together. `'single'` is the anonymize flow: the preview is per
+ * archive, so a batch that fell out of a multi-file drop is trimmed to the
+ * first-accepted file, and the OS dialog only offers one file to begin with.
+ */
+type SourcePickerMode = 'batch' | 'single'
+
 /** Props for {@link SourcePicker}. */
 interface SourcePickerProps {
   /**
    * Called with the chosen HARs once a source resolves to at least one.
    *
    * @remarks
-   * Local picking is a batch — the OS dialog allows several files and a drop can
-   * carry many — so this takes a list, previewed and confirmed together. A server
-   * archive is picked one at a time and arrives as a single-element list. Fires
-   * only when at least one file was accepted; a re-pick replaces the previous
-   * batch. The picker holds no selection of its own; the caller owns what happens
-   * next.
+   * Local picking is a batch in the default `'batch'` mode — the OS dialog
+   * allows several files and a drop can carry many — so this takes a list,
+   * previewed and confirmed together. A server archive is picked one at a time
+   * and arrives as a single-element list. In `'single'` mode this always fires
+   * with exactly one file. Fires only when at least one file was accepted; a
+   * re-pick replaces the previous batch. The picker holds no selection of its
+   * own; the caller owns what happens next.
    */
   readonly onPick: (picks: readonly PickedHar[]) => void
+  /**
+   * Whether the caller consumes a batch of HARs or a single HAR at a time.
+   * Defaults to `'batch'`. See {@link SourcePickerMode}.
+   */
+  readonly mode?: SourcePickerMode
 }
 
 /** How a `null` upload instant reads in a row. */
@@ -91,7 +110,7 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
  * The picker: a drop-and-pick zone, the file input it opens, a rejection notice,
  * and the server archive list.
  */
-const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
+const SourcePicker = ({ onPick, mode = 'batch' }: SourcePickerProps): JSX.Element => {
   const runAuthed = useRunAuthed()
   const archives = useHarArchivesQuery()
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -101,7 +120,10 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
   // Validate every picked file through the HAR parser concurrently, then split
   // the outcomes with `Array.separate`: accepted picks are handed on as a batch,
   // rejected ones reported. A lone rejected file keeps its full parser detail
-  // (the case worth debugging); a mix reports names.
+  // (the case worth debugging); a mix reports names. In `single` mode the
+  // accepted list is clamped to the first file — a drop that carried several
+  // still reaches the caller as one, since the preview downstream is per
+  // archive.
   const acceptFiles = (files: readonly ReadableFile[]): Promise<void> =>
     Effect.runPromise(
       Effect.forEach(
@@ -116,7 +138,9 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
         Effect.map((results) => {
           const [rejected, accepted] = Arr.separate(results)
           setError(pickerError(rejected, accepted.length))
-          if (accepted.length > 0) onPick(accepted)
+          if (accepted.length === 0) return
+          const chosen = mode === 'single' ? accepted.slice(0, 1) : accepted
+          onPick(chosen)
         })
       )
     )
@@ -208,14 +232,16 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
         onDragOver={onDragOver}
         onDragLeave={() => setDragActive(false)}
       >
-        Choose HAR files, or drop them here
+        {mode === 'single'
+          ? 'Choose a HAR file, or drop it here'
+          : 'Choose HAR files, or drop them here'}
       </button>
       <input
         ref={fileInputRef}
         type="file"
         accept=".har,application/json"
         aria-label="HAR file"
-        multiple
+        multiple={mode === 'batch'}
         className={styles.fileInput}
         onChange={onFileInputChange}
       />
@@ -244,4 +270,11 @@ const SourcePicker = ({ onPick }: SourcePickerProps): JSX.Element => {
   )
 }
 
-export { SERVER_READ_ERROR, SourcePicker, type SourcePickerProps, UNDATED_LABEL, UNTITLED_LABEL }
+export {
+  SERVER_READ_ERROR,
+  SourcePicker,
+  type SourcePickerMode,
+  type SourcePickerProps,
+  UNDATED_LABEL,
+  UNTITLED_LABEL,
+}

@@ -36,10 +36,13 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `redactLog` and the emitter; presentation and interaction only.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
-  the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry.
+  `AnonymizerScreen`, the read-only pick-parse-download flow mounted alongside
+  it (`har-anonymizer-react`'s `AnonymizePanel` over a parsed `HttpArchive.Log`),
+  plus the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry.
 
 A host that provides the FHIR write client and the authed runner sits above
-`importer-react` and mounts `ImporterScreen`.
+`importer-react` and mounts `ImporterScreen` and/or `AnonymizerScreen` — the
+Importer web app pairs both under one Import | Anonymize tabstrip.
 
 ## Why this slice is layered this way
 

@@ -4,8 +4,10 @@ The Importer, shipped as a **cloud** SMART-on-FHIR app served from the published
 GitHub Pages site (`/importer-app`), with a debug-only self-hosted dev row for
 local development. It wraps
 [`importer-react`](../../slices/importer/importer-react/AGENTS.md)'s
-`ImporterScreen` — the app itself holds no importing logic, only the wiring a
-SMART app needs.
+`ImporterScreen` and `AnonymizerScreen` under an **Import | Anonymize** header
+toggle (`react-tundraish`'s `SegmentedToggle`) — the app itself holds no
+importing or anonymizing logic, only the tabstrip and the wiring a SMART app
+needs. The unselected screen is unmounted, not hidden.
 
 `apps/web-trace` is the template for this shape (two HTML entries, a relative
 `base`, a build straight into the vendored `self-hosted-apps` tree, a memory
@@ -130,12 +132,24 @@ update-as-create — no `POST` create `.c`, no `DELETE` `.d`).
   under this app's compiler options (e.g. `erasableSyntaxOnly` rejects syntax in
   `kitchen-sink`), which fails on code this app does not own. Typechecking comes
   from `vp check`, which is CI's gate and resolves the same way the bundler does.
-- **The app owns no importing surface.** `ImporterScreen` takes no props and
-  owns every level — source pick, preview, confirm, results. This app renders a
-  heading and mounts it. Splitting a flow across that boundary is the mistake
-  `apps/web-trace` made with its exchange detail and had to undo: both surfaces
-  opened at once and the accessibility tree hid it. Re-creating any of the four
-  levels here re-creates that.
+- **The app owns no importing or anonymizing surface.** `ImporterScreen` and
+  `AnonymizerScreen` both take no props and each owns every level below it
+  (source pick → preview → confirm/download → results). This app renders a
+  heading, the Import | Anonymize tabstrip, and the one screen the picked tab
+  mounts. Splitting a flow across that boundary is the mistake `apps/web-trace`
+  made with its exchange detail and had to undo: both surfaces opened at once
+  and the accessibility tree hid it. Re-creating any of the four levels here
+  re-creates that.
+- **The tabstrip state lives inside `ImporterHome`, not `ImporterApp`.** The
+  router memo above is keyed on the context; lifting `tab` into `ImporterApp`
+  would rebuild the router (and its mounted tree) on every tab switch. Keep the
+  `useState<Tab>` a per-render local of `ImporterHome`.
+- **The unselected tab is unmounted.** The two screens hold their own state
+  (`AnonymizerScreen`'s pick, `ImporterScreen`'s read/confirm), and toggling
+  the header is a fresh mount, not a `display: none` swap — the accessibility
+  tree only carries the surface the user is on, and a flip-back opens fresh at
+  the picker. Do not lift screen state into the app to preserve it across
+  toggles.
 - **The app test must run through the real `buildSmartRouterContext`.** The
   slice's `importer-screen.test.tsx` mocks the `useRunAuthed` seam, so nothing
   down there ever puts a prefixed URL or an `Authorization` header on the wire.
@@ -233,7 +247,10 @@ workspace `source` condition at bundle time.
   don't reach into `har-importer-core`'s fixture) from pick to review to confirm,
   and asserts what only this layer can see: every read **and every write** is
   addressed to the FHIR base and carries `Bearer …`, and the resource types
-  written are exactly the ones `config.ts`'s scope string covers.
+  written are exactly the ones `config.ts`'s scope string covers. Also pins the
+  tabstrip: the Import tab is the default, flipping to Anonymize unmounts the
+  Import surface (and the subtitle switches), and the Anonymize tab reaches a
+  download from a picked HAR with **zero writes** on the wire.
 
 ## References
 
