@@ -107,4 +107,24 @@ describe('ErrorBanner', () => {
     renderBanner('plain string failure')
     expect(screen.queryByText('Show details')).toBeNull()
   })
+
+  it("serialises a tagged error's own fields into the disclosure", () => {
+    // A `Data.TaggedError`-shape: the interesting data lives on the instance,
+    // `.message` is Effect's generic "An error has occurred".
+    class TaggedLike extends Error {
+      override name = 'PseudonymSpaceExhausted'
+      readonly shape: string
+      readonly attempts: number
+      constructor(fields: { readonly shape: string; readonly attempts: number }) {
+        super('An error has occurred')
+        this.shape = fields.shape
+        this.attempts = fields.attempts
+      }
+    }
+    renderBanner(new TaggedLike({ shape: 'digit(1)', attempts: 100 }))
+    const details = screen.getByText('Show details').closest('details')
+    if (details === null) throw new Error('expected a <details> element')
+    expect(details.textContent).toContain('"shape": "digit(1)"')
+    expect(details.textContent).toContain('"attempts": 100')
+  })
 })
