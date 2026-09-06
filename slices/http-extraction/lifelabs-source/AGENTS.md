@@ -45,11 +45,16 @@ resources directly from non-FHIR portal JSON — there is no FHIR dialect layer.
 - `interpretation` = `abnormalFlag` when present.
 - logical id = sanitized `testItemId` (base64 → FHIR-safe token: `+`→`-`,
   `/`→`.`, padding stripped) suffixed with the collection millis, so repeat
-  draws of the same analyte across dates don't collide. Analytics with no
+  draws of the same analyte across dates don't collide. When a capture omits
+  `testItemId` the fallback key is `testCode` **plus the analyte name** —
+  `testCode` is a _panel_ code (WBC and Hemoglobin share one CBC code and one
+  collection instant), so it alone does not identify a row. Analytics with no
   `testItemId` / `testCode` to key are dropped-and-counted.
 
 Only the **selected** patient is synthesized (id = `entity.selectedPatient`,
-name from the primary `patients[]` row, the id as `identifier[0]`). The other
+name from the `patients[]` row whose `value` **is** that id — not from the
+primary row, which on a shared account names the account holder rather than the
+dependent whose results these are — and the id as `identifier[0]`). The other
 `patients[]` rows name people whose results this response does not carry, and
 nothing links to them, so they are not emitted.
 

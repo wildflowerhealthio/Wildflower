@@ -170,7 +170,68 @@ describe('AnalyticSummaryResponseKind', () => {
           ],
         },
       })
-      expect(ofType(result, 'Observation').map((o) => o.id)).toEqual(['TRX'])
+      // The keyed row falls back to `testCode` + the analyte name (see the
+      // panel-code collision below).
+      expect(ofType(result, 'Observation').map((o) => o.id)).toEqual(['TRX-Keyed'])
+    })
+
+    it('keys two analytes of one panel apart when the capture omits testItemId', () => {
+      // Arrange — WBC and Hemoglobin share a CBC `testCode` *and* a collection
+      // instant; only the analyte name separates them. Colliding ids would let
+      // the persist PUT overwrite one result with the other.
+      const analytic = (
+        testItemName: string,
+        testResultValue: string
+      ): Record<string, unknown> => ({
+        testCode: 'TR10477-8W',
+        testName: 'Complete Blood Count',
+        testItemName,
+        testResultValue,
+        collectionDate: '/Date(1779297900000-0400)/',
+      })
+
+      // Act
+      const ids = ofType(
+        parse({
+          entity: {
+            selectedPatient: 1,
+            analytics: [analytic('WBC', '7.5'), analytic('Hemoglobin', '175')],
+          },
+        }),
+        'Observation'
+      ).map((o) => o.id)
+
+      // Assert
+      expect(new Set(ids).size).toBe(2)
+      expect(ids).toEqual(['TR10477-8W-WBC-1779297900000', 'TR10477-8W-Hemoglobin-1779297900000'])
+    })
+
+    it('keeps the collection instant in the id when the item token is over-long', () => {
+      // Arrange — a 70-char `testItemId` leaves no room for the suffix inside
+      // FHIR's 64-char id, and dropping the suffix would re-collide the same
+      // analyte across dates.
+      const analytic = (collectionDate: string): Record<string, unknown> => ({
+        testItemId: 'A'.repeat(70),
+        testItemName: 'X',
+        testResultValue: '1',
+        collectionDate,
+      })
+
+      // Act
+      const ids = ofType(
+        parse({
+          entity: {
+            selectedPatient: 1,
+            analytics: [analytic('/Date(1000)/'), analytic('/Date(2000)/')],
+          },
+        }),
+        'Observation'
+      ).map((o) => o.id)
+
+      // Assert
+      expect(new Set(ids).size).toBe(2)
+      for (const id of ids) expect(id).toMatch(/^A+-\d+$/)
+      for (const id of ids) expect(id?.length).toBeLessThanOrEqual(64)
     })
 
     it('omits the subject when no patient is selected, and emits no Patient', () => {
@@ -183,6 +244,88 @@ describe('AnalyticSummaryResponseKind', () => {
 
     it('returns an empty array for a summary with no analytics and no patient', () => {
       expect(parse({ entity: { analytics: [], patients: [] } })).toEqual([])
+    })
+
+    it('reads null collections as empty ones (the .NET empty-list encoding)', () => {
+      expect(parse({ entity: { selectedPatient: null, analytics: null, patients: null } })).toEqual(
+        []
+      )
+    })
+
+    it('emits no Patient for a blank selected patient id', () => {
+      const result = parse({
+        entity: {
+          selectedPatient: '',
+          patients: [{ text: 'Test Patient', value: '', isPrimary: true }],
+          analytics: [{ testCode: 'TRX', testItemName: 'Keyed', testResultValue: '2' }],
+        },
+      })
+      expect(ofType(result, 'Patient')).toEqual([])
+      expect(ofType(result, 'Observation')[0]?.subject).toBeNull()
+    })
+
+    it('names the selected patient from their own row, not the primary one', () => {
+      // Arrange — a shared account: the account holder is primary, the
+      // selected patient is the dependent whose results these are.
+      const payload = {
+        entity: {
+          selectedPatient: 2,
+          patients: [
+            { text: 'Account Holder', value: 1, isPrimary: true },
+            { text: 'Dependent', value: 2, isPrimary: false, isSharedPatient: true },
+          ],
+          analytics: [{ testCode: 'TRX', testItemName: 'X', testResultValue: '1' }],
+        },
+      }
+
+      // Act
+      const [patient] = ofType(parse(payload), 'Patient')
+
+      // Assert
+      expect(patient?.id).toBe('2')
+      expect(patient?.name[0]?.text).toBe('Dependent')
+    })
+
+    it('leaves the selected patient unnamed when no row carries their id', () => {
+      const [patient] = ofType(
+        parse({
+          entity: {
+            selectedPatient: 2,
+            patients: [{ text: 'Account Holder', value: 1, isPrimary: true }],
+            analytics: [],
+          },
+        }),
+        'Patient'
+      )
+      expect(patient?.id).toBe('2')
+      expect(patient?.name).toEqual([])
+    })
+
+    it('drops an out-of-range .NET date instead of dying on it', () => {
+      // `new Date(ms).toISOString()` throws past the representable range, and a
+      // throw inside `parse` is a defect that escapes the extraction's fold.
+      const result = runParse(
+        makeResponse(
+          JSON.stringify({
+            entity: {
+              selectedPatient: 1,
+              analytics: [
+                {
+                  testCode: 'TRX',
+                  testItemName: 'X',
+                  testResultValue: '1',
+                  collectionDate: '/Date(99999999999999999)/',
+                },
+              ],
+            },
+          })
+        )
+      )
+      expect(result._tag).toBe('Right')
+      if (result._tag !== 'Right') return
+      const [observation] = ofType(result.right, 'Observation')
+      expect(observation?.effectiveDateTime).toBeNull()
+      expect(observation?.id).toBe('TRX-X')
     })
 
     it('fails with a ParseError for a payload with no entity', () => {
