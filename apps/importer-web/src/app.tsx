@@ -9,10 +9,10 @@ import {
 } from '@tanstack/react-router'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
-import { ImporterScreen } from 'importer-react'
-import { useMemo, type JSX } from 'react'
+import { AnonymizerScreen, ImporterScreen } from 'importer-react'
+import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { PageLoading } from 'react-tundraish'
+import { PageLoading, SegmentedToggle } from 'react-tundraish'
 
 import styles from './app.module.css'
 
@@ -22,29 +22,58 @@ import styles from './app.module.css'
  */
 type RouterContext = FhirR4ResourcesRouterContext.RouterContext
 
+/** Which of the two screens the header toggle is showing. */
+type Tab = 'import' | 'anonymize'
+
+const tabOptions: readonly { value: Tab; label: string }[] = [
+  { value: 'import', label: 'Import' },
+  { value: 'anonymize', label: 'Anonymize' },
+]
+
+/** The subtitle each tab reads under the header. */
+const subtitleFor = (tab: Tab): string =>
+  tab === 'import'
+    ? 'Import FHIR records from a captured browsing session.'
+    : 'Replace every value in a capture with a pseudonym so its shape can be shared.'
+
 /**
- * The importer surface: the app's title and the slice's whole flow.
+ * The importer surface: the app's title, the Import | Anonymize tabstrip, and
+ * the one slice screen the picked tab mounts.
  *
  * @remarks
- * **This app renders no importing surface of its own.** `ImporterScreen` owns
- * every level — source pick, preview, confirm, results — and takes no props,
- * reading its authed runner out of route context. The app supplies a heading
- * and the wiring underneath it, nothing else; see the traps in
+ * **This app renders no importing or anonymizing surface of its own.** Each tab
+ * mounts one slice screen (`ImporterScreen` / `AnonymizerScreen`) that owns
+ * every level below it — source pick, preview, confirm/download, results — and
+ * takes no props, reading its authed runner out of route context. The app owns
+ * the tabstrip and the header copy, nothing else; see the traps in
  * [AGENTS.md](../AGENTS.md) for why splitting a flow across the app boundary is
  * the mistake this shape exists to avoid.
+ *
+ * The unselected screen is **unmounted**, not hidden — the same lesson
+ * `apps/web-trace` records about split surfaces (an accessibility tree only
+ * carries the surface the user is on, and the screen holds its own state so a
+ * flip-back opens fresh at the picker).
  */
-const ImporterHome = (): JSX.Element => (
-  <>
-    <header className={styles['header']}>
-      <h1 className="text-heading-3">Importer</h1>
-      <p className={cn(styles['subtitle'], 'text-body-3')}>
-        Import FHIR records from a captured browsing session.
-      </p>
-    </header>
+const ImporterHome = (): JSX.Element => {
+  // Tab state lives inside `ImporterHome` — a per-render local — so the router
+  // memo above stays keyed only on `context`. Lifting it into `ImporterApp`
+  // would rebuild the router on every tab switch, taking the mounted tree with
+  // it.
+  const [tab, setTab] = useState<Tab>('import')
+  return (
+    <>
+      <header className={styles['header']}>
+        <h1 className="text-heading-3">Importer</h1>
+        <div className={styles['controls']}>
+          <SegmentedToggle value={tab} options={tabOptions} onChange={setTab} aria-label="View" />
+        </div>
+        <p className={cn(styles['subtitle'], 'text-body-3')}>{subtitleFor(tab)}</p>
+      </header>
 
-    <ImporterScreen />
-  </>
-)
+      {tab === 'import' ? <ImporterScreen /> : <AnonymizerScreen />}
+    </>
+  )
+}
 
 /** Props for {@link ImporterApp}. */
 interface ImporterAppProps {

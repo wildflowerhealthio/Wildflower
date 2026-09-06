@@ -24,7 +24,13 @@ import { Data, Effect, Schema } from 'effect'
  */
 class WebCryptoUnavailable extends Data.TaggedError('WebCryptoUnavailable')<{
   readonly reason: string
-}> {}
+}> {
+  // Data.TaggedError leaves `.message` empty by default; surface the reason
+  // so the alert line reads without opening the details disclosure.
+  override get message(): string {
+    return this.reason
+  }
+}
 
 /** The imported HMAC-SHA-256 key an export's salt resolves to. */
 type ExportKey = CryptoKey

@@ -2,6 +2,9 @@ import { Effect, Schema } from 'effect'
 import { JsonValue } from 'kitchen-sink/schema'
 
 import type { TraceExchange } from 'web-trace-core'
+import { contentTypeOf } from 'web-trace-core/capture'
+
+import type { HttpArchive } from '../har/index.ts'
 import { detectShape } from './shapes.ts'
 
 /**
@@ -356,6 +359,94 @@ const mapExchangeLeaves = <E>(
     }
   })
 
+const utf8Decoder = new TextDecoder('utf-8', { fatal: false })
+
+/**
+ * `undefined` for bytes that are not UTF-8-decodable parseable JSON — `null` is
+ * itself a valid JSON body, so it cannot double as the failure signal.
+ */
+const tryParseJsonBytes = (bytes: Uint8Array): JsonValue | undefined => {
+  try {
+    return decodeJsonValue(JSON.parse(utf8Decoder.decode(bytes)))
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Whether the entry's body is stored JSON the redactor can walk.
+ *
+ * @param entry - The archive entry to classify
+ * @returns `true` for a present body whose declared content type is JSON
+ *
+ * @remarks
+ * A DevTools/extension export can carry an HTML page or a binary asset next to
+ * the FHIR responses — the redactor cannot pseudonymize a format it cannot
+ * parse, and shipping one unredacted at the export boundary is not an option.
+ * The count of dropped bodies is what surfaces the difference between what the
+ * archive holds and what the export ships.
+ */
+const isJsonEntry = (entry: HttpArchive.Entry): boolean =>
+  !entry.bodyAbsent && isJsonContentType(contentTypeOf(entry.headers))
+
+/**
+ * Rewrites every leaf of one archive entry through `visit`, leaving structure
+ * untouched.
+ *
+ * @param entry - The archive entry to traverse
+ * @param visit - Callbacks invoked once per leaf, in a stable order
+ * @returns The entry with every visitor result substituted in
+ *
+ * @remarks
+ * A JSON body is decoded from UTF-8, walked, re-encoded, and re-serialized to
+ * UTF-8 bytes; the entry's `body` becomes the rewritten bytes. A non-JSON body
+ * or one that fails to parse becomes an absent body (`bodyAbsent: true`, zero
+ * bytes): the redactor cannot pseudonymize a format it cannot parse, and the
+ * archive is deliberately explicit about that boundary — the manifest above
+ * says how many were dropped, and the archive `log.comment` says why.
+ *
+ * `HttpArchive.Entry` carries no request side (the projection dropped it at
+ * import), no body hash and no timings, so nothing here has to walk them.
+ */
+const mapEntryLeaves = <E>(
+  entry: HttpArchive.Entry,
+  visit: LeafVisitor<E>
+): Effect.Effect<HttpArchive.Entry, E> =>
+  Effect.gen(function* () {
+    const url = yield* mapUrl(entry.url, visit)
+    const headers = yield* mapHeaders(entry.headers, visit)
+
+    if (!isJsonEntry(entry)) {
+      return {
+        ...entry,
+        url,
+        headers,
+        body: new Uint8Array(0),
+        bodyAbsent: true,
+      }
+    }
+
+    const parsed = tryParseJsonBytes(entry.body)
+    if (parsed === undefined) {
+      return {
+        ...entry,
+        url,
+        headers,
+        body: new Uint8Array(0),
+        bodyAbsent: true,
+      }
+    }
+
+    const redacted = JSON.stringify(yield* mapJson(parsed, '$', visit))
+    return {
+      ...entry,
+      url,
+      headers,
+      body: utf8.encode(redacted),
+      bodyAbsent: false,
+    }
+  })
+
 export {
   BODY_HASH_PATH,
   bodyPath,
@@ -363,9 +454,11 @@ export {
   cookiePath,
   headerPath,
   isJsonContentType,
+  isJsonEntry,
   type JsonLeaf,
   type LeafVisitor,
   looksLikeIdentifier,
+  mapEntryLeaves,
   mapExchangeLeaves,
   pathTemplate,
   queryPath,

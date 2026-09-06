@@ -1,8 +1,10 @@
 # AGENTS.md — slices/web-trace/web-trace-react
 
 The browser UI adapter of the web-trace slice: the on-device viewer for recorded
-browsing sessions and the device's documents, plus the export flow, mounted by
-the host app.
+browsing sessions and the device's documents, mounted by the host app. This
+package is scheduled for retirement in R2 of #578 — the anonymize flow already
+moved to [`har-anonymizer-react`](../../importer/har-anonymizer-react/AGENTS.md)
+in A1 of the same epic.
 
 ## Layering
 
@@ -11,12 +13,11 @@ the host app.
 reverse. It also depends on `fhir-r4` (the typed client) and `fhir-r4-react`
 (the authed runner and the slice runtime layer).
 
-**Presentation and interaction only.** The codec, the pseudonymizer, and the HAR
-emitter are `web-trace-core`'s; this package imports them and reimplements none
-of them. The export flow is the sharpest case: it **drives** `redactSession` and
-`emitHar` and adds no redaction of its own. See the
-[slice AGENTS.md](../AGENTS.md) for why the core sits below both this package and
-a collector.
+**Presentation and interaction only.** The codec belongs to `web-trace-core`
+and the HAR emitter and anonymizer to `har-importer-core`; this package
+imports them and reimplements none of them. The viewer shows raw captured
+values because it runs on the user's own device against the user's own data;
+redaction belongs to the export boundary, which lives one slice over.
 
 ## Module layout
 
@@ -41,12 +42,10 @@ a collector.
   `documents-list.tsx` the list, `document-detail.tsx` one document in full, and
   `documents-panel.tsx` composes them; `use-documents.ts` is the hook over the
   paged read.
-- **`src/export/`** — the export flow. `redaction-preview.ts` builds the
-  per-path before → after **from the pseudonymizer's own output**,
-  `download-har.ts` turns an archive into a same-origin blob, `use-export.ts`
-  holds one export's salt and settings, and `export-panel.tsx` is the surface.
 - **`src/recordings/`** — `recordings-panel.tsx` composes the above into the
-  mountable recordings tab, including the export flow as its fourth level.
+  mountable recordings tab. The export flow that used to live in `src/export/`
+  moved to `har-anonymizer-react` in A1 of #578 (the anonymizer speaks HAR
+  now), so this panel no longer opens one.
 
 ## Traps
 
@@ -189,85 +188,13 @@ a collector.
 
 ### Export flow
 
-- **The preview is the pseudonymizer's output, not a second implementation.**
-  `buildExportPreview` runs `redactSession` and samples the `after` values from
-  what it produced, and the panel emits **those same exchanges**. The ticket's
-  acceptance test exists to prove the UI routes _through_ the pseudonymizer
-  rather than around it, so a preview that computed its own before/after would
-  defeat the test it is meant to satisfy — and could show a reviewer something
-  the download does not do.
-- **The salt is minted once per export and threaded.** Changing the threshold or
-  an override re-runs redaction under the _same_ salt. Minting per rebuild would
-  re-pseudonymize everything on each keystroke, and would break the property the
-  design rests on: pseudonyms stable _within_ an export so identifier joins
-  survive, independent _across_ exports so two archives cannot be linked.
-- **A failed rebuild clears the preview.** Leaving the previous one downloadable
-  would hand over an archive built under settings the reviewer has since changed.
-- **The subset reuses `filterExchanges`, it does not rebuild it.** "A session or
-  a filtered subset" is the exchange list's own `ExchangeFilters` over the open
-  session, which is why the export hangs off `RecordingsPanel` rather than
-  living in a tab of its own. The panel memoises the filtered array, because the
-  export hook rebuilds its preview whenever that identity changes.
-- **Both carve-outs are off when the panel opens.** The safest archive is the
-  one produced by clicking Download without reading anything, so exporting
-  original values is opted _into_ against a preview that lists exactly what it
-  exposes, not opted out of afterwards. That applies to schema URLs as much as
-  to short codes, even though a namespace URI is the safer of the two to
-  expose. The core's own default (both on, N=12) is the default for the
-  _threshold_ once codes are switched on — see `DEFAULT_EXPORT_SETTINGS`, which
-  deliberately disagrees with the core on the two booleans: the core answers
-  "what should redaction do when nobody said", the panel answers "what should
-  leave the device when nobody looked".
-- **There are two switches, so `getByRole('switch')` is ambiguous.** Query by
-  accessible name (`codesSwitch` / `schemaUrlsSwitch` in
-  `export-panel.test.tsx`). Both settings are also part of the rebuild effect's
-  dependency list and of `describeSettings`, so the archive's own `log.comment`
-  states each one — an archive that did not say which rules were on could not
-  be read back years later.
-- **A schema-URL row names its rule, not its count.** `Auto — visible (schema
-URL)` / `Auto — hidden (schema URLs off)`. Those paths are exempt from the
-  threshold, so reporting `visible (18 values)` would send the reviewer to a
-  control that had no say in the decision.
-- **The preview is split by outcome, not listed as one table.** The rows that
-  need scrutiny are the ones leaving **as captured**; they are a handful next to
-  the pseudonymized majority, which sits behind a disclosure so it cannot bury
-  them. A single sorted table put the rows that matter wherever the path names
-  happened to fall.
-- **The `Auto` option says what it resolves to, and why.** `Auto — visible
-(3 values)` / `Auto — hidden (not a code)` / `Auto — hidden (codes off)`. A
-  bare `Auto` makes the reviewer infer the outcome from another column, and the
-  two hidden cases have different fixes — one is answered by raising the
-  threshold, the other never is.
-- **The preview table is fixed-layout with explicit column widths.** A path key
-  is several times longer than the values beside it, so an auto-laid-out table
-  hands the path most of the width and squeezes the captured/exported columns —
-  the ones actually being read — down to a few characters.
-- **The export is JSON-only, and says how much it drops.** A non-JSON body
-  becomes a `SkippedBody` at the redaction boundary — the redactor cannot
-  pseudonymize a format it cannot parse, and shipping one unredacted is not an
-  option. The viewer shows every content type; the export does not, and
-  `droppedBodyCount` surfaces the difference. An export that quietly dropped a
-  body would misrepresent what the session did.
-- **The archive is encoded before it is stringified.** `emitHar` builds the
-  _decoded_ form of `web-trace-core`'s `Har` schema — instants are `DateTime`s,
-  bodies are a tagged union — so `harBlob` runs `Schema.encodeSync(Har)` first.
-  A plain `JSON.stringify` of what `emitHar` returns writes a file no HAR reader
-  accepts, and the export panel's own assertions would still pass.
-- **The download is a blob from the app's own origin, and there is nowhere to
-  add an upload.** No network egress at any point is the premise of the app —
-  registered `local_only = 1`, which is also why the host uses a plain
-  `FetchHttpClient.layer`.
-- **A preview row can honestly show `before === after` for a path it calls
-  pseudonymized.** `null`, `true`/`false`, and `''` are structure rather than
-  data, so `redactExchange` passes them through whatever the policy decided.
-  The row's decision is about the **path**; its before/after is a **sample**,
-  and a sampled structural value survives. Do not "fix" this by rewriting the
-  decision per value — the row would then disagree with the policy the archive
-  was actually built from.
-- **A session id is not assumed to be path-safe.** It comes from the capture, so
-  `harFileName` sanitizes it; an id that sanitizes to nothing falls back to
-  `session`, since a file named `.har` is hidden on Unix and reads as a failed
-  download.
+Moved to [`har-anonymizer-react`](../../importer/har-anonymizer-react/AGENTS.md)
+in A1 of #578. The panel now takes a parsed `HttpArchive.Log` (not a session
+of trace documents) and drives `har-importer-core`'s HAR-native anonymizer
+directly. The traps that used to live here — preview as the pseudonymizer's
+own output, salt minted once and threaded, both carve-outs off on open,
+JSON-only and says how much it drops, encode before stringify — carry over
+to that package's AGENTS.md verbatim.
 
 ## Testing
 
@@ -302,24 +229,11 @@ and [React Testing Reference](../../../docs/Testing/React%20Testing%20Reference.
   two adapters" an observed fact rather than a claim about the shape of the
   code: it walks down to a document's content and finds the shared viewer's own
   output, including the by-reference case a `TraceBody` cannot express.
-- **`export/export-panel.test.tsx` decodes the archive's bodies before
-  asserting on them.** HAR carries a body as base64 in `content.text`, so
-  searching the raw file for a captured value finds nothing _whether or not it
-  was redacted_ — a "no original value survives" assertion over the undecoded
-  bytes is exactly the test that cannot fail.
-- **That test defines `URL.createObjectURL` onto the real `URL`, never over
-  it.** jsdom does not implement it, but replacing the global with a plain
-  object breaks `new URL(...)` — which the pseudonymizer uses on every captured
-  URL — so the subject fails instead of the seam being filled.
-- The enum carve-out is **shape-gated before it is counted**, so a corpus for
-  testing the split needs letter-only codes on one path and something
-  disqualifying on the other. Digit-bearing values are rejected on shape and
-  never reach the threshold, so a test using them passes without exercising the
-  count at all.
-- `export/export-panel.test.tsx` carries the single-patient case directly:
-  email, birth date, and postal code in one exchange, each at one distinct
-  value. That is the corpus a count-only carve-out exported verbatim, and it is
-  asserted against the **downloaded archive**, not the preview.
+- The export-flow tests moved to `har-anonymizer-react` in A1 of #578, along
+  with the flow itself. The traps they encode — decoding the archive's bodies
+  before asserting, defining `URL.createObjectURL` **onto** the real `URL`,
+  the single-patient corpus asserted against the **downloaded archive** — all
+  live in that package's tests now.
 
 ## References
 

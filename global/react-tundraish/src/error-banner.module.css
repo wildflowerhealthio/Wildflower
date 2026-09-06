@@ -24,10 +24,44 @@
   color: var(--color-red-5);
 }
 
+.body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
 .message {
   margin: 0;
   color: var(--color-red-3);
   /* A long unbroken token (an id, a URL) wraps rather than forcing the banner
    * to scroll or overflow its row. */
   overflow-wrap: anywhere;
+}
+
+.details {
+  color: var(--color-red-3);
+}
+
+.summary {
+  cursor: pointer;
+  /* A native `<summary>` renders inline-flow with the disclosure marker; a
+   * block gets the marker in the gutter with the label aligned to it. */
+  display: list-item;
+}
+
+.pre {
+  margin: var(--space-3) 0 0;
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-neutral-9);
+  border: 1px solid var(--color-neutral-8);
+  border-radius: var(--radius-2);
+  color: var(--color-neutral-2);
+  /* A stack line can be arbitrarily long; wrap it in place rather than
+   * making the banner (and the surrounding page) grow a horizontal
+   * scrollbar. */
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

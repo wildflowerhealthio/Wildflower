@@ -17,7 +17,24 @@
 }
 
 .header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
   margin-bottom: var(--space-9);
+}
+
+/*
+ * Header controls: the Import | Anonymize toggle. Kept a row so future controls
+ * (a settings menu, a help link) sit beside it. Follows the medications-app
+ * pattern.
+ */
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-5);
+  margin-left: auto;
 }
 
 /*
@@ -44,6 +61,7 @@
 }
 
 .subtitle {
+  flex-basis: 100%;
   margin-top: var(--space-3);
   color: var(--color-neutral-5);
 }

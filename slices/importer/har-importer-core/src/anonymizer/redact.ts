@@ -1,8 +1,9 @@
 import { Data, Effect, Schema } from 'effect'
 
 import type { TraceExchange } from 'web-trace-core'
+import type { HttpArchive } from '../har/index.ts'
 import { hmac, importExportKey, type ExportKey, type WebCryptoUnavailable } from './hmac.ts'
-import { type JsonLeaf, type LeafVisitor, mapExchangeLeaves } from './leaves.ts'
+import { type JsonLeaf, type LeafVisitor, mapEntryLeaves, mapExchangeLeaves } from './leaves.ts'
 import { detectShape, fakeBase64Url, generateFake, prngFromBytes } from './shapes.ts'
 
 /**
@@ -48,7 +49,14 @@ const STRUCTURAL_JWT_CLAIMS: ReadonlySet<string> = new Set(['alg', 'typ', 'cty',
 class PseudonymSpaceExhausted extends Data.TaggedError('PseudonymSpaceExhausted')<{
   readonly shape: string
   readonly attempts: number
-}> {}
+}> {
+  // Data.TaggedError leaves `.message` empty by default; a human-readable
+  // description keeps the alert line useful and the fix guidance visible
+  // without opening the details disclosure.
+  override get message(): string {
+    return `no free pseudonym for shape "${this.shape}" after ${this.attempts} attempts — raise the enum threshold or add a per-path verbatim override`
+  }
+}
 
 /** Errors {@link redactExchange} can fail with. */
 type RedactionError = PseudonymSpaceExhausted | WebCryptoUnavailable
@@ -470,6 +478,18 @@ const pseudonymizeString = (
     if (remembered !== undefined) return remembered
 
     const shape = detectShape(original)
+    // A `freeText` value with no digits or letters — `"*/*"`, `"---"`, `":::"` —
+    // is format, not data. `mapCharClasses` only rewrites `[A-Za-z0-9]`, so
+    // every candidate the derivation loop produces is byte-identical to the
+    // original and gets rejected by the `candidate !== original` check;
+    // recording the passthrough here avoids a false `PseudonymSpaceExhausted`
+    // over a value that carries nothing to redact. Every other shape's regex
+    // requires at least one alnum, so this branch is unreachable for them.
+    if (shape === 'freeText' && !/[A-Za-z0-9]/.test(original)) {
+      policy.assignments.set(original, original)
+      return original
+    }
+
     for (let attempt = 0; attempt < MAX_DERIVATION_ATTEMPTS; attempt += 1) {
       const bytes = yield* hmac(policy.key, `${attempt} ${original}`)
       const candidate =
@@ -647,7 +667,139 @@ const redactSession = (
 ): Effect.Effect<readonly TraceExchange[], RedactionError> =>
   Effect.forEach(exchanges, (exchange) => redactExchange(policy, exchange))
 
+/**
+ * The visitor {@link redactEntry} and {@link buildPolicyForLog}'s rewriting
+ * pass share — {@link buildRedactionPolicy}'s counter reuses the same shape
+ * with `Effect.sync` visitors, so the two passes cannot see different paths.
+ */
+const redactionVisitor = (policy: RedactionPolicy): LeafVisitor<RedactionError> => ({
+  visitString: (path, value) =>
+    value === '' || policy.isVerbatim(path)
+      ? Effect.succeed(value)
+      : pseudonymizeString(policy, value, 0),
+  visitJsonLeaf: (path, value) => {
+    if (value === null || typeof value === 'boolean' || value === '') return Effect.succeed(value)
+    if (policy.isVerbatim(path)) return Effect.succeed(value)
+    return typeof value === 'number'
+      ? pseudonymizeNumber(policy, value, 0)
+      : pseudonymizeString(policy, value, 0)
+  },
+})
+
+/**
+ * Rewrites one archive entry against a policy.
+ *
+ * @param policy - The export's policy from {@link buildPolicyForLog}
+ * @param entry - The raw archive entry to redact
+ * @returns The redacted entry, same shape throughout
+ *
+ * @remarks
+ * The HAR-native counterpart to {@link redactExchange}. Same semantics: safe to
+ * call twice, safe to call in any order, empty strings and booleans pass
+ * through, a non-JSON body becomes an absent one at the redaction boundary.
+ */
+const redactEntry = (
+  policy: RedactionPolicy,
+  entry: HttpArchive.Entry
+): Effect.Effect<HttpArchive.Entry, RedactionError> =>
+  mapEntryLeaves(entry, redactionVisitor(policy))
+
+/**
+ * Rewrites a whole archive against a policy, in order.
+ *
+ * @param policy - The export's policy from {@link buildPolicyForLog}
+ * @param log - The raw archive, typically the same log the policy was built from
+ * @returns The redacted archive, with entries in the order given
+ */
+const redactLog = (
+  policy: RedactionPolicy,
+  log: HttpArchive.Log
+): Effect.Effect<HttpArchive.Log, RedactionError> =>
+  Effect.map(
+    Effect.forEach(log.entries, (entry) => redactEntry(policy, entry)),
+    (entries) => ({ version: log.version, entries })
+  )
+
+/**
+ * Counts the distinct values seen at each entry's leaves, then decides which
+ * paths export verbatim.
+ *
+ * @param log - The archive to redact
+ * @param options - Salt, threshold, and any per-path overrides
+ * @returns A policy to pass to every {@link redactEntry} call for this export
+ *
+ * @remarks
+ * The HAR-native counterpart to {@link buildRedactionPolicy}. Shares every
+ * decision rule (the code carve-out, {@link isNamespaceUriPath}, the threshold,
+ * per-path overrides) — the only difference is what the counting pass walks.
+ */
+const buildPolicyForLog = (
+  log: HttpArchive.Log,
+  options: RedactionOptions
+): Effect.Effect<RedactionPolicy, WebCryptoUnavailable> =>
+  Effect.gen(function* () {
+    const threshold = options.enumThreshold ?? DEFAULT_ENUM_THRESHOLD
+    const carveOut = options.enumCarveOut ?? true
+    const namespaceUris = options.namespaceUris ?? true
+    const overrides = options.overrides ?? {}
+
+    const seen = new Map<string, Set<string>>()
+    const record = <A extends JsonLeaf>(path: string, value: A): A => {
+      const values = seen.get(path) ?? new Set<string>()
+      values.add(typeof value === 'string' ? value : JSON.stringify(value))
+      seen.set(path, values)
+      return value
+    }
+    const counting: LeafVisitor<never> = {
+      visitString: (path, value) => Effect.sync(() => record(path, value)),
+      visitJsonLeaf: (path, value) => Effect.sync(() => record(path, value)),
+    }
+    for (const entry of log.entries) yield* mapEntryLeaves(entry, counting)
+
+    const stats: readonly PathStat[] = [...seen].map(([path, values]) => {
+      const override = overrides[path]
+      if (override !== undefined) {
+        return {
+          path,
+          distinctValues: values.size,
+          verbatim: override === 'verbatim',
+          decidedBy: 'override',
+        }
+      }
+      if (isNamespaceUriPath([...values])) {
+        return {
+          path,
+          distinctValues: values.size,
+          verbatim: namespaceUris,
+          decidedBy: namespaceUris ? 'namespaceUri' : 'namespaceUrisOff',
+        }
+      }
+      if (!carveOut) {
+        return { path, distinctValues: values.size, verbatim: false, decidedBy: 'disabled' }
+      }
+      if (![...values].every(isCodeToken)) {
+        return { path, distinctValues: values.size, verbatim: false, decidedBy: 'notCode' }
+      }
+      return {
+        path,
+        distinctValues: values.size,
+        verbatim: values.size <= threshold,
+        decidedBy: 'threshold',
+      }
+    })
+    const verbatimPaths = new Set(stats.filter((stat) => stat.verbatim).map((stat) => stat.path))
+
+    return {
+      stats,
+      isVerbatim: (path: string): boolean => verbatimPaths.has(path),
+      key: yield* importExportKey(options.salt),
+      assignments: new Map<string, string>(),
+      usedFakes: new Set<string>(),
+    }
+  })
+
 export {
+  buildPolicyForLog,
   buildRedactionPolicy,
   CODE_TOKEN_MAX_LENGTH,
   DEFAULT_ENUM_THRESHOLD,
@@ -660,7 +812,9 @@ export {
   TERMINOLOGY_HOSTS,
   type PathStat,
   PseudonymSpaceExhausted,
+  redactEntry,
   redactExchange,
+  redactLog,
   type RedactionError,
   type RedactionOptions,
   type RedactionPolicy,
