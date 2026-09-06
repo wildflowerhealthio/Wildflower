@@ -44,15 +44,21 @@ type PatientRow = typeof PatientRow.Type
  * modeled; the rest of the payload (`testItems`, `visitDateRange`, the status
  * envelope) is dropped on decode. `selectedPatient` is the id every synthesized
  * Observation's `subject` references and the synthesized `Patient.id`.
+ *
+ * Both arrays are `nullable` as well as optional: this .NET API serializes an
+ * empty collection as `null` (the same envelope carries `selectedReports:
+ * null`), and failing the decode there would drop every result in the response.
  */
 const AnalyticSummaryPayload = Schema.Struct({
   entity: Schema.Struct({
     analytics: Schema.optionalWith(Schema.Array(Analytic), {
       default: (): readonly Analytic[] => [],
+      nullable: true,
     }),
     selectedPatient: Schema.optional(Schema.NullOr(Schema.Union(Schema.String, Schema.Number))),
     patients: Schema.optionalWith(Schema.Array(PatientRow), {
       default: (): readonly PatientRow[] => [],
+      nullable: true,
     }),
   }),
 })
@@ -75,16 +81,26 @@ const toFhirIdToken = (raw: string): string =>
     .replace(/[^A-Za-z0-9.-]/g, '-')
 
 /**
+ * The largest epoch-millis value `Date` represents (ECMA-262's time-value
+ * range). Past it `toISOString()` throws a `RangeError` — a *defect* inside
+ * `parse`, and a defect escapes `Extraction.parseWith`'s fold and takes the
+ * whole extraction run down. Bounded here, where an out-of-range token is
+ * merely an unusable date.
+ */
+const MAX_TIME_VALUE = 8_640_000_000_000_000
+
+/**
  * Absolute epoch millis from a .NET `/Date(1779297900000-0400)/` token, or
- * `undefined` if unparseable. The trailing `±hhmm` is a display-only original
- * offset; the millis are already absolute UTC.
+ * `undefined` if unparseable or outside the representable date range. The
+ * trailing `±hhmm` is a display-only original offset; the millis are already
+ * absolute UTC.
  */
 const dotNetMillis = (raw: string | null | undefined): number | undefined => {
   if (raw == null) return undefined
   const m = /\/Date\((\d+)(?:[+-]\d{4})?\)\//.exec(raw)
   if (m === null) return undefined
   const millis = Number(m[1])
-  return Number.isFinite(millis) ? millis : undefined
+  return Number.isFinite(millis) && Math.abs(millis) <= MAX_TIME_VALUE ? millis : undefined
 }
 
 /**
@@ -103,20 +119,36 @@ const parseReferenceRange = (raw: string): { low?: number; high?: number } => {
   return out
 }
 
+/** FHIR logical ids are at most 64 characters. */
+const MAX_FHIR_ID_LENGTH = 64
+
 /**
  * A stable, FHIR-safe logical id for one analytic: the sanitized `testItemId`
- * (unique per analyte) — or `testCode` as a fallback — suffixed with the
- * collection instant so repeat draws of the same analyte across dates don't
- * collide. `undefined` when there is no code at all to key on (the caller
- * drops-and-counts those).
+ * (unique per analyte) — or, when the capture omits it, `testCode` **plus the
+ * analyte name** — suffixed with the collection instant so repeat draws of the
+ * same analyte across dates don't collide. `undefined` when there is no code at
+ * all to key on (the caller drops-and-counts those).
+ *
+ * @remarks
+ * `testCode` alone is a *panel* code: WBC and Hemoglobin off one Complete
+ * Blood Count share it and a collection instant, so keying the fallback on it
+ * alone gave both rows one logical id and the persist PUT silently overwrote
+ * one result with the other. Truncation keeps the instant suffix rather than
+ * an over-long token's tail, which would re-collide the analyte across dates.
  */
 const observationId = (a: Analytic): string | undefined => {
-  const base = a.testItemId ?? a.testCode
+  const analyte = a.testItemName ?? a.testName
+  const base =
+    a.testItemId ??
+    (a.testCode == null || analyte == null || analyte.length === 0
+      ? a.testCode
+      : `${a.testCode}_${analyte}`)
   if (base == null || base.length === 0) return undefined
   const token = toFhirIdToken(base)
   const millis = dotNetMillis(a.collectionDate)
-  const id = millis != null ? `${token}-${millis}` : token
-  return id.slice(0, 64)
+  if (millis == null) return token.slice(0, MAX_FHIR_ID_LENGTH)
+  const suffix = `-${millis}`
+  return `${token.slice(0, MAX_FHIR_ID_LENGTH - suffix.length)}${suffix}`
 }
 
 /**
@@ -226,14 +258,20 @@ const AnalyticSummaryResponseKind: HttpResponseKind.HttpResponseKind<FhirResourc
         const summary = yield* decodeSummary(extractJson(response.text()))
         const { analytics, patients } = summary.entity
         const selected = summary.entity.selectedPatient
-        const subjectId = selected != null ? String(selected) : undefined
+        // Blank is absent: `selectedPatient: ''` would otherwise mint a Patient
+        // with an empty logical id and a dangling `Patient/` subject.
+        const selectedId = selected == null ? '' : String(selected)
+        const subjectId = selectedId.length > 0 ? selectedId : undefined
 
         const resources: FhirResource[] = []
 
         // Synthesize the Patient the observations hang off (id = selectedPatient).
         if (subjectId != null) {
-          const primary = patients.find((p) => p.isPrimary === true) ?? patients[0]
-          resources.push(yield* decodePatient(patientWire(subjectId, primary?.text)))
+          // Matched on id, never on `isPrimary`: on a shared account the primary
+          // row names the account holder, not the dependent these results are
+          // for. No matching row ⇒ no name, rather than someone else's.
+          const selectedRow = patients.find((p) => p.value != null && String(p.value) === subjectId)
+          resources.push(yield* decodePatient(patientWire(subjectId, selectedRow?.text)))
         }
 
         // Each analytic → one R4 Observation; drop (and count) any we can't key.
