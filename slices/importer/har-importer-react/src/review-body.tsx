@@ -1,9 +1,11 @@
 import { Option } from 'effect'
 import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
-import { type JSX, useMemo } from 'react'
+import { type JSX, useMemo, useState } from 'react'
+import { Chip } from 'react-tundraish'
 
 import { describeResource, resourceTypeOf } from './describe-resource.ts'
+import { ResourceEditor } from './resource-editor.tsx'
 import styles from './review-body.module.css'
 
 /**
@@ -153,20 +155,32 @@ const ResponsePicker = ({
   )
 }
 
-/** One previewed resource's row: its type, one-line summary, and include toggle. */
+/**
+ * One previewed resource's row: its type, one-line summary, include toggle,
+ * Edit/Revert affordance, and the "edited" chip when a per-resource override
+ * is in place. The row reads the current value through the review's edit
+ * slot — a description that reflects the reviewer's own change, not the
+ * parsed original.
+ */
 const ResourceRow = ({
   resourceKey,
   resource,
   selection,
   onToggle,
+  onEdit,
+  onRevert,
 }: {
   readonly resourceKey: string
   readonly resource: unknown
   readonly selection: Review.Selection
   readonly onToggle: (key: string) => void
+  readonly onEdit: (key: string, resource: unknown) => void
+  readonly onRevert: (key: string) => void
 }): JSX.Element => {
-  const description = describeResource(resource)
+  const edited = Option.getOrElse(Review.editedResource(selection, resourceKey), () => resource)
+  const description = describeResource(edited)
   const included = Review.isResourceIncluded(selection, resourceKey)
+  const isEdited = Review.isResourceEdited(selection, resourceKey)
   return (
     <li className={styles.resourceRow}>
       <label className={styles.resourceLabel}>
@@ -183,6 +197,25 @@ const ResourceRow = ({
           {description.summary}
         </span>
       </label>
+      {isEdited && <Chip className={styles.editedChip}>Edited</Chip>}
+      <button
+        type="button"
+        className={styles.editButton}
+        onClick={() => onEdit(resourceKey, edited)}
+        aria-label={`Edit ${description.type} ${description.summary}`}
+      >
+        Edit
+      </button>
+      {isEdited && (
+        <button
+          type="button"
+          className={styles.revertButton}
+          onClick={() => onRevert(resourceKey)}
+          aria-label={`Revert edit to ${description.type} ${description.summary}`}
+        >
+          Revert
+        </button>
+      )}
     </li>
   )
 }
@@ -197,11 +230,15 @@ const ResponseBlock = ({
   selection,
   onOverride,
   onToggleResource,
+  onEditResource,
+  onRevertResource,
 }: {
   readonly preview: Preview
   readonly selection: Review.Selection
   readonly onOverride: (kindName: string) => void
   readonly onToggleResource: (key: string) => void
+  readonly onEditResource: (key: string, resource: unknown) => void
+  readonly onRevertResource: (key: string) => void
 }): JSX.Element => {
   const outcome = preview.outcome
   if (outcome._tag === 'parseError') {
@@ -251,11 +288,23 @@ const ResponseBlock = ({
             resource={resource.resource}
             selection={selection}
             onToggle={onToggleResource}
+            onEdit={onEditResource}
+            onRevert={onRevertResource}
           />
         ))}
       </ul>
     </li>
   )
+}
+
+/**
+ * The one open resource-editor at a time: a resource-key plus the value the
+ * dialog opened with (an edit's own value, if any, else the parsed original).
+ * `null` means no dialog is open.
+ */
+interface EditorState {
+  readonly key: string
+  readonly resource: unknown
 }
 
 /** The interactive review of one file's responses. */
@@ -266,6 +315,23 @@ const ReviewBody = ({
   selection,
   onChange,
 }: ReviewBodyProps): JSX.Element => {
+  // The resource-editor dialog is not part of the pure selection — it is
+  // local UI state that opens/closes as the reviewer navigates rows. Only
+  // the accepted edit becomes selection.
+  const [editing, setEditing] = useState<EditorState | null>(null)
+
+  const openEditor = (key: string, resource: unknown): void => {
+    setEditing({ key, resource })
+  }
+  const closeEditor = (): void => setEditing(null)
+  const keepEdit = (resource: unknown): void => {
+    if (editing === null) return
+    onChange(Review.edit(selection, editing.key, resource))
+    setEditing(null)
+  }
+  const revertEdit = (key: string): void => {
+    onChange(Review.revert(selection, key))
+  }
   // The kinds at least one of this file's responses recognized — the only kinds a
   // toggle can affect for this import. A kind that claims nothing here is shown
   // but disabled, so the menu still lists every source's kinds without offering
@@ -348,6 +414,8 @@ const ReviewBody = ({
                       onChange(Review.overridePick(selection, preview.ref.id, kindName))
                     }
                     onToggleResource={(key) => onChange(Review.toggleResource(selection, key))}
+                    onEditResource={openEditor}
+                    onRevertResource={revertEdit}
                   />
                 ))}
               </ul>
@@ -370,6 +438,13 @@ const ReviewBody = ({
           </ul>
         </details>
       )}
+
+      <ResourceEditor
+        open={editing !== null}
+        resource={editing?.resource ?? null}
+        onEdit={(edit) => keepEdit(edit.resource)}
+        onCancel={closeEditor}
+      />
     </div>
   )
 }

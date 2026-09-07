@@ -295,6 +295,70 @@ describe('ReviewBody', () => {
     expect(screen.queryByRole('combobox')).toBeNull()
   })
 
+  it('should mark an edited resource with a chip and offer a Revert button', () => {
+    // Arrange — one Observation previewed, then the reviewer's edit registered
+    // in the selection (the dialog itself is exercised in resource-editor.test).
+    const sources = [source('ehr-source', observationKind)]
+    const pool = poolOf(sources)
+    const responses = [input('r-obs', 'https://ehr.test/Observation?s=1')]
+    const initial = Review.initial(pool)
+    const previews = previewOf(pool, responses, initial)
+    const editedSelection = Review.edit(initial, 'r-obs:0', {
+      resourceType: 'Observation',
+      id: 'obs-1',
+      code: { text: 'Edited by hand' },
+    })
+
+    // Act
+    render(
+      <ReviewBody
+        responses={responses}
+        sources={sources}
+        previews={previews}
+        selection={editedSelection}
+        onChange={() => undefined}
+      />
+    )
+
+    // Assert — the chip is visible, Revert exists, and the summary reflects the edit
+    expect(screen.getByText('Edited')).toBeDefined()
+    expect(screen.getByRole('button', { name: /Revert edit to Observation/ })).toBeDefined()
+    expect(screen.getByText(/Edited by hand/)).toBeDefined()
+  })
+
+  it('should call onChange with a reverted selection when Revert is clicked', async () => {
+    // Arrange — one edit in place
+    const sources = [source('ehr-source', observationKind)]
+    const pool = poolOf(sources)
+    const responses = [input('r-obs', 'https://ehr.test/Observation?s=1')]
+    const initial = Review.initial(pool)
+    const previews = previewOf(pool, responses, initial)
+    const editedSelection = Review.edit(initial, 'r-obs:0', {
+      resourceType: 'Observation',
+      id: 'obs-1',
+    })
+    let seen: Review.Selection | null = null
+
+    // Act
+    render(
+      <ReviewBody
+        responses={responses}
+        sources={sources}
+        previews={previews}
+        selection={editedSelection}
+        onChange={(next) => {
+          seen = next
+        }}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Revert edit to/ }))
+
+    // Assert — the revert reached the shell and cleared the override
+    expect(seen).not.toBeNull()
+    if (seen === null) throw new Error('unreachable: assertion above holds')
+    expect(Review.isResourceEdited(seen, 'r-obs:0')).toBe(false)
+  })
+
   it('should fold unrecognized responses into a collapsible no-match section', () => {
     // Arrange — one recognized Patient, one unrecognized asset.
     const sources = [source('ehr-source', patientKind)]

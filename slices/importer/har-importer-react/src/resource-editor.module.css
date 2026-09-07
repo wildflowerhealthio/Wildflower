@@ -1,0 +1,45 @@
+.hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--wf-muted, #767676);
+}
+
+.hint code {
+  font-family: var(--wf-mono, ui-monospace, monospace);
+  font-size: 0.9em;
+}
+
+.textarea {
+  width: 100%;
+  min-height: 20rem;
+  box-sizing: border-box;
+  font-family: var(--wf-mono, ui-monospace, monospace);
+  font-size: 0.85rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--wf-border, #d0d0d0);
+  border-radius: 0.5rem;
+  resize: vertical;
+}
+
+.actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.cancelButton,
+.keepButton {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+  border: 1px solid var(--wf-border, #d0d0d0);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.keepButton {
+  background: var(--wf-accent, #1a3ea8);
+  color: white;
+  border-color: transparent;
+}

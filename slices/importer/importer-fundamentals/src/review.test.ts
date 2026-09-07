@@ -381,6 +381,109 @@ describe('Review.chosen', () => {
   })
 })
 
+describe('Review.edit / Review.revert', () => {
+  it('should replace exactly the previewed resource its key names', async () => {
+    // Arrange — three parsed resources under one response
+    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
+    const responses = [input('r-many', 'https://ehr.test/many')]
+    const previews = await Effect.runPromise(
+      Review.preview([three], responses, Review.initial([three]))
+    )
+
+    // Act — edit only the middle resource
+    const edited = Review.edit(Review.initial([three]), 'r-many:1', 'B*')
+
+    // Assert — the override lands in exactly its slot; the siblings ride through
+    expect(Review.chosenResources(previews, edited)).toEqual(['a', 'B*', 'c'])
+    expect(Review.isResourceEdited(edited, 'r-many:1')).toBe(true)
+    expect(Review.isResourceEdited(edited, 'r-many:0')).toBe(false)
+    expect(Option.getOrThrow(Review.editedResource(edited, 'r-many:1'))).toBe('B*')
+  })
+
+  it('should restore the parsed original when the edit is reverted', async () => {
+    // Arrange — one edit in place
+    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
+    const responses = [input('r-many', 'https://ehr.test/many')]
+    const previews = await Effect.runPromise(
+      Review.preview([three], responses, Review.initial([three]))
+    )
+    const edited = Review.edit(Review.initial([three]), 'r-many:2', 'C*')
+    expect(Review.chosenResources(previews, edited)).toEqual(['a', 'b', 'C*'])
+
+    // Act — revert
+    const reverted = Review.revert(edited, 'r-many:2')
+
+    // Assert — the parsed original is back, and the override is gone
+    expect(Review.chosenResources(previews, reverted)).toEqual(['a', 'b', 'c'])
+    expect(Review.isResourceEdited(reverted, 'r-many:2')).toBe(false)
+    expect(Option.isNone(Review.editedResource(reverted, 'r-many:2'))).toBe(true)
+  })
+
+  it('should drop an edited resource when it is also excluded', async () => {
+    // Arrange — edit, then exclude the same key
+    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
+    const responses = [input('r-many', 'https://ehr.test/many')]
+    const previews = await Effect.runPromise(
+      Review.preview([three], responses, Review.initial([three]))
+    )
+    const selection = Review.toggleResource(
+      Review.edit(Review.initial([three]), 'r-many:1', 'B*'),
+      'r-many:1'
+    )
+
+    // Act
+    const chosen = Review.chosenResources(previews, selection)
+
+    // Assert — exclusion wins: the edit never leaves the browser
+    expect(chosen).toEqual(['a', 'c'])
+  })
+
+  it('should be a no-op to revert a key that was never edited', () => {
+    // Arrange
+    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
+
+    // Act
+    const before = Review.initial([three])
+    const after = Review.revert(before, 'r-many:0')
+
+    // Assert — same reference, no allocations
+    expect(after).toBe(before)
+  })
+
+  it('should replace exactly its resource under any sequence of edits (property)', async () => {
+    // The preview is async, but the property is synchronous — fc.property.
+    // A property: for any sequence of edits over three keys, `chosenResources`
+    // reflects only the last edit per key, at exactly its slot, with the
+    // untouched slots holding the parsed originals.
+    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
+    const responses = [input('r-many', 'https://ehr.test/many')]
+    const initial = Review.initial([three])
+    const previews = await Effect.runPromise(Review.preview([three], responses, initial))
+    const originals = ['a', 'b', 'c'] as const
+    const keys = ['r-many:0', 'r-many:1', 'r-many:2'] as const
+
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.constantFrom(...keys), fc.string()), {
+          minLength: 0,
+          maxLength: 16,
+        }),
+        (edits) => {
+          let selection = initial
+          const expected: string[] = [...originals]
+          for (const [key, value] of edits) {
+            selection = Review.edit(selection, key, value)
+            const index = keys.indexOf(key)
+            if (index !== -1) expected[index] = value
+          }
+          expect(Review.chosenResources(previews, selection)).toEqual(expected)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+})
+
 describe('Review.chosenCount', () => {
   it('should count only the responses that resolve to a pick', () => {
     // Arrange

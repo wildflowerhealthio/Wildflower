@@ -30,15 +30,30 @@ decodes on confirm.
     kind claimed (the browser noise around the FHIR traffic).
   - **A per-resource include row** under each recognised response, one row per
     parsed resource — its `resourceType`, a one-line summary from
-    `describeResource`, and an include checkbox — plus a per-type tally
-    ("14 MedicationRequest, 2 excluded") above the URL list. A `duplicate`
-    response renders the "Duplicate of X — not written" note in place of the
-    picker, since a duplicate is never routed to a kind.
+    `describeResource`, an include checkbox, and an **Edit** button that opens
+    the inline JSON editor (`ResourceEditor`) for the row's resource — plus a
+    per-type tally ("14 MedicationRequest, 2 excluded") above the URL list. A
+    `duplicate` response renders the "Duplicate of X — not written" note in
+    place of the picker, since a duplicate is never routed to a kind. A row
+    whose resource has been edited shows an "Edited" chip and a **Revert**
+    button beside the Edit; the summary line reflects the edited value, not
+    the parsed original.
   - **Controlled** — the shell owns the `Review.Selection` per file and passes
     it in as `selection`, alongside the shell-computed `previews`; every
     toggle or override calls `onChange` with the next selection. The body
     holds no selection state of its own, so a re-render always renders the
     canonical shell state.
+- `src/resource-editor.tsx` — **`ResourceEditor`**, the inline JSON editor a
+  row opens on demand. A `react-tundraish` `Dialog` over a plain `<textarea>`
+  of the pretty-printed resource. **Keep** parses the text, decodes through
+  `Schema.decodeUnknown(FhirResourceSchema)` (`fhir-r4/resources`), and
+  refuses the edit unless it parses and preserves `resourceType` / `id` (an
+  id change would break every reference and the provenance link the confirm
+  stamps); the failure — an `InvalidJsonError`, a `ParseError`, or an
+  `ImmutableFieldChangedError` — surfaces through `ErrorBanner`, whose
+  built-in Effect Schema tree renderer prints the reason. A kept edit calls
+  the review's `Review.edit` through the ReviewBody; the dialog's own
+  textarea state does not leak into the pure selection.
 - `src/settings-picker.tsx` — **`HarSettingsPicker`** and the generic
   `SettingsPickerProps<TSettings>`. A no-op today (HAR has no settings): renders a
   hint, never calls `onChange`. It exists so the shell's registry has all three

@@ -59,10 +59,36 @@ class RealmSafeTextEncoder extends AmbientTextEncoder {
   }
 }
 
+// jsdom doesn't implement the native <dialog> element that `react-tundraish`'s
+// Dialog reaches for. Patch the two methods per-test and restore the original
+// descriptors after so the patches don't leak across files.
+const originalShowModalDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLDialogElement.prototype,
+  'showModal'
+)
+const originalCloseDescriptor = Object.getOwnPropertyDescriptor(
+  HTMLDialogElement.prototype,
+  'close'
+)
+const restoreDialogMethod = (
+  key: 'showModal' | 'close',
+  descriptor: PropertyDescriptor | undefined
+): void => {
+  if (descriptor === undefined) Reflect.deleteProperty(HTMLDialogElement.prototype, key)
+  else Object.defineProperty(HTMLDialogElement.prototype, key, descriptor)
+}
+
 beforeEach(() => {
   recorded = []
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.stubGlobal('TextEncoder', RealmSafeTextEncoder)
+  HTMLDialogElement.prototype.showModal = function showModal(): void {
+    this.setAttribute('open', '')
+  }
+  HTMLDialogElement.prototype.close = function close(): void {
+    this.removeAttribute('open')
+    this.dispatchEvent(new Event('close'))
+  }
 })
 
 afterEach(() => {
@@ -70,6 +96,8 @@ afterEach(() => {
   queryClient.clear()
   vi.unstubAllGlobals()
   vi.restoreAllMocks()
+  restoreDialogMethod('showModal', originalShowModalDescriptor)
+  restoreDialogMethod('close', originalCloseDescriptor)
 })
 
 describe('ImporterScreen', () => {
@@ -277,6 +305,57 @@ describe('ImporterScreen', () => {
     // Assert — only two resource writes on the wire (one Patient + one Observation),
     // the opted-out Observation never left the browser.
     expect(writes().filter(isResourceWrite)).toHaveLength(2)
+  })
+
+  it('writes an edited resource verbatim — the inline JSON edit is what reaches the wire', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — pick locally so the preview parses to 1 Patient + 2 Observations
+    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
+    })
+
+    // Open the editor for the Patient row, add a `gender` field to the
+    // parsed JSON (keeping the adopted id and resourceType), and Keep. The
+    // adopted id lives in the textarea already, so read the current text
+    // and edit in place rather than typing over it — an id change would be
+    // refused (and would in any case not travel across resource adoption).
+    const editButtons = screen.getAllByRole('button', { name: /Edit Patient/ })
+    expect(editButtons.length).toBeGreaterThanOrEqual(1)
+    const [editPatient] = editButtons
+    if (editPatient === undefined) throw new Error('unreachable: no Patient edit button')
+    await userEvent.click(editPatient)
+    const textarea = await screen.findByLabelText<HTMLTextAreaElement>('Resource JSON')
+    const originalParsed = Schema.decodeUnknownSync(
+      Schema.Record({ key: Schema.String, value: Schema.Unknown })
+    )(JSON.parse(textarea.value))
+    const edited = { ...originalParsed, gender: 'female' }
+    await userEvent.clear(textarea)
+    await userEvent.click(textarea)
+    await userEvent.paste(JSON.stringify(edited))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
+    await waitFor(() => {
+      // The row now advertises its edit.
+      expect(screen.getByText('Edited')).toBeDefined()
+    })
+
+    // Confirm — the edit rides through as the value the wire carries
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+
+    // Assert — the Patient write body reflects the edit (gender: female),
+    // not the parsed original from the HAR (no gender at all).
+    const patientWrites = writes().filter((write) => write.url.includes('/Patient/'))
+    expect(patientWrites).toHaveLength(1)
+    const [patientWrite] = patientWrites
+    if (patientWrite === undefined) throw new Error('unreachable: exactly one Patient write')
+    const body: unknown = JSON.parse(patientWrite.body)
+    expect(body).toMatchObject({ resourceType: 'Patient', gender: 'female' })
   })
 
   it('discards the preview with no writes when the user cancels', async () => {

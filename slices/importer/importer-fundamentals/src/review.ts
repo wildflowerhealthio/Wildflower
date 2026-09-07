@@ -7,12 +7,13 @@ const DUPLICATE_PICK: Option.Option<string> = Option.none()
 
 /**
  * The pure per-response review model: whole-import kind toggles, per-response
- * pick overrides, and per-resource include toggles, resolved against ranked
- * recognition and previewed parses. The interactive `ReviewBody` a format's
- * React package renders is a view over these transitions — see this package's
- * AGENTS.md for the model's rationale (per-response choices, serializable
- * name-keyed overrides, key-scoped exclusions, untouched review == what the
- * `runExtraction` reference model would write).
+ * pick overrides, per-resource include toggles, and per-resource edit
+ * overrides, resolved against ranked recognition and previewed parses. The
+ * interactive `ReviewBody` a format's React package renders is a view over
+ * these transitions — see this package's AGENTS.md for the model's rationale
+ * (per-response choices, serializable name-keyed overrides, key-scoped
+ * exclusions and edits, untouched review == what the `runExtraction`
+ * reference model would write).
  *
  * @packageDocumentation
  */
@@ -22,8 +23,9 @@ type NamedKind = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>
 
 /**
  * A whole review's selection state: the enabled kinds, per-response pick
- * overrides, and per-resource exclusions. A plain value the shell holds and
- * threads through the pure transitions below.
+ * overrides, per-resource exclusions, and per-resource edit overrides. A
+ * plain value the shell holds and threads through the pure transitions
+ * below.
  */
 interface Selection {
   /** The kind names enabled across the import; a kind absent here is disabled everywhere. */
@@ -36,17 +38,29 @@ interface Selection {
    * defaults to included; the set holds only the explicit opt-outs.
    */
   readonly excludedResources: ReadonlySet<string>
+  /**
+   * Per-resource edit overrides, keyed by {@link resourceKey} — a resource
+   * whose key is here has its parsed value replaced by the edited one at
+   * confirm. Held as `unknown` so the model stays resource-type-agnostic;
+   * the seam that mints an edit (`Review.edit`) is what enforces its
+   * shape, so a caller that goes through the review's typed React
+   * affordance (a schema-validated inline JSON edit, for the HAR importer)
+   * cannot introduce an override that would not itself decode.
+   */
+  readonly resourceOverrides: ReadonlyMap<string, unknown>
 }
 
 /**
  * The default selection for a pool: every kind enabled, no overrides, every
- * previewed resource included — so each response defaults to its top-specificity
- * candidate and a fresh review writes what the reference model would.
+ * previewed resource included, no edits — so each response defaults to its
+ * top-specificity candidate and a fresh review writes what the reference
+ * model would.
  */
 const initial = (pool: readonly NamedKind[]): Selection => ({
   enabledKinds: new Set(pool.map((kind) => kind.name)),
   overrides: new Map(),
   excludedResources: new Set(),
+  resourceOverrides: new Map(),
 })
 
 /** Whether a kind is enabled across the import. */
@@ -62,33 +76,21 @@ const toggleKind = (selection: Selection, kindName: string): Selection => {
   const enabledKinds = new Set(selection.enabledKinds)
   if (enabledKinds.has(kindName)) enabledKinds.delete(kindName)
   else enabledKinds.add(kindName)
-  return {
-    enabledKinds,
-    overrides: selection.overrides,
-    excludedResources: selection.excludedResources,
-  }
+  return { ...selection, enabledKinds }
 }
 
 /** Override one response's pick to a specific kind by name. */
 const overridePick = (selection: Selection, responseId: string, kindName: string): Selection => {
   const overrides = new Map(selection.overrides)
   overrides.set(responseId, kindName)
-  return {
-    enabledKinds: selection.enabledKinds,
-    overrides,
-    excludedResources: selection.excludedResources,
-  }
+  return { ...selection, overrides }
 }
 
 /** Drop one response's override, returning it to its default pick. */
 const clearOverride = (selection: Selection, responseId: string): Selection => {
   const overrides = new Map(selection.overrides)
   overrides.delete(responseId)
-  return {
-    enabledKinds: selection.enabledKinds,
-    overrides,
-    excludedResources: selection.excludedResources,
-  }
+  return { ...selection, overrides }
 }
 
 /**
@@ -117,11 +119,50 @@ const toggleResource = (selection: Selection, key: string): Selection => {
   const excludedResources = new Set(selection.excludedResources)
   if (excludedResources.has(key)) excludedResources.delete(key)
   else excludedResources.add(key)
-  return {
-    enabledKinds: selection.enabledKinds,
-    overrides: selection.overrides,
-    excludedResources,
-  }
+  return { ...selection, excludedResources }
+}
+
+/**
+ * Replace the previewed resource at `key` with `resource` — the reviewer's
+ * inline edit. `chosenResources` returns the override in place of the parsed
+ * value, and it rides through the confirm's write set the same way any other
+ * resource does (identity, `meta.source` stamping, retries).
+ *
+ * @remarks
+ * The model is resource-type-agnostic, so `resource` is `unknown`. The React
+ * affordance that mints an edit is expected to have validated the value
+ * against the format's schema (the HAR importer runs
+ * `Schema.decodeUnknown(FhirResource)`) before calling in — a value that
+ * would not itself round-trip through the write client should never reach
+ * here. Calling `edit` for a key with no previewed resource still records
+ * the override; a `chosenResources` pass that never sees the key just
+ * ignores it.
+ */
+const edit = (selection: Selection, key: string, resource: unknown): Selection => {
+  const resourceOverrides = new Map(selection.resourceOverrides)
+  resourceOverrides.set(key, resource)
+  return { ...selection, resourceOverrides }
+}
+
+/**
+ * Drop the edit override at `key`, restoring the parsed original at confirm.
+ * A no-op when no override is set.
+ */
+const revert = (selection: Selection, key: string): Selection => {
+  if (!selection.resourceOverrides.has(key)) return selection
+  const resourceOverrides = new Map(selection.resourceOverrides)
+  resourceOverrides.delete(key)
+  return { ...selection, resourceOverrides }
+}
+
+/** Whether the reviewer has set an inline edit for `key`. */
+const isResourceEdited = (selection: Selection, key: string): boolean =>
+  selection.resourceOverrides.has(key)
+
+/** The edit override at `key`, when the reviewer has set one — else `None`. */
+const editedResource = (selection: Selection, key: string): Option.Option<unknown> => {
+  const override = selection.resourceOverrides.get(key)
+  return override === undefined ? Option.none() : Option.some(override)
 }
 
 /** The candidates for one response that survive the enabled-kind filter, still ranked. */
@@ -316,13 +357,24 @@ const preview = <TParsed>(
 
 /**
  * The confirm's write set: every previewed resource the reviewer left included,
- * flattened in preview order.
+ * with any inline edit substituted in for the parsed original, flattened in
+ * preview order.
  *
  * @param previews - The previewed responses from {@link preview}
- * @param selection - The reviewer's choices — reads only the exclusion set;
- *   picks and kind toggles are already resolved by the preview
- * @returns The parsed resources to write, verbatim from the preview — no
- *   re-parse, so a confirm writes the same objects the reviewer inspected
+ * @param selection - The reviewer's choices — reads the exclusion set and the
+ *   resource edit overrides; picks and kind toggles are already resolved by
+ *   the preview
+ * @returns The parsed resources to write, in preview order, each replaced by
+ *   its edit override when the reviewer has set one — no re-parse, so a
+ *   confirm writes the same objects the reviewer inspected (or the ones they
+ *   edited into place)
+ *
+ * @remarks
+ * The override slot is typed `unknown` (see {@link Selection.resourceOverrides})
+ * and is asserted back to `TParsed` here: the seam that mints the edit
+ * validates the value against the format's schema, so the caller's invariant is
+ * that an override for a key is a well-formed `TParsed`. A value that would
+ * not decode is refused at the edit seam, not silently kept.
  */
 const chosenResources = <K, TParsed>(
   previews: readonly PreviewedResponse<K, TParsed>[],
@@ -332,7 +384,17 @@ const chosenResources = <K, TParsed>(
     entry.outcome._tag === 'resources'
       ? entry.outcome.resources
           .filter((resource) => isResourceIncluded(selection, resource.key))
-          .map((resource) => resource.resource)
+          .map((resource) => {
+            const override = selection.resourceOverrides.get(resource.key)
+            if (override === undefined) return resource.resource
+            // The override slot is `unknown` on the type-agnostic `Selection`
+            // (see its docs) and the seam that mints one — a format's React
+            // affordance, schema-validated — is what carries the invariant
+            // that this override is a well-formed `TParsed`. The cast is
+            // the deliberate expression of that seam.
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+            return override as TParsed
+          })
       : []
   )
 
@@ -398,17 +460,21 @@ export {
   chosenCount,
   chosenResources,
   clearOverride,
+  edit,
+  editedResource,
   enabledCandidates,
   excludedCount,
   includedCount,
   initial,
   isKindEnabled,
+  isResourceEdited,
   isResourceIncluded,
   overridePick,
   pickFor,
   preview,
   recognize,
   resourceKey,
+  revert,
   toggleKind,
   toggleResource,
 }
