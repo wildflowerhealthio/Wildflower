@@ -4,6 +4,7 @@ import { APP_DESCRIPTIONS, onMarketingSite, sectionHref } from 'branding-core'
 
 import { wildflowerServerImages } from '../assets/remote-images.ts'
 import { AppRow } from './app-row.tsx'
+import { DownloadLinks } from './download-links.tsx'
 import { Launcher } from './launcher.tsx'
 import rows from './app-rows.module.css'
 import layout from './layout.module.css'
@@ -33,11 +34,14 @@ function Infrastructure(): JSX.Element {
             images={wildflowerServerImages}
             alignCenter
             launcher={
-              <Launcher
-                href={sectionHref(onMarketingSite, 'serverDocs')}
-                label="Read the Wildflower server docs"
-                note="View the docs and available endpoints with tools to send requests to a live server"
-              />
+              <>
+                <DownloadLinks />
+                <Launcher
+                  href={sectionHref(onMarketingSite, 'serverDocs')}
+                  label="Read the Wildflower server docs"
+                  note="View the docs and available endpoints with tools to send requests to a live server"
+                />
+              </>
             }
           />
           <AppRow

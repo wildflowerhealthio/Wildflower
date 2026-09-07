@@ -1,0 +1,16 @@
+{
+  "version": "0.1.0",
+  "tag": "v0.1.0",
+  "releaseUrl": "https://github.com/wildflowerhealthio/Wildflower/releases/tag/v0.1.0",
+  "platforms": {
+    "darwin-universal": {
+      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.1.0/Wildflower_0.1.0_universal.dmg"
+    },
+    "windows-x86_64": {
+      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.1.0/Wildflower_0.1.0_x64_en-US.msi"
+    },
+    "linux-x86_64": {
+      "url": "https://github.com/wildflowerhealthio/Wildflower/releases/download/v0.1.0/wildflower-tauri_0.1.0_amd64.AppImage"
+    }
+  }
+}

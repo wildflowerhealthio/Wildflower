@@ -1,0 +1,19 @@
+.downloads {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+}
+
+.downloads__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.downloads__link {
+  font-size: var(--font-size-4);
+  font-weight: var(--font-weight-4);
+}

@@ -90,6 +90,37 @@ jobs:
           # updated in place so the tagged commit stays lockfile-consistent.
           cargo set-version --package wildflower-tauri "$version"
 
+      - name: Write marketing versions.json
+        # Marketing site's `public/` is served at the site root, so this lands
+        # at `/versions.json`. Direct-download URLs follow Tauri 2's default
+        # bundle-naming (productName + version + target); they resolve as soon
+        # as tauri-action attaches assets to the release, but the release stays
+        # a draft until a human publishes it. `releaseUrl` is the human-visible
+        # release page for that tag.
+        run: |
+          set -euo pipefail
+          version='${{ steps.vars.outputs.version }}'
+          tag='${{ steps.vars.outputs.tag }}'
+          repo='${{ github.repository }}'
+          download="https://github.com/$repo/releases/download/$tag"
+          jq -n \
+            --arg version "$version" \
+            --arg tag "$tag" \
+            --arg releaseUrl "https://github.com/$repo/releases/tag/$tag" \
+            --arg macos "$download/Wildflower_${version}_universal.dmg" \
+            --arg windows "$download/Wildflower_${version}_x64_en-US.msi" \
+            --arg linux "$download/wildflower-tauri_${version}_amd64.AppImage" \
+            '{
+              version: $version,
+              tag: $tag,
+              releaseUrl: $releaseUrl,
+              platforms: {
+                "darwin-universal": { url: $macos },
+                "windows-x86_64":   { url: $windows },
+                "linux-x86_64":     { url: $linux }
+              }
+            }' > apps/marketing-website/public/versions.json
+
       - name: Commit, tag and push
         run: |
           set -euo pipefail
@@ -100,7 +131,8 @@ jobs:
           git add \
             apps/wildflower-tauri/src-tauri/tauri.conf.json \
             apps/wildflower-tauri/src-tauri/Cargo.toml \
-            Cargo.lock
+            Cargo.lock \
+            apps/marketing-website/public/versions.json
           # No-op if the files were already at this version; still tag.
           if ! git diff --cached --quiet; then
             git commit -m "chore(release): $tag"
