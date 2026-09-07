@@ -3,7 +3,7 @@ import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extrac
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo } from 'react'
 
-import { describeResource } from './describe-resource.ts'
+import { describeResource, resourceTypeOf } from './describe-resource.ts'
 import styles from './review-body.module.css'
 
 /**
@@ -90,11 +90,14 @@ const perTypeTallies = (
   for (const preview of previews) {
     if (preview.outcome._tag !== 'resources') continue
     for (const resource of preview.outcome.resources) {
-      const description = describeResource(resource.resource)
-      const bucket = totals.get(description.type)
+      // Tallies only care about the resource type; a full describeResource decode
+      // per row on every render (selection toggle) would be O(rows²) in per-type
+      // schema decodes — the cheap `resourceTypeOf` reads the field directly.
+      const type = resourceTypeOf(resource.resource)
+      const bucket = totals.get(type)
       if (bucket === undefined) {
-        order.push(description.type)
-        totals.set(description.type, {
+        order.push(type)
+        totals.set(type, {
           total: 1,
           excluded: Review.isResourceIncluded(selection, resource.key) ? 0 : 1,
         })
@@ -227,9 +230,11 @@ const ResponseBlock = ({
     )
   }
   if (outcome._tag === 'duplicate') {
+    // A duplicate is never routed to a kind — its `pickKindName` is `None` and
+    // rendering the picker would show an empty label / an unmatched <select>
+    // value; the "Duplicate of X" note is the whole story here.
     return (
       <li className={styles.responseRow}>
-        <ResponsePicker preview={preview} selection={selection} onOverride={onOverride} />
         <p className={styles.bodyAbsent}>Duplicate of {outcome.of.id} — not written.</p>
       </li>
     )

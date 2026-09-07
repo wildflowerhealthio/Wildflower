@@ -1,10 +1,10 @@
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { SourceDescriptor } from 'http-extraction-fundamentals'
-import { Review } from 'importer-fundamentals'
+import { type FileImporterDescriptor, Review } from 'importer-fundamentals'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
-import { previewsFor } from './preview/previews-for.ts'
+import { emptyPreviewsCache, previewsFor, type PreviewsCache } from './preview/previews-for.ts'
 import { useConfirmImport } from './preview/use-confirm-import.ts'
 import { useImportRun } from './preview/use-import-run.ts'
 import { formatRegistry } from './registry.ts'
@@ -44,6 +44,10 @@ const { descriptor, ReviewBody } = formatRegistry.har
 /** The descriptor's sources flattened once — what a default selection seeds from. */
 const pool = SourceDescriptor.poolOf(descriptor.sources)
 
+/** The resource type this shell's format decodes to (FHIR for HAR). */
+type Parsed =
+  typeof descriptor extends FileImporterDescriptor<infer _S, infer P, infer _R> ? P : never
+
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(descriptor)
@@ -65,12 +69,19 @@ const ImporterScreen = (): JSX.Element => {
   // The read half's resource-level output, shared with the confirm step so the
   // same objects the reviewer inspected are what gets written.
   const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
+  // A per-render selection-triggered re-parse of every file would block the main
+  // thread on any large HAR every time the reviewer clicks a per-resource
+  // checkbox. The cache reuses previews for a file whose parse-relevant
+  // selection slices (`enabledKinds`, `overrides`) and `responses` kept their
+  // identity — exclusions never affect what is parsed. useState's lazy
+  // initialiser gives a stable per-mount reference without repeated allocation.
+  const [previewsCache] = useState<PreviewsCache<Parsed>>(emptyPreviewsCache)
   const previews = useMemo(
     () =>
       readFiles === undefined
         ? undefined
-        : previewsFor(descriptor.sources, readFiles, selectionFor),
-    [readFiles, selectionFor]
+        : previewsFor(descriptor.sources, readFiles, selectionFor, previewsCache),
+    [readFiles, selectionFor, previewsCache]
   )
   const previewFor = useCallback((fileId: string) => previews?.get(fileId) ?? [], [previews])
 

@@ -142,6 +142,20 @@ const joinSummary = (parts: readonly string[]): string =>
     .join(' · ')
 
 /**
+ * Read just a resource's `resourceType` — the cheap tally-only path that skips
+ * every per-type decode {@link describeResource} does. Falls back to
+ * `'Unknown'` when the field is missing or not a string; the reviewer's
+ * per-type tally reads it once per resource on every render.
+ */
+const resourceTypeOf = (resource: unknown): string => {
+  if (typeof resource !== 'object' || resource === null || !('resourceType' in resource)) {
+    return 'Unknown'
+  }
+  const value: unknown = (resource as { readonly resourceType: unknown }).resourceType
+  return typeof value === 'string' ? value : 'Unknown'
+}
+
+/**
  * Describe one FHIR resource for the interactive review. Pure and total —
  * never throws on a partially-decoded resource, always returns a
  * {@link ResourceDescription} the row can render.
@@ -200,4 +214,4 @@ const describeResource = (resource: unknown): ResourceDescription => {
   }
 }
 
-export { describeResource, type ResourceDescription }
+export { describeResource, resourceTypeOf, type ResourceDescription }

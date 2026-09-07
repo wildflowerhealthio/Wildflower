@@ -34,7 +34,6 @@
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
     "har-importer-core": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
@@ -47,7 +46,6 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "fhir-r4": "workspace:*",
     "har-importer-core": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
