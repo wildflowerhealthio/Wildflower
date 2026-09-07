@@ -158,8 +158,8 @@ const ChunkBar = ({
           setTipOpen(true)
         }}
       >
-        {rows.map((row, index) => (
-          <span key={index} className={styles['row']}>
+        {rows.map((row) => (
+          <span key={row.flatMap((cell) => cell.key).join('-')} className={styles['row']}>
             {row}
           </span>
         ))}
