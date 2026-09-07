@@ -50,8 +50,11 @@ jobs:
       - uses: actions/checkout@v7
         with:
           # Keep the GITHUB_TOKEN attached so the branch push + `gh pr create`
-          # below use it.
+          # below use it. Full history + tags are needed for the "Generate
+          # changelog" step: it computes commits since the previous v* tag.
           persist-credentials: true
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Fail if tag already exists
         run: |
@@ -134,6 +137,60 @@ jobs:
               }
             }' > apps/marketing-website/public/versions.json
 
+      - name: Generate changelog and prepend to CHANGELOG.md
+        # Every commit since the previous `v*` tag (or the whole history on the
+        # very first release) is listed as `- <subject> (<short sha>)` under a
+        # `## v<version> — <YYYY-MM-DD>` heading, inserted right below the
+        # `<!-- release-notes-start -->` marker in
+        # `apps/wildflower-tauri/CHANGELOG.md`. Merge commits are excluded so
+        # the list matches what a reviewer sees on the PR without duplicating
+        # the "Merge pull request #N" noise. The section becomes the body of
+        # the GitHub Release once the release PR merges — see
+        # `tauri-release-publish.yml`.
+        run: |
+          set -euo pipefail
+          version='${{ steps.vars.outputs.version }}'
+          tag='${{ steps.vars.outputs.tag }}'
+          changelog='apps/wildflower-tauri/CHANGELOG.md'
+          date="$(date -u +%Y-%m-%d)"
+          prev_tag="$(git tag --list 'v*' --sort=-v:refname | head -n1 || true)"
+          notes="$(mktemp)"
+          if [[ -n "$prev_tag" ]]; then
+            git log "$prev_tag..HEAD" --no-merges --pretty=format:'- %s (%h)' > "$notes"
+          else
+            git log HEAD --no-merges --pretty=format:'- %s (%h)' > "$notes"
+          fi
+          # A file with `-c core.autocrlf` off ends without a trailing newline
+          # after `--pretty=format`; a trailing newline keeps the markdown
+          # block well-formed.
+          [[ -s "$notes" ]] && printf '\n' >> "$notes" || echo '- _No commits since previous release._' > "$notes"
+          section="$(mktemp)"
+          {
+            printf '\n## %s — %s\n\n' "$tag" "$date"
+            cat "$notes"
+          } > "$section"
+          # Insert `$section` immediately after the `<!-- release-notes-start -->`
+          # marker line so the newest release is always at the top.
+          awk -v insert_file="$section" -v cl="$changelog" '
+            {
+              print
+              if (!inserted && $0 == "<!-- release-notes-start -->") {
+                while ((getline line < insert_file) > 0) print line
+                close(insert_file)
+                inserted = 1
+              }
+            }
+            END {
+              if (!inserted) {
+                printf "::error::marker <!-- release-notes-start --> not found in %s\n", cl > "/dev/stderr"
+                exit 1
+              }
+            }
+          ' "$changelog" > "$changelog.new"
+          mv "$changelog.new" "$changelog"
+          # Save the raw commit list for the PR-body step below.
+          cp "$notes" /tmp/release-commits.md
+
       - name: Create release branch, commit and push
         run: |
           set -euo pipefail
@@ -146,7 +203,8 @@ jobs:
             apps/wildflower-tauri/src-tauri/tauri.conf.json \
             apps/wildflower-tauri/src-tauri/Cargo.toml \
             Cargo.lock \
-            apps/marketing-website/public/versions.json
+            apps/marketing-website/public/versions.json \
+            apps/wildflower-tauri/CHANGELOG.md
           if git diff --cached --quiet; then
             echo "::error::No version-bump changes to commit. Was the workspace already at $tag?"
             exit 1
@@ -159,26 +217,30 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          version='${{ steps.vars.outputs.version }}'
           tag='${{ steps.vars.outputs.tag }}'
           branch='${{ steps.vars.outputs.branch }}'
           base='${{ github.ref_name }}'
-          body=$(cat <<EOF
-          Version bump for **$tag**.
-
-          Files updated:
-          - \`apps/wildflower-tauri/src-tauri/tauri.conf.json\`
-          - \`apps/wildflower-tauri/src-tauri/Cargo.toml\` (+ \`Cargo.lock\`)
-          - \`apps/marketing-website/public/versions.json\`
-
-          Merging this PR triggers **Tauri Release — Publish**, which tags
-          \`$tag\` on \`$base\` and fans out to the macOS / Windows / Linux
-          build runners. The GitHub Release is created as a draft prerelease —
-          publish it manually once the assets look right.
-          EOF
-          )
+          # Multi-part body: header, machine-generated commit list from the
+          # "Generate changelog" step above, then footer explaining what merge
+          # will trigger. Written to a file so `gh pr create` sees exact bytes.
+          body="$(mktemp)"
+          {
+            printf 'Version bump for **%s**.\n\n' "$tag"
+            printf 'Files updated:\n'
+            printf -- '- `apps/wildflower-tauri/src-tauri/tauri.conf.json`\n'
+            printf -- '- `apps/wildflower-tauri/src-tauri/Cargo.toml` (+ `Cargo.lock`)\n'
+            printf -- '- `apps/marketing-website/public/versions.json`\n'
+            printf -- '- `apps/wildflower-tauri/CHANGELOG.md` (prepended with the section below)\n\n'
+            printf '## Changes since previous release\n\n'
+            cat /tmp/release-commits.md
+            printf '\n---\n\n'
+            printf 'Merging this PR triggers **Tauri Release — Publish**, which tags '
+            printf '`%s` on `%s` and fans out to the macOS / Windows / Linux build ' "$tag" "$base"
+            printf 'runners. The GitHub Release is created as a draft prerelease — '
+            printf 'publish it manually once the assets look right.\n'
+          } > "$body"
           gh pr create \
             --base "$base" \
             --head "$branch" \
             --title "chore(release): $tag" \
-            --body "$body"
+            --body-file "$body"
