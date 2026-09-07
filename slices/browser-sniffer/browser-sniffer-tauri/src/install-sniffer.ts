@@ -390,6 +390,12 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
     let url: string
     let response: Response
 
+    // The verb the intercepted `fetch` call was made with, in caller precedence:
+    // `init.method` overrides a `Request`'s own; a bare string/URL defaults to
+    // `'GET'` (matching the `fetch` spec).
+    const method =
+      init?.method ?? (typeof request === 'object' && 'method' in request ? request.method : 'GET')
+
     // Count the request as in-flight *before* awaiting the response so a slow
     // header round-trip keeps the page from settling prematurely. Every terminal
     // path below balances this with `trackRequestEnd`.
@@ -426,15 +432,13 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       // `Response`), so the cause set mirrors the XHR pre-response branch —
       // plus an aborted `AbortSignal`, which rejects here rather than firing a
       // separate event.
-      const method =
-        init?.method ??
-        (typeof request === 'object' && 'method' in request ? request.method : 'GET')
       const message = `fetch ${method} ${errorUrl} failed before any response: ${rawError} — likely CORS, blocked mixed content, CSP connect-src, DNS, a refused connection, or an aborted request`
       logWarning(message)
       post({
         _tag: 'ResponseStart',
         id: requestId,
         url: errorUrl,
+        method,
         status: 0,
         statusText: '',
         headers: [],
@@ -448,6 +452,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       _tag: 'ResponseStart',
       id: requestId,
       url,
+      method,
       status: response.status,
       statusText: response.statusText,
       headers: headersToWire(response.headers),
@@ -585,6 +590,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
         _tag: 'ResponseStart',
         id: requestId,
         url: state.url,
+        method: state.method || 'GET',
         status: xhr.status,
         statusText: xhr.statusText,
         headers,
@@ -782,6 +788,7 @@ const installSniffer = function (eventBus: TauriEventApi, options?: InstallSniff
       _tag: 'ResponseStart',
       id: pageContentId,
       url: win.location.href,
+      method: 'GET',
       status: 200,
       statusText: 'OK',
       headers: [['content-type', 'text/html']],

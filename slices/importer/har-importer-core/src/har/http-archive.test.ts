@@ -309,14 +309,15 @@ describe('a foreign archive', () => {
     ])
   })
 
-  test('its request side is simply not represented — no method, no request headers, no postData', () => {
-    // The keys are the whole surface: a request field would have to show up here
-    // before anything downstream could start guessing at one.
+  test('its request side is projected to url+method only — no headers, no postData', () => {
+    // The keys are the whole surface: any other request field would have to
+    // show up here before anything downstream could start guessing at one.
     expect(Object.keys(parsed.entries[0] ?? {}).toSorted()).toEqual([
       'body',
       'bodyAbsent',
       'headers',
       'id',
+      'method',
       'startedAt',
       'status',
       'statusText',

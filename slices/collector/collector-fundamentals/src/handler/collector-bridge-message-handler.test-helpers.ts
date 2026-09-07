@@ -82,8 +82,13 @@ type PageLoadedArg = Parameters<Handler['PageLoaded']>[0]
 type UserDismissedArg = Parameters<Handler['UserDismissed']>[0]
 type SnifferDisposedArg = Parameters<Handler['SnifferDisposed']>[0]
 
-const responseStart = (overrides: { id: string; url: string }): StartArg => ({
+const responseStart = (overrides: {
+  readonly id: string
+  readonly url: string
+  readonly method?: string
+}): StartArg => ({
   _tag: 'ResponseStart',
+  method: 'GET',
   status: 200,
   statusText: 'OK',
   headers: [],

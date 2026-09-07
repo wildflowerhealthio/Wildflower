@@ -26,6 +26,7 @@ const oneEntry = (): HttpArchive.Log => ({
     {
       id: 'har-entry-0',
       url: 'https://example.org/api',
+      method: 'GET',
       status: 200,
       statusText: 'OK',
       headers: [['content-type', 'application/json']],

@@ -360,7 +360,11 @@ const RECOGNIZED_HAR: string = Effect.runSync(
       { sessionId: 'test-session' }
     )
   )
-)
+  // `emitHar` writes `request.method: 'UNKNOWN'` (the capture side never
+  // observed a verb); rewrite the wire so the FHIR pool's `verb: ['GET']`
+  // matchers claim these entries, mirroring what a real capture that
+  // observed the method would carry through.
+).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
 
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>

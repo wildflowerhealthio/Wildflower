@@ -56,9 +56,20 @@ const searchset = (...resources: readonly unknown[]): Record<string, unknown> =>
 
 const encodeHar = Schema.encode(HarFromJson)
 
-/** Serialize constructed exchanges into `.har` file text through `emitHar`. */
+/**
+ * Serialize constructed exchanges into `.har` file text through `emitHar`.
+ *
+ * `emitHar` writes `request.method: 'UNKNOWN'` verbatim on every entry — the
+ * capture side never observed a verb — but the FHIR pool requires `GET` to
+ * claim a URL. Rewrite the wire values here so the tests exercise the
+ * extraction path they were written to exercise, mirroring what a real
+ * capture that observed the method would carry through.
+ */
 const harTextOf = (exchanges: readonly TraceExchange[]): string =>
-  Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' })))
+  Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' }))).replaceAll(
+    '"method":"UNKNOWN"',
+    '"method":"GET"'
+  )
 
 /** The registered sources' kinds flattened — the flat pool recognition routes against. */
 const fhirPool = SourceDescriptor.poolOf(fhirSources)

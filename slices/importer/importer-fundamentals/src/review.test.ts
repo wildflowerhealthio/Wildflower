@@ -53,6 +53,7 @@ const portalKind = kind('portal', 10, '/Patient')
 const input = (id: string, url: string, bodyAbsent = false): Extraction.Input => ({
   id,
   url,
+  method: Option.some('GET'),
   status: 200,
   statusText: 'OK',
   headers: [],

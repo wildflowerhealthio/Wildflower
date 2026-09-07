@@ -83,8 +83,8 @@ describe('HttpResponseKind.make', () => {
     const made = HttpResponseKind.make(definition)
 
     expect(Object.hasOwn(made, 'surprise')).toBe(false)
-    expect(Option.isSome(made.tryRecognize('https://x/keep'))).toBe(true)
-    expect(Option.isNone(made.tryRecognize('https://x/drop'))).toBe(true)
+    expect(Option.isSome(made.tryRecognize('https://x/keep', Option.none()))).toBe(true)
+    expect(Option.isNone(made.tryRecognize('https://x/drop', Option.none()))).toBe(true)
     expect(Object.isFrozen(made)).toBe(true)
   })
 })

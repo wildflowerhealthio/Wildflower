@@ -4,10 +4,14 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { Patient } from 'fhir-r4/resources'
-import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { type HttpMethod, type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
 import { PatientResponseKind } from './patient-response-kind.ts'
+
+const GET: Option.Option<HttpMethod> = Option.some('GET')
+const POST: Option.Option<HttpMethod> = Option.some('POST')
+const NO_METHOD: Option.Option<HttpMethod> = Option.none()
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -52,10 +56,21 @@ describe('PatientResponseKind', () => {
         root: 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4',
       },
     ])('recognizes "$url" under root "$root"', ({ url, root }) => {
-      const recognized = PatientResponseKind.tryRecognize(url)
+      const recognized = PatientResponseKind.tryRecognize(url, GET)
       expect(recognized).toStrictEqual(
         Option.some({ specificity: Specificity.PROTOCOL, source: { system: root, baseUrl: root } })
       )
+    })
+
+    it.each([
+      // The wrong verb never claims a Patient URL.
+      { method: POST, label: 'POST' },
+      // A HAR entry without a known method never claims either.
+      { method: NO_METHOD, label: 'Option.none()' },
+    ])('does not claim a Patient URL under method $label', ({ method }) => {
+      expect(
+        PatientResponseKind.tryRecognize('https://example.com/Patient/1', method)
+      ).toStrictEqual(Option.none())
     })
 
     it.each([
@@ -64,7 +79,7 @@ describe('PatientResponseKind', () => {
       { url: 'https://example.com/Patient/123/' },
       { url: 'https://example.com/Patient/123/_history' },
     ])('does not claim "$url"', ({ url }) => {
-      expect(PatientResponseKind.tryRecognize(url)).toStrictEqual(Option.none())
+      expect(PatientResponseKind.tryRecognize(url, GET)).toStrictEqual(Option.none())
     })
   })
 

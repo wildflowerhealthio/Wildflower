@@ -42,24 +42,41 @@ interface BodyAbsent extends Extraction.ResponseRef {
 }
 
 /**
+ * A response whose `(url, method, body)` matched an earlier response in the
+ * same pass. `parse` was never called — the write set already carries the
+ * first occurrence's resources, so re-parsing the duplicate would double
+ * every write.
+ *
+ * @remarks
+ * `of` is the earlier response's `ResponseRef`. A duplicate carries no
+ * `responseKindName`: it never routed to a kind, since dedup runs before
+ * recognition.
+ */
+interface Duplicate extends Extraction.ResponseRef {
+  readonly of: Extraction.ResponseRef
+}
+
+/**
  * The complete accounting of one extraction: every input response lands in
- * exactly one of the four arrays, each in input order.
+ * exactly one of the five arrays, each in input order.
  *
  * @remarks
  * Nothing here is an error channel. A response no kind claimed (`unmatched`),
- * one whose decode failed (`parseFailures`), and one the archive recorded
- * without a body (`bodyAbsent`) are all ordinary outcomes of extracting from
- * traffic that was never captured for this purpose.
+ * one whose decode failed (`parseFailures`), one the archive recorded without
+ * a body (`bodyAbsent`), and one that repeated an earlier `(url, method,
+ * body)` (`duplicates`) are all ordinary outcomes of extracting from traffic
+ * that was never captured for this purpose.
  */
 interface ExtractionResult<TParsed> {
   readonly batches: readonly Batch<TParsed>[]
   readonly unmatched: readonly Extraction.ResponseRef[]
   readonly parseFailures: readonly ParseFailure[]
   readonly bodyAbsent: readonly BodyAbsent[]
+  readonly duplicates: readonly Duplicate[]
 }
 
 /**
- * One response's landing spot in the four-way {@link ExtractionResult}
+ * One response's landing spot in the five-way {@link ExtractionResult}
  * accounting, tagged so {@link runExtraction} can group what {@link outcomeOf}
  * mapped.
  */
@@ -68,15 +85,24 @@ type RunOutcome<TParsed> =
   | { readonly _tag: 'unmatched'; readonly value: Extraction.ResponseRef }
   | { readonly _tag: 'parseFailure'; readonly value: ParseFailure }
   | { readonly _tag: 'bodyAbsent'; readonly value: BodyAbsent }
+  | { readonly _tag: 'duplicate'; readonly value: Duplicate }
 
 /** Route one response and decode it if claimed — the map {@link runExtraction} folds. */
 const outcomeOf = <TParsed>(
   responseKinds: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
+  duplicates: ReadonlyMap<string, Extraction.ResponseRef>,
   response: Extraction.Input
 ): Effect.Effect<RunOutcome<TParsed>> => {
   const ref: Extraction.ResponseRef = { id: response.id, url: response.url }
+  const duplicateOf = duplicates.get(response.id)
+  if (duplicateOf !== undefined) {
+    return Effect.succeed<RunOutcome<TParsed>>({
+      _tag: 'duplicate',
+      value: { ...ref, of: duplicateOf },
+    })
+  }
   return pipe(
-    Extraction.routeTo(responseKinds, response.url),
+    Extraction.routeTo(responseKinds, response.url, response.method),
     Option.match({
       onNone: () => Effect.succeed<RunOutcome<TParsed>>({ _tag: 'unmatched', value: ref }),
       onSome: ({ kind }) =>
@@ -93,6 +119,12 @@ const outcomeOf = <TParsed>(
             Match.tag('resources', ({ resources }) => ({
               _tag: 'batch' as const,
               value: { ...ref, responseKindName: kind.name, resources },
+            })),
+            // Dedup runs before routing, so a routed response never carries
+            // this outcome — see the early return above.
+            Match.tag('duplicate', ({ of }) => ({
+              _tag: 'duplicate' as const,
+              value: { ...ref, of },
             })),
             Match.exhaustive
           )
@@ -122,11 +154,12 @@ const outcomeOf = <TParsed>(
 const runExtraction = <TParsed>(
   responseKinds: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[]
-): Effect.Effect<ExtractionResult<TParsed>> =>
-  pipe(
+): Effect.Effect<ExtractionResult<TParsed>> => {
+  const duplicates = Extraction.findDuplicates(responses)
+  return pipe(
     // Sequential (Effect.forEach's default), so outcomes — and therefore each
-    // of the four groups below — keep input order.
-    Effect.forEach(responses, (response) => outcomeOf(responseKinds, response)),
+    // of the five groups below — keep input order.
+    Effect.forEach(responses, (response) => outcomeOf(responseKinds, duplicates, response)),
     // One pass instead of `Array.groupBy`, which is string-keyed
     // (`Record<string, …>`) and would lose the union's narrowing.
     Effect.map((outcomes) => {
@@ -134,6 +167,7 @@ const runExtraction = <TParsed>(
       const unmatched: Extraction.ResponseRef[] = []
       const parseFailures: ParseFailure[] = []
       const bodyAbsent: BodyAbsent[] = []
+      const dupes: Duplicate[] = []
       for (const outcome of outcomes) {
         switch (outcome._tag) {
           case 'batch':
@@ -148,11 +182,15 @@ const runExtraction = <TParsed>(
           case 'bodyAbsent':
             bodyAbsent.push(outcome.value)
             break
+          case 'duplicate':
+            dupes.push(outcome.value)
+            break
         }
       }
-      return { batches, unmatched, parseFailures, bodyAbsent }
+      return { batches, unmatched, parseFailures, bodyAbsent, duplicates: dupes }
     })
   )
+}
 
 export { runExtraction }
-export type { Batch, BodyAbsent, ExtractionResult, ParseFailure }
+export type { Batch, BodyAbsent, Duplicate, ExtractionResult, ParseFailure }

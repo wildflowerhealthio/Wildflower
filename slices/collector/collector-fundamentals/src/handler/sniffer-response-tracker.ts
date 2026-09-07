@@ -12,6 +12,7 @@ import {
 } from 'effect'
 import type { MessageHandler } from 'effect-messaging-core'
 import { UnknownException } from 'effect/Cause'
+import { type HttpMethod, isHttpMethod } from 'http-extraction-fundamentals'
 import type { CollectorBridge } from '../bridge.ts'
 import type * as CollectorHttpResponseKind from '../model/collector-http-response-kind.ts'
 import { CollectorHttpResponse } from '../model/index.ts'
@@ -139,7 +140,8 @@ const make = <TParsed>({
   captureProvenance,
 }: {
   matchResponseKind: (
-    url: string
+    url: string,
+    method: Option.Option<HttpMethod>
   ) => Option.Option<CollectorHttpResponseKind.CollectorHttpResponseKind<TParsed>>
   sendMessage: (
     message: typeof CancelSnifferRequestMessage.Type
@@ -245,7 +247,14 @@ const make = <TParsed>({
 
     const handleResponseStart: Service['ResponseStart'] = (event) =>
       Effect.gen(function* () {
-        const responseKind = matchResponseKind(event.url)
+        // Normalize the wire method to the closed `HttpMethod` union at the
+        // one boundary that carries the wire value in. An unrecognized value
+        // reads as `Option.none()` — a matcher's `verb` list is closed, so
+        // an unknown method never claims a kind.
+        const method: Option.Option<HttpMethod> = isHttpMethod(event.method)
+          ? Option.some(event.method)
+          : Option.none()
+        const responseKind = matchResponseKind(event.url, method)
         if (Option.isNone(responseKind)) {
           yield* sendMessage({
             _tag: 'CancelSnifferRequest',
@@ -261,6 +270,7 @@ const make = <TParsed>({
           response: new CollectorHttpResponse(
             event.id,
             event.url,
+            method,
             event.status,
             event.statusText,
             event.headers,

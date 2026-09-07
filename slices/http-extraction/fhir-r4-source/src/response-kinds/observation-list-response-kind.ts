@@ -19,6 +19,7 @@ const isObservation = Schema.is(Observation.Schema)
  * load-bearing.
  */
 const observationListUrl = UrlMatch.make({
+  verb: ['GET'],
   segments: [UrlMatch.literal('Observation')],
   end: 'mustHaveQuery',
 })

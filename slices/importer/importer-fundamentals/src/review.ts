@@ -2,6 +2,9 @@ import { Array as Arr, Effect, Option, type ParseResult, pipe } from 'effect'
 
 import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
 
+// A duplicate response never routes to a kind, so the pick reads as `None`.
+const DUPLICATE_PICK: Option.Option<string> = Option.none()
+
 /**
  * The pure per-response review model: whole-import kind toggles, per-response
  * pick overrides, and per-resource include toggles, resolved against ranked
@@ -196,6 +199,9 @@ type PreviewedOutcome<TParsed> =
   | { readonly _tag: 'parseError'; readonly error: ParseResult.ParseError }
   | { readonly _tag: 'bodyAbsent' }
   | { readonly _tag: 'noPick' }
+  /** A response whose `(url, method, body)` matched an earlier one in the
+   * same batch. Never parsed; `of` is the first-seen response's `ref`. */
+  | { readonly _tag: 'duplicate'; readonly of: Extraction.ResponseRef }
 
 /**
  * One response's preview: its recognition, its resolved pick, and its parse
@@ -236,56 +242,77 @@ const preview = <TParsed>(
   selection: Selection
 ): Effect.Effect<
   readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>[]
-> =>
-  Effect.forEach(Arr.zip(responses, recognize(pool, responses)), ([response, recognized]) => {
-    const pick = pickFor(recognized, selection)
-    if (Option.isNone(pick)) {
-      return Effect.succeed<PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>>(
-        {
+> => {
+  // Detect duplicates once before recognition/parse: a repeated
+  // `(url, method, body)` is data, and the second occurrence contributes
+  // nothing beyond the first — same bytes, same parsed resources.
+  const duplicates = Extraction.findDuplicates(responses)
+  return Effect.forEach(
+    Arr.zip(responses, recognize(pool, responses)),
+    ([response, recognized]) => {
+      const duplicateOf = duplicates.get(response.id)
+      if (duplicateOf !== undefined) {
+        return Effect.succeed<
+          PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>
+        >({
+          ref: recognized.ref,
+          recognized,
+          pickKindName: DUPLICATE_PICK,
+          outcome: { _tag: 'duplicate', of: duplicateOf },
+        })
+      }
+      const pick = pickFor(recognized, selection)
+      if (Option.isNone(pick)) {
+        return Effect.succeed<
+          PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>
+        >({
           ref: recognized.ref,
           recognized,
           pickKindName: Option.none(),
           outcome: { _tag: 'noPick' },
-        }
+        })
+      }
+      const candidate = pick.value
+      return Extraction.parseWith(candidate.kind, response).pipe(
+        Effect.map(
+          (outcome): PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed> => {
+            const pickKindName = Option.some(candidate.kind.name)
+            if (outcome._tag === 'resources') {
+              return {
+                ref: recognized.ref,
+                recognized,
+                pickKindName,
+                outcome: {
+                  _tag: 'resources',
+                  resources: outcome.resources.map(
+                    (resource, index): PreviewedResource<TParsed> => ({
+                      key: resourceKey(recognized.ref.id, index),
+                      resource,
+                    })
+                  ),
+                },
+              }
+            }
+            if (outcome._tag === 'parseError') {
+              return {
+                ref: recognized.ref,
+                recognized,
+                pickKindName,
+                outcome: { _tag: 'parseError', error: outcome.error },
+              }
+            }
+            return {
+              ref: recognized.ref,
+              recognized,
+              pickKindName,
+              outcome: { _tag: 'bodyAbsent' },
+            }
+          }
+        )
       )
     }
-    const candidate = pick.value
-    return Extraction.parseWith(candidate.kind, response).pipe(
-      Effect.map(
-        (outcome): PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed> => {
-          const pickKindName = Option.some(candidate.kind.name)
-          if (outcome._tag === 'resources') {
-            return {
-              ref: recognized.ref,
-              recognized,
-              pickKindName,
-              outcome: {
-                _tag: 'resources',
-                resources: outcome.resources.map((resource, index): PreviewedResource<TParsed> => ({
-                  key: resourceKey(recognized.ref.id, index),
-                  resource,
-                })),
-              },
-            }
-          }
-          if (outcome._tag === 'parseError') {
-            return {
-              ref: recognized.ref,
-              recognized,
-              pickKindName,
-              outcome: { _tag: 'parseError', error: outcome.error },
-            }
-          }
-          return {
-            ref: recognized.ref,
-            recognized,
-            pickKindName,
-            outcome: { _tag: 'bodyAbsent' },
-          }
-        }
-      )
-    )
-  })
+  )
+}
 
 /**
  * The confirm's write set: every previewed resource the reviewer left included,

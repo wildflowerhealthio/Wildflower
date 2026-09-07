@@ -4,10 +4,14 @@ import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { Observation } from 'fhir-r4/resources'
-import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
+import { type HttpMethod, type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 
 import { ObservationListResponseKind } from './observation-list-response-kind.ts'
+
+const GET: Option.Option<HttpMethod> = Option.some('GET')
+const POST: Option.Option<HttpMethod> = Option.some('POST')
+const NO_METHOD: Option.Option<HttpMethod> = Option.none()
 
 const { expectRightToEqual, expectLeftToEqual } = utilityExpectations(expect)
 
@@ -74,9 +78,21 @@ describe('ObservationListResponseKind', () => {
         root: 'https://fhir.epic.com/interconnect-fhir-oauth/api/FHIR/R4',
       },
     ])('recognizes "$url" under root "$root"', ({ url, root }) => {
-      expect(ObservationListResponseKind.tryRecognize(url)).toStrictEqual(
+      expect(ObservationListResponseKind.tryRecognize(url, GET)).toStrictEqual(
         Option.some({ specificity: Specificity.PROTOCOL, source: { system: root, baseUrl: root } })
       )
+    })
+
+    it.each([
+      { method: POST, label: 'POST' },
+      { method: NO_METHOD, label: 'Option.none()' },
+    ])('does not claim under method $label', ({ method }) => {
+      expect(
+        ObservationListResponseKind.tryRecognize(
+          'https://hapi.fhir.org/baseR4/Observation?subject=x',
+          method
+        )
+      ).toStrictEqual(Option.none())
     })
 
     it.each([
@@ -90,7 +106,7 @@ describe('ObservationListResponseKind', () => {
       { url: 'https://example.com/baseR4/Observation/123' },
       { url: 'https://example.com/Patient?name=x' },
     ])('does not claim "$url"', ({ url }) => {
-      expect(ObservationListResponseKind.tryRecognize(url)).toStrictEqual(Option.none())
+      expect(ObservationListResponseKind.tryRecognize(url, GET)).toStrictEqual(Option.none())
     })
   })
 

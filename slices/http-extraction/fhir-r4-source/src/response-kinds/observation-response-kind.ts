@@ -10,7 +10,10 @@ type ObservationType = typeof Observation.Schema.Type
 const decode = Schema.decode(Schema.parseJson(Observation.Schema))
 
 /** `…://host/Observation/<id>` with optional query string, no further path. */
-const observationUrl = UrlMatch.make({ segments: [UrlMatch.literal('Observation'), UrlMatch.id] })
+const observationUrl = UrlMatch.make({
+  verb: ['GET'],
+  segments: [UrlMatch.literal('Observation'), UrlMatch.id],
+})
 
 /**
  * Entity for a single FHIR R4 `Observation` resource fetched at

@@ -79,6 +79,7 @@ const oneEntryLogWithBodyLeaf = (headerValue: string): HttpArchive.Log => {
       {
         id: 'har-entry-0',
         url: 'https://example.com/',
+        method: 'GET',
         status: 200,
         statusText: 'OK',
         headers: [['content-type', 'application/json']],

@@ -65,9 +65,13 @@ const arbitraryScenario = (index: number): fc.Arbitrary<Scenario> =>
       const marker = MARKER_FOR_OUTCOME[outcome]
       return {
         outcome,
+        // The scenario index in the URL keeps every response's `(url, method,
+        // body)` unique across a run, so the `duplicate` bucket stays empty
+        // in these property tests — the oracle is per-scenario and doesn't
+        // model an alternate landing spot.
         response: makeExtractionInput({
           id: `req-${index}`,
-          url: `https://example.com/${marker}/${encodeURIComponent(path)}`,
+          url: `https://example.com/${marker}/${index}/${encodeURIComponent(path)}`,
           status,
           statusText,
           headers,

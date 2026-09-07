@@ -84,13 +84,16 @@ describe('PrescriptionHistoryResponseKind', () => {
       { url: `${BASE}/api/v1/customers/pcid/${ACCOUNT_ID}?expand=abc`, match: false },
       { url: `${BASE}/api/v1/prescriptions/rx-1/prescription-status`, match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
-      expect(Option.isSome(PrescriptionHistoryResponseKind.tryRecognize(url))).toBe(match)
+      expect(Option.isSome(PrescriptionHistoryResponseKind.tryRecognize(url, Option.none()))).toBe(
+        match
+      )
     })
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
       expect(
         PrescriptionHistoryResponseKind.tryRecognize(
-          `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`
+          `${BASE}/api/v1/prescription-history?customerId=${ACCOUNT_ID}`,
+          Option.none()
         )
       ).toStrictEqual(
         Option.some({

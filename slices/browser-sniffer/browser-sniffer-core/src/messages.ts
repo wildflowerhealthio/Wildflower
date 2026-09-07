@@ -68,6 +68,14 @@ const HeadersWire = Schema.Array(Schema.Tuple(Schema.String, Schema.String))
 const ResponseStartMessageBody = Schema.TaggedStruct('ResponseStart', {
   id: SnifferRequestId,
   url: Schema.String,
+  /**
+   * The request verb this response was served for. A plain `Schema.String`
+   * rather than a literal union: the wire is what the sniffer observed, and
+   * a WebView intercept can pass any method through — an unrecognized value
+   * is normalized to `'UNKNOWN'` at each consumer's own boundary, not
+   * rejected at the bridge.
+   */
+  method: Schema.String,
   // Sniffer-observed status codes are integers; the schema is tightened
   // from bare `Schema.Number` so the bridge round-trip property test
   // stays JSON-safe — `Schema.Number` lets `Arbitrary` produce

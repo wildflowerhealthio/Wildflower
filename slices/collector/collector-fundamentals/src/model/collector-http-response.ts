@@ -1,5 +1,5 @@
-import type { DateTime } from 'effect'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import type { DateTime, Option } from 'effect'
+import type { HttpMethod, HttpResponse } from 'http-extraction-fundamentals'
 
 /**
  * One in-flight (then settled) sniffed response, as an `HttpResponseKind.parse`
@@ -34,6 +34,14 @@ class CollectorHttpResponse implements HttpResponse.HttpResponse {
      */
     public readonly id: string,
     public readonly url: string,
+    /**
+     * The request verb this response was served for — one of the seven real
+     * HTTP methods when the sniffer reported it, `Option.none()` when it did
+     * not. Recognition routes on `(url, method)` through the same
+     * `Extraction.routeTo` an archive import uses, so a matcher's declared
+     * `verb` list is honoured identically live and in an archive.
+     */
+    public readonly method: Option.Option<HttpMethod>,
     public readonly status: number,
     public readonly statusText: string,
     public readonly headers: HttpResponse.Headers,

@@ -54,6 +54,7 @@ const poolOf = (
 const input = (id: string, url: string): Extraction.Input => ({
   id,
   url,
+  method: Option.some('GET'),
   status: 200,
   statusText: 'OK',
   headers: [],

@@ -48,8 +48,10 @@ const makeHarness = (): Effect.Effect<Harness> =>
     const drained = { value: false }
     const tracker: SnifferResponseTracker.SnifferResponseTracker<SimpleResources> =
       yield* SnifferResponseTracker.make<SimpleResources>({
-        matchResponseKind: (url) =>
-          Option.fromNullable([SimpleResponseKind].find((e) => Option.isSome(e.tryRecognize(url)))),
+        matchResponseKind: (url, method) =>
+          Option.fromNullable(
+            [SimpleResponseKind].find((e) => Option.isSome(e.tryRecognize(url, method)))
+          ),
         sendMessage: noopSendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         handleGeneratedSteps: () => Effect.void,

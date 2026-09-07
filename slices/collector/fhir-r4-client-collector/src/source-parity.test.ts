@@ -108,7 +108,8 @@ describe("tryRecognize mints the configured root as the resource's source", () =
         (config) => {
           const safeId = encodeURIComponent(config.patientId)
           const recognized = PatientResponseKind.tryRecognize(
-            `${config.rootUrl}/Patient/${safeId}?_format=json`
+            `${config.rootUrl}/Patient/${safeId}?_format=json`,
+            Option.some('GET')
           )
           expect(Option.isSome(recognized)).toBe(true)
           const source = Option.getOrThrow(recognized).source
@@ -127,7 +128,8 @@ describe("tryRecognize mints the configured root as the resource's source", () =
         (config) => {
           const safeId = encodeURIComponent(config.patientId)
           const recognized = ObservationListResponseKind.tryRecognize(
-            `${config.rootUrl}/Observation?subject%3APatient=${safeId}`
+            `${config.rootUrl}/Observation?subject%3APatient=${safeId}`,
+            Option.some('GET')
           )
           expect(Option.isSome(recognized)).toBe(true)
           const source = Option.getOrThrow(recognized).source

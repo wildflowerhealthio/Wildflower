@@ -3,9 +3,18 @@ import { Effect, Option, ParseResult, Schema } from 'effect'
 import type { FhirResource } from '../resources/fhir-resource.ts'
 import { adoptResource, type SourceIdentity } from './adopt-resource.ts'
 
+/**
+ * The structural shape of the HTTP request method as `http-extraction`'s
+ * `HttpMethod` union — restated here rather than imported, same layering
+ * reason as {@link AdoptableEntity} itself (this package sits below
+ * `http-extraction`).
+ */
+type AdoptableMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTIONS'
+
 /** The parse signature an adopted entity's wrapper stands in for. */
 type AdoptableParse = (response: {
   readonly url: string
+  readonly method: Option.Option<AdoptableMethod>
 }) => Effect.Effect<readonly FhirResource[], ParseResult.ParseError>
 
 /**
@@ -17,16 +26,20 @@ type AdoptableParse = (response: {
  * package sits below the `http-extraction` slice (the `CapturedResponse`
  * precedent); `fhir-r4-source` pins the two shapes against each other. `parse`
  * uses method syntax so its parameter checks bivariantly, letting a kind typed
- * against a concrete response satisfy the `{ url }` it reads.
+ * against a concrete response satisfy the `{ url, method }` it reads.
  */
 interface AdoptableEntity {
   readonly name: string
-  readonly tryRecognize: (url: string) => Option.Option<{
+  readonly tryRecognize: (
+    url: string,
+    method: Option.Option<AdoptableMethod>
+  ) => Option.Option<{
     readonly specificity: number
     readonly source?: SourceIdentity
   }>
   parse(response: {
     readonly url: string
+    readonly method: Option.Option<AdoptableMethod>
   }): Effect.Effect<readonly FhirResource[], ParseResult.ParseError>
 }
 
@@ -95,7 +108,7 @@ const adoptUnderRecognizedRoot = <TEntity extends AdoptableEntity>(
   entity: TEntity & EntityParsesEveryResource<TEntity>
 ): TEntity => {
   const parse: AdoptableParse = (response) =>
-    Option.match(entity.tryRecognize(response.url), {
+    Option.match(entity.tryRecognize(response.url, response.method), {
       onNone: () =>
         Effect.fail(
           notAdoptableError(

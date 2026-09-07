@@ -168,11 +168,11 @@ describe('PrescriptionResponseKind', () => {
       },
       { url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescriptions/rx-1', match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
-      expect(Option.isSome(PrescriptionResponseKind.tryRecognize(url))).toBe(match)
+      expect(Option.isSome(PrescriptionResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
-      expect(PrescriptionResponseKind.tryRecognize(STATUS_URL)).toStrictEqual(
+      expect(PrescriptionResponseKind.tryRecognize(STATUS_URL, Option.none())).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
           source: { system: SHOPPERS_DRUGMART_SYSTEM },

@@ -1,4 +1,6 @@
-import type { DateTime } from 'effect'
+import type { DateTime, Option } from 'effect'
+
+import type { HttpMethod } from './http-method.ts'
 
 /**
  * Ordered `(name, value)` header pairs as received on the wire. HTTP
@@ -44,6 +46,13 @@ type Headers = readonly (readonly [string, string])[]
 interface HttpResponse {
   readonly id: string
   readonly url: string
+  /**
+   * The request verb this response was served for, `Option.none()` when the
+   * source dropped it (a HAR entry whose `request.method` is `'UNKNOWN'`).
+   * Recognition routes on `(url, method)` through this — a matcher built
+   * with `UrlMatch.make` never claims an unknown-method request.
+   */
+  readonly method: Option.Option<HttpMethod>
   readonly status: number
   readonly statusText: string
   readonly headers: Headers
@@ -59,6 +68,7 @@ interface HttpResponse {
 interface Data {
   readonly id: string
   readonly url: string
+  readonly method: Option.Option<HttpMethod>
   readonly status: number
   readonly statusText: string
   readonly headers: Headers
@@ -76,6 +86,7 @@ interface Data {
 const make = (data: Data): HttpResponse => ({
   id: data.id,
   url: data.url,
+  method: data.method,
   status: data.status,
   statusText: data.statusText,
   headers: data.headers,

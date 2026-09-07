@@ -226,6 +226,14 @@ const ResponseBlock = ({
       </li>
     )
   }
+  if (outcome._tag === 'duplicate') {
+    return (
+      <li className={styles.responseRow}>
+        <ResponsePicker preview={preview} selection={selection} onOverride={onOverride} />
+        <p className={styles.bodyAbsent}>Duplicate of {outcome.of.id} — not written.</p>
+      </li>
+    )
+  }
   const resources = outcome.resources
   return (
     <li className={styles.responseRow}>

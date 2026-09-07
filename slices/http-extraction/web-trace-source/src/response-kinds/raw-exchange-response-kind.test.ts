@@ -61,7 +61,7 @@ describe('tryRecognize', () => {
   it('claims every URL at CATCH_ALL specificity with no source, including ones no collector would recognize', () => {
     fc.assert(
       fc.property(fc.webUrl(), (url) => {
-        expect(entity.tryRecognize(url)).toStrictEqual(
+        expect(entity.tryRecognize(url, Option.none())).toStrictEqual(
           Option.some({ specificity: Specificity.CATCH_ALL })
         )
       }),
@@ -79,7 +79,7 @@ describe('tryRecognize', () => {
     '/relative/path',
     '',
   ])('claims %j, minting no source', (url) => {
-    const recognized = entity.tryRecognize(url)
+    const recognized = entity.tryRecognize(url, Option.none())
     expect(Option.isSome(recognized)).toBe(true)
     expect(Option.getOrThrow(recognized).source).toBeUndefined()
   })
