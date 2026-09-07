@@ -51,11 +51,11 @@ describe('MedicationListResponseKind', () => {
       // A bare MedicationRequest search is not this pattern.
       { url: `${LIST_BASE}/MedicationRequest?patient=x`, match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
-      expect(Option.isSome(MedicationListResponseKind.tryRecognize(url))).toBe(match)
+      expect(Option.isSome(MedicationListResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
-      expect(MedicationListResponseKind.tryRecognize(LIST_URL)).toStrictEqual(
+      expect(MedicationListResponseKind.tryRecognize(LIST_URL, Option.none())).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
           source: { system: REXALL_CAREBOOK_SYSTEM },

@@ -107,12 +107,15 @@ describe('CustomerResponseKind', () => {
         match: false,
       },
     ])('recognizes $match for "$url"', ({ url, match }) => {
-      expect(Option.isSome(CustomerResponseKind.tryRecognize(url))).toBe(match)
+      expect(Option.isSome(CustomerResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
       expect(
-        CustomerResponseKind.tryRecognize(`${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`)
+        CustomerResponseKind.tryRecognize(
+          `${CUSTOMERS_BASE}/api/v1/customers/pcid/${ACCOUNT_ID}`,
+          Option.none()
+        )
       ).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,

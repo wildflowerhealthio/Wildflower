@@ -1,13 +1,16 @@
-import { DateTime } from 'effect'
+import { DateTime, Option } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
+
+import type { HttpMethod } from 'http-extraction-fundamentals'
 
 import { CollectorHttpResponse } from './collector-http-response.ts'
 
 const encoder = new TextEncoder()
 
 const STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
+const GET: Option.Option<HttpMethod> = Option.some('GET')
 
 /** A response with no body; the constructor's fixed fields aren't what most cases are about. */
 const bare = (
@@ -15,7 +18,7 @@ const bare = (
   status = 200,
   statusText = 'OK'
 ): CollectorHttpResponse =>
-  new CollectorHttpResponse('req-1', url, status, statusText, [], STARTED_AT)
+  new CollectorHttpResponse('req-1', url, GET, status, statusText, [], STARTED_AT)
 
 describe('CollectorHttpResponse', () => {
   it('stores id, url, status, statusText, headers, and startedAt', () => {
@@ -23,6 +26,7 @@ describe('CollectorHttpResponse', () => {
       new CollectorHttpResponse(
         'req-42',
         'https://example.com/Patient/123',
+        GET,
         200,
         'OK',
         [['content-type', 'application/json']],
@@ -31,6 +35,7 @@ describe('CollectorHttpResponse', () => {
     ).toMatchObject({
       id: 'req-42',
       url: 'https://example.com/Patient/123',
+      method: GET,
       status: 200,
       statusText: 'OK',
       headers: [['content-type', 'application/json']],
@@ -47,6 +52,7 @@ describe('CollectorHttpResponse', () => {
     const response = new CollectorHttpResponse(
       'req-1',
       'https://example.com',
+      GET,
       200,
       'OK',
       headers,

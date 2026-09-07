@@ -1,6 +1,7 @@
 import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
 
 import type * as Extraction from './extraction.ts'
+import type { HttpMethod } from './http-method.ts'
 import * as HttpResponseKind from './http-response-kind.ts'
 import * as HttpResponse from './http-response.ts'
 import { Specificity } from './specificity.ts'
@@ -13,6 +14,8 @@ import { Specificity } from './specificity.ts'
 interface HttpResponseOverrides {
   readonly id?: string
   readonly url?: string
+  /** Defaults to `Option.some('GET')`. */
+  readonly method?: Option.Option<HttpMethod>
   readonly status?: number
   readonly statusText?: string
   readonly headers?: HttpResponse.Headers
@@ -39,6 +42,7 @@ const makeHttpResponse = (overrides: HttpResponseOverrides = {}): HttpResponse.H
   return HttpResponse.make({
     id: overrides.id ?? 'req-1',
     url: overrides.url ?? 'https://example.com/resource/id',
+    method: overrides.method ?? Option.some('GET'),
     status: overrides.status ?? 200,
     statusText: overrides.statusText ?? 'OK',
     headers: overrides.headers ?? [['content-type', 'application/json']],
@@ -77,10 +81,11 @@ const recognizeMatching =
 const SimpleResponseKind: HttpResponseKind.HttpResponseKind<typeof SimpleSchema.Type> =
   HttpResponseKind.make({
     name: 'SimpleResponseKind',
-    tryRecognize: recognizeMatching(/\/people\/\d+$/, {
-      specificity: Specificity.PORTAL,
-      source: { system: 'https://example.test/people' },
-    }),
+    tryRecognize: (url) =>
+      recognizeMatching(/\/people\/\d+$/, {
+        specificity: Specificity.PORTAL,
+        source: { system: 'https://example.test/people' },
+      })(url),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(SimpleSchema))(response.text()), (data) => [data]),
   })
@@ -90,7 +95,8 @@ const AnotherSchema = Schema.Struct({ id: Schema.String })
 const AnotherResponseKind: HttpResponseKind.HttpResponseKind<typeof AnotherSchema.Type> =
   HttpResponseKind.make({
     name: 'AnotherResponseKind',
-    tryRecognize: recognizeMatching(/\/items\//, { specificity: Specificity.PROTOCOL }),
+    tryRecognize: (url) =>
+      recognizeMatching(/\/items\//, { specificity: Specificity.PROTOCOL })(url),
     parse: (response) =>
       Effect.map(Schema.decode(Schema.parseJson(AnotherSchema))(response.text()), (data) => [data]),
   })
@@ -135,6 +141,7 @@ const echoResponseKind = (
   HttpResponseKind.make({
     name,
     tryRecognize: (url) =>
+      // Echo kinds ignore the request method — the ranking tests don't care.
       url.includes(`/${marker}/`) ? Option.some({ specificity }) : Option.none(),
     parse: (response) =>
       response.text() === POISON_BODY
@@ -168,6 +175,7 @@ const makeExtractionInput = (
 ): Extraction.Input => ({
   id: overrides.id ?? 'req-1',
   url: overrides.url ?? 'https://example.com/alpha/1',
+  method: overrides.method ?? Option.some('GET'),
   status: overrides.status ?? 200,
   statusText: overrides.statusText ?? 'OK',
   headers: overrides.headers ?? [['content-type', 'application/json']],

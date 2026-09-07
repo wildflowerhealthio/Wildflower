@@ -1,4 +1,4 @@
-import { Effect, type ParseResult, Schema } from 'effect'
+import { Effect, Option, type ParseResult, Schema } from 'effect'
 
 import type { Extraction } from 'http-extraction-fundamentals'
 import { HttpArchive } from './har/index.ts'
@@ -20,6 +20,12 @@ import type { HarSettings } from './har-settings.ts'
 const toInput = (entry: HttpArchive.Entry): Extraction.Input => ({
   id: entry.id,
   url: entry.url,
+  // `HttpArchive.Entry` carries the wire `HarMethodValue` (the seven verbs
+  // plus `'UNKNOWN'`); the extraction pipeline speaks `Option<HttpMethod>`,
+  // with `Option.none()` standing in for a HAR entry whose method the
+  // archive dropped. This is the one boundary where the wire↔option
+  // conversion happens.
+  method: entry.method === 'UNKNOWN' ? Option.none() : Option.some(entry.method),
   status: entry.status,
   statusText: entry.statusText,
   headers: entry.headers,

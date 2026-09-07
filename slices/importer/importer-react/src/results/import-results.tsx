@@ -102,7 +102,8 @@ const FileResultRow = ({ result }: { readonly result: FileImportResult }): JSX.E
       <span className={styles.fileName}>{result.fileName}</span>
       <span className={styles.fileNote}>
         Wrote {outcome.written} of {outcome.attempted}{' '}
-        {outcome.attempted === 1 ? 'resource' : 'resources'} · provenance{' '}
+        {outcome.attempted === 1 ? 'resource' : 'resources'}
+        {outcome.excluded > 0 ? ` · ${outcome.excluded} excluded` : ''} · provenance{' '}
         <span className={styles.sourceRef}>{outcome.sourceRef}</span>
       </span>
       {outcome.failures.length > 0 && (
@@ -137,8 +138,10 @@ const ImportResults = ({ batch, onStartOver }: ImportResultsProps): JSX.Element 
       <h2 className={styles.heading}>{partial ? PARTIAL_HEADING : COMPLETE_HEADING}</h2>
       <p role="status" className={styles.summary}>
         Wrote {summary.written} of {summary.attempted}{' '}
-        {summary.attempted === 1 ? 'resource' : 'resources'} across {summary.importedFiles} of{' '}
-        {summary.totalFiles} {summary.totalFiles === 1 ? 'file' : 'files'}.
+        {summary.attempted === 1 ? 'resource' : 'resources'}
+        {summary.excluded > 0 ? ` (${summary.excluded} excluded)` : ''} across{' '}
+        {summary.importedFiles} of {summary.totalFiles}{' '}
+        {summary.totalFiles === 1 ? 'file' : 'files'}.
       </p>
       <ul className={styles.fileList}>
         {batch.map((result) => (

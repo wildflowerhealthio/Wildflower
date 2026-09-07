@@ -127,11 +127,11 @@ slice needs.
   (and re-salt the pseudonymizer if the panel is careless about salt lifetime —
   see `har-anonymizer-react`'s AGENTS.md).
 - **Selection state lives in the shell, not the review body.** `ReviewBody` is
-  uncontrolled — it holds its own working `Review.Selection` seeded from
-  `initialSelection` and reports every change up through `onChange`. The screen is
-  the source of truth (a `Map<fileId, Selection>`), so it can hand the confirm the
-  exact selection each file was reviewed with (`Review.chosen`). Don't move the
-  selection down into the body, or a confirm and the view could disagree.
+  controlled — the shell passes `selection` in and receives every change via
+  `onChange`, and holds the canonical `Map<fileId, Selection>` so it can hand
+  the confirm the exact selection each file was reviewed with
+  (`Review.chosenResources` over the shared previews). Don't move the
+  selection down into the body, or the shell and the view can disagree.
 - **Confirm ordering is fixed per file: archive create, then that file's resource
   writes.** A `local` pick's archive is uploaded first (`useUploadHar`) and the
   reference it mints is stamped onto every resource from _that file_; only then

@@ -58,7 +58,8 @@ const resourcesViaTracker = (
     SnifferResponseTracker.make<Echo>({
       // Route through the same `Extraction.routeTo` the archive runner uses, so
       // live and archive routing are one function.
-      matchResponseKind: (url) => Option.map(Extraction.routeTo(kinds, url), (r) => r.kind),
+      matchResponseKind: (url, method) =>
+        Option.map(Extraction.routeTo(kinds, url, method), (r) => r.kind),
       sendMessage: () => Effect.void,
       handleNewSniffResult: (result) =>
         Effect.sync(() => {
@@ -76,6 +77,7 @@ const resourcesViaTracker = (
         _tag: 'ResponseStart',
         id: response.id,
         url: response.url,
+        method: 'GET',
         status: response.status,
         statusText: response.statusText,
         headers: response.headers,

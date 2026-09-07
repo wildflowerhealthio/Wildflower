@@ -10,7 +10,10 @@ type PatientType = typeof Patient.Schema.Type
 const decode = Schema.decode(Schema.parseJson(Patient.Schema))
 
 /** `…://host/Patient/<id>` with optional query string, no further path. */
-const patientUrl = UrlMatch.make({ segments: [UrlMatch.literal('Patient'), UrlMatch.id] })
+const patientUrl = UrlMatch.make({
+  verb: ['GET'],
+  segments: [UrlMatch.literal('Patient'), UrlMatch.id],
+})
 
 /**
  * Entity for a single FHIR R4 `Patient` resource fetched at

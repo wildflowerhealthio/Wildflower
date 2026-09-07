@@ -28,10 +28,17 @@ decodes on confirm.
     off shows an "excluded" label.
   - **A collapsible no-match section** (`<details>`) folds away the responses no
     kind claimed (the browser noise around the FHIR traffic).
-  - **Uncontrolled** — it holds its own `Review.Selection` seeded from
-    `initialSelection` and reports every change up through `onChange`, so the shell
-    owns the source of truth and can hand the confirm the exact selection each file
-    was reviewed with.
+  - **A per-resource include row** under each recognised response, one row per
+    parsed resource — its `resourceType`, a one-line summary from
+    `describeResource`, and an include checkbox — plus a per-type tally
+    ("14 MedicationRequest, 2 excluded") above the URL list. A `duplicate`
+    response renders the "Duplicate of X — not written" note in place of the
+    picker, since a duplicate is never routed to a kind.
+  - **Controlled** — the shell owns the `Review.Selection` per file and passes
+    it in as `selection`, alongside the shell-computed `previews`; every
+    toggle or override calls `onChange` with the next selection. The body
+    holds no selection state of its own, so a re-render always renders the
+    canonical shell state.
 - `src/settings-picker.tsx` — **`HarSettingsPicker`** and the generic
   `SettingsPickerProps<TSettings>`. A no-op today (HAR has no settings): renders a
   hint, never calls `onChange`. It exists so the shell's registry has all three
@@ -54,9 +61,11 @@ An adapter: depends on `importer-fundamentals` (`Review`), `har-importer-core`
   `importer-fundamentals`' `Review`; this package renders them. A behaviour that
   belongs to _what_ gets written (not how it looks) goes in `Review`, so the shell
   and the view can never disagree.
-- **Selection state is reported up, not owned.** `ReviewBody` is uncontrolled for
-  interaction convenience but the shell holds the canonical `Selection` per file.
-  Don't make the shell read state back out of the body.
+- **Selection state is the shell's, and this body is controlled.** The shell
+  holds the canonical `Selection` per file and passes it in as `selection`;
+  every toggle calls `onChange` with the next value. The body holds no
+  selection state of its own — don't reintroduce one, or the shell and the
+  view can disagree.
 
 ## References
 

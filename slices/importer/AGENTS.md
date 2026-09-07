@@ -76,8 +76,12 @@ sits above `http-extraction` and below every binding, exactly as
   not `FhirR4ResourcesHttpApiClient` — so reaching a review is a pure function of
   the file text and the write client is unreachable from it by construction.
   Writing is the descriptor's `persist`, gated on the user confirming a review.
-  Parse now runs at **confirm**, not preview (`Review.chosen` decodes only the
-  chosen responses). This split is the whole point; do not collapse it.
+  Parse now runs at **preview**, not confirm (`Review.preview` parses every
+  chosen response so the reviewer sees the actual resources and can opt any of
+  them out); **writes** still only run at confirm, and confirm writes exactly
+  those reviewed objects (`Review.chosenResources`) with no re-parse — the same
+  "is the same object" argument the anonymizer's preview makes. This split is
+  the whole point; do not collapse it.
 - **The registry is closed and compile-time.** `importer-react`'s `formatRegistry`
   is a literal `{ har: … } as const`; its `FormatRegistration` requires all three
   parts (descriptor, `SettingsPicker`, `ReviewBody`), so a format missing one

@@ -1,4 +1,4 @@
-import { DateTime } from 'effect'
+import { DateTime, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as HttpResponse from './http-response.ts'
@@ -8,6 +8,7 @@ const STARTED_AT = DateTime.unsafeMake('2026-01-01T00:00:00.000Z')
 const dataWithBody = (body: Uint8Array): HttpResponse.Data => ({
   id: 'req-1',
   url: 'https://example.com/resource/id',
+  method: Option.some('GET'),
   status: 200,
   statusText: 'OK',
   headers: [['content-type', 'application/json']],

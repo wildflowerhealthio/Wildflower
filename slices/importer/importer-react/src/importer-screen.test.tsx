@@ -91,7 +91,7 @@ describe('ImporterScreen', () => {
     expect(screen.getByText(/\/Observation\?/)).toBeDefined()
 
     // Act — confirm (two chosen responses → one Patient + two Observations written)
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
 
     // Assert — writes appear only now
     await waitFor(() => {
@@ -110,7 +110,7 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -143,7 +143,7 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -172,7 +172,7 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
 
     // Assert — a partial result: the Patient wrote, both Observations are listed
     // as failures (retry backoff runs on the real clock, so allow for it)
@@ -200,7 +200,7 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
 
     // Assert — a partial result naming the failed file and showing the underlying
     // cause rather than hiding it, and the failed archive means no resource wrote.
@@ -225,12 +225,12 @@ describe('ImporterScreen', () => {
     ])
     await waitFor(() => {
       // Two files × three resources previewed under one confirm.
-      expect(screen.getByRole('button', { name: /Import 4 responses/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: /Import 6 resources/ })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
 
     // Confirm the whole batch
-    await userEvent.click(screen.getByRole('button', { name: /Import 4 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 6 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -248,6 +248,35 @@ describe('ImporterScreen', () => {
     for (const source of sources) {
       expect(archiveIds.map((id) => `DocumentReference/${id}`)).toContain(source)
     }
+  })
+
+  it('excludes an unchecked resource from the write set — the reviewer opt-out is honoured on the wire', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — pick locally so the preview parses to 1 Patient + 2 Observations
+    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
+    })
+    // Untick one Observation before confirm — the confirm count drops to 2.
+    const obsBoxes = screen.getAllByRole('checkbox', { name: /Include Observation/ })
+    expect(obsBoxes.length).toBeGreaterThanOrEqual(2)
+    const [first] = obsBoxes
+    if (first === undefined) throw new Error('unreachable: obsBoxes has at least two entries')
+    await userEvent.click(first)
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Import 2 resources/ })).toBeDefined()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Import 2 resources/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+
+    // Assert — only two resource writes on the wire (one Patient + one Observation),
+    // the opted-out Observation never left the browser.
+    expect(writes().filter(isResourceWrite)).toHaveLength(2)
   })
 
   it('discards the preview with no writes when the user cancels', async () => {
@@ -331,7 +360,11 @@ const RECOGNIZED_HAR: string = Effect.runSync(
       { sessionId: 'test-session' }
     )
   )
-)
+  // `emitHar` writes `request.method: 'UNKNOWN'` (the capture side never
+  // observed a verb); rewrite the wire so the FHIR pool's `verb: ['GET']`
+  // matchers claim these entries, mirroring what a real capture that
+  // observed the method would carry through.
+).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
 
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>

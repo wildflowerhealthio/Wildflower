@@ -618,8 +618,8 @@ const makeBareTracker = (options: {
 }): SnifferResponseTracker.SnifferResponseTracker<SimpleResources> =>
   Effect.runSync(
     SnifferResponseTracker.make<SimpleResources>({
-      matchResponseKind: (url) =>
-        Option.isSome(options.responseKind.tryRecognize(url))
+      matchResponseKind: (url, method) =>
+        Option.isSome(options.responseKind.tryRecognize(url, method))
           ? Option.some(options.responseKind)
           : Option.none(),
       sendMessage: noopSendMessage,

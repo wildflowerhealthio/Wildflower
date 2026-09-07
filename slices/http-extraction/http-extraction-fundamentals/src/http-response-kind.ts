@@ -1,5 +1,6 @@
 import type { Effect, Option, ParseResult } from 'effect'
 import { deepFreeze } from 'kitchen-sink'
+import type { HttpMethod } from './http-method.ts'
 import type { HttpResponse } from './http-response.ts'
 
 /**
@@ -36,11 +37,17 @@ interface HttpResponseKind<out TParsed> {
   readonly name: string
   /**
    * URL-match: `Some` a {@link RecognizedUrlData} when this entity claims the
-   * URL, `None` when it does not. Whichever loop walks the entity list — over
-   * an archive or live sniffed traffic — routes each response through this via
-   * `Extraction.routeTo`, which owns the ranking rule.
+   * (url, method) pair, `None` when it does not. Whichever loop walks the
+   * entity list — over an archive or live sniffed traffic — routes each
+   * response through this via `Extraction.routeTo`, which owns the ranking
+   * rule. `method` is `Option.none()` when the source dropped it (HAR
+   * `'UNKNOWN'`); a matcher built with `UrlMatch.make` never claims such a
+   * request, since a `verb` list contains only real methods.
    */
-  readonly tryRecognize: (url: string) => Option.Option<RecognizedUrlData>
+  readonly tryRecognize: (
+    url: string,
+    method: Option.Option<HttpMethod>
+  ) => Option.Option<RecognizedUrlData>
   /**
    * A *pure decode* (it never emits navigation) from {@link HttpResponse} to
    * the resource array, with `ParseError` in the error channel. An `Effect`

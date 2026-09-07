@@ -10,6 +10,13 @@
 export * as HttpResponseKind from './http-response-kind.ts'
 export type { RecognizedUrlData } from './http-response-kind.ts'
 export * as Extraction from './extraction.ts'
+export {
+  HarMethodValueSchema,
+  HttpMethodSchema,
+  HTTP_METHODS,
+  isHttpMethod,
+} from './http-method.ts'
+export type { HarMethodValue, HttpMethod } from './http-method.ts'
 export * as HttpResponse from './http-response.ts'
 export * as SourceDescriptor from './source-descriptor.ts'
 export { extractJson } from './extract-json.ts'

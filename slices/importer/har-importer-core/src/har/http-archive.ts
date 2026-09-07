@@ -2,6 +2,7 @@ import { Either, Encoding, ParseResult, Schema } from 'effect'
 
 import { HeadersWire } from 'browser-sniffer-core'
 
+import { HarMethodValueSchema, isHttpMethod } from 'http-extraction-fundamentals'
 import { contentTypeOf } from 'web-trace-core/capture'
 import { Har, type HarBody, type HarEntry, NOT_MEASURED } from './har.ts'
 
@@ -28,7 +29,7 @@ const ENTRY_ID_PREFIX = 'har-entry-'
 
 /** Why a re-encoded archive has no request side, stated in the file itself. */
 const DROPPED_REQUEST_COMMENT =
-  'Only the response half of this exchange was carried through the import: the URL is the request, and any method, headers or body the source archive held were not read. They are absent rather than guessed.'
+  'Only the response half of this exchange was carried through the import: the URL and verb are the request, and any headers or body the source archive held were not read. They are absent rather than guessed.'
 
 /** Why a re-encoded archive states no timings. */
 const DROPPED_TIMINGS_COMMENT =
@@ -52,6 +53,14 @@ const Entry = Schema.Struct({
    */
   id: Schema.String,
   url: Schema.String,
+  /**
+   * The request verb, as one of the seven real HTTP methods or `'UNKNOWN'`
+   * for a HAR entry whose `request.method` was dropped or unrecognized. The
+   * projection normalizes anything outside the closed set to `'UNKNOWN'` at
+   * the boundary rather than failing the file — a foreign archive's `'BREW'`
+   * imports as an untagged verb rather than losing the entry entirely.
+   */
+  method: HarMethodValueSchema,
   status: Schema.Int,
   statusText: Schema.String,
   headers: HeadersWire,
@@ -117,6 +126,11 @@ const projectionOf = (entry: HarEntry, index: number): typeof Entry.Encoded => {
   return {
     id: `${ENTRY_ID_PREFIX}${index}`,
     url: entry.request.url,
+    // HAR requires `method` (defaulted to `'UNKNOWN'` in `HarRequest` when
+    // absent). Anything outside the seven recognized verbs is normalized to
+    // `'UNKNOWN'` at this one boundary so the projection's schema can be a
+    // closed literal union without failing the file over a foreign verb.
+    method: isHttpMethod(entry.request.method) ? entry.request.method : 'UNKNOWN',
     status: entry.response.status,
     statusText: entry.response.statusText,
     headers: entry.response.headers,
@@ -130,7 +144,7 @@ const harEntryOf = (entry: Entry): typeof HarEntry.Type => ({
   startedDateTime: entry.startedAt,
   time: NOT_MEASURED,
   request: {
-    method: 'UNKNOWN',
+    method: entry.method,
     url: entry.url,
     httpVersion: '',
     cookies: [],

@@ -10,7 +10,11 @@ describe('Extraction.routeTo', () => {
   const Narrow = echoResponseKind('NarrowEntity', 'alpha', Specificity.PORTAL)
 
   it('picks the highest-specificity claimant', () => {
-    const routed = Extraction.routeTo([Broad, Narrow], 'https://example.com/alpha/1')
+    const routed = Extraction.routeTo(
+      [Broad, Narrow],
+      'https://example.com/alpha/1',
+      Option.some('GET')
+    )
     expect(Option.map(routed, (r) => r.kind.name)).toEqual(Option.some('NarrowEntity'))
     expect(Option.map(routed, (r) => r.recognized.specificity)).toEqual(
       Option.some(Specificity.PORTAL)
@@ -21,24 +25,30 @@ describe('Extraction.routeTo', () => {
     const first = echoResponseKind('FirstEntity', 'alpha', Specificity.PROTOCOL)
     const second = echoResponseKind('SecondEntity', 'alpha', Specificity.PROTOCOL)
     expect(
-      Option.map(Extraction.routeTo([first, second], 'https://x/alpha/1'), (r) => r.kind.name)
+      Option.map(
+        Extraction.routeTo([first, second], 'https://x/alpha/1', Option.some('GET')),
+        (r) => r.kind.name
+      )
     ).toEqual(Option.some('FirstEntity'))
     expect(
-      Option.map(Extraction.routeTo([second, first], 'https://x/alpha/1'), (r) => r.kind.name)
+      Option.map(
+        Extraction.routeTo([second, first], 'https://x/alpha/1', Option.some('GET')),
+        (r) => r.kind.name
+      )
     ).toEqual(Option.some('SecondEntity'))
   })
 
   it('is None when nothing claims', () => {
-    expect(Extraction.routeTo([Broad, Narrow], 'https://example.com/gamma/1')).toEqual(
-      Option.none()
-    )
+    expect(
+      Extraction.routeTo([Broad, Narrow], 'https://example.com/gamma/1', Option.some('GET'))
+    ).toEqual(Option.none())
   })
 
   it("carries a caller's extra element fields through untouched", () => {
     // The Pick constraint keeps a concrete element's own fields on the way out —
     // the same trick the live tracker uses to keep `followUpSteps`.
     const withExtra = { ...Narrow, followUpMarker: 'ride-along' }
-    const routed = Extraction.routeTo([withExtra], 'https://x/alpha/1')
+    const routed = Extraction.routeTo([withExtra], 'https://x/alpha/1', Option.some('GET'))
     expect(Option.map(routed, (r) => r.kind.followUpMarker)).toEqual(Option.some('ride-along'))
   })
 })

@@ -40,6 +40,7 @@ const jsonEntry = (
   return {
     id: overrides.id ?? 'har-entry-0',
     url: overrides.url ?? 'https://portal.example.org/api/v2/patients/10432',
+    method: 'GET',
     status: 200,
     statusText: 'OK',
     headers: [['content-type', contentType]],

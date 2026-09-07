@@ -144,7 +144,9 @@ describe('scrapingPlan', () => {
     fc.assert(
       fc.property(fc.webUrl(), (url) => {
         expect(
-          plan.responseKinds.every((responseKind) => Option.isSome(responseKind.tryRecognize(url)))
+          plan.responseKinds.every((responseKind) =>
+            Option.isSome(responseKind.tryRecognize(url, Option.none()))
+          )
         ).toBe(true)
       }),
       { numRuns: numRunsFor({ base: 50 }) }
@@ -158,7 +160,9 @@ describe('scrapingPlan', () => {
     // user's browsing), and must never throw parsing them.
     for (const url of ['not a url', '/relative/path', '', 'http://[oops']) {
       expect(
-        plan.responseKinds.every((responseKind) => Option.isSome(responseKind.tryRecognize(url)))
+        plan.responseKinds.every((responseKind) =>
+          Option.isSome(responseKind.tryRecognize(url, Option.none()))
+        )
       ).toBe(true)
     }
   })

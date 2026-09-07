@@ -84,7 +84,7 @@ describe('ImporterApp', () => {
     expect(writes()).toHaveLength(0)
 
     // Act — confirm
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
 
     // Assert — the import completes, and the archive create lands before the
     // first resource write, so every written resource can name it
@@ -139,7 +139,7 @@ describe('ImporterApp', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
     })
@@ -324,7 +324,11 @@ const RECOGNIZED_HAR: string = Effect.runSync(
       { sessionId: 'test-session' }
     )
   )
-)
+  // `emitHar` writes `request.method: 'UNKNOWN'` (the capture side never
+  // observed a verb); rewrite the wire so the FHIR pool's `verb: ['GET']`
+  // matchers claim these entries, mirroring what a real capture that
+  // observed the method would carry through.
+).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
 
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>
@@ -425,7 +429,7 @@ const importOneArchive = async (): Promise<void> => {
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
   })
-  await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+  await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
   })

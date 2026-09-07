@@ -238,8 +238,11 @@ const make = <TParsed>({
         // live and archive routing are one function. `routeTo` is generic in the
         // concrete element, so the matched `CollectorHttpResponseKind`'s
         // `followUpSteps` rides through.
-        matchResponseKind: (url) =>
-          Option.map(Extraction.routeTo(scrapingPlan.responseKinds, url), (routed) => routed.kind),
+        matchResponseKind: (url, method) =>
+          Option.map(
+            Extraction.routeTo(scrapingPlan.responseKinds, url, method),
+            (routed) => routed.kind
+          ),
         sendMessage,
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         handleGeneratedSteps: (steps) => enqueueGeneratedSteps(steps),

@@ -1,5 +1,5 @@
-import { DateTime } from 'effect'
-import type { HttpResponse } from 'http-extraction-fundamentals'
+import { DateTime, Option } from 'effect'
+import type { HttpMethod, HttpResponse } from 'http-extraction-fundamentals'
 
 import { CollectorHttpResponse } from './model/collector-http-response.ts'
 
@@ -10,6 +10,8 @@ import { CollectorHttpResponse } from './model/collector-http-response.ts'
 interface CollectorHttpResponseOverrides {
   readonly id?: string
   readonly url?: string
+  /** Defaults to `Option.some('GET')`. */
+  readonly method?: Option.Option<HttpMethod>
   readonly status?: number
   readonly statusText?: string
   readonly headers?: HttpResponse.Headers
@@ -45,6 +47,7 @@ const makeCollectorHttpResponse = (
   const response = new CollectorHttpResponse(
     overrides.id ?? 'req-1',
     overrides.url ?? 'https://example.com/resource/id',
+    overrides.method ?? Option.some('GET'),
     overrides.status ?? 200,
     overrides.statusText ?? 'OK',
     overrides.headers ?? [['content-type', 'application/json']],

@@ -47,11 +47,11 @@ describe('ProfileResponseKind', () => {
       // A different profile sub-path is not the identity endpoint.
       { url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/settings', match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
-      expect(Option.isSome(ProfileResponseKind.tryRecognize(url))).toBe(match)
+      expect(Option.isSome(ProfileResponseKind.tryRecognize(url, Option.none()))).toBe(match)
     })
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
-      expect(ProfileResponseKind.tryRecognize(PROFILE_URL)).toStrictEqual(
+      expect(ProfileResponseKind.tryRecognize(PROFILE_URL, Option.none())).toStrictEqual(
         Option.some({
           specificity: Specificity.PORTAL,
           source: { system: REXALL_CAREBOOK_SYSTEM },

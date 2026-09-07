@@ -46,13 +46,19 @@ describe('runExtraction', () => {
           expectedIds(scenarios, (s) => s.outcome === 'bodyAbsent')
         )
 
-        // MECE: the four buckets partition the input — no response is dropped,
+        // The generator makes every `(url, method, body)` unique per scenario
+        // (see `arbitraryScenarios`), so nothing lands in `duplicates` here —
+        // the duplicate bucket has its own targeted tests below.
+        expect(extraction.duplicates).toEqual([])
+
+        // MECE: the five buckets partition the input — no response is dropped,
         // none is reported twice.
         const reported = [
           ...extraction.batches,
           ...extraction.parseFailures,
           ...extraction.unmatched,
           ...extraction.bodyAbsent,
+          ...extraction.duplicates,
         ].map((entry) => entry.id)
         expect(new Set(reported).size).toBe(reported.length)
         expect(reported.toSorted()).toEqual(
@@ -186,6 +192,84 @@ describe('runExtraction', () => {
       unmatched: [],
       parseFailures: [],
       bodyAbsent: [],
+      duplicates: [],
+    })
+  })
+
+  describe('duplicate detection', () => {
+    it('reports the second of two identical (url, method, body) as a duplicate of the first', () => {
+      let parseCalls = 0
+      const Counting: HttpResponseKind.HttpResponseKind<Echo> = HttpResponseKind.make({
+        ...AlphaEntity,
+        parse: (response) => {
+          parseCalls += 1
+          return AlphaEntity.parse(response)
+        },
+      })
+
+      const extraction = Effect.runSync(
+        runExtraction(
+          [Counting],
+          [
+            makeExtractionInput({
+              id: 'r1',
+              url: 'https://example.com/alpha/1',
+              body: '{}',
+            }),
+            makeExtractionInput({
+              id: 'r2',
+              url: 'https://example.com/alpha/1',
+              body: '{}',
+            }),
+          ]
+        )
+      )
+
+      expect(parseCalls).toBe(1)
+      expect(extraction.batches.map((batch) => batch.id)).toEqual(['r1'])
+      expect(extraction.duplicates).toEqual([
+        {
+          id: 'r2',
+          url: 'https://example.com/alpha/1',
+          of: { id: 'r1', url: 'https://example.com/alpha/1' },
+        },
+      ])
+    })
+
+    it('does not treat two responses at the same URL with different bodies as duplicates', () => {
+      const extraction = Effect.runSync(
+        runExtraction(responseKinds, [
+          makeExtractionInput({ id: 'r1', url: 'https://example.com/alpha/1', body: '{"a":1}' }),
+          makeExtractionInput({ id: 'r2', url: 'https://example.com/alpha/1', body: '{"a":2}' }),
+        ])
+      )
+
+      expect(extraction.duplicates).toEqual([])
+      expect(extraction.batches.map((batch) => batch.id)).toEqual(['r1', 'r2'])
+    })
+
+    it('does not treat two responses with the same body at different URLs as duplicates', () => {
+      const extraction = Effect.runSync(
+        runExtraction(responseKinds, [
+          makeExtractionInput({ id: 'r1', url: 'https://example.com/alpha/1', body: '{}' }),
+          makeExtractionInput({ id: 'r2', url: 'https://example.com/alpha/2', body: '{}' }),
+        ])
+      )
+
+      expect(extraction.duplicates).toEqual([])
+      expect(extraction.batches.map((batch) => batch.id)).toEqual(['r1', 'r2'])
+    })
+
+    it('does not treat two absent-body responses as duplicates', () => {
+      const extraction = Effect.runSync(
+        runExtraction(responseKinds, [
+          makeExtractionInput({ id: 'r1', url: 'https://example.com/alpha/1', bodyAbsent: true }),
+          makeExtractionInput({ id: 'r2', url: 'https://example.com/alpha/1', bodyAbsent: true }),
+        ])
+      )
+
+      expect(extraction.duplicates).toEqual([])
+      expect(extraction.bodyAbsent.map((entry) => entry.id)).toEqual(['r1', 'r2'])
     })
   })
 })

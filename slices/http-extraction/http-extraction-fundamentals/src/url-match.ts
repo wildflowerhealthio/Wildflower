@@ -1,4 +1,7 @@
-import { Option } from 'effect'
+// oxlint-disable import/group-exports
+import { Match, Option, Predicate } from 'effect'
+
+import type { HttpMethod } from './http-method.ts'
 
 /**
  * Small builder for the URL matchers consumed by `HttpResponseKind`. The DSL
@@ -8,25 +11,32 @@ import { Option } from 'effect'
  * regex read yields both the recognition decision and the captured root, so
  * the two can never disagree.
  *
+ * A matcher also states the HTTP verbs its URL is served under. The verb
+ * check runs first and short-circuits: a request whose method is not one of
+ * the declared verbs (or whose method is not known — an `Option.none()` from
+ * a HAR-`'UNKNOWN'` entry) returns `None` regardless of the URL. `verb` is
+ * required — every kind is served under some verb, so leaving it unstated
+ * would be an under-specification.
+ *
  * @example
  * ```ts
  * const patientUrl = UrlMatch.make({
+ *   verb: ['GET'],
  *   segments: [UrlMatch.literal('Patient'), UrlMatch.id],
  * })
- * patientUrl('https://ehr/Patient/1')          // Some('https://ehr')
- * patientUrl('https://ehr/baseR4/Patient/1')   // Some('https://ehr/baseR4')
- * patientUrl('https://ehr/Patient/1?_x=json')  // Some('https://ehr')
- * patientUrl('https://ehr/Patient/1/_history') // None
- * patientUrl('https://ehr/Observation/2')      // None
- * patientUrl('https://Patient/123')            // None (host is not a segment)
- * patientUrl('ftp://ehr/Patient/1')            // None (scheme required)
+ * patientUrl('https://ehr/Patient/1', Option.some('GET'))   // Some('https://ehr')
+ * patientUrl('https://ehr/Patient/1', Option.some('POST'))  // None (verb rejected)
+ * patientUrl('https://ehr/Patient/1', Option.none())        // None (method absent)
+ * patientUrl('https://ehr/baseR4/Patient/1', Option.some('GET'))  // Some('https://ehr/baseR4')
+ * patientUrl('https://ehr/Observation/2', Option.some('GET'))     // None
  *
  * const observationListUrl = UrlMatch.make({
+ *   verb: ['GET'],
  *   segments: [UrlMatch.literal('Observation')],
  *   end: 'mustHaveQuery',
  * })
- * observationListUrl('https://ehr/Observation?subject=…') // Some('https://ehr')
- * observationListUrl('https://ehr/Observation/123')       // None
+ * observationListUrl('https://ehr/Observation?subject=…', Option.some('GET')) // Some('https://ehr')
+ * observationListUrl('https://ehr/Observation/123', Option.some('GET'))       // None
  * ```
  */
 
@@ -63,36 +73,67 @@ const endPattern = (e: PathEnd): string => (e === 'mustHaveQuery' ? '\\?' : '(?:
 
 /**
  * A URL recognizer: `Some` the `https?://<authority><base path>` prefix `url`
- * was served from when `url` names the resource, `None` when it names no such
- * resource (or is not `http(s)`). Recognition and root are the one read.
+ * was served from when `url` names the resource AND `method` is one of the
+ * declared verbs, `None` otherwise. `method` is `Option.none()` when the
+ * source archive dropped it (HAR `'UNKNOWN'`); a matcher never claims a
+ * request whose method it does not know.
  */
-type UrlMatcher = (url: string) => Option.Option<string>
+type UrlMatcher = (url: string, method: Option.Option<HttpMethod>) => Option.Option<string>
+
+namespace Config {
+  export interface Config {
+    readonly verb: readonly [HttpMethod, ...HttpMethod[]]
+    readonly segments: readonly PathSegment[]
+    readonly end?: PathEnd
+  }
+
+  const makeHttpMethodIncludedPredicate =
+    (config: Config) =>
+    (method: HttpMethod): boolean =>
+      config.verb.includes(method)
+
+  export const makeHttpMethodPredicate = (
+    config: Config
+  ): Predicate.Refinement<Option.Option<HttpMethod>, Option.Some<HttpMethod>> => {
+    const isHttpMethodIncluded = makeHttpMethodIncludedPredicate(config)
+    return Predicate.compose(Option.isSome<HttpMethod>, ({ value }) => isHttpMethodIncluded(value))
+  }
+
+  export const makeBaseUrlExtractor = (config: Config): ((url: string) => string | undefined) => {
+    const segments = config.segments.map(segmentPattern).join('')
+    const end = endPattern(config.end ?? 'pathEnd')
+    // Group 1 is the root: `https?://` (scheme required — a root must be a URL
+    // a `SourceIdentity` keys under), the authority `[^/]+` (stops at the first
+    // `/`, so a host is never mistaken for a segment), then an arbitrary base
+    // path — FHIR servers commonly mount under `/baseR4`, `/fhir/R4`, etc.
+    // Non-greedy so the SHORTEST base path that still lets the declared segments
+    // match wins, preserving `pathEnd`/`mustHaveQuery` disjointness (a
+    // single-resource `/Observation/<id>` never re-reads as a base path that
+    // makes the list `/Observation?` match). `^`-anchored so the capture starts
+    // at the scheme.
+    const pattern = new RegExp(`^(https?://[^/]+(?:/[^/?#]+)*?)${segments}${end}`)
+
+    return (url) => pattern.exec(url)?.[1]
+  }
+}
 
 /**
- * Build a {@link UrlMatcher} from `https?://<authority><base path>` (captured
- * as the root) followed by the supplied path segments and end-of-path
- * boundary. Compose segments with {@link literal} and {@link id}.
+ * Build a {@link UrlMatcher} from a required non-empty `verb` list, the
+ * supplied path segments, and an end-of-path boundary. Compose segments with
+ * {@link literal} and {@link id}. The verb list gates the URL regex — a
+ * `method` not in `verb`, or an `Option.none()`, short-circuits to `None`.
  */
-const make = (config: {
-  readonly segments: readonly PathSegment[]
-  readonly end?: PathEnd
-}): UrlMatcher => {
-  const segments = config.segments.map(segmentPattern).join('')
-  const end = endPattern(config.end ?? 'pathEnd')
-  // Group 1 is the root: `https?://` (scheme required — a root must be a URL
-  // a `SourceIdentity` keys under), the authority `[^/]+` (stops at the first
-  // `/`, so a host is never mistaken for a segment), then an arbitrary base
-  // path — FHIR servers commonly mount under `/baseR4`, `/fhir/R4`, etc.
-  // Non-greedy so the SHORTEST base path that still lets the declared segments
-  // match wins, preserving `pathEnd`/`mustHaveQuery` disjointness (a
-  // single-resource `/Observation/<id>` never re-reads as a base path that
-  // makes the list `/Observation?` match). `^`-anchored so the capture starts
-  // at the scheme.
-  const pattern = new RegExp(`^(https?://[^/]+(?:/[^/?#]+)*?)${segments}${end}`)
-  return (url: string): Option.Option<string> => {
-    const match = pattern.exec(url)
-    return match?.[1] === undefined ? Option.none() : Option.some(match[1])
-  }
+const make = (config: Config.Config): UrlMatcher => {
+  const methodMatchesConfig = Config.makeHttpMethodPredicate(config)
+  const tryExtractBaseUrl = Config.makeBaseUrlExtractor(config)
+
+  return (url, maybeMethod) =>
+    Match.value({ maybeMethod, baseUrl: tryExtractBaseUrl(url) }).pipe(
+      Match.when({ maybeMethod: methodMatchesConfig, baseUrl: Predicate.isString }, ({ baseUrl }) =>
+        Option.some(baseUrl)
+      ),
+      Match.orElse(() => Option.none())
+    )
 }
 
 export { id, literal, make }
