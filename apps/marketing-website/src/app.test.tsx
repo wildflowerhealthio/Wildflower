@@ -120,7 +120,7 @@ describe('App', () => {
   it('should render Wildflower FHIR server download links pulled from versions.json', () => {
     // Arrange / Act — links target the direct-installer URLs baked in at
     // build time from apps/marketing-website/public/versions.json, which the
-    // tauri-release workflow rewrites on every version bump.
+    // tauri-release-prepare workflow rewrites on every version bump.
     render(<App />)
 
     // Assert
