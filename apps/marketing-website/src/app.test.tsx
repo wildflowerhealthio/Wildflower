@@ -117,6 +117,23 @@ describe('App', () => {
     expect(screen.queryByRole('link', { name: /Synthesized/ })).toBeNull()
   })
 
+  it('should render Wildflower FHIR server download links pulled from versions.json', () => {
+    // Arrange / Act — links target the direct-installer URLs baked in at
+    // build time from apps/marketing-website/public/versions.json, which the
+    // tauri-release workflow rewrites on every version bump.
+    render(<App />)
+
+    // Assert
+    const macos = screen.getByRole('link', { name: /macOS/ })
+    expect(macos.getAttribute('href')).toMatch(
+      /^https:\/\/github\.com\/wildflowerhealthio\/Wildflower\/releases\/download\/v[0-9]+\.[0-9]+\.[0-9]+[^/]*\/Wildflower_[0-9]+\.[0-9]+\.[0-9]+[^/]*_universal\.dmg$/
+    )
+    const windows = screen.getByRole('link', { name: /Windows/ })
+    expect(windows.getAttribute('href')).toMatch(/_x64_en-US\.msi$/)
+    const linux = screen.getByRole('link', { name: /Linux/ })
+    expect(linux.getAttribute('href')).toMatch(/_amd64\.AppImage$/)
+  })
+
   it('should end on the contact line and the mono stamp', () => {
     // Arrange / Act
     render(<App />)
