@@ -240,7 +240,6 @@ jobs:
             printf 'publish it manually once the assets look right.\n'
           } > "$body"
           gh pr create \
-            --draft \
             --base "$base" \
             --head "$branch" \
             --title "chore(release): $tag" \
