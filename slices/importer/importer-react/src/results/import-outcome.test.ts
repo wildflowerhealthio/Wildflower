@@ -55,16 +55,17 @@ describe('importOutcome', () => {
  * total files.
  */
 describe('summarizeBatch and isPartialBatch', () => {
-  it('sums written and attempted, and counts imported against total files', () => {
+  it('sums written, attempted, and excluded, and counts imported against total files', () => {
     const batch: FileImportResult[] = [
-      imported('a', 3, 0),
-      imported('b', 2, 1),
+      imported('a', 3, 0, 2),
+      imported('b', 2, 1, 0),
       { _tag: 'uploadFailed', id: 'c', fileName: 'c.har', error: new Error('boom') },
       { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'nothing' },
     ]
     const summary = summarizeBatch(batch)
     expect(summary.written).toBe(4) // 3 + 1
     expect(summary.attempted).toBe(5) // 3 + 2
+    expect(summary.excluded).toBe(2)
     expect(summary.importedFiles).toBe(2)
     expect(summary.totalFiles).toBe(4)
   })
@@ -91,11 +92,16 @@ describe('summarizeBatch and isPartialBatch', () => {
 // Helpers
 
 /** An `imported` file result writing `attempted` resources with `failureCount` failures. */
-const imported = (id: string, attempted: number, failureCount: number): FileImportResult => ({
+const imported = (
+  id: string,
+  attempted: number,
+  failureCount: number,
+  excluded = 0
+): FileImportResult => ({
   _tag: 'imported',
   id,
   fileName: `${id}.har`,
-  outcome: importOutcome(attempted, `DocumentReference/${id}`, failuresOf(failureCount)),
+  outcome: importOutcome(attempted, `DocumentReference/${id}`, failuresOf(failureCount), excluded),
 })
 
 /** `count` distinct write failures, shaped like the write sink's own records. */

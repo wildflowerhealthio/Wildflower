@@ -1,7 +1,7 @@
 /**
  * The HAR format's UI for the importer slice: the (no-op) HAR
- * {@link HarSettingsPicker} and the interactive per-URL {@link ReviewBody} the
- * shell mounts inside its preview.
+ * {@link HarSettingsPicker} and the interactive per-URL, per-resource
+ * {@link ReviewBody} the shell mounts inside its preview.
  *
  * @remarks
  * Presentation and interaction only — a view over `importer-fundamentals`' pure
@@ -11,5 +11,6 @@
  *
  * @packageDocumentation
  */
-export { ReviewBody, type ReviewBodyProps } from './review-body.tsx'
+export { describeResource, type ResourceDescription } from './describe-resource.ts'
+export { ReviewBody, type Preview, type ReviewBodyProps } from './review-body.tsx'
 export { HarSettingsPicker, type SettingsPickerProps } from './settings-picker.tsx'

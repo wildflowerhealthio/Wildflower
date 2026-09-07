@@ -55,6 +55,7 @@
 
 .urlList,
 .responseList,
+.resourceList,
 .noMatchList {
   list-style: none;
   margin: 0;
@@ -81,6 +82,61 @@
 }
 
 .responseRow {
+  padding-left: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.responseTally {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--wf-muted, #767676);
+}
+
+.resourceList {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding-left: 0.75rem;
+}
+
+.resourceRow {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.resourceLabel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  cursor: pointer;
+}
+
+.resourceType {
+  font-weight: 600;
+}
+
+.resourceSummary {
+  color: var(--wf-muted, #767676);
+}
+
+.resourceExcluded {
+  text-decoration: line-through;
+  color: var(--wf-muted, #767676);
+}
+
+.parseFailure {
+  color: var(--wf-danger, #b3261e);
+  font-size: 0.85rem;
+  padding-left: 0.75rem;
+}
+
+.bodyAbsent {
+  color: var(--wf-muted, #767676);
+  font-style: italic;
+  font-size: 0.85rem;
   padding-left: 0.75rem;
 }
 

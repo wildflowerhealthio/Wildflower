@@ -20,6 +20,12 @@ interface ImportOutcome {
   readonly attempted: number
   /** How many were written, i.e. `attempted` minus the failures. */
   readonly written: number
+  /**
+   * How many previewed resources the reviewer opted out before confirm —
+   * reported for symmetry with `attempted`, so a reader sees both the write
+   * count and the deliberate exclusion count.
+   */
+  readonly excluded: number
   /** The resources the store could not accept, verbatim from the write sink. */
   readonly failures: readonly PersistFailure[]
   /** The `DocumentReference/<id>` every written resource's `meta.source` names. */
@@ -29,19 +35,22 @@ interface ImportOutcome {
 /**
  * Fold a written count and its write failures into an {@link ImportOutcome}.
  *
- * @param attempted - How many resources the chosen responses decoded to and the
- *   write was attempted for
+ * @param attempted - How many resources the confirm attempted to write (the
+ *   review's included set)
  * @param sourceRef - The archive reference stamped onto every written resource
  * @param failures - The write sink's failures, as data
+ * @param excluded - How many previewed resources the reviewer opted out (default 0)
  * @returns The tally, with `written` derived as `attempted - failures.length`
  */
 const importOutcome = (
   attempted: number,
   sourceRef: string,
-  failures: readonly PersistFailure[]
+  failures: readonly PersistFailure[],
+  excluded = 0
 ): ImportOutcome => ({
   attempted,
   written: attempted - failures.length,
+  excluded,
   failures,
   sourceRef,
 })
@@ -117,6 +126,8 @@ interface BatchSummary {
   readonly written: number
   /** Resources attempted across every `imported` file. */
   readonly attempted: number
+  /** Previewed resources the reviewer opted out before confirm, across every file. */
+  readonly excluded: number
   /** Files whose archive uploaded and whose resources were persisted (whole or partial). */
   readonly importedFiles: number
   /** Every file the user confirmed, whatever its result. */
@@ -127,7 +138,8 @@ interface BatchSummary {
  * Sum a {@link BatchOutcome} into its aggregate {@link BatchSummary}.
  *
  * @param batch - Every file's result
- * @returns The written/attempted totals and the file counts the summary row shows
+ * @returns The written/attempted/excluded totals and the file counts the
+ *   summary row shows
  */
 const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
   batch.reduce<BatchSummary>(
@@ -136,11 +148,12 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
         ? {
             written: summary.written + result.outcome.written,
             attempted: summary.attempted + result.outcome.attempted,
+            excluded: summary.excluded + result.outcome.excluded,
             importedFiles: summary.importedFiles + 1,
             totalFiles: summary.totalFiles + 1,
           }
         : { ...summary, totalFiles: summary.totalFiles + 1 },
-    { written: 0, attempted: 0, importedFiles: 0, totalFiles: 0 }
+    { written: 0, attempted: 0, excluded: 0, importedFiles: 0, totalFiles: 0 }
   )
 
 /**

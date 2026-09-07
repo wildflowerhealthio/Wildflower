@@ -1,14 +1,15 @@
-import { Array as Arr, Effect, Option, pipe } from 'effect'
+import { Array as Arr, Effect, Option, type ParseResult, pipe } from 'effect'
 
 import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
 
 /**
- * The pure per-response review model: whole-import kind toggles plus
- * per-response pick overrides, resolved against ranked recognition. The
- * interactive `ReviewBody` a format's React package renders is a view over
- * these transitions — see this package's AGENTS.md for the model's rationale
- * (per-response choices, serializable name-keyed overrides, untouched review ==
- * what the `runExtraction` reference model would write).
+ * The pure per-response review model: whole-import kind toggles, per-response
+ * pick overrides, and per-resource include toggles, resolved against ranked
+ * recognition and previewed parses. The interactive `ReviewBody` a format's
+ * React package renders is a view over these transitions — see this package's
+ * AGENTS.md for the model's rationale (per-response choices, serializable
+ * name-keyed overrides, key-scoped exclusions, untouched review == what the
+ * `runExtraction` reference model would write).
  *
  * @packageDocumentation
  */
@@ -17,24 +18,32 @@ import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
 type NamedKind = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>
 
 /**
- * A whole review's selection state: the enabled kinds and the per-response
- * overrides. A plain value the shell holds and threads through the pure
- * transitions below.
+ * A whole review's selection state: the enabled kinds, per-response pick
+ * overrides, and per-resource exclusions. A plain value the shell holds and
+ * threads through the pure transitions below.
  */
 interface Selection {
   /** The kind names enabled across the import; a kind absent here is disabled everywhere. */
   readonly enabledKinds: ReadonlySet<string>
   /** Per-response pick overrides, response id → chosen kind name. */
   readonly overrides: ReadonlyMap<string, string>
+  /**
+   * Per-resource exclusions, keyed by {@link resourceKey} — a resource whose
+   * key is here is opted out at confirm and never written. Every resource
+   * defaults to included; the set holds only the explicit opt-outs.
+   */
+  readonly excludedResources: ReadonlySet<string>
 }
 
 /**
- * The default selection for a pool: every kind enabled, no overrides — so each
- * response defaults to its top-specificity candidate.
+ * The default selection for a pool: every kind enabled, no overrides, every
+ * previewed resource included — so each response defaults to its top-specificity
+ * candidate and a fresh review writes what the reference model would.
  */
 const initial = (pool: readonly NamedKind[]): Selection => ({
   enabledKinds: new Set(pool.map((kind) => kind.name)),
   overrides: new Map(),
+  excludedResources: new Set(),
 })
 
 /** Whether a kind is enabled across the import. */
@@ -50,21 +59,66 @@ const toggleKind = (selection: Selection, kindName: string): Selection => {
   const enabledKinds = new Set(selection.enabledKinds)
   if (enabledKinds.has(kindName)) enabledKinds.delete(kindName)
   else enabledKinds.add(kindName)
-  return { enabledKinds, overrides: selection.overrides }
+  return {
+    enabledKinds,
+    overrides: selection.overrides,
+    excludedResources: selection.excludedResources,
+  }
 }
 
 /** Override one response's pick to a specific kind by name. */
 const overridePick = (selection: Selection, responseId: string, kindName: string): Selection => {
   const overrides = new Map(selection.overrides)
   overrides.set(responseId, kindName)
-  return { enabledKinds: selection.enabledKinds, overrides }
+  return {
+    enabledKinds: selection.enabledKinds,
+    overrides,
+    excludedResources: selection.excludedResources,
+  }
 }
 
 /** Drop one response's override, returning it to its default pick. */
 const clearOverride = (selection: Selection, responseId: string): Selection => {
   const overrides = new Map(selection.overrides)
   overrides.delete(responseId)
-  return { enabledKinds: selection.enabledKinds, overrides }
+  return {
+    enabledKinds: selection.enabledKinds,
+    overrides,
+    excludedResources: selection.excludedResources,
+  }
+}
+
+/**
+ * The stable key one previewed resource is tracked by: the response id plus its
+ * index in the parse output. Every previewed resource carries this key so a
+ * per-resource toggle can add or drop the exact resource without depending on
+ * object identity.
+ *
+ * @remarks
+ * Response ids are unique within one file's decoded responses (each response is
+ * a distinct archive entry), so within one `Selection` these keys are unique.
+ * A caller composing a batch-wide key across files (a React `key` over several
+ * files, say) prefixes with the file id.
+ */
+const resourceKey = (responseId: string, index: number): string => `${responseId}:${index}`
+
+/** Whether a previewed resource is included in the confirm's write set. */
+const isResourceIncluded = (selection: Selection, key: string): boolean =>
+  !selection.excludedResources.has(key)
+
+/**
+ * Toggle one previewed resource in or out of the confirm's write set. A
+ * resource keyed here is opted out at confirm and never written.
+ */
+const toggleResource = (selection: Selection, key: string): Selection => {
+  const excludedResources = new Set(selection.excludedResources)
+  if (excludedResources.has(key)) excludedResources.delete(key)
+  else excludedResources.add(key)
+  return {
+    enabledKinds: selection.enabledKinds,
+    overrides: selection.overrides,
+    excludedResources,
+  }
 }
 
 /** The candidates for one response that survive the enabled-kind filter, still ranked. */
@@ -102,7 +156,7 @@ const pickFor = <K extends NamedKind>(
 
 /**
  * How many of a recognized set resolve to a chosen pick under a selection — the
- * pure gate the UI shows a confirm for, without decoding anything.
+ * count of responses that will be parsed at preview.
  */
 const chosenCount = <K extends NamedKind>(
   recognized: readonly Extraction.RecognizedResponse<K>[],
@@ -117,6 +171,164 @@ const chosenCount = <K extends NamedKind>(
  */
 const recognize = Extraction.recognize
 
+/**
+ * One previewed resource: the parsed value plus its stable key. The key
+ * survives selection changes so a per-resource opt-out from the review carries
+ * through to what the confirm writes.
+ */
+interface PreviewedResource<TParsed> {
+  readonly key: string
+  readonly resource: TParsed
+}
+
+/**
+ * One response's preview outcome — every non-resource outcome folded to data so
+ * `preview` is total and one bad response cannot abort the batch.
+ *
+ * @remarks
+ * `noPick` names a response no enabled kind claimed (or whose override, plus a
+ * disabled default, resolved to nothing). `parseError` names a response whose
+ * chosen `parse` failed — the response contributes nothing but the failure is
+ * listed against its URL so the reviewer can see why.
+ */
+type PreviewedOutcome<TParsed> =
+  | { readonly _tag: 'resources'; readonly resources: readonly PreviewedResource<TParsed>[] }
+  | { readonly _tag: 'parseError'; readonly error: ParseResult.ParseError }
+  | { readonly _tag: 'bodyAbsent' }
+  | { readonly _tag: 'noPick' }
+
+/**
+ * One response's preview: its recognition, its resolved pick, and its parse
+ * outcome. The `ReviewBody` reads these per URL to show which resources would
+ * be written and to render each resource's include toggle.
+ */
+interface PreviewedResponse<K, TParsed> {
+  readonly ref: Extraction.ResponseRef
+  readonly recognized: Extraction.RecognizedResponse<K>
+  /** The resolved pick's kind name, or `None` when nothing was chosen. */
+  readonly pickKindName: Option.Option<string>
+  readonly outcome: PreviewedOutcome<TParsed>
+}
+
+/**
+ * Parse every response the selection chose through its chosen kind, producing
+ * one {@link PreviewedResponse} per input response, in input order.
+ *
+ * @typeParam TParsed - The resource type the pool decodes to
+ * @param pool - The format's response kinds
+ * @param responses - The decoded responses, in input order
+ * @param selection - The reviewer's choices — determines which candidate is
+ *   parsed for each response, if any
+ * @returns One entry per input response, its recognition, resolved pick, and
+ *   parse outcome (`resources` with stable per-resource keys, `parseError` for
+ *   a parse failure, `bodyAbsent` for a response whose archive carried no body,
+ *   `noPick` for a response no enabled kind claimed)
+ *
+ * @remarks
+ * The read half's resource-level model: `preview` runs `parse` at preview time
+ * so the reviewer sees exactly what would be written, keys each parsed resource
+ * so opt-outs survive re-renders, and folds every non-resource outcome to data
+ * so the read half stays total and infallible.
+ */
+const preview = <TParsed>(
+  pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
+  responses: readonly Extraction.Input[],
+  selection: Selection
+): Effect.Effect<
+  readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>[]
+> =>
+  Effect.forEach(Arr.zip(responses, recognize(pool, responses)), ([response, recognized]) => {
+    const pick = pickFor(recognized, selection)
+    if (Option.isNone(pick)) {
+      return Effect.succeed<PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>>(
+        {
+          ref: recognized.ref,
+          recognized,
+          pickKindName: Option.none(),
+          outcome: { _tag: 'noPick' },
+        }
+      )
+    }
+    const candidate = pick.value
+    return Extraction.parseWith(candidate.kind, response).pipe(
+      Effect.map(
+        (outcome): PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed> => {
+          const pickKindName = Option.some(candidate.kind.name)
+          if (outcome._tag === 'resources') {
+            return {
+              ref: recognized.ref,
+              recognized,
+              pickKindName,
+              outcome: {
+                _tag: 'resources',
+                resources: outcome.resources.map((resource, index): PreviewedResource<TParsed> => ({
+                  key: resourceKey(recognized.ref.id, index),
+                  resource,
+                })),
+              },
+            }
+          }
+          if (outcome._tag === 'parseError') {
+            return {
+              ref: recognized.ref,
+              recognized,
+              pickKindName,
+              outcome: { _tag: 'parseError', error: outcome.error },
+            }
+          }
+          return {
+            ref: recognized.ref,
+            recognized,
+            pickKindName,
+            outcome: { _tag: 'bodyAbsent' },
+          }
+        }
+      )
+    )
+  })
+
+/**
+ * The confirm's write set: every previewed resource the reviewer left included,
+ * flattened in preview order.
+ *
+ * @param previews - The previewed responses from {@link preview}
+ * @param selection - The reviewer's choices — reads only the exclusion set;
+ *   picks and kind toggles are already resolved by the preview
+ * @returns The parsed resources to write, verbatim from the preview — no
+ *   re-parse, so a confirm writes the same objects the reviewer inspected
+ */
+const chosenResources = <K, TParsed>(
+  previews: readonly PreviewedResponse<K, TParsed>[],
+  selection: Selection
+): readonly TParsed[] =>
+  previews.flatMap((entry) =>
+    entry.outcome._tag === 'resources'
+      ? entry.outcome.resources
+          .filter((resource) => isResourceIncluded(selection, resource.key))
+          .map((resource) => resource.resource)
+      : []
+  )
+
+/** How many previewed resources are included under a selection — the confirm's write count. */
+const includedCount = <K, TParsed>(
+  previews: readonly PreviewedResponse<K, TParsed>[],
+  selection: Selection
+): number => chosenResources(previews, selection).length
+
+/** How many previewed resources are excluded under a selection. */
+const excludedCount = <K, TParsed>(
+  previews: readonly PreviewedResponse<K, TParsed>[],
+  selection: Selection
+): number =>
+  previews.reduce((total, entry) => {
+    if (entry.outcome._tag !== 'resources') return total
+    return (
+      total +
+      entry.outcome.resources.filter((resource) => !isResourceIncluded(selection, resource.key))
+        .length
+    )
+  }, 0)
+
 /** What {@link chosen} returns: the decoded resources plus counts of non-resource outcomes. */
 interface ChosenOutcome<TParsed> {
   readonly resources: readonly TParsed[]
@@ -125,15 +337,20 @@ interface ChosenOutcome<TParsed> {
 }
 
 /**
- * Decode only the chosen responses — the confirm's write set.
+ * Decode the chosen responses in one pass and fold to the confirm's write set —
+ * the pre-V1 helper preserved for tests and callers that don't need a preview.
+ *
+ * @remarks
+ * {@link preview} plus {@link chosenResources} is the interactive path (parse
+ * runs at preview so a reviewer sees exactly what would be written); this
+ * helper does the same reduction in one shot.
  *
  * @typeParam TParsed - The resource type the pool decodes to
  * @param pool - The format's response kinds
  * @param responses - The decoded responses, in input order
  * @param selection - The reviewer's choices
- * @returns The resources of every chosen response that decoded, flattened in
- *   input order, alongside counts of parse failures and absent bodies so the
- *   confirm step can surface them
+ * @returns The included resources plus counts of parse failures and absent
+ *   bodies so a caller can surface them
  */
 const chosen = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
@@ -141,33 +358,38 @@ const chosen = <TParsed>(
   selection: Selection
 ): Effect.Effect<ChosenOutcome<TParsed>> =>
   pipe(
-    Effect.forEach(Arr.zip(responses, recognize(pool, responses)), ([response, recognized]) =>
-      Option.match(pickFor(recognized, selection), {
-        onNone: () => Effect.succeed<Extraction.ParseOutcome<TParsed>[]>([]),
-        onSome: (candidate) =>
-          Extraction.parseWith(candidate.kind, response).pipe(Effect.map((outcome) => [outcome])),
-      })
-    ),
-    Effect.map((nested) => {
-      const outcomes = Arr.flatten(nested)
-      return {
-        resources: outcomes.flatMap((o) => (o._tag === 'resources' ? o.resources : [])),
-        parseFailures: outcomes.filter((o) => o._tag === 'parseError').length,
-        bodyAbsent: outcomes.filter((o) => o._tag === 'bodyAbsent').length,
-      }
-    })
+    preview(pool, responses, selection),
+    Effect.map((previews) => ({
+      resources: chosenResources(previews, selection),
+      parseFailures: previews.filter((entry) => entry.outcome._tag === 'parseError').length,
+      bodyAbsent: previews.filter((entry) => entry.outcome._tag === 'bodyAbsent').length,
+    }))
   )
 
 export {
   chosen,
   chosenCount,
+  chosenResources,
   clearOverride,
   enabledCandidates,
+  excludedCount,
+  includedCount,
   initial,
   isKindEnabled,
+  isResourceIncluded,
   overridePick,
   pickFor,
+  preview,
   recognize,
+  resourceKey,
   toggleKind,
+  toggleResource,
 }
-export type { ChosenOutcome, NamedKind, Selection }
+export type {
+  ChosenOutcome,
+  NamedKind,
+  PreviewedOutcome,
+  PreviewedResource,
+  PreviewedResponse,
+  Selection,
+}

@@ -23,15 +23,22 @@ TParsed, R>`**, "a file-format importer" as one value a closed registry lists.
   `persist(resources, sourceRef) → Effect<PersistFailure[], never, R>` (the sink,
   the only carrier of `R`). It mirrors the collector slice's `CollectorDescriptor`
   but for the archive transport rather than the live one.
-- `src/review.ts` — the **`Review`** namespace, the pure per-response selection
-  model built on `Extraction.recognize` / `parseWith`. A `Selection` is two axes:
-  `enabledKinds` (whole-import kind toggles — disabling a kind removes it from
-  every response's candidates) and `overrides` (per-response pick, response id →
-  kind **name**, for the rare cross-source overlap). `pickFor` resolves one
-  response (override if still enabled, else top-specificity enabled candidate,
-  else none); `chosenCount` counts resolved picks without decoding; `chosen`
-  decodes **only** the chosen responses — the confirm's write set. `recognize` is
-  re-exported so a format's React package reads recognition through this package.
+- `src/review.ts` — the **`Review`** namespace, the pure per-response,
+  per-resource selection model built on `Extraction.recognize` / `parseWith`. A
+  `Selection` is three axes: `enabledKinds` (whole-import kind toggles —
+  disabling a kind removes it from every response's candidates), `overrides`
+  (per-response pick, response id → kind **name**, for the rare cross-source
+  overlap), and `excludedResources` (per-resource opt-outs, keyed by
+  `resourceKey(responseId, index)`). `pickFor` resolves one response (override
+  if still enabled, else top-specificity enabled candidate, else none);
+  `chosenCount` counts resolved picks without parsing; `preview` parses every
+  chosen response's `parse` into a `PreviewedResponse` with stable per-resource
+  keys (a parse failure is data, not a raised error); `chosenResources` folds a
+  preview set through the exclusions into the confirm's write set —
+  no re-parse at confirm, the reviewed objects are what gets written. The old
+  `chosen` helper (parse-and-fold in one shot) still exists on top of `preview`
+  for callers that don't need a preview. `recognize` is re-exported so a
+  format's React package reads recognition through this package.
 - `src/persist-failure.ts` — **`PersistFailure`**, the structural echo of a
   write sink's own failure record (`{ failed: { label, id }, cause }`). Declared
   here — this package sits below the concrete sinks and cannot name them — and
@@ -56,13 +63,17 @@ a view over these transitions). Never imports a `*-importer-core`, a
   would choose — so an untouched review writes what the archive-runner
   reference model (`runExtraction`, in `http-extraction-fundamentals`'
   test-helpers) would have.
-- **Choose-then-persist.** `Review.chosen` decodes only the responses a review
-  resolved to a pick; a response with no chosen pick is never decoded, so a
-  confirm writes only what the reviewer opted into. `Extraction.parseWith` folds
-  every non-resource outcome to `[]`, so `chosen` is total.
-- **Overrides key by name, not object.** Selection state must be serializable, so
-  `overrides` maps a response id to a kind **name**; the candidate objects that
-  carry the kind for execution are re-derived from recognition each render.
+- **Preview-then-persist.** `Review.preview` parses each chosen response so the
+  reviewer sees the actual resources; the confirm writes `Review.chosenResources`
+  — the same objects, filtered by the exclusions — with no re-parse. A response
+  with no chosen pick is never parsed, and `Extraction.parseWith` folds every
+  non-resource outcome to data, so `preview` is total and infallible.
+- **Overrides key by name, not object; exclusions key by `resourceKey`.**
+  Selection state must be serializable, so `overrides` maps a response id to a
+  kind **name** and `excludedResources` holds string keys; the candidate objects
+  that carry the kind for execution are re-derived from recognition each render,
+  and the reviewed resource objects survive re-render because `preview` runs
+  under the shell's memoised inputs.
 
 ## References
 

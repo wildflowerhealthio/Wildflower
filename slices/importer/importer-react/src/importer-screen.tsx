@@ -1,9 +1,10 @@
-import { type JSX, useCallback, useState } from 'react'
+import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
+import { previewsFor } from './preview/previews-for.ts'
 import { useConfirmImport } from './preview/use-confirm-import.ts'
 import { useImportRun } from './preview/use-import-run.ts'
 import { formatRegistry } from './registry.ts'
@@ -13,16 +14,17 @@ import styles from './importer-screen.module.css'
 
 /**
  * The whole importer flow, top to bottom: pick one or more HARs, review exactly
- * what they would write, confirm once to write the chosen responses, and read the
- * results.
+ * what they would write (per URL, per resource), confirm once to write the
+ * included resources, and read the results.
  *
  * @remarks
  * The screen is the opt-in seam made visible: the read half
- * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing, and only
- * the explicit confirm reaches the write half (`useConfirmImport` —
- * upload-then-persist, per file, only the chosen responses, best-effort). A
- * cancel or "import another archive" discards everything with nothing further
- * written. The flow and package roles are in this package's AGENTS.md.
+ * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing, parses at
+ * preview so the reviewer sees the actual resources, and only the explicit
+ * confirm reaches the write half (`useConfirmImport` — upload-then-persist, per
+ * file, verbatim from the preview, best-effort). A cancel or "import another
+ * archive" discards everything with nothing further written. The flow and
+ * package roles are in this package's AGENTS.md.
  *
  * The slice owns every level of this flow rather than the host app: an app mounts
  * only this screen, the same lesson the web-trace viewer learned about split
@@ -47,8 +49,8 @@ const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(descriptor)
   const confirm = useConfirmImport(descriptor)
   // Each read file's reviewed selection, keyed by its stable id. Absent = the
-  // default (every kind enabled), so a file the user never touched still imports
-  // everything recognized.
+  // default (every kind enabled, every resource included), so a file the user
+  // never touched still imports everything recognized.
   const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection>>(new Map())
 
   const selectionFor = useCallback(
@@ -59,6 +61,18 @@ const ImporterScreen = (): JSX.Element => {
   const onSelectionChange = useCallback((fileId: string, selection: Review.Selection): void => {
     setSelections((previous) => new Map(previous).set(fileId, selection))
   }, [])
+
+  // The read half's resource-level output, shared with the confirm step so the
+  // same objects the reviewer inspected are what gets written.
+  const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
+  const previews = useMemo(
+    () =>
+      readFiles === undefined
+        ? undefined
+        : previewsFor(descriptor.sources, readFiles, selectionFor),
+    [readFiles, selectionFor]
+  )
+  const previewFor = useCallback((fileId: string) => previews?.get(fileId) ?? [], [previews])
 
   // Discard everything — the read, any confirm outcome, and every review edit —
   // and return to the picker. The reset order does not matter; all drop to empty.
@@ -91,8 +105,8 @@ const ImporterScreen = (): JSX.Element => {
       )
     }
     // `ready` holds every picked file's outcome; the confirm step writes only the
-    // responses each file's review chose, which is exactly what `PreviewPanel`
-    // gates the confirm action on.
+    // resources each file's review kept included, which is exactly what
+    // `PreviewPanel` gates the confirm action on.
     return (
       <PreviewPanel
         files={runState.files}
@@ -100,9 +114,10 @@ const ImporterScreen = (): JSX.Element => {
         ReviewBody={ReviewBody}
         selectionFor={selectionFor}
         onSelectionChange={onSelectionChange}
+        previewFor={previewFor}
         confirming={confirming}
         onCancel={startOver}
-        onConfirm={() => confirm.confirm(runState.files, selectionFor)}
+        onConfirm={() => confirm.confirm(runState.files, previewFor, selectionFor)}
       />
     )
   })()
