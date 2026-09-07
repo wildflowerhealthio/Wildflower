@@ -3,6 +3,7 @@ import * as fc from 'fast-check'
 
 import type { Extraction } from 'http-extraction-fundamentals'
 import { HttpResponseKind } from 'http-extraction-fundamentals'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as Review from './review.ts'
@@ -170,7 +171,7 @@ describe('Review.preview', () => {
       strict: true,
       decode: (value, _options, ast) =>
         ParseResult.fail(new ParseResult.Type(ast, value, 'always fails')),
-      encode: (value) => ParseResult.succeed(value as unknown),
+      encode: (value) => ParseResult.succeed(value),
     })
     const failing = HttpResponseKind.make<string>({
       name: 'failing',
@@ -310,7 +311,7 @@ describe('Review.chosenResources', () => {
           expect(Review.chosenResources(previews, selection)).toEqual(['a', 'b', 'c'])
         }
       ),
-      { numRuns: 20 }
+      { numRuns: numRunsFor({ base: 20 }) }
     )
   })
 })
