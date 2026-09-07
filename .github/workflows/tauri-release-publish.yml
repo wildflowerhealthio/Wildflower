@@ -53,15 +53,17 @@ jobs:
     steps:
       - name: Resolve target ref
         id: target
-        # PR event: tag the PR's base branch at its post-merge tip (the merged
-        # commit is `merge_commit_sha`, but for a squash/rebase merge that
-        # isn't on the branch — the base branch tip after the merge is what we
-        # want). workflow_dispatch: tag whatever ref the workflow was
+        # PR event: tag the exact commit the merge produced on the base
+        # branch (`merge_commit_sha` is set by GitHub for every merge method —
+        # merge / squash / rebase — once `merged == true`). Checking out the
+        # base branch by name would race any commit that lands there between
+        # the PR merging and this workflow starting, and we'd tag the wrong
+        # commit. workflow_dispatch: tag whatever ref the workflow was
         # dispatched from.
         run: |
           set -euo pipefail
           if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
-            echo "ref=${{ github.event.pull_request.base.ref }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.pull_request.merge_commit_sha }}" >> "$GITHUB_OUTPUT"
           else
             echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
