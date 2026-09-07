@@ -27,7 +27,7 @@ const versions = versionsData as Versions
  *
  * The version and each platform's installer URL are baked into the bundle
  * at build time from `apps/marketing-website/public/versions.json`, which
- * the `tauri-release` workflow rewrites on every version bump.
+ * the `tauri-release-prepare` workflow rewrites on every version bump.
  */
 function DownloadLinks(): JSX.Element {
   return (
