@@ -84,7 +84,7 @@ describe('ImporterApp', () => {
     expect(writes()).toHaveLength(0)
 
     // Act — confirm
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
 
     // Assert — the import completes, and the archive create lands before the
     // first resource write, so every written resource can name it
@@ -139,7 +139,7 @@ describe('ImporterApp', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
     })
@@ -425,7 +425,7 @@ const importOneArchive = async (): Promise<void> => {
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
   })
-  await userEvent.click(screen.getByRole('button', { name: /Import 2 responses/ }))
+  await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
   })
