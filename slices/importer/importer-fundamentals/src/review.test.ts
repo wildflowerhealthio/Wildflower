@@ -69,7 +69,7 @@ describe('Review.initial', () => {
     const pool = [patientKind, observationKind]
 
     // Act
-    const selection = Review.initial(pool)
+    const selection = Review.initial<string>(pool)
 
     // Assert
     expect(selection.enabledKinds).toEqual(new Set(['patient', 'observation']))
@@ -85,7 +85,7 @@ describe('Review.pickFor', () => {
     const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
 
     // Act
-    const pick = Review.pickFor(recognized, Review.initial(pool))
+    const pick = Review.pickFor(recognized, Review.initial<string>(pool))
 
     // Assert — highest specificity wins, so `patient`, not the broad `portal`.
     expect(Option.getOrThrow(pick).kind.name).toBe('patient')
@@ -95,7 +95,7 @@ describe('Review.pickFor', () => {
     // Arrange
     const pool = [portalKind, patientKind]
     const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
-    const selection = Review.toggleKind(Review.initial(pool), 'patient')
+    const selection = Review.toggleKind(Review.initial<string>(pool), 'patient')
 
     // Act
     const pick = Review.pickFor(recognized, selection)
@@ -108,7 +108,7 @@ describe('Review.pickFor', () => {
     // Arrange — only `patient` claims, and it is disabled.
     const pool = [patientKind]
     const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
-    const selection = Review.toggleKind(Review.initial(pool), 'patient')
+    const selection = Review.toggleKind(Review.initial<string>(pool), 'patient')
 
     // Act / Assert
     expect(Option.isNone(Review.pickFor(recognized, selection))).toBe(true)
@@ -118,7 +118,7 @@ describe('Review.pickFor', () => {
     // Arrange
     const pool = [portalKind, patientKind]
     const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
-    const selection = Review.overridePick(Review.initial(pool), 'r0', 'portal')
+    const selection = Review.overridePick(Review.initial<string>(pool), 'r0', 'portal')
 
     // Act
     const pick = Review.pickFor(recognized, selection)
@@ -132,7 +132,7 @@ describe('Review.pickFor', () => {
     const pool = [portalKind, patientKind]
     const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
     const selection = Review.toggleKind(
-      Review.overridePick(Review.initial(pool), 'r0', 'portal'),
+      Review.overridePick(Review.initial<string>(pool), 'r0', 'portal'),
       'portal'
     )
 
@@ -152,7 +152,7 @@ describe('Review.preview', () => {
 
     // Act
     const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial([three]))
+      Review.preview([three], responses, Review.initial<string>([three]))
     )
 
     // Assert — every resource is keyed by its response id and its index
@@ -183,7 +183,7 @@ describe('Review.preview', () => {
 
     // Act
     const previews = await Effect.runPromise(
-      Review.preview([failing], responses, Review.initial([failing]))
+      Review.preview([failing], responses, Review.initial<string>([failing]))
     )
 
     // Assert
@@ -201,7 +201,7 @@ describe('Review.preview', () => {
 
     // Act
     const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial([three]))
+      Review.preview([three], responses, Review.initial<string>([three]))
     )
 
     // Assert — every resource keys uniquely across the whole file
@@ -216,7 +216,7 @@ describe('Review.preview', () => {
     // Arrange — the response is recognized but every kind is disabled
     const pool = [patientKind]
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.toggleKind(Review.initial(pool), 'patient')
+    const selection = Review.toggleKind(Review.initial<string>(pool), 'patient')
 
     // Act
     const previews = await Effect.runPromise(Review.preview(pool, responses, selection))
@@ -233,11 +233,11 @@ describe('Review.chosenResources', () => {
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
     const responses = [input('r-many', 'https://ehr.test/many')]
     const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial([three]))
+      Review.preview([three], responses, Review.initial<string>([three]))
     )
 
     // Act
-    const chosen = Review.chosenResources(previews, Review.initial([three]))
+    const chosen = Review.chosenResources(previews, Review.initial<string>([three]))
 
     // Assert
     expect(chosen).toEqual(['a', 'b', 'c'])
@@ -248,9 +248,9 @@ describe('Review.chosenResources', () => {
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
     const responses = [input('r-many', 'https://ehr.test/many')]
     const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial([three]))
+      Review.preview([three], responses, Review.initial<string>([three]))
     )
-    const selection = Review.toggleResource(Review.initial([three]), 'r-many:1')
+    const selection = Review.toggleResource(Review.initial<string>([three]), 'r-many:1')
 
     // Act
     const chosen = Review.chosenResources(previews, selection)
@@ -299,7 +299,7 @@ describe('Review.chosenResources', () => {
     // pure and self-inverse.
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
     const responses = [input('r-many', 'https://ehr.test/many')]
-    const initial = Review.initial([three])
+    const initial = Review.initial<string>([three])
     const previews = await Effect.runPromise(Review.preview([three], responses, initial))
 
     await fc.assert(
@@ -332,7 +332,9 @@ describe('Review.chosen', () => {
     ]
 
     // Act
-    const outcome = await Effect.runPromise(Review.chosen(pool, responses, Review.initial(pool)))
+    const outcome = await Effect.runPromise(
+      Review.chosen(pool, responses, Review.initial<string>(pool))
+    )
 
     // Assert — each recognized response decoded to its kind's name; the miss wrote nothing.
     expect(outcome.resources.toSorted((left, right) => left.localeCompare(right))).toEqual([
@@ -350,7 +352,7 @@ describe('Review.chosen', () => {
       input('r0', 'https://ehr.test/Patient/1'),
       input('r1', 'https://ehr.test/Observation?subject=1'),
     ]
-    const selection = Review.toggleKind(Review.initial(pool), 'observation')
+    const selection = Review.toggleKind(Review.initial<string>(pool), 'observation')
 
     // Act
     const outcome = await Effect.runPromise(Review.chosen(pool, responses, selection))
@@ -367,7 +369,9 @@ describe('Review.chosen', () => {
     const responses = [input('r0', 'https://ehr.test/Patient/1', true)]
 
     // Act
-    const outcome = await Effect.runPromise(Review.chosen(pool, responses, Review.initial(pool)))
+    const outcome = await Effect.runPromise(
+      Review.chosen(pool, responses, Review.initial<string>(pool))
+    )
 
     // Assert
     expect(outcome.resources).toEqual([])
@@ -379,7 +383,7 @@ describe('Review.chosen', () => {
     // Arrange
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
     const responses = [input('r-many', 'https://ehr.test/many')]
-    const selection = Review.toggleResource(Review.initial([three]), 'r-many:0')
+    const selection = Review.toggleResource(Review.initial<string>([three]), 'r-many:0')
 
     // Act
     const outcome = await Effect.runPromise(Review.chosen([three], responses, selection))
@@ -395,11 +399,11 @@ describe('Review.edit / Review.revert', () => {
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
     const responses = [input('r-many', 'https://ehr.test/many')]
     const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial([three]))
+      Review.preview([three], responses, Review.initial<string>([three]))
     )
 
     // Act — edit only the middle resource
-    const edited = Review.edit(Review.initial([three]), 'r-many:1', 'B*')
+    const edited = Review.edit(Review.initial<string>([three]), 'r-many:1', 'B*')
 
     // Assert — the override lands in exactly its slot; the siblings ride through
     expect(Review.chosenResources(previews, edited)).toEqual(['a', 'B*', 'c'])
@@ -413,9 +417,9 @@ describe('Review.edit / Review.revert', () => {
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
     const responses = [input('r-many', 'https://ehr.test/many')]
     const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial([three]))
+      Review.preview([three], responses, Review.initial<string>([three]))
     )
-    const edited = Review.edit(Review.initial([three]), 'r-many:2', 'C*')
+    const edited = Review.edit(Review.initial<string>([three]), 'r-many:2', 'C*')
     expect(Review.chosenResources(previews, edited)).toEqual(['a', 'b', 'C*'])
 
     // Act — revert
@@ -432,10 +436,10 @@ describe('Review.edit / Review.revert', () => {
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
     const responses = [input('r-many', 'https://ehr.test/many')]
     const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial([three]))
+      Review.preview([three], responses, Review.initial<string>([three]))
     )
     const selection = Review.toggleResource(
-      Review.edit(Review.initial([three]), 'r-many:1', 'B*'),
+      Review.edit(Review.initial<string>([three]), 'r-many:1', 'B*'),
       'r-many:1'
     )
 
@@ -451,7 +455,7 @@ describe('Review.edit / Review.revert', () => {
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
 
     // Act
-    const before = Review.initial([three])
+    const before = Review.initial<string>([three])
     const after = Review.revert(before, 'r-many:0')
 
     // Assert — same reference, no allocations
@@ -503,6 +507,6 @@ describe('Review.chosenCount', () => {
     const recognized = Review.recognize(pool, responses)
 
     // Act / Assert
-    expect(Review.chosenCount(recognized, Review.initial(pool))).toBe(1)
+    expect(Review.chosenCount(recognized, Review.initial<string>(pool))).toBe(1)
   })
 })
