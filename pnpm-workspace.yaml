@@ -34,19 +34,19 @@ catalog:
   '@fontsource-variable/atkinson-hyperlegible-mono': ^5.3.0
   '@fontsource-variable/atkinson-hyperlegible-next': ^5.3.0
   '@opentelemetry/api': 1.9.1
-  '@opentelemetry/exporter-trace-otlp-http': ^0.221.0
-  '@opentelemetry/resources': 2.10.0
-  '@opentelemetry/sdk-trace-base': ^2.10.0
-  '@opentelemetry/sdk-trace-node': ^2.10.0
-  '@opentelemetry/sdk-trace-web': ^2.10.0
+  '@opentelemetry/exporter-trace-otlp-http': ^0.222.0
+  '@opentelemetry/resources': 2.11.0
+  '@opentelemetry/sdk-trace-base': ^2.11.0
+  '@opentelemetry/sdk-trace-node': ^2.11.0
+  '@opentelemetry/sdk-trace-web': ^2.11.0
   '@opentelemetry/semantic-conventions': ^1.43.0
   # Keep the `@sentry/*` packages aligned on a single version so only one
   # copy of `@sentry/core` is installed. Divergent majors install two
   # side-by-side, and the mismatched `Client` types break
   # `setupEventContextTrace` / `SentrySampler` consumers (telemetry-node/web).
-  '@sentry/node': 10.72.0
-  '@sentry/opentelemetry': 10.72.0
-  '@sentry/react': 10.72.0
+  '@sentry/node': 10.73.0
+  '@sentry/opentelemetry': 10.73.0
+  '@sentry/react': 10.73.0
   # The Scalar API reference, vendored through npm (never the CDN script) so the
   # static server-docs console at /wildflower-server-docs ships self-contained.
   '@scalar/api-reference': ^1.67.0
@@ -55,13 +55,13 @@ catalog:
   '@tanstack/router-plugin': ^1.168.34
   '@tanstack/virtual-file-routes': ^1.162.0
   '@tauri-apps/api': ^2
-  '@tauri-apps/plugin-fs': ~2.5.1
+  '@tauri-apps/plugin-fs': ~2.5.2
   '@tauri-apps/plugin-log': ~2.9.0
   '@tauri-apps/plugin-opener': ^2
   '@testing-library/dom': ^10.4.0
   '@testing-library/react': ^16.3.3
-  '@testing-library/user-event': ^14.6.5
-  '@tsdown/css': ^0.22.14
+  '@testing-library/user-event': ^14.6.7
+  '@tsdown/css': ^0.23.0
   '@types/fhir': ^0.0.44
   # `har-schema` is the published HAR 1.2 JSON Schema and `ajv` compiles it —
   # together they are how `web-trace-core` holds its emitter to the real spec
@@ -70,10 +70,10 @@ catalog:
   # lands at the workspace root is the one a root-level `vp lint` resolves for
   # every package.
   ajv: ^8.20.0
-  bumpp: ^12.2.2
+  bumpp: ^12.3.0
   '@types/node': ^26
   '@types/react': 19.2.18
-  '@types/react-dom': 19.2.5
+  '@types/react-dom': 19.2.7
   '@typescript/native-preview': 7.0.0-dev.20260707.2
   '@vitejs/plugin-react': ^6.1.1
   effect: 3.22.1

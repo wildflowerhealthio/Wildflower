@@ -47,7 +47,7 @@ jobs:
     steps:
       - name: Mint staging-repo App token
         id: staging-token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         with:
           app-id: ${{ secrets.STAGING_APP_ID }}
           private-key: ${{ secrets.STAGING_APP_PRIVATE_KEY }}
@@ -72,7 +72,7 @@ jobs:
 
       - name: Setup Vite+
         if: github.event.action != 'closed'
-        uses: voidzero-dev/setup-vp@v1.18.0
+        uses: voidzero-dev/setup-vp@v1.19.0
         with:
           cache: true
 

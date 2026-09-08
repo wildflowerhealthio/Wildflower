@@ -52,15 +52,14 @@ jobs:
           fetch-depth: 0
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.18.0
+        uses: voidzero-dev/setup-vp@v1.19.0
         with:
           cache: true
 
       # vp's task cache (node_modules/.vite/task-cache) stores only terminal
       # output, not the dist/ files that `vp run pack` produces. Caching both
       # together keeps cache hits in sync with the dist/ outputs that typecheck
-      # reads (dist/*.d.ts via workspace exports) and that Expo Jest reads (Jest
-      # doesn't honor the `source` export condition). setup-vp already caches the
+      # reads (dist/*.d.ts via workspace exports). setup-vp already caches the
       # pnpm store, so this only covers build outputs.
       - name: Cache vp pack outputs
         uses: actions/cache@v6

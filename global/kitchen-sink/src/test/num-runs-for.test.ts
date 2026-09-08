@@ -8,10 +8,10 @@ import { afterEach, describe, expect, it } from 'vite-plus/test'
 import { multiplierFromMap, numRunsFor, scaleNumRuns } from './num-runs-for.ts'
 
 // This test file lives in the `kitchen-sink` package, so `numRunsFor` resolves
-// its calling package to `kitchen-sink` (via `expect.getState().testPath`, with
-// a call-stack fallback). Keying the risk map under that name exercises the real
-// end-to-end path that `test:changed` relies on, proving the multiplier actually
-// reaches `numRunsFor` at runtime.
+// its calling package to `kitchen-sink` (via Vitest's `__vitest_worker__.filepath`,
+// with a call-stack fallback). Keying the risk map under that name exercises the
+// real end-to-end path that `test:changed` relies on, proving the multiplier
+// actually reaches `numRunsFor` at runtime.
 const THIS_PACKAGE = 'kitchen-sink'
 
 // The monorepo root's own package name. The old cwd-based implementation

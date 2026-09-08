@@ -4,7 +4,7 @@ This project uses `pnpm.overrides` in the root `package.json` to force a single 
 
 ## What an override does
 
-`pnpm.overrides` rewrites the version requirement of a dependency wherever it appears in the dependency graph — including transitive deps. An override of `@types/node: ^24` means every package that asks for `@types/node` will resolve it to ^24, regardless of what their `package.json` says.
+`pnpm.overrides` rewrites the version requirement of a dependency wherever it appears in the dependency graph — including transitive deps. An override of `@types/node: ^26` means every package that asks for `@types/node` will resolve it to ^26, regardless of what their `package.json` says.
 
 This is heavier than the workspace catalog: the catalog only governs direct deps that opt in via `catalog:`, while overrides reach the whole tree.
 
@@ -20,7 +20,7 @@ The same risk exists for any tool that crosses package boundaries inside a singl
 
 | Package              | Pinned to                                | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | -------------------- | ---------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `@types/node`        | `^24`                                    | Jest 29 (via the now-removed Expo packages) dragged in `@types/node@25.5.0` while the workspace catalog is `^24`, splitting vite-plus into two peer-tuple variants (24.12.2 and 25.5.0). Retained to keep a single `@types/node` major; re-evaluate in the next override audit now that Jest is gone.                                                                                                                                                  |
+| `@types/node`        | `^26`                                    | Tracks the Node 26 `engines` floor and the workspace catalog. Keeps a single `@types/node` major across the tree so a transitive dep pinning a different major can't split vite-plus into peer-tuple variants.                                                                                                                                                                                                                                         |
 | `@opentelemetry/api` | `1.9.0`                                  | Sentry packages pull `@opentelemetry/api@1.9.1` transitively while the workspace catalog is `1.9.0`. Same variant-split problem.                                                                                                                                                                                                                                                                                                                       |
 | `typescript`         | `5.9.3`                                  | The root has `typescript-eslint`, which resolves `typescript@6.0.2` from npm; workspace packages use the catalog's `^5` (5.9.3).                                                                                                                                                                                                                                                                                                                       |
 | `vite`               | `npm:@voidzero-dev/vite-plus-core@0.3.0` | The catalog's `vite` alias only binds `catalog:` references. Plugins that peer-depend on bare `vite` (`@vitejs/plugin-react`, `@tanstack/router-plugin`, `vite-plugin-singlefile`) get a real `vite@8` auto-installed by pnpm's auto-install-peers, which hoists over the alias and splits `Plugin`/`UserConfig` types ("Excessive stack depth", "No overload matches" in every vite config). The override rewrites those peers to the vite-plus core. |
@@ -31,6 +31,8 @@ The same risk exists for any tool that crosses package boundaries inside a singl
 These overrides are what allow `vp test` from the workspace root to load all package configs into one Vitest process via `test.projects` (see [vite.config.ts](../../vite.config.ts)).
 
 ## Re-pinning on a vite-plus bump
+
+For the full checklist of every file that records a vite-plus version — the catalog, these overrides, and the three global-bootstrap scripts — see the [Bumping vite-plus How-To](./Bumping%20vite-plus%20How-To.md). This section covers only _why_ the `vite`/`vitest` overrides need re-pinning.
 
 The `vite` and `vitest` overrides are pinned to exact versions that track `vite-plus`, so **both must be re-pinned whenever the catalog's `vite-plus` moves** — a Dependabot bump touches only the catalog and will leave them behind. When that happens, `vite-plus@<new>` installs its own `@voidzero-dev/vite-plus-core` next to the older one the override still holds, and the resulting two `UserConfig` types make every `defineConfig` call fail to typecheck with `TS2321: Excessive stack depth comparing types … and 'UserConfig'` (plus a companion `TS2769: No overload matches this call`).
 
@@ -84,6 +86,7 @@ The `vite` override aliases to `@voidzero-dev/vite-plus-core`, which ships **no 
 
 ## See Also
 
+- [Bumping vite-plus How-To](./Bumping%20vite-plus%20How-To.md) — the checklist of every place a vite-plus version is recorded
 - [pnpm overrides](https://pnpm.io/package_json#pnpmoverrides) — Upstream docs
 - [Vitest projects](https://vitest.dev/guide/projects) — How `test.projects` loads multiple configs
 - [vite.config.ts](../../vite.config.ts) — Where the projects glob is wired

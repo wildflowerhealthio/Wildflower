@@ -221,7 +221,7 @@ jobs:
         run: pnpm exec vp run pack
 
       - name: Build and release with tauri-action
-        uses: tauri-apps/tauri-action@v0
+        uses: tauri-apps/tauri-action@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Tauri updater signing (skipped silently if the secret is unset).
