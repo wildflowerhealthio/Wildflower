@@ -32,6 +32,8 @@ These overrides are what allow `vp test` from the workspace root to load all pac
 
 ## Re-pinning on a vite-plus bump
 
+For the full checklist of every file that records a vite-plus version — the catalog, these overrides, and the three global-bootstrap scripts — see the [Bumping vite-plus How-To](./Bumping%20vite-plus%20How-To.md). This section covers only _why_ the `vite`/`vitest` overrides need re-pinning.
+
 The `vite` and `vitest` overrides are pinned to exact versions that track `vite-plus`, so **both must be re-pinned whenever the catalog's `vite-plus` moves** — a Dependabot bump touches only the catalog and will leave them behind. When that happens, `vite-plus@<new>` installs its own `@voidzero-dev/vite-plus-core` next to the older one the override still holds, and the resulting two `UserConfig` types make every `defineConfig` call fail to typecheck with `TS2321: Excessive stack depth comparing types … and 'UserConfig'` (plus a companion `TS2769: No overload matches this call`).
 
 Widening the catalog range does not help — an exact override outranks it, so `vp install` reports `Lockfile is up to date, resolution step is skipped` and nothing moves. Edit the override in the root [package.json](../../package.json).
@@ -84,6 +86,7 @@ The `vite` override aliases to `@voidzero-dev/vite-plus-core`, which ships **no 
 
 ## See Also
 
+- [Bumping vite-plus How-To](./Bumping%20vite-plus%20How-To.md) — the checklist of every place a vite-plus version is recorded
 - [pnpm overrides](https://pnpm.io/package_json#pnpmoverrides) — Upstream docs
 - [Vitest projects](https://vitest.dev/guide/projects) — How `test.projects` loads multiple configs
 - [vite.config.ts](../../vite.config.ts) — Where the projects glob is wired

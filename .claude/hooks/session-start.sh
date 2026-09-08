@@ -29,14 +29,15 @@ if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0
   pnpm env use --global 26
 fi
 
-# 2. Global vp + the helpers postCreateCommand.sh installs alongside it.
-#    Pin vite-plus to the workspace catalog's version (pnpm-workspace.yaml
-#    `vite-plus:`) — an unpinned `vite-plus` drifts to the newest release
-#    (a cloud box pulled 0.3.1 while the workspace holds 0.3.0), whose bundled
-#    vitest peer-warns against the aliased vite. Keep this in sync on every
-#    vite-plus bump, alongside the overrides in the root package.json.
+# 2. Global vp + the helpers postCreateCommand.sh installs alongside it. Pin
+#    every one to the version the workspace resolves so the bootstrap toolchain
+#    can't drift ahead of it — an unpinned `vite-plus` once pulled 0.3.1 while
+#    the workspace held 0.3.0, and its bundled vitest peer-warned against the
+#    aliased vite. These pins must be re-synced on every bump; the full list of
+#    places a vite-plus version is recorded is in
+#    docs/Dependencies/Bumping vite-plus How-To.md.
 if ! command -v vp >/dev/null 2>&1; then
-  pnpm install -g vite-plus@0.3.0 @typescript/native-preview @tsdown/css
+  pnpm install -g vite-plus@0.3.0 @typescript/native-preview@7.0.0-dev.20260707.2 '@tsdown/css@^0.23.0'
 fi
 
 # 3. Workspace dependencies (idempotent; fast when node_modules is current).

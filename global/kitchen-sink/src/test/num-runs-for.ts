@@ -59,8 +59,9 @@ const vitestTestPath = (): unknown =>
  * Unlike the stack walk, this signal is the file *under test*, not merely the
  * first non-internal caller — so it stays correct even if a future shared
  * in-repo helper (outside this module) wraps `numRunsFor` on behalf of other
- * packages. Reads are fully guarded so any unexpected shape falls back to the
- * stack walk rather than returning a bad path.
+ * packages. Property reads go through `readProp`, so a missing or mis-shaped
+ * global yields `none` and the caller falls back to the stack walk rather than
+ * returning a bad path.
  */
 const runnerTestPath = (): Option.Option<string> => nonEmptyString(vitestTestPath())
 
