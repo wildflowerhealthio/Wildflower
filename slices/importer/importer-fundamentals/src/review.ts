@@ -28,13 +28,13 @@ type NamedKind = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>
  * below.
  *
  * @typeParam TParsed - The resource type edit overrides carry — the same
- *   `TParsed` the format's pool decodes to. Defaults to `unknown` for
- *   generic callers that never touch overrides; a shell that reads the
- *   overrides (via {@link chosenResources}) parameterises with its format's
- *   resource type so the seam is typed end-to-end rather than
- *   type-asserted at the cast.
+ *   `TParsed` the format's pool decodes to. Callers pass it explicitly
+ *   (no default); a shell that reads the overrides (via
+ *   {@link chosenResources}) parameterises with its format's resource
+ *   type so the seam is typed end-to-end rather than type-asserted at
+ *   the cast. A callsite that never touches overrides passes `unknown`.
  */
-interface Selection<TParsed = unknown> {
+interface Selection<TParsed> {
   /** The kind names enabled across the import; a kind absent here is disabled everywhere. */
   readonly enabledKinds: ReadonlySet<string>
   /** Per-response pick overrides, response id → chosen kind name. */
@@ -61,7 +61,7 @@ interface Selection<TParsed = unknown> {
  * top-specificity candidate and a fresh review writes what the reference
  * model would.
  */
-const initial = <TParsed = unknown>(pool: readonly NamedKind[]): Selection<TParsed> => ({
+const initial = <TParsed>(pool: readonly NamedKind[]): Selection<TParsed> => ({
   enabledKinds: new Set(pool.map((kind) => kind.name)),
   overrides: new Map(),
   excludedResources: new Set(),
