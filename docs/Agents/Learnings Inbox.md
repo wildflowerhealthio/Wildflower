@@ -172,3 +172,13 @@ render ever observes `isFetchingNextPage === true`, so the dep array is
 identical before and after the page lands and the effect never re-fires. Add
 `data.pages.length` to the dependencies — it is the one input guaranteed to
 change once per page. See the driver in `apps/medications-app/src/app.tsx`.
+
+## A `freeText` pseudonym breaks any consumer that parses the value with a regex
+
+The anonymizer's `freeText` fallback rewrites every letter and digit, so a
+value with a literal keyword inside it (`/Date(1779297900000-0400)/`) comes
+out as `/Uwbx(7233634345725-5592)/` and a downstream `collectionMillis`-style
+regex silently stops matching — the real payload decodes, only the anonymized
+fixture is broken. When a source's parser matches a token by pattern, give
+that token its own leaf shape in `har-importer-core`'s `shapes.ts` that keeps
+the literal and fakes only the data part.
