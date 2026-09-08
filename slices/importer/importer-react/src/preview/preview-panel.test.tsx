@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { DateTime, Effect, Either, Option, type ParseResult, Schema } from 'effect'
+import type { FhirResource } from 'fhir-r4/resources'
 import { ReviewBody } from 'har-importer-react'
 import { type Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
@@ -162,7 +163,7 @@ const panelProps = (
 ): {
   readonly sources: typeof sources
   readonly ReviewBody: typeof ReviewBody
-  readonly selectionFor: () => Review.Selection
+  readonly selectionFor: () => Review.Selection<FhirResource>
   readonly onSelectionChange: () => void
   readonly previewFor: (
     fileId: string
@@ -171,7 +172,7 @@ const panelProps = (
   readonly onCancel: () => void
   readonly confirming: boolean
 } => {
-  const selectionFor = (): Review.Selection => Review.initial(pool)
+  const selectionFor = (): Review.Selection<FhirResource> => Review.initial<FhirResource>(pool)
   const previews = previewsFor(sources, files, selectionFor)
   return {
     sources,

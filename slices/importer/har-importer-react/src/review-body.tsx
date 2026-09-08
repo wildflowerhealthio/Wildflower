@@ -1,9 +1,12 @@
-import { Option } from 'effect'
+import { Data, Option } from 'effect'
+import type { FhirResource } from 'fhir-r4/resources'
 import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
-import { type JSX, useMemo } from 'react'
+import { type JSX, useMemo, useState } from 'react'
+import { Chip } from 'react-tundraish'
 
 import { describeResource, resourceTypeOf } from './describe-resource.ts'
+import { ResourceEditor } from './resource-editor.tsx'
 import styles from './review-body.module.css'
 
 /**
@@ -22,7 +25,12 @@ type AnyKind = HttpResponseKind.HttpResponseKind<unknown>
 /** One previewed response — the parse outcome plus every resource's stable key. */
 type Preview = Review.PreviewedResponse<AnyKind, unknown>
 
-/** Props for {@link ReviewBody}. */
+/**
+ * Props for {@link ReviewBody}. The selection is typed by the resource shape
+ * the review edits — `FhirResource` for the HAR importer — so a kept edit
+ * from the {@link ResourceEditor} rides through as a typed `TParsed`, not a
+ * cast at the seam.
+ */
 interface ReviewBodyProps {
   /** One HAR file's decoded responses, in input order. */
   readonly responses: readonly Extraction.Input[]
@@ -35,9 +43,9 @@ interface ReviewBodyProps {
   /** Previews the shell parsed for this file's responses under the current selection. */
   readonly previews: readonly Preview[]
   /** The reviewer's selection for this file — reads and writes the same shape. */
-  readonly selection: Review.Selection
+  readonly selection: Review.Selection<FhirResource>
   /** Called with the new selection on every toggle or override. */
-  readonly onChange: (selection: Review.Selection) => void
+  readonly onChange: (selection: Review.Selection<FhirResource>) => void
 }
 
 /** Matched responses grouped by URL, in first-seen order. */
@@ -83,7 +91,7 @@ interface TypeTally {
 /** The per-type tallies of a file's previewed resources, in first-seen order. */
 const perTypeTallies = (
   previews: readonly Preview[],
-  selection: Review.Selection
+  selection: Review.Selection<FhirResource>
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
@@ -126,7 +134,7 @@ const ResponsePicker = ({
   onOverride,
 }: {
   readonly preview: Preview
-  readonly selection: Review.Selection
+  readonly selection: Review.Selection<FhirResource>
   readonly onOverride: (kindName: string) => void
 }): JSX.Element => {
   const enabled = Review.enabledCandidates(preview.recognized, selection)
@@ -153,20 +161,32 @@ const ResponsePicker = ({
   )
 }
 
-/** One previewed resource's row: its type, one-line summary, and include toggle. */
+/**
+ * One previewed resource's row: its type, one-line summary, include toggle,
+ * Edit/Revert affordance, and the "edited" chip when a per-resource override
+ * is in place. The row reads the current value through the review's edit
+ * slot — a description that reflects the reviewer's own change, not the
+ * parsed original.
+ */
 const ResourceRow = ({
   resourceKey,
   resource,
   selection,
   onToggle,
+  onEdit,
+  onRevert,
 }: {
   readonly resourceKey: string
   readonly resource: unknown
-  readonly selection: Review.Selection
+  readonly selection: Review.Selection<FhirResource>
   readonly onToggle: (key: string) => void
+  readonly onEdit: (key: string, resource: unknown) => void
+  readonly onRevert: (key: string) => void
 }): JSX.Element => {
-  const description = describeResource(resource)
+  const edited = Option.getOrElse(Review.editedResource(selection, resourceKey), () => resource)
+  const description = describeResource(edited)
   const included = Review.isResourceIncluded(selection, resourceKey)
+  const isEdited = Review.isResourceEdited(selection, resourceKey)
   return (
     <li className={styles.resourceRow}>
       <label className={styles.resourceLabel}>
@@ -183,6 +203,25 @@ const ResourceRow = ({
           {description.summary}
         </span>
       </label>
+      {isEdited && <Chip className={styles.editedChip}>Edited</Chip>}
+      <button
+        type="button"
+        className={styles.editButton}
+        onClick={() => onEdit(resourceKey, edited)}
+        aria-label={`Edit ${description.type} ${description.summary}`}
+      >
+        Edit
+      </button>
+      {isEdited && (
+        <button
+          type="button"
+          className={styles.revertButton}
+          onClick={() => onRevert(resourceKey)}
+          aria-label={`Revert edit to ${description.type} ${description.summary}`}
+        >
+          Revert
+        </button>
+      )}
     </li>
   )
 }
@@ -197,11 +236,15 @@ const ResponseBlock = ({
   selection,
   onOverride,
   onToggleResource,
+  onEditResource,
+  onRevertResource,
 }: {
   readonly preview: Preview
-  readonly selection: Review.Selection
+  readonly selection: Review.Selection<FhirResource>
   readonly onOverride: (kindName: string) => void
   readonly onToggleResource: (key: string) => void
+  readonly onEditResource: (key: string, resource: unknown) => void
+  readonly onRevertResource: (key: string) => void
 }): JSX.Element => {
   const outcome = preview.outcome
   if (outcome._tag === 'parseError') {
@@ -251,12 +294,32 @@ const ResponseBlock = ({
             resource={resource.resource}
             selection={selection}
             onToggle={onToggleResource}
+            onEdit={onEditResource}
+            onRevert={onRevertResource}
           />
         ))}
       </ul>
     </li>
   )
 }
+
+/**
+ * The resource-editor dialog's local state — `Closed` by default, `Open`
+ * when a reviewer clicks Edit on a row. A tagged sum type rather than a
+ * nullable `Open` shape so the closed case names itself
+ * (`state._tag === 'Closed'`) and a third state (a submitting spinner, say)
+ * is one variant added rather than a wider nullable.
+ *
+ * The constructors are aliased to lowercase names so calling them inside
+ * the React component body does not trip the `react/capitalized-calls`
+ * rule (which reserves `X(...)` for JSX components).
+ */
+type EditorState = Data.TaggedEnum<{
+  readonly Closed: Record<never, never>
+  readonly Open: { readonly key: string; readonly resource: unknown }
+}>
+const editorState = Data.taggedEnum<EditorState>()
+const { Closed: makeClosedEditor, Open: makeOpenEditor } = editorState
 
 /** The interactive review of one file's responses. */
 const ReviewBody = ({
@@ -266,6 +329,23 @@ const ReviewBody = ({
   selection,
   onChange,
 }: ReviewBodyProps): JSX.Element => {
+  // The resource-editor dialog is not part of the pure selection — it is
+  // local UI state that opens/closes as the reviewer navigates rows. Only
+  // the accepted edit becomes selection.
+  const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
+
+  const openEditor = (key: string, resource: unknown): void => {
+    setEditing(makeOpenEditor({ key, resource }))
+  }
+  const closeEditor = (): void => setEditing(makeClosedEditor())
+  const keepEdit = (resource: FhirResource): void => {
+    if (editing._tag !== 'Open') return
+    onChange(Review.edit(selection, editing.key, resource))
+    setEditing(makeClosedEditor())
+  }
+  const revertEdit = (key: string): void => {
+    onChange(Review.revert(selection, key))
+  }
   // The kinds at least one of this file's responses recognized — the only kinds a
   // toggle can affect for this import. A kind that claims nothing here is shown
   // but disabled, so the menu still lists every source's kinds without offering
@@ -348,6 +428,8 @@ const ReviewBody = ({
                       onChange(Review.overridePick(selection, preview.ref.id, kindName))
                     }
                     onToggleResource={(key) => onChange(Review.toggleResource(selection, key))}
+                    onEditResource={openEditor}
+                    onRevertResource={revertEdit}
                   />
                 ))}
               </ul>
@@ -370,6 +452,13 @@ const ReviewBody = ({
           </ul>
         </details>
       )}
+
+      <ResourceEditor
+        open={editing._tag === 'Open'}
+        resource={editing._tag === 'Open' ? editing.resource : null}
+        onEdit={(edit) => keepEdit(edit.resource)}
+        onCancel={closeEditor}
+      />
     </div>
   )
 }

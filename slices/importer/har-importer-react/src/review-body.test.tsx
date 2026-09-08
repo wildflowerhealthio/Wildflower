@@ -1,6 +1,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { DateTime, Effect, Option } from 'effect'
+import { DateTime, Effect, Option, Schema } from 'effect'
+import { type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
 import { type Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
@@ -63,11 +64,15 @@ const input = (id: string, url: string): Extraction.Input => ({
   bodyAbsent: false,
 })
 
+/** Decode a wire-shape FHIR resource into a typed `FhirResource` for tests. */
+const decodeFhirResource = (wire: unknown): FhirResource =>
+  Schema.decodeUnknownSync(FhirResourceSchema)(wire)
+
 /** Compute previews the way the shell does — synchronous parses fold cleanly through runSync. */
 const previewOf = (
   pool: readonly HttpResponseKind.HttpResponseKind<unknown>[],
   responses: readonly Extraction.Input[],
-  selection: Review.Selection
+  selection: Review.Selection<FhirResource>
 ): readonly Review.PreviewedResponse<HttpResponseKind.HttpResponseKind<unknown>, unknown>[] =>
   Effect.runSync(Review.preview(pool, responses, selection))
 
@@ -84,7 +89,7 @@ describe('ReviewBody', () => {
     const sources = [source('portal-source', portalKind), source('ehr-source', patientKind)]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.initial(pool)
+    const selection = Review.initial<FhirResource>(pool)
 
     // Act
     render(
@@ -111,7 +116,7 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', kind('PrescriptionResponseKind', 50, '/Patient'))]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.initial(pool)
+    const selection = Review.initial<FhirResource>(pool)
 
     // Act
     render(
@@ -134,7 +139,7 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', patientKind, observationKind)]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.initial(pool)
+    const selection = Review.initial<FhirResource>(pool)
 
     // Act
     render(
@@ -162,7 +167,7 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', portalKind, patientKind)]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.initial(pool)
+    const selection = Review.initial<FhirResource>(pool)
 
     // Act
     render(
@@ -190,7 +195,7 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', twoObs)]
     const pool = poolOf(sources)
     const responses = [input('r-obs', 'https://ehr.test/Observation?s=1')]
-    const selection = Review.initial(pool)
+    const selection = Review.initial<FhirResource>(pool)
 
     // Act
     render(
@@ -218,7 +223,7 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', twoObs)]
     const pool = poolOf(sources)
     const responses = [input('r-obs', 'https://ehr.test/Observation?s=1')]
-    let currentSelection = Review.initial(pool)
+    let currentSelection = Review.initial<FhirResource>(pool)
     const previews = previewOf(pool, responses, currentSelection)
     const { rerender } = render(
       <ReviewBody
@@ -262,7 +267,7 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', portalKind, patientKind)]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    let currentSelection = Review.initial(pool)
+    let currentSelection = Review.initial<FhirResource>(pool)
     const { rerender } = render(
       <ReviewBody
         responses={responses}
@@ -295,6 +300,75 @@ describe('ReviewBody', () => {
     expect(screen.queryByRole('combobox')).toBeNull()
   })
 
+  it('should mark an edited resource with a chip and offer a Revert button', () => {
+    // Arrange — one recognized Patient previewed, then the reviewer's edit
+    // registered in the selection (the dialog itself is exercised in
+    // resource-editor.test). Patient is used here because its describe path
+    // reads a name that survives the schema round-trip; the point is that
+    // an edit rides through to the description, whatever the type.
+    const sources = [source('ehr-source', patientKind)]
+    const pool = poolOf(sources)
+    const responses = [input('r-p', 'https://ehr.test/Patient/1')]
+    const initial = Review.initial<FhirResource>(pool)
+    const previews = previewOf(pool, responses, initial)
+    // A real, decoded Patient — the same shape a reviewer's Keep would
+    // produce — so the override is typed by the selection's `TParsed`.
+    const edited = decodeFhirResource({
+      resourceType: 'Patient',
+      id: 'patient-1',
+      name: [{ text: 'Edited By Hand' }],
+    })
+    const editedSelection = Review.edit(initial, 'r-p:0', edited)
+
+    // Act
+    render(
+      <ReviewBody
+        responses={responses}
+        sources={sources}
+        previews={previews}
+        selection={editedSelection}
+        onChange={() => undefined}
+      />
+    )
+
+    // Assert — the chip is visible and Revert exists; the description reflects
+    // that the row now reads through the override's own value (a `Patient`,
+    // not the parsed original the pool synthesised).
+    expect(screen.getByText('Edited')).toBeDefined()
+    expect(screen.getByRole('button', { name: /Revert edit to Patient/ })).toBeDefined()
+  })
+
+  it('should call onChange with a reverted selection when Revert is clicked', async () => {
+    // Arrange — one edit in place
+    const sources = [source('ehr-source', patientKind)]
+    const pool = poolOf(sources)
+    const responses = [input('r-p', 'https://ehr.test/Patient/1')]
+    const initial = Review.initial<FhirResource>(pool)
+    const previews = previewOf(pool, responses, initial)
+    const edited = decodeFhirResource({ resourceType: 'Patient', id: 'patient-1' })
+    const editedSelection = Review.edit(initial, 'r-p:0', edited)
+    let seen: Review.Selection<FhirResource> | null = null
+
+    // Act
+    render(
+      <ReviewBody
+        responses={responses}
+        sources={sources}
+        previews={previews}
+        selection={editedSelection}
+        onChange={(next) => {
+          seen = next
+        }}
+      />
+    )
+    await userEvent.click(screen.getByRole('button', { name: /Revert edit to/ }))
+
+    // Assert — the revert reached the shell and cleared the override
+    expect(seen).not.toBeNull()
+    if (seen === null) throw new Error('unreachable: assertion above holds')
+    expect(Review.isResourceEdited(seen, 'r-p:0')).toBe(false)
+  })
+
   it('should fold unrecognized responses into a collapsible no-match section', () => {
     // Arrange — one recognized Patient, one unrecognized asset.
     const sources = [source('ehr-source', patientKind)]
@@ -303,7 +377,7 @@ describe('ReviewBody', () => {
       input('r0', 'https://ehr.test/Patient/1'),
       input('r1', 'https://cdn.test/app.7f3c.js'),
     ]
-    const selection = Review.initial(pool)
+    const selection = Review.initial<FhirResource>(pool)
 
     // Act
     render(

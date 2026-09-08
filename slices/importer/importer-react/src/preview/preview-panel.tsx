@@ -1,3 +1,4 @@
+import type { FhirResource } from 'fhir-r4/resources'
 import type { HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo } from 'react'
@@ -41,9 +42,9 @@ interface PreviewPanelProps {
   /** The format's interactive review body, rendered per read file. */
   readonly ReviewBody: (props: ReviewBodyProps) => JSX.Element
   /** The reviewed selection for a file (defaults to `Review.initial(pool)` before any edit). */
-  readonly selectionFor: (fileId: string) => Review.Selection
+  readonly selectionFor: (fileId: string) => Review.Selection<FhirResource>
   /** Called when a file's review changes its selection. */
-  readonly onSelectionChange: (fileId: string, selection: Review.Selection) => void
+  readonly onSelectionChange: (fileId: string, selection: Review.Selection<FhirResource>) => void
   /**
    * The previews for a file — the parse outcomes the shell computed under the
    * current selection. Reused by the confirm step so it never re-parses.

@@ -1,3 +1,4 @@
+export { FhirResourceSchema } from './fhir-resource.ts'
 export type { FhirResource } from './fhir-resource.ts'
 export * as DateSearchParam from './search/date-search-param.ts'
 export * from './binary/index.ts'

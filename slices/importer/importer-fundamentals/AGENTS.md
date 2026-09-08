@@ -25,20 +25,26 @@ TParsed, R>`**, "a file-format importer" as one value a closed registry lists.
   but for the archive transport rather than the live one.
 - `src/review.ts` — the **`Review`** namespace, the pure per-response,
   per-resource selection model built on `Extraction.recognize` / `parseWith`. A
-  `Selection` is three axes: `enabledKinds` (whole-import kind toggles —
+  `Selection` is four axes: `enabledKinds` (whole-import kind toggles —
   disabling a kind removes it from every response's candidates), `overrides`
   (per-response pick, response id → kind **name**, for the rare cross-source
-  overlap), and `excludedResources` (per-resource opt-outs, keyed by
-  `resourceKey(responseId, index)`). `pickFor` resolves one response (override
+  overlap), `excludedResources` (per-resource opt-outs, keyed by
+  `resourceKey(responseId, index)`), and `resourceOverrides` (per-resource
+  inline edits, same keying — the reviewer's manually-edited resource replaces
+  the parsed original at confirm). `pickFor` resolves one response (override
   if still enabled, else top-specificity enabled candidate, else none);
   `chosenCount` counts resolved picks without parsing; `preview` parses every
   chosen response's `parse` into a `PreviewedResponse` with stable per-resource
   keys (a parse failure is data, not a raised error); `chosenResources` folds a
-  preview set through the exclusions into the confirm's write set —
-  no re-parse at confirm, the reviewed objects are what gets written. The old
-  `chosen` helper (parse-and-fold in one shot) still exists on top of `preview`
-  for callers that don't need a preview. `recognize` is re-exported so a
-  format's React package reads recognition through this package.
+  preview set through the exclusions and edit overrides into the confirm's
+  write set — no re-parse at confirm, the reviewed (or edited) objects are what
+  gets written. `Review.edit` / `Review.revert` mint and drop the per-resource
+  edit; the model is resource-type-agnostic (the override slot is `unknown`)
+  and it is the seam that mints an edit — a format's React affordance,
+  schema-validated — that enforces its shape. The old `chosen` helper
+  (parse-and-fold in one shot) still exists on top of `preview` for callers
+  that don't need a preview. `recognize` is re-exported so a format's React
+  package reads recognition through this package.
 - `src/persist-failure.ts` — **`PersistFailure`**, the structural echo of a
   write sink's own failure record (`{ failed: { label, id }, cause }`). Declared
   here — this package sits below the concrete sinks and cannot name them — and

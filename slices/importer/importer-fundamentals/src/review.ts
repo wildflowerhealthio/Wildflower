@@ -7,12 +7,13 @@ const DUPLICATE_PICK: Option.Option<string> = Option.none()
 
 /**
  * The pure per-response review model: whole-import kind toggles, per-response
- * pick overrides, and per-resource include toggles, resolved against ranked
- * recognition and previewed parses. The interactive `ReviewBody` a format's
- * React package renders is a view over these transitions — see this package's
- * AGENTS.md for the model's rationale (per-response choices, serializable
- * name-keyed overrides, key-scoped exclusions, untouched review == what the
- * `runExtraction` reference model would write).
+ * pick overrides, per-resource include toggles, and per-resource edit
+ * overrides, resolved against ranked recognition and previewed parses. The
+ * interactive `ReviewBody` a format's React package renders is a view over
+ * these transitions — see this package's AGENTS.md for the model's rationale
+ * (per-response choices, serializable name-keyed overrides, key-scoped
+ * exclusions and edits, untouched review == what the `runExtraction`
+ * reference model would write).
  *
  * @packageDocumentation
  */
@@ -22,10 +23,18 @@ type NamedKind = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>
 
 /**
  * A whole review's selection state: the enabled kinds, per-response pick
- * overrides, and per-resource exclusions. A plain value the shell holds and
- * threads through the pure transitions below.
+ * overrides, per-resource exclusions, and per-resource edit overrides. A
+ * plain value the shell holds and threads through the pure transitions
+ * below.
+ *
+ * @typeParam TParsed - The resource type edit overrides carry — the same
+ *   `TParsed` the format's pool decodes to. Callers pass it explicitly
+ *   (no default); a shell that reads the overrides (via
+ *   {@link chosenResources}) parameterises with its format's resource
+ *   type so the seam is typed end-to-end rather than type-asserted at
+ *   the cast. A callsite that never touches overrides passes `unknown`.
  */
-interface Selection {
+interface Selection<TParsed> {
   /** The kind names enabled across the import; a kind absent here is disabled everywhere. */
   readonly enabledKinds: ReadonlySet<string>
   /** Per-response pick overrides, response id → chosen kind name. */
@@ -36,21 +45,31 @@ interface Selection {
    * defaults to included; the set holds only the explicit opt-outs.
    */
   readonly excludedResources: ReadonlySet<string>
+  /**
+   * Per-resource edit overrides, keyed by {@link resourceKey} — a resource
+   * whose key is here has its parsed value replaced by the edited one at
+   * confirm. Typed by `TParsed` so the seam that mints an edit
+   * ({@link edit}) enforces the resource shape and {@link chosenResources}
+   * reads the override at its declared type — no cast at the boundary.
+   */
+  readonly resourceOverrides: ReadonlyMap<string, TParsed>
 }
 
 /**
  * The default selection for a pool: every kind enabled, no overrides, every
- * previewed resource included — so each response defaults to its top-specificity
- * candidate and a fresh review writes what the reference model would.
+ * previewed resource included, no edits — so each response defaults to its
+ * top-specificity candidate and a fresh review writes what the reference
+ * model would.
  */
-const initial = (pool: readonly NamedKind[]): Selection => ({
+const initial = <TParsed>(pool: readonly NamedKind[]): Selection<TParsed> => ({
   enabledKinds: new Set(pool.map((kind) => kind.name)),
   overrides: new Map(),
   excludedResources: new Set(),
+  resourceOverrides: new Map(),
 })
 
 /** Whether a kind is enabled across the import. */
-const isKindEnabled = (selection: Selection, kindName: string): boolean =>
+const isKindEnabled = (selection: Selection<unknown>, kindName: string): boolean =>
   selection.enabledKinds.has(kindName)
 
 /**
@@ -58,37 +77,35 @@ const isKindEnabled = (selection: Selection, kindName: string): boolean =>
  * pick from the new enabled set — a response whose only candidate was the
  * disabled kind now resolves to no pick.
  */
-const toggleKind = (selection: Selection, kindName: string): Selection => {
+const toggleKind = <TParsed>(
+  selection: Selection<TParsed>,
+  kindName: string
+): Selection<TParsed> => {
   const enabledKinds = new Set(selection.enabledKinds)
   if (enabledKinds.has(kindName)) enabledKinds.delete(kindName)
   else enabledKinds.add(kindName)
-  return {
-    enabledKinds,
-    overrides: selection.overrides,
-    excludedResources: selection.excludedResources,
-  }
+  return { ...selection, enabledKinds }
 }
 
 /** Override one response's pick to a specific kind by name. */
-const overridePick = (selection: Selection, responseId: string, kindName: string): Selection => {
+const overridePick = <TParsed>(
+  selection: Selection<TParsed>,
+  responseId: string,
+  kindName: string
+): Selection<TParsed> => {
   const overrides = new Map(selection.overrides)
   overrides.set(responseId, kindName)
-  return {
-    enabledKinds: selection.enabledKinds,
-    overrides,
-    excludedResources: selection.excludedResources,
-  }
+  return { ...selection, overrides }
 }
 
 /** Drop one response's override, returning it to its default pick. */
-const clearOverride = (selection: Selection, responseId: string): Selection => {
+const clearOverride = <TParsed>(
+  selection: Selection<TParsed>,
+  responseId: string
+): Selection<TParsed> => {
   const overrides = new Map(selection.overrides)
   overrides.delete(responseId)
-  return {
-    enabledKinds: selection.enabledKinds,
-    overrides,
-    excludedResources: selection.excludedResources,
-  }
+  return { ...selection, overrides }
 }
 
 /**
@@ -106,28 +123,74 @@ const clearOverride = (selection: Selection, responseId: string): Selection => {
 const resourceKey = (responseId: string, index: number): string => `${responseId}:${index}`
 
 /** Whether a previewed resource is included in the confirm's write set. */
-const isResourceIncluded = (selection: Selection, key: string): boolean =>
+const isResourceIncluded = (selection: Selection<unknown>, key: string): boolean =>
   !selection.excludedResources.has(key)
 
 /**
  * Toggle one previewed resource in or out of the confirm's write set. A
  * resource keyed here is opted out at confirm and never written.
  */
-const toggleResource = (selection: Selection, key: string): Selection => {
+const toggleResource = <TParsed>(
+  selection: Selection<TParsed>,
+  key: string
+): Selection<TParsed> => {
   const excludedResources = new Set(selection.excludedResources)
   if (excludedResources.has(key)) excludedResources.delete(key)
   else excludedResources.add(key)
-  return {
-    enabledKinds: selection.enabledKinds,
-    overrides: selection.overrides,
-    excludedResources,
-  }
+  return { ...selection, excludedResources }
+}
+
+/**
+ * Replace the previewed resource at `key` with `resource` — the reviewer's
+ * inline edit. `chosenResources` returns the override in place of the parsed
+ * value, and it rides through the confirm's write set the same way any other
+ * resource does (identity, `meta.source` stamping, retries).
+ *
+ * @remarks
+ * `resource` is typed by the selection's `TParsed`, so the seam that mints
+ * an edit — a format's React affordance that has schema-validated the value
+ * — passes its typed decode straight through. Calling `edit` for a key
+ * with no previewed resource still records the override; a
+ * `chosenResources` pass that never sees the key just ignores it.
+ */
+const edit = <TParsed>(
+  selection: Selection<TParsed>,
+  key: string,
+  resource: TParsed
+): Selection<TParsed> => {
+  const resourceOverrides = new Map(selection.resourceOverrides)
+  resourceOverrides.set(key, resource)
+  return { ...selection, resourceOverrides }
+}
+
+/**
+ * Drop the edit override at `key`, restoring the parsed original at confirm.
+ * A no-op when no override is set.
+ */
+const revert = <TParsed>(selection: Selection<TParsed>, key: string): Selection<TParsed> => {
+  if (!selection.resourceOverrides.has(key)) return selection
+  const resourceOverrides = new Map(selection.resourceOverrides)
+  resourceOverrides.delete(key)
+  return { ...selection, resourceOverrides }
+}
+
+/** Whether the reviewer has set an inline edit for `key`. */
+const isResourceEdited = (selection: Selection<unknown>, key: string): boolean =>
+  selection.resourceOverrides.has(key)
+
+/** The edit override at `key`, when the reviewer has set one — else `None`. */
+const editedResource = <TParsed>(
+  selection: Selection<TParsed>,
+  key: string
+): Option.Option<TParsed> => {
+  const override = selection.resourceOverrides.get(key)
+  return override === undefined ? Option.none() : Option.some(override)
 }
 
 /** The candidates for one response that survive the enabled-kind filter, still ranked. */
 const enabledCandidates = <K extends NamedKind>(
   recognized: Extraction.RecognizedResponse<K>,
-  selection: Selection
+  selection: Selection<unknown>
 ): readonly Extraction.RecognitionCandidate<K>[] =>
   recognized.candidates.filter((candidate) => isKindEnabled(selection, candidate.kind.name))
 
@@ -144,7 +207,7 @@ const enabledCandidates = <K extends NamedKind>(
  */
 const pickFor = <K extends NamedKind>(
   recognized: Extraction.RecognizedResponse<K>,
-  selection: Selection
+  selection: Selection<unknown>
 ): Option.Option<Extraction.RecognitionCandidate<K>> => {
   const enabled = enabledCandidates(recognized, selection)
   const overrideName = selection.overrides.get(recognized.ref.id)
@@ -163,7 +226,7 @@ const pickFor = <K extends NamedKind>(
  */
 const chosenCount = <K extends NamedKind>(
   recognized: readonly Extraction.RecognizedResponse<K>[],
-  selection: Selection
+  selection: Selection<unknown>
 ): number => recognized.filter((response) => Option.isSome(pickFor(response, selection))).length
 
 /**
@@ -239,7 +302,7 @@ interface PreviewedResponse<K, TParsed> {
 const preview = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[],
-  selection: Selection
+  selection: Selection<TParsed>
 ): Effect.Effect<
   readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>[]
 > => {
@@ -316,36 +379,40 @@ const preview = <TParsed>(
 
 /**
  * The confirm's write set: every previewed resource the reviewer left included,
- * flattened in preview order.
+ * with any inline edit substituted in for the parsed original, flattened in
+ * preview order.
  *
  * @param previews - The previewed responses from {@link preview}
- * @param selection - The reviewer's choices — reads only the exclusion set;
- *   picks and kind toggles are already resolved by the preview
- * @returns The parsed resources to write, verbatim from the preview — no
- *   re-parse, so a confirm writes the same objects the reviewer inspected
+ * @param selection - The reviewer's choices — reads the exclusion set and the
+ *   resource edit overrides; picks and kind toggles are already resolved by
+ *   the preview
+ * @returns The parsed resources to write, in preview order, each replaced by
+ *   its edit override when the reviewer has set one — no re-parse, so a
+ *   confirm writes the same objects the reviewer inspected (or the ones they
+ *   edited into place)
  */
 const chosenResources = <K, TParsed>(
   previews: readonly PreviewedResponse<K, TParsed>[],
-  selection: Selection
+  selection: Selection<TParsed>
 ): readonly TParsed[] =>
   previews.flatMap((entry) =>
     entry.outcome._tag === 'resources'
       ? entry.outcome.resources
           .filter((resource) => isResourceIncluded(selection, resource.key))
-          .map((resource) => resource.resource)
+          .map((resource) => selection.resourceOverrides.get(resource.key) ?? resource.resource)
       : []
   )
 
 /** How many previewed resources are included under a selection — the confirm's write count. */
 const includedCount = <K, TParsed>(
   previews: readonly PreviewedResponse<K, TParsed>[],
-  selection: Selection
+  selection: Selection<TParsed>
 ): number => chosenResources(previews, selection).length
 
 /** How many previewed resources are excluded under a selection. */
 const excludedCount = <K, TParsed>(
   previews: readonly PreviewedResponse<K, TParsed>[],
-  selection: Selection
+  selection: Selection<TParsed>
 ): number =>
   previews.reduce((total, entry) => {
     if (entry.outcome._tag !== 'resources') return total
@@ -382,7 +449,7 @@ interface ChosenOutcome<TParsed> {
 const chosen = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[],
-  selection: Selection
+  selection: Selection<TParsed>
 ): Effect.Effect<ChosenOutcome<TParsed>> =>
   pipe(
     preview(pool, responses, selection),
@@ -398,17 +465,21 @@ export {
   chosenCount,
   chosenResources,
   clearOverride,
+  edit,
+  editedResource,
   enabledCandidates,
   excludedCount,
   includedCount,
   initial,
   isKindEnabled,
+  isResourceEdited,
   isResourceIncluded,
   overridePick,
   pickFor,
   preview,
   recognize,
   resourceKey,
+  revert,
   toggleKind,
   toggleResource,
 }
