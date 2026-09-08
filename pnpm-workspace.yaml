@@ -96,7 +96,7 @@ catalog:
   # line ended at 0.1.24); pin to the version `vp --version` bundles, and
   # re-pin here plus in the root package.json overrides on every vite-plus
   # bump — see docs/Dependencies/Version Override Explanation.md.
-  vitest: 4.1.11
+  vitest: 5.0.0
   why-is-node-running: ^3.2.2
 catalogMode: prefer
 
