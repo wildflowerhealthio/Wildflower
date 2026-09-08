@@ -1,0 +1,62 @@
+{
+  "entity": {
+    "showChart": true,
+    "testItemName": "RBC",
+    "testName": "Complete Blood Count",
+    "reports": [
+      {
+        "reportId": 900000301,
+        "testAbnormal": null,
+        "collectionDate": "/Date(1779297900000-0400)/",
+        "collectionPostedDate": "2026-05-20T13:25:00",
+        "comments": "",
+        "isMicroReport": false,
+        "testItemId": null,
+        "testItemName": null,
+        "reportResultDetail": null,
+        "testNormalizedResultValue": "-0.4",
+        "testReferenceRange": "4.00 - 5.10",
+        "testResultValue": "4.66",
+        "testUnit": "x E12/L",
+        "sharedRecipientCount": 0
+      },
+      {
+        "reportId": 900000302,
+        "testAbnormal": null,
+        "collectionDate": "/Date(1696606500000-0400)/",
+        "collectionPostedDate": "2023-10-06T11:35:00",
+        "comments": "",
+        "isMicroReport": false,
+        "testItemId": null,
+        "testItemName": null,
+        "reportResultDetail": null,
+        "testNormalizedResultValue": "-0.8",
+        "testReferenceRange": "4.00 - 5.10",
+        "testResultValue": "4.12",
+        "testUnit": "x E12/L",
+        "sharedRecipientCount": 0
+      },
+      {
+        "reportId": 900000303,
+        "testAbnormal": "L",
+        "collectionDate": "/Date(1663854300000-0400)/",
+        "collectionPostedDate": "2022-09-22T09:45:00",
+        "comments": "Specimen slightly haemolyzed.",
+        "isMicroReport": false,
+        "testItemId": null,
+        "testItemName": null,
+        "reportResultDetail": null,
+        "testNormalizedResultValue": "-1.1",
+        "testReferenceRange": "4.50 - 6.00",
+        "testResultValue": "4.38",
+        "testUnit": "x E12/L",
+        "sharedRecipientCount": 0
+      }
+    ]
+  },
+  "caseId": null,
+  "isFailed": false,
+  "message": "Succeeded",
+  "statusCode": 5000,
+  "additionalData": null
+}

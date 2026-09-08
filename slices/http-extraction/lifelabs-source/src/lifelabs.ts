@@ -24,6 +24,8 @@ const LifeLabsIdentifierSystem = {
    * `subject` references.
    */
   PatientId: `${SYSTEM_BASE}/identifier/patient-id`,
+  /** The portal's numeric report id (`ViewAnalytics` `reports[].reportId`), the lab report a result was posted in. */
+  ReportId: `${SYSTEM_BASE}/identifier/report-id`,
 } as const
 
 /** The coding system for LifeLabs' internal test codes (`analytics[].testCode`). */

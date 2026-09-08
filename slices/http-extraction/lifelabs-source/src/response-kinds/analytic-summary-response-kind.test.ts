@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vite-plus/test'
 import summary from '../fixtures/analytic-summary.json' with { type: 'json' }
 import { LIFELABS_TEST_SYSTEM, LOINC_SYSTEM, LifeLabsIdentifierSystem } from '../lifelabs.ts'
 import { LIFELABS_SYSTEM } from '../source-system.ts'
+import { UCUM_SYSTEM } from '../units.ts'
 import { AnalyticSummaryResponseKind } from './analytic-summary-response-kind.ts'
 
 const API_BASE = 'https://on-api.mycarecompass.lifelabs.com'
@@ -120,7 +121,7 @@ describe('AnalyticSummaryResponseKind', () => {
       expect(patient?.identifier.map((i) => i.value)).toEqual(['7'])
     })
 
-    it('maps a numeric analytic whole-value: quantity, subject, range, coding, instant', () => {
+    it('maps a numeric analytic whole-value: quantity with researched unit, subject, range, codings, instant', () => {
       const [wbc] = ofType(parse(summary), 'Observation').filter((o) => o.code.text === 'WBC')
 
       expect(wbc).toStrictEqual(
@@ -139,7 +140,8 @@ describe('AnalyticSummaryResponseKind', () => {
           subject: { reference: 'Patient/31653025' },
           // .NET /Date(ms-offset)/ → the absolute UTC instant.
           effectiveDateTime: '2026-05-20T17:25:00.000Z',
-          valueQuantity: { value: 7.5 },
+          // No unit in the payload: the researched LifeLabs unit for LOINC 6690-2.
+          valueQuantity: { value: 7.5, unit: 'x E9/L', system: UCUM_SYSTEM, code: '10*9/L' },
           referenceRange: [{ text: '4.0 - 11.0', low: { value: 4 }, high: { value: 11 } }],
         })
       )

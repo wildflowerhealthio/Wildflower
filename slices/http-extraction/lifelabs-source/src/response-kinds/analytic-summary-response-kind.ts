@@ -1,10 +1,18 @@
-import { Effect, Either, Encoding, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import { Observation, Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
-import { LIFELABS_TEST_SYSTEM, LOINC_SYSTEM, LifeLabsIdentifierSystem } from '../lifelabs.ts'
+import { LifeLabsIdentifierSystem } from '../lifelabs.ts'
 import { LIFELABS_SYSTEM } from '../source-system.ts'
+import {
+  analyteCodeWire,
+  analyteObservationId,
+  collectionMillis,
+  loincFromTestItemId,
+  quantityWire,
+  referenceRangeWire,
+} from './analyte-observation.ts'
 
 /**
  * One row of `entity.analytics[]` from the MyCareCompass `GetAnalyticSummary`
@@ -77,106 +85,16 @@ const decodePatient = Schema.decodeUnknown(Patient.Schema)
 const decodeObservation = Schema.decodeUnknown(Observation.Schema)
 
 /**
- * FHIR logical ids allow only `[A-Za-z0-9-.]{1,64}`, but `testItemId` is
- * base64 (carrying `+`, `/`, `=`). Map to a safe token: `+`→`-`, `/`→`.` (both
- * in the FHIR alphabet), strip `=` padding (deterministic from length, so no
- * collision), and replace anything else with `-`.
- */
-const toFhirIdToken = (raw: string): string =>
-  raw
-    .replace(/\+/g, '-')
-    .replace(/\//g, '.')
-    .replace(/=+$/g, '')
-    .replace(/[^A-Za-z0-9.-]/g, '-')
-
-/**
- * The largest epoch-millis value `Date` represents (ECMA-262's time-value
- * range). Past it `toISOString()` throws a `RangeError` — a *defect* inside
- * `parse`, and a defect escapes `Extraction.parseWith`'s fold and takes the
- * whole extraction run down. Bounded here, where an out-of-range token is
- * merely an unusable date.
- */
-const MAX_TIME_VALUE = 8_640_000_000_000_000
-
-/**
- * Absolute epoch millis from a collection instant, or `undefined` if
- * unparseable or outside the representable date range. Accepts both a .NET
- * `/Date(1779297900000-0400)/` token (the trailing `±hhmm` is a display-only
- * original offset; the millis are already absolute UTC) and an ISO 8601
- * string (`2023-02-15T13:55:34+00:00`, or offset-less `2016-07-10T18:25:29`,
- * read as UTC) — the portal's sibling report endpoints serialize dates as ISO,
- * so the analytic payload is not assumed to differ.
- */
-const collectionMillis = (raw: string | null | undefined): number | undefined => {
-  if (raw == null) return undefined
-  const m = /\/Date\((-?\d+)(?:[+-]\d{4})?\)\//.exec(raw)
-  const millis = m === null ? Date.parse(isoAsUtc(raw)) : Number(m[1])
-  return Number.isFinite(millis) && Math.abs(millis) <= MAX_TIME_VALUE ? millis : undefined
-}
-
-/**
- * Pin an offset-less ISO date-time to UTC so `Date.parse` doesn't read it in
- * the host's local zone. Leaves anything already carrying `Z` / `±hh:mm` alone.
- */
-const isoAsUtc = (raw: string): string =>
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(raw) ? `${raw}Z` : raw
-
-/**
- * `4.0 - 11.0` / `120- 160` / `0.350 - 0.450` → numeric `{ low, high }`; a
- * one-sided `<2.6` / `<=2.6` → `{ high }` and `>40` / `>=40` → `{ low }`; a
- * range that is none of these yields `{}` (the raw string is still kept as
- * `referenceRange[].text`).
- */
-const parseReferenceRange = (raw: string): { low?: number; high?: number } => {
-  const out: { low?: number; high?: number } = {}
-  const interval = /^\s*([\d.]+)\s*-\s*([\d.]+)\s*$/.exec(raw)
-  if (interval !== null) {
-    const low = Number(interval[1])
-    const high = Number(interval[2])
-    if (Number.isFinite(low)) out.low = low
-    if (Number.isFinite(high)) out.high = high
-    return out
-  }
-  const oneSided = /^\s*([<>])=?\s*([\d.]+)\s*$/.exec(raw)
-  if (oneSided !== null) {
-    const bound = Number(oneSided[2])
-    if (Number.isFinite(bound)) {
-      if (oneSided[1] === '<') out.high = bound
-      else out.low = bound
-    }
-  }
-  return out
-}
-
-/**
- * The LOINC code a `testItemId` embeds: the id is base64 of
- * `<testCode>__<loinc>;` (`TR10477-8W__6690-2;` is WBC). `undefined` for an id
- * that is not base64, or whose plaintext is not that shape — the LifeLabs
- * coding still carries the analyte, this one is a bonus.
- */
-const loincFromTestItemId = (testItemId: string): string | undefined => {
-  const decoded = Encoding.decodeBase64String(testItemId)
-  if (Either.isLeft(decoded)) return undefined
-  const m = /^[^_]+__(\d{1,5}-\d);?$/.exec(decoded.right)
-  return m?.[1]
-}
-
-/** FHIR logical ids are at most 64 characters. */
-const MAX_FHIR_ID_LENGTH = 64
-
-/**
- * A stable, FHIR-safe logical id for one analytic: the sanitized `testItemId`
- * (unique per analyte) — or, when the capture omits it, `testCode` **plus the
- * analyte name** — suffixed with the collection instant so repeat draws of the
- * same analyte across dates don't collide. `undefined` when there is no code at
- * all to key on (the caller drops-and-counts those).
+ * The key one analytic's logical id is built from (see `analyteObservationId`):
+ * `testItemId` (unique per analyte) — or, when the capture omits it, `testCode`
+ * **plus the analyte name**. `undefined` when there is no code at all to key on
+ * (the caller drops-and-counts those).
  *
  * @remarks
  * `testCode` alone is a *panel* code: WBC and Hemoglobin off one Complete
  * Blood Count share it and a collection instant, so keying the fallback on it
  * alone gave both rows one logical id and the persist PUT silently overwrote
- * one result with the other. Truncation keeps the instant suffix rather than
- * an over-long token's tail, which would re-collide the analyte across dates.
+ * one result with the other.
  */
 const observationId = (a: Analytic): string | undefined => {
   const analyte = a.testItemName ?? a.testName
@@ -186,11 +104,7 @@ const observationId = (a: Analytic): string | undefined => {
       ? a.testCode
       : `${a.testCode}_${analyte}`)
   if (base == null || base.length === 0) return undefined
-  const token = toFhirIdToken(base)
-  const millis = collectionMillis(a.collectionDate)
-  if (millis == null) return token.slice(0, MAX_FHIR_ID_LENGTH)
-  const suffix = `-${millis}`
-  return `${token.slice(0, MAX_FHIR_ID_LENGTH - suffix.length)}${suffix}`
+  return analyteObservationId(base, a.collectionDate)
 }
 
 /**
@@ -221,44 +135,23 @@ const patientWire = (
 
 /**
  * The R4 `Observation` **wire** for one analytic. `status` is `final` (these
- * are posted results). `code.text` is the analyte name, with a LOINC coding
- * (recovered from `testItemId`) first and LifeLabs' own panel coding second. A numeric result becomes a unitless `valueQuantity` (the
- * source carries no unit), anything else a `valueString`. The reference range
- * keeps its raw text plus parsed `low`/`high` when numeric, and an
- * `abnormalFlag` (when present) becomes an `interpretation`.
+ * are posted results). `code` is the analyte (LOINC first, LifeLabs panel code
+ * second). A numeric result becomes a `valueQuantity` whose unit, if any, is
+ * the researched unit for the analyte's LOINC (this payload carries none),
+ * anything else a `valueString`. The reference range keeps its raw text plus
+ * parsed bounds, and an `abnormalFlag` (when present) becomes an
+ * `interpretation`.
  */
 const observationWire = (
   a: Analytic,
   subjectId: string | undefined,
   id: string
 ): Record<string, unknown> => {
-  const codeText = a.testItemName ?? a.testName ?? a.testCode ?? 'Unknown'
-  const code: Record<string, unknown> = { text: codeText }
-  const coding: Record<string, unknown>[] = []
-  // LOINC first: the standard code for the analyte, when the item id carries one.
-  const loinc = a.testItemId == null ? undefined : loincFromTestItemId(a.testItemId)
-  if (loinc !== undefined) {
-    coding.push({
-      system: LOINC_SYSTEM,
-      code: loinc,
-      ...(a.testItemName != null && a.testItemName.length > 0 ? { display: a.testItemName } : {}),
-    })
-  }
-  // Then LifeLabs' own panel code, displaying the panel (`testName`).
-  if (a.testCode != null && a.testCode.length > 0) {
-    coding.push({
-      system: LIFELABS_TEST_SYSTEM,
-      code: a.testCode,
-      ...(a.testName != null && a.testName.length > 0 ? { display: a.testName } : {}),
-    })
-  }
-  if (coding.length > 0) code['coding'] = coding
-
   const wire: Record<string, unknown> = {
     resourceType: 'Observation',
     id,
     status: 'final',
-    code,
+    code: analyteCodeWire(a),
   }
 
   if (subjectId != null) wire['subject'] = { reference: `Patient/${subjectId}` }
@@ -268,21 +161,14 @@ const observationWire = (
 
   const rawValue = a.testResultValue
   if (rawValue != null && rawValue.trim().length > 0) {
-    const num = Number(rawValue)
-    if (Number.isFinite(num)) {
-      wire['valueQuantity'] = { value: num }
-    } else {
-      wire['valueString'] = rawValue
-    }
+    const loinc = a.testItemId == null ? undefined : loincFromTestItemId(a.testItemId)
+    const quantity = quantityWire(rawValue, undefined, loinc)
+    if (quantity !== undefined) wire['valueQuantity'] = quantity
+    else wire['valueString'] = rawValue
   }
 
-  if (a.referenceRange != null && a.referenceRange.trim().length > 0) {
-    const { low, high } = parseReferenceRange(a.referenceRange)
-    const range: Record<string, unknown> = { text: a.referenceRange }
-    if (low != null) range['low'] = { value: low }
-    if (high != null) range['high'] = { value: high }
-    wire['referenceRange'] = [range]
-  }
+  const range = referenceRangeWire(a.referenceRange)
+  if (range !== undefined) wire['referenceRange'] = [range]
 
   if (a.abnormalFlag != null && a.abnormalFlag.length > 0) {
     wire['interpretation'] = [{ text: a.abnormalFlag }]

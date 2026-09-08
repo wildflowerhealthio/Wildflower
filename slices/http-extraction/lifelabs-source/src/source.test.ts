@@ -12,7 +12,10 @@ const SUMMARY_URL = 'https://on-api.mycarecompass.lifelabs.com/api/Report/GetAna
 describe('lifeLabsSource', () => {
   it('names the source and carries the one adopted kind', () => {
     expect(lifeLabsSource.name).toBe('lifelabs')
-    expect(lifeLabsSource.responseKinds.map((k) => k.name)).toEqual(['AnalyticSummaryResponseKind'])
+    expect(lifeLabsSource.responseKinds.map((k) => k.name)).toEqual([
+      'AnalyticSummaryResponseKind',
+      'ViewAnalyticsResponseKind',
+    ])
   })
 
   it('re-keys the parsed resources under the LifeLabs system and rewrites the subject', () => {
