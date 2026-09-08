@@ -91,7 +91,7 @@ interface TypeTally {
 /** The per-type tallies of a file's previewed resources, in first-seen order. */
 const perTypeTallies = (
   previews: readonly Preview[],
-  selection: Review.Selection
+  selection: Review.Selection<FhirResource>
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
@@ -134,7 +134,7 @@ const ResponsePicker = ({
   onOverride,
 }: {
   readonly preview: Preview
-  readonly selection: Review.Selection
+  readonly selection: Review.Selection<FhirResource>
   readonly onOverride: (kindName: string) => void
 }): JSX.Element => {
   const enabled = Review.enabledCandidates(preview.recognized, selection)

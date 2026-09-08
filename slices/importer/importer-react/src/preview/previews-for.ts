@@ -61,7 +61,7 @@ const emptyPreviewsCache = <TParsed>(): PreviewsCache<TParsed> => ({ entries: ne
 const runPreview = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   file: Extract<FileReadOutcome, { readonly _tag: 'read' }>,
-  selection: Review.Selection
+  selection: Review.Selection<TParsed>
 ): FilePreviews<TParsed> => {
   try {
     return Effect.runSync(Review.preview(pool, file.responses, selection))
@@ -76,7 +76,7 @@ const runPreview = <TParsed>(
 const previewsFor = <TParsed>(
   sources: readonly SourceDescriptor.SourceDescriptor<TParsed>[],
   files: readonly FileReadOutcome[],
-  selectionFor: (fileId: string) => Review.Selection,
+  selectionFor: (fileId: string) => Review.Selection<TParsed>,
   cache?: PreviewsCache<TParsed>
 ): ReadonlyMap<string, FilePreviews<TParsed>> => {
   const pool = SourceDescriptor.poolOf(sources)

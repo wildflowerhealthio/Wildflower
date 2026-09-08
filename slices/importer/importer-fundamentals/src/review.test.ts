@@ -465,7 +465,7 @@ describe('Review.edit / Review.revert', () => {
     // untouched slots holding the parsed originals.
     const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
     const responses = [input('r-many', 'https://ehr.test/many')]
-    const initial = Review.initial([three])
+    const initial = Review.initial<string>([three])
     const previews = await Effect.runPromise(Review.preview([three], responses, initial))
     const originals = ['a', 'b', 'c'] as const
     const keys = ['r-many:0', 'r-many:1', 'r-many:2'] as const

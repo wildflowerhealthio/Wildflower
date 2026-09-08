@@ -34,7 +34,7 @@ type NamedKind = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>
  *   resource type so the seam is typed end-to-end rather than
  *   type-asserted at the cast.
  */
-interface Selection<TParsed = unknown> {
+interface Selection<TParsed> {
   /** The kind names enabled across the import; a kind absent here is disabled everywhere. */
   readonly enabledKinds: ReadonlySet<string>
   /** Per-response pick overrides, response id → chosen kind name. */
@@ -61,7 +61,7 @@ interface Selection<TParsed = unknown> {
  * top-specificity candidate and a fresh review writes what the reference
  * model would.
  */
-const initial = <TParsed = unknown>(pool: readonly NamedKind[]): Selection<TParsed> => ({
+const initial = <TParsed>(pool: readonly NamedKind[]): Selection<TParsed> => ({
   enabledKinds: new Set(pool.map((kind) => kind.name)),
   overrides: new Map(),
   excludedResources: new Set(),
@@ -69,7 +69,7 @@ const initial = <TParsed = unknown>(pool: readonly NamedKind[]): Selection<TPars
 })
 
 /** Whether a kind is enabled across the import. */
-const isKindEnabled = (selection: Selection, kindName: string): boolean =>
+const isKindEnabled = (selection: Selection<unknown>, kindName: string): boolean =>
   selection.enabledKinds.has(kindName)
 
 /**
@@ -123,7 +123,7 @@ const clearOverride = <TParsed>(
 const resourceKey = (responseId: string, index: number): string => `${responseId}:${index}`
 
 /** Whether a previewed resource is included in the confirm's write set. */
-const isResourceIncluded = (selection: Selection, key: string): boolean =>
+const isResourceIncluded = (selection: Selection<unknown>, key: string): boolean =>
   !selection.excludedResources.has(key)
 
 /**
@@ -175,7 +175,7 @@ const revert = <TParsed>(selection: Selection<TParsed>, key: string): Selection<
 }
 
 /** Whether the reviewer has set an inline edit for `key`. */
-const isResourceEdited = (selection: Selection, key: string): boolean =>
+const isResourceEdited = (selection: Selection<unknown>, key: string): boolean =>
   selection.resourceOverrides.has(key)
 
 /** The edit override at `key`, when the reviewer has set one — else `None`. */
@@ -190,7 +190,7 @@ const editedResource = <TParsed>(
 /** The candidates for one response that survive the enabled-kind filter, still ranked. */
 const enabledCandidates = <K extends NamedKind>(
   recognized: Extraction.RecognizedResponse<K>,
-  selection: Selection
+  selection: Selection<unknown>
 ): readonly Extraction.RecognitionCandidate<K>[] =>
   recognized.candidates.filter((candidate) => isKindEnabled(selection, candidate.kind.name))
 
@@ -207,7 +207,7 @@ const enabledCandidates = <K extends NamedKind>(
  */
 const pickFor = <K extends NamedKind>(
   recognized: Extraction.RecognizedResponse<K>,
-  selection: Selection
+  selection: Selection<unknown>
 ): Option.Option<Extraction.RecognitionCandidate<K>> => {
   const enabled = enabledCandidates(recognized, selection)
   const overrideName = selection.overrides.get(recognized.ref.id)
@@ -226,7 +226,7 @@ const pickFor = <K extends NamedKind>(
  */
 const chosenCount = <K extends NamedKind>(
   recognized: readonly Extraction.RecognizedResponse<K>[],
-  selection: Selection
+  selection: Selection<HttpResponseKind.HttpResponseKind<K>>
 ): number => recognized.filter((response) => Option.isSome(pickFor(response, selection))).length
 
 /**
@@ -302,7 +302,7 @@ interface PreviewedResponse<K, TParsed> {
 const preview = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[],
-  selection: Selection
+  selection: Selection<TParsed>
 ): Effect.Effect<
   readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>[]
 > => {
@@ -412,7 +412,7 @@ const includedCount = <K, TParsed>(
 /** How many previewed resources are excluded under a selection. */
 const excludedCount = <K, TParsed>(
   previews: readonly PreviewedResponse<K, TParsed>[],
-  selection: Selection
+  selection: Selection<TParsed>
 ): number =>
   previews.reduce((total, entry) => {
     if (entry.outcome._tag !== 'resources') return total
