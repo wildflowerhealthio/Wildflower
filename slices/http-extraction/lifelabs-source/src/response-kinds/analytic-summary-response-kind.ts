@@ -29,11 +29,20 @@ const Analytic = Schema.Struct({
 
 type Analytic = typeof Analytic.Type
 
-/** One row of `entity.patients[]` — the account's patient identities. */
+/**
+ * One row of `entity.patients[]` — the account's patient identities.
+ * `patientMap` lists every portal patient id that is the same human (an
+ * earlier registration under another name, say), the row's own `value` among
+ * them.
+ */
 const PatientRow = Schema.Struct({
   text: Schema.optional(Schema.NullOr(Schema.String)),
   value: Schema.optional(Schema.NullOr(Schema.Union(Schema.String, Schema.Number))),
   isPrimary: Schema.optional(Schema.NullOr(Schema.Boolean)),
+  patientMap: Schema.optionalWith(Schema.Array(Schema.Union(Schema.String, Schema.Number)), {
+    default: (): readonly (string | number)[] => [],
+    nullable: true,
+  }),
 })
 
 type PatientRow = typeof PatientRow.Type
@@ -187,15 +196,24 @@ const observationId = (a: Analytic): string | undefined => {
 /**
  * The R4 `Patient` **wire** for the selected patient: `id` is the portal's
  * patient id (the id every Observation's `subject` references), carried again
- * as `identifier[0]`, and the display name (when present) lands as a single
- * `name[].text` entry — the source gives one combined string, not structured
- * family/given.
+ * as `identifier[0]`, followed by one identifier per *other* id in the row's
+ * `patientMap` (the same human's earlier portal ids), and the display name
+ * (when present) lands as a single `name[].text` entry — the source gives one
+ * combined string, not structured family/given.
  */
-const patientWire = (id: string, name: string | null | undefined): Record<string, unknown> => {
+const patientWire = (
+  id: string,
+  name: string | null | undefined,
+  patientMap: readonly (string | number)[]
+): Record<string, unknown> => {
+  const others = [...new Set(patientMap.map(String))].filter((v) => v.length > 0 && v !== id)
   const wire: Record<string, unknown> = {
     resourceType: 'Patient',
     id,
-    identifier: [{ system: LifeLabsIdentifierSystem.PatientId, value: id }],
+    identifier: [id, ...others].map((value) => ({
+      system: LifeLabsIdentifierSystem.PatientId,
+      value,
+    })),
   }
   if (name != null && name.length > 0) wire['name'] = [{ text: name }]
   return wire
@@ -314,7 +332,11 @@ const AnalyticSummaryResponseKind: HttpResponseKind.HttpResponseKind<FhirResourc
           // row names the account holder, not the dependent these results are
           // for. No matching row ⇒ no name, rather than someone else's.
           const selectedRow = patients.find((p) => p.value != null && String(p.value) === subjectId)
-          resources.push(yield* decodePatient(patientWire(subjectId, selectedRow?.text)))
+          resources.push(
+            yield* decodePatient(
+              patientWire(subjectId, selectedRow?.text, selectedRow?.patientMap ?? [])
+            )
+          )
         }
 
         // Each analytic → one R4 Observation; drop (and count) any we can't key.

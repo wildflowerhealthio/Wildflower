@@ -63,7 +63,10 @@ resources directly from non-FHIR portal JSON — there is no FHIR dialect layer.
 Only the **selected** patient is synthesized (id = `entity.selectedPatient`,
 name from the `patients[]` row whose `value` **is** that id — not from the
 primary row, which on a shared account names the account holder rather than the
-dependent whose results these are — and the id as `identifier[0]`). The other
+dependent whose results these are — the id as `identifier[0]`, and one further
+identifier per other id in that row's `patientMap`, which lists every portal
+patient id that is the same human, such as an earlier registration under
+another name). The other
 `patients[]` rows name people whose results this response does not carry, and
 nothing links to them, so they are not emitted.
 

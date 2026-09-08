@@ -83,10 +83,41 @@ describe('AnalyticSummaryResponseKind', () => {
         decodePatient({
           resourceType: 'Patient',
           id: '31653025',
-          identifier: [{ system: LifeLabsIdentifierSystem.PatientId, value: '31653025' }],
+          identifier: [
+            { system: LifeLabsIdentifierSystem.PatientId, value: '31653025' },
+            // The row's `patientMap` — the same human's other portal id.
+            { system: LifeLabsIdentifierSystem.PatientId, value: '30990017' },
+          ],
           name: [{ text: 'Test Patient' }],
         }),
       ])
+    })
+
+    it('carries each distinct other patientMap id once, never the selected id twice', () => {
+      const [patient] = ofType(
+        parse({
+          entity: {
+            selectedPatient: 7,
+            patients: [{ text: 'P', value: 7, patientMap: [7, 9, '9', 8, 7] }],
+            analytics: [],
+          },
+        }),
+        'Patient'
+      )
+      expect(patient?.identifier.map((i) => i.value)).toEqual(['7', '9', '8'])
+    })
+
+    it('reads a null patientMap as no extra identifiers', () => {
+      const [patient] = ofType(
+        parse({
+          entity: {
+            selectedPatient: '7',
+            patients: [{ text: 'P', value: '7', patientMap: null }],
+          },
+        }),
+        'Patient'
+      )
+      expect(patient?.identifier.map((i) => i.value)).toEqual(['7'])
     })
 
     it('maps a numeric analytic whole-value: quantity, subject, range, coding, instant', () => {
