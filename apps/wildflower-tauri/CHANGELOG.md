@@ -158,7 +158,7 @@ add prose above or below them if you want to expand on a release.
 - Reconcile package-glob lists with pnpm-workspace.yaml (#296) (#326) (aa26d9f2)
 - Device-authorization flow: expandable consent with scope picker (#320) (ad2f261d)
 - Serve merged OpenAPI specs at /docs with interactive Scalar UI (#323) (71f3c85d)
-- Launch web apps via native <a> anchors + GET /apps/{id} (#322) (15b1f1a4)
+- Launch web apps via native `<a>` anchors + GET /apps/{id} (#322) (15b1f1a4)
 - Migrate apps editor from modal to dedicated settings routes (#318) (6ed67dd2)
 - Refresh the UI based on the font atkinson hyperlegible (#319) (1184e5ad)
 - Delete emr-core; make fhir-r4 a standalone FHIR R4 schema/API/client … (#316) (59451c8b)
