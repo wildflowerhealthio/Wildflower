@@ -14,16 +14,16 @@ A vite-plus bump moves three distinct version strings, each in more than one fil
 
 ## Every place to edit
 
-| # | File | Key | Current value | Holds |
-| - | ---- | --- | ------------- | ----- |
-| 1 | [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | catalog `vite-plus:` | `^0.3.0` | vite-plus |
-| 2 | [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | catalog `vite:` | `npm:@voidzero-dev/vite-plus-core@^0.3.0` | core |
-| 3 | [pnpm-workspace.yaml](../../pnpm-workspace.yaml) | catalog `vitest:` | `4.1.11` | vitest |
-| 4 | [package.json](../../package.json) | `pnpm.overrides.vite` | `npm:@voidzero-dev/vite-plus-core@0.3.0` | core |
-| 5 | [package.json](../../package.json) | `pnpm.overrides.vitest` | `4.1.11` | vitest |
-| 6 | [.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh) | `pnpm install -g vite-plus@…` | `0.3.0` | vite-plus |
-| 7 | [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh) | `pnpm install -g vite-plus@…` | `0.3.0` | vite-plus |
-| 8 | [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh) | `pnpm install -g vite-plus@…` | `0.3.0` | vite-plus |
+| #   | File                                                                             | Key                           | Current value                             | Holds     |
+| --- | -------------------------------------------------------------------------------- | ----------------------------- | ----------------------------------------- | --------- |
+| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite-plus:`          | `^0.3.0`                                  | vite-plus |
+| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite:`               | `npm:@voidzero-dev/vite-plus-core@^0.3.0` | core      |
+| 3   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vitest:`             | `4.1.11`                                  | vitest    |
+| 4   | [package.json](../../package.json)                                               | `pnpm.overrides.vite`         | `npm:@voidzero-dev/vite-plus-core@0.3.0`  | core      |
+| 5   | [package.json](../../package.json)                                               | `pnpm.overrides.vitest`       | `4.1.11`                                  | vitest    |
+| 6   | [.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh)           | `pnpm install -g vite-plus@…` | `0.3.0`                                   | vite-plus |
+| 7   | [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh)   | `pnpm install -g vite-plus@…` | `0.3.0`                                   | vite-plus |
+| 8   | [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh) | `pnpm install -g vite-plus@…` | `0.3.0`                                   | vite-plus |
 
 Rows 1–3 are ranges (the catalog convention); rows 4–8 are exact pins. The catalog carries the range and the override + bootstrap scripts carry the exact resolved version — widening the catalog range alone does nothing, because an exact override outranks it. The three bootstrap-script pins (rows 6–8) are hand-kept in lockstep because there is no way to reference the catalog from a global `pnpm install -g`; they must equal the version the lockfile resolves.
 
@@ -46,7 +46,7 @@ Rows 1–3 are ranges (the catalog convention); rows 4–8 are exact pins. The c
 ## Related, but versioned independently
 
 - **`voidzero-dev/setup-vp@vX.Y.Z`** in the [CI workflows](../../.github/workflows/) installs `vp` on the runners. It tracks its own release line (Dependabot bumps it separately) and is not the vite-plus version — it only needs to be new enough to run the pinned vite-plus. No manual sync with the rows above.
-- **`@typescript/native-preview` and `@tsdown/css`** are installed on the same `pnpm install -g` lines as vite-plus (rows 6–8) but are separate tools pinned to their own catalog entries (`@typescript/native-preview`, `@tsdown/css` in [pnpm-workspace.yaml](../../pnpm-workspace.yaml)). Re-sync those pins when their catalog entries move, independently of a vite-plus bump.
+- **`@typescript/native-preview` and `@tsdown/css`** are installed on the same `pnpm install -g` lines as vite-plus (rows 6–8) but are separate tools with their own catalog entries (`@typescript/native-preview`, `@tsdown/css` in [pnpm-workspace.yaml](../../pnpm-workspace.yaml)). The catalog carries a range; the scripts pin the exact version `pnpm-lock.yaml` resolves for it, so a caret in the script would let the global drift ahead of the lockfile. Re-sync those pins when the lockfile resolution moves, independently of a vite-plus bump.
 
 ## See Also
 
