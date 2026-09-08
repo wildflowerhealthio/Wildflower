@@ -44,6 +44,7 @@ const UCUM_BY_DISPLAY: Readonly<Record<string, string>> = {
   'mmol/mol': 'mmol/mol',
   'g/mol': 'g/mol',
   s: 's',
+  h: 'h',
 }
 
 /** The UCUM code for a LifeLabs display unit, or `undefined` for an unlisted spelling. */
@@ -51,8 +52,9 @@ const ucumCodeFor = (display: string): string | undefined => UCUM_BY_DISPLAY[dis
 
 /**
  * LOINC → the display unit LifeLabs prints for that analyte, for the unitless
- * `GetAnalyticSummary` rows. Only entries confirmed from a real payload or the
- * researched mapping; see the package AGENTS.md § Units.
+ * `GetAnalyticSummary` rows. Every entry was checked against the reference
+ * range and value magnitude of a real summary payload (see the package
+ * AGENTS.md § Units); an analyte whose range was unavailable is not listed.
  */
 const LOINC_UNITS: Readonly<Record<string, string>> = {
   // Complete Blood Count — confirmed from a real `ViewAnalytics` payload (RBC)
@@ -61,6 +63,16 @@ const LOINC_UNITS: Readonly<Record<string, string>> = {
   '789-8': 'x E12/L', // Erythrocytes (RBC)
   '718-7': 'g/L', // Hemoglobin
   '4544-3': 'L/L', // Hematocrit — Canadian labs report a fraction, not %
+  '787-2': 'fL', // MCV
+  '785-6': 'pg', // MCH
+  '786-4': 'g/L', // MCHC
+  '788-0': '%', // RDW
+  '777-3': 'x E9/L', // Platelets
+  '751-8': 'x E9/L', // Neutrophils
+  '731-0': 'x E9/L', // Lymphocytes
+  '742-7': 'x E9/L', // Monocytes
+  '711-2': 'x E9/L', // Eosinophils
+  '704-7': 'x E9/L', // Basophils
   '53115-2': 'x E9/L', // Immature granulocytes
   // Chemistry (serum / plasma), Canadian SI.
   '2951-2': 'mmol/L', // Sodium
@@ -73,6 +85,8 @@ const LOINC_UNITS: Readonly<Record<string, string>> = {
   '14631-6': 'umol/L', // Bilirubin, total
   '1742-6': 'U/L', // ALT
   '1920-8': 'U/L', // AST
+  '6768-6': 'U/L', // Alkaline phosphatase
+  '1751-7': 'g/L', // Albumin
   '14771-0': 'mmol/L', // Glucose, fasting
   '4548-4': '%', // Hemoglobin A1c (NGSP %)
   '14334-7': 'mmol/L', // Lithium
@@ -93,6 +107,9 @@ const LOINC_UNITS: Readonly<Record<string, string>> = {
   // Urine test strip: quantitative when numeric ("Negative" stays a string).
   '22705-8': 'mmol/L', // Glucose, urine
   '22702-5': 'mmol/L', // Ketones, urine
+  // Timing rows that ride along a panel as plain hour counts.
+  '55420-4': 'h', // Hours after meal (lipids)
+  '45359-7': 'h', // Time since last dose (lithium)
 }
 
 export { LOINC_UNITS, UCUM_SYSTEM, ucumCodeFor }

@@ -7,6 +7,7 @@ import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import fullSummary from '../fixtures/analytic-summary-full.json' with { type: 'json' }
 import summary from '../fixtures/analytic-summary.json' with { type: 'json' }
 import { LIFELABS_TEST_SYSTEM, LOINC_SYSTEM, LifeLabsIdentifierSystem } from '../lifelabs.ts'
 import { LIFELABS_SYSTEM } from '../source-system.ts'
@@ -440,6 +441,84 @@ describe('AnalyticSummaryResponseKind', () => {
       const [observation] = ofType(result.right, 'Observation')
       expect(observation?.effectiveDateTime).toBeNull()
       expect(observation?.id).toBe('TRX-X')
+    })
+
+    describe('a full real-shape capture (anonymized: ids, names, values and dates rewritten)', () => {
+      const all = parse(fullSummary)
+      const rows = ofType(all, 'Observation')
+      const byName = (name: string): readonly (typeof rows)[number][] =>
+        rows.filter((o) => o.code.text === name)
+
+      it('synthesizes one Patient and one Observation per row, with distinct ids', () => {
+        expect(ofType(all, 'Patient')).toHaveLength(1)
+        expect(rows).toHaveLength(fullSummary.entity.analytics.length)
+        expect(new Set(rows.map((o) => o.id)).size).toBe(rows.length)
+      })
+
+      it('attaches the researched unit to every numeric analyte the table lists', () => {
+        const unitOf = (name: string): readonly (string | null | undefined)[] =>
+          byName(name).map((o) => o.valueQuantity?.unit)
+        expect(unitOf('Albumin')).toEqual(['g/L'])
+        expect(unitOf('MCV')).toEqual(['fL'])
+        expect(unitOf('Platelets')).toEqual(['x E9/L'])
+        expect(unitOf('Creatinine')).toEqual(['umol/L', 'umol/L', 'umol/L'])
+        expect(unitOf('Hours After Meal')).toEqual(['h', 'h'])
+        const [egfr] = byName('Glomerular Filtration Rate (eGFR)')
+        expect(egfr?.valueQuantity).toMatchObject({
+          unit: 'mL/min/1.73m2',
+          code: 'mL/min/{1.73_m2}',
+        })
+      })
+
+      it('leaves dimensionless numerics unitless and text results as strings', () => {
+        const [sg] = byName('Specific Gravity')
+        expect(sg?.valueQuantity?.unit).toBeNull()
+        expect(sg?.valueQuantity?.value).toBeTypeOf('number')
+        const [ratio] = byName('Cholesterol/HDL Cholesterol')
+        expect(ratio?.valueQuantity?.unit).toBeNull()
+        for (const name of ['Colour', 'Protein', 'Collection Time', 'Specimen Source']) {
+          for (const o of byName(name)) {
+            expect(o.valueString).toBeTypeOf('string')
+            expect(o.valueQuantity).toBeNull()
+          }
+        }
+      })
+
+      it("parses the portal's range spellings: bare, one-sided with spaces, and free text", () => {
+        const [sodium] = byName('Sodium')
+        expect(sodium?.referenceRange[0]).toMatchObject({
+          text: '135-145',
+          low: { value: 135 },
+          high: { value: 145 },
+        })
+        const [hdl] = byName('HDL Cholesterol')
+        expect(hdl?.referenceRange[0]).toMatchObject({ text: '>=1.30', low: { value: 1.3 } })
+        expect(hdl?.referenceRange[0]?.high).toBeNull()
+        const [testosterone] = byName('Testosterone')
+        expect(testosterone?.referenceRange[0]).toMatchObject({
+          text: '< 1.8',
+          high: { value: 1.8 },
+        })
+        const seeBelow = byName('Glomerular Filtration Rate (eGFR)').find(
+          (o) => o.referenceRange[0]?.text === 'See below'
+        )
+        expect(seeBelow?.referenceRange[0]?.low).toBeNull()
+        expect(seeBelow?.referenceRange[0]?.high).toBeNull()
+      })
+
+      it('gives a LOINC coding to every row whose item id carries one, and none to the others', () => {
+        const loincs = rows.flatMap((o) =>
+          o.code.coding.filter((c) => String(c.system).startsWith('http://loinc.org'))
+        )
+        // Two rows (the reference-interval note and the lipid target values)
+        // embed a word, not a LOINC, in their item id.
+        expect(loincs).toHaveLength(rows.length - 2)
+        for (const name of ['Reference Interval Note:', 'Lipid Target Values']) {
+          expect(byName(name)[0]?.code.coding.map((c) => String(c.system))).not.toContain(
+            'http://loinc.org/'
+          )
+        }
+      })
     })
 
     it('fails with a ParseError for a payload with no entity', () => {
