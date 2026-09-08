@@ -269,12 +269,17 @@ describe('Review.chosenResources', () => {
     ]
 
     // Preview with everything on, then toggle observation off and re-preview
-    const initial = Review.initial([twoPatients, twoObs])
+    const initial = Review.initial<string>([twoPatients, twoObs])
     const previewsAll = await Effect.runPromise(
       Review.preview([twoPatients, twoObs], responses, initial)
     )
     const chosenAll = Review.chosenResources(previewsAll, initial)
-    expect(chosenAll.toSorted()).toEqual(['o1', 'o2', 'p1', 'p2'])
+    expect(chosenAll.toSorted((left, right) => left.localeCompare(right))).toEqual([
+      'o1',
+      'o2',
+      'p1',
+      'p2',
+    ])
 
     const observationOff = Review.toggleKind(initial, 'observation')
     const previewsAfter = await Effect.runPromise(
@@ -285,7 +290,7 @@ describe('Review.chosenResources', () => {
     const chosen = Review.chosenResources(previewsAfter, observationOff)
 
     // Assert — every observation is dropped; both patients ride through
-    expect(chosen.toSorted()).toEqual(['p1', 'p2'])
+    expect(chosen.toSorted((left, right) => left.localeCompare(right))).toEqual(['p1', 'p2'])
   })
 
   it('should be equal to the initial included set under any sequence of no-op toggles (property)', async () => {
@@ -330,7 +335,10 @@ describe('Review.chosen', () => {
     const outcome = await Effect.runPromise(Review.chosen(pool, responses, Review.initial(pool)))
 
     // Assert — each recognized response decoded to its kind's name; the miss wrote nothing.
-    expect(outcome.resources.toSorted()).toEqual(['observation', 'patient'])
+    expect(outcome.resources.toSorted((left, right) => left.localeCompare(right))).toEqual([
+      'observation',
+      'patient',
+    ])
     expect(outcome.parseFailures).toBe(0)
     expect(outcome.bodyAbsent).toBe(0)
   })

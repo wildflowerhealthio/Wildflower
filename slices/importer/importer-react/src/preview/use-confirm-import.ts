@@ -49,7 +49,7 @@ type ConfirmState =
   | { readonly _tag: 'done'; readonly batch: BatchOutcome }
 
 /** How the confirm reads each file's reviewed selection. */
-type SelectionFor = (fileId: string) => Review.Selection
+type SelectionFor<TParsed> = (fileId: string) => Review.Selection<TParsed>
 
 /** One previewed response — the parse outcome plus every resource's stable key. */
 type Preview<TParsed> = Review.PreviewedResponse<
@@ -67,7 +67,7 @@ interface ConfirmImport<TParsed> {
   readonly confirm: (
     files: readonly FileReadOutcome[],
     previewFor: PreviewFor<TParsed>,
-    selectionFor: SelectionFor
+    selectionFor: SelectionFor<TParsed>
   ) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
@@ -112,7 +112,7 @@ const importOneFile = <TSettings, TParsed>(
   file: FileReadOutcome,
   descriptor: FileImporterDescriptor<TSettings, TParsed, FhirR4ResourcesHttpApiClient>,
   previewFor: PreviewFor<TParsed>,
-  selectionFor: SelectionFor,
+  selectionFor: SelectionFor<TParsed>,
   uploadHar: ReturnType<typeof useUploadHar>
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
   const { id, picked } = file
@@ -173,7 +173,7 @@ const useConfirmImport = <TSettings, TParsed>(
     (
       files: readonly FileReadOutcome[],
       previewFor: PreviewFor<TParsed>,
-      selectionFor: SelectionFor
+      selectionFor: SelectionFor<TParsed>
     ): void => {
       latest.current += 1
       const ticket = latest.current

@@ -1,4 +1,5 @@
-import { Option } from 'effect'
+import { Data, Option } from 'effect'
+import type { FhirResource } from 'fhir-r4/resources'
 import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo, useState } from 'react'
@@ -24,7 +25,12 @@ type AnyKind = HttpResponseKind.HttpResponseKind<unknown>
 /** One previewed response — the parse outcome plus every resource's stable key. */
 type Preview = Review.PreviewedResponse<AnyKind, unknown>
 
-/** Props for {@link ReviewBody}. */
+/**
+ * Props for {@link ReviewBody}. The selection is typed by the resource shape
+ * the review edits — `FhirResource` for the HAR importer — so a kept edit
+ * from the {@link ResourceEditor} rides through as a typed `TParsed`, not a
+ * cast at the seam.
+ */
 interface ReviewBodyProps {
   /** One HAR file's decoded responses, in input order. */
   readonly responses: readonly Extraction.Input[]
@@ -37,9 +43,9 @@ interface ReviewBodyProps {
   /** Previews the shell parsed for this file's responses under the current selection. */
   readonly previews: readonly Preview[]
   /** The reviewer's selection for this file — reads and writes the same shape. */
-  readonly selection: Review.Selection
+  readonly selection: Review.Selection<FhirResource>
   /** Called with the new selection on every toggle or override. */
-  readonly onChange: (selection: Review.Selection) => void
+  readonly onChange: (selection: Review.Selection<FhirResource>) => void
 }
 
 /** Matched responses grouped by URL, in first-seen order. */
@@ -172,7 +178,7 @@ const ResourceRow = ({
 }: {
   readonly resourceKey: string
   readonly resource: unknown
-  readonly selection: Review.Selection
+  readonly selection: Review.Selection<FhirResource>
   readonly onToggle: (key: string) => void
   readonly onEdit: (key: string, resource: unknown) => void
   readonly onRevert: (key: string) => void
@@ -234,7 +240,7 @@ const ResponseBlock = ({
   onRevertResource,
 }: {
   readonly preview: Preview
-  readonly selection: Review.Selection
+  readonly selection: Review.Selection<FhirResource>
   readonly onOverride: (kindName: string) => void
   readonly onToggleResource: (key: string) => void
   readonly onEditResource: (key: string, resource: unknown) => void
@@ -298,14 +304,22 @@ const ResponseBlock = ({
 }
 
 /**
- * The one open resource-editor at a time: a resource-key plus the value the
- * dialog opened with (an edit's own value, if any, else the parsed original).
- * `null` means no dialog is open.
+ * The resource-editor dialog's local state — `Closed` by default, `Open`
+ * when a reviewer clicks Edit on a row. A tagged sum type rather than a
+ * nullable `Open` shape so the closed case names itself
+ * (`state._tag === 'Closed'`) and a third state (a submitting spinner, say)
+ * is one variant added rather than a wider nullable.
+ *
+ * The constructors are aliased to lowercase names so calling them inside
+ * the React component body does not trip the `react/capitalized-calls`
+ * rule (which reserves `X(...)` for JSX components).
  */
-interface EditorState {
-  readonly key: string
-  readonly resource: unknown
-}
+type EditorState = Data.TaggedEnum<{
+  readonly Closed: Record<never, never>
+  readonly Open: { readonly key: string; readonly resource: unknown }
+}>
+const editorState = Data.taggedEnum<EditorState>()
+const { Closed: makeClosedEditor, Open: makeOpenEditor } = editorState
 
 /** The interactive review of one file's responses. */
 const ReviewBody = ({
@@ -318,16 +332,16 @@ const ReviewBody = ({
   // The resource-editor dialog is not part of the pure selection — it is
   // local UI state that opens/closes as the reviewer navigates rows. Only
   // the accepted edit becomes selection.
-  const [editing, setEditing] = useState<EditorState | null>(null)
+  const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
   const openEditor = (key: string, resource: unknown): void => {
-    setEditing({ key, resource })
+    setEditing(makeOpenEditor({ key, resource }))
   }
-  const closeEditor = (): void => setEditing(null)
-  const keepEdit = (resource: unknown): void => {
-    if (editing === null) return
+  const closeEditor = (): void => setEditing(makeClosedEditor())
+  const keepEdit = (resource: FhirResource): void => {
+    if (editing._tag !== 'Open') return
     onChange(Review.edit(selection, editing.key, resource))
-    setEditing(null)
+    setEditing(makeClosedEditor())
   }
   const revertEdit = (key: string): void => {
     onChange(Review.revert(selection, key))
@@ -440,8 +454,8 @@ const ReviewBody = ({
       )}
 
       <ResourceEditor
-        open={editing !== null}
-        resource={editing?.resource ?? null}
+        open={editing._tag === 'Open'}
+        resource={editing._tag === 'Open' ? editing.resource : null}
         onEdit={(edit) => keepEdit(edit.resource)}
         onCancel={closeEditor}
       />

@@ -55,16 +55,22 @@ const ImporterScreen = (): JSX.Element => {
   // Each read file's reviewed selection, keyed by its stable id. Absent = the
   // default (every kind enabled, every resource included), so a file the user
   // never touched still imports everything recognized.
-  const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection>>(new Map())
+  const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection<Parsed>>>(
+    new Map()
+  )
 
   const selectionFor = useCallback(
-    (fileId: string): Review.Selection => selections.get(fileId) ?? Review.initial(pool),
+    (fileId: string): Review.Selection<Parsed> =>
+      selections.get(fileId) ?? Review.initial<Parsed>(pool),
     [selections]
   )
 
-  const onSelectionChange = useCallback((fileId: string, selection: Review.Selection): void => {
-    setSelections((previous) => new Map(previous).set(fileId, selection))
-  }, [])
+  const onSelectionChange = useCallback(
+    (fileId: string, selection: Review.Selection<Parsed>): void => {
+      setSelections((previous) => new Map(previous).set(fileId, selection))
+    },
+    []
+  )
 
   // The read half's resource-level output, shared with the confirm step so the
   // same objects the reviewer inspected are what gets written.
