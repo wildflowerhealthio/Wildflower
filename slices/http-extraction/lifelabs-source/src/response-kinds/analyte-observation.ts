@@ -176,16 +176,16 @@ const quantityWire = (
 ): Record<string, unknown> | undefined => {
   const value = Number(rawValue)
   if (!Number.isFinite(value)) return undefined
-  const unit =
-    payloadUnit != null && payloadUnit.trim().length > 0
-      ? payloadUnit.trim()
-      : loinc === undefined
-        ? undefined
-        : LOINC_UNITS[loinc]
+  const ownUnit = payloadUnit?.trim()
+  const unit = ownUnit !== undefined && ownUnit.length > 0 ? ownUnit : researchedUnit(loinc)
   if (unit === undefined) return { value }
   const ucum = ucumCodeFor(unit)
   return ucum === undefined ? { value, unit } : { value, unit, system: UCUM_SYSTEM, code: ucum }
 }
+
+/** The researched LifeLabs unit for an analyte's LOINC, if the table lists it. */
+const researchedUnit = (loinc: string | undefined): string | undefined =>
+  loinc === undefined ? undefined : LOINC_UNITS[loinc]
 
 /** The `referenceRange` wire for a raw range string, or `undefined` for a blank one. */
 const referenceRangeWire = (
