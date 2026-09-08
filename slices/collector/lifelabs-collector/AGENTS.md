@@ -103,6 +103,9 @@ statusCode, additionalData }` envelope the source's fixture assumes.
   fragment, the only place per-analyte values appear on that page). Neither is
   decoded: the product decision is JSON over HTML, and the per-analyte JSON is
   the analytics page's `GetAnalyticSummary`.
+- `reportList.confidentialResultsPresent` is the portal's notice that some
+  results are withheld from the web view. Deliberately ignored: there is nothing
+  to import, and the user already sees the notice in the portal.
 
 ## Open questions
 

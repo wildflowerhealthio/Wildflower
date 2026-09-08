@@ -114,6 +114,28 @@ Still open:
   decision (JSON over HTML) rules out for now.
 - **`LIFELABS_TEST_SYSTEM`** — a namespaced placeholder; LifeLabs publishes no
   OID for `testCode`. The LOINC coding beside it is the standard one.
+
+## The codes
+
+Researched against LOINC from the analytics capture's `testItemId`s
+(`base64('<testCode>__<loinc>;')`):
+
+- **The embedded code is LOINC.** Every decoded suffix checked resolves to the
+  analyte the row names: `6690-2` Leukocytes (WBC), `4544-3` Hematocrit,
+  `2951-2` Sodium, `2823-3` Potassium, `14682-9` Creatinine [Moles/volume],
+  `1742-6` ALT, `14771-0` Fasting glucose. Hence the `LOINC_SYSTEM` coding.
+- **`testCode` is not LOINC.** It only looks like one: `TR10477-8W`'s digits
+  `10477-8` are LOINC's neuron-specific enolase stain, nothing to do with the
+  CBC it labels. It is LifeLabs' internal test-request code — `TR` + number,
+  with a trailing letter that varies across _variants of the same panel_
+  (`TR10149-3`, `TR10149-3H`, `TR10149-3M` all carry creatinine `14682-9`;
+  `TR11629-3` / `TR11629-3V` share their whole analyte list). Keep it in
+  `LIFELABS_TEST_SYSTEM` and never derive a LOINC from it.
+- **`33882-2` is "Collection date of Specimen"**, and rides in several panels
+  (`TR10453-9I`, `TR10278-0A`, `TR10690-6P`, `TR10714-4P`) as a row of its own.
+  It decodes to an Observation like any other row — a non-numeric
+  `valueString` — which is faithful to the portal, if noisy; folding it into
+  `effectiveDateTime` is a possible follow-up.
 - **Province** — the API host is Ontario-only for v1.
 - **Anonymizer artefacts** — the anonymizer rewrites the `/Date(` literal
   itself (`/Uwbx(…)/`), so an anonymized capture decodes with no
