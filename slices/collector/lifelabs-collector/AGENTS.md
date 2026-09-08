@@ -81,14 +81,19 @@ release, so every run timed out after five minutes.
 
 ## What a real capture confirmed
 
-An anonymized web-trace capture of the signed-in portal's **Reports** page
-(not the analytics page — see below) confirmed:
+Two anonymized web-trace captures of the signed-in portal — the **Reports**
+page, then the **Analytics** page — confirmed:
 
 - The login host and OIDC flow above (`/.well-known/openid-configuration`,
   `/connect/checksession`, `jwks`).
 - The API host `on-api.mycarecompass.lifelabs.com` and its `/api/<Area>/<Op>`
   shape, with every response in the same `{ entity, caseId, isFailed, message,
 statusCode, additionalData }` envelope the source's fixture assumes.
+- The analytics page fires `Report/GetAnalyticSummary` (no query string), and
+  the source's decode of it — see its AGENTS.md — imports the capture as one
+  `Patient` plus 92 `Observation`s with no parse failures. The page also fires
+  one `EnhancedLabTest/GetTestDisplayInfoExtendedIMd/<testItemId>` per analyte
+  (educational topics, not results), which is ignored.
 - The `Report/GetReportPatientList` rows match the `patients[]` row shape the
   source decodes (`text`, `value`, `isPrimary`, `ageCategory`,
   `isSharedPatient`, `patientMap`).
@@ -101,14 +106,8 @@ statusCode, additionalData }` envelope the source's fixture assumes.
 
 ## Open questions
 
-Still unverified against a real capture — reconcile against a web-trace
-capture that includes the **analytics** page before relying on the collector
-end-to-end:
+Still unverified against a real capture:
 
-- **`GetAnalyticSummary` itself** — never captured; the fixture is synthesized
-  from the ticket's notes. The sibling report endpoints serialize dates as ISO
-  strings, not the `.NET /Date()/` tokens the notes described, so the source
-  accepts both.
 - **Login-form selectors** — `USERNAME_SELECTOR` / `PASSWORD_SELECTOR` are
   best-guess defaults for the IdentityServer page (its DOM was not captured).
 - **Already signed in** — the login settle times out and advances, but the

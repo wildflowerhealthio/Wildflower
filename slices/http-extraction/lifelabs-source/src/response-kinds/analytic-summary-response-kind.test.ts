@@ -8,7 +8,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import summary from '../fixtures/analytic-summary.json' with { type: 'json' }
-import { LIFELABS_TEST_SYSTEM, LifeLabsIdentifierSystem } from '../lifelabs.ts'
+import { LIFELABS_TEST_SYSTEM, LOINC_SYSTEM, LifeLabsIdentifierSystem } from '../lifelabs.ts'
 import { LIFELABS_SYSTEM } from '../source-system.ts'
 import { AnalyticSummaryResponseKind } from './analytic-summary-response-kind.ts'
 
@@ -77,8 +77,8 @@ describe('AnalyticSummaryResponseKind', () => {
       const result = parse(summary)
 
       const patients = ofType(result, 'Patient')
-      // The fixture carries 3 analytics, all with a testCode/testItemId to key.
-      expect(ofType(result, 'Observation')).toHaveLength(3)
+      // The fixture carries 4 analytics, all with a testCode/testItemId to key.
+      expect(ofType(result, 'Observation')).toHaveLength(4)
       expect(patients).toStrictEqual([
         decodePatient({
           resourceType: 'Patient',
@@ -100,6 +100,8 @@ describe('AnalyticSummaryResponseKind', () => {
           code: {
             text: 'WBC',
             coding: [
+              // base64('TR10477-8W__6690-2;') — the LOINC for WBC rides in the item id.
+              { system: LOINC_SYSTEM, code: '6690-2', display: 'WBC' },
               { system: LIFELABS_TEST_SYSTEM, code: 'TR10477-8W', display: 'Complete Blood Count' },
             ],
           },
@@ -125,6 +127,44 @@ describe('AnalyticSummaryResponseKind', () => {
         low: { value: 120 },
         high: { value: 160 },
       })
+    })
+
+    it('parses a one-sided range as a bound only, and recovers the LOINC from the item id', () => {
+      const [ratio] = ofType(parse(summary), 'Observation').filter(
+        (o) => o.code.text === 'Creatinine ratio'
+      )
+      expect(ratio?.referenceRange[0]).toMatchObject({ text: '<2.6', high: { value: 2.6 } })
+      expect(ratio?.referenceRange[0]?.low).toBeNull()
+      // `system` decodes to a `URL`, which normalizes a host-only URI to a
+      // trailing slash — compare hrefs.
+      expect(ratio?.code.coding.map((c) => [c.system?.href, c.code])).toEqual([
+        [new URL(LOINC_SYSTEM).href, '14682-9'],
+        [LIFELABS_TEST_SYSTEM, 'TR10149-3'],
+      ])
+    })
+
+    it('parses a lower-bound range, and emits no LOINC coding for an item id of another shape', () => {
+      const [o] = ofType(
+        parse({
+          entity: {
+            selectedPatient: 1,
+            analytics: [
+              {
+                testCode: 'TR1',
+                // Not base64 of `<code>__<loinc>;` — a scrambled or foreign id.
+                testItemId: 'MBVQBQUFP83ISVO6',
+                testItemName: 'X',
+                testResultValue: '50',
+                referenceRange: '>= 40',
+              },
+            ],
+          },
+        }),
+        'Observation'
+      )
+      expect(o?.referenceRange[0]).toMatchObject({ text: '>= 40', low: { value: 40 } })
+      expect(o?.referenceRange[0]?.high).toBeNull()
+      expect(o?.code.coding.map((c) => c.system?.href)).toEqual([LIFELABS_TEST_SYSTEM])
     })
 
     it('maps a non-numeric result to a valueString with no quantity or range', () => {

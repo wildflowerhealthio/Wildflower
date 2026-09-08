@@ -2,7 +2,8 @@
   "entity": {
     "testItems": [
       { "code": "All", "name": "Show all test results" },
-      { "code": "TR10477-8W", "name": "Complete Blood Count" }
+      { "code": "TR10477-8W", "name": "Complete Blood Count" },
+      { "code": "TR10149-3", "name": "Creatinine" }
     ],
     "visitDateRange": [
       { "code": "All", "name": "All", "text": "All" },
@@ -37,6 +38,21 @@
         "abnormalFlag": null,
         "sectionId": "HAEM",
         "testGroup": "HAEM1",
+        "organization": "OLIFELABS"
+      },
+      {
+        "abnormal": false,
+        "collectionDate": "/Date(1779297900000-0400)/",
+        "collectionPostedDate": "2026-05-20T13:25:00",
+        "referenceRange": "<2.6",
+        "testCode": "TR10149-3",
+        "testItemId": "VFIxMDE0OS0zX18xNDY4Mi05Ow==",
+        "testItemName": "Creatinine ratio",
+        "testName": "Creatinine",
+        "testResultValue": "1.1",
+        "abnormalFlag": null,
+        "sectionId": "CHEM",
+        "testGroup": "CHEM1",
         "organization": "OLIFELABS"
       },
       {

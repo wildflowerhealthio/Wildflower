@@ -29,4 +29,12 @@ const LifeLabsIdentifierSystem = {
 /** The coding system for LifeLabs' internal test codes (`analytics[].testCode`). */
 const LIFELABS_TEST_SYSTEM = `${SYSTEM_BASE}/test-code`
 
-export { LifeLabsIdentifierSystem, LIFELABS_TEST_SYSTEM }
+/**
+ * LOINC, the one standard system this source can stamp: each `testItemId` is
+ * base64 of `<testCode>__<loinc>;` (a real capture shows `TR10477-8W__6690-2;`
+ * for WBC, `TR10397-8H__2951-2;` for Sodium), so the analyte's LOINC code is
+ * recoverable without a lookup table.
+ */
+const LOINC_SYSTEM = 'http://loinc.org'
+
+export { LifeLabsIdentifierSystem, LIFELABS_TEST_SYSTEM, LOINC_SYSTEM }

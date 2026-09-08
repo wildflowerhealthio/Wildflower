@@ -178,3 +178,9 @@ change once per page. See the driver in `apps/medications-app/src/app.tsx`.
 **Discovered during**: claude/pr-421-rebase-refactor-22kfvo (LifeLabs, PR #421)
 **Learning**: A collector PR authored before #546/#556 uses `EntityDefinition.make({ isFoundAt })`, `firstPage`, unnamed steps, and local `persist.ts` / `extract-json.ts` copies — none of which exist on `main` any more. Replaying such a commit conflicts only on the registry, form map, and lockfile, but the result does not compile. Start a fresh branch from `origin/main`, port the decode into a `slices/http-extraction/<name>-source` package (`HttpResponseKind.make` + `recognizePortal` + `adoptUnderRecognizedRoot`, registered in `har-importer-core`'s `fhirSources`), and land the collector (config, plan, form, `captureProvenance`, shared `persistResources`) as a second stacked PR. `shoppers-drugmart-source` is the closest template for a bespoke-JSON source.
 **Suggested destination**: Strategies (Git workflows)
+
+## An anonymized HAR can hide a decode bug or invent one
+
+**Discovered during**: claude/lifelabs-collector-rebase-whrbka (LifeLabs, PR #628)
+**Learning**: Before concluding a source's decode is wrong from an anonymized capture, check what the anonymizer did to the literal you're matching. It scrambles words inside string values, so a .NET `/Date(1779297900000-0400)/` token comes out as `/Uwbx(7233634345725-5592)/` and every date-dependent field silently vanishes — the real payload is fine. Conversely it leaves base64-looking URL path segments alone while scrambling the same value in the body, so an id you can only see in a URL (here `testItemId`, base64 of `<testCode>__<LOINC>;`) is real and worth decoding. Run the capture through `decodeHar` + `runExtraction` as a throwaway test to see what the importer actually produces; unmatched-URL counts tell you which page the user was on.
+**Suggested destination**: Strategies (Debugging with captures)

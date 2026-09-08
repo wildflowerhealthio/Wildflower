@@ -15,7 +15,7 @@ resources directly from non-FHIR portal JSON — there is no FHIR dialect layer.
   `on-api.mycarecompass.lifelabs.com/api/Report/GetAnalyticSummary` → the
   selected `Patient` plus one `Observation` per `entity.analytics[]` row.
 - `src/lifelabs.ts` — the identifier/coding-system URL catalogue
-  (`LifeLabsIdentifierSystem.PatientId`, `LIFELABS_TEST_SYSTEM`).
+  (`LifeLabsIdentifierSystem.PatientId`, `LIFELABS_TEST_SYSTEM`, `LOINC_SYSTEM`).
 - `src/source-system.ts` — `LIFELABS_SYSTEM`, the Wildflower-minted `sid` URI
   the kind's `tryRecognize` mints and adoption keys under.
 - `src/response-kinds.ts` — `lifeLabsResponseKinds` (internal, the
@@ -31,8 +31,13 @@ resources directly from non-FHIR portal JSON — there is no FHIR dialect layer.
 ## Mapping `analytics[]` → `Observation`
 
 - `status` = `final` (posted results).
-- `code.text` = `testItemName` (the analyte, e.g. "WBC"), plus a supplementary
-  coding `{ system: LIFELABS_TEST_SYSTEM, code: testCode, display: testName }`.
+- `code.text` = `testItemName` (the analyte, e.g. "WBC"), with two codings:
+  **LOINC first** when `testItemId` carries one — the id is base64 of
+  `<testCode>__<loinc>;` (`TR10477-8W__6690-2;` is WBC), so
+  `{ system: LOINC_SYSTEM, code: '6690-2', display: testItemName }` — then
+  LifeLabs' own panel code
+  `{ system: LIFELABS_TEST_SYSTEM, code: testCode, display: testName }`. An
+  item id of any other shape yields the LifeLabs coding alone.
 - `subject` = `Patient/{selectedPatient}` (rewritten onto the derived local id
   by adoption).
 - `effectiveDateTime` = `collectionDate` parsed to the absolute UTC instant:
@@ -44,7 +49,8 @@ resources directly from non-FHIR portal JSON — there is no FHIR dialect layer.
   source carries no unit — accepted as rare and reasonable), anything else →
   `valueString`.
 - `referenceRange` = the raw string as `text`, plus parsed `low`/`high` when it
-  is a simple numeric interval (`4.0 - 11.0`, `120- 160`).
+  is a simple numeric interval (`4.0 - 11.0`, `120- 160`), or the one bound of
+  a one-sided `<2.6` / `>=40`.
 - `interpretation` = `abnormalFlag` when present.
 - logical id = sanitized `testItemId` (base64 → FHIR-safe token: `+`→`-`,
   `/`→`.`, padding stripped) suffixed with the collection millis, so repeat
@@ -83,23 +89,34 @@ or `slices/importer` (whose `har-importer-core` consumes
 
 ## Fixtures & open questions
 
-`src/fixtures/analytic-summary.json` is **synthesized from the ticket's payload
-notes, not a real captured payload**. An anonymized capture of the portal's
-_Reports_ page (no analytics page, so no `GetAnalyticSummary`) confirmed the
-response envelope, the API host and path shape, and the `patients[]` row shape
-(`Report/GetReportPatientList` returns the same rows), and showed the sibling
-endpoints using ISO dates. It also showed `Dashboard/GetMyReports` carrying a
-richer patient (`firstName`, `lastName`, `birthDate`, `gender`,
-`healthCardNo`) than the analytic summary's one display string — a possible
-follow-up source for the `Patient`. Reconcile the rest against a capture that
-includes the analytics page before relying on the decode end-to-end:
+`src/fixtures/analytic-summary.json` was synthesized from the ticket's payload
+notes; an anonymized capture of the real analytics page (92 analytics) has
+since confirmed its shape field-for-field: the response envelope, the API host
+and path (`GetAnalyticSummary` with no query string), every `analytics[]`
+field and type, `patients[]` (identical rows to `Report/GetReportPatientList`),
+the .NET `/Date(ms-hhmm)/` `collectionDate` beside an ISO
+`collectionPostedDate`, `abnormalFlag` values `null` / `H`, and result values
+that mix numbers with free text (`...` on note rows, words like "Negative").
+The capture decodes through the importer to one `Patient` plus 92
+`Observation`s with no parse failures. It also showed `Dashboard/GetMyReports`
+carrying a richer patient (`firstName`, `lastName`, `birthDate`, `gender`,
+`healthCardNo`) than the summary's one display string — a possible follow-up
+source for the `Patient`.
 
-- **Value units & result types** — the payload carries no unit and mixes numeric
-  results with free-text notes; confirm the `valueQuantity`-vs-`valueString`
-  split against real data (and whether a units source exists).
+Still open:
+
+- **Units** — the payload carries no unit, so a numeric result is a unitless
+  `valueQuantity`. The rendered report (`Report/ViewReports`, HTML) has a unit
+  column; recovering units would mean parsing that HTML, which the product
+  decision (JSON over HTML) rules out for now.
 - **`LIFELABS_TEST_SYSTEM`** — a namespaced placeholder; LifeLabs publishes no
-  OID for `testCode`.
+  OID for `testCode`. The LOINC coding beside it is the standard one.
 - **Province** — the API host is Ontario-only for v1.
+- **Anonymizer artefacts** — the anonymizer rewrites the `/Date(` literal
+  itself (`/Uwbx(…)/`), so an anonymized capture decodes with no
+  `effectiveDateTime` and undated ids; that is the fixture pipeline's problem,
+  not this decode's. It also leaves base64 URL path segments unscrambled while
+  scrambling the same ids in the body.
 
 ## References
 

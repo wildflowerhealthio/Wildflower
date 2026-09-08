@@ -1,9 +1,9 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Either, Encoding, Schema } from 'effect'
 import { Observation, Patient } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { HttpResponseKind, extractJson, recognizePortal } from 'http-extraction-fundamentals'
 
-import { LIFELABS_TEST_SYSTEM, LifeLabsIdentifierSystem } from '../lifelabs.ts'
+import { LIFELABS_TEST_SYSTEM, LOINC_SYSTEM, LifeLabsIdentifierSystem } from '../lifelabs.ts'
 import { LIFELABS_SYSTEM } from '../source-system.ts'
 
 /**
@@ -113,19 +113,43 @@ const isoAsUtc = (raw: string): string =>
   /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(raw) ? `${raw}Z` : raw
 
 /**
- * `4.0 - 11.0` / `120- 160` / `0.350 - 0.450` → numeric `{ low, high }`; a range
- * that isn't a simple numeric interval yields `{}` (the raw string is still kept
- * as `referenceRange[].text`).
+ * `4.0 - 11.0` / `120- 160` / `0.350 - 0.450` → numeric `{ low, high }`; a
+ * one-sided `<2.6` / `<=2.6` → `{ high }` and `>40` / `>=40` → `{ low }`; a
+ * range that is none of these yields `{}` (the raw string is still kept as
+ * `referenceRange[].text`).
  */
 const parseReferenceRange = (raw: string): { low?: number; high?: number } => {
-  const m = /^\s*([\d.]+)\s*-\s*([\d.]+)\s*$/.exec(raw)
-  if (m === null) return {}
-  const low = Number(m[1])
-  const high = Number(m[2])
   const out: { low?: number; high?: number } = {}
-  if (Number.isFinite(low)) out.low = low
-  if (Number.isFinite(high)) out.high = high
+  const interval = /^\s*([\d.]+)\s*-\s*([\d.]+)\s*$/.exec(raw)
+  if (interval !== null) {
+    const low = Number(interval[1])
+    const high = Number(interval[2])
+    if (Number.isFinite(low)) out.low = low
+    if (Number.isFinite(high)) out.high = high
+    return out
+  }
+  const oneSided = /^\s*([<>])=?\s*([\d.]+)\s*$/.exec(raw)
+  if (oneSided !== null) {
+    const bound = Number(oneSided[2])
+    if (Number.isFinite(bound)) {
+      if (oneSided[1] === '<') out.high = bound
+      else out.low = bound
+    }
+  }
   return out
+}
+
+/**
+ * The LOINC code a `testItemId` embeds: the id is base64 of
+ * `<testCode>__<loinc>;` (`TR10477-8W__6690-2;` is WBC). `undefined` for an id
+ * that is not base64, or whose plaintext is not that shape — the LifeLabs
+ * coding still carries the analyte, this one is a bonus.
+ */
+const loincFromTestItemId = (testItemId: string): string | undefined => {
+  const decoded = Encoding.decodeBase64String(testItemId)
+  if (Either.isLeft(decoded)) return undefined
+  const m = /^[^_]+__(\d{1,5}-\d);?$/.exec(decoded.right)
+  return m?.[1]
 }
 
 /** FHIR logical ids are at most 64 characters. */
@@ -179,8 +203,8 @@ const patientWire = (id: string, name: string | null | undefined): Record<string
 
 /**
  * The R4 `Observation` **wire** for one analytic. `status` is `final` (these
- * are posted results). `code.text` is the analyte name, with a supplementary
- * LifeLabs coding. A numeric result becomes a unitless `valueQuantity` (the
+ * are posted results). `code.text` is the analyte name, with a LOINC coding
+ * (recovered from `testItemId`) first and LifeLabs' own panel coding second. A numeric result becomes a unitless `valueQuantity` (the
  * source carries no unit), anything else a `valueString`. The reference range
  * keeps its raw text plus parsed `low`/`high` when numeric, and an
  * `abnormalFlag` (when present) becomes an `interpretation`.
@@ -192,15 +216,25 @@ const observationWire = (
 ): Record<string, unknown> => {
   const codeText = a.testItemName ?? a.testName ?? a.testCode ?? 'Unknown'
   const code: Record<string, unknown> = { text: codeText }
-  if (a.testCode != null && a.testCode.length > 0) {
-    code['coding'] = [
-      {
-        system: LIFELABS_TEST_SYSTEM,
-        code: a.testCode,
-        ...(a.testName != null && a.testName.length > 0 ? { display: a.testName } : {}),
-      },
-    ]
+  const coding: Record<string, unknown>[] = []
+  // LOINC first: the standard code for the analyte, when the item id carries one.
+  const loinc = a.testItemId == null ? undefined : loincFromTestItemId(a.testItemId)
+  if (loinc !== undefined) {
+    coding.push({
+      system: LOINC_SYSTEM,
+      code: loinc,
+      ...(a.testItemName != null && a.testItemName.length > 0 ? { display: a.testItemName } : {}),
+    })
   }
+  // Then LifeLabs' own panel code, displaying the panel (`testName`).
+  if (a.testCode != null && a.testCode.length > 0) {
+    coding.push({
+      system: LIFELABS_TEST_SYSTEM,
+      code: a.testCode,
+      ...(a.testName != null && a.testName.length > 0 ? { display: a.testName } : {}),
+    })
+  }
+  if (coding.length > 0) code['coding'] = coding
 
   const wire: Record<string, unknown> = {
     resourceType: 'Observation',
