@@ -1,7 +1,8 @@
 # AGENTS.md — slices/collector/lifelabs-collector
 
-The **LifeLabs collector**: logs into LifeLabs' `myvisit.lifelabs.com` portal
-and pulls the user's lab results into the on-device FHIR **R4** store. Results
+The **LifeLabs collector**: logs into LifeLabs' MyCareCompass portal
+(`www.on.mycarecompass.lifelabs.com`) and pulls the user's lab results into
+the on-device FHIR **R4** store. Results
 come from the MyCareCompass analytics page's `GetAnalyticSummary` XHR, a
 bespoke non-FHIR JSON payload that the source package
 ([`lifelabs-source`](../../http-extraction/lifelabs-source/AGENTS.md), in
@@ -33,57 +34,91 @@ mapped through `adoptUnderRecognizedRoot` once at module scope in
   straight to the descriptor.
 - `src/lifelabs-config-form.tsx` (+ `.module.css`) — the username/password
   `ConfigFormProps` form `collector-react` registers. The username is a plain
-  text input, not `type="email"`: myVisit accepts either.
+  text input, not `type="email"`: the login form is a username field.
 - `src/index.ts` — the barrel.
 
-Only user-facing LifeLabs pages are ever navigated (the myVisit login page,
-then the MyCareCompass analytics page); the collector only **sniffs** the XHR
-that page fires. **No API host (`on-api.mycarecompass.lifelabs.com`) is ever
+Only the user-facing analytics page is ever navigated (the portal itself
+redirects a signed-out visit to its IdentityServer login); the collector only
+**sniffs** the XHR that page fires. **No API host (`on-api.mycarecompass.lifelabs.com`) is ever
 crafted or opened directly** — those requests need auth headers the SPA
 injects, and crafting them is an explicit product constraint.
 
 ## The captcha
 
-The myVisit login page carries a **CAPTCHA**, so the plan cannot auto-submit.
-The `stepSequence`:
+The portal's login page carries a reCAPTCHA (the SPA's `environment.json`
+ships `isRecaptchaEnabled: true` and a site key), so the plan cannot
+auto-submit. The `stepSequence`:
 
-1. `Open`s `myvisit.lifelabs.com/login` and holds on a pattern-less
-   `AwaitPageSettled` (`continueOnTimeout: true`), then a 2 s `Delay` so the
-   form has rendered before the fills.
-2. `Fill`s `input[type="email"]` (the username) and `input[type="password"]`.
-   There is **no submit `Click`**.
-3. **`AwaitPageSettled` on the `myvisit.lifelabs.com` dashboard (any path but
-   `/login`) with a 5-minute timeout** — this is the human-in-the-loop pause.
-   It releases only once the user has solved the captcha, clicked Login, and
-   myVisit has landed on its dashboard. A stuck login aborts on timeout rather
-   than hanging.
-4. `Open`s `www.on.mycarecompass.lifelabs.com/analytics`, `AwaitPageSettled`
-   on that page, then a trailing `Delay` for the `GetAnalyticSummary` XHR.
+1. `Open`s `www.on.mycarecompass.lifelabs.com/analytics`. Signed out, the SPA
+   bounces to the portal's **own IdentityServer** at
+   `login.on.mycarecompass.lifelabs.com`; the plan `AwaitPageSettled`s on that
+   host (`continueOnTimeout: true`, so an already-signed-in session skips
+   straight through), then a 2 s `Delay` so the form has rendered.
+2. `Fill`s the username (an `email` input or a `Username` input — the selector
+   is a list) and `input[type="password"]`. There is **no submit `Click`**.
+3. **`AwaitPageRequested` on any `www.on.mycarecompass.lifelabs.com` page with
+   a 5-minute timeout** — the human-in-the-loop pause. It releases once the
+   user has solved the captcha, clicked Login, and the OIDC callback has
+   returned to the portal host. The hold is on the page _arriving_, not
+   settling, because the SPA routes to its dashboard client-side after the
+   callback (the pattern `shoppers-drugmart-collector` needed for its 2FA
+   pause). A stuck login aborts on timeout rather than hanging.
+4. `Open`s the analytics page again as a full navigation, `AwaitPageSettled`
+   on it, then a trailing `Delay` for the `GetAnalyticSummary` XHR.
 
-No new step primitive is needed: `Fill` + `AwaitPageSettled` expresses
+No new step primitive is needed: `Fill` + `AwaitPageRequested` expresses
 "autofill, then wait for the human" directly. A login-form selector that
 matches nothing simply no-ops the `Fill` (the user types the field), so a
 wrong guess degrades to a fully-manual login rather than failing the run.
 
+**Not `myvisit.lifelabs.com`.** An earlier revision opened
+`myvisit.lifelabs.com/login` and waited for a myVisit dashboard. myVisit is
+LifeLabs' separate appointment-booking product, which MyCareCompass merely
+links out to (`environment.json` carries `myVisitUrl` alongside a distinct
+`identityServerUrl`); a capture of the signed-in portal shows only the
+`login.on.mycarecompass.lifelabs.com` OIDC endpoints. That hold could never
+release, so every run timed out after five minutes.
+
+## What a real capture confirmed
+
+An anonymized web-trace capture of the signed-in portal's **Reports** page
+(not the analytics page — see below) confirmed:
+
+- The login host and OIDC flow above (`/.well-known/openid-configuration`,
+  `/connect/checksession`, `jwks`).
+- The API host `on-api.mycarecompass.lifelabs.com` and its `/api/<Area>/<Op>`
+  shape, with every response in the same `{ entity, caseId, isFailed, message,
+statusCode, additionalData }` envelope the source's fixture assumes.
+- The `Report/GetReportPatientList` rows match the `patients[]` row shape the
+  source decodes (`text`, `value`, `isPrimary`, `ageCategory`,
+  `isSharedPatient`, `patientMap`).
+- The Reports page's own data is `Report/GetFamilyMemberReports` (one JSON row
+  per report: date, lab, comma-joined test names and codes, sections, abnormal
+  flag) plus `Report/ViewReports` (the rendered report as an **HTML**
+  fragment, the only place per-analyte values appear on that page). Neither is
+  decoded: the product decision is JSON over HTML, and the per-analyte JSON is
+  the analytics page's `GetAnalyticSummary`.
+
 ## Open questions
 
-The fixture and selectors are synthesized/best-guess (no real capture yet).
-Reconcile against a redacted `web-trace` capture before relying on the
-collector end-to-end:
+Still unverified against a real capture — reconcile against a web-trace
+capture that includes the **analytics** page before relying on the collector
+end-to-end:
 
+- **`GetAnalyticSummary` itself** — never captured; the fixture is synthesized
+  from the ticket's notes. The sibling report endpoints serialize dates as ISO
+  strings, not the `.NET /Date()/` tokens the notes described, so the source
+  accepts both.
 - **Login-form selectors** — `USERNAME_SELECTOR` / `PASSWORD_SELECTOR` are
-  best-guess defaults for `myvisit.lifelabs.com/login`.
-- **Login transition** — the dashboard `AwaitPageSettled` assumes the
-  post-login jump surfaces a settled `PageLoaded`. If myVisit's redirect is a
-  client-side SPA route, or the dashboard keeps loading past the settle
-  detector, switch to `AwaitPageRequested` (the pattern
-  `shoppers-drugmart-collector` needed for its 2FA pause).
-- **Cross-domain session** — opening the `mycarecompass.lifelabs.com`
-  analytics page after a `myvisit.lifelabs.com` login assumes a shared/SSO
-  session carries over.
+  best-guess defaults for the IdentityServer page (its DOM was not captured).
+- **Already signed in** — the login settle times out and advances, but the
+  sign-in hold then waits for a page that already arrived; the run ends on the
+  5-minute timeout rather than the results. Same posture as Shoppers.
 - **Province** — the analytics/API hosts are Ontario-specific (`on.` /
-  `on-api.`). Other provinces are a follow-up (parameterize the host from a
-  `province` config field, and widen the source package's recognizer to match).
+  `on-api.`; the account's `province` comes back from
+  `AccountSettings/GetBasicAccountInformation`). Other provinces are a
+  follow-up (parameterize the host from a `province` config field, and widen
+  the source package's recognizer to match).
 - The decode-side questions (units, test-code system) live with the source
   package.
 

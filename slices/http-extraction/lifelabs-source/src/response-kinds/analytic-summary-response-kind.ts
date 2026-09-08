@@ -90,18 +90,27 @@ const toFhirIdToken = (raw: string): string =>
 const MAX_TIME_VALUE = 8_640_000_000_000_000
 
 /**
- * Absolute epoch millis from a .NET `/Date(1779297900000-0400)/` token, or
- * `undefined` if unparseable or outside the representable date range. The
- * trailing `±hhmm` is a display-only original offset; the millis are already
- * absolute UTC.
+ * Absolute epoch millis from a collection instant, or `undefined` if
+ * unparseable or outside the representable date range. Accepts both a .NET
+ * `/Date(1779297900000-0400)/` token (the trailing `±hhmm` is a display-only
+ * original offset; the millis are already absolute UTC) and an ISO 8601
+ * string (`2023-02-15T13:55:34+00:00`, or offset-less `2016-07-10T18:25:29`,
+ * read as UTC) — the portal's sibling report endpoints serialize dates as ISO,
+ * so the analytic payload is not assumed to differ.
  */
-const dotNetMillis = (raw: string | null | undefined): number | undefined => {
+const collectionMillis = (raw: string | null | undefined): number | undefined => {
   if (raw == null) return undefined
-  const m = /\/Date\((\d+)(?:[+-]\d{4})?\)\//.exec(raw)
-  if (m === null) return undefined
-  const millis = Number(m[1])
+  const m = /\/Date\((-?\d+)(?:[+-]\d{4})?\)\//.exec(raw)
+  const millis = m === null ? Date.parse(isoAsUtc(raw)) : Number(m[1])
   return Number.isFinite(millis) && Math.abs(millis) <= MAX_TIME_VALUE ? millis : undefined
 }
+
+/**
+ * Pin an offset-less ISO date-time to UTC so `Date.parse` doesn't read it in
+ * the host's local zone. Leaves anything already carrying `Z` / `±hh:mm` alone.
+ */
+const isoAsUtc = (raw: string): string =>
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/.test(raw) ? `${raw}Z` : raw
 
 /**
  * `4.0 - 11.0` / `120- 160` / `0.350 - 0.450` → numeric `{ low, high }`; a range
@@ -145,7 +154,7 @@ const observationId = (a: Analytic): string | undefined => {
       : `${a.testCode}_${analyte}`)
   if (base == null || base.length === 0) return undefined
   const token = toFhirIdToken(base)
-  const millis = dotNetMillis(a.collectionDate)
+  const millis = collectionMillis(a.collectionDate)
   if (millis == null) return token.slice(0, MAX_FHIR_ID_LENGTH)
   const suffix = `-${millis}`
   return `${token.slice(0, MAX_FHIR_ID_LENGTH - suffix.length)}${suffix}`
@@ -202,7 +211,7 @@ const observationWire = (
 
   if (subjectId != null) wire['subject'] = { reference: `Patient/${subjectId}` }
 
-  const millis = dotNetMillis(a.collectionDate)
+  const millis = collectionMillis(a.collectionDate)
   if (millis != null) wire['effectiveDateTime'] = new Date(millis).toISOString()
 
   const rawValue = a.testResultValue

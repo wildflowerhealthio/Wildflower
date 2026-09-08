@@ -60,11 +60,13 @@ describe('AnalyticSummaryResponseKind', () => {
       // The host is never mistaken for a path segment.
       { url: 'https://GetAnalyticSummary/api/Report', match: false },
     ])('recognizes $match for "$url"', ({ url, match }) => {
-      expect(Option.isSome(AnalyticSummaryResponseKind.tryRecognize(url))).toBe(match)
+      expect(Option.isSome(AnalyticSummaryResponseKind.tryRecognize(url, Option.none()))).toBe(
+        match
+      )
     })
 
     it('mints the portal source (system only, no baseUrl) at portal specificity', () => {
-      expect(AnalyticSummaryResponseKind.tryRecognize(SUMMARY_URL)).toStrictEqual(
+      expect(AnalyticSummaryResponseKind.tryRecognize(SUMMARY_URL, Option.none())).toStrictEqual(
         Option.some({ specificity: Specificity.PORTAL, source: { system: LIFELABS_SYSTEM } })
       )
     })
@@ -158,6 +160,45 @@ describe('AnalyticSummaryResponseKind', () => {
         'Observation'
       ).map((o) => o.id)
       expect(ids).toEqual(['AAAA-1000', 'AAAA-2000'])
+    })
+
+    it('reads an ISO collection date — with an offset, or offset-less as UTC — like a .NET token', () => {
+      // The portal's sibling report endpoints serialize dates as ISO strings
+      // (`reportDate: "…+00:00"`, `reportPostedDate` with no offset), so the
+      // analytic payload is not assumed to differ from them.
+      const analytic = (testItemId: string, collectionDate: string): Record<string, unknown> => ({
+        testCode: 'TR1',
+        testItemId,
+        testItemName: 'X',
+        testResultValue: '1',
+        collectionDate,
+      })
+      const observations = ofType(
+        parse({
+          entity: {
+            selectedPatient: 1,
+            analytics: [
+              analytic('AAAA', '2023-02-15T13:55:34+00:00'),
+              analytic('BBBB', '2023-02-15T08:55:34-05:00'),
+              analytic('CCCC', '2023-02-15T13:55:34'),
+              analytic('DDDD', '/Date(1676469334000-0500)/'),
+            ],
+          },
+        }),
+        'Observation'
+      )
+      expect(observations.map((o) => o.id)).toEqual([
+        'AAAA-1676469334000',
+        'BBBB-1676469334000',
+        'CCCC-1676469334000',
+        'DDDD-1676469334000',
+      ])
+      for (const o of observations) {
+        expect(o.effectiveDateTime).not.toBeNull()
+        if (o.effectiveDateTime != null) {
+          expect(DateTime.toEpochMillis(o.effectiveDateTime)).toBe(1676469334000)
+        }
+      }
     })
 
     it('drops and counts an analytic with no test code or item id', () => {

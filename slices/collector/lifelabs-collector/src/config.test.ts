@@ -117,7 +117,7 @@ describe('LifeLabsCollectorDescriptor', () => {
   it('exposes kind-level display strings', () => {
     expect(LifeLabsCollectorDescriptor.display.title).toBe('LifeLabs')
     expect(LifeLabsCollectorDescriptor.display.description).toBe(
-      'Lab results from LifeLabs MyCareCompass (myvisit.lifelabs.com)'
+      'Lab results from LifeLabs MyCareCompass (mycarecompass.lifelabs.com)'
     )
   })
 
@@ -158,12 +158,15 @@ describe('LifeLabsCollectorDescriptor', () => {
 })
 
 describe('scrapingPlan', () => {
-  it('opens the myVisit login page as its first step', () => {
+  it('opens the analytics page as its first step — signed out, the SPA bounces to the login', () => {
     const plan = scrapingPlan(defaultConfig, FIXED_RUN_ID)
     expect(plan.stepSequence[0]).toEqual({
       _tag: 'Navigation',
-      name: 'Opening login page',
-      action: { _tag: 'Open', source: { _tag: 'Uri', uri: 'https://myvisit.lifelabs.com/login' } },
+      name: 'Opening lab results',
+      action: {
+        _tag: 'Open',
+        source: { _tag: 'Uri', uri: 'https://www.on.mycarecompass.lifelabs.com/analytics' },
+      },
     })
   })
 
@@ -173,7 +176,7 @@ describe('scrapingPlan', () => {
     )
   })
 
-  it('opens login, autofills, holds for the captcha login, opens lab results, and settles', () => {
+  it('opens results, autofills the IdentityServer login, holds for the captcha login, reopens results, and settles', () => {
     const plan = scrapingPlan(
       { _tag: 'lifelabs', username: 'a@b.com', password: 'secret' },
       FIXED_RUN_ID
@@ -181,15 +184,18 @@ describe('scrapingPlan', () => {
     expect(plan.stepSequence).toEqual([
       {
         _tag: 'Navigation',
-        name: 'Opening login page',
+        name: 'Opening lab results',
         action: {
           _tag: 'Open',
-          source: { _tag: 'Uri', uri: 'https://myvisit.lifelabs.com/login' },
+          source: { _tag: 'Uri', uri: 'https://www.on.mycarecompass.lifelabs.com/analytics' },
         },
       },
+      // The portal's own IdentityServer, not myvisit.lifelabs.com (the
+      // separate appointment-booking product).
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for login page',
+        pattern: /:\/\/login\.on\.mycarecompass\.lifelabs\.com\//,
         timeout: Duration.seconds(30),
         continueOnTimeout: true,
       },
@@ -199,7 +205,11 @@ describe('scrapingPlan', () => {
         name: 'Entering username',
         action: {
           _tag: 'PageAction',
-          action: { kind: 'Fill', querySelector: 'input[type="email"]', value: 'a@b.com' },
+          action: {
+            kind: 'Fill',
+            querySelector: 'input[type="email"], input[name="Username"], input[name="username"]',
+            value: 'a@b.com',
+          },
         },
       },
       { _tag: 'Delay', name: 'Waiting to enter password', duration: Duration.seconds(0.25) },
@@ -212,16 +222,18 @@ describe('scrapingPlan', () => {
         },
       },
       // No submit Click: the captcha means the user completes the login, and
-      // the run parks on the dashboard settle for minutes, not seconds.
+      // the run parks on the OIDC callback *arriving* back on the portal host
+      // (the SPA then routes client-side, so a settle would be the wrong hold)
+      // for minutes, not seconds.
       {
-        _tag: 'AwaitPageSettled',
+        _tag: 'AwaitPageRequested',
         name: 'Waiting for you to solve the captcha and log in',
-        pattern: /:\/\/myvisit\.lifelabs\.com\/(?!login)/,
+        pattern: /:\/\/www\.on\.mycarecompass\.lifelabs\.com\//,
         timeout: Duration.minutes(5),
       },
       {
         _tag: 'Navigation',
-        name: 'Opening lab results',
+        name: 'Reopening lab results',
         action: {
           _tag: 'Open',
           source: { _tag: 'Uri', uri: 'https://www.on.mycarecompass.lifelabs.com/analytics' },
@@ -252,7 +264,7 @@ describe('scrapingPlan', () => {
     )
   })
 
-  it('only ever opens user-facing LifeLabs pages, never the API host', () => {
+  it('only ever opens the user-facing portal page, never the API or login host', () => {
     fc.assert(
       fc.property(Arbitrary.make(InstanceConfig), (config) => {
         const opened = scrapingPlan(config, FIXED_RUN_ID).stepSequence.flatMap((step) =>
@@ -262,7 +274,10 @@ describe('scrapingPlan', () => {
             ? [new URL(step.action.source.uri).host]
             : []
         )
-        expect(opened).toEqual(['myvisit.lifelabs.com', 'www.on.mycarecompass.lifelabs.com'])
+        expect(opened).toEqual([
+          'www.on.mycarecompass.lifelabs.com',
+          'www.on.mycarecompass.lifelabs.com',
+        ])
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )

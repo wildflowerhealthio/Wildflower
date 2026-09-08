@@ -35,8 +35,11 @@ resources directly from non-FHIR portal JSON — there is no FHIR dialect layer.
   coding `{ system: LIFELABS_TEST_SYSTEM, code: testCode, display: testName }`.
 - `subject` = `Patient/{selectedPatient}` (rewritten onto the derived local id
   by adoption).
-- `effectiveDateTime` = the .NET `/Date(ms±hhmm)/` `collectionDate` parsed to
-  the absolute UTC instant (the trailing offset is display-only).
+- `effectiveDateTime` = `collectionDate` parsed to the absolute UTC instant:
+  either a .NET `/Date(ms±hhmm)/` token (the trailing offset is display-only)
+  or an ISO 8601 string (offset-less read as UTC) — the portal's sibling report
+  endpoints serialize dates as ISO, so the analytic payload is not assumed to
+  differ.
 - value: a numeric `testResultValue` → a **unitless** `valueQuantity` (the
   source carries no unit — accepted as rare and reasonable), anything else →
   `valueString`.
@@ -81,8 +84,15 @@ or `slices/importer` (whose `har-importer-core` consumes
 ## Fixtures & open questions
 
 `src/fixtures/analytic-summary.json` is **synthesized from the ticket's payload
-notes, not a real captured payload**. Reconcile against a redacted real capture
-before relying on the decode end-to-end:
+notes, not a real captured payload**. An anonymized capture of the portal's
+_Reports_ page (no analytics page, so no `GetAnalyticSummary`) confirmed the
+response envelope, the API host and path shape, and the `patients[]` row shape
+(`Report/GetReportPatientList` returns the same rows), and showed the sibling
+endpoints using ISO dates. It also showed `Dashboard/GetMyReports` carrying a
+richer patient (`firstName`, `lastName`, `birthDate`, `gender`,
+`healthCardNo`) than the analytic summary's one display string — a possible
+follow-up source for the `Patient`. Reconcile the rest against a capture that
+includes the analytics page before relying on the decode end-to-end:
 
 - **Value units & result types** — the payload carries no unit and mixes numeric
   results with free-text notes; confirm the `valueQuantity`-vs-`valueString`

@@ -10,10 +10,11 @@ import { lifeLabsSource } from 'lifelabs-source'
 const { responseKinds } = lifeLabsSource
 
 /**
- * A myVisit username: any non-empty run of non-whitespace characters. Looser
- * than an email pattern on purpose — myVisit accepts an email *or* a plain
- * username, so validating for `@`/domain would reject valid logins. The value
- * is interpolated into a login `Fill`.
+ * A MyCareCompass username: any non-empty run of non-whitespace characters.
+ * Looser than an email pattern on purpose — the account carries an `email`,
+ * but the login form is a plain username field, so validating for `@`/domain
+ * would reject a login that works. The value is interpolated into a login
+ * `Fill`.
  */
 const usernamePattern = /^\S+$/
 
@@ -52,33 +53,43 @@ const defaultConfig: InstanceConfig = {
   password: 'your-password',
 }
 
-/** The user-facing myVisit login page the plan opens first. */
-const LOGIN_URL = 'https://myvisit.lifelabs.com/login'
-
 /**
  * The user-facing MyCareCompass analytics page whose load fires the
- * `GetAnalyticSummary` XHR. Ontario-only for v1 (the `on.` / `on-api.` hosts).
+ * `GetAnalyticSummary` XHR, and the plan's first `Open`: signed out, the SPA
+ * bounces it to the portal's own IdentityServer login (below). Ontario-only for
+ * v1 (the `on.` / `on-api.` hosts).
  */
 const ANALYTICS_URL = 'https://www.on.mycarecompass.lifelabs.com/analytics'
 
 /**
- * Login-form selectors (best-guess; a non-matching selector no-ops the `Fill`
- * and the user types the field). Reconcile against the real DOM. There is
- * deliberately no submit selector — see AGENTS.md § The captcha.
+ * The portal's IdentityServer login host, where the analytics `Open` lands
+ * when signed out. This is **not** `myvisit.lifelabs.com` — myVisit is
+ * LifeLabs' separate appointment-booking product, linked out to from the
+ * portal; a capture of the signed-in portal shows only this host's OIDC
+ * endpoints. See AGENTS.md § The captcha.
  */
-const USERNAME_SELECTOR = 'input[type="email"]'
-const PASSWORD_SELECTOR = 'input[type="password"]'
-
-/** Best-effort cap on the login page settling before the credential fills. */
-const LOGIN_PAGE_TIMEOUT = Duration.seconds(30)
+const LOGIN_PATTERN = /:\/\/login\.on\.mycarecompass\.lifelabs\.com\//
+const LOGIN_TIMEOUT = Duration.seconds(30)
 
 /**
- * The post-login myVisit dashboard: the `myvisit.lifelabs.com` host on any path
- * but `/login`. The run parks here through the user's captcha-and-login step.
- * See AGENTS.md § The captcha.
+ * Login-form selectors on the IdentityServer page (best-guess; a non-matching
+ * selector no-ops the `Fill` and the user types the field). The username
+ * selector is a list so it survives the field being an `email` input or a
+ * plain `Username` input. There is deliberately no submit selector — see
+ * AGENTS.md § The captcha.
  */
-const DASHBOARD_PATTERN = /:\/\/myvisit\.lifelabs\.com\/(?!login)/
-const LOGIN_TIMEOUT = Duration.minutes(5)
+const USERNAME_SELECTOR = 'input[type="email"], input[name="Username"], input[name="username"]'
+const PASSWORD_SELECTOR = 'input[type="password"]'
+
+/**
+ * Where the login returns to: any page on the signed-in portal host. The OIDC
+ * callback arrives here first and the SPA then routes client-side, so the hold
+ * is on the page *arriving* (`AwaitPageRequested`), not settling. The run
+ * parks here through the user's captcha-and-login step. See AGENTS.md § The
+ * captcha.
+ */
+const SIGNED_IN_PATTERN = /:\/\/www\.on\.mycarecompass\.lifelabs\.com\//
+const SIGN_IN_TIMEOUT = Duration.minutes(5)
 
 /** The analytics page itself (`www.on.` host, or a bare `on.` host defensively). */
 const ANALYTICS_SETTLED_PATTERN = /:\/\/(?:www\.)?on\.mycarecompass\.lifelabs\.com\/analytics/
@@ -95,9 +106,10 @@ const SETTLE = Duration.seconds(8)
 const captureProvenance = makeFhirProvenanceCapture('lifelabs')<FhirResource>
 
 /**
- * Build the LifeLabs scraping plan for a configured account: open the myVisit
- * login → autofill the credentials → hold for the user to solve the captcha
- * and log in → open the MyCareCompass analytics page and settle, only sniffing
+ * Build the LifeLabs scraping plan for a configured account: open the
+ * analytics page → get bounced to the portal's IdentityServer login → autofill
+ * the credentials → hold for the user to solve the captcha and log in → once
+ * back on the portal, open the analytics page again and settle, only sniffing
  * the XHR that page fires. See AGENTS.md § The captcha.
  */
 const scrapingPlan = (
@@ -109,19 +121,20 @@ const scrapingPlan = (
     responseKinds,
     captureProvenance,
     stepSequence: [
-      // First `Open` — brings the sniffer up.
+      // First `Open` — brings the sniffer up. Signed out, the SPA redirects to
+      // the IdentityServer login; signed in, this is already the results page.
       {
         _tag: 'Navigation',
-        name: 'Opening login page',
-        action: { _tag: 'Open', source: { _tag: 'Uri', uri: LOGIN_URL } },
+        name: 'Opening lab results',
+        action: { _tag: 'Open', source: { _tag: 'Uri', uri: ANALYTICS_URL } },
       },
-      // Pattern-less: the next settle after the `Open` above is the login page.
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for login page',
-        timeout: LOGIN_PAGE_TIMEOUT,
-        // Best-effort: a settle an SPA reaches before the form renders is still
-        // followed by the `Delay` below, so advance rather than abort.
+        pattern: LOGIN_PATTERN,
+        timeout: LOGIN_TIMEOUT,
+        // Best-effort: an already-authenticated session never reaches the
+        // login host, so advance into the (no-op) fills on timeout.
         continueOnTimeout: true,
       },
       { _tag: 'Delay', name: 'Waiting to enter username', duration: Duration.seconds(2) },
@@ -143,20 +156,21 @@ const scrapingPlan = (
         },
       },
       // No submit `Click`: the captcha means the *user* completes the login.
-      // Hold until myVisit lands on its dashboard (i.e. login succeeded).
+      // Hold until the login returns to the portal host (i.e. login succeeded).
       {
-        _tag: 'AwaitPageSettled',
+        _tag: 'AwaitPageRequested',
         name: 'Waiting for you to solve the captcha and log in',
-        pattern: DASHBOARD_PATTERN,
-        timeout: LOGIN_TIMEOUT,
+        pattern: SIGNED_IN_PATTERN,
+        timeout: SIGN_IN_TIMEOUT,
       },
+      // The callback lands on the dashboard, so open the results page again as
+      // a full navigation and give its GetAnalyticSummary XHR the trailing
+      // settle window.
       {
         _tag: 'Navigation',
-        name: 'Opening lab results',
+        name: 'Reopening lab results',
         action: { _tag: 'Open', source: { _tag: 'Uri', uri: ANALYTICS_URL } },
       },
-      // Hold until the analytics page itself has settled, then give its
-      // GetAnalyticSummary XHR the trailing settle window.
       {
         _tag: 'AwaitPageSettled',
         name: 'Waiting for lab results to settle',
@@ -178,7 +192,7 @@ const LifeLabsCollectorDescriptor = CollectorDescriptor.make({
   makeScrapingPlan: scrapingPlan,
   display: {
     title: 'LifeLabs',
-    description: 'Lab results from LifeLabs MyCareCompass (myvisit.lifelabs.com)',
+    description: 'Lab results from LifeLabs MyCareCompass (mycarecompass.lifelabs.com)',
     listSubtitle: (config) => config.username,
   },
   persistResources,
