@@ -34,7 +34,7 @@ type NamedKind = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>
  *   resource type so the seam is typed end-to-end rather than
  *   type-asserted at the cast.
  */
-interface Selection<TParsed> {
+interface Selection<TParsed = unknown> {
   /** The kind names enabled across the import; a kind absent here is disabled everywhere. */
   readonly enabledKinds: ReadonlySet<string>
   /** Per-response pick overrides, response id → chosen kind name. */
@@ -61,7 +61,7 @@ interface Selection<TParsed> {
  * top-specificity candidate and a fresh review writes what the reference
  * model would.
  */
-const initial = <TParsed>(pool: readonly NamedKind[]): Selection<TParsed> => ({
+const initial = <TParsed = unknown>(pool: readonly NamedKind[]): Selection<TParsed> => ({
   enabledKinds: new Set(pool.map((kind) => kind.name)),
   overrides: new Map(),
   excludedResources: new Set(),
@@ -226,7 +226,7 @@ const pickFor = <K extends NamedKind>(
  */
 const chosenCount = <K extends NamedKind>(
   recognized: readonly Extraction.RecognizedResponse<K>[],
-  selection: Selection<HttpResponseKind.HttpResponseKind<K>>
+  selection: Selection<unknown>
 ): number => recognized.filter((response) => Option.isSome(pickFor(response, selection))).length
 
 /**
