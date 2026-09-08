@@ -173,13 +173,13 @@ identical before and after the page lands and the effect never re-fires. Add
 `data.pages.length` to the dependencies — it is the one input guaranteed to
 change once per page. See the driver in `apps/medications-app/src/app.tsx`.
 
-### Windows Tauri release links need `advapi32.lib` because of `rathole`'s build script
+## Windows Tauri release links need `advapi32.lib` because of `rathole`'s build script
 
 **Discovered during**: claude/deploy-actions-failures-s75kxq (v0.2.0 Publish run)
 **Learning**: `rathole` 0.5's build script depends on `vergen` 7 → `git2` → `libgit2-sys` 0.14, whose build.rs links winhttp/rpcrt4/ole32/crypt32 but not advapi32; the pinned toolchain's std no longer pulls advapi32 in implicitly, so the build-script link dies with `LNK2019: unresolved external symbol __imp_OpenProcessToken` after ~20 min of compiling. Linux CI never sees it. `tauri-release-publish.yml` passes `-C link-arg=advapi32.lib` in the Windows matrix entry's `rustflags`; if a Windows machine hits the same error locally, set `RUSTFLAGS` the same way. It goes away once rathole drops vergen 7 / git2.
 **Suggested destination**: Rust docs
 
-### `tauri-action` picks npm when the lockfile is not inside `projectPath`
+## `tauri-action` picks npm when the lockfile is not inside `projectPath`
 
 **Discovered during**: claude/deploy-actions-failures-s75kxq
 **Learning**: tauri-action detects the package manager from a lockfile in `projectPath` (`apps/wildflower-tauri`), not the workspace root, so it ran `npm run tauri build`. Set `tauriScript: vp run tauri` — `vp run <script> <args>` forwards trailing args to the script, so `--target universal-apple-darwin` reaches the Tauri CLI.

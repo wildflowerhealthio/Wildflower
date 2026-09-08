@@ -26,7 +26,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Semver version to publish, no leading v. Leave blank to read from tauri.conf.json on the dispatched ref. Ignored when `tag` is set.'
+        description: 'Semver version to publish, no leading v. Must match tauri.conf.json on the dispatched ref; leave blank to read it from there. Ignored when `tag` is set.'
         required: false
         type: string
       tag:
@@ -109,12 +109,11 @@ jobs:
 
       - name: Resolve version and tag
         id: vars
-        # Rebuilding an existing tag: the version is the tag itself, and it
-        # must agree with the tauri.conf.json at that commit — that file is
-        # what the bundler stamps into the installers, so a mismatch would
-        # attach wrongly-versioned assets to the release. Otherwise prefer an
-        # explicit workflow_dispatch `version`; fall back to the version the
-        # Prepare workflow wrote into tauri.conf.json.
+        # tauri.conf.json at the checked-out commit is the source of truth:
+        # it is what the bundler stamps into the installers, so a version
+        # that disagrees with it would attach wrongly-versioned assets to the
+        # release. A rebuild `tag` or an explicit dispatch `version` is
+        # therefore an assertion that must match it, never an override.
         run: |
           set -euo pipefail
           rebuild_tag='${{ inputs.tag }}'
@@ -122,14 +121,17 @@ jobs:
           conf_version="$(jq -r '.version' apps/wildflower-tauri/src-tauri/tauri.conf.json)"
           if [[ -n "$rebuild_tag" ]]; then
             version="${rebuild_tag#v}"
-            if [[ "$version" != "$conf_version" ]]; then
-              echo "::error::Tag $rebuild_tag points at a commit whose tauri.conf.json says $conf_version."
-              exit 1
-            fi
+            source="tag $rebuild_tag"
           elif [[ -n "$input" ]]; then
             version="$input"
+            source="dispatch input version=$input"
           else
             version="$conf_version"
+            source="tauri.conf.json"
+          fi
+          if [[ "$version" != "$conf_version" ]]; then
+            echo "::error::$source says $version but tauri.conf.json at $(git rev-parse --short HEAD) says $conf_version."
+            exit 1
           fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Resolved version '$version' is not a valid semver."
