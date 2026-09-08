@@ -30,6 +30,7 @@
  */
 type LeafShape =
   | 'iso8601'
+  | 'dotNetDate'
   | 'jwt'
   | 'uuid'
   | 'email'
@@ -43,6 +44,11 @@ type LeafShape =
 
 const ISO_8601 =
   /^(\d{4})-(\d{2})-(\d{2})(?:([T ])(\d{2}):(\d{2})(?::(\d{2})(\.\d{1,6})?)?(Z|[+-]\d{2}:?\d{2})?)?$/
+// The `/Date(1779297900000-0400)/` token .NET's `DataContractJsonSerializer`
+// emits for a `DateTime`. Read as free text it would come out as
+// `/Uwbx(7233634345725-5592)/`, which no consumer's date regex matches; the
+// literal word and the offset are format, only the millis are data.
+const DOT_NET_DATE = /^\/Date\((-?\d+)([+-]\d{4})?\)\/$/
 const JWT = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*$/
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -75,6 +81,7 @@ const phoneDigitCount = (value: string): number => value.replace(/\D/g, '').leng
  */
 const detectShape = (value: string): LeafShape => {
   if (ISO_8601.test(value)) return 'iso8601'
+  if (DOT_NET_DATE.test(value)) return 'dotNetDate'
   if (JWT.test(value)) return 'jwt'
   if (UUID.test(value)) return 'uuid'
   if (EMAIL.test(value)) return 'email'
@@ -239,6 +246,20 @@ const fakeIso8601 = (prng: Prng, original: string): string => {
   return `${date}${dateTimeSeparator}${time}${seconds}${fraction}${parts[9] ?? ''}`
 }
 
+/**
+ * Rebuilds a .NET JSON date token around a fake instant, keeping the `/Date(`
+ * and `)/` literal and the original's offset suffix, when it had one.
+ *
+ * @remarks
+ * The offset is copied for the same reason an ISO 8601 designator is: `-0400`
+ * vs none tells a collector author whether the API emits local or UTC instants,
+ * and says nothing about a person.
+ */
+const fakeDotNetDate = (prng: Prng, original: string): string => {
+  const offset = DOT_NET_DATE.exec(original)?.[2] ?? ''
+  return `/Date(${fakeInstant(prng)}${offset})/`
+}
+
 /** A v4-shaped UUID, matching the original's hex case. */
 const fakeUuid = (prng: Prng, original: string): string => {
   const hex = (length: number): string => Array.from({ length }, () => pick(prng, HEX)).join('')
@@ -272,6 +293,7 @@ const fakeEpochMillis = (prng: Prng): string => String(fakeInstant(prng))
 
 const generators: Record<LeafShape, (prng: Prng, original: string) => string> = {
   iso8601: fakeIso8601,
+  dotNetDate: fakeDotNetDate,
   // A JWT's fake is assembled by the engine, which pseudonymizes the payload
   // claims through the same value table so identifiers inside a token still
   // join with identifiers outside it. This entry covers a token whose segments

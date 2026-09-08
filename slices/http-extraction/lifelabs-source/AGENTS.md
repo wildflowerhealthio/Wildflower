@@ -207,11 +207,11 @@ Researched against LOINC from the analytics capture's `testItemId`s
   `valueString` — which is faithful to the portal, if noisy; folding it into
   `effectiveDateTime` is a possible follow-up.
 - **Province** — the API host is Ontario-only for v1.
-- **Anonymizer artefacts** — the anonymizer rewrites the `/Date(` literal
-  itself (`/Uwbx(…)/`), so an anonymized capture decodes with no
-  `effectiveDateTime` and undated ids; that is the fixture pipeline's problem,
-  not this decode's. It also leaves base64 URL path segments unscrambled while
-  scrambling the same ids in the body.
+- **Anonymizer artefacts** — captures anonymized before #630 have the
+  `/Date(` literal itself rewritten (`/Uwbx(…)/`), so they decode with no
+  `effectiveDateTime` and undated ids; re-anonymize from the original rather
+  than working around it here. The anonymizer still leaves base64 URL path
+  segments unscrambled while scrambling the same ids in the body.
 
 ## References
 

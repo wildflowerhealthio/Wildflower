@@ -182,5 +182,27 @@ change once per page. See the driver in `apps/medications-app/src/app.tsx`.
 ## An anonymized HAR can hide a decode bug or invent one
 
 **Discovered during**: claude/lifelabs-collector-rebase-whrbka (LifeLabs, PR #628)
-**Learning**: Before concluding a source's decode is wrong from an anonymized capture, check what the anonymizer did to the literal you're matching. It scrambles words inside string values, so a .NET `/Date(1779297900000-0400)/` token comes out as `/Uwbx(7233634345725-5592)/` and every date-dependent field silently vanishes — the real payload is fine. Conversely it leaves base64-looking URL path segments alone while scrambling the same value in the body, so an id you can only see in a URL (here `testItemId`, base64 of `<testCode>__<LOINC>;`) is real and worth decoding. Run the capture through `decodeHar` + `runExtraction` as a throwaway test to see what the importer actually produces; unmatched-URL counts tell you which page the user was on.
+**Learning**: Before concluding a source's decode is wrong from an anonymized capture, check what the anonymizer did to the literal you're matching (the `/Date(` case below was fixed in #630 by giving the token its own shape; the pattern recurs for any other literal a parser keys on). Conversely it leaves base64-looking URL path segments alone while scrambling the same value in the body, so an id you can only see in a URL (here `testItemId`, base64 of `<testCode>__<LOINC>;`) is real and worth decoding. Run the capture through `decodeHar` + `runExtraction` as a throwaway test to see what the importer actually produces; unmatched-URL counts tell you which page the user was on.
 **Suggested destination**: Strategies (Debugging with captures)
+
+## A `freeText` pseudonym breaks any consumer that parses the value with a regex
+
+The anonymizer's `freeText` fallback rewrites every letter and digit, so a
+value with a literal keyword inside it (`/Date(1779297900000-0400)/`) comes
+out as `/Uwbx(7233634345725-5592)/` and a downstream `collectionMillis`-style
+regex silently stops matching — the real payload decodes, only the anonymized
+fixture is broken. When a source's parser matches a token by pattern, give
+that token its own leaf shape in `har-importer-core`'s `shapes.ts` that keeps
+the literal and fakes only the data part.
+
+## Windows Tauri release links need `advapi32.lib` because of `rathole`'s build script
+
+**Discovered during**: claude/deploy-actions-failures-s75kxq (v0.2.0 Publish run)
+**Learning**: `rathole` 0.5's build script depends on `vergen` 7 → `git2` → `libgit2-sys` 0.14, whose build.rs links winhttp/rpcrt4/ole32/crypt32 but not advapi32; the pinned toolchain's std no longer pulls advapi32 in implicitly, so the build-script link dies with `LNK2019: unresolved external symbol __imp_OpenProcessToken` after ~20 min of compiling. Linux CI never sees it. `tauri-release-publish.yml` passes `-C link-arg=advapi32.lib` in the Windows matrix entry's `rustflags`; if a Windows machine hits the same error locally, set `RUSTFLAGS` the same way. It goes away once rathole drops vergen 7 / git2.
+**Suggested destination**: Rust docs
+
+## `tauri-action` picks npm when the lockfile is not inside `projectPath`
+
+**Discovered during**: claude/deploy-actions-failures-s75kxq
+**Learning**: tauri-action detects the package manager from a lockfile in `projectPath` (`apps/wildflower-tauri`), not the workspace root, so it ran `npm run tauri build`. Set `tauriScript: vp run tauri` — `vp run <script> <args>` forwards trailing args to the script, so `--target universal-apple-darwin` reaches the Tauri CLI.
+**Suggested destination**: Strategies
