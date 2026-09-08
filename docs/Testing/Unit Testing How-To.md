@@ -126,7 +126,7 @@ What each helper collapses, and when to reach for it:
 - `expectToMultisetEqual(a, b)` — sorts both arrays before `toEqual` so order is incidental. Use when the assertion is "these elements, ignoring order".
 - `expectRightToEqual(either, expected)` / `expectLeftToEqual(either, expected)` — collapse the `Either.isRight(x) && expect(x.right).toEqual(…)` ladder into one expression. The `expected` argument is `unknown` so asymmetric matchers (`expect.objectContaining(…)`, `expect.any(Function)`, …) compose.
 
-The factory takes any `expect`-shaped function — Vitest's `expect`, Jest's `expect`, or any structural fit. Build the helpers once at module scope per test file.
+The factory takes any `expect`-shaped function — Vitest's `expect` or any structural fit. Build the helpers once at module scope per test file.
 
 ## MECE Test Structure
 

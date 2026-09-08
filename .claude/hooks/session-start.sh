@@ -12,7 +12,11 @@ if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
 fi
 
-cd "$CLAUDE_PROJECT_DIR"
+# The SessionStart hook always exports CLAUDE_PROJECT_DIR; guard it anyway so a
+# misconfigured invocation fails loud instead of `cd`-ing to $HOME under set -u
+# and running the install against the wrong tree (the failure mode that bit the
+# cloud Setup script — see .devcontainer/cloud-setup-script.sh).
+cd "${CLAUDE_PROJECT_DIR:?CLAUDE_PROJECT_DIR is unset — cannot locate the workspace}"
 
 export PNPM_HOME="${PNPM_HOME:-$HOME/.local/share/pnpm}"
 case ":$PATH:" in
@@ -26,8 +30,13 @@ if ! node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 26 ? 0
 fi
 
 # 2. Global vp + the helpers postCreateCommand.sh installs alongside it.
+#    Pin vite-plus to the workspace catalog's version (pnpm-workspace.yaml
+#    `vite-plus:`) — an unpinned `vite-plus` drifts to the newest release
+#    (a cloud box pulled 0.3.1 while the workspace holds 0.3.0), whose bundled
+#    vitest peer-warns against the aliased vite. Keep this in sync on every
+#    vite-plus bump, alongside the overrides in the root package.json.
 if ! command -v vp >/dev/null 2>&1; then
-  pnpm install -g vite-plus @typescript/native-preview @tsdown/css
+  pnpm install -g vite-plus@0.3.0 @typescript/native-preview @tsdown/css
 fi
 
 # 3. Workspace dependencies (idempotent; fast when node_modules is current).

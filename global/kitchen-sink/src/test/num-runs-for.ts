@@ -42,45 +42,27 @@ const vitestTestPath = (): unknown =>
   // identifier never appears as a property reference in our source.
   readProp(readProp(globalThis, '__vitest_worker__'), 'filepath')
 
-/** Jest's running test file, via the global `expect`'s state. */
-const jestTestPath = (): unknown => {
-  const getState = readProp(readProp(globalThis, 'expect'), 'getState')
-  if (typeof getState !== 'function') return undefined
-  return readProp(getState(), 'testPath')
-}
-
 /**
- * The path of the test file the current runner is executing, read from
- * runner-provided globals rather than an imported `expect`.
+ * The path of the test file Vitest is executing, read from the worker global
+ * rather than an imported `expect`.
  *
- * Two runners are served, and the path is read from `globalThis` for each so
- * this module pulls in neither `vite-plus/test` (whose CommonJS entry eagerly
- * requires Vitest and throws under Jest) nor the ESM-only `import.meta` syntax
- * (which Jest's Babel transform rejects at parse time). That matters because
- * the `kitchen-sink/test` barrel re-exports `numRunsFor`, so an Expo (Jest)
- * test importing anything from that barrel transitively loads this module.
+ * Reading from `globalThis` keeps this module free of a static dependency on
+ * `vite-plus/test` (whose CommonJS entry eagerly requires the runner) and of
+ * the ESM-only `import.meta` syntax, so it loads unchanged whether emitted as
+ * ESM or bundled to CommonJS — the `kitchen-sink/test` barrel re-exports
+ * `numRunsFor`, so this module is pulled in wherever that barrel is imported.
  *
- * - **Vitest** populates `globalThis.__vitest_worker__.filepath`, the same
- *   source of truth as `expect.getState().testPath` (verified equal) but
- *   available without the `globals: true` option this repo does not set.
- * - **Jest** exposes a global `expect`, whose `getState().testPath` is the
- *   running test file.
+ * Vitest populates `globalThis.__vitest_worker__.filepath` — the same source of
+ * truth as `expect.getState().testPath` (verified equal) but available without
+ * the `globals: true` option this repo does not set.
  *
  * Unlike the stack walk, this signal is the file *under test*, not merely the
  * first non-internal caller — so it stays correct even if a future shared
  * in-repo helper (outside this module) wraps `numRunsFor` on behalf of other
  * packages. Reads are fully guarded so any unexpected shape falls back to the
- * stack walk rather than throwing.
+ * stack walk rather than returning a bad path.
  */
-const runnerTestPath = (): Option.Option<string> =>
-  pipe(
-    Either.try({
-      try: (): unknown => Option.getOrElse(nonEmptyString(vitestTestPath()), () => jestTestPath()),
-      catch: () => undefined,
-    }),
-    Either.getRight,
-    Option.flatMap(nonEmptyString)
-  )
+const runnerTestPath = (): Option.Option<string> => nonEmptyString(vitestTestPath())
 
 /**
  * Extract a filesystem path from a single V8 stack frame line, dropping the
@@ -122,10 +104,10 @@ const topFramePath = (stack: string | undefined): string => {
  * Absolute path of this module, used to skip its own stack frames.
  *
  * Captured once at module load from the top frame of a fresh stack — that
- * frame is this very file (under a bundler, the emitted bundle). This avoids
- * the ESM-only `import.meta` syntax, which Jest's Babel transform rejects at
- * parse time when an Expo (Jest) test transitively loads this module through
- * the `kitchen-sink/test` barrel.
+ * frame is this very file (under a bundler, the emitted bundle). Deriving it
+ * from the stack rather than the ESM-only `import.meta.url` keeps this module
+ * loadable whether it is emitted as ESM or bundled to CommonJS through the
+ * `kitchen-sink/test` barrel.
  */
 const selfFile = topFramePath(new Error('numRunsFor self probe').stack)
 

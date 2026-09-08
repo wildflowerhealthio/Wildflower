@@ -43,7 +43,12 @@ esac
 BASHRC_EOF
 fi
 
-pnpm install -g vite-plus
+# Pin vite-plus to the workspace catalog's version (pnpm-workspace.yaml
+# `vite-plus:`) so the global bootstrap vp matches the pinned workspace-local
+# vp — unpinned, it drifts to newer releases and peer-warns. Keep in sync on
+# every vite-plus bump (same as .claude/hooks/session-start.sh and the root
+# package.json overrides).
+pnpm install -g vite-plus@0.3.0
 pnpm install -g @typescript/native-preview
 pnpm install -g @tsdown/css
 vp install

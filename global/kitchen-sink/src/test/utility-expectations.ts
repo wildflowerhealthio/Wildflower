@@ -1,9 +1,9 @@
 import type { Either } from 'effect'
 
 /**
- * Minimal subset of an `expect` matcher chain — the two members below
- * exist on both Vitest's and Jest's `expect`, so the surrounding
- * {@link Expect} type accepts either framework structurally.
+ * Minimal subset of an `expect` matcher chain — just the two members the
+ * surrounding {@link Expect} type needs. The type is structural, so it accepts
+ * Vitest's `expect` or any other shape-compatible surface.
  */
 interface ExpectMatchers {
   readonly toBe: (expected: unknown) => unknown
@@ -13,8 +13,8 @@ interface ExpectMatchers {
 /**
  * Minimal call signature of `expect` itself — both the function-call form
  * and the `expect.objectContaining` asymmetric-matcher constructor we use
- * to tolerate Effect's prototype-resident `_tag` field. Vitest and Jest
- * both expose this shape.
+ * to tolerate Effect's prototype-resident `_tag` field. Vitest's `expect`
+ * exposes this shape.
  */
 type Expect = ((actual: unknown) => ExpectMatchers) & {
   readonly objectContaining: (spec: Record<string, unknown>) => unknown
@@ -59,8 +59,8 @@ interface UtilityExpectations {
 /**
  * Build a small set of reusable expectation helpers parameterized by
  * the test framework's `expect`. Pass `expect` from `vite-plus/test`
- * (Vitest), `@jest/globals` (Jest), or any other shape-compatible
- * surface; the structural type accepts each.
+ * (Vitest) or any other shape-compatible surface; the structural type
+ * accepts each.
  *
  * The helpers exist because the underlying patterns are hard to read
  * spelled out at every call site:
