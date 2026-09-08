@@ -8,11 +8,17 @@ name: Tauri Release — Publish
 # to a GitHub Release created as a draft prerelease — publish it manually once
 # the assets look right.
 #
-# Also exposes `workflow_dispatch` as a manual re-run for the case where the
-# PR merged but this workflow needed to be re-triggered (e.g. a runner outage
-# ate the original run). The tag step is idempotent: if the tag already exists
-# on the target commit the workflow proceeds to the build; if it exists on a
-# different commit the workflow fails so you can decide what to do.
+# Also exposes `workflow_dispatch` for two manual cases:
+#   - Re-trigger a merge that never ran (e.g. a runner outage ate the original
+#     run): dispatch from the merged branch, leave `tag` blank. The tag step is
+#     idempotent: if the tag already exists on the target commit the workflow
+#     proceeds to the build; if it exists on a different commit the workflow
+#     fails so you can decide what to do.
+#   - Rebuild an already-tagged release: set `tag` (e.g. `v0.2.0`). The build
+#     checks out that tag as-is, never re-tags, and re-uploads the bundles to
+#     the tag's existing draft release (tauri-action replaces same-named
+#     assets). `platforms` narrows the fan-out so a single failed runner can
+#     be rebuilt without repeating the ones that already succeeded.
 
 on:
   pull_request:
@@ -20,9 +26,19 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Semver version to publish, no leading v. Leave blank to read from tauri.conf.json on the dispatched ref.'
+        description: 'Semver version to publish, no leading v. Leave blank to read from tauri.conf.json on the dispatched ref. Ignored when `tag` is set.'
         required: false
         type: string
+      tag:
+        description: 'Rebuild an existing tag (e.g. v0.2.0): check it out as-is, skip tagging, re-upload its bundles. Leave blank to tag the dispatched ref.'
+        required: false
+        type: string
+      platforms:
+        description: 'Which platform builds to run.'
+        required: false
+        default: all
+        type: choice
+        options: [all, macos, windows, linux]
 
 # One publish at a time. Never cancel a build midway: partial artifacts on a
 # draft release are worse than waiting for the previous run to finish.
@@ -50,6 +66,7 @@ jobs:
       tag: ${{ steps.vars.outputs.tag }}
       sha: ${{ steps.vars.outputs.sha }}
       release_body: ${{ steps.notes.outputs.body }}
+      matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
       - name: Resolve target ref
         id: target
@@ -58,12 +75,28 @@ jobs:
         # merge / squash / rebase — once `merged == true`). Checking out the
         # base branch by name would race any commit that lands there between
         # the PR merging and this workflow starting, and we'd tag the wrong
-        # commit. workflow_dispatch: tag whatever ref the workflow was
-        # dispatched from.
+        # commit. workflow_dispatch with `tag`: build the existing tag itself,
+        # after confirming it is on origin (a typo must fail here, not as an
+        # opaque checkout error). workflow_dispatch without `tag`: tag
+        # whatever ref the workflow was dispatched from.
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
+          rebuild_tag='${{ inputs.tag }}'
           if [[ '${{ github.event_name }}' == 'pull_request' ]]; then
             echo "ref=${{ github.event.pull_request.merge_commit_sha }}" >> "$GITHUB_OUTPUT"
+          elif [[ -n "$rebuild_tag" ]]; then
+            if [[ ! "$rebuild_tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+              echo "::error::tag '$rebuild_tag' is not of the form vX.Y.Z or vX.Y.Z-prerelease."
+              exit 1
+            fi
+            # No checkout yet at this point, so ask the API rather than git.
+            if ! gh api "repos/${{ github.repository }}/git/ref/tags/$rebuild_tag" --silent; then
+              echo "::error::Tag $rebuild_tag does not exist on origin. Leave 'tag' blank to cut a new one."
+              exit 1
+            fi
+            echo "ref=refs/tags/$rebuild_tag" >> "$GITHUB_OUTPUT"
           else
             echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
@@ -76,15 +109,27 @@ jobs:
 
       - name: Resolve version and tag
         id: vars
-        # Prefer an explicit workflow_dispatch input; fall back to the version
-        # written into tauri.conf.json by the Prepare workflow.
+        # Rebuilding an existing tag: the version is the tag itself, and it
+        # must agree with the tauri.conf.json at that commit — that file is
+        # what the bundler stamps into the installers, so a mismatch would
+        # attach wrongly-versioned assets to the release. Otherwise prefer an
+        # explicit workflow_dispatch `version`; fall back to the version the
+        # Prepare workflow wrote into tauri.conf.json.
         run: |
           set -euo pipefail
+          rebuild_tag='${{ inputs.tag }}'
           input='${{ inputs.version }}'
-          if [[ -n "$input" ]]; then
+          conf_version="$(jq -r '.version' apps/wildflower-tauri/src-tauri/tauri.conf.json)"
+          if [[ -n "$rebuild_tag" ]]; then
+            version="${rebuild_tag#v}"
+            if [[ "$version" != "$conf_version" ]]; then
+              echo "::error::Tag $rebuild_tag points at a commit whose tauri.conf.json says $conf_version."
+              exit 1
+            fi
+          elif [[ -n "$input" ]]; then
             version="$input"
           else
-            version="$(jq -r '.version' apps/wildflower-tauri/src-tauri/tauri.conf.json)"
+            version="$conf_version"
           fi
           if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
             echo "::error::Resolved version '$version' is not a valid semver."
@@ -96,9 +141,13 @@ jobs:
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
 
       - name: Tag and push (idempotent)
-        # If the tag already points at this commit we treat it as a re-run and
-        # move on. If it points at a different commit we bail out so a human
-        # can decide (delete the tag, cut a new version, etc.).
+        # Skipped outright on a tag rebuild: the checkout above is the tag, so
+        # there is nothing to push, and never re-pointing an existing tag is
+        # the whole point of that mode. Otherwise: if the tag already points
+        # at this commit we treat it as a re-run and move on; if it points at
+        # a different commit we bail out so a human can decide (delete the
+        # tag, cut a new version, etc.).
+        if: ${{ !inputs.tag }}
         run: |
           set -euo pipefail
           tag='${{ steps.vars.outputs.tag }}'
@@ -151,26 +200,50 @@ jobs:
             echo 'CHANGENOTES_EOF'
           } >> "$GITHUB_OUTPUT"
 
+      - name: Select platform matrix
+        id: matrix
+        # The build fan-out lives here (not as a static `strategy.matrix`) so
+        # the `platforms` dispatch input can narrow it: a rebuild of one
+        # failed runner shouldn't redo the ~50 min builds that succeeded. PR
+        # events and `all` keep every platform.
+        #
+        # `rustflags` feeds setup-rust-toolchain (default `-D warnings`).
+        # Windows adds `advapi32.lib` to every link: `rathole`'s build script
+        # (via libgit2-sys 0.14) needs it and doesn't link it itself — see
+        # "Windows Tauri release links need advapi32.lib" in
+        # docs/Agents/Learnings Inbox.md.
+        run: |
+          set -euo pipefail
+          platforms='${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}'
+          jq -c -n --arg platforms "$platforms" '
+            {
+              include: [
+                { key: "macos",   name: "macOS (universal)", os: "macos-latest",
+                  args: "--target universal-apple-darwin",
+                  "rust-targets": "x86_64-apple-darwin,aarch64-apple-darwin",
+                  rustflags: "-D warnings" },
+                { key: "windows", name: "Windows", os: "windows-latest",
+                  args: "", "rust-targets": "",
+                  rustflags: "-D warnings -C link-arg=advapi32.lib" },
+                { key: "linux",   name: "Linux", os: "ubuntu-22.04",
+                  args: "", "rust-targets": "",
+                  rustflags: "-D warnings" }
+              ] | map(select($platforms == "all" or .key == $platforms))
+            }' > /tmp/matrix.json
+          if [[ "$(jq '.include | length' /tmp/matrix.json)" == 0 ]]; then
+            echo "::error::platforms='$platforms' selected no build."
+            exit 1
+          fi
+          echo "matrix=$(cat /tmp/matrix.json)" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build ${{ matrix.name }}
     needs: prepare
     strategy:
       # One platform failing shouldn't kill the others' draft-release uploads.
       fail-fast: false
-      matrix:
-        include:
-          - name: macOS (universal)
-            os: macos-latest
-            args: '--target universal-apple-darwin'
-            rust-targets: 'x86_64-apple-darwin,aarch64-apple-darwin'
-          - name: Windows
-            os: windows-latest
-            args: ''
-            rust-targets: ''
-          - name: Linux
-            os: ubuntu-22.04
-            args: ''
-            rust-targets: ''
+      # Built by the prepare job's "Select platform matrix" step.
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -193,23 +266,21 @@ jobs:
         with:
           # Extra macOS targets for the universal binary; empty on other OSes.
           target: ${{ matrix.rust-targets }}
+          rustflags: ${{ matrix.rustflags }}
           cache-shared-key: tauri-release-${{ matrix.os }}
 
-      - name: Set up Node
-        uses: actions/setup-node@v7
+      # Vite+ owns the toolchain (Node + package manager + `vp`), same as
+      # every other workflow here — no separate setup-node / corepack / pnpm.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.19.0
         with:
-          node-version: '26'
-
-      - name: Enable pnpm
-        run: |
-          corepack enable
-          corepack prepare pnpm@10.33.0 --activate
+          cache: true
 
       - name: Install workspace dependencies
-        # `pnpm install` runs the browser-sniffer-tauri `prepare` hook, which
+        # `vp install` runs the browser-sniffer-tauri `prepare` hook, which
         # regenerates the tauri-bootstrap JS bundle that
         # browser-sniffer-tauri-rust `include_str!`s at compile time.
-        run: pnpm install --frozen-lockfile
+        run: vp install
 
       - name: Build workspace (vp run pack)
         # `wildflower-tauri` bundles the workspace-built webviews:
@@ -218,7 +289,7 @@ jobs:
         #   - `apps/wildflower-tauri/dist` is the Tauri `frontendDist`.
         # `vp run pack` builds every package in dependency order and is the
         # single command the project's own release checklist uses.
-        run: pnpm exec vp run pack
+        run: vp run pack
 
       - name: Build and release with tauri-action
         uses: tauri-apps/tauri-action@v1
@@ -229,6 +300,10 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Apple notarization + signing (macOS runner only; empty elsewhere
           # is harmless, tauri-action just skips notarization).
+          # APPLE_SIGNING_IDENTITY must name a "Developer ID Application"
+          # certificate contained in APPLE_CERTIFICATE; an "Apple Development"
+          # cert (or a name that doesn't match the imported cert) fails the
+          # bundle step with "failed to resolve signing identity".
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -237,6 +312,13 @@ jobs:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         with:
           projectPath: apps/wildflower-tauri
+          # tauri-action detects the package manager from a lockfile inside
+          # `projectPath`; there is none there (pnpm-lock.yaml is at the
+          # workspace root), so it fell back to `npm run tauri`. Drive the
+          # CLI through Vite+ instead — `vp run tauri` forwards the trailing
+          # `build …` args to the `tauri` script, the same command a
+          # contributor runs locally.
+          tauriScript: vp run tauri
           tagName: ${{ needs.prepare.outputs.tag }}
           releaseName: 'Wildflower ${{ needs.prepare.outputs.tag }}'
           releaseBody: ${{ needs.prepare.outputs.release_body }}

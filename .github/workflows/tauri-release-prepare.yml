@@ -191,6 +191,26 @@ jobs:
           # Save the raw commit list for the PR-body step below.
           cp "$notes" /tmp/release-commits.md
 
+      # The generated files must already satisfy `vp check`, or the merged
+      # release PR turns `main` red for every PR after it (v0.2.0 did: commit
+      # subjects with doubled spaces were copied verbatim into CHANGELOG.md and
+      # oxfmt's markdown pass rejected them). Format with the workspace's own
+      # formatter rather than hand-sanitising subjects, so whatever oxfmt wants
+      # is what lands.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.19.0
+        with:
+          cache: true
+
+      - name: Format generated files
+        run: |
+          set -euo pipefail
+          vp install
+          vp fmt \
+            apps/wildflower-tauri/CHANGELOG.md \
+            apps/marketing-website/public/versions.json
+          vp run lint:docs
+
       - name: Create release branch, commit and push
         run: |
           set -euo pipefail
