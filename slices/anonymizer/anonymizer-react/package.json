@@ -1,0 +1,59 @@
+{
+  "name": "anonymizer-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The anonymizer shell: the AnonymizerScreen a host app mounts — one local file picker, best-effort identification of the picked file against the closed format registry (HAR today), and the routed format panel. Client-side end to end: identify, decode, review, blob download. An optional serverSource render-slot lets a host offer server-held archives without this package speaking to any server. Issues no writes.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/anonymizer/anonymizer-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "anonymizer-fundamentals": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "har-anonymizer-core": "workspace:*",
+    "har-anonymizer-react": "workspace:*",
+    "har-importer-core": "workspace:*",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "web-trace-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "anonymizer-fundamentals": "workspace:*",
+    "effect": "catalog:",
+    "har-anonymizer-core": "workspace:*",
+    "har-anonymizer-react": "workspace:*",
+    "react": "catalog:",
+    "react-tundraish": "workspace:*"
+  }
+}

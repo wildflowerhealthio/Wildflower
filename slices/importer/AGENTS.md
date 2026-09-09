@@ -29,20 +29,17 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
   `HarSettingsPicker` (a no-op today) and the interactive per-URL `ReviewBody`,
   presentation over the pure `Review` model.
-- **[`har-anonymizer-react`](./har-anonymizer-react/AGENTS.md)** (the HAR
-  anonymize UI) — `AnonymizePanel`, the surface that reviews the
-  pseudonymizer's decisions over a parsed `HttpArchive.Log` and downloads an
-  anonymized `.har`. Drives `har-importer-core/anonymizer`'s HAR-native
-  `redactLog` and the emitter; presentation and interaction only.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
-  `AnonymizerScreen`, the read-only pick-parse-download flow mounted alongside
-  it (`har-anonymizer-react`'s `AnonymizePanel` over a parsed `HttpArchive.Log`),
-  plus the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry.
+  the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry,
+  plus `ServerHarArchiveList`, the uploaded-archives pick source the anonymizer
+  slice's shell takes through its `serverSource` slot.
 
 A host that provides the FHIR write client and the authed runner sits above
-`importer-react` and mounts `ImporterScreen` and/or `AnonymizerScreen` — the
-Importer web app pairs both under one Import | Anonymize tabstrip.
+`importer-react` and mounts `ImporterScreen` — the Importer web app pairs it
+with the anonymizer slice's `AnonymizerScreen`
+([slices/anonymizer](../anonymizer/AGENTS.md), home of the HAR anonymizer's
+engine and panel) under one Import | Anonymize tabstrip.
 
 ## Why this slice is layered this way
 

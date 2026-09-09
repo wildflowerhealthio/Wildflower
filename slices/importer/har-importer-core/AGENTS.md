@@ -62,7 +62,7 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   and broke `lifelabs-source`'s date parse — so add a leaf shape before loosening
   `freeText`, and extend the example table in `shapes.test.ts` when you touch a
   pattern. `redact.ts` is the policy and the derivation loop; `leaves.ts` the
-  traversal. See [Anonymization Explanation](./docs/Anonymization%20Explanation.md).
+  traversal. See [Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md).
 - `src/har-settings.ts` — **`HarSettings`**, an empty record. A HAR archive has no
   user-tunable knobs today; the seam is present (`defaultSettings`, a no-op
   `SettingsPicker` in the React package) so a future format with real settings

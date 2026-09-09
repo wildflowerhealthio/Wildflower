@@ -15,7 +15,6 @@
  *
  * @packageDocumentation
  */
-export { AnonymizerScreen, HAR_PARSE_ERROR } from './anonymizer-screen.tsx'
 export { ImporterScreen, READING_MESSAGE } from './importer-screen.tsx'
 export {
   NOTHING_TO_IMPORT_HEADING,
@@ -83,9 +82,13 @@ export {
 } from './sources/picked-har.ts'
 export {
   SERVER_READ_ERROR,
+  ServerHarArchiveList,
+  type ServerHarArchiveListProps,
+  UNDATED_LABEL,
+  UNTITLED_LABEL,
+} from './sources/server-har-archive-list.tsx'
+export {
   SourcePicker,
   type SourcePickerMode,
   type SourcePickerProps,
-  UNDATED_LABEL,
-  UNTITLED_LABEL,
 } from './sources/source-picker.tsx'

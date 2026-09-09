@@ -181,9 +181,8 @@ describe('ImporterApp', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Anonymize' }))
 
     // Assert — the subtitle updates, the anonymize picker is up, and the
-    // ImporterScreen's `<div class="screen">` is no longer in the tree (the two
-    // screens' surfaces are disjoint — the picker's `HAR source` region carries
-    // over into anonymize; the identifying anchor is the tab-specific subtitle).
+    // ImporterScreen's `<div class="screen">` is no longer in the tree (the
+    // identifying anchor is the tab-specific subtitle).
     expect(
       await screen.findByText(
         'Replace every value in a capture with a pseudonym so its shape can be shared.'
@@ -215,8 +214,12 @@ describe('ImporterApp', () => {
     mount({})
     await userEvent.click(await screen.findByRole('button', { name: 'Anonymize' }))
 
-    // Act — pick a recognized HAR through the Anonymize tab's picker
-    await userEvent.upload(await screen.findByLabelText('HAR file'), harFile('portal-session.har'))
+    // Act — pick a recognized HAR through the Anonymize tab's own picker (the
+    // anonymizer shell's format-blind input, not the importer's HAR picker)
+    await userEvent.upload(
+      await screen.findByLabelText('File to anonymize'),
+      harFile('portal-session.har')
+    )
 
     // Assert — the anonymize panel is up and offers the download; the whole
     // preview + settings + blob download flow is client-side, so NOT ONE write
