@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { DateTime, Effect, Exit, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { HttpArchive } from '../har/index.ts'
+import { HttpArchive } from 'har-importer-core/har'
 import { mintExportSalt } from './hmac.ts'
 import { mapEntryLeaves, type LeafVisitor } from './leaves.ts'
 import { buildPolicyForLog, redactLog } from './redact.ts'
@@ -15,13 +15,13 @@ import { buildPolicyForLog, redactLog } from './redact.ts'
 // branch, the loop ran out of attempts and failed the whole anonymize with
 // a PseudonymSpaceExhausted on a value that carries nothing to redact.
 //
-// The user-supplied HAR (../../test-fixtures/readme-httpbin.har.json) is
+// The user-supplied HAR (../test-fixtures/readme-httpbin.har.json) is
 // the on-the-wire reproduction: a ReadMe-emitted archive of a POST to
 // httpbin.org whose response headers carry the Accept wildcard. The
 // synthetic fixture pins the exact HAR shape and lets the tests describe
 // the failure without a file.
 const readmeHarFixture = readFileSync(
-  new URL('../../test-fixtures/readme-httpbin.har.json', import.meta.url),
+  new URL('../test-fixtures/readme-httpbin.har.json', import.meta.url),
   'utf8'
 )
 

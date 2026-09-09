@@ -1,10 +1,9 @@
-import { Array as Arr, DateTime, Effect } from 'effect'
-import { useRunAuthed } from 'fhir-r4-react'
+import { Array as Arr, Effect } from 'effect'
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 
-import { fetchHarArchive, useHarArchivesQuery } from '../queries/har-archives.ts'
 import { acceptLocalHar, type ReadableFile } from './local-har.ts'
 import type { PickedHar } from './picked-har.ts'
+import { ServerHarArchiveList } from './server-har-archive-list.tsx'
 import styles from './source-picker.module.css'
 
 /**
@@ -18,8 +17,9 @@ import styles from './source-picker.module.css'
  * for a screen reader. A local file — dropped or chosen — is validated through
  * `web-trace-core`'s HAR parser at the picker, so a file that is not a HAR is
  * rejected *here*, next to the control the user just used, rather than surfacing
- * as a failure downstream. A server pick fetches the chosen archive and decodes
- * it through the archive codec; the resulting pick carries the archive's own
+ * as a failure downstream. The server picks come from
+ * {@link ServerHarArchiveList}, which fetches the chosen archive and decodes it
+ * through the archive codec; the resulting pick carries the archive's own
  * reference so a later step links provenance without re-uploading the bytes.
  *
  * Presentation and interaction only. Nothing here parses HAR or encodes an
@@ -35,9 +35,9 @@ import styles from './source-picker.module.css'
  * The picker offers the same three sources either way — dropped, chosen through
  * the OS picker, uploaded to the FHIR server — and clamps a local batch to the
  * mode. `'batch'` (the default) is the importer flow: several HARs previewed and
- * confirmed together. `'single'` is the anonymize flow: the preview is per
- * archive, so a batch that fell out of a multi-file drop is trimmed to the
- * first-accepted file, and the OS dialog only offers one file to begin with.
+ * confirmed together. `'single'` is a one-at-a-time flow: a batch that fell out
+ * of a multi-file drop is trimmed to the first-accepted file, and the OS dialog
+ * only offers one file to begin with.
  */
 type SourcePickerMode = 'batch' | 'single'
 
@@ -62,15 +62,6 @@ interface SourcePickerProps {
    */
   readonly mode?: SourcePickerMode
 }
-
-/** How a `null` upload instant reads in a row. */
-const UNDATED_LABEL = 'Upload date unknown'
-
-/** How an archive with no title reads in a row. */
-const UNTITLED_LABEL = 'Untitled HAR archive'
-
-/** The error shown when a chosen server archive cannot be read back. */
-const SERVER_READ_ERROR = 'That archive could not be read from the server.'
 
 /**
  * The notice for files a batch pick rejected, naming them.
@@ -111,8 +102,6 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
  * and the server archive list.
  */
 const SourcePicker = ({ onPick, mode = 'batch' }: SourcePickerProps): JSX.Element => {
-  const runAuthed = useRunAuthed()
-  const archives = useHarArchivesQuery()
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -167,61 +156,6 @@ const SourcePicker = ({ onPick, mode = 'batch' }: SourcePickerProps): JSX.Elemen
     setDragActive(true)
   }
 
-  const selectServerArchive = async (id: string): Promise<void> => {
-    try {
-      const picked = await fetchHarArchive(runAuthed, id)
-      setError(null)
-      onPick([picked])
-    } catch {
-      setError(SERVER_READ_ERROR)
-    }
-  }
-
-  const rows = archives.data?.pages.flatMap((page) => page.archives) ?? []
-
-  const renderArchiveList = (): JSX.Element => {
-    if (archives.isError) {
-      return (
-        <p role="alert" className={styles.error}>
-          The uploaded archives could not be loaded.
-        </p>
-      )
-    }
-    // `rows.length === 0` is also true on the very first fetch, so the pending
-    // state is checked first — otherwise the list would flash "none uploaded"
-    // before the server has answered.
-    if (archives.isPending) {
-      return (
-        <p role="status" className={styles.empty}>
-          Loading uploaded archives…
-        </p>
-      )
-    }
-    if (rows.length === 0) {
-      return <p className={styles.empty}>No HAR archives have been uploaded to the FHIR server.</p>
-    }
-    return (
-      <ul className={styles.archiveList}>
-        {rows.map((row) => (
-          <li key={row.id}>
-            <button
-              type="button"
-              className={styles.archiveRow}
-              onClick={() => {
-                void selectServerArchive(row.id)
-              }}
-            >
-              <span className={styles.archiveTitle}>{row.title ?? UNTITLED_LABEL}</span>
-              <span className={styles.archiveDate}>
-                {row.creation === null ? UNDATED_LABEL : DateTime.formatIsoDate(row.creation)}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    )
-  }
-
   return (
     <section aria-label="HAR source" className={styles.picker}>
       <button
@@ -250,31 +184,14 @@ const SourcePicker = ({ onPick, mode = 'batch' }: SourcePickerProps): JSX.Elemen
           {error}
         </p>
       )}
-      <div className={styles.server}>
-        <h3 className={styles.serverHeading}>Uploaded archives on the FHIR server</h3>
-        {renderArchiveList()}
-        {archives.hasNextPage && (
-          <button
-            type="button"
-            className={styles.loadMore}
-            disabled={archives.isFetchingNextPage}
-            onClick={() => {
-              void archives.fetchNextPage()
-            }}
-          >
-            {archives.isFetchingNextPage ? 'Loading…' : 'Show more archives'}
-          </button>
-        )}
-      </div>
+      <ServerHarArchiveList
+        onPick={(picked) => {
+          setError(null)
+          onPick([picked])
+        }}
+      />
     </section>
   )
 }
 
-export {
-  SERVER_READ_ERROR,
-  SourcePicker,
-  type SourcePickerMode,
-  type SourcePickerProps,
-  UNDATED_LABEL,
-  UNTITLED_LABEL,
-}
+export { SourcePicker, type SourcePickerMode, type SourcePickerProps }

@@ -3,7 +3,7 @@
 The browser UI adapter of the web-trace slice: the on-device viewer for recorded
 browsing sessions and the device's documents, mounted by the host app. This
 package is scheduled for retirement in R2 of #578 — the anonymize flow already
-moved to [`har-anonymizer-react`](../../importer/har-anonymizer-react/AGENTS.md)
+moved to [`har-anonymizer-react`](../../anonymizer/har-anonymizer-react/AGENTS.md)
 in A1 of the same epic.
 
 ## Layering
@@ -53,7 +53,7 @@ redaction belongs to the export boundary, which lives one slice over.
   and this runs on the user's own device against the user's own data. Nothing in
   this package redacts. Redaction belongs to the export flow, at the boundary
   where data leaves — read the
-  [Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md)
+  [Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md)
   before adding anything that touches the pseudonymizer.
 - **A session is a grouping, not a resource.** Exchanges carry their session id
   as a shared `identifier`; nothing joins them, and there is no server-side
@@ -188,7 +188,7 @@ redaction belongs to the export boundary, which lives one slice over.
 
 ### Export flow
 
-Moved to [`har-anonymizer-react`](../../importer/har-anonymizer-react/AGENTS.md)
+Moved to [`har-anonymizer-react`](../../anonymizer/har-anonymizer-react/AGENTS.md)
 in A1 of #578. The panel now takes a parsed `HttpArchive.Log` (not a session
 of trace documents) and drives `har-importer-core`'s HAR-native anonymizer
 directly. The traps that used to live here — preview as the pseudonymizer's

@@ -5,16 +5,16 @@ export default defineConfig({
   ...base,
   pack: {
     dts: { tsgo: true },
-    exports: false,
     platform: 'neutral',
+    exports: false,
     entry: {
       index: 'src/index.ts',
-      'har/index': 'src/har/index.ts',
-      'archive/index': 'src/archive/index.ts',
     },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    ...base.test,
+    environment: 'jsdom',
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },
 })

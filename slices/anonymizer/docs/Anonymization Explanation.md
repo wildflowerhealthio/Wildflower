@@ -1,4 +1,4 @@
-# Redaction Explanation
+# Anonymization Explanation
 
 Why the pseudonymizer is shaped the way it is, and — more importantly — what it
 does not protect. This is the privacy boundary of the Web Trace feature: capture
@@ -6,7 +6,7 @@ is lossless and the viewer shows raw data, so this module is the only thing
 standing between a recorded browsing session and a collector author's inbox.
 
 For the module layout and its traps, see
-[web-trace-core AGENTS.md](../AGENTS.md).
+[har-anonymizer-core AGENTS.md](../har-anonymizer-core/AGENTS.md).
 
 ## Shape-preserving, not a skeleton
 
@@ -272,5 +272,5 @@ Shorter values will turn up inside a long fake by chance, and asserting otherwis
 would be asserting something false; that they still change and stay distinct is
 covered by the injectivity property, which applies at every length.
 
-See [Property Testing Reference](../../../../docs/Testing/Property%20Testing%20Reference.md)
+See [Property Testing Reference](../../../docs/Testing/Property%20Testing%20Reference.md)
 for the conventions those tests follow.

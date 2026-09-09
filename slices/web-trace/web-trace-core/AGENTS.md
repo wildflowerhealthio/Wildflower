@@ -6,7 +6,7 @@ vocabulary, and the translations built on it.
 The export-boundary anonymizer moved to
 [`har-importer-core/anonymizer`](../../importer/har-importer-core/src/anonymizer/)
 in M2 of #578; read the
-[Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md)
+[Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md)
 before touching it.
 
 ## Layering
@@ -325,7 +325,7 @@ specifiers against the workspace root, not against this package.
 
 ## References
 
-- [Anonymization Explanation](../../importer/har-importer-core/docs/Anonymization%20Explanation.md) — the pseudonymizer's
+- [Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md) — the pseudonymizer's
   design and its stated limits.
 - [slice AGENTS.md](../AGENTS.md) — why this slice exists at all.
 - [slices/AGENTS.md](../../AGENTS.md) — the layering rules.

@@ -1,4 +1,4 @@
-import type { PathOverride } from 'har-importer-core/anonymizer'
+import type { PathOverride } from 'har-anonymizer-core'
 import type { HttpArchive } from 'har-importer-core/har'
 import { useId, type ChangeEvent, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'

@@ -9,7 +9,7 @@ import {
   redactLog,
   type RedactionError,
   type RedactionOptions,
-} from 'har-importer-core/anonymizer'
+} from 'har-anonymizer-core'
 import type { HttpArchive } from 'har-importer-core/har'
 
 /**

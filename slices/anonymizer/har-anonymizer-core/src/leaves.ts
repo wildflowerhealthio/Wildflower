@@ -4,7 +4,7 @@ import { JsonValue } from 'kitchen-sink/schema'
 import type { TraceExchange } from 'web-trace-core'
 import { contentTypeOf } from 'web-trace-core/capture'
 
-import type { HttpArchive } from '../har/index.ts'
+import type { HttpArchive } from 'har-importer-core/har'
 import { detectShape } from './shapes.ts'
 
 /**
@@ -20,7 +20,7 @@ import { detectShape } from './shapes.ts'
  * redacts.
  *
  * The structure/data split itself, and its limits, are written up in
- * `docs/Redaction Explanation.md`.
+ * `../docs/Anonymization Explanation.md`.
  *
  * @packageDocumentation
  */

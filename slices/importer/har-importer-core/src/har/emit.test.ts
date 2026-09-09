@@ -4,7 +4,7 @@
 // count, not reduce it.
 import { Ajv } from 'ajv'
 import draft06 from 'ajv/dist/refs/json-schema-draft-06.json' with { type: 'json' }
-import { DateTime, Duration, Effect, Schema } from 'effect'
+import { DateTime, Duration, Schema } from 'effect'
 import * as fc from 'fast-check'
 import afterRequestSchema from 'har-schema/lib/afterRequest.json' with { type: 'json' }
 import beforeRequestSchema from 'har-schema/lib/beforeRequest.json' with { type: 'json' }
@@ -29,9 +29,7 @@ import { describe, expect, test } from 'vite-plus/test'
 
 import { noTimings } from 'web-trace-core'
 import type { TraceExchange } from 'web-trace-core'
-import { toDocumentReference } from 'web-trace-core/codec'
 import { arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
-import { buildRedactionPolicy, redactSession } from '../anonymizer/index.ts'
 import { emitHar } from './emit.ts'
 import { Har } from './har.ts'
 
@@ -209,71 +207,5 @@ describe('emitHar', () => {
       ['Content-Type', 'application/json'],
       ['X-Request-Id', 'abc'],
     ])
-  })
-})
-
-describe('a redacted HAR is usable as a fixture', () => {
-  /** Reads a HAR entry back as the exchange it describes — what a fixture consumer does. */
-  const exchangeFromEntry = (
-    entry: Har['log']['entries'][number],
-    index: number
-  ): TraceExchange => ({
-    sessionId: 'fixture',
-    requestId: `req-${index}`,
-    url: entry.request.url,
-    status: entry.response.status,
-    statusText: entry.response.statusText,
-    headers: entry.response.headers,
-    startedAt: entry.startedDateTime,
-    timings: {
-      wait: entry.timings.wait < 0 ? null : Duration.millis(entry.timings.wait),
-      receive: entry.timings.receive < 0 ? null : Duration.millis(entry.timings.receive),
-    },
-    body:
-      entry.response.content.body._tag === 'HarBase64Body'
-        ? {
-            _tag: 'StoredBody',
-            contentType: entry.response.content.mimeType,
-            data: entry.response.content.body.text,
-            size: entry.response.content.size,
-            hash: '',
-          }
-        : {
-            _tag: 'SkippedBody',
-            contentType: entry.response.content.mimeType,
-            size: entry.response.content.size,
-            hash: '',
-            reason: entry.response.content.comment ?? '',
-          },
-    // HAR 1.2 has no field for "the resources this response produced", so an
-    // exported archive cannot carry the provenance link and a reader cannot
-    // recover it. Empty here states that, rather than inventing one.
-    producedResources: [],
-  })
-
-  test('property: a redacted session emits a valid HAR that reads back into encodable exchanges', async () => {
-    await fc.assert(
-      fc.asyncProperty(sessionArbitrary, async (session) => {
-        const redacted = await Effect.runPromise(
-          buildRedactionPolicy(session, { salt: 'fixture-salt' }).pipe(
-            Effect.flatMap((policy) => redactSession(policy, session))
-          )
-        )
-        const archive = emitHar(redacted, { sessionId: 'redacted-session' })
-        expect(validateHar(encode(archive))).toBe(true)
-
-        const rebuilt = archive.log.entries.map(exchangeFromEntry)
-        expect(rebuilt).toHaveLength(session.length)
-        // Usable means: the fixture goes back through the codec, which is the
-        // path a collector test would take to seed a store from a shared HAR.
-        const resources = await Effect.runPromise(
-          Effect.all(rebuilt.map((exchange) => toDocumentReference(exchange)))
-        )
-        expect(resources.map((resource) => resource.resourceType)).toEqual(
-          rebuilt.map(() => 'DocumentReference')
-        )
-      }),
-      { numRuns: numRunsFor({ base: 30 }) }
-    )
   })
 })

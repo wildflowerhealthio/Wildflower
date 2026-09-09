@@ -1,11 +1,12 @@
-# AGENTS.md — slices/importer/har-anonymizer-react
+# AGENTS.md — slices/anonymizer/har-anonymizer-react
 
-The **anonymize UI** for the importer slice's HAR binding: the panel a host
-mounts over a parsed `HttpArchive.Log` to review the pseudonymizer's decisions
-and download an anonymized `.har`. Presentation and interaction only — the
-redactor, the leaves traversal, and the HAR emitter all live in
-[`har-importer-core`](../har-importer-core/AGENTS.md); nothing here reimplements
-any of them.
+The **HAR panel** of the anonymizer slice: the panel a host mounts over a
+parsed `HttpArchive.Log` to review the pseudonymizer's decisions and download
+an anonymized `.har`. Presentation and interaction only — the redactor and the
+leaves traversal live in [`har-anonymizer-core`](../har-anonymizer-core/AGENTS.md),
+the HAR emitter in
+[`har-importer-core`](../../importer/har-importer-core/AGENTS.md); nothing here
+reimplements any of them.
 
 ## Shape
 
@@ -25,8 +26,9 @@ any of them.
 
 ## Layering
 
-An adapter. Depends on `har-importer-core` (`/anonymizer`, `/har`), `effect`,
-`react`, `react-kitchen-sink`, `react-tundraish`. Never imports `web-trace-core`
+An adapter. Depends on `har-anonymizer-core` (the redactor),
+`har-importer-core` (`/har` — the projection and emitter), `effect`, `react`,
+`react-kitchen-sink`, `react-tundraish`. Never imports `web-trace-core`
 (the redactor and emitter are HAR-native here — this package does not speak
 `TraceExchange`), `web-trace-react`, `importer-react`, or `slices/collector`.
 
@@ -145,10 +147,12 @@ behaviour to document.
 
 ## References
 
-- [slices/importer AGENTS.md](../AGENTS.md) — the slice's package roles.
-- [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR
-  binding: the anonymizer, the projection, and the emitter this panel drives.
-- [Anonymization Explanation](../har-importer-core/docs/Anonymization%20Explanation.md)
+- [slices/anonymizer AGENTS.md](../AGENTS.md) — the slice's package roles.
+- [har-anonymizer-core AGENTS.md](../har-anonymizer-core/AGENTS.md) — the
+  redactor this panel drives.
+- [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md) —
+  the HAR projection and emitter.
+- [Anonymization Explanation](../docs/Anonymization%20Explanation.md)
   — the pseudonymizer's design and its stated limits.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

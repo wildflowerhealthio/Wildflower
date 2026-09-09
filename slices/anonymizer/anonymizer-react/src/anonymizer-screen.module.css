@@ -4,6 +4,12 @@
   gap: var(--space-5);
 }
 
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
 .error {
   margin: 0;
   color: var(--color-red-3);

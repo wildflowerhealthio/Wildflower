@@ -2,7 +2,7 @@
 
 The browser UI adapter of the importer slice, and its **shell**: the whole
 pick-review-confirm flow plus the closed `format → { descriptor, SettingsPicker,
-ReviewBody }` registry. Two surfaces a host app mounts, both reading the authed
+ReviewBody }` registry. One surface a host app mounts, reading the authed
 runner out of router context:
 
 - **`ImporterScreen`** — pick one or more HARs (local files dropped or chosen,
@@ -11,11 +11,12 @@ runner out of router context:
   write the reviewed, chosen responses across the batch (uploading each local
   file's archive first), and read the per-file results. Local picking is a
   **batch**; the server list is single-select.
-- **`AnonymizerScreen`** — pick one HAR (`SourcePicker` in `'single'` mode),
-  parse it through `HttpArchive.LogFromHarJson` once, and hand the memoised log
-  to `har-anonymizer-react`'s `AnonymizePanel`. Client-side end to end: the
-  server pick issues one `DocumentReference` GET, everything else is local
-  parse, redact preview, and a same-origin blob download. **Issues no writes.**
+
+The anonymize surface is the anonymizer slice's shell
+([anonymizer-react](../../anonymizer/anonymizer-react/AGENTS.md)), not part of
+this package. This package exports `ServerHarArchiveList` — the
+uploaded-archives pick source — which a host passes into that shell's
+`serverSource` slot.
 
 ## Layering
 
@@ -24,8 +25,7 @@ runner out of router context:
 It depends on `importer-fundamentals` (the `FileImporterDescriptor` contract and
 the pure `Review` model), `har-importer-core` (the `harImporterDescriptor`,
 `HarSettings`, and `HttpArchive.LogFromHarJson`), `har-importer-react`
-(`ReviewBody`, `HarSettingsPicker`), `har-anonymizer-react` (`AnonymizePanel`,
-which `AnonymizerScreen` mounts over the parsed log), `web-trace-core` (the HAR
+(`ReviewBody`, `HarSettingsPicker`), `web-trace-core` (the HAR
 archive codec under `/codec` and the HAR parser under `/har`), `fhir-r4` (the
 typed client and `ResourceWriteFailure`), and `fhir-r4-react` (the authed runner
 and the slice runtime layer).
@@ -64,13 +64,6 @@ slice needs.
   kind enabled, so an untouched file still imports everything recognized). A
   cancel or "import another" discards the read, every review edit, and any confirm
   outcome, and returns to the picker.
-- **`src/anonymizer-screen.tsx`** — the anonymize flow. Reads the authed runner
-  the same way (no props): `SourcePicker` in `'single'` mode →
-  `HttpArchive.LogFromHarJson` decode (memoised per pick, since the decoded log
-  is `AnonymizePanel`'s rebuild identity) → `AnonymizePanel`. "Pick another"
-  discards the pick. Never touches the write client — this screen produces no
-  writes, and every step is either the picker's own reads or a client-side
-  parse + blob download.
 - **`src/registry.ts`** — the closed format registry (above).
 - **`src/preview/`** — the read half, the review view, and the write action.
   `use-import-run.ts` runs the descriptor's `decode` (via `useRunAuthed`) once per
@@ -91,12 +84,15 @@ slice needs.
 - **`src/sources/`** — the picker. `picked-har.ts` is the vocabulary
   (`PickedHar`, the `local` / `server` `PickedHarSource`, and `harArchiveReference`
   — the one spelling of a `DocumentReference/<id>` reference); `local-har.ts` is
-  the pure "read a local file and validate it as a HAR" gate; `source-picker.tsx`
-  composes the drop-and-pick zone, the file input it opens, and the server archive
+  the pure "read a local file and validate it as a HAR" gate;
+  `server-har-archive-list.tsx` is the uploaded-archives pick source (rows,
+  paging, the fetch-and-decode of a selected row), exported for the anonymizer
+  shell's `serverSource` slot as much as used here; `source-picker.tsx`
+  composes the drop-and-pick zone, the file input it opens, and that server
   list. Two modes: `'batch'` (default; the importer flow) accepts several HARs
-  in one pick; `'single'` (the anonymize flow) trims the accepted list to the
-  first file and drops the OS dialog's `multiple` attribute — the server list
-  is single-select in both.
+  in one pick; `'single'` trims the accepted list to the first file and drops
+  the OS dialog's `multiple` attribute — the server list is single-select in
+  both.
 - **`src/queries/`** — the reads. `har-archives.ts` is the paged
   `DocumentReference` search pinned to the HAR-archive category, plus
   `fetchHarArchive` — the one-archive fetch-and-decode a row selection runs;
@@ -114,18 +110,10 @@ slice needs.
   test pins this on the wire (zero writes to reach a review); do not add a write to
   the read path (e.g. an "auto-upload on pick") that would collapse the opt-in
   seam.
-- **`AnonymizerScreen` never writes.** The anonymize flow is entirely read-side
-  (picker's server list + `fetchHarArchive`) plus local parse + blob download.
-  A write here would be a category mistake, and the app's requested scopes
-  (`.rs`/`.u` on a fixed set) do not cover any anonymize-shaped upload target
-  anyway. Do not thread a write client through this screen even if a "share
-  anonymized to server" feature is later asked for — that belongs in a separate
-  surface with its own scope.
-- **The parsed log is the identity `AnonymizePanel` rebuilds on.** The screen
-  memoises the `HttpArchive.LogFromHarJson` decode by the picked-file identity;
-  re-parsing per render would rebuild the redaction preview on every keystroke
-  (and re-salt the pseudonymizer if the panel is careless about salt lifetime —
-  see `har-anonymizer-react`'s AGENTS.md).
+- **`ServerHarArchiveList` never writes.** The list is a search, a selection is
+  a `DocumentReference` GET. It is exported into the anonymizer shell's
+  `serverSource` slot precisely because it is read-only; do not add a write to
+  it.
 - **Selection state lives in the shell, not the review body.** `ReviewBody` is
   controlled — the shell passes `selection` in and receives every change via
   `onChange`, and holds the canonical `Map<fileId, Selection>` so it can hand
@@ -249,12 +237,6 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
   jsdom single-realm workaround; the production encode stays `new
 TextEncoder().encode(text)`).
-- `anonymizer-screen.test.tsx` is the anonymize twin: same router-seam mock, a
-  routing stub with no `failWrite` case (a write here would fail the test's
-  whole premise). Pins that a local pick reaches the panel with zero writes on
-  the wire, that a server pick fetches by id and still writes nothing, that a
-  non-HAR local file is rejected at the picker without mounting the panel, and
-  that "Pick another" returns to the picker discarding the pick.
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
   and pins that a read file renders its `ReviewBody`, an unreadable file renders
   its own alert, that a mixed batch sums to one confirm over every file's section,

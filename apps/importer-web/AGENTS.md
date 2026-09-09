@@ -2,12 +2,16 @@
 
 The Importer, shipped as a **cloud** SMART-on-FHIR app served from the published
 GitHub Pages site (`/importer-app`), with a debug-only self-hosted dev row for
-local development. It wraps
+local development. It pairs
 [`importer-react`](../../slices/importer/importer-react/AGENTS.md)'s
-`ImporterScreen` and `AnonymizerScreen` under an **Import | Anonymize** header
-toggle (`react-tundraish`'s `SegmentedToggle`) — the app itself holds no
-importing or anonymizing logic, only the tabstrip and the wiring a SMART app
-needs. The unselected screen is unmounted, not hidden.
+`ImporterScreen` with
+[`anonymizer-react`](../../slices/anonymizer/anonymizer-react/AGENTS.md)'s
+`AnonymizerScreen` under an **Import | Anonymize** header toggle
+(`react-tundraish`'s `SegmentedToggle`) — the app itself holds no importing or
+anonymizing logic, only the tabstrip, the wiring a SMART app needs, and the
+one adapter the anonymizer's `serverSource` slot asks of a host (it passes
+`importer-react`'s `ServerHarArchiveList` through, mapping a `PickedHar` to
+the shell's `PickedFile`). The unselected screen is unmounted, not hidden.
 
 `apps/web-trace` is the template for this shape (two HTML entries, a relative
 `base`, a build straight into the vendored `self-hosted-apps` tree, a memory
@@ -132,11 +136,11 @@ update-as-create — no `POST` create `.c`, no `DELETE` `.d`).
   under this app's compiler options (e.g. `erasableSyntaxOnly` rejects syntax in
   `kitchen-sink`), which fails on code this app does not own. Typechecking comes
   from `vp check`, which is CI's gate and resolves the same way the bundler does.
-- **The app owns no importing or anonymizing surface.** `ImporterScreen` and
-  `AnonymizerScreen` both take no props and each owns every level below it
-  (source pick → preview → confirm/download → results). This app renders a
-  heading, the Import | Anonymize tabstrip, and the one screen the picked tab
-  mounts. Splitting a flow across that boundary is the mistake `apps/web-trace`
+- **The app owns no importing or anonymizing surface.** `ImporterScreen` takes
+  no props; `AnonymizerScreen` takes only the `serverSource` slot. Each owns
+  every level below it (source pick → preview → confirm/download → results).
+  This app renders a heading, the Import | Anonymize tabstrip, and the one
+  screen the picked tab mounts. Splitting a flow across that boundary is the mistake `apps/web-trace`
   made with its exchange detail and had to undo: both surfaces opened at once
   and the accessibility tree hid it. Re-creating any of the four levels here
   re-creates that.

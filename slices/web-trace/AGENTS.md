@@ -52,7 +52,7 @@ It is consumed by both a collector and a React app, so it has to sit below both.
   own data. A change under `har-importer-core/src/anonymizer/` (moved from
   `web-trace-core/src/pseudonymizer/` in M2 of #578) changes what
   leaves the device; read the
-  [Anonymization Explanation](../importer/har-importer-core/docs/Anonymization%20Explanation.md) first.
+  [Anonymization Explanation](../anonymizer/docs/Anonymization%20Explanation.md) first.
 - **A trace never claims to know what the sniffer did not observe.** There is no
   request method, no request headers, and no request body; anything that needs
   one says it is missing rather than guessing.

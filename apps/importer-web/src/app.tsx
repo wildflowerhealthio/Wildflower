@@ -7,9 +7,10 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
+import { AnonymizerScreen, type AnonymizerScreenProps } from 'anonymizer-react'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
-import { AnonymizerScreen, ImporterScreen } from 'importer-react'
+import { ImporterScreen, ServerHarArchiveList } from 'importer-react'
 import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageLoading, SegmentedToggle } from 'react-tundraish'
@@ -30,6 +31,21 @@ const tabOptions: readonly { value: Tab; label: string }[] = [
   { value: 'anonymize', label: 'Anonymize' },
 ]
 
+/**
+ * The anonymizer shell is server-blind; this app has an authed FHIR context,
+ * so it passes the importer slice's uploaded-archives list through the
+ * `serverSource` slot, adapting a `PickedHar` to the shell's `PickedFile`.
+ * Module-scoped so the slot's render callback is a stable function, not one
+ * minted per render.
+ */
+const serverSourceSlot: NonNullable<AnonymizerScreenProps['serverSource']> = (onPick) => (
+  <ServerHarArchiveList
+    onPick={(picked) =>
+      onPick({ fileName: picked.fileName, bytes: new TextEncoder().encode(picked.text) })
+    }
+  />
+)
+
 /** The subtitle each tab reads under the header. */
 const subtitleFor = (tab: Tab): string =>
   tab === 'import'
@@ -43,8 +59,10 @@ const subtitleFor = (tab: Tab): string =>
  * @remarks
  * **This app renders no importing or anonymizing surface of its own.** Each tab
  * mounts one slice screen (`ImporterScreen` / `AnonymizerScreen`) that owns
- * every level below it — source pick, preview, confirm/download, results — and
- * takes no props, reading its authed runner out of route context. The app owns
+ * every level below it — source pick, preview, confirm/download, results.
+ * `ImporterScreen` takes no props and reads its authed runner out of route
+ * context; `AnonymizerScreen` is server-blind and takes only the
+ * `serverSource` slot this app fills with `ServerHarArchiveList`. The app owns
  * the tabstrip and the header copy, nothing else; see the traps in
  * [AGENTS.md](../AGENTS.md) for why splitting a flow across the app boundary is
  * the mistake this shape exists to avoid.
@@ -70,7 +88,7 @@ const ImporterHome = (): JSX.Element => {
         <p className={cn(styles['subtitle'], 'text-body-3')}>{subtitleFor(tab)}</p>
       </header>
 
-      {tab === 'import' ? <ImporterScreen /> : <AnonymizerScreen />}
+      {tab === 'import' ? <ImporterScreen /> : <AnonymizerScreen serverSource={serverSourceSlot} />}
     </>
   )
 }

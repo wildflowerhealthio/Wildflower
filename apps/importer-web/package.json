@@ -22,6 +22,7 @@
     "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
+    "anonymizer-react": "workspace:*",
     "branding-core": "workspace:*",
     "branding-react": "workspace:*",
     "effect": "catalog:",

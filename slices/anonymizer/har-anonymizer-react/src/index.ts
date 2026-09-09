@@ -6,7 +6,7 @@
  * @remarks
  * Presentation and interaction only. The redactor and the HAR emitter live in
  * `har-importer-core`; nothing here reimplements either. The panel takes a
- * decoded `HttpArchive.Log`, drives `har-importer-core/anonymizer`'s
+ * decoded `HttpArchive.Log`, drives `har-anonymizer-core`'s
  * `buildPolicyForLog` + `redactLog`, and hands the result to
  * `emitHarFromLog`. The `<original-stem>.anonymized.har` file it saves is a
  * same-origin blob — no network egress at any point.
