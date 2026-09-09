@@ -13,6 +13,7 @@ const seed = fc.uint8Array({ minLength: 32, maxLength: 32 })
  */
 const examples: Readonly<Record<LeafShape, readonly string[]>> = {
   iso8601: ['2024-03-11', '2024-03-11T09:41:02Z', '2024-03-11T09:41:02.123+05:30'],
+  dotNetDate: ['/Date(1779297900000-0400)/', '/Date(1710150062000)/', '/Date(-86400000+0000)/'],
   jwt: [
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NSJ9.dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk',
   ],
@@ -122,6 +123,37 @@ describe('generateFake', () => {
     )
     expect(fake).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}\+05:30$/)
     expect(fake).not.toBe('2024-03-11T09:41:02.123+05:30')
+  })
+
+  test('a .NET date fake keeps the literal and the offset suffix, and moves the millis', () => {
+    const bytes = new Uint8Array(32).fill(9)
+    const withOffset = generateFake('dotNetDate', '/Date(1779297900000-0400)/', bytes)
+    expect(withOffset).toMatch(/^\/Date\(\d{13}-0400\)\/$/)
+    expect(withOffset).not.toBe('/Date(1779297900000-0400)/')
+    expect(generateFake('dotNetDate', '/Date(1779297900000)/', bytes)).toMatch(
+      /^\/Date\(\d{13}\)\/$/
+    )
+  })
+
+  test('property: a .NET date fake still matches the consumer regex the shape exists for', () => {
+    // The pattern `lifelabs-source` reads `collectionDate` with; a free-text
+    // fake (`/Uwbx(…)/`) does not match it.
+    const consumerPattern = /\/Date\((-?\d+)(?:[+-]\d{4})?\)\//
+    const token = fc.record({
+      millis: fc.integer({ min: -2_000_000_000_000, max: 2_000_000_000_000 }),
+      offset: fc.option(fc.stringMatching(/^[+-]\d{4}$/), { nil: '' }),
+    })
+    fc.assert(
+      fc.property(token, seed, ({ millis, offset }, bytes) => {
+        const original = `/Date(${millis}${offset})/`
+        expect(detectShape(original)).toBe('dotNetDate')
+        const fake = generateFake('dotNetDate', original, bytes)
+        expect(detectShape(fake)).toBe('dotNetDate')
+        expect(fake).toMatch(consumerPattern)
+        expect(fake.endsWith(`${offset})/`)).toBe(true)
+      }),
+      { numRuns: numRunsFor({ base: 200 }) }
+    )
   })
 
   test('a date-only ISO 8601 fake stays date-only', () => {

@@ -22,8 +22,10 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   and the structural `DecodeFailure`.
 - **`har-anonymizer-core`** (the HAR engine) — the shape-preserving
   pseudonymizer: the redaction policy (enum carve-out, namespace URIs,
-  per-path overrides), the HMAC-keyed value→pseudonym table, and the leaf
-  walkers.
+  per-path overrides), the HMAC-keyed value→pseudonym table, the leaf
+  walkers, and `harDescriptor` (the `AnonymizerFormatDescriptor` binding for
+  HAR: detect by extension or JSON sniff, decode through
+  `HttpArchive.LogFromHarJson`).
 - **`har-anonymizer-react`** (the HAR panel) — `AnonymizePanel`, the surface
   that reviews the pseudonymizer's decisions over a parsed `HttpArchive.Log`
   and downloads an anonymized `.har`. Presentation and interaction only.

@@ -818,6 +818,47 @@ describe('bodies the pseudonymizer cannot walk', () => {
   })
 })
 
+describe('.NET JSON date tokens', () => {
+  const Row = Schema.Struct({ collectionDate: Schema.String, testId: Schema.String })
+  const rows = (dates: readonly string[]): readonly TraceExchange[] =>
+    dates.map((collectionDate, index) =>
+      traceExchange({
+        requestId: `req-${index}`,
+        body: {
+          _tag: 'StoredBody',
+          contentType: 'application/json',
+          data: jsonBody({ collectionDate, testId: `test-${index}-4c9e21` }),
+          size: 64,
+          hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
+        },
+      })
+    )
+
+  test('property: a redacted body still carries a token the consumer date regex matches', async () => {
+    // End to end through the policy: an anonymized fixture has to keep decoding
+    // through `lifelabs-source`'s `collectionDate` regex.
+    const consumerPattern = /\/Date\((-?\d+)(?:[+-]\d{4})?\)\//
+    const token = fc
+      .record({
+        millis: fc.integer({ min: 0, max: 2_000_000_000_000 }),
+        offset: fc.option(fc.stringMatching(/^[+-]\d{4}$/), { nil: '' }),
+      })
+      .map(({ millis, offset }) => `/Date(${millis}${offset})/`)
+    await fc.assert(
+      fc.asyncProperty(fc.uniqueArray(token, { minLength: 1, maxLength: 6 }), async (dates) => {
+        const redacted = await redactWith(rows(dates), { salt: SALT_A })
+        expect(redacted).toHaveLength(dates.length)
+        for (const [index, exchange] of redacted.entries()) {
+          const { collectionDate } = storedJson(exchange.body, Row)
+          expect(collectionDate).toMatch(consumerPattern)
+          expect(collectionDate).not.toBe(dates[index])
+        }
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+})
+
 describe('JWTs', () => {
   const token = [
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9',

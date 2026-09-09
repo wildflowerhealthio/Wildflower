@@ -52,6 +52,17 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   with bounded retries/concurrency and failure-as-data. Its `ResourceWriteFailure`
   satisfies `importer-fundamentals`' `PersistFailure` structurally, so a drift is
   a compile error here. An empty `resources` never touches the client.
+- `src/anonymizer/` — **the shape-preserving pseudonymizer** behind the
+  anonymized `.har` export. `shapes.ts` is `detectShape` / `generateFake`: the
+  classes (`iso8601`, `dotNetDate`, `jwt`, `uuid`, `email`, `currency`,
+  `postalCode`, `phone`, `epochMillis`, `numericId`, `alphanumericId`,
+  `freeText`) are ordered most-specific-first and disjoint by construction, and
+  every generator re-detects to its own class. A value a consumer parses with a
+  regex needs its own class — `/Date(…)/` read as free text scrambled the word
+  and broke `lifelabs-source`'s date parse — so add a leaf shape before loosening
+  `freeText`, and extend the example table in `shapes.test.ts` when you touch a
+  pattern. `redact.ts` is the policy and the derivation loop; `leaves.ts` the
+  traversal. See [Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md).
 - `src/har-settings.ts` — **`HarSettings`**, an empty record. A HAR archive has no
   user-tunable knobs today; the seam is present (`defaultSettings`, a no-op
   `SettingsPicker` in the React package) so a future format with real settings

@@ -15,9 +15,7 @@ Panel)`. The pairing is a closure, not a lookup — `bind` takes a descriptor
   so `T` never escapes and the shell routes heterogeneous formats without a
   cast. Registry order is identification priority: crisp magic-byte tests
   (a future PDF's `%PDF-`) go ahead of looser syntactic ones (HAR's JSON
-  sniff). Also home of `harDescriptor` — detect by `.har` extension or a
-  first-byte JSON sniff, decode through the shared
-  `HttpArchive.LogFromHarJson` parser.
+  sniff). The HAR entry imports `harDescriptor` from `har-anonymizer-core`.
 - `src/local-file-picker.tsx` — **`LocalFilePicker`**, the format-blind
   drop-zone-as-button and its hidden single-file input. Reads bytes, validates
   nothing; which format claims them is the screen's routing decision.
@@ -42,10 +40,9 @@ what keeps this package free of any client, query, or router dependency.
 ## Layering
 
 The slice's shell. Depends on `anonymizer-fundamentals` (the contract and
-routing helpers), `har-anonymizer-react` (the HAR panel), `har-importer-core`
-(`/har`, the HAR parser its descriptor decodes through), `effect`, `react`,
-`react-tundraish`. Never imports `importer-react`, `web-trace-react`, or a
-FHIR client.
+routing helpers), `har-anonymizer-core` (the HAR descriptor), `har-anonymizer-react`
+(the HAR panel), `effect`, `react`, `react-tundraish`. Never imports
+`importer-react`, `web-trace-react`, or a FHIR client.
 
 ## Traps
 

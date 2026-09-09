@@ -18,9 +18,10 @@ precision with the same timezone designator, a UUID stays a v4 UUID, a phone
 number keeps its punctuation, a JWT stays a structurally valid JWT with the same
 claim names and the same signing algorithm.
 
-The shape classes are `iso8601`, `jwt`, `uuid`, `email`, `currency`,
-`postalCode`, `phone`, `epochMillis`, `numericId`, `alphanumericId`, and a
-`freeText` fallback. The fallback is what makes the module safe by default: an
+The shape classes are `iso8601`, `dotNetDate` (the `/Date(1779297900000-0400)/`
+token .NET serializers emit — the literal and the offset stay, the millis move),
+`jwt`, `uuid`, `email`, `currency`, `postalCode`, `phone`, `epochMillis`,
+`numericId`, `alphanumericId`, and a `freeText` fallback. The fallback is what makes the module safe by default: an
 unrecognized value is still pseudonymized, just with the least
 structure-preserving generator. Nothing reaches an export unredacted because its
 shape went unrecognized.
