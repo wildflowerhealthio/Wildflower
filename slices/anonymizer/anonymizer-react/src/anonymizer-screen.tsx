@@ -74,6 +74,12 @@ const AnonymizerScreen = ({
         onFailure: (failure): DecodeOutcome => ({ _tag: 'failed', message: failure.message }),
         onSuccess: (panel): DecodeOutcome => ({ _tag: 'decoded', panel }),
       }),
+      Effect.catchAllDefect((defect) =>
+        Effect.succeed<DecodeOutcome>({
+          _tag: 'failed',
+          message: defect instanceof Error ? defect.message : 'An unexpected error occurred.',
+        })
+      ),
       Effect.tap((result) =>
         Effect.sync(() => {
           if (!cancelled) setOutcome({ of: picked, result })

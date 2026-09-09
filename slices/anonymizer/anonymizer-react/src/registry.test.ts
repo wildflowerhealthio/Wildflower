@@ -1,13 +1,12 @@
-import { Effect, Either, Schema } from 'effect'
+import { Effect, Either } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import type { PickedFile } from 'anonymizer-fundamentals'
-import { emitHar, HarFromJson } from 'har-importer-core/har'
-import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 import { HAR_PARSE_ERROR, harDescriptor } from 'har-anonymizer-core'
+import { RECOGNIZED_HAR } from './test-helpers.ts'
 
 describe('harDescriptor', () => {
   it('should claim a file named .har whatever its bytes hold', () => {
@@ -66,27 +65,3 @@ const pickedFile = (fileName: string, text: string): PickedFile => ({
   fileName,
   bytes: new TextEncoder().encode(text),
 })
-
-/** A HAR shaped like a real capture — what matters here is only that it parses. */
-const RECOGNIZED_HAR: string = Effect.runSync(
-  Schema.encode(HarFromJson)(
-    emitHar(
-      [
-        traceExchange({
-          requestId: 'req-0',
-          url: 'https://r4.example.org/baseR4/Patient/pat-7?_format=json',
-          headers: [['content-type', 'application/fhir+json']],
-          body: {
-            _tag: 'StoredBody',
-            contentType: 'application/fhir+json',
-            data: jsonBody({ resourceType: 'Patient', id: 'pat-7' }),
-            size: 42,
-            hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
-          },
-          startedAtMillis: CAPTURE_FLOOR,
-        }),
-      ],
-      { sessionId: 'test-session' }
-    )
-  )
-)

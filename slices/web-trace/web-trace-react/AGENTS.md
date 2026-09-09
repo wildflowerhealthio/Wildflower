@@ -190,7 +190,7 @@ redaction belongs to the export boundary, which lives one slice over.
 
 Moved to [`har-anonymizer-react`](../../anonymizer/har-anonymizer-react/AGENTS.md)
 in A1 of #578. The panel now takes a parsed `HttpArchive.Log` (not a session
-of trace documents) and drives `har-importer-core`'s HAR-native anonymizer
+of trace documents) and drives `har-anonymizer-core`'s HAR-native anonymizer
 directly. The traps that used to live here — preview as the pseudonymizer's
 own output, salt minted once and threaded, both carve-outs off on open,
 JSON-only and says how much it drops, encode before stringify — carry over

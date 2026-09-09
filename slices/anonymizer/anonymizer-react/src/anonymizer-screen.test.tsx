@@ -1,15 +1,13 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { Effect, Schema } from 'effect'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import type { PickedFile } from 'anonymizer-fundamentals'
-import { emitHar, HarFromJson } from 'har-importer-core/har'
-import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 import { HAR_PARSE_ERROR } from 'har-anonymizer-core'
 import { AnonymizerScreen, UNIDENTIFIED_ERROR } from './anonymizer-screen.tsx'
+import { RECOGNIZED_HAR } from './test-helpers.ts'
 
 /**
  * The unified anonymize surface, end to end over the real screen → picker →
@@ -106,30 +104,6 @@ describe('AnonymizerScreen', () => {
 })
 
 // Helpers
-
-/** A HAR shaped like a real capture — what matters here is only that it parses. */
-const RECOGNIZED_HAR: string = Effect.runSync(
-  Schema.encode(HarFromJson)(
-    emitHar(
-      [
-        traceExchange({
-          requestId: 'req-0',
-          url: 'https://r4.example.org/baseR4/Patient/pat-7?_format=json',
-          headers: [['content-type', 'application/fhir+json']],
-          body: {
-            _tag: 'StoredBody',
-            contentType: 'application/fhir+json',
-            data: jsonBody({ resourceType: 'Patient', id: 'pat-7' }),
-            size: 42,
-            hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
-          },
-          startedAtMillis: CAPTURE_FLOOR,
-        }),
-      ],
-      { sessionId: 'test-session' }
-    )
-  )
-)
 
 /** A HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>

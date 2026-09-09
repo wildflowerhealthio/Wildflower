@@ -77,4 +77,4 @@ const formatRegistry: readonly BoundFormat[] = [
   bind(harDescriptor, ({ value, fileName }) => <AnonymizePanel log={value} fileName={fileName} />),
 ]
 
-export { bind, type BoundFormat, formatRegistry }
+export { type BoundFormat, formatRegistry }

@@ -16,6 +16,9 @@ const HAR_PARSE_ERROR = 'That archive could not be read as a HAR.'
 /** Single decoder, reused per pick. */
 const decodeLog = Schema.decodeEither(HttpArchive.LogFromHarJson)
 
+/** Single UTF-8 decoder, reused per pick. */
+const utf8 = new TextDecoder()
+
 /**
  * Whether the bytes plausibly hold a JSON object — a cheap first-byte sniff,
  * not a parse.
@@ -40,7 +43,7 @@ const harDescriptor: AnonymizerFormatDescriptor<HttpArchive.Log> = {
   accept: ['.har', 'application/json'],
   detect: (file) => file.fileName.toLowerCase().endsWith('.har') || looksLikeJson(file.bytes),
   decode: (file) =>
-    Either.match(decodeLog(new TextDecoder().decode(file.bytes)), {
+    Either.match(decodeLog(utf8.decode(file.bytes)), {
       onLeft: () => Effect.fail(new DecodeFailure({ message: HAR_PARSE_ERROR })),
       onRight: Effect.succeed,
     }),

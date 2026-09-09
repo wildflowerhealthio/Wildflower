@@ -45,9 +45,9 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   `collector-fundamentals`' `CollectorHttpResponse` _structurally_ — this package
   sits below the collector slice and must not import it, so the boundary is a
   shape, not a dependency.
-- **`src/pseudonymizer/` — moved to `har-importer-core/src/anonymizer/`** in M2
-  of #578. The export-boundary redactor now lives with the importer slice's HAR
-  binding, on the same per-file-format argument the archive codec does.
+- **`src/pseudonymizer/` — moved to `har-anonymizer-core/src/`** in M2
+  of #578. The export-boundary redactor now lives in the anonymizer slice,
+  on the same per-file-format argument the archive codec does.
 - **`src/har/` — moved to `har-importer-core/har`** in M1 of #578. The
   format definition and the `HttpArchive` projection now live with the
   importer slice's HAR binding. `emitHar` still takes `TraceExchange` (its one
@@ -310,7 +310,7 @@ would satisfy the schema while generating bodies that are not base64 and URLs
 that are not URLs, which exercises nothing anything downstream actually does.
 
 The five properties the privacy boundary rests on live in
-`har-importer-core/src/anonymizer/redact.test.ts` (moved in M2 of #578); the HAR
+`har-anonymizer-core/src/redact.test.ts` (moved in M2 of #578); the HAR
 emitter is validated against the
 published `har-schema` (HAR 1.2) rather than a hand-copied transcription of it.
 The reading direction is held to the emitter — a property in
