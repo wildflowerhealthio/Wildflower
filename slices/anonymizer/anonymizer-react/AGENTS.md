@@ -30,12 +30,13 @@ Panel)`. The pairing is a closure, not a lookup — `bind` takes a descriptor
 ## The serverSource slot
 
 `AnonymizerScreen` takes an optional
-`serverSource?: (onPick: (file: PickedFile) => void) => ReactNode`, rendered
-below the local picker. It is the one seam a host uses to offer picks the
-shell cannot — the Importer web app passes a server-archive list from
-`importer-react` through it. The slot hands back a `PickedFile` and nothing
-else; whatever fetching or auth that took is the host's business, which is
-what keeps this package free of any client, query, or router dependency.
+`serverSource?: ComponentType<{ readonly onPick: (file: PickedFile) => void }>`,
+rendered below the local picker. It is the one seam a host uses to offer picks
+the shell cannot — the Importer web app passes a `ServerSource` component from
+`importer-react` through it. The component receives the same `onPick` callback
+the local picker uses; whatever fetching or auth that took is the host's
+business, which is what keeps this package free of any client, query, or router
+dependency.
 
 ## Layering
 

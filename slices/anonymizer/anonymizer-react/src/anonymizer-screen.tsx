@@ -1,5 +1,5 @@
-import { Effect, Match } from 'effect'
-import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
+import { Effect, Match, Predicate } from 'effect'
+import { useCallback, useEffect, useMemo, useState, type ComponentType, type JSX } from 'react'
 
 import { acceptFor, identify, type PickedFile } from 'anonymizer-fundamentals'
 
@@ -21,18 +21,18 @@ import styles from './anonymizer-screen.module.css'
  * decoded value — is what re-renders, so the format panel's rebuild identity
  * stays stable. `Pick another` discards the current pick.
  *
- * The optional {@link AnonymizerScreenProps.serverSource} render-slot is the
- * one seam a host uses to offer picks the shell cannot: a list of server-held
- * archives, say. The slot only hands back a {@link PickedFile}; whatever
- * fetching or auth that took is the host's business, and this package still
- * never speaks to a server.
+ * The optional {@link AnonymizerScreenProps.serverSource} component is the one
+ * seam a host uses to offer picks the shell cannot: a list of server-held
+ * archives, say. The component receives the same `onPick` callback the local
+ * picker uses; whatever fetching or auth that took is the host's business, and
+ * this package still never speaks to a server.
  */
 interface AnonymizerScreenProps {
   /**
-   * Extra pick sources a host renders below the local picker, given the same
-   * pick callback the picker uses.
+   * Extra pick sources rendered below the local picker, receiving the same
+   * `onPick` callback the picker uses.
    */
-  readonly serverSource?: (onPick: (file: PickedFile) => void) => ReactNode
+  readonly serverSource?: ComponentType<{ readonly onPick: (file: PickedFile) => void }>
 }
 
 /** The alert shown when no registered format claims the picked file. */
@@ -43,16 +43,10 @@ type DecodeOutcome =
   | { readonly _tag: 'decoded'; readonly panel: JSX.Element }
   | { readonly _tag: 'failed'; readonly message: string }
 
-/** The derived screen phase, for exhaustive rendering via Match. */
-type ScreenPhase =
-  | { readonly _tag: 'picking' }
-  | { readonly _tag: 'unidentified' }
-  | { readonly _tag: 'decoding'; readonly fileName: string }
-  | { readonly _tag: 'decode-failed'; readonly message: string }
-  | { readonly _tag: 'ready'; readonly panel: JSX.Element }
-
 /** The anonymize flow. */
-const AnonymizerScreen = ({ serverSource }: AnonymizerScreenProps = {}): JSX.Element => {
+const AnonymizerScreen = ({
+  serverSource: ServerSource,
+}: AnonymizerScreenProps = {}): JSX.Element => {
   const [picked, setPicked] = useState<PickedFile | null>(null)
   // The finished decode, keyed by the pick it belongs to. Keying (rather than
   // clearing state synchronously in the effect) is what makes "still decoding"
@@ -97,24 +91,16 @@ const AnonymizerScreen = ({ serverSource }: AnonymizerScreenProps = {}): JSX.Ele
   const startOver = useCallback((): void => setPicked(null), [])
   const onPick = useCallback((file: PickedFile): void => setPicked(file), [])
 
-  const phase = ((): ScreenPhase => {
-    if (picked === null) return { _tag: 'picking' }
-    if (bound === undefined) return { _tag: 'unidentified' }
-    if (decode === null) return { _tag: 'decoding', fileName: picked.fileName }
-    if (decode._tag === 'failed') return { _tag: 'decode-failed', message: decode.message }
-    return { _tag: 'ready', panel: decode.panel }
-  })()
-
-  return Match.value(phase).pipe(
-    Match.tag('picking', () => (
+  return Match.value({ picked, bound, decode }).pipe(
+    Match.when({ picked: Predicate.isNull }, () => (
       <div className={styles.screen}>
         <section aria-label="File source" className={styles.sources}>
           <LocalFilePicker accept={acceptFor(formatRegistry)} onPick={onPick} />
-          {serverSource?.(onPick)}
+          {ServerSource !== undefined && <ServerSource onPick={onPick} />}
         </section>
       </div>
     )),
-    Match.tag('unidentified', () => (
+    Match.when({ bound: Predicate.isUndefined }, () => (
       <div className={styles.screen}>
         <p role="alert" className={styles.error}>
           {UNIDENTIFIED_ERROR}
@@ -124,30 +110,32 @@ const AnonymizerScreen = ({ serverSource }: AnonymizerScreenProps = {}): JSX.Ele
         </button>
       </div>
     )),
-    Match.tag('decoding', ({ fileName }) => (
+    Match.when({ decode: Predicate.isNull }, () => (
       <div className={styles.screen}>
-        <p role="status">Reading {fileName}…</p>
+        <p role="status">Reading {picked?.fileName}…</p>
       </div>
     )),
-    Match.tag('decode-failed', ({ message }) => (
+    Match.when({ decode: { _tag: 'failed' as const } }, ({ decode: d }) => (
       <div className={styles.screen}>
         <p role="alert" className={styles.error}>
-          {message}
+          {d.message}
         </p>
         <button type="button" className={styles.back} onClick={startOver}>
           Pick another
         </button>
       </div>
     )),
-    Match.tag('ready', ({ panel }) => (
-      <div className={styles.screen}>
-        {panel}
-        <button type="button" className={styles.back} onClick={startOver}>
-          Pick another
-        </button>
-      </div>
-    )),
-    Match.exhaustive
+    Match.orElse(() => {
+      const panel = decode !== null && decode._tag === 'decoded' ? decode.panel : null
+      return (
+        <div className={styles.screen}>
+          {panel}
+          <button type="button" className={styles.back} onClick={startOver}>
+            Pick another
+          </button>
+        </div>
+      )
+    })
   )
 }
 

@@ -8,7 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import type { PickedFile } from 'anonymizer-fundamentals'
-import { AnonymizerScreen, type AnonymizerScreenProps } from 'anonymizer-react'
+import { AnonymizerScreen } from 'anonymizer-react'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
 import { ImporterScreen, ServerHarArchiveList } from 'importer-react'
@@ -43,10 +43,6 @@ const ServerSource = ({ onPick }: { readonly onPick: (file: PickedFile) => void 
       onPick({ fileName: picked.fileName, bytes: new TextEncoder().encode(picked.text) })
     }
   />
-)
-
-const serverSourceSlot: NonNullable<AnonymizerScreenProps['serverSource']> = (onPick) => (
-  <ServerSource onPick={onPick} />
 )
 
 /** The subtitle each tab reads under the header. */
@@ -91,7 +87,7 @@ const ImporterHome = (): JSX.Element => {
         <p className={cn(styles['subtitle'], 'text-body-3')}>{subtitleFor(tab)}</p>
       </header>
 
-      {tab === 'import' ? <ImporterScreen /> : <AnonymizerScreen serverSource={serverSourceSlot} />}
+      {tab === 'import' ? <ImporterScreen /> : <AnonymizerScreen serverSource={ServerSource} />}
     </>
   )
 }

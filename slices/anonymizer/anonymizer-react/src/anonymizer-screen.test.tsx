@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { Effect, Schema } from 'effect'
+import type { JSX } from 'react'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
 
 import type { PickedFile } from 'anonymizer-fundamentals'
@@ -67,15 +68,16 @@ describe('AnonymizerScreen', () => {
       fileName: 'server-session.har',
       bytes: new TextEncoder().encode(RECOGNIZED_HAR),
     }
-    render(
-      <AnonymizerScreen
-        serverSource={(onPick) => (
-          <button type="button" onClick={() => onPick(serverPick)}>
-            Use server-session.har
-          </button>
-        )}
-      />
+    const TestServerSource = ({
+      onPick,
+    }: {
+      readonly onPick: (file: PickedFile) => void
+    }): JSX.Element => (
+      <button type="button" onClick={() => onPick(serverPick)}>
+        Use server-session.har
+      </button>
     )
+    render(<AnonymizerScreen serverSource={TestServerSource} />)
 
     // Act
     await userEvent.click(screen.getByRole('button', { name: 'Use server-session.har' }))
