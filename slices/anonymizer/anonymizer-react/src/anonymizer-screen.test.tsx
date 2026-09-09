@@ -35,10 +35,10 @@ describe('AnonymizerScreen', () => {
     // Arrange
     render(<AnonymizerScreen />)
 
-    // Act — a PDF: no registered format claims it yet (accept filtering is
+    // Act — a CSV: no registered format claims it (accept filtering is
     // bypassed; the OS dialog's accept is a hint, not the decision)
-    const pdf = new File(['%PDF-1.7 …'], 'report.pdf', { type: 'application/pdf' })
-    await userEvent.upload(screen.getByLabelText('File to anonymize'), pdf, {
+    const csv = new File(['name,age\nAlice,30'], 'data.csv', { type: 'text/csv' })
+    await userEvent.upload(screen.getByLabelText('File to anonymize'), csv, {
       applyAccept: false,
     })
 

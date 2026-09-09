@@ -1,13 +1,13 @@
 {
-  "name": "anonymizer-react",
+  "name": "pdf-anonymizer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The anonymizer shell: the AnonymizerScreen a host app mounts — one local file picker, best-effort identification of the picked file against the closed format registry (PDF and HAR), and the routed format panel. Client-side end to end: identify, decode, review, blob download. An optional serverSource render-slot lets a host offer server-held archives without this package speaking to any server. Issues no writes.",
+  "description": "The PDF anonymizer UI: the panel a host mounts to extract positioned text from a PDF, enter literal-substring substitution rules, preview the masked runs, and download anonymized positioned-text JSON. Uses pdfjs-dist for extraction behind a seam; everything downstream tested on hand-written fixtures.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/anonymizer/anonymizer-react"
+    "directory": "slices/anonymizer/pdf-anonymizer-react"
   },
   "files": [
     "dist"
@@ -35,29 +35,23 @@
     "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "har-anonymizer-core": "workspace:*",
-    "har-anonymizer-react": "workspace:*",
-    "har-importer-core": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "pdf-anonymizer-core": "workspace:*",
-    "pdf-anonymizer-react": "workspace:*",
+    "pdfjs-dist": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "typescript": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
-    "har-anonymizer-core": "workspace:*",
-    "har-anonymizer-react": "workspace:*",
     "pdf-anonymizer-core": "workspace:*",
-    "pdf-anonymizer-react": "workspace:*",
     "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*"
   }
 }

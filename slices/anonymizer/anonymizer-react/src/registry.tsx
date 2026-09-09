@@ -12,6 +12,7 @@ import {
 } from 'anonymizer-fundamentals'
 import { harDescriptor } from 'har-anonymizer-core'
 import { AnonymizePanel } from 'har-anonymizer-react'
+import { pdfDescriptor, PdfAnonymizePanel } from 'pdf-anonymizer-react'
 
 /**
  * The closed format registry: every format the anonymizer shell can identify a
@@ -74,6 +75,9 @@ const bind = <T,>(
  * goes before HAR's JSON sniff).
  */
 const formatRegistry: readonly BoundFormat[] = [
+  bind(pdfDescriptor, ({ value, fileName }) => (
+    <PdfAnonymizePanel value={value} fileName={fileName} />
+  )),
   bind(harDescriptor, ({ value, fileName }) => <AnonymizePanel log={value} fileName={fileName} />),
 ]
 

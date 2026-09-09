@@ -1,0 +1,108 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-7);
+  min-width: 0;
+}
+
+.panel__note {
+  margin: var(--space-3) 0 0;
+  color: var(--color-neutral-3);
+}
+
+.panel__manifest {
+  margin: 0;
+  padding-left: var(--space-6);
+  color: var(--color-neutral-4);
+}
+
+.panel__manifest li + li {
+  margin-top: var(--space-2);
+}
+
+.panel__section-title {
+  margin: var(--space-6) 0 var(--space-4);
+  color: var(--color-neutral-4);
+}
+
+.panel__section-title:first-child {
+  margin-top: 0;
+}
+
+.panel__preview-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-5);
+}
+
+.panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+/* Rules editor */
+
+.rules {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.rules__title {
+  margin: 0;
+  color: var(--color-neutral-4);
+}
+
+.rules__description {
+  margin: 0;
+  color: var(--color-neutral-3);
+}
+
+.rules__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--space-3) var(--space-5);
+}
+
+.rules__field {
+  flex: 1 1 16rem;
+  min-width: 0;
+}
+
+.rules__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-shrink: 0;
+}
+
+.rules__remove {
+  white-space: nowrap;
+}
+
+/* Runs view */
+
+.runs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.runs__page {
+  position: relative;
+  max-width: 100%;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: var(--color-surface-1);
+  overflow: hidden;
+}
+
+.runs__span {
+  position: absolute;
+  white-space: pre;
+  line-height: 1;
+  color: var(--color-neutral-5);
+}
