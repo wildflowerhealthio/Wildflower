@@ -56,3 +56,4 @@ export {
   TERMINOLOGY_HOSTS,
 } from './redact.ts'
 export { detectShape, generateFake, type LeafShape } from './shapes.ts'
+export { HAR_PARSE_ERROR, harDescriptor, looksLikeJson } from './descriptor.ts'

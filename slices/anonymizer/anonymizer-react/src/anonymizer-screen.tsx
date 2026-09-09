@@ -1,4 +1,4 @@
-import { Effect, Either } from 'effect'
+import { Effect, Match } from 'effect'
 import { useCallback, useEffect, useMemo, useState, type JSX, type ReactNode } from 'react'
 
 import { acceptFor, identify, type PickedFile } from 'anonymizer-fundamentals'
@@ -43,6 +43,14 @@ type DecodeOutcome =
   | { readonly _tag: 'decoded'; readonly panel: JSX.Element }
   | { readonly _tag: 'failed'; readonly message: string }
 
+/** The derived screen phase, for exhaustive rendering via Match. */
+type ScreenPhase =
+  | { readonly _tag: 'picking' }
+  | { readonly _tag: 'unidentified' }
+  | { readonly _tag: 'decoding'; readonly fileName: string }
+  | { readonly _tag: 'decode-failed'; readonly message: string }
+  | { readonly _tag: 'ready'; readonly panel: JSX.Element }
+
 /** The anonymize flow. */
 const AnonymizerScreen = ({ serverSource }: AnonymizerScreenProps = {}): JSX.Element => {
   const [picked, setPicked] = useState<PickedFile | null>(null)
@@ -67,16 +75,18 @@ const AnonymizerScreen = ({ serverSource }: AnonymizerScreenProps = {}): JSX.Ele
   useEffect(() => {
     if (picked === null || bound === null || bound === undefined) return undefined
     let cancelled = false
-    void Effect.runPromise(Effect.either(bound.decodeToPanel(picked))).then((result) => {
-      if (cancelled) return
-      setOutcome({
-        of: picked,
-        result: Either.match(result, {
-          onLeft: (failure): DecodeOutcome => ({ _tag: 'failed', message: failure.message }),
-          onRight: (panel): DecodeOutcome => ({ _tag: 'decoded', panel }),
-        }),
-      })
-    })
+    const runnable = bound.decodeToPanel(picked).pipe(
+      Effect.match({
+        onFailure: (failure): DecodeOutcome => ({ _tag: 'failed', message: failure.message }),
+        onSuccess: (panel): DecodeOutcome => ({ _tag: 'decoded', panel }),
+      }),
+      Effect.tap((result) =>
+        Effect.sync(() => {
+          if (!cancelled) setOutcome({ of: picked, result })
+        })
+      )
+    )
+    void Effect.runPromise(runnable)
     return () => {
       cancelled = true
     }
@@ -87,19 +97,24 @@ const AnonymizerScreen = ({ serverSource }: AnonymizerScreenProps = {}): JSX.Ele
   const startOver = useCallback((): void => setPicked(null), [])
   const onPick = useCallback((file: PickedFile): void => setPicked(file), [])
 
-  if (picked === null) {
-    return (
+  const phase = ((): ScreenPhase => {
+    if (picked === null) return { _tag: 'picking' }
+    if (bound === undefined) return { _tag: 'unidentified' }
+    if (decode === null) return { _tag: 'decoding', fileName: picked.fileName }
+    if (decode._tag === 'failed') return { _tag: 'decode-failed', message: decode.message }
+    return { _tag: 'ready', panel: decode.panel }
+  })()
+
+  return Match.value(phase).pipe(
+    Match.tag('picking', () => (
       <div className={styles.screen}>
         <section aria-label="File source" className={styles.sources}>
           <LocalFilePicker accept={acceptFor(formatRegistry)} onPick={onPick} />
           {serverSource?.(onPick)}
         </section>
       </div>
-    )
-  }
-
-  if (bound === undefined) {
-    return (
+    )),
+    Match.tag('unidentified', () => (
       <div className={styles.screen}>
         <p role="alert" className={styles.error}>
           {UNIDENTIFIED_ERROR}
@@ -108,37 +123,31 @@ const AnonymizerScreen = ({ serverSource }: AnonymizerScreenProps = {}): JSX.Ele
           Pick another
         </button>
       </div>
-    )
-  }
-
-  if (decode === null) {
-    return (
+    )),
+    Match.tag('decoding', ({ fileName }) => (
       <div className={styles.screen}>
-        <p role="status">Reading {picked.fileName}…</p>
+        <p role="status">Reading {fileName}…</p>
       </div>
-    )
-  }
-
-  if (decode._tag === 'failed') {
-    return (
+    )),
+    Match.tag('decode-failed', ({ message }) => (
       <div className={styles.screen}>
         <p role="alert" className={styles.error}>
-          {decode.message}
+          {message}
         </p>
         <button type="button" className={styles.back} onClick={startOver}>
           Pick another
         </button>
       </div>
-    )
-  }
-
-  return (
-    <div className={styles.screen}>
-      {decode.panel}
-      <button type="button" className={styles.back} onClick={startOver}>
-        Pick another
-      </button>
-    </div>
+    )),
+    Match.tag('ready', ({ panel }) => (
+      <div className={styles.screen}>
+        {panel}
+        <button type="button" className={styles.back} onClick={startOver}>
+          Pick another
+        </button>
+      </div>
+    )),
+    Match.exhaustive
   )
 }
 

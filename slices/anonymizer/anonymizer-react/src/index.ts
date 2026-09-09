@@ -11,4 +11,4 @@ export {
   UNIDENTIFIED_ERROR,
 } from './anonymizer-screen.tsx'
 export { LocalFilePicker, type LocalFilePickerProps } from './local-file-picker.tsx'
-export { type BoundFormat, formatRegistry, HAR_PARSE_ERROR, harDescriptor } from './registry.tsx'
+export { type BoundFormat, formatRegistry } from './registry.tsx'

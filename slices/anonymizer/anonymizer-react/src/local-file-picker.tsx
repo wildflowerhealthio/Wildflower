@@ -42,16 +42,25 @@ const LocalFilePicker = ({ accept, onPick }: LocalFilePickerProps): JSX.Element 
   const openPicker = (): void => fileInputRef.current?.click()
 
   const onFileInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
-    const first = event.target.files?.[0]
+    const files = event.target.files
     // Reset the input so choosing the same file twice in a row still fires a
     // change — the browser suppresses it otherwise.
     event.target.value = ''
+    if (files !== null && files.length > 1) {
+      alert('Only one file can be anonymized at a time. Please pick a single file.')
+      return
+    }
+    const first = files?.[0]
     if (first !== undefined) void acceptFile(first)
   }
 
   const onDrop = (event: DragEvent<HTMLButtonElement>): void => {
     event.preventDefault()
     setDragActive(false)
+    if (event.dataTransfer.files.length > 1) {
+      alert('Only one file can be anonymized at a time. Please drop a single file.')
+      return
+    }
     const first = event.dataTransfer.files[0]
     if (first !== undefined) void acceptFile(first)
   }

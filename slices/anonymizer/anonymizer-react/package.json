@@ -35,6 +35,7 @@
     "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "har-anonymizer-core": "workspace:*",
     "har-anonymizer-react": "workspace:*",
     "har-importer-core": "workspace:*",
     "jsdom": "catalog:",
@@ -50,8 +51,8 @@
   "peerDependencies": {
     "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
+    "har-anonymizer-core": "workspace:*",
     "har-anonymizer-react": "workspace:*",
-    "har-importer-core": "workspace:*",
     "react": "catalog:",
     "react-tundraish": "workspace:*"
   }

@@ -30,6 +30,7 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "ajv": "catalog:",
+    "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "har-importer-core": "workspace:*",
@@ -40,6 +41,7 @@
     "web-trace-core": "workspace:*"
   },
   "peerDependencies": {
+    "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
     "har-importer-core": "workspace:*",
     "kitchen-sink": "workspace:*",

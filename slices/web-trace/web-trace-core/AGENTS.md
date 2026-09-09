@@ -4,7 +4,7 @@ The pure layer of the web-trace slice. No DOM, no `fs`, no UI, no store — one
 vocabulary, and the translations built on it.
 
 The export-boundary anonymizer moved to
-[`har-importer-core/anonymizer`](../../importer/har-importer-core/src/anonymizer/)
+[`har-anonymizer-core`](../../anonymizer/har-anonymizer-core/)
 in M2 of #578; read the
 [Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md)
 before touching it.

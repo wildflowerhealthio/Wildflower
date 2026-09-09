@@ -7,6 +7,7 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
+import type { PickedFile } from 'anonymizer-fundamentals'
 import { AnonymizerScreen, type AnonymizerScreenProps } from 'anonymizer-react'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
@@ -35,15 +36,17 @@ const tabOptions: readonly { value: Tab; label: string }[] = [
  * The anonymizer shell is server-blind; this app has an authed FHIR context,
  * so it passes the importer slice's uploaded-archives list through the
  * `serverSource` slot, adapting a `PickedHar` to the shell's `PickedFile`.
- * Module-scoped so the slot's render callback is a stable function, not one
- * minted per render.
  */
-const serverSourceSlot: NonNullable<AnonymizerScreenProps['serverSource']> = (onPick) => (
+const ServerSource = ({ onPick }: { readonly onPick: (file: PickedFile) => void }): JSX.Element => (
   <ServerHarArchiveList
     onPick={(picked) =>
       onPick({ fileName: picked.fileName, bytes: new TextEncoder().encode(picked.text) })
     }
   />
+)
+
+const serverSourceSlot: NonNullable<AnonymizerScreenProps['serverSource']> = (onPick) => (
+  <ServerSource onPick={onPick} />
 )
 
 /** The subtitle each tab reads under the header. */

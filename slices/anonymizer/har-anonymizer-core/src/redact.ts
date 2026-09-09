@@ -20,7 +20,7 @@ import { detectShape, fakeBase64Url, generateFake, prngFromBytes } from './shape
  * response B's `patientId` land on the same fake, and it is what guarantees two
  * different originals never collide onto one pseudonym.
  *
- * The design and its stated limits are in `../docs/Anonymization Explanation.md`. Read
+ * The design and its stated limits are in `../../docs/Anonymization Explanation.md`. Read
  * that before changing anything here.
  *
  * @packageDocumentation
@@ -163,7 +163,7 @@ const URN_OID = /^urn:oid:[0-2](?:\.(?:0|[1-9]\d*))+$/
  * Add a vendor host only after looking; matching is exact, so a new subdomain
  * needs a new entry and cannot arrive on its own.
  *
- * See `../docs/Anonymization Explanation.md` for what a trusted host costs.
+ * See `../../docs/Anonymization Explanation.md` for what a trusted host costs.
  */
 const TERMINOLOGY_HOSTS: ReadonlySet<string> = new Set([
   // Standards bodies and public terminology registries.
@@ -215,7 +215,7 @@ const isNamespaceSegment = (segment: string): boolean =>
  * string included.
  *
  * Why each clause is drawn where it is, and what the host allowlist costs, are
- * in `../docs/Anonymization Explanation.md`.
+ * in `../../docs/Anonymization Explanation.md`.
  */
 const isNamespaceUri = (value: string): boolean => {
   if (value.startsWith('urn:')) return URN_OID.test(value)

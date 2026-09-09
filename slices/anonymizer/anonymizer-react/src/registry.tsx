@@ -2,16 +2,16 @@
   This is the format registry, not a component module: its inline panel
   adapters exist to close a descriptor and its panel over one `T`, and the
   registry values beside them are the exports. Fast Refresh does not apply. */
-import { Effect, Either, Schema } from 'effect'
+import { Effect } from 'effect'
 import type { JSX } from 'react'
 
 import {
-  DecodeFailure,
   type AnonymizerFormatDescriptor,
+  type DecodeFailure,
   type PickedFile,
 } from 'anonymizer-fundamentals'
+import { harDescriptor } from 'har-anonymizer-core'
 import { AnonymizePanel } from 'har-anonymizer-react'
-import { HttpArchive } from 'har-importer-core/har'
 
 /**
  * The closed format registry: every format the anonymizer shell can identify a
@@ -68,42 +68,6 @@ const bind = <T,>(
     )),
 })
 
-/** The alert shown when a picked archive is not decodable HAR. */
-const HAR_PARSE_ERROR = 'That archive could not be read as a HAR.'
-
-/** Single decoder, reused per pick. */
-const decodeLog = Schema.decodeEither(HttpArchive.LogFromHarJson)
-
-/**
- * Whether the bytes plausibly hold a JSON object — a cheap first-byte sniff,
- * not a parse.
- */
-const looksLikeJson = (bytes: Uint8Array): boolean => {
-  for (const byte of bytes) {
-    // Skip UTF-8 BOM bytes and ASCII whitespace before the first real one.
-    if (byte === 0xef || byte === 0xbb || byte === 0xbf) continue
-    if (byte === 0x20 || byte === 0x09 || byte === 0x0a || byte === 0x0d) continue
-    return byte === 0x7b // `{`
-  }
-  return false
-}
-
-/** The HAR format: a `.har`-named or JSON-object-shaped file, decoded through the shared parser. */
-const harDescriptor: AnonymizerFormatDescriptor<HttpArchive.Log> = {
-  format: 'har',
-  display: {
-    title: 'HTTP Archive',
-    description: 'A recorded browsing session, anonymized and downloaded as a .har.',
-  },
-  accept: ['.har', 'application/json'],
-  detect: (file) => file.fileName.toLowerCase().endsWith('.har') || looksLikeJson(file.bytes),
-  decode: (file) =>
-    Either.match(decodeLog(new TextDecoder().decode(file.bytes)), {
-      onLeft: () => Effect.fail(new DecodeFailure({ message: HAR_PARSE_ERROR })),
-      onRight: Effect.succeed,
-    }),
-}
-
 /**
  * Every registered format, in identification priority order — crisp magic-byte
  * tests belong ahead of looser syntactic ones (a future PDF's `%PDF-` sniff
@@ -113,4 +77,4 @@ const formatRegistry: readonly BoundFormat[] = [
   bind(harDescriptor, ({ value, fileName }) => <AnonymizePanel log={value} fileName={fileName} />),
 ]
 
-export { bind, type BoundFormat, formatRegistry, HAR_PARSE_ERROR, harDescriptor }
+export { bind, type BoundFormat, formatRegistry }

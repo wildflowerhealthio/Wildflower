@@ -7,7 +7,7 @@ import type { PickedFile } from 'anonymizer-fundamentals'
 import { emitHar, HarFromJson } from 'har-importer-core/har'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
-import { HAR_PARSE_ERROR, harDescriptor } from './registry.tsx'
+import { HAR_PARSE_ERROR, harDescriptor } from 'har-anonymizer-core'
 
 describe('harDescriptor', () => {
   it('should claim a file named .har whatever its bytes hold', () => {

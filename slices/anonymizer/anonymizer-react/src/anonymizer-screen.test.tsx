@@ -7,8 +7,8 @@ import type { PickedFile } from 'anonymizer-fundamentals'
 import { emitHar, HarFromJson } from 'har-importer-core/har'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
+import { HAR_PARSE_ERROR } from 'har-anonymizer-core'
 import { AnonymizerScreen, UNIDENTIFIED_ERROR } from './anonymizer-screen.tsx'
-import { HAR_PARSE_ERROR } from './registry.tsx'
 
 /**
  * The unified anonymize surface, end to end over the real screen → picker →

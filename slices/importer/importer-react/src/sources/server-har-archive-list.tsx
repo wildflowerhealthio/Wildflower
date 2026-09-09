@@ -1,4 +1,4 @@
-import { DateTime } from 'effect'
+import { DateTime, Match } from 'effect'
 import { useRunAuthed } from 'fhir-r4-react'
 import { useState, type JSX } from 'react'
 
@@ -35,6 +35,61 @@ interface ServerHarArchiveListProps {
   readonly onPick: (picked: PickedHar) => void
 }
 
+/** Props for {@link ArchiveListContent}. */
+interface ArchiveListContentProps {
+  readonly isError: boolean
+  readonly isPending: boolean
+  readonly rows: readonly {
+    readonly id: string
+    readonly title: string | null
+    readonly creation: DateTime.DateTime | null
+  }[]
+  readonly onSelect: (id: string) => void
+}
+
+/** The inner list content, rendered via Match over the query state. */
+const ArchiveListContent = ({
+  isError,
+  isPending,
+  rows,
+  onSelect,
+}: ArchiveListContentProps): JSX.Element =>
+  Match.value({ isError, isPending, empty: rows.length === 0 }).pipe(
+    Match.when({ isError: true }, () => (
+      <p role="alert" className={styles.error}>
+        The uploaded archives could not be loaded.
+      </p>
+    )),
+    Match.when({ isPending: true }, () => (
+      <p role="status" className={styles.empty}>
+        Loading uploaded archives…
+      </p>
+    )),
+    Match.when({ empty: true }, () => (
+      <p className={styles.empty}>No HAR archives have been uploaded to the FHIR server.</p>
+    )),
+    Match.orElse(() => (
+      <ul className={styles.archiveList}>
+        {rows.map((row) => (
+          <li key={row.id}>
+            <button
+              type="button"
+              className={styles.archiveRow}
+              onClick={() => {
+                onSelect(row.id)
+              }}
+            >
+              <span className={styles.archiveTitle}>{row.title ?? UNTITLED_LABEL}</span>
+              <span className={styles.archiveDate}>
+                {row.creation === null ? UNDATED_LABEL : DateTime.formatIsoDate(row.creation)}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    ))
+  )
+
 /** The uploaded-archives list, heading and paging included. */
 const ServerHarArchiveList = ({ onPick }: ServerHarArchiveListProps): JSX.Element => {
   const runAuthed = useRunAuthed()
@@ -53,49 +108,6 @@ const ServerHarArchiveList = ({ onPick }: ServerHarArchiveListProps): JSX.Elemen
 
   const rows = archives.data?.pages.flatMap((page) => page.archives) ?? []
 
-  const renderArchiveList = (): JSX.Element => {
-    if (archives.isError) {
-      return (
-        <p role="alert" className={styles.error}>
-          The uploaded archives could not be loaded.
-        </p>
-      )
-    }
-    // `rows.length === 0` is also true on the very first fetch, so the pending
-    // state is checked first — otherwise the list would flash "none uploaded"
-    // before the server has answered.
-    if (archives.isPending) {
-      return (
-        <p role="status" className={styles.empty}>
-          Loading uploaded archives…
-        </p>
-      )
-    }
-    if (rows.length === 0) {
-      return <p className={styles.empty}>No HAR archives have been uploaded to the FHIR server.</p>
-    }
-    return (
-      <ul className={styles.archiveList}>
-        {rows.map((row) => (
-          <li key={row.id}>
-            <button
-              type="button"
-              className={styles.archiveRow}
-              onClick={() => {
-                void selectServerArchive(row.id)
-              }}
-            >
-              <span className={styles.archiveTitle}>{row.title ?? UNTITLED_LABEL}</span>
-              <span className={styles.archiveDate}>
-                {row.creation === null ? UNDATED_LABEL : DateTime.formatIsoDate(row.creation)}
-              </span>
-            </button>
-          </li>
-        ))}
-      </ul>
-    )
-  }
-
   return (
     <div className={styles.server}>
       <h3 className={styles.serverHeading}>Uploaded archives on the FHIR server</h3>
@@ -104,7 +116,12 @@ const ServerHarArchiveList = ({ onPick }: ServerHarArchiveListProps): JSX.Elemen
           {error}
         </p>
       )}
-      {renderArchiveList()}
+      <ArchiveListContent
+        isError={archives.isError}
+        isPending={archives.isPending}
+        rows={rows}
+        onSelect={selectServerArchive}
+      />
       {archives.hasNextPage && (
         <button
           type="button"

@@ -20,7 +20,7 @@ import { detectShape } from './shapes.ts'
  * redacts.
  *
  * The structure/data split itself, and its limits, are written up in
- * `../docs/Anonymization Explanation.md`.
+ * `../../docs/Anonymization Explanation.md`.
  *
  * @packageDocumentation
  */
