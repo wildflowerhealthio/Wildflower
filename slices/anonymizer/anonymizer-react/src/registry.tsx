@@ -71,8 +71,8 @@ const bind = <T,>(
 
 /**
  * Every registered format, in identification priority order — crisp magic-byte
- * tests belong ahead of looser syntactic ones (a future PDF's `%PDF-` sniff
- * goes before HAR's JSON sniff).
+ * tests belong ahead of looser syntactic ones (PDF's `%PDF-` sniff goes before
+ * HAR's JSON sniff).
  */
 const formatRegistry: readonly BoundFormat[] = [
   bind(pdfDescriptor, ({ value, fileName }) => (

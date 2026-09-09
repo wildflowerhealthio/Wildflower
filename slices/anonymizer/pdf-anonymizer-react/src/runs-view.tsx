@@ -27,7 +27,7 @@ const RunsView = ({ document: doc, className }: RunsViewProps): JSX.Element => (
             style={{
               left: `${(run.x / page.width) * 100}%`,
               top: `${(run.y / page.height) * 100}%`,
-              fontSize: `${(run.fontSize / page.height) * 100}%`,
+              fontSize: `${(run.fontSize / page.width) * 100}cqi`,
             }}
           >
             {run.text}

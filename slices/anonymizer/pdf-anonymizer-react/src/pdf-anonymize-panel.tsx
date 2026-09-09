@@ -32,7 +32,10 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
 
   const displayed = showAnonymized ? anonymized : value
 
-  const totalRuns = value.pages.reduce((sum, page) => sum + page.runs.length, 0)
+  const totalRuns = useMemo(
+    () => value.pages.reduce((sum, page) => sum + page.runs.length, 0),
+    [value]
+  )
   const totalMatches = ruleMatches.reduce((sum, m) => sum + m.count, 0)
 
   const onRuleChange = useCallback((id: string, text: string) => {
