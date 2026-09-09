@@ -146,6 +146,58 @@ describe('PdfAnonymizePanel', () => {
     })
   })
 
+  it('should show suggestions for frequently occurring text', async () => {
+    // Arrange — "John Smith" appears 3 times
+    const doc = multiRunDoc(['John Smith', 'Results for John Smith', 'John Smith labs'])
+    render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
+
+    // Assert
+    const list = screen.getByRole('list', { name: 'Suggested substrings' })
+    expect(within(list).getByText('John Smith')).toBeDefined()
+  })
+
+  it('should add a rule when a suggestion is clicked', async () => {
+    // Arrange
+    const doc = multiRunDoc(['John Smith', 'Results for John Smith', 'John Smith labs'])
+    render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
+
+    // Act
+    const list = screen.getByRole('list', { name: 'Suggested substrings' })
+    await userEvent.click(within(list).getByText('John Smith'))
+
+    // Assert — a rule with that text was added
+    const inputs = screen.getAllByLabelText<HTMLInputElement>('Text to mask')
+    const values = inputs.map((el) => el.value)
+    expect(values).toContain('John Smith')
+  })
+
+  it('should hide suggestions that are already covered by a rule', async () => {
+    // Arrange
+    const doc = multiRunDoc(['John Smith', 'John Smith again', 'John Smith third'])
+    render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
+
+    // Act — type "John Smith" in the first rule
+    const input = screen.getByLabelText('Text to mask')
+    await userEvent.type(input, 'John Smith')
+
+    // Assert — suggestion is hidden
+    await waitFor(() => {
+      const list = screen.queryByRole('list', { name: 'Suggested substrings' })
+      if (list) {
+        expect(within(list).queryByText('John Smith')).toBeNull()
+      }
+    })
+  })
+
+  it('should not show suggestions when no text repeats', async () => {
+    // Arrange
+    const doc = singleRunDoc('alpha beta gamma')
+    render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
+
+    // Assert
+    expect(screen.queryByRole('list', { name: 'Suggested substrings' })).toBeNull()
+  })
+
   it('should produce a valid PositionedTextDocument in the download', async () => {
     // Arrange
     const doc = twoPageDoc()
@@ -170,6 +222,19 @@ describe('PdfAnonymizePanel', () => {
 })
 
 // Helpers
+
+const multiRunDoc = (texts: readonly string[]): PositionedTextDocument => ({
+  format: 'wildflower-positioned-text',
+  version: 1,
+  pages: [
+    {
+      pageNumber: 1,
+      width: 612,
+      height: 792,
+      runs: texts.map((text, i) => ({ text, x: 72, y: 50 + i * 20, width: 200, fontSize: 12 })),
+    },
+  ],
+})
 
 const singleRunDoc = (text: string): PositionedTextDocument => ({
   format: 'wildflower-positioned-text',

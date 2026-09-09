@@ -1,5 +1,6 @@
 import {
   applySubstitutions,
+  extractFrequentSubstrings,
   type PositionedTextDocument,
   type SubstitutionRule,
 } from 'pdf-anonymizer-core'
@@ -10,6 +11,7 @@ import { ToggleSwitch } from 'react-tundraish'
 import { anonymizedJsonFileName, downloadBlob, positionedTextBlob } from './download-json.ts'
 import { RulesEditor } from './rules-editor.tsx'
 import { RunsView } from './runs-view.tsx'
+import { Suggestions } from './suggestions.tsx'
 import styles from './pdf-anonymize-panel.module.css'
 
 interface PdfAnonymizePanelProps {
@@ -57,6 +59,17 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
 
   const activeRules = rules.filter((r) => r.text !== '')
 
+  const allSuggestions = useMemo(() => extractFrequentSubstrings(value), [value])
+
+  const filteredSuggestions = useMemo(() => {
+    const ruleTexts = new Set(rules.map((r) => r.text.toLowerCase()).filter((t) => t !== ''))
+    return allSuggestions.filter((s) => !ruleTexts.has(s.text.toLowerCase()))
+  }, [allSuggestions, rules])
+
+  const onAddSuggestion = useCallback((text: string) => {
+    setRules((current) => [...current, { id: freshId(), text }])
+  }, [])
+
   return (
     <section className={cn(styles['panel'], className)} aria-label="Anonymize PDF">
       <section aria-label="What this document contains">
@@ -88,6 +101,8 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
           JSON file, not a PDF.
         </p>
       </section>
+
+      <Suggestions suggestions={filteredSuggestions} onAdd={onAddSuggestion} />
 
       <RulesEditor
         rules={rules}
