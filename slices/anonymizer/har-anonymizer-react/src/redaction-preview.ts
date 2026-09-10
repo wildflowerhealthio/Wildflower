@@ -10,7 +10,7 @@ import {
   type RedactionError,
   type RedactionOptions,
 } from 'har-anonymizer-core'
-import type { HttpArchive } from 'har-importer-core/har'
+import type { HttpArchive } from 'http-archive'
 
 /**
  * The before → after the anonymize preview renders, taken from the

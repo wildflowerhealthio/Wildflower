@@ -2,7 +2,7 @@
   "name": "pdf-anonymizer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The PDF engine of the anonymizer slice: the positioned-text document schema, literal-substring substitution with class-preserving same-length masking, and the anonymized-JSON file-name helper. No DOM, no fs, no React.",
+  "description": "The PDF engine of the anonymizer slice: literal-substring substitution with class-preserving same-length masking over a Document.Type (the schema lives in the positioned-text package), frequent-substring suggestions, and the anonymized-JSON file-name helper. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -32,10 +32,12 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
+    "positioned-text": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "positioned-text": "workspace:*"
   }
 }

@@ -1,5 +1,5 @@
 import type { PathOverride } from 'har-anonymizer-core'
-import type { HttpArchive } from 'har-importer-core/har'
+import type { HttpArchive } from 'http-archive'
 import { useId, type ChangeEvent, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { ErrorBanner, Field, PageLoading, StatusBadge, ToggleSwitch } from 'react-tundraish'

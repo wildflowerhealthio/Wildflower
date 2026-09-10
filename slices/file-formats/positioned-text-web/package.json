@@ -1,0 +1,41 @@
+{
+  "name": "positioned-text-web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The browser (non-React) extraction seam of the file-formats slice: `extractPositionedText` turns a PDF's raw bytes into a `Document.Type` via a dynamically imported `pdfjs-dist`. Both the PDF anonymizer and a future PDF importer feed off this one seam. Untested by design — everything downstream is tested on hand-written fixture documents.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/file-formats/positioned-text-web"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "pdfjs-dist": "catalog:",
+    "positioned-text": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "pdfjs-dist": "catalog:",
+    "positioned-text": "workspace:*"
+  }
+}

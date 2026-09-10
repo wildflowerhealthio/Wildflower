@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { Schema } from 'effect'
-import { PositionedTextFromJson, type PositionedTextDocument } from 'pdf-anonymizer-core'
+import { Document } from 'positioned-text'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { PdfAnonymizePanel } from './pdf-anonymize-panel.tsx'
@@ -31,9 +31,9 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-const decode = Schema.decodeSync(PositionedTextFromJson)
+const decode = Schema.decodeSync(Document.FromJson)
 
-const downloadedDoc = async (): Promise<PositionedTextDocument> => {
+const downloadedDoc = async (): Promise<Document.Type> => {
   const blob = downloaded.at(-1)
   if (blob === undefined) throw new Error('nothing was downloaded')
   return decode(await blob.text())
@@ -189,7 +189,7 @@ describe('PdfAnonymizePanel', () => {
     expect(values).toContain('Jane Doe')
   })
 
-  it('should produce a valid PositionedTextDocument in the download', async () => {
+  it('should produce a valid positioned-text document in the download', async () => {
     const doc = twoPageDoc()
     render(<PdfAnonymizePanel value={doc} fileName="lab-results.pdf" />)
     const input = screen.getByLabelText('Text to mask')
@@ -211,7 +211,7 @@ describe('PdfAnonymizePanel', () => {
 
 // Helpers
 
-const multiRunDoc = (texts: readonly string[]): PositionedTextDocument => ({
+const multiRunDoc = (texts: readonly string[]): Document.Type => ({
   format: 'wildflower-positioned-text',
   version: 1,
   pages: [
@@ -224,7 +224,7 @@ const multiRunDoc = (texts: readonly string[]): PositionedTextDocument => ({
   ],
 })
 
-const singleRunDoc = (text: string): PositionedTextDocument => ({
+const singleRunDoc = (text: string): Document.Type => ({
   format: 'wildflower-positioned-text',
   version: 1,
   pages: [
@@ -237,7 +237,7 @@ const singleRunDoc = (text: string): PositionedTextDocument => ({
   ],
 })
 
-const twoPageDoc = (): PositionedTextDocument => ({
+const twoPageDoc = (): Document.Type => ({
   format: 'wildflower-positioned-text',
   version: 1,
   fileName: 'lab-results.pdf',

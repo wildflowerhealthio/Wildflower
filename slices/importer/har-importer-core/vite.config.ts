@@ -9,7 +9,6 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
-      'har/index': 'src/har/index.ts',
       'archive/index': 'src/archive/index.ts',
     },
   },

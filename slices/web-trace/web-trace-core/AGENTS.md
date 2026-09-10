@@ -48,9 +48,11 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
 - **`src/pseudonymizer/` — moved to `har-anonymizer-core/src/`** in M2
   of #578. The export-boundary redactor now lives in the anonymizer slice,
   on the same per-file-format argument the archive codec does.
-- **`src/har/` — moved to `har-importer-core/har`** in M1 of #578. The
-  format definition and the `HttpArchive` projection now live with the
-  importer slice's HAR binding. `emitHar` still takes `TraceExchange` (its one
+- **`src/har/` — moved to the `http-archive` package**
+  (`slices/file-formats/http-archive`); it left this slice in M1 of #578 for
+  `har-importer-core/har` and was later hoisted into the `file-formats` slice.
+  The format definition and the `HttpArchive` projection now live there.
+  `emitHar` still takes `TraceExchange` (its one
   caller, `web-trace-react`'s export flow, still speaks that vocabulary until
   R2 dissolves it), and reaches back here for the type.
 - **`src/test-helpers.ts`** — `fast-check` arbitraries for realistic captures,

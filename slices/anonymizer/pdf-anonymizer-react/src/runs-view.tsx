@@ -1,12 +1,12 @@
-import type { PositionedTextDocument } from 'pdf-anonymizer-core'
+import type { Document } from 'positioned-text'
 import { useCallback, useState, type JSX, type KeyboardEvent } from 'react'
 import { cn } from 'react-kitchen-sink'
 
 import styles from './pdf-anonymize-panel.module.css'
 
 interface RunsViewProps {
-  readonly document: PositionedTextDocument
-  readonly originalDocument?: PositionedTextDocument
+  readonly document: Document.Type
+  readonly originalDocument?: Document.Type
   readonly onRunClick?: (text: string) => void
   readonly className?: string
 }
@@ -57,7 +57,7 @@ const RunsView = ({
 
               return (
                 <span
-                  key={i}
+                  key={runKey}
                   className={cn(
                     styles['runs__span'],
                     'text-body-3',

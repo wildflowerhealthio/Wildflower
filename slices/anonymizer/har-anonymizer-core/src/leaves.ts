@@ -4,7 +4,7 @@ import { JsonValue } from 'kitchen-sink/schema'
 import type { TraceExchange } from 'web-trace-core'
 import { contentTypeOf } from 'web-trace-core/capture'
 
-import type { HttpArchive } from 'har-importer-core/har'
+import type { HttpArchive } from 'http-archive'
 import { detectShape } from './shapes.ts'
 
 /**

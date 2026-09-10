@@ -33,8 +33,8 @@
     "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "har-importer-core": "workspace:*",
     "har-schema": "catalog:",
+    "http-archive": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
@@ -43,7 +43,7 @@
   "peerDependencies": {
     "anonymizer-fundamentals": "workspace:*",
     "effect": "catalog:",
-    "har-importer-core": "workspace:*",
+    "http-archive": "workspace:*",
     "kitchen-sink": "workspace:*",
     "web-trace-core": "workspace:*"
   }

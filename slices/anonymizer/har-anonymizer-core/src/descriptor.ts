@@ -1,7 +1,7 @@
 import { Effect, Either, Schema } from 'effect'
 
 import { DecodeFailure, type AnonymizerFormatDescriptor } from 'anonymizer-fundamentals'
-import { HttpArchive } from 'har-importer-core/har'
+import { HttpArchive } from 'http-archive'
 
 /**
  * The HAR format descriptor: identification by extension or JSON shape, and

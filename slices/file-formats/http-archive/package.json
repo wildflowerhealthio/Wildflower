@@ -1,0 +1,49 @@
+{
+  "name": "http-archive",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The HTTP Archive (HAR 1.2) format as one schema read in both directions: `emitHar`/`emitHarFromLog` build an archive from captured exchanges, `HarFromJson` reads a foreign one, and the `HttpArchive` projection (`Entry`, `Log`, `LogFromHarJson`) is what an importer and a replay consume. A pure format seam of the file-formats slice, below both the importer (parse) and the anonymizer (redact). No DOM, no fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/file-formats/http-archive"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "ajv": "catalog:",
+    "browser-sniffer-core": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "har-schema": "catalog:",
+    "http-extraction-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:",
+    "web-trace-core": "workspace:*"
+  },
+  "peerDependencies": {
+    "browser-sniffer-core": "workspace:*",
+    "effect": "catalog:",
+    "http-extraction-fundamentals": "workspace:*",
+    "web-trace-core": "workspace:*"
+  }
+}

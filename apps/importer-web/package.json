@@ -46,6 +46,7 @@
     "@vitejs/plugin-react": "catalog:",
     "fast-check": "catalog:",
     "har-importer-core": "workspace:*",
+    "http-archive": "workspace:*",
     "jsdom": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

@@ -1,17 +1,17 @@
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { PositionedTextFromJson, type PositionedTextDocument } from 'pdf-anonymizer-core'
+import { Document } from 'positioned-text'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { anonymizedJsonFileName, positionedTextBlob } from './download-json.ts'
 
-const decode = Schema.decodeSync(PositionedTextFromJson)
+const decode = Schema.decodeSync(Document.FromJson)
 
 describe('positionedTextBlob', () => {
-  it('should produce a blob that round-trips through PositionedTextFromJson', async () => {
+  it('should produce a blob that round-trips through Document.FromJson', async () => {
     // Arrange
-    const doc: PositionedTextDocument = {
+    const doc: Document.Type = {
       format: 'wildflower-positioned-text',
       version: 1,
       fileName: 'report.pdf',

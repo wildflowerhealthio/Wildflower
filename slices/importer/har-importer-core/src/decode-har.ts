@@ -1,7 +1,7 @@
 import { Effect, Option, type ParseResult, Schema } from 'effect'
 
+import { HttpArchive } from 'http-archive'
 import type { Extraction } from 'http-extraction-fundamentals'
-import { HttpArchive } from './har/index.ts'
 
 import type { HarSettings } from './har-settings.ts'
 

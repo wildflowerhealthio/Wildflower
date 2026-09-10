@@ -3,6 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { emitHar, HarFromJson, HttpArchive } from 'http-archive'
 import {
   HAR_ARCHIVE_CODE,
   isWebTrace,
@@ -12,7 +13,6 @@ import {
   WEB_TRACE_REDACTION_SYSTEM,
 } from 'web-trace-core/codec'
 import { arbitraries } from 'web-trace-core/test-helpers'
-import { emitHar, HarFromJson, HttpArchive } from '../har/index.ts'
 import type { HarArchive } from './har-archive-codec.ts'
 import {
   HAR_ARCHIVE_CONTENT_TYPE,
@@ -177,7 +177,7 @@ describe('HarArchive ⇄ DocumentReference', () => {
   })
 
   test('property: stored bytes still parse as an HTTP Archive after the round trip, which is the point of storing them', async () => {
-    // The seam between this codec and `src/har/`: an archive is only worth
+    // The seam between this codec and the `http-archive` package: an archive is only worth
     // storing if what comes back out is still readable as the file that went
     // in. Nothing here parses the archive — `HarFromJson` and
     // `HttpArchive.LogFromHarJson` do, on the bytes this codec hands back.

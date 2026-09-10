@@ -27,7 +27,7 @@ import timingsSchema from 'har-schema/lib/timings.json' with { type: 'json' }
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { emitHar, Har } from 'har-importer-core/har'
+import { emitHar, Har } from 'http-archive'
 import type { TraceExchange } from 'web-trace-core'
 import { toDocumentReference } from 'web-trace-core/codec'
 import { arbitraries } from 'web-trace-core/test-helpers'

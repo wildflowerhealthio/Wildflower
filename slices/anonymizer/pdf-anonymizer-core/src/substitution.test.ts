@@ -2,7 +2,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { PositionedTextDocument } from './positioned-text.ts'
+import type { Document } from 'positioned-text'
 import { applySubstitutions, maskSameLength } from './substitution.ts'
 
 describe('maskSameLength', () => {
@@ -291,7 +291,7 @@ describe('applySubstitutions', () => {
 
 // Helpers
 
-const docWith = (text: string): PositionedTextDocument => ({
+const docWith = (text: string): Document.Type => ({
   format: 'wildflower-positioned-text',
   version: 1,
   pages: [
@@ -304,7 +304,7 @@ const docWith = (text: string): PositionedTextDocument => ({
   ],
 })
 
-const multiRunDoc = (texts: readonly string[]): PositionedTextDocument => ({
+const multiRunDoc = (texts: readonly string[]): Document.Type => ({
   format: 'wildflower-positioned-text',
   version: 1,
   pages: [
@@ -317,5 +317,5 @@ const multiRunDoc = (texts: readonly string[]): PositionedTextDocument => ({
   ],
 })
 
-const textOf = (doc: PositionedTextDocument): string =>
+const textOf = (doc: Document.Type): string =>
   doc.pages.flatMap((p) => p.runs.map((r) => r.text)).join('')

@@ -1,6 +1,6 @@
 import { DateTime, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { emitHarFromLog, type HttpArchive } from 'har-importer-core/har'
+import { emitHarFromLog, type HttpArchive } from 'http-archive'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 

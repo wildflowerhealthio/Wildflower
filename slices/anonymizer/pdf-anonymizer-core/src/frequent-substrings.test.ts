@@ -2,8 +2,8 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import type { Document } from 'positioned-text'
 import { extractFrequentSubstrings } from './frequent-substrings.ts'
-import type { PositionedTextDocument } from './positioned-text.ts'
 
 describe('extractFrequentSubstrings', () => {
   it('should return an empty array for a document with no runs', () => {
@@ -198,13 +198,13 @@ describe('extractFrequentSubstrings', () => {
 
 // Helpers
 
-const emptyDoc = (): PositionedTextDocument => ({
+const emptyDoc = (): Document.Type => ({
   format: 'wildflower-positioned-text',
   version: 1,
   pages: [],
 })
 
-const docWithRuns = (texts: readonly string[]): PositionedTextDocument => ({
+const docWithRuns = (texts: readonly string[]): Document.Type => ({
   format: 'wildflower-positioned-text',
   version: 1,
   pages: [
