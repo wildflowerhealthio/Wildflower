@@ -254,6 +254,23 @@ jobs:
           # tip (which could have moved on between merge and build start).
           ref: refs/tags/${{ needs.prepare.outputs.tag }}
 
+      - name: Verify Apple signing identity (macOS)
+        if: matrix.key == 'macos'
+        # Fails in seconds, before the ~20 min universal compile, if the Apple
+        # signing secrets can't produce a signed bundle: the script imports
+        # APPLE_CERTIFICATE into a throwaway keychain and resolves
+        # APPLE_SIGNING_IDENTITY exactly the way the Tauri bundler does at the
+        # end of `tauri build`. The env block is the same set tauri-action
+        # receives below; keep the two in step.
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: ./scripts/checks/apple-signing-preflight.sh
+
       - name: Install Tauri system dependencies (Linux)
         if: matrix.os == 'ubuntu-22.04'
         # Same list ci-rust.yml uses; required for the webkit2gtk crate to link.
@@ -305,7 +322,9 @@ jobs:
           # APPLE_SIGNING_IDENTITY must name a "Developer ID Application"
           # certificate contained in APPLE_CERTIFICATE; an "Apple Development"
           # cert (or a name that doesn't match the imported cert) fails the
-          # bundle step with "failed to resolve signing identity".
+          # bundle step with "failed to resolve signing identity". The
+          # "Verify Apple signing identity" step above catches that before
+          # the compile.
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
