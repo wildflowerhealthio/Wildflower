@@ -1,13 +1,13 @@
 # AGENTS.md — slices/importer/lifelabs-pdf-importer-core
 
-The **LifeLabs PDF binding** of the importer slice (core layer, dialect only):
-the positioned-text dialect that reads a LifeLabs patient "Reports" PDF's
+The **LifeLabs PDF binding** of the importer slice (core layer): the
+positioned-text dialect that reads a LifeLabs patient "Reports" PDF's
 pages — extracted to the `wildflower-positioned-text` document the PDF
 anonymizer (`slices/anonymizer/pdf-anonymizer-*`) produces and downloads —
-into typed `LifeLabsReport` records. No DOM, no `fs`, no React.
-
-The FHIR R4 synthesis, the importer descriptor, and the decode/persist
-integration are added in a follow-up PR.
+into typed `LifeLabsReport` records, the FHIR R4 synthesis that turns those
+records into Patient, Practitioner, DiagnosticReport and Observation resources,
+the `FileImporterDescriptor` binding, and the decode/persist integration.
+No DOM, no `fs`, no React.
 
 ## Shape
 
@@ -38,6 +38,32 @@ integration are added in a follow-up PR.
   clinical `Observation`. Each shape's `fast-check` `arbitrary` lives in a
   test-only `<name>-arbitrary.ts` sibling, never imported by production code, so
   `fast-check` stays out of the bundle.
+- `src/fhir/` — **the FHIR R4 synthesis**: `dates.ts` parses LifeLabs printed
+  dates (`Mon D YYYY[ HH:MM]`) into FHIR dateTime/date values; `reference-range.ts`
+  parses printed reference ranges into low/high bounds; `result-value.ts` parses
+  printed result cells into quantity (with optional comparator) or text values;
+  `to-fhir.ts` is the main synthesis — `toFhirResources` converts
+  `Report.Type[]` → `FhirResource[]` (Patient, Practitioner, DiagnosticReport,
+  Observation), keying each resource by a deterministic `sourceId` (FNV-1a hash
+  of length-prefixed components) so re-imports of the same report produce the
+  same ids.
+- `src/source-system.ts` — **`LIFELABS_SYSTEM`**, the source system URI every
+  resource is keyed under after adoption, and **`LifeLabsIdentifierSystem`**,
+  the identifier systems for lab numbers, patient IDs, and health card numbers.
+- `src/decode.ts` — **`decodeLifeLabsPdf`**, the descriptor's `decode`: a
+  positioned-text JSON file in, one `Extraction.Input` carrying the file
+  verbatim as its body under a minted URL, with the time-zone setting on a
+  response header.
+- `src/response-kind.ts` — **`LifeLabsReportResponseKind`** and the adopted
+  `lifeLabsPdfResponseKinds`: the `HttpResponseKind` that claims the minted URL
+  and parses the body through the dialect and the FHIR synthesis.
+- `src/persist-fhir.ts` — **`persistFhir`**, the descriptor's `persist`: stamps
+  every resource with `meta.source` then delegates to `fhir-r4`'s
+  `persistResources`.
+- `src/source.ts` — **`lifeLabsPdfSource`**, the `SourceDescriptor` the
+  descriptor's `sources` entry, so the review menu labels the import by source.
+- `src/descriptor.ts` — **`lifeLabsPdfImporterDescriptor`**, the concrete
+  `FileImporterDescriptor` for format `'lifelabs-pdf'`.
 - `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone }`, default
   `America/Toronto`: the report prints local clock times with no zone, and
   FHIR's `dateTime`-with-time / `instant` need one. The zone rides from
@@ -52,19 +78,23 @@ integration are added in a follow-up PR.
 ## Layering
 
 Depends on `positioned-text` (the positioned-text schema — the neutral seam
-between the anonymizer's extraction and this dialect), `effect` (peer;
-`Report.tryFromDocument` returns an `Effect`), and `kitchen-sink` (`numRunsFor`
-in tests). `fast-check` is a test-only `devDependency`, reached only from the
+between the anonymizer's extraction and this dialect), `fhir-r4` (resource
+schemas, `persistResources`, `joinIdComponents`, `adoptUnderRecognizedRoot`),
+`http-extraction-fundamentals` (`Extraction.Input`, `HttpResponseKind`,
+`SourceDescriptor`, `recognizePortal`), `importer-fundamentals`
+(`FileImporterDescriptor`), `web-trace-core` (`withMetaSource`),
+`kitchen-sink` (`fnv1a64`, `numRunsFor` in tests), and `effect` (peer).
+`fast-check` is a test-only `devDependency`, reached only from the
 `*-arbitrary.ts` modules, and must stay out of the production bundle. Never
-imports `fhir-r4`, `har-importer-core`, `pdf-anonymizer-core`, a
-`*-importer-react`, or `slices/collector`.
+imports `har-importer-core`, `pdf-anonymizer-core`, a `*-importer-react`, or
+`slices/collector`.
 
 ## Guardrails
 
 - **The dialect interprets nothing.** A `ReportRow.result` is the printed
-  string; deciding it is a quantity is the FHIR synthesis layer's job (added
-  in the follow-up). Keep that split — it is what makes the round-trip
-  property possible.
+  string; deciding it is a quantity is the FHIR synthesis layer's job
+  (`src/fhir/`). Keep that split — it is what makes the round-trip property
+  possible.
 - **Every grid row is a row**, `Collection Date` and `Reference Interval Note`
   included: each is a line the report prints, and deciding some are metadata
   would drop them silently.

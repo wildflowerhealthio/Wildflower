@@ -45,6 +45,8 @@
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "jsdom": "catalog:",
+    "lifelabs-pdf-importer-core": "workspace:*",
+    "lifelabs-pdf-importer-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
     "react-tundraish": "workspace:*",
@@ -64,6 +66,8 @@
     "http-archive": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
+    "lifelabs-pdf-importer-core": "workspace:*",
+    "lifelabs-pdf-importer-react": "workspace:*",
     "react": "catalog:",
     "react-tundraish": "workspace:*",
     "web-trace-core": "workspace:*"

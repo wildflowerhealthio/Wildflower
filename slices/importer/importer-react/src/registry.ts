@@ -8,6 +8,11 @@ import {
   type SettingsPickerProps,
 } from 'har-importer-react'
 import type { FileImporterDescriptor } from 'importer-fundamentals'
+import { type LifeLabsPdfSettings, lifeLabsPdfImporterDescriptor } from 'lifelabs-pdf-importer-core'
+import {
+  LifeLabsPdfSettingsPicker,
+  ReviewBody as LifeLabsPdfReviewBody,
+} from 'lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
 
 /**
@@ -21,7 +26,8 @@ import type { JSX } from 'react'
  * Registering a format is one static edit: add a key whose value is a full
  * {@link FormatRegistration}. The interface requires all three parts, so a
  * format missing its descriptor, its settings picker, or its review body fails
- * to compile here rather than at runtime. Only `har` is registered so far.
+ * to compile here rather than at runtime. Two formats are registered: `har`
+ * and `lifelabs-pdf`.
  *
  * @packageDocumentation
  */
@@ -48,11 +54,25 @@ const harRegistration: FormatRegistration<HarSettings, FhirResource, FhirR4Resou
     ReviewBody,
   }
 
+/**
+ * The LifeLabs PDF format's registration: its descriptor, the time-zone
+ * settings picker, and the shared interactive review.
+ */
+const lifeLabsPdfRegistration: FormatRegistration<
+  LifeLabsPdfSettings,
+  FhirResource,
+  FhirR4ResourcesHttpApiClient
+> = {
+  descriptor: lifeLabsPdfImporterDescriptor,
+  SettingsPicker: LifeLabsPdfSettingsPicker,
+  ReviewBody: LifeLabsPdfReviewBody,
+}
+
 /** The closed registry; its keys are the {@link Format} union. */
-const formatRegistry = { har: harRegistration } as const
+const formatRegistry = { har: harRegistration, 'lifelabs-pdf': lifeLabsPdfRegistration } as const
 
 /** Every registered file-format tag. */
 type Format = keyof typeof formatRegistry
 
-export { formatRegistry, harRegistration }
+export { formatRegistry, harRegistration, lifeLabsPdfRegistration }
 export type { Format, FormatRegistration }
