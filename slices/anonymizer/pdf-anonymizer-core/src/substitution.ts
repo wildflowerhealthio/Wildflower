@@ -47,8 +47,10 @@ const replaceAllCaseInsensitive = (
   let searchFrom = 0
   let count = 0
 
+  const textLower = text.toLowerCase()
+
   while (searchFrom <= text.length - needleLower.length) {
-    const foundAt = text.toLowerCase().indexOf(needleLower, searchFrom)
+    const foundAt = textLower.indexOf(needleLower, searchFrom)
     if (foundAt === -1) break
     result += text.slice(searchFrom, foundAt)
     result += maskSameLength(text.slice(foundAt, foundAt + needleLower.length))

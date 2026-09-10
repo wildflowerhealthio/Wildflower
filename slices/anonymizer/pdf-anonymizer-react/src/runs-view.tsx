@@ -1,5 +1,5 @@
 import type { PositionedTextDocument } from 'pdf-anonymizer-core'
-import { useCallback, useState, type JSX } from 'react'
+import { useCallback, useState, type JSX, type KeyboardEvent } from 'react'
 import { cn } from 'react-kitchen-sink'
 
 import styles from './pdf-anonymize-panel.module.css'
@@ -24,6 +24,16 @@ const RunsView = ({
       if (onRunClick && text.trim() !== '') onRunClick(text)
     },
     [onRunClick]
+  )
+
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent, text: string) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault()
+        handleClick(text)
+      }
+    },
+    [handleClick]
   )
 
   return (
@@ -59,7 +69,10 @@ const RunsView = ({
                     top: `${(run.y / page.height) * 100}%`,
                     fontSize: `${(run.fontSize / page.width) * 100}cqi`,
                   }}
+                  role={onRunClick ? 'button' : undefined}
+                  tabIndex={onRunClick ? 0 : undefined}
                   onClick={() => handleClick(run.text)}
+                  onKeyDown={onRunClick ? (e) => handleKeyDown(e, run.text) : undefined}
                   onMouseEnter={() => {
                     if (isMasked) setHoveredRun(runKey)
                   }}
