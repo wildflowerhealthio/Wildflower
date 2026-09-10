@@ -1,4 +1,6 @@
-import { Either, Schema } from 'effect'
+import { DateTime, Either, Schema } from 'effect'
+
+import { choiceElementSetPassthroughFields, ChoiceElementSet } from 'fhir-r4/data-types'
 
 /**
  * The one-line description one previewed FHIR resource is listed under, on its
@@ -77,7 +79,10 @@ const CodeableFields = Schema.Struct({
 const DiagnosticReportSummary = Schema.Struct({
   code: Schema.optional(CodeableFields),
   status: Schema.optional(Schema.String),
-  effectiveDateTime: Schema.optional(Schema.String),
+  ...choiceElementSetPassthroughFields(
+    'effective',
+    ChoiceElementSet.FhirR4SetChoices['DiagnosticReport.effective[x]']
+  ),
   result: Schema.optional(Schema.Array(Schema.Struct({}))),
 })
 
@@ -233,7 +238,17 @@ const describeResource = (resource: unknown): ResourceDescription => {
     case 'DiagnosticReport': {
       const report = decode(DiagnosticReportSummary, resource)
       const code = codeableText(report?.code)
-      const effective = (report?.effectiveDateTime ?? '').trim()
+      const effectiveDateTime = report?.effectiveDateTime
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- SchemaFor<'Period'> is `Schema<any>` for complex types; the Period fields (start/end) are DateTime.Utc by construction.
+      const effectivePeriod = report?.effectivePeriod
+      let effective = ''
+      if (effectiveDateTime != null) {
+        effective = DateTime.formatIso(effectiveDateTime)
+      } else if (effectivePeriod != null) {
+        const start = effectivePeriod.start != null ? DateTime.formatIso(effectivePeriod.start) : ''
+        const end = effectivePeriod.end != null ? DateTime.formatIso(effectivePeriod.end) : ''
+        effective = [start, end].filter((part) => part.length > 0).join(' – ')
+      }
       const results = report?.result ?? []
       const resultCount =
         results.length === 0

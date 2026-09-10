@@ -91,6 +91,28 @@ describe('describeResource', () => {
     })
   })
 
+  it('summarises a DiagnosticReport with effectivePeriod instead of effectiveDateTime', () => {
+    // Arrange
+    const report = {
+      resourceType: 'DiagnosticReport',
+      id: 'dr-2',
+      status: 'final',
+      code: { text: 'Laboratory report' },
+      effectivePeriod: {
+        start: '2026-08-13T08:00:00.000Z',
+        end: '2026-08-13T17:00:00.000Z',
+      },
+      result: [{ reference: 'Observation/a' }],
+    }
+
+    // Act / Assert
+    expect(describeResource(report)).toEqual({
+      type: 'DiagnosticReport',
+      summary:
+        'Laboratory report · 2026-08-13T08:00:00.000Z – 2026-08-13T17:00:00.000Z · 1 result · final',
+    })
+  })
+
   it('summarises a Practitioner by name, falling back to its id', () => {
     // Arrange
     const named = {

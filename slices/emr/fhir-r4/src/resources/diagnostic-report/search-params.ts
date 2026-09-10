@@ -7,7 +7,7 @@ const NumFromStr = Schema.NumberFromString.pipe(Schema.int(), Schema.greaterThan
 
 /**
  * The `DiagnosticReport` search parameters the typed client can express —
- * paging plus five filters, a subset of FHIR R4 § DiagnosticReport.search.
+ * paging plus seven filters, a subset of FHIR R4 § DiagnosticReport.search.
  *
  * @remarks
  * `_id`, `identifier`, `category` and `code` are FHIR `token` parameters: a
