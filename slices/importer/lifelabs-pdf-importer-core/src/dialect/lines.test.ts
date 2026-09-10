@@ -1,11 +1,11 @@
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import type { PositionedTextPage, PositionedTextRun } from 'positioned-text'
+import type { Page, Run } from 'positioned-text'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { LINE_TOLERANCE, lineText, linesOf } from './lines.ts'
 
-const run = (text: string, x: number, y: number): PositionedTextRun => ({
+const run = (text: string, x: number, y: number): Run.Type => ({
   text,
   x,
   y,
@@ -13,7 +13,7 @@ const run = (text: string, x: number, y: number): PositionedTextRun => ({
   fontSize: 9.94,
 })
 
-const page = (runs: readonly PositionedTextRun[]): PositionedTextPage => ({
+const page = (runs: readonly Run.Type[]): Page.Type => ({
   pageNumber: 1,
   width: 612,
   height: 792,
@@ -21,7 +21,7 @@ const page = (runs: readonly PositionedTextRun[]): PositionedTextPage => ({
 })
 
 /** A row's worth of runs whose top edges all sit within the tolerance of `y`. */
-const rowRuns = (y: number, count: number): fc.Arbitrary<PositionedTextRun[]> =>
+const rowRuns = (y: number, count: number): fc.Arbitrary<Run.Type[]> =>
   fc
     .array(
       fc.record({

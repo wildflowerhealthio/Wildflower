@@ -1,4 +1,4 @@
-import type { PositionedTextDocument, PositionedTextPage, PositionedTextRun } from 'positioned-text'
+import type { Document, Page, Run } from 'positioned-text'
 
 import type { LifeLabsReport, ReportRow } from './dialect/report.ts'
 
@@ -53,7 +53,7 @@ interface LayoutOptions {
   readonly withStatus?: boolean
 }
 
-const run = (text: string, x: number, y: number, fontSize = 9.94): PositionedTextRun => ({
+const run = (text: string, x: number, y: number, fontSize = 9.94): Run.Type => ({
   text,
   x,
   y,
@@ -99,10 +99,10 @@ const bodyLines = (report: LifeLabsReport): BodyLine[] => {
   return lines
 }
 
-const headerRuns = (report: LifeLabsReport): PositionedTextRun[] => {
+const headerRuns = (report: LifeLabsReport): Run.Type[] => {
   const { patient, lab } = report
-  const label = (text: string, x: number, y: number): PositionedTextRun => run(text, x, y, 9.08)
-  const runs: PositionedTextRun[] = [
+  const label = (text: string, x: number, y: number): Run.Type => run(text, x, y, 9.08)
+  const runs: Run.Type[] = [
     label('Patient:', 0, 15),
     run(patient.name, 37, 13),
     label('Lab No:', X.reportLabel, 15),
@@ -150,12 +150,7 @@ const headerRuns = (report: LifeLabsReport): PositionedTextRun[] => {
   return runs
 }
 
-const footerRuns = (
-  page: number,
-  of: number,
-  status: string,
-  withStatus: boolean
-): PositionedTextRun[] => [
+const footerRuns = (page: number, of: number, status: string, withStatus: boolean): Run.Type[] => [
   run('Lab - 5687: LifeLabs, 100 International Blvd., Toronto, Ontario.', X.group, FOOTER_Y),
   run('Page', 269, FOOTER_Y + 12),
   run(String(page), 297, FOOTER_Y + 12),
@@ -176,7 +171,7 @@ const footerRuns = (
 const layoutReport = (
   report: LifeLabsReport,
   options: LayoutOptions = {}
-): readonly PositionedTextPage[] => {
+): readonly Page.Type[] => {
   const firstPageNumber = options.firstPageNumber ?? 1
   const withStatus = options.withStatus ?? true
   const lines = bodyLines(report)
@@ -221,8 +216,8 @@ const layoutReport = (
 const layoutDocument = (
   reports: readonly LifeLabsReport[],
   fileName = 'Reports.pdf'
-): PositionedTextDocument => {
-  const pages: PositionedTextPage[] = []
+): Document.Type => {
+  const pages: Page.Type[] = []
   for (const report of reports) {
     pages.push(...layoutReport(report, { firstPageNumber: pages.length + 1 }))
   }

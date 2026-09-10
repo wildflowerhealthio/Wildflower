@@ -2,7 +2,7 @@
   "name": "positioned-text",
   "version": "0.0.0",
   "private": true,
-  "description": "A PDF's text content as absolutely positioned runs: the `PositionedTextDocument` Effect Schema (`wildflower-positioned-text` v1) and `PositionedTextFromJson`. The neutral format seam of the file-formats slice, below both the importer (a dialect parses it into records) and the anonymizer (it masks and downloads it). No DOM, no fs, no React, no extraction library.",
+  "description": "A PDF's text content as absolutely positioned runs: the `Document.Schema` Effect Schema (`wildflower-positioned-text` v1) and `Document.FromJson`. The neutral format seam of the file-formats slice, below both the importer (a dialect parses it into records) and the anonymizer (it masks and downloads it). No DOM, no fs, no React, no extraction library.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

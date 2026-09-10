@@ -29,12 +29,12 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **`har-anonymizer-react`** (the HAR panel) — `AnonymizePanel`, the surface
   that reviews the pseudonymizer's decisions over a parsed `HttpArchive.Log`
   and downloads an anonymized `.har`. Presentation and interaction only.
-- **`pdf-anonymizer-core`** (the PDF engine) — the `PositionedTextDocument`
+- **`pdf-anonymizer-core`** (the PDF engine) — the `Document.Schema`
   Effect Schema (`wildflower-positioned-text` v1), literal-substring
   substitution with class-preserving same-length masking, and the
   anonymized-JSON file-name helper. Pure — no DOM, no extraction library.
 - **`pdf-anonymizer-react`** (the PDF panel) — `PdfAnonymizePanel`: enter
-  substitution rules, preview masked runs over a `PositionedTextDocument`,
+  substitution rules, preview masked runs over a `Document.Type`,
   and download anonymized positioned-text JSON. `pdfDescriptor` (the
   `AnonymizerFormatDescriptor` binding for PDF: detect by `%PDF-` magic
   bytes, decode via `pdfjs-dist`).

@@ -4,9 +4,6 @@
  *
  * @packageDocumentation
  */
-export {
-  PositionedTextDocument,
-  PositionedTextFromJson,
-  PositionedTextPage,
-  PositionedTextRun,
-} from './positioned-text.ts'
+export * as Document from './document.ts'
+export * as Page from './page.ts'
+export * as Run from './run.ts'

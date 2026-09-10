@@ -1,12 +1,12 @@
 import { Schema } from 'effect'
 import { anonymizedJsonFileName } from 'pdf-anonymizer-core'
-import { PositionedTextDocument } from 'positioned-text'
+import { Document } from 'positioned-text'
 
 const JSON_MEDIA_TYPE = 'application/json'
 
-const encodeDoc = Schema.encodeSync(PositionedTextDocument)
+const encodeDoc = Schema.encodeSync(Document.Schema)
 
-const positionedTextBlob = (doc: PositionedTextDocument): Blob =>
+const positionedTextBlob = (doc: Document.Type): Blob =>
   new Blob([JSON.stringify(encodeDoc(doc), null, 2)], { type: JSON_MEDIA_TYPE })
 
 const downloadBlob = (blob: Blob, fileName: string): void => {

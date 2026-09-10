@@ -1,4 +1,5 @@
-import type { PositionedTextDocument } from 'positioned-text'
+import { Array as Arr, Order, pipe } from 'effect'
+import { Document } from 'positioned-text'
 
 interface FrequentSubstring {
   readonly text: string
@@ -70,9 +71,41 @@ const STOPWORDS = new Set([
 const MIN_WORD_LENGTH = 3
 const MIN_COUNT = 2
 const MAX_SUGGESTIONS = 50
+const MAX_NGRAM = 3
+
+/** One word n-gram: its word length `n` and the phrase's original casing. */
+interface Ngram {
+  readonly n: number
+  readonly phrase: string
+}
 
 const splitWords = (text: string): readonly string[] =>
   text.split(/\s+/).filter((w) => w.length > 0)
+
+/** Word n-grams of length 1..{@link MAX_NGRAM}, left to right. */
+const ngramsOf = (words: readonly string[]): readonly Ngram[] =>
+  pipe(
+    Arr.range(1, MAX_NGRAM),
+    Arr.flatMap((n) =>
+      pipe(
+        Arr.dropRight(words, n - 1),
+        Arr.map((_, start) => ({ n, phrase: words.slice(start, start + n).join(' ') }))
+      )
+    )
+  )
+
+/** A unigram must clear the length and stopword filters; longer grams pass. */
+const isCandidate = ({ n, phrase }: Ngram): boolean =>
+  n > 1 || (phrase.length >= MIN_WORD_LENGTH && !STOPWORDS.has(phrase.toLowerCase()))
+
+const descendingBy = <A>(f: (a: A) => number): Order.Order<A> =>
+  Order.mapInput(Order.reverse(Order.number), f)
+
+/** Most frequent first, then longest — the order suggestions are surfaced in. */
+const byFrequencyThenLength: readonly Order.Order<FrequentSubstring>[] = [
+  descendingBy((s) => s.count),
+  descendingBy((s) => s.text.length),
+]
 
 /**
  * Extract frequently occurring substrings from a positioned-text document.
@@ -81,41 +114,30 @@ const splitWords = (text: string): readonly string[] =>
  * out stopwords and low-frequency entries, and returns the top results sorted
  * by frequency descending, then by text length descending.
  */
-const extractFrequentSubstrings = (doc: PositionedTextDocument): readonly FrequentSubstring[] => {
-  const counts = new Map<string, number>()
-  const canonical = new Map<string, string>()
+const extractFrequentSubstrings = (doc: Document.Type): readonly FrequentSubstring[] => {
+  // Tally into a Map (not `Array.groupBy`'s Record): a plain object reorders
+  // integer-like keys such as "2024", which would scramble the first-occurrence
+  // casing and the stable-sort tie-break below.
+  const tally = pipe(
+    Document.runs(doc),
+    Arr.flatMap((run) => ngramsOf(splitWords(run.text))),
+    Arr.filter(isCandidate),
+    Arr.reduce(new Map<string, FrequentSubstring>(), (acc, { phrase }) => {
+      const key = phrase.toLowerCase()
+      const seen = acc.get(key)
+      return acc.set(
+        key,
+        seen ? { text: seen.text, count: seen.count + 1 } : { text: phrase, count: 1 }
+      )
+    })
+  )
 
-  for (const page of doc.pages) {
-    for (const run of page.runs) {
-      const words = splitWords(run.text)
-
-      for (let n = 1; n <= 3; n += 1) {
-        for (let i = 0; i <= words.length - n; i += 1) {
-          const phrase = words.slice(i, i + n).join(' ')
-          const key = phrase.toLowerCase()
-
-          if (n === 1) {
-            if (phrase.length < MIN_WORD_LENGTH) continue
-            if (STOPWORDS.has(key)) continue
-          }
-
-          counts.set(key, (counts.get(key) ?? 0) + 1)
-          if (!canonical.has(key)) canonical.set(key, phrase)
-        }
-      }
-    }
-  }
-
-  const results: FrequentSubstring[] = []
-
-  for (const [key, count] of counts) {
-    if (count < MIN_COUNT) continue
-    results.push({ text: canonical.get(key)!, count })
-  }
-
-  results.sort((a, b) => b.count - a.count || b.text.length - a.text.length)
-
-  return results.slice(0, MAX_SUGGESTIONS)
+  return pipe(
+    Arr.fromIterable(tally.values()),
+    Arr.filter((s) => s.count >= MIN_COUNT),
+    Arr.sortBy(...byFrequencyThenLength),
+    Arr.take(MAX_SUGGESTIONS)
+  )
 }
 
 export { extractFrequentSubstrings, type FrequentSubstring }

@@ -1,7 +1,7 @@
 # AGENTS.md — slices/file-formats/positioned-text-web
 
 The browser (non-React) **extraction seam** of the `file-formats` slice:
-`extractPositionedText` turns a PDF's raw bytes into a `PositionedTextDocument`
+`extractPositionedText` turns a PDF's raw bytes into a `Document.Type`
 via a dynamically imported `pdfjs-dist`. Both the PDF anonymizer and a future
 PDF importer feed off this one seam rather than integrating pdfjs twice.
 
@@ -26,7 +26,7 @@ Depends on `positioned-text` (the schema it produces) and `pdfjs-dist`
 ## Traps
 
 - **The extraction seam is untested — deliberately.** Everything downstream is
-  tested on hand-written fixture `PositionedTextDocument`s; the seam only has to
+  tested on hand-written fixture `Document`s; the seam only has to
   produce that shape. Keep it under ~60 lines and free of logic worth testing.
 
 ## References

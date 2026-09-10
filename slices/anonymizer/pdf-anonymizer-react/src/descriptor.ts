@@ -1,6 +1,6 @@
 import { DecodeFailure, type AnonymizerFormatDescriptor } from 'anonymizer-fundamentals'
 import { Effect } from 'effect'
-import type { PositionedTextDocument } from 'positioned-text'
+import type { Document } from 'positioned-text'
 
 import { extractPositionedText } from 'positioned-text-web'
 
@@ -16,7 +16,7 @@ const startsWith = (bytes: Uint8Array, prefix: Uint8Array): boolean => {
   return true
 }
 
-const pdfDescriptor: AnonymizerFormatDescriptor<PositionedTextDocument> = {
+const pdfDescriptor: AnonymizerFormatDescriptor<Document.Type> = {
   format: 'pdf',
   display: {
     title: 'PDF Document',

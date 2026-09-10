@@ -11,12 +11,17 @@ anonymizer.
 
 ## Shape
 
-- `src/positioned-text.ts` — **`PositionedTextDocument`** Effect Schema
+A schema per file, each re-exported as a namespace from `src/index.ts`
+(`export * as Document`, `export * as Page`, `export * as Run`) so consumers
+read `Document.Schema` / `Document.Type`, `Page.Schema`, `Run.Schema`:
+
+- `src/document.ts` — **`Document.Schema`** Effect Schema
   (`{ format: 'wildflower-positioned-text', version: 1, fileName?, pages:
 [{ pageNumber, width, height, runs: [{ text, x, y, width, fontSize,
-fontName? }] }] }`, top-left `y` origin), plus `PositionedTextPage` /
-  `PositionedTextRun` and **`PositionedTextFromJson`** (`Schema.parseJson`) for
-  round-tripping through JSON.
+fontName? }] }] }`, top-left `y` origin), plus **`Document.FromJson`**
+  (`Schema.parseJson`) for round-tripping through JSON.
+- `src/page.ts` — **`Page.Schema`**, one page of positioned runs.
+- `src/run.ts` — **`Run.Schema`**, one positioned span of text.
 - `src/index.ts` — the package barrel.
 
 ## Layering
@@ -29,7 +34,7 @@ lives in `positioned-text-web`. Never imports `pdf-anonymizer-*`,
 ## Testing
 
 - `positioned-text.test.ts` — the schema accepts/rejects the right shapes, and
-  a document round-trips through `PositionedTextFromJson`.
+  a document round-trips through `Document.FromJson`.
 
 ## References
 

@@ -1,6 +1,6 @@
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import type { PositionedTextDocument } from 'positioned-text'
+import type { Document } from 'positioned-text'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { layoutDocument, layoutReport } from '../test-helpers.ts'
@@ -16,7 +16,7 @@ import type { LifeLabsReport } from './report.ts'
  * an anonymized export prints.
  */
 
-const document = (pages: PositionedTextDocument['pages']): PositionedTextDocument => ({
+const document = (pages: Document.Type['pages']): Document.Type => ({
   format: 'wildflower-positioned-text',
   version: 1,
   fileName: 'Reports.pdf',

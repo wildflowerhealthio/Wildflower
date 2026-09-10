@@ -1,6 +1,6 @@
-import { Match, Predicate, pipe } from 'effect'
+import { Match } from 'effect'
 
-import type { PositionedTextDocument } from 'positioned-text'
+import { Document } from 'positioned-text'
 
 /**
  * One user-entered literal substring to mask in the extracted text.
@@ -34,7 +34,7 @@ interface RuleMatch {
 }
 
 interface SubstitutionResult {
-  readonly document: PositionedTextDocument
+  readonly document: Document.Type
   readonly ruleMatches: readonly RuleMatch[]
 }
 
@@ -68,46 +68,26 @@ const replaceAllCaseInsensitive = (
  * previous result so earlier rules' masks are visible to later rules.
  */
 const applySubstitutions = (
-  doc: PositionedTextDocument,
+  doc: Document.Type,
   rules: readonly SubstitutionRule[]
-): SubstitutionResult => {
-  const activeRules = rules.filter((r) => r.text !== '')
-  const emptyMatches = rules.map((rule): RuleMatch => ({ ruleId: rule.id, count: 0 }))
-
-  if (activeRules.length === 0) return { document: doc, ruleMatches: emptyMatches }
-
-  const { pages: resultPages, matches: activeMatches } = pipe(activeRules, (active) =>
-    active.reduce(
-      (acc, rule) => {
-        let totalCount = 0
-        const nextPages = acc.pages.map((page) => ({
-          ...page,
-          runs: page.runs.map((run) => {
-            if (Predicate.isNullable(run.text) || run.text === '') return run
-            const { result, count } = replaceAllCaseInsensitive(run.text, rule.text)
-            totalCount += count
-            return count > 0 ? { ...run, text: result } : run
-          }),
-        }))
-        return {
-          pages: nextPages,
-          matches: [...acc.matches, { ruleId: rule.id, count: totalCount }],
-        }
-      },
-      { pages: doc.pages, matches: [] as RuleMatch[] }
-    )
+): SubstitutionResult =>
+  rules.reduce<SubstitutionResult>(
+    (acc, rule) => {
+      // An empty needle matches at every position — guard it out (it would loop
+      // forever in replaceAllCaseInsensitive) and record a zero count.
+      if (rule.text === '') {
+        return { ...acc, ruleMatches: [...acc.ruleMatches, { ruleId: rule.id, count: 0 }] }
+      }
+      let count = 0
+      const document = Document.mapText(acc.document, (text) => {
+        const replaced = replaceAllCaseInsensitive(text, rule.text)
+        count += replaced.count
+        return replaced.result
+      })
+      return { document, ruleMatches: [...acc.ruleMatches, { ruleId: rule.id, count }] }
+    },
+    { document: doc, ruleMatches: [] }
   )
-
-  const ruleMatchMap = new Map(activeMatches.map((m) => [m.ruleId, m.count]))
-
-  return {
-    document: { ...doc, pages: resultPages },
-    ruleMatches: rules.map((rule): RuleMatch => ({
-      ruleId: rule.id,
-      count: ruleMatchMap.get(rule.id) ?? 0,
-    })),
-  }
-}
 
 export {
   applySubstitutions,

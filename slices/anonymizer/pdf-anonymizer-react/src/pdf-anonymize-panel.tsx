@@ -3,7 +3,7 @@ import {
   extractFrequentSubstrings,
   type SubstitutionRule,
 } from 'pdf-anonymizer-core'
-import type { PositionedTextDocument } from 'positioned-text'
+import { Document } from 'positioned-text'
 import { useCallback, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 
@@ -14,7 +14,7 @@ import { Suggestions } from './suggestions.tsx'
 import styles from './pdf-anonymize-panel.module.css'
 
 interface PdfAnonymizePanelProps {
-  readonly value: PositionedTextDocument
+  readonly value: Document.Type
   readonly fileName: string
   readonly className?: string
 }
@@ -35,10 +35,7 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
     [value, rules]
   )
 
-  const totalRuns = useMemo(
-    () => value.pages.reduce((sum, page) => sum + page.runs.length, 0),
-    [value]
-  )
+  const totalRuns = useMemo(() => Document.runs(value).length, [value])
   const totalMatches = ruleMatches.reduce((sum, m) => sum + m.count, 0)
 
   const onRuleChange = useCallback((id: string, text: string) => {

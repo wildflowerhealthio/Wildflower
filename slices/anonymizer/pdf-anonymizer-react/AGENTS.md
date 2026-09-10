@@ -1,7 +1,7 @@
 # AGENTS.md — slices/anonymizer/pdf-anonymizer-react
 
 The **PDF panel** of the anonymizer slice: the panel a host mounts over a
-`PositionedTextDocument` (extracted from a PDF by `positioned-text-web`'s
+`Document.Type` (extracted from a PDF by `positioned-text-web`'s
 `extractPositionedText`) to enter literal-substring substitution rules, preview
 the masked runs, and download anonymized positioned-text JSON. Extraction runs
 through the shared `positioned-text-web` seam; everything downstream is tested
@@ -14,10 +14,10 @@ on hand-written fixture documents.
   it from there. See
   [positioned-text-web](../../file-formats/positioned-text-web/AGENTS.md).
 - `src/descriptor.ts` — **`pdfDescriptor`**: the
-  `AnonymizerFormatDescriptor<PositionedTextDocument>` binding for PDF.
+  `AnonymizerFormatDescriptor<Document.Type>` binding for PDF.
   Detects by `%PDF-` magic bytes; decodes via the extraction seam.
 - `src/pdf-anonymize-panel.tsx` — **`PdfAnonymizePanel`**: the surface.
-  Input is `{ value: PositionedTextDocument, fileName: string }`. Composes
+  Input is `{ value: Document.Type, fileName: string }`. Composes
   the rules editor, runs view, and download button.
 - `src/rules-editor.tsx` — **`RulesEditor`**: TextField rows with live
   per-rule match counts; zero-match warning via `StatusBadge`.
@@ -46,7 +46,7 @@ FHIR client.
 
 - **The extraction seam is untested — and now lives in `positioned-text-web`.**
   Everything downstream is tested on hand-written fixture documents; the seam
-  only has to produce the same `PositionedTextDocument` shape.
+  only has to produce the same `Document.Type` shape.
 - **The substitution is the core's output, not a second implementation.** The
   panel calls `applySubstitutions` from `pdf-anonymizer-core` and hands both
   the original and the anonymized documents to the runs view.
@@ -59,9 +59,9 @@ FHIR client.
 - `pdf-anonymize-panel.test.tsx` — end-to-end panel tests: page/run counts,
   masking in downloaded JSON, live match counts, zero-match warning, add/remove
   rules, always-anonymized preview, click-to-add from preview, suggestion
-  anonymize/dismiss, valid `PositionedTextDocument` in the download. Uses the
+  anonymize/dismiss, valid `Document.Type` in the download. Uses the
   blob-capture test harness from `har-anonymizer-react`.
-- `download-json.test.ts` — blob round-trip through `PositionedTextFromJson`,
+- `download-json.test.ts` — blob round-trip through `Document.FromJson`,
   anchor click, file-name conventions.
 
 ## References

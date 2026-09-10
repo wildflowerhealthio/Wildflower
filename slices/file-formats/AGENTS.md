@@ -19,8 +19,8 @@ consumer slices.
   `HttpArchive` projection an importer and a replay consume. Moved out of the
   old `har-importer-core/har` subpath.
 - **[`positioned-text`](./positioned-text/AGENTS.md)** — a PDF's text content
-  as absolutely positioned runs: the `PositionedTextDocument` schema
-  (`wildflower-positioned-text` v1) and `PositionedTextFromJson`. Moved out of
+  as absolutely positioned runs: the `Document.Schema` schema
+  (`wildflower-positioned-text` v1) and `Document.FromJson`. Moved out of
   `pdf-anonymizer-core`. `effect` only.
 - **[`positioned-text-web`](./positioned-text-web/AGENTS.md)** — the browser
   (non-React) `extractPositionedText` seam that fills the schema from PDF bytes

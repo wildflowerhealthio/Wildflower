@@ -1,4 +1,4 @@
-import type { PositionedTextDocument, PositionedTextPage } from 'positioned-text'
+import type { Document, Page } from 'positioned-text'
 
 import * as Column from './column.ts'
 import { type Cell, type Line, lineText, linesOf } from './lines.ts'
@@ -158,7 +158,7 @@ const parseStatus = (lines: readonly Line[]): string =>
   lines.flatMap((line) => line.cells).find((cell) => STATUS_PATTERN.test(cell.text))?.text ?? ''
 
 /** Split one page's lines into header, grid body and footer. */
-const splitPage = (page: PositionedTextPage): PageParts => {
+const splitPage = (page: Page.Type): PageParts => {
   const lines = linesOf(page)
   const headingIndex = lines.findIndex(isGridHeading)
   const headerLines =
@@ -427,7 +427,7 @@ const continues = (open: ReportBuilder | undefined, page: PageParts, labNo: stri
  * open report and its grid is read on into the same sections. The header
  * fields come from the report's first page (every page repeats them).
  */
-const parseReports = (document: PositionedTextDocument): readonly LifeLabsReport[] => {
+const parseReports = (document: Document.Type): readonly LifeLabsReport[] => {
   const pages = [...document.pages].toSorted((a, b) => a.pageNumber - b.pageNumber)
   const reports: ReportBuilder[] = []
   let open: ReportBuilder | undefined
