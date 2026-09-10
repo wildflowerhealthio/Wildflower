@@ -1,6 +1,6 @@
 import { Match, Predicate, pipe } from 'effect'
 
-import type { PositionedTextDocument } from './positioned-text.ts'
+import type { PositionedTextDocument } from 'positioned-text'
 
 /**
  * One user-entered literal substring to mask in the extracted text.

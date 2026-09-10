@@ -1,9 +1,9 @@
 import {
   applySubstitutions,
   extractFrequentSubstrings,
-  type PositionedTextDocument,
   type SubstitutionRule,
 } from 'pdf-anonymizer-core'
+import type { PositionedTextDocument } from 'positioned-text'
 import { useCallback, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 

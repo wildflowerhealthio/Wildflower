@@ -1,4 +1,4 @@
-import type { PositionedTextPage, PositionedTextRun } from 'pdf-anonymizer-core'
+import type { PositionedTextPage, PositionedTextRun } from 'positioned-text'
 
 /**
  * One run of text on a line, positioned by its left edge — the unit the

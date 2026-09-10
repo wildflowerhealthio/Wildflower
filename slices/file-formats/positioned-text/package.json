@@ -1,13 +1,13 @@
 {
-  "name": "lifelabs-pdf-importer-core",
+  "name": "positioned-text",
   "version": "0.0.0",
   "private": true,
-  "description": "The LifeLabs PDF binding of the importer slice (core layer): the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports. No DOM, no fs, no React.",
+  "description": "A PDF's text content as absolutely positioned runs: the `PositionedTextDocument` Effect Schema (`wildflower-positioned-text` v1) and `PositionedTextFromJson`. The neutral format seam of the file-formats slice, below both the importer (a dialect parses it into records) and the anonymizer (it masks and downloads it). No DOM, no fs, no React, no extraction library.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/importer/lifelabs-pdf-importer-core"
+    "directory": "slices/file-formats/positioned-text"
   },
   "files": [
     "dist"
@@ -17,10 +17,6 @@
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
-    },
-    "./test-helpers": {
-      "source": "./src/test-helpers.ts",
-      "default": "./dist/test-helpers.js"
     },
     "./package.json": "./package.json"
   },
@@ -33,14 +29,13 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "positioned-text": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "kitchen-sink": "workspace:*",
-    "positioned-text": "workspace:*"
+    "effect": "catalog:"
   }
 }

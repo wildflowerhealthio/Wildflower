@@ -1,8 +1,4 @@
-import type {
-  PositionedTextDocument,
-  PositionedTextPage,
-  PositionedTextRun,
-} from 'pdf-anonymizer-core'
+import type { PositionedTextDocument, PositionedTextPage, PositionedTextRun } from 'positioned-text'
 
 import type { LifeLabsReport, ReportRow } from './dialect/report.ts'
 

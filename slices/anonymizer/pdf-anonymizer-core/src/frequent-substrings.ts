@@ -1,4 +1,4 @@
-import type { PositionedTextDocument } from './positioned-text.ts'
+import type { PositionedTextDocument } from 'positioned-text'
 
 interface FrequentSubstring {
   readonly text: string

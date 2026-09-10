@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { PositionedTextFromJson, type PositionedTextDocument } from 'pdf-anonymizer-core'
+import { PositionedTextFromJson, type PositionedTextDocument } from 'positioned-text'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { anonymizedJsonFileName, positionedTextBlob } from './download-json.ts'

@@ -1,4 +1,4 @@
-import type { PositionedTextDocument } from 'pdf-anonymizer-core'
+import type { PositionedTextDocument } from 'positioned-text'
 import { useCallback, useState, type JSX, type KeyboardEvent } from 'react'
 import { cn } from 'react-kitchen-sink'
 

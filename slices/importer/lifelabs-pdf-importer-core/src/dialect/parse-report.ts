@@ -1,4 +1,4 @@
-import type { PositionedTextDocument, PositionedTextPage } from 'pdf-anonymizer-core'
+import type { PositionedTextDocument, PositionedTextPage } from 'positioned-text'
 
 import * as Column from './column.ts'
 import { type Cell, type Line, lineText, linesOf } from './lines.ts'

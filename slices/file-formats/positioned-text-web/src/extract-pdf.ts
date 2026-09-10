@@ -1,8 +1,4 @@
-import type {
-  PositionedTextDocument,
-  PositionedTextPage,
-  PositionedTextRun,
-} from 'pdf-anonymizer-core'
+import type { PositionedTextDocument, PositionedTextPage, PositionedTextRun } from 'positioned-text'
 
 /**
  * Extract positioned text from a PDF's raw bytes via pdfjs-dist.

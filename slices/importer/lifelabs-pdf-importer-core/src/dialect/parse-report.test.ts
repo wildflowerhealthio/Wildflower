@@ -1,6 +1,6 @@
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import type { PositionedTextDocument } from 'pdf-anonymizer-core'
+import type { PositionedTextDocument } from 'positioned-text'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { layoutDocument, layoutReport } from '../test-helpers.ts'

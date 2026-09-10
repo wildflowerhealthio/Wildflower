@@ -1,8 +1,8 @@
 import { DecodeFailure, type AnonymizerFormatDescriptor } from 'anonymizer-fundamentals'
 import { Effect } from 'effect'
-import type { PositionedTextDocument } from 'pdf-anonymizer-core'
+import type { PositionedTextDocument } from 'positioned-text'
 
-import { extractPositionedText } from './extract-pdf.ts'
+import { extractPositionedText } from 'positioned-text-web'
 
 const PDF_MAGIC = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d])
 

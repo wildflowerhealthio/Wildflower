@@ -3,7 +3,7 @@
 The **neutral decode seams** for the files a user picks: the format schemas that
 sit **below** both the importer (which parses a decoded file into FHIR) and the
 anonymizer (which redacts one). Neither of those slices owns a format; each
-depends *down* into this one, which is what keeps the graph acyclic — before
+depends _down_ into this one, which is what keeps the graph acyclic — before
 this slice existed, the anonymizer reached sideways into `har-importer-core` for
 the HAR seam.
 
@@ -18,15 +18,24 @@ consumer slices.
   (HAR 1.2): `Har`/`HarFromJson`, `emitHar`/`emitHarFromLog`, and the
   `HttpArchive` projection an importer and a replay consume. Moved out of the
   old `har-importer-core/har` subpath.
+- **[`positioned-text`](./positioned-text/AGENTS.md)** — a PDF's text content
+  as absolutely positioned runs: the `PositionedTextDocument` schema
+  (`wildflower-positioned-text` v1) and `PositionedTextFromJson`. Moved out of
+  `pdf-anonymizer-core`. `effect` only.
+- **[`positioned-text-web`](./positioned-text-web/AGENTS.md)** — the browser
+  (non-React) `extractPositionedText` seam that fills the schema from PDF bytes
+  via `pdfjs-dist`. Moved out of `pdf-anonymizer-react`. The one place PDF
+  extraction is integrated, shared by the anonymizer and a future PDF importer.
 
-A `positioned-text` (the PDF anonymizer's `PositionedTextDocument` schema) is the
-expected next sibling; it is not extracted yet.
+The deferred positioned-text preview viewer (React `RunsView`) would join as a
+`positioned-text-react` when it is extracted from `pdf-anonymizer-react`.
 
 ## Layering
 
 - **Cores here are pure** — no DOM, no `fs`, no platform imports
-  (`platform: 'neutral'`). A future `*-react` adapter (e.g. a pdfjs extraction
-  seam) would carry the browser-only pieces.
+  (`platform: 'neutral'`). Browser-only pieces live in an adapter:
+  `positioned-text-web` carries the `pdfjs-dist` extraction seam (a `-web`, not
+  `-react`, package — it touches no React).
 - **Consumers depend down.** Nothing in this slice imports `slices/importer`,
   `slices/anonymizer`, or a React package.
 

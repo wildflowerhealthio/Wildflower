@@ -1,7 +1,7 @@
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { Schema } from 'effect'
-import { PositionedTextFromJson, type PositionedTextDocument } from 'pdf-anonymizer-core'
+import { PositionedTextFromJson, type PositionedTextDocument } from 'positioned-text'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { PdfAnonymizePanel } from './pdf-anonymize-panel.tsx'

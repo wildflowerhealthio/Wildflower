@@ -1,6 +1,6 @@
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import type { PositionedTextPage, PositionedTextRun } from 'pdf-anonymizer-core'
+import type { PositionedTextPage, PositionedTextRun } from 'positioned-text'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { LINE_TOLERANCE, lineText, linesOf } from './lines.ts'

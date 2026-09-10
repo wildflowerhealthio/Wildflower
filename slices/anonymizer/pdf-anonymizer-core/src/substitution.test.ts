@@ -2,7 +2,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { PositionedTextDocument } from './positioned-text.ts'
+import type { PositionedTextDocument } from 'positioned-text'
 import { applySubstitutions, maskSameLength } from './substitution.ts'
 
 describe('maskSameLength', () => {

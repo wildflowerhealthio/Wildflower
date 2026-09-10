@@ -1,5 +1,6 @@
 import { Schema } from 'effect'
-import { PositionedTextDocument, anonymizedJsonFileName } from 'pdf-anonymizer-core'
+import { anonymizedJsonFileName } from 'pdf-anonymizer-core'
+import { PositionedTextDocument } from 'positioned-text'
 
 const JSON_MEDIA_TYPE = 'application/json'
 

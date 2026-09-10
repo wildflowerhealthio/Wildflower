@@ -35,10 +35,10 @@ integration are added in a follow-up PR.
 
 ## Layering
 
-Depends on `pdf-anonymizer-core` (the positioned-text schema — the neutral
-seam between the anonymizer's extraction and this dialect) and `kitchen-sink`
-(`numRunsFor` in tests). Never imports `fhir-r4`, `har-importer-core`, a
-`*-importer-react`, or `slices/collector`.
+Depends on `positioned-text` (the positioned-text schema — the neutral seam
+between the anonymizer's extraction and this dialect) and `kitchen-sink`
+(`numRunsFor` in tests). Never imports `fhir-r4`, `har-importer-core`,
+`pdf-anonymizer-core`, a `*-importer-react`, or `slices/collector`.
 
 ## Guardrails
 
@@ -56,5 +56,5 @@ seam between the anonymizer's extraction and this dialect) and `kitchen-sink`
 ## References
 
 - [slices/importer AGENTS.md](../AGENTS.md) — the slice's package roles.
-- [pdf-anonymizer-core AGENTS.md](../../anonymizer/pdf-anonymizer-core/AGENTS.md)
-  — the positioned-text schema.
+- [positioned-text AGENTS.md](../../file-formats/positioned-text/AGENTS.md)
+  — the positioned-text schema this dialect parses.
