@@ -2,15 +2,14 @@ import { Effect, type ParseResult } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
-import type { Extraction } from 'http-extraction-fundamentals'
-import type { FileImporterDescriptor } from 'importer-fundamentals'
 
+import type { BoundFormat } from '../registry.tsx'
 import type { PickedHar } from '../sources/picked-har.ts'
 
 /**
- * Running the read half of the import — the format descriptor's `decode` — over a
- * batch of {@link PickedHar}s, and holding each one's decoded responses for the
- * screen to review.
+ * Running the read half of the import — the format's `decode` — over a
+ * batch of {@link PickedHar}s, and holding each one's decoded review state
+ * for the screen to review.
  *
  * @remarks
  * The pure, non-writing side of the flow: each pick decodes independently into
@@ -27,11 +26,11 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * the write step.
  *
  * @remarks
- * `read` carries the decoded {@link Extraction.Input} responses the review runs
- * over — an empty archive, or one nothing recognizes, is ordinary data the
- * review renders, not an error — and `unreadable` carries the one malformed-file
- * `ParseError`. The confirm step writes only the responses the review chose from
- * a `read` file. `id` is a per-pick stable identity for a React `key`, since two
+ * `read` carries the format's opaque review state the preview runs over — an
+ * empty file, or one that yields nothing, is ordinary data the review renders,
+ * not an error — and `unreadable` carries the one malformed-file `ParseError`.
+ * The confirm step writes only the resources the review chose from a `read`
+ * file. `id` is a per-pick stable identity for a React `key`, since two
  * files in a batch can share a name.
  */
 type FileReadOutcome =
@@ -39,7 +38,7 @@ type FileReadOutcome =
       readonly _tag: 'read'
       readonly id: string
       readonly picked: PickedHar
-      readonly responses: readonly Extraction.Input[]
+      readonly review: unknown
     }
   | {
       readonly _tag: 'unreadable'
@@ -60,7 +59,7 @@ type ImportRunState =
 /** Imperative surface the screen drives the read through. */
 interface ImportRun {
   readonly state: ImportRunState
-  /** Read a freshly-picked batch of files into responses, replacing any previous one. */
+  /** Read a freshly-picked batch of files into review states, replacing any previous one. */
   readonly run: (picks: readonly PickedHar[]) => void
   /** Discard the current read and return to `idle`. */
   readonly reset: () => void
@@ -71,17 +70,13 @@ interface ImportRun {
  * outcome onto a {@link FileReadOutcome}. The authed runner comes from router
  * context via `fhir-r4-react`, so mount this inside the host app's router.
  *
- * @param descriptor - The file format's descriptor (its `decode` + `defaultSettings`)
+ * @param format - The bound format's decode and default settings
  * @returns The read surface: its `state`, the `run` trigger, and a `reset` back
  *   to `idle`
  */
-const useImportRun = <TSettings, TParsed, R>(
-  descriptor: FileImporterDescriptor<TSettings, TParsed, R>
-): ImportRun => {
+const useImportRun = (format: Pick<BoundFormat, 'decode' | 'defaultSettings'>): ImportRun => {
   const runAuthed = useRunAuthed()
   const [state, setState] = useState<ImportRunState>({ _tag: 'idle' })
-  // A re-pick while a read is in flight must win — track the latest ticket so a
-  // stale resolution is dropped rather than clobbering the newer review.
   const latest = useRef(0)
 
   const run = useCallback(
@@ -90,16 +85,13 @@ const useImportRun = <TSettings, TParsed, R>(
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'reading' })
-      // Each pick reads independently and concurrently; `catchAll` turns the sole
-      // `ParseError` into an `unreadable` outcome, so one bad file in the batch is
-      // a row rather than a whole-batch failure — the read Effect cannot fail.
       const readAll = Effect.forEach(
         picks,
         (picked) =>
           Effect.gen(function* () {
             const id = yield* Effect.sync(() => crypto.randomUUID())
-            return yield* descriptor.decode(picked.text, descriptor.defaultSettings).pipe(
-              Effect.map((responses): FileReadOutcome => ({ _tag: 'read', id, picked, responses })),
+            return yield* format.decode(picked.text, format.defaultSettings).pipe(
+              Effect.map((review): FileReadOutcome => ({ _tag: 'read', id, picked, review })),
               Effect.catchAll((error) =>
                 Effect.succeed<FileReadOutcome>({ _tag: 'unreadable', id, picked, error })
               )
@@ -112,13 +104,7 @@ const useImportRun = <TSettings, TParsed, R>(
         setState({ _tag: 'ready', files })
       })
     },
-    // React Compiler tracks `descriptor`'s identity through the
-    // component-scoped useImportRun call, so listing it here would
-    // re-mint the callback on every render for a change the compiler
-    // already handles — see the react/memo-dependencies note. The old
-    // react-hooks/exhaustive-deps rule can't see the compiler and still
-    // wants it listed; disable that one line only.
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says descriptor is unnecessary
+    // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says format is unnecessary
     [runAuthed]
   )
 

@@ -1,5 +1,13 @@
 import { Data, Option } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
+import {
+  type HarSelection,
+  type PreviewedResponse,
+  enabledCandidates,
+  isKindEnabled,
+  overridePick,
+  toggleKind,
+} from 'har-importer-core'
 import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo, useState } from 'react'
@@ -11,10 +19,10 @@ import styles from './review-body.module.css'
 
 /**
  * The interactive per-URL, per-resource review of one HAR file's responses:
- * which of the archive's traffic to import, through which kind, and — new in V1
- * — which of the parsed resources to actually write. A view over
- * `importer-fundamentals`' pure {@link Review} model, driven by pre-parsed
- * previews from the shell. Controlled: the shell owns the selection state.
+ * which of the archive's traffic to import, through which kind, and which of
+ * the parsed resources to actually write. A view over the HAR-specific routing
+ * model (`har-importer-core`) and the general per-resource selection
+ * (`importer-fundamentals`). Controlled: the shell owns both state axes.
  *
  * @packageDocumentation
  */
@@ -23,29 +31,31 @@ import styles from './review-body.module.css'
 type AnyKind = HttpResponseKind.HttpResponseKind<unknown>
 
 /** One previewed response — the parse outcome plus every resource's stable key. */
-type Preview = Review.PreviewedResponse<AnyKind, unknown>
+type Preview = PreviewedResponse<AnyKind, unknown>
 
 /**
- * Props for {@link ReviewBody}. The selection is typed by the resource shape
- * the review edits — `FhirResource` for the HAR importer — so a kept edit
- * from the {@link ResourceEditor} rides through as a typed `TParsed`, not a
- * cast at the seam.
+ * Props for {@link ReviewBody}. Two state axes: the HAR-specific routing
+ * selection (kind toggles + pick overrides) and the general per-resource
+ * selection (exclude/edit). The shell owns both and passes callbacks for each.
  */
 interface ReviewBodyProps {
   /** One HAR file's decoded responses, in input order. */
   readonly responses: readonly Extraction.Input[]
   /**
-   * The format's sources (the shell passes the descriptor's `sources`), each
-   * grouping its own kinds under a name and detail. The include toggles are
-   * grouped by these; recognition runs against their flattened kinds.
+   * The format's sources, each grouping its own kinds under a name and detail.
+   * The include toggles are grouped by these.
    */
   readonly sources: readonly SourceDescriptor.SourceDescriptor<unknown>[]
-  /** Previews the shell parsed for this file's responses under the current selection. */
+  /** Previews the shell parsed for this file's responses under the current routing selection. */
   readonly previews: readonly Preview[]
-  /** The reviewer's selection for this file — reads and writes the same shape. */
+  /** The HAR routing selection: kind toggles + per-response pick overrides. */
+  readonly harSelection: HarSelection
+  /** The per-resource selection: exclude/edit overrides. */
   readonly selection: Review.Selection<FhirResource>
-  /** Called with the new selection on every toggle or override. */
-  readonly onChange: (selection: Review.Selection<FhirResource>) => void
+  /** Called with the new HAR routing selection on every kind toggle or pick override. */
+  readonly onHarSelectionChange: (harSelection: HarSelection) => void
+  /** Called with the new per-resource selection on every resource toggle or edit. */
+  readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
 }
 
 /** Matched responses grouped by URL, in first-seen order. */
@@ -59,9 +69,7 @@ const plural = (count: number, noun: string): string => (count === 1 ? noun : `$
 
 /**
  * The display label for a kind: its `name` without the conventional
- * `ResponseKind` suffix every kind's identity carries (e.g.
- * `PrescriptionResponseKind` → `Prescription`). The full `name` stays the value
- * behind the label — selection and overrides key by it.
+ * `ResponseKind` suffix every kind's identity carries.
  */
 const kindLabel = (name: string): string => name.replace(/ResponseKind$/, '')
 
@@ -98,9 +106,6 @@ const perTypeTallies = (
   for (const preview of previews) {
     if (preview.outcome._tag !== 'resources') continue
     for (const resource of preview.outcome.resources) {
-      // Tallies only care about the resource type; a full describeResource decode
-      // per row on every render (selection toggle) would be O(rows²) in per-type
-      // schema decodes — the cheap `resourceTypeOf` reads the field directly.
       const type = resourceTypeOf(resource.resource)
       const bucket = totals.get(type)
       if (bucket === undefined) {
@@ -130,14 +135,14 @@ const tallyLabel = (tally: TypeTally): string => {
 /** One response's picker: a static label for one kind, a `<select>` for an overlap. */
 const ResponsePicker = ({
   preview,
-  selection,
+  harSelection,
   onOverride,
 }: {
   readonly preview: Preview
-  readonly selection: Review.Selection<FhirResource>
+  readonly harSelection: HarSelection
   readonly onOverride: (kindName: string) => void
 }): JSX.Element => {
-  const enabled = Review.enabledCandidates(preview.recognized, selection)
+  const enabled = enabledCandidates(preview.recognized, harSelection)
   if (enabled.length === 0) {
     return <span className={styles.excluded}>Excluded — every matching kind is turned off</span>
   }
@@ -164,9 +169,7 @@ const ResponsePicker = ({
 /**
  * One previewed resource's row: its type, one-line summary, include toggle,
  * Edit/Revert affordance, and the "edited" chip when a per-resource override
- * is in place. The row reads the current value through the review's edit
- * slot — a description that reflects the reviewer's own change, not the
- * parsed original.
+ * is in place.
  */
 const ResourceRow = ({
   resourceKey,
@@ -227,12 +230,12 @@ const ResourceRow = ({
 }
 
 /**
- * One recognized response's block under its URL: the picker (for the rare
- * overlap), the parsed resources' rows, or the "why nothing" note for a parse
- * failure / absent body / no-pick outcome.
+ * One recognized response's block under its URL: the picker, the parsed
+ * resources' rows, or the "why nothing" note.
  */
 const ResponseBlock = ({
   preview,
+  harSelection,
   selection,
   onOverride,
   onToggleResource,
@@ -240,6 +243,7 @@ const ResponseBlock = ({
   onRevertResource,
 }: {
   readonly preview: Preview
+  readonly harSelection: HarSelection
   readonly selection: Review.Selection<FhirResource>
   readonly onOverride: (kindName: string) => void
   readonly onToggleResource: (key: string) => void
@@ -250,7 +254,7 @@ const ResponseBlock = ({
   if (outcome._tag === 'parseError') {
     return (
       <li className={styles.responseRow}>
-        <ResponsePicker preview={preview} selection={selection} onOverride={onOverride} />
+        <ResponsePicker preview={preview} harSelection={harSelection} onOverride={onOverride} />
         <p role="alert" className={styles.parseFailure}>
           This response could not be parsed and will not import.
         </p>
@@ -260,7 +264,7 @@ const ResponseBlock = ({
   if (outcome._tag === 'bodyAbsent') {
     return (
       <li className={styles.responseRow}>
-        <ResponsePicker preview={preview} selection={selection} onOverride={onOverride} />
+        <ResponsePicker preview={preview} harSelection={harSelection} onOverride={onOverride} />
         <p className={styles.bodyAbsent}>The archive captured no response body.</p>
       </li>
     )
@@ -268,14 +272,11 @@ const ResponseBlock = ({
   if (outcome._tag === 'noPick') {
     return (
       <li className={styles.responseRow}>
-        <ResponsePicker preview={preview} selection={selection} onOverride={onOverride} />
+        <ResponsePicker preview={preview} harSelection={harSelection} onOverride={onOverride} />
       </li>
     )
   }
   if (outcome._tag === 'duplicate') {
-    // A duplicate is never routed to a kind — its `pickKindName` is `None` and
-    // rendering the picker would show an empty label / an unmatched <select>
-    // value; the "Duplicate of X" note is the whole story here.
     return (
       <li className={styles.responseRow}>
         <p className={styles.bodyAbsent}>Duplicate of {outcome.of.id} — not written.</p>
@@ -285,7 +286,7 @@ const ResponseBlock = ({
   const resources = outcome.resources
   return (
     <li className={styles.responseRow}>
-      <ResponsePicker preview={preview} selection={selection} onOverride={onOverride} />
+      <ResponsePicker preview={preview} harSelection={harSelection} onOverride={onOverride} />
       <ul className={styles.resourceList}>
         {resources.map((resource) => (
           <ResourceRow
@@ -304,15 +305,7 @@ const ResponseBlock = ({
 }
 
 /**
- * The resource-editor dialog's local state — `Closed` by default, `Open`
- * when a reviewer clicks Edit on a row. A tagged sum type rather than a
- * nullable `Open` shape so the closed case names itself
- * (`state._tag === 'Closed'`) and a third state (a submitting spinner, say)
- * is one variant added rather than a wider nullable.
- *
- * The constructors are aliased to lowercase names so calling them inside
- * the React component body does not trip the `react/capitalized-calls`
- * rule (which reserves `X(...)` for JSX components).
+ * The resource-editor dialog's local state.
  */
 type EditorState = Data.TaggedEnum<{
   readonly Closed: Record<never, never>
@@ -321,17 +314,16 @@ type EditorState = Data.TaggedEnum<{
 const editorState = Data.taggedEnum<EditorState>()
 const { Closed: makeClosedEditor, Open: makeOpenEditor } = editorState
 
-/** The interactive review of one file's responses. */
+/** The interactive review of one HAR file's responses. */
 const ReviewBody = ({
   responses: _responses,
   sources,
   previews,
+  harSelection,
   selection,
-  onChange,
+  onHarSelectionChange,
+  onSelectionChange,
 }: ReviewBodyProps): JSX.Element => {
-  // The resource-editor dialog is not part of the pure selection — it is
-  // local UI state that opens/closes as the reviewer navigates rows. Only
-  // the accepted edit becomes selection.
   const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
   const openEditor = (key: string, resource: unknown): void => {
@@ -340,16 +332,12 @@ const ReviewBody = ({
   const closeEditor = (): void => setEditing(makeClosedEditor())
   const keepEdit = (resource: FhirResource): void => {
     if (editing._tag !== 'Open') return
-    onChange(Review.edit(selection, editing.key, resource))
+    onSelectionChange(Review.edit(selection, editing.key, resource))
     setEditing(makeClosedEditor())
   }
   const revertEdit = (key: string): void => {
-    onChange(Review.revert(selection, key))
+    onSelectionChange(Review.revert(selection, key))
   }
-  // The kinds at least one of this file's responses recognized — the only kinds a
-  // toggle can affect for this import. A kind that claims nothing here is shown
-  // but disabled, so the menu still lists every source's kinds without offering
-  // a toggle that would do nothing.
   const usableKinds = useMemo(() => {
     const names = new Set<string>()
     for (const preview of previews) {
@@ -392,11 +380,8 @@ const ReviewBody = ({
                     <input
                       type="checkbox"
                       disabled={!usable}
-                      // A kind that matches nothing here reads as unchecked, even
-                      // though it stays enabled in the selection — nothing in this
-                      // file would import under it either way.
-                      checked={usable && Review.isKindEnabled(selection, kind.name)}
-                      onChange={() => onChange(Review.toggleKind(selection, kind.name))}
+                      checked={usable && isKindEnabled(harSelection, kind.name)}
+                      onChange={() => onHarSelectionChange(toggleKind(harSelection, kind.name))}
                     />
                     {kindLabel(kind.name)}
                   </label>
@@ -423,11 +408,14 @@ const ReviewBody = ({
                   <ResponseBlock
                     key={preview.ref.id}
                     preview={preview}
+                    harSelection={harSelection}
                     selection={selection}
                     onOverride={(kindName) =>
-                      onChange(Review.overridePick(selection, preview.ref.id, kindName))
+                      onHarSelectionChange(overridePick(harSelection, preview.ref.id, kindName))
                     }
-                    onToggleResource={(key) => onChange(Review.toggleResource(selection, key))}
+                    onToggleResource={(key) =>
+                      onSelectionChange(Review.toggleResource(selection, key))
+                    }
                     onEditResource={openEditor}
                     onRevertResource={revertEdit}
                   />

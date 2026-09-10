@@ -211,3 +211,16 @@
   cursor: default;
   opacity: 0.6;
 }
+
+/* Default per-resource view — shown for formats with no format-specific ReviewBody. */
+.resourceLabel {
+  display: flex;
+  gap: var(--space-2);
+  align-items: baseline;
+  cursor: pointer;
+}
+
+.resourceExcluded {
+  opacity: 0.5;
+  text-decoration: line-through;
+}

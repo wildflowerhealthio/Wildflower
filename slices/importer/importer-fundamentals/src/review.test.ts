@@ -1,478 +1,294 @@
-import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
+import { Option } from 'effect'
 import * as fc from 'fast-check'
 
-import type { Extraction } from 'http-extraction-fundamentals'
-import { HttpResponseKind } from 'http-extraction-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
+import type { LabeledResource } from './file-importer-descriptor.ts'
 
 import * as Review from './review.ts'
 
 /**
- * The per-response, per-resource review model is pure selection state — no DOM,
- * no framework — so it is driven directly: a fixed pool of response kinds, a
- * set of inputs, and the transitions over the selection they produce. The three
- * axes are exercised apart and together: whole-import kind toggles re-derive
- * every response's pick, per-response overrides win only when they name a
- * still-enabled candidate, per-resource opt-outs drop exactly the resource they
- * key, and {@link Review.chosen} / {@link Review.preview} +
- * {@link Review.chosenResources} decode only what the selection opted into.
+ * The per-resource review model is pure selection state — no DOM, no framework —
+ * so it is driven directly: a pool of labeled resources (string-typed for
+ * simplicity), the `Selection` transitions, and the derived read-accessors.
  */
 
-/** A kind that claims URLs containing `token`, at `specificity`, parsing to its own name. */
-const kind = (
-  name: string,
-  specificity: number,
-  token: string
-): HttpResponseKind.HttpResponseKind<string> =>
-  HttpResponseKind.make({
-    name,
-    tryRecognize: (url) => (url.includes(token) ? Option.some({ specificity }) : Option.none()),
-    parse: () => Effect.succeed([name]),
-  })
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
-/** A kind that claims URLs containing `token` and parses to a fixed list of resources. */
-const kindReturning = (
-  name: string,
-  specificity: number,
-  token: string,
-  resources: readonly string[]
-): HttpResponseKind.HttpResponseKind<string> =>
-  HttpResponseKind.make({
-    name,
-    tryRecognize: (url) => (url.includes(token) ? Option.some({ specificity }) : Option.none()),
-    parse: () => Effect.succeed([...resources]),
-  })
-
-/** A `patient` kind (mid specificity) and an `observation` kind (higher) — disjoint tokens. */
-const patientKind = kind('patient', 50, '/Patient')
-const observationKind = kind('observation', 50, '/Observation')
-/** A broad `portal` kind (low specificity) that also claims `/Patient`, to force an overlap. */
-const portalKind = kind('portal', 10, '/Patient')
-
-/** One decoded response the recognizer reads. */
-const input = (id: string, url: string, bodyAbsent = false): Extraction.Input => ({
-  id,
-  url,
-  method: Option.some('GET'),
-  status: 200,
-  statusText: 'OK',
-  headers: [],
-  startedAt: DateTime.unsafeNow(),
-  body: new Uint8Array(),
-  bodyAbsent,
+/** Build a `LabeledResource<string>` from a key and resource value. */
+const labeled = (key: string, resource: string, title = key): LabeledResource<string> => ({
+  key,
+  title,
+  resource,
 })
+
+/** A standard three-resource pool used across most tests. */
+const threeLabeled: readonly LabeledResource<string>[] = [
+  labeled('a', 'alpha'),
+  labeled('b', 'beta'),
+  labeled('c', 'gamma'),
+]
+
+// ---------------------------------------------------------------------------
+// Review.initial
+// ---------------------------------------------------------------------------
 
 describe('Review.initial', () => {
-  it('should enable every kind in the pool, hold no overrides, and exclude no resources', () => {
-    // Arrange
-    const pool = [patientKind, observationKind]
+  it('should return an empty selection with no exclusions and no overrides', () => {
+    const selection = Review.initial<string>()
 
-    // Act
-    const selection = Review.initial<string>(pool)
-
-    // Assert
-    expect(selection.enabledKinds).toEqual(new Set(['patient', 'observation']))
-    expect(selection.overrides.size).toBe(0)
     expect(selection.excludedResources.size).toBe(0)
+    expect(selection.resourceOverrides.size).toBe(0)
   })
 })
 
-describe('Review.pickFor', () => {
-  it('should default to the top-specificity candidate among enabled kinds', () => {
-    // Arrange — a URL both `portal` (10) and `patient` (50) claim.
-    const pool = [portalKind, patientKind]
-    const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
+// ---------------------------------------------------------------------------
+// Review.isResourceIncluded
+// ---------------------------------------------------------------------------
 
-    // Act
-    const pick = Review.pickFor(recognized, Review.initial<string>(pool))
+describe('Review.isResourceIncluded', () => {
+  it('should return true for a key not in excludedResources', () => {
+    const selection = Review.initial<string>()
 
-    // Assert — highest specificity wins, so `patient`, not the broad `portal`.
-    expect(Option.getOrThrow(pick).kind.name).toBe('patient')
+    expect(Review.isResourceIncluded(selection, 'a')).toBe(true)
+    expect(Review.isResourceIncluded(selection, 'anything')).toBe(true)
   })
 
-  it('should re-pick the next candidate when the default kind is disabled', () => {
-    // Arrange
-    const pool = [portalKind, patientKind]
-    const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
-    const selection = Review.toggleKind(Review.initial<string>(pool), 'patient')
+  it('should return false for a key in excludedResources', () => {
+    const selection = Review.toggleResource(Review.initial<string>(), 'a')
 
-    // Act
-    const pick = Review.pickFor(recognized, selection)
-
-    // Assert — with `patient` off, the overlap falls to the still-enabled `portal`.
-    expect(Option.getOrThrow(pick).kind.name).toBe('portal')
-  })
-
-  it('should be None when no enabled kind claims the response', () => {
-    // Arrange — only `patient` claims, and it is disabled.
-    const pool = [patientKind]
-    const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
-    const selection = Review.toggleKind(Review.initial<string>(pool), 'patient')
-
-    // Act / Assert
-    expect(Option.isNone(Review.pickFor(recognized, selection))).toBe(true)
-  })
-
-  it('should honour an override that names a still-enabled candidate', () => {
-    // Arrange
-    const pool = [portalKind, patientKind]
-    const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
-    const selection = Review.overridePick(Review.initial<string>(pool), 'r0', 'portal')
-
-    // Act
-    const pick = Review.pickFor(recognized, selection)
-
-    // Assert — the override beats the default top-specificity pick.
-    expect(Option.getOrThrow(pick).kind.name).toBe('portal')
-  })
-
-  it('should fall back to the default when the override names a disabled kind', () => {
-    // Arrange — override to `portal`, then disable `portal`.
-    const pool = [portalKind, patientKind]
-    const [recognized] = Review.recognize(pool, [input('r0', 'https://ehr.test/Patient/1')])
-    const selection = Review.toggleKind(
-      Review.overridePick(Review.initial<string>(pool), 'r0', 'portal'),
-      'portal'
-    )
-
-    // Act
-    const pick = Review.pickFor(recognized, selection)
-
-    // Assert
-    expect(Option.getOrThrow(pick).kind.name).toBe('patient')
+    expect(Review.isResourceIncluded(selection, 'a')).toBe(false)
   })
 })
 
-describe('Review.preview', () => {
-  it('should mint a stable per-resource key inside each parsed response', async () => {
-    // Arrange — a kind that returns three resources for the one response
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
+// ---------------------------------------------------------------------------
+// Review.toggleResource
+// ---------------------------------------------------------------------------
 
-    // Act
-    const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial<string>([three]))
-    )
+describe('Review.toggleResource', () => {
+  it('should exclude an included resource', () => {
+    const selection = Review.toggleResource(Review.initial<string>(), 'a')
 
-    // Assert — every resource is keyed by its response id and its index
-    expect(previews).toHaveLength(1)
-    const [only] = previews
-    expect(only?.outcome._tag).toBe('resources')
-    if (only?.outcome._tag === 'resources') {
-      expect(only.outcome.resources.map((r) => r.key)).toEqual(['r-many:0', 'r-many:1', 'r-many:2'])
-    }
+    expect(selection.excludedResources.has('a')).toBe(true)
   })
 
-  it('should surface a parse failure as data on its response row', async () => {
-    // Arrange — a kind whose parse fails. Decoding a `null` under a number
-    // schema raises a real `ParseError`, no unsafe cast needed.
-    const failingSchema = Schema.transformOrFail(Schema.Unknown, Schema.Array(Schema.String), {
-      strict: true,
-      decode: (value, _options, ast) =>
-        ParseResult.fail(new ParseResult.Type(ast, value, 'always fails')),
-      encode: (value) => ParseResult.succeed(value),
-    })
-    const failing = HttpResponseKind.make<string>({
-      name: 'failing',
-      tryRecognize: (url) =>
-        url.includes('/bad') ? Option.some({ specificity: 50 }) : Option.none(),
-      parse: () => Schema.decodeUnknown(failingSchema)(null),
-    })
-    const responses = [input('r-bad', 'https://ehr.test/bad')]
+  it('should re-include an excluded resource', () => {
+    const once = Review.toggleResource(Review.initial<string>(), 'a')
+    const twice = Review.toggleResource(once, 'a')
 
-    // Act
-    const previews = await Effect.runPromise(
-      Review.preview([failing], responses, Review.initial<string>([failing]))
-    )
-
-    // Assert
-    expect(previews).toHaveLength(1)
-    expect(previews[0]?.outcome._tag).toBe('parseError')
+    expect(twice.excludedResources.has('a')).toBe(false)
   })
 
-  it('should carry a stable key across every response in a batch', async () => {
-    // Arrange — a batch with two responses producing three resources each
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [
-      input('r-1', 'https://ehr.test/many/1'),
-      input('r-2', 'https://ehr.test/many/2'),
-    ]
+  it('should not disturb other keys when toggling one', () => {
+    const s1 = Review.toggleResource(Review.initial<string>(), 'a')
+    const s2 = Review.toggleResource(s1, 'b')
 
-    // Act
-    const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial<string>([three]))
-    )
-
-    // Assert — every resource keys uniquely across the whole file
-    const keys = previews.flatMap((p) =>
-      p.outcome._tag === 'resources' ? p.outcome.resources.map((r) => r.key) : []
-    )
-    expect(new Set(keys).size).toBe(keys.length)
-    expect(keys.length).toBe(6)
+    expect(s2.excludedResources.has('a')).toBe(true)
+    expect(s2.excludedResources.has('b')).toBe(true)
   })
 
-  it('should tag a response with no chosen pick as noPick without parsing anything', async () => {
-    // Arrange — the response is recognized but every kind is disabled
-    const pool = [patientKind]
-    const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.toggleKind(Review.initial<string>(pool), 'patient')
+  it('should preserve resourceOverrides across toggles', () => {
+    const edited = Review.edit(Review.initial<string>(), 'a', 'edited-alpha')
+    const toggled = Review.toggleResource(edited, 'b')
 
-    // Act
-    const previews = await Effect.runPromise(Review.preview(pool, responses, selection))
+    expect(toggled.resourceOverrides.get('a')).toBe('edited-alpha')
+  })
 
-    // Assert
-    expect(previews[0]?.outcome._tag).toBe('noPick')
-    expect(Option.isNone(previews[0]?.pickKindName ?? Option.none())).toBe(true)
+  it('should be self-inverse for any key (property)', () => {
+    fc.assert(
+      fc.property(fc.string(), (key) => {
+        const initial = Review.initial<string>()
+        const toggled = Review.toggleResource(Review.toggleResource(initial, key), key)
+        expect(toggled.excludedResources.size).toBe(0)
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
   })
 })
+
+// ---------------------------------------------------------------------------
+// Review.edit / Review.isResourceEdited / Review.editedResource
+// ---------------------------------------------------------------------------
+
+describe('Review.edit', () => {
+  it('should set an override for the given key', () => {
+    const selection = Review.edit(Review.initial<string>(), 'a', 'edited')
+
+    expect(Review.isResourceEdited(selection, 'a')).toBe(true)
+    expect(Option.getOrThrow(Review.editedResource(selection, 'a'))).toBe('edited')
+  })
+
+  it('should overwrite a previous edit at the same key', () => {
+    const s1 = Review.edit(Review.initial<string>(), 'a', 'first')
+    const s2 = Review.edit(s1, 'a', 'second')
+
+    expect(Option.getOrThrow(Review.editedResource(s2, 'a'))).toBe('second')
+  })
+
+  it('should not affect other keys', () => {
+    const selection = Review.edit(Review.initial<string>(), 'a', 'edited')
+
+    expect(Review.isResourceEdited(selection, 'b')).toBe(false)
+    expect(Option.isNone(Review.editedResource(selection, 'b'))).toBe(true)
+  })
+
+  it('should preserve excludedResources across edits', () => {
+    const toggled = Review.toggleResource(Review.initial<string>(), 'b')
+    const edited = Review.edit(toggled, 'a', 'edited')
+
+    expect(edited.excludedResources.has('b')).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Review.revert
+// ---------------------------------------------------------------------------
+
+describe('Review.revert', () => {
+  it('should remove an edit override', () => {
+    const edited = Review.edit(Review.initial<string>(), 'a', 'edited')
+    const reverted = Review.revert(edited, 'a')
+
+    expect(Review.isResourceEdited(reverted, 'a')).toBe(false)
+    expect(Option.isNone(Review.editedResource(reverted, 'a'))).toBe(true)
+  })
+
+  it('should be a no-op (same reference) when the key was never edited', () => {
+    const initial = Review.initial<string>()
+    const reverted = Review.revert(initial, 'a')
+
+    expect(reverted).toBe(initial)
+  })
+
+  it('should not disturb edits at other keys', () => {
+    const edited = Review.edit(Review.edit(Review.initial<string>(), 'a', 'A*'), 'b', 'B*')
+    const reverted = Review.revert(edited, 'a')
+
+    expect(Review.isResourceEdited(reverted, 'a')).toBe(false)
+    expect(Review.isResourceEdited(reverted, 'b')).toBe(true)
+    expect(Option.getOrThrow(Review.editedResource(reverted, 'b'))).toBe('B*')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Review.isResourceEdited
+// ---------------------------------------------------------------------------
+
+describe('Review.isResourceEdited', () => {
+  it('should return false for an initial selection', () => {
+    expect(Review.isResourceEdited(Review.initial<string>(), 'any')).toBe(false)
+  })
+
+  it('should return true only for keys with an edit override', () => {
+    const edited = Review.edit(Review.initial<string>(), 'x', 'X*')
+
+    expect(Review.isResourceEdited(edited, 'x')).toBe(true)
+    expect(Review.isResourceEdited(edited, 'y')).toBe(false)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Review.editedResource
+// ---------------------------------------------------------------------------
+
+describe('Review.editedResource', () => {
+  it('should return None for an unedited key', () => {
+    expect(Option.isNone(Review.editedResource(Review.initial<string>(), 'a'))).toBe(true)
+  })
+
+  it('should return Some with the override value for an edited key', () => {
+    const edited = Review.edit(Review.initial<string>(), 'a', 'override')
+
+    expect(Option.isSome(Review.editedResource(edited, 'a'))).toBe(true)
+    expect(Option.getOrThrow(Review.editedResource(edited, 'a'))).toBe('override')
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Review.chosenResources
+// ---------------------------------------------------------------------------
 
 describe('Review.chosenResources', () => {
-  it('should default to every previewed resource included', async () => {
-    // Arrange
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
-    const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial<string>([three]))
-    )
+  it('should return all resources when nothing is excluded or edited', () => {
+    const chosen = Review.chosenResources(threeLabeled, Review.initial<string>())
 
-    // Act
-    const chosen = Review.chosenResources(previews, Review.initial<string>([three]))
-
-    // Assert
-    expect(chosen).toEqual(['a', 'b', 'c'])
+    expect(chosen).toEqual(['alpha', 'beta', 'gamma'])
   })
 
-  it('should drop exactly the resource its key names when toggled off', async () => {
-    // Arrange
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
-    const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial<string>([three]))
-    )
-    const selection = Review.toggleResource(Review.initial<string>([three]), 'r-many:1')
+  it('should drop exactly the excluded resource', () => {
+    const selection = Review.toggleResource(Review.initial<string>(), 'b')
+    const chosen = Review.chosenResources(threeLabeled, selection)
 
-    // Act
-    const chosen = Review.chosenResources(previews, selection)
-
-    // Assert — exactly the middle resource is dropped; the other two ride through
-    expect(chosen).toEqual(['a', 'c'])
+    expect(chosen).toEqual(['alpha', 'gamma'])
   })
 
-  it('should drop every resource of a response whose kind was toggled off', async () => {
-    // Arrange
-    const twoPatients = kindReturning('patient', 50, '/Patient', ['p1', 'p2'])
-    const twoObs = kindReturning('observation', 50, '/Observation', ['o1', 'o2'])
-    const responses = [
-      input('r-p', 'https://ehr.test/Patient/1'),
-      input('r-o', 'https://ehr.test/Observation?s=1'),
-    ]
-
-    // Preview with everything on, then toggle observation off and re-preview
-    const initial = Review.initial<string>([twoPatients, twoObs])
-    const previewsAll = await Effect.runPromise(
-      Review.preview([twoPatients, twoObs], responses, initial)
-    )
-    const chosenAll = Review.chosenResources(previewsAll, initial)
-    expect(chosenAll.toSorted((left, right) => left.localeCompare(right))).toEqual([
-      'o1',
-      'o2',
-      'p1',
-      'p2',
-    ])
-
-    const observationOff = Review.toggleKind(initial, 'observation')
-    const previewsAfter = await Effect.runPromise(
-      Review.preview([twoPatients, twoObs], responses, observationOff)
-    )
-
-    // Act
-    const chosen = Review.chosenResources(previewsAfter, observationOff)
-
-    // Assert — every observation is dropped; both patients ride through
-    expect(chosen.toSorted((left, right) => left.localeCompare(right))).toEqual(['p1', 'p2'])
-  })
-
-  it('should be equal to the initial included set under any sequence of no-op toggles (property)', async () => {
-    // A property: for any batch and any sequence of resource toggles that
-    // cancel out, the chosen set matches the default. Keeps `toggleResource`
-    // pure and self-inverse.
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
-    const initial = Review.initial<string>([three])
-    const previews = await Effect.runPromise(Review.preview([three], responses, initial))
-
-    await fc.assert(
-      fc.asyncProperty(
-        fc.array(fc.constantFrom('r-many:0', 'r-many:1', 'r-many:2'), {
-          minLength: 0,
-          maxLength: 8,
-        }),
-        async (keys) => {
-          // Toggle twice for each key so the outcome is a no-op.
-          let selection = initial
-          for (const key of keys) selection = Review.toggleResource(selection, key)
-          for (const key of keys) selection = Review.toggleResource(selection, key)
-          expect(Review.chosenResources(previews, selection)).toEqual(['a', 'b', 'c'])
-        }
-      ),
-      { numRuns: numRunsFor({ base: 20 }) }
-    )
-  })
-})
-
-describe('Review.chosen', () => {
-  it('should decode only the responses with a chosen pick', async () => {
-    // Arrange — one Patient, one Observation, one unrecognized.
-    const pool = [patientKind, observationKind]
-    const responses = [
-      input('r0', 'https://ehr.test/Patient/1'),
-      input('r1', 'https://ehr.test/Observation?subject=1'),
-      input('r2', 'https://ehr.test/nothing'),
-    ]
-
-    // Act
-    const outcome = await Effect.runPromise(
-      Review.chosen(pool, responses, Review.initial<string>(pool))
-    )
-
-    // Assert — each recognized response decoded to its kind's name; the miss wrote nothing.
-    expect(outcome.resources.toSorted((left, right) => left.localeCompare(right))).toEqual([
-      'observation',
-      'patient',
-    ])
-    expect(outcome.parseFailures).toBe(0)
-    expect(outcome.bodyAbsent).toBe(0)
-  })
-
-  it('should not decode a response whose only pick was disabled', async () => {
-    // Arrange
-    const pool = [patientKind, observationKind]
-    const responses = [
-      input('r0', 'https://ehr.test/Patient/1'),
-      input('r1', 'https://ehr.test/Observation?subject=1'),
-    ]
-    const selection = Review.toggleKind(Review.initial<string>(pool), 'observation')
-
-    // Act
-    const outcome = await Effect.runPromise(Review.chosen(pool, responses, selection))
-
-    // Assert — the Observation was opted out, so only the Patient decoded.
-    expect(outcome.resources).toEqual(['patient'])
-    expect(outcome.parseFailures).toBe(0)
-    expect(outcome.bodyAbsent).toBe(0)
-  })
-
-  it('should surface absent-body count when a recognized response has no body', async () => {
-    // Arrange — a recognized Patient URL whose body the archive did not capture.
-    const pool = [patientKind]
-    const responses = [input('r0', 'https://ehr.test/Patient/1', true)]
-
-    // Act
-    const outcome = await Effect.runPromise(
-      Review.chosen(pool, responses, Review.initial<string>(pool))
-    )
-
-    // Assert
-    expect(outcome.resources).toEqual([])
-    expect(outcome.parseFailures).toBe(0)
-    expect(outcome.bodyAbsent).toBe(1)
-  })
-
-  it('should drop an excluded resource from the chosen set', async () => {
-    // Arrange
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
-    const selection = Review.toggleResource(Review.initial<string>([three]), 'r-many:0')
-
-    // Act
-    const outcome = await Effect.runPromise(Review.chosen([three], responses, selection))
-
-    // Assert — exactly the opted-out first resource is dropped
-    expect(outcome.resources).toEqual(['b', 'c'])
-  })
-})
-
-describe('Review.edit / Review.revert', () => {
-  it('should replace exactly the previewed resource its key names', async () => {
-    // Arrange — three parsed resources under one response
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
-    const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial<string>([three]))
-    )
-
-    // Act — edit only the middle resource
-    const edited = Review.edit(Review.initial<string>([three]), 'r-many:1', 'B*')
-
-    // Assert — the override lands in exactly its slot; the siblings ride through
-    expect(Review.chosenResources(previews, edited)).toEqual(['a', 'B*', 'c'])
-    expect(Review.isResourceEdited(edited, 'r-many:1')).toBe(true)
-    expect(Review.isResourceEdited(edited, 'r-many:0')).toBe(false)
-    expect(Option.getOrThrow(Review.editedResource(edited, 'r-many:1'))).toBe('B*')
-  })
-
-  it('should restore the parsed original when the edit is reverted', async () => {
-    // Arrange — one edit in place
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
-    const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial<string>([three]))
-    )
-    const edited = Review.edit(Review.initial<string>([three]), 'r-many:2', 'C*')
-    expect(Review.chosenResources(previews, edited)).toEqual(['a', 'b', 'C*'])
-
-    // Act — revert
-    const reverted = Review.revert(edited, 'r-many:2')
-
-    // Assert — the parsed original is back, and the override is gone
-    expect(Review.chosenResources(previews, reverted)).toEqual(['a', 'b', 'c'])
-    expect(Review.isResourceEdited(reverted, 'r-many:2')).toBe(false)
-    expect(Option.isNone(Review.editedResource(reverted, 'r-many:2'))).toBe(true)
-  })
-
-  it('should drop an edited resource when it is also excluded', async () => {
-    // Arrange — edit, then exclude the same key
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
-    const previews = await Effect.runPromise(
-      Review.preview([three], responses, Review.initial<string>([three]))
-    )
+  it('should drop multiple excluded resources', () => {
     const selection = Review.toggleResource(
-      Review.edit(Review.initial<string>([three]), 'r-many:1', 'B*'),
-      'r-many:1'
+      Review.toggleResource(Review.initial<string>(), 'a'),
+      'c'
     )
+    const chosen = Review.chosenResources(threeLabeled, selection)
 
-    // Act
-    const chosen = Review.chosenResources(previews, selection)
-
-    // Assert — exclusion wins: the edit never leaves the browser
-    expect(chosen).toEqual(['a', 'c'])
+    expect(chosen).toEqual(['beta'])
   })
 
-  it('should be a no-op to revert a key that was never edited', () => {
-    // Arrange
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
+  it('should substitute an edit override in place of the original', () => {
+    const selection = Review.edit(Review.initial<string>(), 'b', 'BETA')
+    const chosen = Review.chosenResources(threeLabeled, selection)
 
-    // Act
-    const before = Review.initial<string>([three])
-    const after = Review.revert(before, 'r-many:0')
-
-    // Assert — same reference, no allocations
-    expect(after).toBe(before)
+    expect(chosen).toEqual(['alpha', 'BETA', 'gamma'])
   })
 
-  it('should replace exactly its resource under any sequence of edits (property)', async () => {
-    // The preview is async, but the property is synchronous — fc.property.
-    // A property: for any sequence of edits over three keys, `chosenResources`
-    // reflects only the last edit per key, at exactly its slot, with the
-    // untouched slots holding the parsed originals.
-    const three = kindReturning('three', 50, '/many', ['a', 'b', 'c'])
-    const responses = [input('r-many', 'https://ehr.test/many')]
-    const initial = Review.initial<string>([three])
-    const previews = await Effect.runPromise(Review.preview([three], responses, initial))
-    const originals = ['a', 'b', 'c'] as const
-    const keys = ['r-many:0', 'r-many:1', 'r-many:2'] as const
+  it('should drop an edited resource when it is also excluded', () => {
+    const selection = Review.toggleResource(Review.edit(Review.initial<string>(), 'b', 'BETA'), 'b')
+    const chosen = Review.chosenResources(threeLabeled, selection)
+
+    expect(chosen).toEqual(['alpha', 'gamma'])
+  })
+
+  it('should preserve the original order', () => {
+    const selection = Review.toggleResource(Review.initial<string>(), 'b')
+    const chosen = Review.chosenResources(threeLabeled, selection)
+
+    // 'a' before 'c' — the order from `labeled`
+    expect(chosen).toEqual(['alpha', 'gamma'])
+  })
+
+  it('should return an empty array when all resources are excluded', () => {
+    let selection = Review.initial<string>()
+    for (const entry of threeLabeled) {
+      selection = Review.toggleResource(selection, entry.key)
+    }
+    const chosen = Review.chosenResources(threeLabeled, selection)
+
+    expect(chosen).toEqual([])
+  })
+
+  it('should return an empty array when labeled is empty', () => {
+    const chosen = Review.chosenResources([], Review.initial<string>())
+
+    expect(chosen).toEqual([])
+  })
+
+  it('should ignore overrides that do not match any labeled key', () => {
+    const selection = Review.edit(Review.initial<string>(), 'nonexistent', 'X')
+    const chosen = Review.chosenResources(threeLabeled, selection)
+
+    expect(chosen).toEqual(['alpha', 'beta', 'gamma'])
+  })
+
+  it('should ignore exclusions that do not match any labeled key', () => {
+    const selection = Review.toggleResource(Review.initial<string>(), 'nonexistent')
+    const chosen = Review.chosenResources(threeLabeled, selection)
+
+    expect(chosen).toEqual(['alpha', 'beta', 'gamma'])
+  })
+
+  it('should reflect exactly the last edit per key under any sequence of edits (property)', () => {
+    const keys = ['a', 'b', 'c'] as const
+    const originals = ['alpha', 'beta', 'gamma'] as const
 
     fc.assert(
       fc.property(
@@ -481,32 +297,120 @@ describe('Review.edit / Review.revert', () => {
           maxLength: 16,
         }),
         (edits) => {
-          let selection = initial
+          let selection = Review.initial<string>()
           const expected: string[] = [...originals]
           for (const [key, value] of edits) {
             selection = Review.edit(selection, key, value)
             const index = keys.indexOf(key)
             if (index !== -1) expected[index] = value
           }
-          expect(Review.chosenResources(previews, selection)).toEqual(expected)
+          expect(Review.chosenResources(threeLabeled, selection)).toEqual(expected)
         }
       ),
       { numRuns: numRunsFor({ base: 40 }) }
     )
   })
+
+  it('should equal the initial set under any sequence of self-cancelling toggles (property)', () => {
+    const keys = ['a', 'b', 'c'] as const
+
+    fc.assert(
+      fc.property(
+        fc.array(fc.constantFrom(...keys), { minLength: 0, maxLength: 8 }),
+        (toggledKeys) => {
+          // Toggle twice per key — the outcome is a no-op.
+          let selection = Review.initial<string>()
+          for (const key of toggledKeys) selection = Review.toggleResource(selection, key)
+          for (const key of toggledKeys) selection = Review.toggleResource(selection, key)
+          expect(Review.chosenResources(threeLabeled, selection)).toEqual([
+            'alpha',
+            'beta',
+            'gamma',
+          ])
+        }
+      ),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
+  })
 })
 
-describe('Review.chosenCount', () => {
-  it('should count only the responses that resolve to a pick', () => {
-    // Arrange
-    const pool = [patientKind, observationKind]
-    const responses = [
-      input('r0', 'https://ehr.test/Patient/1'),
-      input('r1', 'https://ehr.test/nothing'),
-    ]
-    const recognized = Review.recognize(pool, responses)
+// ---------------------------------------------------------------------------
+// Review.includedCount
+// ---------------------------------------------------------------------------
 
-    // Act / Assert
-    expect(Review.chosenCount(recognized, Review.initial<string>(pool))).toBe(1)
+describe('Review.includedCount', () => {
+  it('should equal the number of labeled resources when nothing is excluded', () => {
+    expect(Review.includedCount(threeLabeled, Review.initial<string>())).toBe(3)
+  })
+
+  it('should decrease by one per exclusion', () => {
+    const selection = Review.toggleResource(Review.initial<string>(), 'a')
+
+    expect(Review.includedCount(threeLabeled, selection)).toBe(2)
+  })
+
+  it('should be zero when every resource is excluded', () => {
+    let selection = Review.initial<string>()
+    for (const entry of threeLabeled) {
+      selection = Review.toggleResource(selection, entry.key)
+    }
+    expect(Review.includedCount(threeLabeled, selection)).toBe(0)
+  })
+
+  it('should be zero for an empty labeled list', () => {
+    expect(Review.includedCount([], Review.initial<string>())).toBe(0)
+  })
+
+  it('should not be affected by edit overrides (edits change value, not count)', () => {
+    const selection = Review.edit(Review.initial<string>(), 'b', 'BETA')
+
+    expect(Review.includedCount(threeLabeled, selection)).toBe(3)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// Review.excludedCount
+// ---------------------------------------------------------------------------
+
+describe('Review.excludedCount', () => {
+  it('should be zero when nothing is excluded', () => {
+    expect(Review.excludedCount(threeLabeled, Review.initial<string>())).toBe(0)
+  })
+
+  it('should count one excluded resource', () => {
+    const selection = Review.toggleResource(Review.initial<string>(), 'b')
+
+    expect(Review.excludedCount(threeLabeled, selection)).toBe(1)
+  })
+
+  it('should equal the labeled length when everything is excluded', () => {
+    let selection = Review.initial<string>()
+    for (const entry of threeLabeled) {
+      selection = Review.toggleResource(selection, entry.key)
+    }
+    expect(Review.excludedCount(threeLabeled, selection)).toBe(3)
+  })
+
+  it('should not count exclusions that do not match any labeled key', () => {
+    const selection = Review.toggleResource(Review.initial<string>(), 'nonexistent')
+
+    expect(Review.excludedCount(threeLabeled, selection)).toBe(0)
+  })
+
+  it('should satisfy includedCount + excludedCount === labeled.length (property)', () => {
+    const keys = ['a', 'b', 'c'] as const
+
+    fc.assert(
+      fc.property(fc.subarray([...keys], { minLength: 0, maxLength: keys.length }), (excluded) => {
+        let selection = Review.initial<string>()
+        for (const key of excluded) {
+          selection = Review.toggleResource(selection, key)
+        }
+        const included = Review.includedCount(threeLabeled, selection)
+        const excludedN = Review.excludedCount(threeLabeled, selection)
+        expect(included + excludedN).toBe(threeLabeled.length)
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
   })
 })
