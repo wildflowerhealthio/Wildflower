@@ -46,14 +46,14 @@ describe('maskSameLength', () => {
     expect(result).toBe('0000-000-000-XX')
   })
 
-  it('should always preserve the length of the input', () => {
+  it('should always preserve the code-point count of the input', () => {
     fc.assert(
       fc.property(fc.string(), (input) => {
         // Act
         const result = maskSameLength(input)
 
-        // Assert
-        expect(result).toHaveLength(input.length)
+        // Assert — code-point count, not UTF-16 .length
+        expect(Array.from(result).length).toBe(Array.from(input).length)
       }),
       { numRuns: numRunsFor({ base: 200 }) }
     )
@@ -71,6 +71,46 @@ describe('maskSameLength', () => {
       }),
       { numRuns: numRunsFor({ base: 200 }) }
     )
+  })
+
+  it('should mask unicode uppercase letters to X', () => {
+    expect(maskSameLength('Ñ')).toBe('X')
+    expect(maskSameLength('Ω')).toBe('X')
+    expect(maskSameLength('Ü')).toBe('X')
+    expect(maskSameLength('Ж')).toBe('X')
+  })
+
+  it('should mask unicode lowercase letters to x', () => {
+    expect(maskSameLength('ñ')).toBe('x')
+    expect(maskSameLength('ü')).toBe('x')
+    expect(maskSameLength('ö')).toBe('x')
+    expect(maskSameLength('ж')).toBe('x')
+    expect(maskSameLength('β')).toBe('x')
+  })
+
+  it('should mask unicode digits to 0', () => {
+    expect(maskSameLength('٣')).toBe('0')
+    expect(maskSameLength('٧')).toBe('0')
+  })
+
+  it('should keep CJK ideographs verbatim', () => {
+    expect(maskSameLength('漢字')).toBe('漢字')
+  })
+
+  it('should keep emoji verbatim', () => {
+    expect(maskSameLength('👋🌍')).toBe('👋🌍')
+  })
+
+  it('should handle mixed ASCII and unicode', () => {
+    expect(maskSameLength('Ñoño-123')).toBe('Xxxx-000')
+    expect(maskSameLength('über Straße')).toBe('xxxx Xxxxxx')
+  })
+
+  it('should preserve code-point count for surrogate pairs', () => {
+    const input = '𝒜𝒷' // U+1D49C, U+1D4B7 — surrogate pairs
+    const result = maskSameLength(input)
+    expect(Array.from(result).length).toBe(2)
+    expect(result).toBe('Xx')
   })
 
   it('should return an empty string for empty input', () => {
@@ -213,7 +253,7 @@ describe('applySubstitutions', () => {
     )
   })
 
-  it('should always preserve the length of each run', () => {
+  it('should always preserve the code-point count of each run', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), fc.string({ minLength: 1 }), (runText, ruleText) => {
         // Arrange
@@ -224,7 +264,7 @@ describe('applySubstitutions', () => {
         const { document } = applySubstitutions(doc, rules)
 
         // Assert
-        expect(textOf(document)).toHaveLength(runText.length)
+        expect(Array.from(textOf(document)).length).toBe(Array.from(runText).length)
       }),
       { numRuns: numRunsFor({ base: 200 }) }
     )
