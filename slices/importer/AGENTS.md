@@ -3,11 +3,14 @@
 The **importer**: the user-facing offering that turns a file the user picked
 into FHIR resources in the on-device store, reviewed per-URL first and persisted
 only on an explicit confirm. The slice is the app-facing flow plus per-file-format
-import pipelines — HAR today; a future CSV or DICOM importer joins as a sibling
-pipeline wrapping a pure decode dialect, never touching `slices/http-extraction`.
-The HAR importer is the one format whose contents _are_ HTTP traffic, so it alone
+import pipelines — HAR, and the LifeLabs PDF (as the positioned text the PDF
+anonymizer extracts); a future CSV or DICOM importer joins as a sibling pipeline
+wrapping a pure decode dialect, never touching `slices/http-extraction`. The HAR
+importer is the one format whose contents _are_ HTTP traffic, so it alone
 reaches into the `http-extraction` slice to recognize which registered response
-kinds claim each archived response and to extract with them.
+kinds claim each archived response and to extract with them; the LifeLabs binding
+is the worked example of a document format — its dialect lives in its own
+`-core`, wrapped by one response kind under a minted source identity.
 
 The slice mirrors the collector slice's shape: a resource-agnostic
 **fundamentals** package under a **format binding** (core + React) under a
@@ -29,9 +32,19 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
   `HarSettingsPicker` (a no-op today) and the interactive per-URL `ReviewBody`,
   presentation over the pure `Review` model.
+- **[`lifelabs-pdf-importer-core`](./lifelabs-pdf-importer-core/AGENTS.md)**
+  (the LifeLabs PDF binding) — `lifeLabsPdfImporterDescriptor` for format
+  `'lifelabs-pdf'`: the positioned-text dialect (`parseReports`), the FHIR
+  synthesis (`Patient` / `Practitioner` / `DiagnosticReport` / `Observation`),
+  one response kind, the time-zone setting, and the FHIR persist sink.
+- **[`lifelabs-pdf-importer-react`](./lifelabs-pdf-importer-react/AGENTS.md)**
+  (the LifeLabs PDF UI) — `LifeLabsPdfSettingsPicker` (the report's time zone)
+  and the HAR review re-exported as its `ReviewBody`.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
-  the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry,
+  the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry
+  (`har` and `lifelabs-pdf` registered; the flow itself still drives `har`
+  alone — see that package's AGENTS.md),
   plus `ServerHarArchiveList`, the uploaded-archives pick source the anonymizer
   slice's shell takes through its `serverSource` slot.
 
@@ -80,9 +93,9 @@ sits above `http-extraction` and below every binding, exactly as
   "is the same object" argument the anonymizer's preview makes. This split is
   the whole point; do not collapse it.
 - **The registry is closed and compile-time.** `importer-react`'s `formatRegistry`
-  is a literal `{ har: … } as const`; its `FormatRegistration` requires all three
-  parts (descriptor, `SettingsPicker`, `ReviewBody`), so a format missing one
-  fails to compile. Only `har` is registered so far. Unlike the collector slice
+  is a literal `{ har: …, 'lifelabs-pdf': … } as const`; its `FormatRegistration`
+  requires all three parts (descriptor, `SettingsPicker`, `ReviewBody`), so a
+  format missing one fails to compile. Unlike the collector slice
   there is no separate registry package — the importer has no HTTP wire union to
   derive.
 - **The slice imports only the accepted seams.** `har-importer-core` depends on
@@ -91,11 +104,13 @@ sits above `http-extraction` and below every binding, exactly as
   `importer-fundamentals` (the contract), and `fhir-r4` (resources + the persist
   sink). It re-derives none of them. Nothing here imports from `slices/collector`,
   in code or in concept.
-- **A future file format gets its own binding, not a widened HAR one.** A CSV or
-  DICOM import decodes a _document_: its decode belongs in a pure dialect package
+- **A file format gets its own binding, not a widened HAR one.** A CSV or
+  DICOM import decodes a _document_: its decode belongs in a pure dialect
   (the way rexall's carebook dialect and `web-trace-core`'s codec work), wrapped
-  here by a sibling `*-importer-core` binding implementing the same
-  `FileImporterDescriptor`. The dialect sits below both transports, which is what
+  by a sibling `*-importer-core` binding implementing the same
+  `FileImporterDescriptor` — `lifelabs-pdf-importer-core` is the worked example:
+  its `dialect/` is the pure decode, its one response kind wraps it under a
+  minted source identity. The dialect sits below both transports, which is what
   keeps the graph acyclic.
 
 ## References
@@ -108,6 +123,10 @@ sits above `http-extraction` and below every binding, exactly as
   decode/pool/sink.
 - [har-importer-react AGENTS.md](./har-importer-react/AGENTS.md) — the interactive
   per-URL review.
+- [lifelabs-pdf-importer-core AGENTS.md](./lifelabs-pdf-importer-core/AGENTS.md)
+  — the LifeLabs PDF binding's dialect, synthesis and response kind.
+- [lifelabs-pdf-importer-react AGENTS.md](./lifelabs-pdf-importer-react/AGENTS.md)
+  — the LifeLabs PDF settings picker.
 - [importer-react AGENTS.md](./importer-react/AGENTS.md) — the shell + registry
   and the pick-review-confirm flow.
 - [slices/http-extraction/AGENTS.md](../http-extraction/AGENTS.md) — the

@@ -10,7 +10,10 @@ A format is registered with exactly **one static edit** — its
 `FormatRegistration` into `importer-react`'s closed `formatRegistry` — because
 the slice has no runtime registry. Everything before that edit lives in a new
 `*-importer-core` binding (and its `*-importer-react` UI) that implements the
-`importer-fundamentals` contract.
+`importer-fundamentals` contract. The LifeLabs PDF binding
+(`lifelabs-pdf-importer-core` + `lifelabs-pdf-importer-react`) is the worked
+example of a **document** format — read it alongside HAR when the format is not
+HTTP traffic.
 
 ## What you're building
 
@@ -43,6 +46,17 @@ document's rows/records under a minted source identity. The dialect sits below
 both an importer binding and (if the same source is ever reachable over HTTP) an
 `http-extraction` source package, which is what keeps the graph acyclic. Do
 **not** widen HAR's binding to cover it.
+
+`lifelabs-pdf-importer-core` does exactly this: `decodeLifeLabsPdf` gates the
+file text through the positioned-text schema and presents it verbatim as one
+`Extraction.Input` under a URL the binding mints
+(`https://wildflowerhealth.io/import/lifelabs-pdf/<fileName>`); its one
+`HttpResponseKind` claims that URL with `recognizePortal` under
+`LIFELABS_SYSTEM` and parses the body through the dialect (`parseReports`) and
+the FHIR synthesis (`toFhirResources`); `adoptUnderRecognizedRoot` re-keys the
+result. A per-import setting the parse needs (its time zone) rides from
+`decode` to `parse` on a response header, since `parse` sees the response and
+not the settings.
 
 ## 1. The decode
 
@@ -85,7 +99,8 @@ compile error at the binding. The write requirement (`R`, here
 HAR has none, so `HarSettings` is an empty record and `HarSettingsPicker` is a
 no-op — the seam is present without inventing a setting. A format with real
 settings (a redaction toggle, a column mapping) writes a `SettingsPicker` against
-`SettingsPickerProps<TSettings>`.
+`SettingsPickerProps<TSettings>` — `LifeLabsPdfSettings` `{ timeZone }` and
+`LifeLabsPdfSettingsPicker` are the worked example.
 
 ## 5. The review body
 
@@ -128,6 +143,7 @@ Add the two binding packages as dependencies of `importer-react`, run
 ```ts
 const formatRegistry = {
   har: harRegistration,
+  'lifelabs-pdf': lifeLabsPdfRegistration,
   'my-format': {
     descriptor: myImporterDescriptor,
     SettingsPicker: MySettingsPicker,
@@ -135,6 +151,12 @@ const formatRegistry = {
   },
 } as const
 ```
+
+The shell's pick-review-confirm flow (`ImporterScreen`, the `SourcePicker`,
+the confirm's archive upload) is still written against `formatRegistry.har`
+alone, so a registered second format compiles and reviews through the same
+`Review` model but is not yet reachable from the picker — making the shell
+dispatch on the picked file's format is its own change.
 
 The `FormatRegistration` interface requires all three parts, so a format missing
 its descriptor, its settings picker, or its review body **fails to compile** here
@@ -177,6 +199,8 @@ is a no-op here.
   `FileImporterDescriptor` contract and the `Review` model.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the worked HAR
   binding this recipe generalizes.
+- [lifelabs-pdf-importer-core AGENTS.md](../lifelabs-pdf-importer-core/AGENTS.md)
+  — the worked document-format binding.
 - [Adding a Collector How-To](../../collector/docs/Adding%20a%20Collector%20How-To.md)
   — the live-transport counterpart, whose descriptor/registry shape this mirrors.
 - [Documentation Reference](../../../docs/Documentation/Reference.md) — the

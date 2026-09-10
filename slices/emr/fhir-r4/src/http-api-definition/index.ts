@@ -1,10 +1,12 @@
 import { HttpApi, type HttpApiError } from '@effect/platform'
 import * as Binary from './binary.ts'
+import * as DiagnosticReport from './diagnostic-report.ts'
 import * as DocumentReference from './document-reference.ts'
 import * as MedicationDispense from './medication-dispense.ts'
 import * as MedicationRequest from './medication-request.ts'
 import * as Observation from './observation.ts'
 import * as Patient from './patient.ts'
+import * as Practitioner from './practitioner.ts'
 
 /**
  * The path Wildflower's host mounts `emr-rust` at.
@@ -28,7 +30,9 @@ const FhirResourcesApi: HttpApi.HttpApi<
   | typeof Observation.httpApiGroup
   | typeof MedicationRequest.httpApiGroup
   | typeof MedicationDispense.httpApiGroup
-  | typeof DocumentReference.httpApiGroup,
+  | typeof DocumentReference.httpApiGroup
+  | typeof DiagnosticReport.httpApiGroup
+  | typeof Practitioner.httpApiGroup,
   HttpApiError.HttpApiDecodeError
 > = HttpApi.make('FhirResourcesApi')
   .add(Patient.httpApiGroup)
@@ -37,14 +41,18 @@ const FhirResourcesApi: HttpApi.HttpApi<
   .add(MedicationRequest.httpApiGroup)
   .add(MedicationDispense.httpApiGroup)
   .add(DocumentReference.httpApiGroup)
+  .add(DiagnosticReport.httpApiGroup)
+  .add(Practitioner.httpApiGroup)
 
 export {
   FhirResourcesApi,
   FhirResourcesApiPrefix,
   Binary,
+  DiagnosticReport,
   DocumentReference,
   MedicationDispense,
   MedicationRequest,
   Observation,
   Patient,
+  Practitioner,
 }

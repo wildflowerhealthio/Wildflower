@@ -9,12 +9,14 @@ import {
 } from '../data-types/complex/identifier-and-reference.ts'
 import {
   Binary,
+  DiagnosticReport,
   DocumentReference,
   type FhirResource,
   MedicationDispense,
   MedicationRequest,
   Observation,
   Patient,
+  Practitioner,
 } from '../resources/index.ts'
 import { adoptResource, originalIdOf, type SourceIdentity } from './adopt-resource.ts'
 import { localResourceId } from './local-resource-id.ts'
@@ -150,6 +152,20 @@ const ADOPTED_FIELDS = {
     'relatesTo',
     'context',
   ],
+  DiagnosticReport: [
+    'id',
+    'identifier',
+    'subject',
+    'encounter',
+    'basedOn',
+    'performer',
+    'resultsInterpreter',
+    'specimen',
+    'result',
+    'imagingStudy',
+    'media',
+  ],
+  Practitioner: ['id', 'identifier', 'qualification'],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
 // ---------------------------------------------------------------------------
@@ -159,7 +175,7 @@ const ADOPTED_FIELDS = {
 // implementation and `ADOPTED_FIELDS`: adoption leaves it alone, and that
 // property asserts precisely that it was left alone. The guard below closes that
 // hole by deriving the truth from the schemas. It found `note.authorReference`,
-// which a manual walk of the same six schemas had missed.
+// which a manual walk of the same six original schemas had missed.
 // ---------------------------------------------------------------------------
 
 /** A runaway backstop, not a bound anything real approaches. */
@@ -320,6 +336,18 @@ const REWRITTEN_REFERENCE_PATHS = {
     'relatesTo.target',
     'subject',
   ],
+  DiagnosticReport: [
+    'basedOn',
+    'encounter',
+    'imagingStudy',
+    'media.link',
+    'performer',
+    'result',
+    'resultsInterpreter',
+    'specimen',
+    'subject',
+  ],
+  Practitioner: ['qualification.issuer'],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
 const SCHEMA_FOR = {
@@ -329,6 +357,8 @@ const SCHEMA_FOR = {
   MedicationRequest: MedicationRequest.Schema,
   MedicationDispense: MedicationDispense.Schema,
   DocumentReference: DocumentReference.Schema,
+  DiagnosticReport: DiagnosticReport.Schema,
+  Practitioner: Practitioner.Schema,
 } as const satisfies Record<FhirResource['resourceType'], Schema.Schema.Any>
 
 describe('reference coverage is derived from the schemas, not asserted by hand', () => {
@@ -390,6 +420,8 @@ const resources: readonly FhirResource[] = [
   { ...sample(MedicationRequest.Schema, 14), id: 'src-1' },
   { ...sample(MedicationDispense.Schema, 15), id: 'src-1' },
   { ...sample(DocumentReference.Schema, 16), id: 'src-1' },
+  { ...sample(DiagnosticReport.Schema, 17), id: 'src-1' },
+  { ...sample(Practitioner.Schema, 18), id: 'src-1' },
 ]
 
 describe('adoptResource', () => {
@@ -559,8 +591,8 @@ describe('reference rewriting', () => {
   })
 
   test('rewrites a type this package does not store, so the link resolves if it is ever imported', () => {
-    expect(subjectOf(SOURCE, reference({ reference: 'Practitioner/prac-3' }))?.reference).toBe(
-      `Practitioner/${localResourceId(SOURCE.system, 'Practitioner', 'prac-3')}`
+    expect(subjectOf(SOURCE, reference({ reference: 'Organization/org-3' }))?.reference).toBe(
+      `Organization/${localResourceId(SOURCE.system, 'Organization', 'org-3')}`
     )
   })
 

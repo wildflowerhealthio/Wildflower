@@ -194,3 +194,34 @@ the literal and fakes only the data part.
 **Discovered during**: claude/deploy-actions-failures-s75kxq
 **Learning**: tauri-action detects the package manager from a lockfile in `projectPath` (`apps/wildflower-tauri`), not the workspace root, so it ran `npm run tauri build`. Set `tauriScript: vp run tauri` — `vp run <script> <args>` forwards trailing args to the script, so `--target universal-apple-darwin` reaches the Tauri CLI.
 **Suggested destination**: Strategies
+
+## A source id has to be a FHIR `id` or adoption's reference rewrite skips it
+
+**Discovered during**: claude/lifelabs-pdf-importer-z45ain
+**Learning**: `adoptUnderRecognizedRoot` re-keys a resource whatever its
+original `id` is, but the reference rewrite only recognizes
+`Type/<id>` where `<id>` matches FHIR's `[A-Za-z0-9\-.]{1,64}` — so a synthesis
+that minted ids from `joinIdComponents(...)` (colons, spaces, over 64 chars)
+got re-keyed resources whose `DiagnosticReport.result` and
+`Observation.subject` still pointed at the _unadopted_ ids. Digest the
+components into an id-safe string (`lifelabs-pdf-importer-core`'s `sourceId`,
+sixteen hex digits of `fnv1a64`) and keep the readable facts on the resource as
+identifiers instead. A property that adopts and then checks every reference
+resolves inside the same output catches this in one run.
+**Suggested destination**: Source Identity Explanation
+
+## Positioned-text lines: anchor on the first run, tolerate ~5.5pt, and test against the real y's
+
+**Discovered during**: claude/lifelabs-pdf-importer-z45ain
+**Learning**: A LifeLabs PDF prints a 9.08pt label and its 9.94pt value up to
+4.1pt apart, and a flag+result pair up to 3pt below the test name it belongs
+to, while consecutive grid rows are ≥ 9pt apart — a 4pt tolerance split the
+`Patient's Phone:` label from its value and a 3pt row-rounding split flagged
+rows from their names. Cluster by the _first_ run's y (a running mean lets a
+stack of near rows drift into one line) with a 5.5pt tolerance. When writing
+the fixture layout that a round-trip property parses back, copy the real
+document's y offsets (`Address:` at 64, its lines every ~9pt, `HC #:` at 72):
+a plausible-looking layout with the address 2pt lower merged the health-card
+value into the address line and the property failed on the layout, not the
+parser.
+**Suggested destination**: Strategies

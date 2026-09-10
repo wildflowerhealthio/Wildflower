@@ -104,7 +104,7 @@ describe('persistResources', () => {
     // in-type way to build one). `upsertResource` fails in its exhaustive-default
     // arm before any client call.
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- deliberately forging an out-of-union resourceType to exercise the untyped-path branch
-    const bogus = { resourceType: 'Practitioner', id: 'p-1' } as unknown as FhirResource
+    const bogus = { resourceType: 'Organization', id: 'org-1' } as unknown as FhirResource
     const records: Array<RecordedRequest> = []
     const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
       Layer.provide(recordingHttpClientLayer(records, () => false))
@@ -121,7 +121,7 @@ describe('persistResources', () => {
     )
     expect(records).toEqual([])
     expect(failures).toHaveLength(1)
-    expect(failures[0]?.failed).toEqual({ label: 'Practitioner', id: 'p-1' })
+    expect(failures[0]?.failed).toEqual({ label: 'Organization', id: 'org-1' })
     expect(failures[0]?.cause).toBeInstanceOf(UnsupportedFhirResourceTypeError)
   })
 

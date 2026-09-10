@@ -50,8 +50,13 @@ the single edit point for wiring a file-format importer into the shell. A
 `FormatRegistration` bundles the three parts a format contributes: its
 `descriptor` (data), its `SettingsPicker`, and its `ReviewBody` (the two React
 views). The interface requires all three, so a format missing one fails to
-compile here. Only `har` is registered (`har-importer-core` +
-`har-importer-react`). The importer has no HTTP wire union to derive, so both
+compile here. Two formats are registered — `har` (`har-importer-core` +
+`har-importer-react`) and `lifelabs-pdf` (`lifelabs-pdf-importer-core` +
+`lifelabs-pdf-importer-react`) — but the flow (`ImporterScreen`, the
+`SourcePicker`'s HAR gate, the confirm's archive upload) still reads
+`formatRegistry.har` alone, so the second registration compiles and reviews
+through the same `Review` model without being reachable from the picker yet.
+The importer has no HTTP wire union to derive, so both
 halves live here — there is no separate `importer-registry` package the collector
 slice needs.
 

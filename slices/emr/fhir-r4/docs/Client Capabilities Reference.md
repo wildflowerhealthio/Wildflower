@@ -113,6 +113,20 @@ Normalizations and deviations:
 
 `DocumentReference` has no `choice[x]` elements, so the XOR caveat above does not apply to it. Its modifier-required `status` (`current | superseded | entered-in-error`) is modeled as a plain required `Schema.Literal` (no `unknown`-default rescue like `Observation.status`, since HFS serves it reliably). `content` is `1..*` in the spec; the client models it as a plain (non-optional) array, so its presence is required on both the decoded and wire sides, but the array's non-emptiness (`min 1`) is **not** enforced — a payload with `content: []` validates. The `content.attachment` and `relatesTo.code`/`relatesTo.target` required sub-elements are likewise modeled as required (non-nullable) fields.
 
+## DiagnosticReport search parameters (subset declared)
+
+Per FHIR R4 § DiagnosticReport.search, the standard parameters include `_id`, `_lastUpdated`, `patient`, `subject`, `encounter`, `code`, `category`, `status`, `date` (with prefixes), `issued`, `identifier`, `performer`, `result`, `results-interpreter`, `specimen`, `conclusion`, `media`, `based-on`. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_pageToken`, `_id`, `identifier`, `category`, `code`, `status`, `subject`, `date`.
+
+`status` is narrowed to the `DiagnosticReport.status` value set, so an out-of-set code fails to typecheck. `date` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" below) and maps to `effective[x]`, as the spec defines it. `subject` is the one reference-typed parameter declared on any resource here — the literal `Patient/<id>` string a patient's lab reports are gathered by (the same `subject=` search the server's `$everything` runs). `patient`, `performer`, `result` and the rest of the reference parameters are not declared, and every parameter is single-valued (see the DocumentReference narrowings above).
+
+## Practitioner search parameters (subset declared)
+
+Per FHIR R4 § Practitioner.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `name`, `family`, `given`, `phonetic`, `telecom`, `email`, `phone`, `address` and its parts, `gender`, `active`, `communication`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `name`. `name` is a FHIR `string` parameter matched against any part of the practitioner's names; the rest are not declared, so a client looking a practitioner up by licence number goes through `identifier` (the `system|value` form) rather than a dedicated parameter.
+
+## DiagnosticReport / Practitioner choice / required modeling
+
+`DiagnosticReport.effective[x]` is `dateTime | Period`, modeled the same way as `Observation.effective[x]` (both slots optional, XOR not enforced — see above). Its required `status` (the ten-code `DiagnosticReport.status` value set) and `code` are modeled as plain required fields, with no `unknown`-default rescue for `status`: an absent status fails the decode. `media.link` is likewise required. `Practitioner` has no choice elements and no required fields beyond `resourceType`; its `qualification.code` is modeled as required, per the spec's 1..1.
+
 ## MedicationRequest / MedicationDispense search parameters (only paging declared)
 
 Per FHIR R4, `MedicationRequest.search` and `MedicationDispense.search` define parameters such as `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`/`context`, `status`, `intent` (request only), `authoredon` / `whenprepared` / `whenhandedover` (with date prefixes), `identifier`, `medication`, and `prescription` (dispense only). The `HttpApi` description declares `_count` and `_pageToken` only — same minimal paging surface as Observation. HFS indexes the full R4 parameter set server-side (e.g. `MedicationRequest.subject` feeds Patient `$everything`), but the typed client can't express those filters. Adding `subject`/`patient`/`code`/`status` would unlock the canonical medication workflows.
