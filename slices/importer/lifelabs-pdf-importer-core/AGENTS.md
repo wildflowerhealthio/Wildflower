@@ -11,17 +11,33 @@ integration are added in a follow-up PR.
 
 ## Shape
 
-- `src/dialect/` — **the positioned-text dialect**, the read half.
-  `lines.ts` clusters a page's runs into visual lines (`LINE_TOLERANCE` = 5.5pt:
-  a label and its differently-sized value share a line, consecutive grid rows
-  9pt apart never do); `columns.ts` names the grid's column bands by `x`
-  (section 0 · group ~14 · test name ~28 · flag ~255 · result/comment ~283 ·
-  reference range ~391 · unit ~485 · lab licence ~586); `parse-report.ts` is
-  `parseReports`: header labels read by label text within their block (patient
-  block left, laboratory block right of x=480), the grid read line by line
-  through a small builder (section → group → row → comment), pages grouped
-  into reports by `Lab No` and the `Page n of N` footer. `report.ts` is the
-  **`LifeLabsReport`** model — the report's own text, nothing interpreted.
+- `src/document/` — **the positioned-text dialect's region parsers**, the read
+  half's toolkit. `table.ts` clusters a page's runs into visual lines
+  (`LINE_TOLERANCE` = 5.5pt: a label and its differently-sized value share a
+  line, consecutive grid rows 9pt apart never do); `column.ts` names the grid's
+  column bands by `x` (section 0 · group ~14 · test name ~28 · flag ~255 ·
+  result/comment ~283 · reference range ~391 · unit ~485 · lab licence ~586);
+  `page-header.ts` is the per-page header shape, its `get` accessor, and
+  `fromLines`; `page-footer.ts` reads the `Page n of N` index, status line, and
+  footer notes; `page-parts.ts` (`split`) cuts one page into header / grid body
+  / footer; `grid.ts` (`Grid`) is the mutable per-report grid accumulator
+  (`create` / `read` / `freeze`, opaque state) fed line by line (section →
+  group → row → comment); `printed-text.ts` holds the shared `fast-check` text
+  primitives the entity arbitraries use.
+- `src/entities/` — **the report model, one namespace per shape** (`Patient`,
+  `Lab`, `TestTableRow`, `Group`, `Section`, `Report`). Each `<name>.ts` holds
+  its `Type` (the report's own text, nothing interpreted) and — for the
+  header-derived blocks — a `fromPageHeader` reader. `Report` additionally owns
+  **`tryFromDocument`**, the parse of a whole positioned-text document into one
+  `Report.Type` per `Lab No` (the orchestration over `document/`); it is an
+  `Effect` that fails with `UnrecognizedLifeLabsDocument` when a non-empty
+  document carries no `Lab No` or grid heading on any page, and otherwise reads
+  totally (masked fields → `''`, no grid → no sections). `TestTableRow` is a
+  printed grid line, structural not clinical (a `Collection Date` line is a
+  `TestTableRow`, not an observation) — the FHIR synthesis layer mints the
+  clinical `Observation`. Each shape's `fast-check` `arbitrary` lives in a
+  test-only `<name>-arbitrary.ts` sibling, never imported by production code, so
+  `fast-check` stays out of the bundle.
 - `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone }`, default
   `America/Toronto`: the report prints local clock times with no zone, and
   FHIR's `dateTime`-with-time / `instant` need one. The zone rides from
@@ -30,15 +46,18 @@ integration are added in a follow-up PR.
 - `src/test-helpers.ts` (`./test-helpers` subpath) — `layoutReport` /
   `layoutDocument`, the print's inverse: a `LifeLabsReport` laid out as
   positioned text at the real column x's, header labels and footer. The
-  dialect is pinned as `parseReports ∘ layoutReport = id` over
-  `report-arbitrary.ts`'s generated reports.
+  dialect is pinned as `Report.tryFromDocument ∘ layoutReport = id` over the
+  reports `entities/report-arbitrary.ts` generates.
 
 ## Layering
 
 Depends on `positioned-text` (the positioned-text schema — the neutral seam
-between the anonymizer's extraction and this dialect) and `kitchen-sink`
-(`numRunsFor` in tests). Never imports `fhir-r4`, `har-importer-core`,
-`pdf-anonymizer-core`, a `*-importer-react`, or `slices/collector`.
+between the anonymizer's extraction and this dialect), `effect` (peer;
+`Report.tryFromDocument` returns an `Effect`), and `kitchen-sink` (`numRunsFor`
+in tests). `fast-check` is a test-only `devDependency`, reached only from the
+`*-arbitrary.ts` modules, and must stay out of the production bundle. Never
+imports `fhir-r4`, `har-importer-core`, `pdf-anonymizer-core`, a
+`*-importer-react`, or `slices/collector`.
 
 ## Guardrails
 

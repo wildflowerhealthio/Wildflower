@@ -1,10 +1,11 @@
 import type { Document, Page, Run } from 'positioned-text'
 
-import type { LifeLabsReport, ReportRow } from './dialect/report.ts'
+import type * as Report from './entities/report.ts'
+import type * as TestTableRow from './entities/test-table-row.ts'
 
 /**
- * Lay a {@link LifeLabsReport} out as the positioned text a LifeLabs PDF
- * prints — the inverse of `parseReports`, for tests: a report laid out and
+ * Lay a {@link Report.Type} out as the positioned text a LifeLabs PDF
+ * prints — the inverse of `Report.tryFromDocument`, for tests: a report laid out and
  * parsed back is the same report, and every layout constant here is the
  * printed grid's (the x of each column, the header labels, the footer).
  *
@@ -22,7 +23,7 @@ import type { LifeLabsReport, ReportRow } from './dialect/report.ts'
 const PAGE_WIDTH = 612
 const PAGE_HEIGHT = 792
 
-/** The x each grid column prints at (see `columns.ts` for the bands). */
+/** The x each grid column prints at (see `column.ts` for the bands). */
 const X = {
   section: 0,
   group: 14,
@@ -66,7 +67,7 @@ interface BodyLine {
   readonly cells: readonly (readonly [x: number, text: string])[]
 }
 
-const rowLines = (row: ReportRow, licence: string | undefined): BodyLine[] => {
+const rowLines = (row: TestTableRow.Type, licence: string | undefined): BodyLine[] => {
   const cells: (readonly [number, string])[] = [[X.name, row.name]]
   if (row.flag !== '') cells.push([X.flag, row.flag])
   if (row.result !== '') cells.push([X.result, row.result])
@@ -81,7 +82,7 @@ const rowLines = (row: ReportRow, licence: string | undefined): BodyLine[] => {
  * lab-licence marker printed wherever the licence in force changes — the way
  * the PDF prints `#5687` once above the rows it covers.
  */
-const bodyLines = (report: LifeLabsReport): BodyLine[] => {
+const bodyLines = (report: Report.Type): BodyLine[] => {
   const lines: BodyLine[] = []
   let licence = ''
   for (const section of report.sections) {
@@ -99,7 +100,7 @@ const bodyLines = (report: LifeLabsReport): BodyLine[] => {
   return lines
 }
 
-const headerRuns = (report: LifeLabsReport): Run.Type[] => {
+const headerRuns = (report: Report.Type): Run.Type[] => {
   const { patient, lab } = report
   const label = (text: string, x: number, y: number): Run.Type => run(text, x, y, 9.08)
   const runs: Run.Type[] = [
@@ -168,10 +169,7 @@ const footerRuns = (page: number, of: number, status: string, withStatus: boolea
  * @param options - Page numbering and whether the footer status line prints
  * @returns The report's pages, in order
  */
-const layoutReport = (
-  report: LifeLabsReport,
-  options: LayoutOptions = {}
-): readonly Page.Type[] => {
+const layoutReport = (report: Report.Type, options: LayoutOptions = {}): readonly Page.Type[] => {
   const firstPageNumber = options.firstPageNumber ?? 1
   const withStatus = options.withStatus ?? true
   const lines = bodyLines(report)
@@ -214,7 +212,7 @@ const layoutReport = (
  * @returns The document
  */
 const layoutDocument = (
-  reports: readonly LifeLabsReport[],
+  reports: readonly Report.Type[],
   fileName = 'Reports.pdf'
 ): Document.Type => {
   const pages: Page.Type[] = []

@@ -21,36 +21,36 @@ const extractPositionedText = async (
   ).href
 
   const pdf = await pdfjs.getDocument({ data: bytes }).promise
-  const pages: Page.Type[] = []
+  const pages: Page.Type[] = await Promise.all(
+    Array.from({ length: pdf.numPages }).map(async (_, i) => {
+      const page = await pdf.getPage(i + 1)
+      const viewport = page.getViewport({ scale: 1 })
+      const content = await page.getTextContent()
 
-  for (let i = 1; i <= pdf.numPages; i += 1) {
-    const page = await pdf.getPage(i)
-    const viewport = page.getViewport({ scale: 1 })
-    const content = await page.getTextContent()
+      const runs: Run.Type[] = []
+      for (const item of content.items) {
+        if (!('str' in item) || item.str === '') continue
+        const tx = item.transform
+        runs.push({
+          text: item.str,
+          x: Number(tx[4]),
+          y: viewport.height - Number(tx[5]) - item.height,
+          width: item.width,
+          fontSize: item.height,
+          ...('fontName' in item && typeof item.fontName === 'string' && item.fontName !== ''
+            ? { fontName: item.fontName }
+            : {}),
+        })
+      }
 
-    const runs: Run.Type[] = []
-    for (const item of content.items) {
-      if (!('str' in item) || item.str === '') continue
-      const tx = item.transform
-      runs.push({
-        text: item.str,
-        x: Number(tx[4]),
-        y: viewport.height - Number(tx[5]) - item.height,
-        width: item.width,
-        fontSize: item.height,
-        ...('fontName' in item && typeof item.fontName === 'string' && item.fontName !== ''
-          ? { fontName: item.fontName }
-          : {}),
-      })
-    }
-
-    pages.push({
-      pageNumber: i,
-      width: viewport.width,
-      height: viewport.height,
-      runs,
+      return {
+        pageNumber: i + 1,
+        width: viewport.width,
+        height: viewport.height,
+        runs,
+      }
     })
-  }
+  )
 
   return {
     format: 'wildflower-positioned-text',

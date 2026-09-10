@@ -3,7 +3,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import type { Page, Run } from 'positioned-text'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { LINE_TOLERANCE, lineText, linesOf } from './lines.ts'
+import { LINE_TOLERANCE, lineText, fromPage } from './table.ts'
 
 const run = (text: string, x: number, y: number): Run.Type => ({
   text,
@@ -50,7 +50,7 @@ describe('linesOf', () => {
           )
           const shuffled = rows.flat().toReversed()
 
-          const lines = linesOf(page(shuffled))
+          const lines = fromPage(page(shuffled))
 
           expect(lines).toHaveLength(rows.length)
           lines.forEach((line, index) => {
@@ -69,7 +69,7 @@ describe('linesOf', () => {
     // tolerance, but the fourth is 12pt below the first — a new line.
     const runs = [run('a', 0, 10), run('b', 10, 14), run('c', 20, 18), run('d', 30, 22)]
 
-    const lines = linesOf(page(runs))
+    const lines = fromPage(page(runs))
 
     expect(lines.map(lineText)).toEqual(['a b', 'c d'])
   })
@@ -77,7 +77,7 @@ describe('linesOf', () => {
   it('drops blank runs and trims the rest', () => {
     const runs = [run('  WBC ', 28, 100), run(' ', 60, 100), run('', 90, 100), run('8.0', 283, 101)]
 
-    const lines = linesOf(page(runs))
+    const lines = fromPage(page(runs))
 
     expect(lines).toEqual([
       {
@@ -91,6 +91,6 @@ describe('linesOf', () => {
   })
 
   it('yields no lines for a page of blank runs', () => {
-    expect(linesOf(page([run(' ', 0, 0), run('', 5, 5)]))).toEqual([])
+    expect(fromPage(page([run(' ', 0, 0), run('', 5, 5)]))).toEqual([])
   })
 })

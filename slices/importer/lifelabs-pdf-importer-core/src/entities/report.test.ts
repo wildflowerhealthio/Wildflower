@@ -1,19 +1,20 @@
+import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import type { Document } from 'positioned-text'
+import type { Document, Run } from 'positioned-text'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { layoutDocument, layoutReport } from '../test-helpers.ts'
-import { parseReports } from './parse-report.ts'
-import { reportArbitrary } from './report-arbitrary.ts'
-import type { LifeLabsReport } from './report.ts'
+import { arbitrary as reportArbitrary } from './report-arbitrary.ts'
+import * as Report from './report.ts'
 
 /**
  * The dialect is pinned as the inverse of the printed layout: any report the
  * print can carry, laid out and parsed back, is the same report. The example
  * tests below then document the layout facts the property leans on — the
  * page break inside a section, the shared footer line, the masked lab numbers
- * an anonymized export prints.
+ * an anonymized export prints — and the one failure: a document that isn't a
+ * LifeLabs report at all.
  */
 
 const document = (pages: Document.Type['pages']): Document.Type => ({
@@ -23,8 +24,12 @@ const document = (pages: Document.Type['pages']): Document.Type => ({
   pages,
 })
 
+/** Run the parse of a recognized document, surfacing the reports. */
+const run = (doc: Document.Type): readonly Report.Type[] =>
+  Effect.runSync(Report.tryFromDocument(doc))
+
 /** A report with everything filled in, for the example tests. */
-const sample: LifeLabsReport = {
+const sample: Report.Type = {
   labNo: '2024-JJ6330780',
   referenceNumber: '',
   referringSiteId: '',
@@ -120,16 +125,16 @@ const sample: LifeLabsReport = {
 }
 
 /** The parsed report with `pageNumbers` set aside — the layout decides those. */
-const withoutPages = (report: LifeLabsReport): Omit<LifeLabsReport, 'pageNumbers'> => {
+const withoutPages = (report: Report.Type): Omit<Report.Type, 'pageNumbers'> => {
   const { pageNumbers: _pageNumbers, ...rest } = report
   return rest
 }
 
-describe('parseReports', () => {
+describe('Report.tryFromDocument', () => {
   it('property: is the inverse of the printed layout, report by report', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 3 }), (reports) => {
-        const parsed = parseReports(layoutDocument(reports))
+        const parsed = run(layoutDocument(reports))
 
         expect(parsed.map(withoutPages)).toEqual(reports.map(withoutPages))
         // Pages are numbered consecutively across the document, none skipped.
@@ -142,7 +147,7 @@ describe('parseReports', () => {
   })
 
   it('reads the sample report back, header and grid alike', () => {
-    const [report, ...rest] = parseReports(document(layoutReport(sample)))
+    const [report, ...rest] = run(document(layoutReport(sample)))
 
     expect(rest).toEqual([])
     expect(report).toEqual(sample)
@@ -159,7 +164,7 @@ describe('parseReports', () => {
       labLicence: '#5687',
       comments: [],
     }))
-    const long: LifeLabsReport = {
+    const long: Report.Type = {
       ...sample,
       sections: [
         { name: 'Hematology', comments: [], groups: [{ name: '', rows: padding }] },
@@ -168,7 +173,7 @@ describe('parseReports', () => {
     }
     const pages = layoutReport(long)
 
-    const [report] = parseReports(document(pages))
+    const [report] = run(document(pages))
 
     expect(pages.length).toBeGreaterThan(1)
     expect(report?.pageNumbers).toEqual(pages.map((page) => page.pageNumber))
@@ -180,7 +185,7 @@ describe('parseReports', () => {
     const first = { ...masked, dateOfService: 'May 20 2026 13:25' }
     const second = { ...masked, dateOfService: 'Oct 10 2025 12:34' }
 
-    const reports = parseReports(layoutDocument([first, second]))
+    const reports = run(layoutDocument([first, second]))
 
     expect(reports.map((report) => report.dateOfService)).toEqual([
       'May 20 2026 13:25',
@@ -191,7 +196,7 @@ describe('parseReports', () => {
   it('keeps a left-column value out of the laboratory block sharing its line', () => {
     // `HC #:` and the address's second line print on one line; the health
     // card number must not swallow `Toronto, Ontario`.
-    const [report] = parseReports(document(layoutReport(sample)))
+    const [report] = run(document(layoutReport(sample)))
 
     expect(report?.patient.healthCardNumber).toBe('1234567890 AB')
     expect(report?.lab.addressLines).toEqual([
@@ -202,8 +207,8 @@ describe('parseReports', () => {
   })
 
   it('reads the footer status off the line it shares with the page index', () => {
-    const [withStatus] = parseReports(document(layoutReport(sample, { withStatus: true })))
-    const [without] = parseReports(document(layoutReport(sample, { withStatus: false })))
+    const [withStatus] = run(document(layoutReport(sample, { withStatus: true })))
+    const [without] = run(document(layoutReport(sample, { withStatus: false })))
 
     expect(withStatus?.status).toBe('FINAL RESULTS')
     expect(without?.status).toBe('')
@@ -212,7 +217,23 @@ describe('parseReports', () => {
   it('yields a report with no sections for a page with no grid, and nothing for no pages', () => {
     const headerOnly = layoutReport({ ...sample, sections: [] })
 
-    expect(parseReports(document(headerOnly))[0]?.sections).toEqual([])
-    expect(parseReports(document([]))).toEqual([])
+    expect(run(document(headerOnly))[0]?.sections).toEqual([])
+    expect(run(document([]))).toEqual([])
+  })
+
+  it('fails when the document has pages but no LifeLabs structure at all', () => {
+    // A page with neither a `Lab No` header nor a results-grid heading.
+    const gibberish: Run.Type = {
+      text: 'Some other document',
+      x: 72,
+      y: 72,
+      width: 120,
+      fontSize: 10,
+    }
+    const notLifeLabs = document([{ pageNumber: 1, width: 612, height: 792, runs: [gibberish] }])
+
+    const error = Effect.runSync(Effect.flip(Report.tryFromDocument(notLifeLabs)))
+
+    expect(error._tag).toBe('UnrecognizedLifeLabsDocument')
   })
 })

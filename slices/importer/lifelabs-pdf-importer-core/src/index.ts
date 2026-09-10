@@ -10,13 +10,11 @@
  *
  * @packageDocumentation
  */
-export { parseReports } from './dialect/parse-report.ts'
-export type {
-  LifeLabsReport,
-  ReportGroup,
-  ReportLab,
-  ReportPatient,
-  ReportRow,
-  ReportSection,
-} from './dialect/report.ts'
+export * as Report from './entities/report.ts'
+export type { Type as ReportGroup } from './entities/group.ts'
+export type { Type as ReportLab } from './entities/lab.ts'
+export type { Type as ReportPatient } from './entities/patient.ts'
+export type { Type as LifeLabsReport } from './entities/report.ts'
+export type { Type as ReportSection } from './entities/section.ts'
+export type { Type as ReportRow } from './entities/test-table-row.ts'
 export { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'

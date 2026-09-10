@@ -33,6 +33,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
     "positioned-text": "workspace:*",
@@ -40,6 +41,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "effect": "catalog:",
     "kitchen-sink": "workspace:*",
     "positioned-text": "workspace:*"
   }

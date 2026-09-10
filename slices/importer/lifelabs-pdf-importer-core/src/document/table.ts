@@ -50,7 +50,7 @@ const LINE_TOLERANCE = 5.5
  * a stack of runs each 3pt below the last can never drift one line into the
  * next — the tolerance is measured from a fixed point.
  */
-const linesOf = (page: Page.Type): readonly Line[] => {
+const fromPage = (page: Page.Type): readonly Line[] => {
   const runs = [...page.runs]
     .filter((run) => run.text.trim().length > 0)
     .toSorted((a, b) => a.y - b.y || a.x - b.x)
@@ -72,5 +72,5 @@ const toCell = (run: Run.Type): Cell => ({ x: run.x, text: run.text.trim() })
 /** The line's cells joined by single spaces — the text a reader sees. */
 const lineText = (line: Line): string => line.cells.map((cell) => cell.text).join(' ')
 
-export { LINE_TOLERANCE, lineText, linesOf }
+export { LINE_TOLERANCE, lineText, fromPage }
 export type { Cell, Line }

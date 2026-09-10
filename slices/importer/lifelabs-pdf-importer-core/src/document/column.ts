@@ -1,12 +1,13 @@
-import type { Cell } from './lines.ts'
+import type * as Table from './table.ts'
 
 /**
  * The columns a LifeLabs report body row is laid out in, named by the band of
  * `x` (page points from the left margin) each occupies.
  *
  * @remarks
- * The report prints a fixed grid — `Test | Flag | Result | Reference Range -
- * Units | Lab Lic. #` — with every cell left-aligned at one of a handful of
+ * The report prints a fixed grid —
+ * `Test | Flag | Result | Reference Range - Units | Lab Lic. #` — with every
+ * cell left-aligned at one of a handful of
  * x positions: section headings at 0, group headings at ~14, test names at
  * ~28, flags at ~255, results and comment text at ~283, reference ranges at
  * ~391, units at ~485, lab licence numbers at ~586. The bands below sit
@@ -14,7 +15,7 @@ import type { Cell } from './lines.ts'
  * different font, a kerned first glyph) still classifies. A comment line's
  * inline tokens (`Follicular: 77-921 pmol/L`) can land in the range band too,
  * which is why a line's *kind* is decided from its leftmost cell in
- * `parse-report.ts` before the bands are read.
+ * `grid.ts` before the bands are read.
  */
 type Column = 'section' | 'group' | 'name' | 'flag' | 'result' | 'range' | 'unit' | 'licence'
 
@@ -30,7 +31,7 @@ const BAND_EDGES: readonly (readonly [Column, number])[] = [
 ]
 
 /** The column a cell's left edge falls in. */
-const fromCell = (cell: Cell): Column => {
+const fromCell = (cell: Table.Cell): Column => {
   for (const [column, edge] of BAND_EDGES) if (cell.x < edge) return column
   return 'licence'
 }
