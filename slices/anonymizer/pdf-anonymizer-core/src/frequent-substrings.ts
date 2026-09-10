@@ -69,7 +69,7 @@ const STOPWORDS = new Set([
 
 const MIN_WORD_LENGTH = 3
 const MIN_COUNT = 2
-const MAX_SUGGESTIONS = 20
+const MAX_SUGGESTIONS = 50
 
 const splitWords = (text: string): readonly string[] =>
   text.split(/\s+/).filter((w) => w.length > 0)

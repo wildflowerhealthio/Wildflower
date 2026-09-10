@@ -115,16 +115,16 @@ describe('extractFrequentSubstrings', () => {
     expect(smithLabs).toBeLessThan(johnSmith)
   })
 
-  it('should cap results at 20', () => {
-    // Arrange — create 25 distinct words each appearing twice
-    const words = Array.from({ length: 25 }, (_, i) => `word${String(i).padStart(3, '0')}`)
+  it('should cap results at 50', () => {
+    // Arrange — create 55 distinct words each appearing twice
+    const words = Array.from({ length: 55 }, (_, i) => `word${String(i).padStart(3, '0')}`)
     const doc = docWithRuns([words.join(' '), words.join(' ')])
 
     // Act
     const result = extractFrequentSubstrings(doc)
 
     // Assert
-    expect(result.length).toBeLessThanOrEqual(20)
+    expect(result.length).toBeLessThanOrEqual(50)
   })
 
   it('should count words that appear multiple times within one run', () => {

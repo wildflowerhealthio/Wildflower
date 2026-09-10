@@ -6,7 +6,6 @@ import {
 } from 'pdf-anonymizer-core'
 import { useCallback, useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { ToggleSwitch } from 'react-tundraish'
 
 import { anonymizedJsonFileName, downloadBlob, positionedTextBlob } from './download-json.ts'
 import { RulesEditor } from './rules-editor.tsx'
@@ -23,16 +22,18 @@ interface PdfAnonymizePanelProps {
 let nextRuleId = 0
 const freshId = (): string => `rule-${++nextRuleId}`
 
+const MAX_DISPLAYED_SUGGESTIONS = 20
+
 const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProps): JSX.Element => {
   const [rules, setRules] = useState<SubstitutionRule[]>(() => [{ id: freshId(), text: '' }])
-  const [showAnonymized, setShowAnonymized] = useState(false)
+  const [dismissedSuggestions, setDismissedSuggestions] = useState<ReadonlySet<string>>(
+    () => new Set()
+  )
 
   const { document: anonymized, ruleMatches } = useMemo(
     () => applySubstitutions(value, rules),
     [value, rules]
   )
-
-  const displayed = showAnonymized ? anonymized : value
 
   const totalRuns = useMemo(
     () => value.pages.reduce((sum, page) => sum + page.runs.length, 0),
@@ -63,10 +64,23 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
 
   const filteredSuggestions = useMemo(() => {
     const ruleTexts = new Set(rules.map((r) => r.text.toLowerCase()).filter((t) => t !== ''))
-    return allSuggestions.filter((s) => !ruleTexts.has(s.text.toLowerCase()))
-  }, [allSuggestions, rules])
+    return allSuggestions
+      .filter(
+        (s) =>
+          !ruleTexts.has(s.text.toLowerCase()) && !dismissedSuggestions.has(s.text.toLowerCase())
+      )
+      .slice(0, MAX_DISPLAYED_SUGGESTIONS)
+  }, [allSuggestions, rules, dismissedSuggestions])
 
   const onAddSuggestion = useCallback((text: string) => {
+    setRules((current) => [...current, { id: freshId(), text }])
+  }, [])
+
+  const onDismissSuggestion = useCallback((text: string) => {
+    setDismissedSuggestions((current) => new Set([...current, text.toLowerCase()]))
+  }, [])
+
+  const onRunClick = useCallback((text: string) => {
     setRules((current) => [...current, { id: freshId(), text }])
   }, [])
 
@@ -102,7 +116,11 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
         </p>
       </section>
 
-      <Suggestions suggestions={filteredSuggestions} onAdd={onAddSuggestion} />
+      <Suggestions
+        suggestions={filteredSuggestions}
+        onAdd={onAddSuggestion}
+        onDismiss={onDismissSuggestion}
+      />
 
       <RulesEditor
         rules={rules}
@@ -120,15 +138,7 @@ const PdfAnonymizePanel = ({ value, fileName, className }: PdfAnonymizePanelProp
         </p>
       ) : null}
 
-      <div className={styles['panel__preview-controls']}>
-        <ToggleSwitch
-          checked={showAnonymized}
-          label="Show anonymized preview"
-          onChange={setShowAnonymized}
-        />
-      </div>
-
-      <RunsView document={displayed} />
+      <RunsView document={anonymized} originalDocument={value} onRunClick={onRunClick} />
 
       <div className={styles['panel__actions']}>
         <button type="button" className="button-2" onClick={download}>

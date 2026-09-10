@@ -21,8 +21,12 @@ everything downstream is tested on hand-written fixture documents.
 - `src/rules-editor.tsx` — **`RulesEditor`**: TextField rows with live
   per-rule match counts; zero-match warning via `StatusBadge`.
 - `src/runs-view.tsx` — **`RunsView`**: per-page container from page aspect
-  ratio, absolutely positioned spans. Inline style only for geometry values;
-  tundraish tokens for everything else.
+  ratio, absolutely positioned spans. Interactive: click a run to add it as
+  a rule, hover for a glow, hover on a masked run to reveal the original.
+  Inline style only for geometry values; tundraish tokens for everything else.
+- `src/suggestions.tsx` — **`Suggestions`**: dual-action chips for
+  frequently occurring text — anonymize (adds a rule) or dismiss (hides
+  the suggestion to make room for more).
 - `src/download-json.ts` — **`downloadBlob`** + **`positionedTextBlob`**:
   same-origin blob download pattern duplicated from
   `har-anonymizer-react/src/download-har.ts`.
@@ -51,9 +55,9 @@ engine), `anonymizer-fundamentals` (the descriptor contract),
 
 - `pdf-anonymize-panel.test.tsx` — end-to-end panel tests: page/run counts,
   masking in downloaded JSON, live match counts, zero-match warning, add/remove
-  rules, toggle between original and anonymized preview, valid
-  `PositionedTextDocument` in the download. Uses the blob-capture test harness
-  from `har-anonymizer-react`.
+  rules, always-anonymized preview, click-to-add from preview, suggestion
+  anonymize/dismiss, valid `PositionedTextDocument` in the download. Uses the
+  blob-capture test harness from `har-anonymizer-react`.
 - `download-json.test.ts` — blob round-trip through `PositionedTextFromJson`,
   anchor click, file-name conventions.
 

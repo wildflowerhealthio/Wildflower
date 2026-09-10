@@ -1,41 +1,80 @@
 import type { PositionedTextDocument } from 'pdf-anonymizer-core'
-import type { JSX } from 'react'
+import { useCallback, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 
 import styles from './pdf-anonymize-panel.module.css'
 
 interface RunsViewProps {
   readonly document: PositionedTextDocument
+  readonly originalDocument?: PositionedTextDocument
+  readonly onRunClick?: (text: string) => void
   readonly className?: string
 }
 
-const RunsView = ({ document: doc, className }: RunsViewProps): JSX.Element => (
-  <div className={cn(styles['runs'], className)}>
-    {doc.pages.map((page) => (
-      <div
-        key={page.pageNumber}
-        className={styles['runs__page']}
-        style={{
-          aspectRatio: `${page.width} / ${page.height}`,
-        }}
-        aria-label={`Page ${page.pageNumber}`}
-      >
-        {page.runs.map((run, i) => (
-          <span
-            key={i}
-            className={cn(styles['runs__span'], 'text-body-3')}
+const RunsView = ({
+  document: doc,
+  originalDocument,
+  onRunClick,
+  className,
+}: RunsViewProps): JSX.Element => {
+  const [hoveredRun, setHoveredRun] = useState<string | null>(null)
+
+  const handleClick = useCallback(
+    (text: string) => {
+      if (onRunClick && text.trim() !== '') onRunClick(text)
+    },
+    [onRunClick]
+  )
+
+  return (
+    <div className={cn(styles['runs'], className)}>
+      {doc.pages.map((page, pageIndex) => {
+        const originalPage = originalDocument?.pages[pageIndex]
+        return (
+          <div
+            key={page.pageNumber}
+            className={styles['runs__page']}
             style={{
-              left: `${(run.x / page.width) * 100}%`,
-              top: `${(run.y / page.height) * 100}%`,
-              fontSize: `${(run.fontSize / page.width) * 100}cqi`,
+              aspectRatio: `${page.width} / ${page.height}`,
             }}
+            aria-label={`Page ${page.pageNumber}`}
           >
-            {run.text}
-          </span>
-        ))}
-      </div>
-    ))}
-  </div>
-)
+            {page.runs.map((run, i) => {
+              const originalRun = originalPage?.runs[i]
+              const isMasked = originalRun !== undefined && originalRun.text !== run.text
+              const runKey = `${pageIndex}-${i}`
+              const showOriginal = isMasked && hoveredRun === runKey
+
+              return (
+                <span
+                  key={i}
+                  className={cn(
+                    styles['runs__span'],
+                    'text-body-3',
+                    onRunClick && styles['runs__span--interactive'],
+                    isMasked && styles['runs__span--masked']
+                  )}
+                  style={{
+                    left: `${(run.x / page.width) * 100}%`,
+                    top: `${(run.y / page.height) * 100}%`,
+                    fontSize: `${(run.fontSize / page.width) * 100}cqi`,
+                  }}
+                  onClick={() => handleClick(run.text)}
+                  onMouseEnter={() => {
+                    if (isMasked) setHoveredRun(runKey)
+                  }}
+                  onMouseLeave={() => setHoveredRun(null)}
+                  title={isMasked ? `Original: ${originalRun.text}` : undefined}
+                >
+                  {showOriginal ? originalRun.text : run.text}
+                </span>
+              )
+            })}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
 
 export { RunsView, type RunsViewProps }

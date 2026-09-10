@@ -41,146 +41,127 @@ const downloadedDoc = async (): Promise<PositionedTextDocument> => {
 
 describe('PdfAnonymizePanel', () => {
   it('should display page and run counts', async () => {
-    // Arrange & Act
     render(<PdfAnonymizePanel value={twoPageDoc()} fileName="report.pdf" />)
 
-    // Assert
     expect(screen.getByText(/2 pages/)).toBeDefined()
     expect(screen.getByText(/3 positioned text runs/)).toBeDefined()
   })
 
   it('should download positioned-text JSON with no masking when no rules are entered', async () => {
-    // Arrange
     const doc = singleRunDoc('John Smith, DOB: 1990-05-12')
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Download anonymized JSON' }))
 
-    // Assert
     const result = await downloadedDoc()
     expect(result.pages[0].runs[0].text).toBe('John Smith, DOB: 1990-05-12')
   })
 
   it('should mask entered substrings in the downloaded JSON', async () => {
-    // Arrange
     const doc = singleRunDoc('John Smith, DOB: 1990-05-12')
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
 
-    // Act
     const input = screen.getByLabelText('Text to mask')
     await userEvent.type(input, 'John Smith')
     await userEvent.click(screen.getByRole('button', { name: 'Download anonymized JSON' }))
 
-    // Assert
     const result = await downloadedDoc()
     expect(result.pages[0].runs[0].text).toBe('Xxxx Xxxxx, DOB: 1990-05-12')
     expect(result.pages[0].runs[0].text).not.toContain('John Smith')
   })
 
   it('should show live match counts for entered rules', async () => {
-    // Arrange
     const doc = singleRunDoc('AB CD AB EF AB')
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
 
-    // Act
     const input = screen.getByLabelText('Text to mask')
     await userEvent.type(input, 'AB')
 
-    // Assert
     await waitFor(() => {
       expect(screen.getByText('3 matches')).toBeDefined()
     })
   })
 
   it('should warn when a rule has zero matches', async () => {
-    // Arrange
     const doc = singleRunDoc('hello world')
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
 
-    // Act
     const input = screen.getByLabelText('Text to mask')
     await userEvent.type(input, 'missing')
 
-    // Assert
     await waitFor(() => {
       expect(screen.getByText('0 matches')).toBeDefined()
     })
   })
 
   it('should add and remove substitution rules', async () => {
-    // Arrange
     render(<PdfAnonymizePanel value={singleRunDoc('test')} fileName="report.pdf" />)
 
-    // Act — add a second rule
     await userEvent.click(screen.getByRole('button', { name: 'Add rule' }))
 
-    // Assert
     expect(screen.getAllByLabelText('Text to mask')).toHaveLength(2)
 
-    // Act — remove the first rule
     const removeButtons = screen.getAllByRole('button', { name: /Remove rule/ })
     await userEvent.click(removeButtons[0])
 
-    // Assert
     expect(screen.getAllByLabelText('Text to mask')).toHaveLength(1)
   })
 
-  it('should toggle between original and anonymized preview', async () => {
-    // Arrange
+  it('should always show anonymized preview', async () => {
     const doc = singleRunDoc('Jane Doe')
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
     const input = screen.getByLabelText('Text to mask')
     await userEvent.type(input, 'Jane Doe')
 
-    // Act — shows original by default
     const page = screen.getByLabelText('Page 1')
-    expect(within(page).getByText('Jane Doe')).toBeDefined()
-
-    // Act — toggle to anonymized
-    await userEvent.click(screen.getByRole('switch', { name: 'Show anonymized preview' }))
-
-    // Assert — shows masked text
     await waitFor(() => {
       expect(within(page).getByText('Xxxx Xxx')).toBeDefined()
     })
   })
 
   it('should show suggestions for frequently occurring text', async () => {
-    // Arrange — "John Smith" appears 3 times
     const doc = multiRunDoc(['John Smith', 'Results for John Smith', 'John Smith labs'])
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
 
-    // Assert
     const list = screen.getByRole('list', { name: 'Suggested substrings' })
     expect(within(list).getByText('John Smith')).toBeDefined()
   })
 
-  it('should add a rule when a suggestion is clicked', async () => {
-    // Arrange
+  it('should add a rule when the anonymize button on a suggestion is clicked', async () => {
     const doc = multiRunDoc(['John Smith', 'Results for John Smith', 'John Smith labs'])
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
 
-    // Act
-    const list = screen.getByRole('list', { name: 'Suggested substrings' })
-    await userEvent.click(within(list).getByText('John Smith'))
+    await userEvent.click(screen.getByRole('button', { name: /Anonymize "John Smith"/ }))
 
-    // Assert — a rule with that text was added
     const inputs = screen.getAllByLabelText<HTMLInputElement>('Text to mask')
     const values = inputs.map((el) => el.value)
     expect(values).toContain('John Smith')
   })
 
+  it('should dismiss a suggestion when the dismiss button is clicked', async () => {
+    const doc = multiRunDoc(['John Smith', 'Results for John Smith', 'John Smith labs'])
+    render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
+
+    const list = screen.getByRole('list', { name: 'Suggested substrings' })
+    expect(within(list).getByText('John Smith')).toBeDefined()
+
+    await userEvent.click(screen.getByRole('button', { name: /Dismiss "John Smith"/ }))
+
+    await waitFor(() => {
+      const updatedList = screen.queryByRole('list', { name: 'Suggested substrings' })
+      if (updatedList) {
+        expect(within(updatedList).queryByText('John Smith')).toBeNull()
+      }
+    })
+  })
+
   it('should hide suggestions that are already covered by a rule', async () => {
-    // Arrange
     const doc = multiRunDoc(['John Smith', 'John Smith again', 'John Smith third'])
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
 
-    // Act — type "John Smith" in the first rule
     const input = screen.getByLabelText('Text to mask')
     await userEvent.type(input, 'John Smith')
 
-    // Assert — suggestion is hidden
     await waitFor(() => {
       const list = screen.queryByRole('list', { name: 'Suggested substrings' })
       if (list) {
@@ -190,25 +171,32 @@ describe('PdfAnonymizePanel', () => {
   })
 
   it('should not show suggestions when no text repeats', async () => {
-    // Arrange
     const doc = singleRunDoc('alpha beta gamma')
     render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
 
-    // Assert
     expect(screen.queryByRole('list', { name: 'Suggested substrings' })).toBeNull()
   })
 
+  it('should add a rule when clicking a run in the preview', async () => {
+    const doc = singleRunDoc('Jane Doe')
+    render(<PdfAnonymizePanel value={doc} fileName="report.pdf" />)
+
+    const page = screen.getByLabelText('Page 1')
+    await userEvent.click(within(page).getByText('Jane Doe'))
+
+    const inputs = screen.getAllByLabelText<HTMLInputElement>('Text to mask')
+    const values = inputs.map((el) => el.value)
+    expect(values).toContain('Jane Doe')
+  })
+
   it('should produce a valid PositionedTextDocument in the download', async () => {
-    // Arrange
     const doc = twoPageDoc()
     render(<PdfAnonymizePanel value={doc} fileName="lab-results.pdf" />)
     const input = screen.getByLabelText('Text to mask')
     await userEvent.type(input, 'LifeLabs')
 
-    // Act
     await userEvent.click(screen.getByRole('button', { name: 'Download anonymized JSON' }))
 
-    // Assert
     const result = await downloadedDoc()
     expect(result.format).toBe('wildflower-positioned-text')
     expect(result.version).toBe(1)
