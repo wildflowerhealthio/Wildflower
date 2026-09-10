@@ -1,33 +1,44 @@
-import { Effect, Option } from 'effect'
-import { Extraction, HttpResponse, SourceDescriptor } from 'http-extraction-fundamentals'
+import { Effect } from 'effect'
+import type { FhirResource } from 'fhir-r4/resources'
+import type { LabeledResource } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { lifeLabsPdfImporterDescriptor } from './descriptor.ts'
-import { LifeLabsReportResponseKind } from './response-kind.ts'
 import { defaultLifeLabsPdfSettings } from './settings.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 describe('lifeLabsPdfImporterDescriptor', () => {
-  it('binds the format tag, the default zone, and one source of one kind', () => {
+  it('has the lifelabs-pdf format tag', () => {
     expect(lifeLabsPdfImporterDescriptor.format).toBe('lifelabs-pdf')
-    expect(lifeLabsPdfImporterDescriptor.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
-    const pool = SourceDescriptor.poolOf(lifeLabsPdfImporterDescriptor.sources)
-    expect(pool.map((kind) => kind.name)).toEqual([LifeLabsReportResponseKind.name])
   })
 
-  it('routes every decoded response to its own kind and parses it — decode to resources with nothing written', () => {
-    const text = JSON.stringify(layoutDocument([]))
-    const pool = SourceDescriptor.poolOf(lifeLabsPdfImporterDescriptor.sources)
+  it('defaultSettings has a timeZone', () => {
+    expect(lifeLabsPdfImporterDescriptor.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
+    expect(lifeLabsPdfImporterDescriptor.defaultSettings.timeZone).toBe('America/Toronto')
+  })
 
-    const [input] = Effect.runSync(
+  it('resolve is identity: it returns exactly what it receives', () => {
+    const review: readonly LabeledResource<FhirResource>[] = [
+      {
+        key: 'Patient/abc',
+        title: 'Patient/abc',
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test fixture
+        resource: { resourceType: 'Patient' } as unknown as FhirResource,
+      },
+    ]
+
+    const result = Effect.runSync(lifeLabsPdfImporterDescriptor.resolve(review))
+
+    expect(result).toBe(review)
+  })
+
+  it('decode delegates to decodeLifeLabsPdf — an empty document with a valid zone produces an empty array', () => {
+    const text = JSON.stringify(layoutDocument([]))
+
+    const result = Effect.runSync(
       lifeLabsPdfImporterDescriptor.decode(text, defaultLifeLabsPdfSettings)
     )
-    if (input === undefined) throw new Error('unreachable: decode yields one response')
-    const routed = Extraction.routeTo(pool, input.url, input.method)
 
-    expect(Option.isSome(routed)).toBe(true)
-    if (Option.isNone(routed)) return
-    const resources = Effect.runSync(routed.value.kind.parse(HttpResponse.make(input)))
-    expect(resources).toEqual([])
+    expect(result).toEqual([])
   })
 })
