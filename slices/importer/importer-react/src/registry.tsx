@@ -16,6 +16,12 @@ import {
 } from 'har-importer-react'
 import { SourceDescriptor } from 'http-extraction-fundamentals'
 import type { LabeledResource, PersistFailure, Review } from 'importer-fundamentals'
+import {
+  type LifeLabsPdfReviewState,
+  type LifeLabsPdfSettings,
+  lifeLabsPdfImporterDescriptor,
+} from 'lifelabs-pdf-importer-core'
+import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
 import { type ComponentType, type JSX, useMemo } from 'react'
 
 /**
@@ -43,6 +49,12 @@ interface FormatVariant {
   har: {
     settings: HarSettings
     review: HarReviewState
+    parsed: FhirResource
+    requirements: FhirR4ResourcesHttpApiClient
+  }
+  'lifelabs-pdf': {
+    settings: LifeLabsPdfSettings
+    review: LifeLabsPdfReviewState
     parsed: FhirResource
     requirements: FhirR4ResourcesHttpApiClient
   }
@@ -134,6 +146,16 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     persist: harImporterDescriptor.persist,
     SettingsPicker: HarSettingsPicker,
     ReviewBody: HarReviewBodyAdapter,
+  },
+  'lifelabs-pdf': {
+    format: 'lifelabs-pdf',
+    display: lifeLabsPdfImporterDescriptor.display,
+    defaultSettings: lifeLabsPdfImporterDescriptor.defaultSettings,
+    decode: lifeLabsPdfImporterDescriptor.decode,
+    resolve: lifeLabsPdfImporterDescriptor.resolve,
+    persist: lifeLabsPdfImporterDescriptor.persist,
+    SettingsPicker: LifeLabsPdfSettingsPicker,
+    ReviewBody: null,
   },
 }
 

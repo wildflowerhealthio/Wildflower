@@ -4,8 +4,10 @@ The **LifeLabs PDF binding** of the importer slice (core layer): the
 positioned-text dialect that reads a LifeLabs patient "Reports" PDF's
 pages — extracted to the `wildflower-positioned-text` document the PDF
 anonymizer (`slices/anonymizer/pdf-anonymizer-*`) produces and downloads —
-into typed `LifeLabsReport` records, and the FHIR R4 synthesis that converts
-them to standard resources. No DOM, no `fs`, no React.
+into typed `LifeLabsReport` records, the FHIR R4 synthesis that turns those
+records into Patient, Practitioner, DiagnosticReport and Observation resources,
+the `FileImporterDescriptor` binding, and the decode/persist integration.
+No DOM, no `fs`, no React.
 
 ## Shape
 
@@ -53,11 +55,20 @@ them to standard resources. No DOM, no `fs`, no React.
   systems the synthesis writes beside the report's own numbers. A leaf module
   so the descriptor, the response kind, and the FHIR synthesis import it
   without a cycle.
+- `src/decode.ts` — **`decodeLifeLabsPdf`**, the descriptor's `decode`: a
+  positioned-text JSON file in, adopted `LabeledResource<FhirResource>[]` out —
+  the full pipeline from document text through the dialect, the FHIR synthesis,
+  and adoption.
+- `src/persist-fhir.ts` — **`persistFhir`**, the descriptor's `persist`: stamps
+  every resource with `meta.source` then delegates to `fhir-r4`'s
+  `persistResources`.
+- `src/descriptor.ts` — **`lifeLabsPdfImporterDescriptor`**, the concrete
+  `FileImporterDescriptor` for format `'lifelabs-pdf'`. `resolve` is the
+  identity — what `decode` returns is what the user reviews.
 - `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone }`, default
   `America/Toronto`: the report prints local clock times with no zone, and
-  FHIR's `dateTime`-with-time / `instant` need one. The zone rides from
-  `decode` to `parse` on the response header because `parse` sees the response,
-  not the settings.
+  FHIR's `dateTime`-with-time / `instant` need one. The zone is passed to
+  `decode` as a setting.
 - `src/test-helpers.ts` (`./test-helpers` subpath) — `layoutReport` /
   `layoutDocument`, the print's inverse: a `LifeLabsReport` laid out as
   positioned text at the real column x's, header labels and footer. The
@@ -67,20 +78,23 @@ them to standard resources. No DOM, no `fs`, no React.
 ## Layering
 
 Depends on `positioned-text` (the positioned-text schema — the neutral seam
-between the anonymizer's extraction and this dialect), `effect` (peer;
-`Report.tryFromDocument` returns an `Effect`), `fhir-r4` (peer; the FHIR R4
-resource schemas, identity helpers, and datatype definitions the synthesis
-validates against), and `kitchen-sink` (`fnv1a64` for deterministic id hashing,
-`numRunsFor` in tests). `fast-check` is a test-only `devDependency`, reached
-only from the `*-arbitrary.ts` modules, and must stay out of the production
-bundle. Never imports `har-importer-core`, `pdf-anonymizer-core`, a
-`*-importer-react`, or `slices/collector`.
+between the anonymizer's extraction and this dialect), `fhir-r4` (resource
+schemas, `persistResources`, `joinIdComponents`, `adoptResource`),
+`importer-fundamentals` (`FileImporterDescriptor`, `LabeledResource`),
+`web-trace-core` (`withMetaSource`), `kitchen-sink` (`fnv1a64` for
+deterministic id hashing, `numRunsFor` in tests), and `effect` (peer;
+`Report.tryFromDocument` returns an `Effect`). `fast-check` is a test-only
+`devDependency`, reached only from the `*-arbitrary.ts` modules, and must
+stay out of the production bundle. Never imports `har-importer-core`,
+`pdf-anonymizer-core`, `http-extraction-fundamentals`, a `*-importer-react`,
+or `slices/collector`.
 
 ## Guardrails
 
 - **The dialect interprets nothing.** A `ReportRow.result` is the printed
-  string; deciding it is a quantity is `fhir/result-value.ts`'s job. Keep that
-  split — it is what makes the round-trip property possible.
+  string; deciding it is a quantity is the FHIR synthesis layer's job
+  (`src/fhir/`). Keep that split — it is what makes the round-trip property
+  possible.
 - **Every grid row is a row**, `Collection Date` and `Reference Interval Note`
   included: each is a line the report prints, and deciding some are metadata
   would drop them silently.
