@@ -73,6 +73,27 @@ const CodeableFields = Schema.Struct({
   ),
 })
 
+/** The DiagnosticReport summary fields. */
+const DiagnosticReportSummary = Schema.Struct({
+  code: Schema.optional(CodeableFields),
+  status: Schema.optional(Schema.String),
+  effectiveDateTime: Schema.optional(Schema.String),
+  result: Schema.optional(Schema.Array(Schema.Struct({}))),
+})
+
+/** The Practitioner summary fields — its names, the same shape a Patient carries. */
+const PractitionerSummary = Schema.Struct({
+  name: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        text: Schema.optional(Schema.String),
+        given: Schema.optional(Schema.Array(Schema.String)),
+        family: Schema.optional(Schema.String),
+      })
+    )
+  ),
+})
+
 /** The Observation summary fields. */
 const ObservationSummary = Schema.Struct({
   code: Schema.optional(CodeableFields),
@@ -207,6 +228,31 @@ const describeResource = (resource: unknown): ResourceDescription => {
       return {
         type: 'Observation',
         summary: summary.length > 0 ? summary : fallback,
+      }
+    }
+    case 'DiagnosticReport': {
+      const report = decode(DiagnosticReportSummary, resource)
+      const code = codeableText(report?.code)
+      const effective = (report?.effectiveDateTime ?? '').trim()
+      const results = report?.result ?? []
+      const resultCount =
+        results.length === 0
+          ? ''
+          : `${results.length} ${results.length === 1 ? 'result' : 'results'}`
+      const status = (report?.status ?? '').trim()
+      const summary = joinSummary([code, effective, resultCount, status])
+      return {
+        type: 'DiagnosticReport',
+        summary: summary.length > 0 ? summary : fallback,
+      }
+    }
+    case 'Practitioner': {
+      const practitioner = decode(PractitionerSummary, resource)
+      const primary =
+        (practitioner?.name ?? []).map(humanNameText).find((text) => text.length > 0) ?? ''
+      return {
+        type: 'Practitioner',
+        summary: primary.length > 0 ? primary : fallback,
       }
     }
     default:

@@ -5,12 +5,14 @@ import type {
   ReferenceType,
 } from '../data-types/complex/identifier-and-reference.ts'
 import type * as Binary from '../resources/binary/binary.ts'
+import type * as DiagnosticReport from '../resources/diagnostic-report/diagnostic-report.ts'
 import type * as DocumentReference from '../resources/document-reference/document-reference.ts'
 import type { FhirResource } from '../resources/fhir-resource.ts'
 import type * as MedicationDispense from '../resources/medication-dispense/medication-dispense.ts'
 import type * as MedicationRequest from '../resources/medication-request/medication-request.ts'
 import type * as Observation from '../resources/observation/observation.ts'
 import type * as Patient from '../resources/patient/patient.ts'
+import type * as Practitioner from '../resources/practitioner/practitioner.ts'
 import { localResourceId } from './local-resource-id.ts'
 
 /**
@@ -98,7 +100,7 @@ const sourceIdentifier = (prepared: PreparedSource, value: string): IdentifierTy
  * Rewrite one `Reference` so it names the local id of the resource it points at.
  *
  * @remarks
- * Rewrites apply to **any** resource-type token, not only the six types this
+ * Rewrites apply to **any** resource-type token, not only the eight types this
  * package stores. The derivation is deterministic, so a `Practitioner/x` link
  * resolves retroactively if that type is ever imported from the same source, and
  * dangles exactly as it did before if it never is — with the original id still
@@ -323,6 +325,45 @@ const adoptDocumentReference = (
   }
 }
 
+const adoptDiagnosticReport = (
+  prepared: PreparedSource,
+  originalId: string,
+  report: typeof DiagnosticReport.Schema.Type
+): typeof DiagnosticReport.Schema.Type => {
+  const rewrite = rewriteReference(prepared)
+  return {
+    ...report,
+    id: localResourceId(prepared.source.system, 'DiagnosticReport', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...report.identifier],
+    subject: rewriteNullable(rewrite, report.subject),
+    encounter: rewriteNullable(rewrite, report.encounter),
+    basedOn: report.basedOn.map(rewrite),
+    performer: report.performer.map(rewrite),
+    resultsInterpreter: report.resultsInterpreter.map(rewrite),
+    specimen: report.specimen.map(rewrite),
+    result: report.result.map(rewrite),
+    imagingStudy: report.imagingStudy.map(rewrite),
+    media: report.media.map((media) => ({ ...media, link: rewrite(media.link) })),
+  }
+}
+
+const adoptPractitioner = (
+  prepared: PreparedSource,
+  originalId: string,
+  practitioner: typeof Practitioner.Schema.Type
+): typeof Practitioner.Schema.Type => {
+  const rewrite = rewriteReference(prepared)
+  return {
+    ...practitioner,
+    id: localResourceId(prepared.source.system, 'Practitioner', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...practitioner.identifier],
+    qualification: practitioner.qualification.map((qualification) => ({
+      ...qualification,
+      issuer: rewriteNullable(rewrite, qualification.issuer),
+    })),
+  }
+}
+
 /**
  * Re-key a resource under this source's namespace: derive its local id, record
  * the source's own id as `identifier[0]`, and rewrite its references so they
@@ -377,6 +418,12 @@ const adoptResource = (source: SourceIdentity) => {
       ),
       Match.discriminator('resourceType')('DocumentReference', (document) =>
         adoptDocumentReference(prepared, originalId, document)
+      ),
+      Match.discriminator('resourceType')('DiagnosticReport', (report) =>
+        adoptDiagnosticReport(prepared, originalId, report)
+      ),
+      Match.discriminator('resourceType')('Practitioner', (practitioner) =>
+        adoptPractitioner(prepared, originalId, practitioner)
       ),
       Match.exhaustive
     )
