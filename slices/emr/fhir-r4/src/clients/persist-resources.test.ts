@@ -15,12 +15,14 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   Binary,
+  DiagnosticReport,
   DocumentReference,
   type FhirResource,
   MedicationDispense,
   MedicationRequest,
   Observation,
   Patient,
+  Practitioner,
 } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
@@ -104,7 +106,7 @@ describe('persistResources', () => {
     // in-type way to build one). `upsertResource` fails in its exhaustive-default
     // arm before any client call.
     // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- deliberately forging an out-of-union resourceType to exercise the untyped-path branch
-    const bogus = { resourceType: 'Practitioner', id: 'p-1' } as unknown as FhirResource
+    const bogus = { resourceType: 'Organization', id: 'org-1' } as unknown as FhirResource
     const records: Array<RecordedRequest> = []
     const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(
       Layer.provide(recordingHttpClientLayer(records, () => false))
@@ -121,7 +123,7 @@ describe('persistResources', () => {
     )
     expect(records).toEqual([])
     expect(failures).toHaveLength(1)
-    expect(failures[0]?.failed).toEqual({ label: 'Practitioner', id: 'p-1' })
+    expect(failures[0]?.failed).toEqual({ label: 'Organization', id: 'org-1' })
     expect(failures[0]?.cause).toBeInstanceOf(UnsupportedFhirResourceTypeError)
   })
 
@@ -194,6 +196,8 @@ const cases: ReadonlyArray<{
   { resourceType: 'MedicationRequest', make: (id) => genWithId(MedicationRequest.Schema, id) },
   { resourceType: 'MedicationDispense', make: (id) => genWithId(MedicationDispense.Schema, id) },
   { resourceType: 'DocumentReference', make: (id) => genWithId(DocumentReference.Schema, id) },
+  { resourceType: 'DiagnosticReport', make: (id) => genWithId(DiagnosticReport.Schema, id) },
+  { resourceType: 'Practitioner', make: (id) => genWithId(Practitioner.Schema, id) },
 ]
 
 const byType = (resourceType: FhirResource['resourceType']): (typeof cases)[number] => {

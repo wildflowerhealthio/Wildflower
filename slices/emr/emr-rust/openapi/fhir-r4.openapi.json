@@ -9098,6 +9098,2752 @@
           "required": true
         }
       }
+    },
+    "/fhir-r4/DiagnosticReport": {
+      "get": {
+        "tags": [
+          "DiagnosticReport"
+        ],
+        "operationId": "DiagnosticReport.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "registered",
+                "partial",
+                "preliminary",
+                "final",
+                "amended",
+                "corrected",
+                "appended",
+                "cancelled",
+                "entered-in-error",
+                "unknown"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "date",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "DiagnosticReport"
+        ],
+        "operationId": "DiagnosticReport.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "DiagnosticReport",
+                  "description": "The findings and interpretation of diagnostic tests performed on patients, groups of patients, devices, and locations, and/or specimens derived from these.",
+                  "required": [
+                    "resourceType",
+                    "code",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "DiagnosticReport"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers assigned to this report by the performer or other systems."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details concerning a service requested."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "partial",
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "corrected",
+                        "appended",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the diagnostic report."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the clinical discipline, department or diagnostic service that created the report."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "A code or name that describes this diagnostic report."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The subject of the report. Usually, but not always, this is a patient."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event which this DiagnosticReport is about."
+                    },
+                    "effectiveDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The time or time-period the observed values are related to. When the subject of the report is a patient, this is usually either the time of the procedure or of specimen collection(s)."
+                    },
+                    "effectivePeriod": {
+                      "type": "object"
+                    },
+                    "issued": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date and time that this version of the report was made available to providers, typically after the report was reviewed and verified."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The diagnostic service that is responsible for issuing the report."
+                    },
+                    "resultsInterpreter": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The practitioner or organization that is responsible for the report's conclusions and interpretations."
+                    },
+                    "specimen": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details about the specimens on which this diagnostic report is based."
+                    },
+                    "result": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Observations that are part of this diagnostic report."
+                    },
+                    "imagingStudy": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "One or more links to full details of any imaging performed during the diagnostic investigation."
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of key images associated with this report."
+                    },
+                    "conclusion": {
+                      "type": "string",
+                      "description": "Concise and clinically contextualized summary conclusion of the report."
+                    },
+                    "conclusionCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "One or more codes that represent the summary conclusion of the report."
+                    },
+                    "presentedForm": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Rich text representation of the entire result as issued by the diagnostic service."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "DiagnosticReport",
+                "description": "The findings and interpretation of diagnostic tests performed on patients, groups of patients, devices, and locations, and/or specimens derived from these.",
+                "required": [
+                  "resourceType",
+                  "code",
+                  "status"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "DiagnosticReport"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifiers assigned to this report by the performer or other systems."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Details concerning a service requested."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "partial",
+                      "preliminary",
+                      "final",
+                      "amended",
+                      "corrected",
+                      "appended",
+                      "cancelled",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "The status of the diagnostic report."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A code that classifies the clinical discipline, department or diagnostic service that created the report."
+                  },
+                  "code": {
+                    "type": "object",
+                    "description": "A code or name that describes this diagnostic report."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "The subject of the report. Usually, but not always, this is a patient."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "The healthcare event which this DiagnosticReport is about."
+                  },
+                  "effectiveDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The time or time-period the observed values are related to. When the subject of the report is a patient, this is usually either the time of the procedure or of specimen collection(s)."
+                  },
+                  "effectivePeriod": {
+                    "type": "object"
+                  },
+                  "issued": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The date and time that this version of the report was made available to providers, typically after the report was reviewed and verified."
+                  },
+                  "performer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The diagnostic service that is responsible for issuing the report."
+                  },
+                  "resultsInterpreter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The practitioner or organization that is responsible for the report's conclusions and interpretations."
+                  },
+                  "specimen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Details about the specimens on which this diagnostic report is based."
+                  },
+                  "result": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Observations that are part of this diagnostic report."
+                  },
+                  "imagingStudy": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "One or more links to full details of any imaging performed during the diagnostic investigation."
+                  },
+                  "media": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A list of key images associated with this report."
+                  },
+                  "conclusion": {
+                    "type": "string",
+                    "description": "Concise and clinically contextualized summary conclusion of the report."
+                  },
+                  "conclusionCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "One or more codes that represent the summary conclusion of the report."
+                  },
+                  "presentedForm": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Rich text representation of the entire result as issued by the diagnostic service."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/DiagnosticReport/{id}": {
+      "get": {
+        "tags": [
+          "DiagnosticReport"
+        ],
+        "operationId": "DiagnosticReport.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "DiagnosticReport",
+                  "description": "The findings and interpretation of diagnostic tests performed on patients, groups of patients, devices, and locations, and/or specimens derived from these.",
+                  "required": [
+                    "resourceType",
+                    "code",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "DiagnosticReport"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers assigned to this report by the performer or other systems."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details concerning a service requested."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "partial",
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "corrected",
+                        "appended",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the diagnostic report."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the clinical discipline, department or diagnostic service that created the report."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "A code or name that describes this diagnostic report."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The subject of the report. Usually, but not always, this is a patient."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event which this DiagnosticReport is about."
+                    },
+                    "effectiveDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The time or time-period the observed values are related to. When the subject of the report is a patient, this is usually either the time of the procedure or of specimen collection(s)."
+                    },
+                    "effectivePeriod": {
+                      "type": "object"
+                    },
+                    "issued": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date and time that this version of the report was made available to providers, typically after the report was reviewed and verified."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The diagnostic service that is responsible for issuing the report."
+                    },
+                    "resultsInterpreter": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The practitioner or organization that is responsible for the report's conclusions and interpretations."
+                    },
+                    "specimen": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details about the specimens on which this diagnostic report is based."
+                    },
+                    "result": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Observations that are part of this diagnostic report."
+                    },
+                    "imagingStudy": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "One or more links to full details of any imaging performed during the diagnostic investigation."
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of key images associated with this report."
+                    },
+                    "conclusion": {
+                      "type": "string",
+                      "description": "Concise and clinically contextualized summary conclusion of the report."
+                    },
+                    "conclusionCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "One or more codes that represent the summary conclusion of the report."
+                    },
+                    "presentedForm": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Rich text representation of the entire result as issued by the diagnostic service."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "DiagnosticReport"
+        ],
+        "operationId": "DiagnosticReport.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "DiagnosticReport",
+                  "description": "The findings and interpretation of diagnostic tests performed on patients, groups of patients, devices, and locations, and/or specimens derived from these.",
+                  "required": [
+                    "resourceType",
+                    "code",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "DiagnosticReport"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers assigned to this report by the performer or other systems."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details concerning a service requested."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "partial",
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "corrected",
+                        "appended",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the diagnostic report."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the clinical discipline, department or diagnostic service that created the report."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "A code or name that describes this diagnostic report."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The subject of the report. Usually, but not always, this is a patient."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event which this DiagnosticReport is about."
+                    },
+                    "effectiveDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The time or time-period the observed values are related to. When the subject of the report is a patient, this is usually either the time of the procedure or of specimen collection(s)."
+                    },
+                    "effectivePeriod": {
+                      "type": "object"
+                    },
+                    "issued": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date and time that this version of the report was made available to providers, typically after the report was reviewed and verified."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The diagnostic service that is responsible for issuing the report."
+                    },
+                    "resultsInterpreter": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The practitioner or organization that is responsible for the report's conclusions and interpretations."
+                    },
+                    "specimen": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details about the specimens on which this diagnostic report is based."
+                    },
+                    "result": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Observations that are part of this diagnostic report."
+                    },
+                    "imagingStudy": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "One or more links to full details of any imaging performed during the diagnostic investigation."
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of key images associated with this report."
+                    },
+                    "conclusion": {
+                      "type": "string",
+                      "description": "Concise and clinically contextualized summary conclusion of the report."
+                    },
+                    "conclusionCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "One or more codes that represent the summary conclusion of the report."
+                    },
+                    "presentedForm": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Rich text representation of the entire result as issued by the diagnostic service."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "DiagnosticReport",
+                  "description": "The findings and interpretation of diagnostic tests performed on patients, groups of patients, devices, and locations, and/or specimens derived from these.",
+                  "required": [
+                    "resourceType",
+                    "code",
+                    "status"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "DiagnosticReport"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers assigned to this report by the performer or other systems."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details concerning a service requested."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "partial",
+                        "preliminary",
+                        "final",
+                        "amended",
+                        "corrected",
+                        "appended",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the diagnostic report."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the clinical discipline, department or diagnostic service that created the report."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "A code or name that describes this diagnostic report."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The subject of the report. Usually, but not always, this is a patient."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event which this DiagnosticReport is about."
+                    },
+                    "effectiveDateTime": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The time or time-period the observed values are related to. When the subject of the report is a patient, this is usually either the time of the procedure or of specimen collection(s)."
+                    },
+                    "effectivePeriod": {
+                      "type": "object"
+                    },
+                    "issued": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date and time that this version of the report was made available to providers, typically after the report was reviewed and verified."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The diagnostic service that is responsible for issuing the report."
+                    },
+                    "resultsInterpreter": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The practitioner or organization that is responsible for the report's conclusions and interpretations."
+                    },
+                    "specimen": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Details about the specimens on which this diagnostic report is based."
+                    },
+                    "result": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Observations that are part of this diagnostic report."
+                    },
+                    "imagingStudy": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "One or more links to full details of any imaging performed during the diagnostic investigation."
+                    },
+                    "media": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of key images associated with this report."
+                    },
+                    "conclusion": {
+                      "type": "string",
+                      "description": "Concise and clinically contextualized summary conclusion of the report."
+                    },
+                    "conclusionCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "One or more codes that represent the summary conclusion of the report."
+                    },
+                    "presentedForm": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Rich text representation of the entire result as issued by the diagnostic service."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "DiagnosticReport",
+                "description": "The findings and interpretation of diagnostic tests performed on patients, groups of patients, devices, and locations, and/or specimens derived from these.",
+                "required": [
+                  "resourceType",
+                  "code",
+                  "status"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "DiagnosticReport"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifiers assigned to this report by the performer or other systems."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Details concerning a service requested."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "partial",
+                      "preliminary",
+                      "final",
+                      "amended",
+                      "corrected",
+                      "appended",
+                      "cancelled",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "The status of the diagnostic report."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A code that classifies the clinical discipline, department or diagnostic service that created the report."
+                  },
+                  "code": {
+                    "type": "object",
+                    "description": "A code or name that describes this diagnostic report."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "The subject of the report. Usually, but not always, this is a patient."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "The healthcare event which this DiagnosticReport is about."
+                  },
+                  "effectiveDateTime": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The time or time-period the observed values are related to. When the subject of the report is a patient, this is usually either the time of the procedure or of specimen collection(s)."
+                  },
+                  "effectivePeriod": {
+                    "type": "object"
+                  },
+                  "issued": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The date and time that this version of the report was made available to providers, typically after the report was reviewed and verified."
+                  },
+                  "performer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The diagnostic service that is responsible for issuing the report."
+                  },
+                  "resultsInterpreter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The practitioner or organization that is responsible for the report's conclusions and interpretations."
+                  },
+                  "specimen": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Details about the specimens on which this diagnostic report is based."
+                  },
+                  "result": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Observations that are part of this diagnostic report."
+                  },
+                  "imagingStudy": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "One or more links to full details of any imaging performed during the diagnostic investigation."
+                  },
+                  "media": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A list of key images associated with this report."
+                  },
+                  "conclusion": {
+                    "type": "string",
+                    "description": "Concise and clinically contextualized summary conclusion of the report."
+                  },
+                  "conclusionCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "One or more codes that represent the summary conclusion of the report."
+                  },
+                  "presentedForm": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Rich text representation of the entire result as issued by the diagnostic service."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/DiagnosticReport/_search": {
+      "post": {
+        "tags": [
+          "DiagnosticReport"
+        ],
+        "operationId": "DiagnosticReport.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "partial",
+                      "preliminary",
+                      "final",
+                      "amended",
+                      "corrected",
+                      "appended",
+                      "cancelled",
+                      "entered-in-error",
+                      "unknown"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "$ref": "#/components/schemas/FhirDateSearch"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Practitioner": {
+      "get": {
+        "tags": [
+          "Practitioner"
+        ],
+        "operationId": "Practitioner.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "name",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Practitioner"
+        ],
+        "operationId": "Practitioner.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Practitioner",
+                  "description": "A person who is directly or indirectly involved in the provisioning of healthcare.",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Practitioner"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An identifier that applies to this person in this role."
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "Whether this practitioner's record is in active use."
+                    },
+                    "name": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The name(s) associated with the practitioner."
+                    },
+                    "telecom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact detail for the practitioner, e.g. a telephone number or an email address."
+                    },
+                    "address": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Address(es) of the practitioner that are not role specific (typically home address)."
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "other",
+                        "unknown"
+                      ],
+                      "description": "Administrative Gender — the gender that the person is considered to have for administration and record keeping purposes."
+                    },
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The date of birth for the practitioner."
+                    },
+                    "photo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Image of the person."
+                    },
+                    "qualification": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The official certifications, training, and licenses that authorize or otherwise pertain to the provision of care by the practitioner."
+                    },
+                    "communication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A language the practitioner can use in patient communication."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Practitioner",
+                "description": "A person who is directly or indirectly involved in the provisioning of healthcare.",
+                "required": [
+                  "resourceType"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Practitioner"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "An identifier that applies to this person in this role."
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "Whether this practitioner's record is in active use."
+                  },
+                  "name": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The name(s) associated with the practitioner."
+                  },
+                  "telecom": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A contact detail for the practitioner, e.g. a telephone number or an email address."
+                  },
+                  "address": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Address(es) of the practitioner that are not role specific (typically home address)."
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "male",
+                      "female",
+                      "other",
+                      "unknown"
+                    ],
+                    "description": "Administrative Gender — the gender that the person is considered to have for administration and record keeping purposes."
+                  },
+                  "birthDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "The date of birth for the practitioner."
+                  },
+                  "photo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Image of the person."
+                  },
+                  "qualification": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The official certifications, training, and licenses that authorize or otherwise pertain to the provision of care by the practitioner."
+                  },
+                  "communication": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A language the practitioner can use in patient communication."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Practitioner/{id}": {
+      "get": {
+        "tags": [
+          "Practitioner"
+        ],
+        "operationId": "Practitioner.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Practitioner",
+                  "description": "A person who is directly or indirectly involved in the provisioning of healthcare.",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Practitioner"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An identifier that applies to this person in this role."
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "Whether this practitioner's record is in active use."
+                    },
+                    "name": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The name(s) associated with the practitioner."
+                    },
+                    "telecom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact detail for the practitioner, e.g. a telephone number or an email address."
+                    },
+                    "address": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Address(es) of the practitioner that are not role specific (typically home address)."
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "other",
+                        "unknown"
+                      ],
+                      "description": "Administrative Gender — the gender that the person is considered to have for administration and record keeping purposes."
+                    },
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The date of birth for the practitioner."
+                    },
+                    "photo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Image of the person."
+                    },
+                    "qualification": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The official certifications, training, and licenses that authorize or otherwise pertain to the provision of care by the practitioner."
+                    },
+                    "communication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A language the practitioner can use in patient communication."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Practitioner"
+        ],
+        "operationId": "Practitioner.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Practitioner",
+                  "description": "A person who is directly or indirectly involved in the provisioning of healthcare.",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Practitioner"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An identifier that applies to this person in this role."
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "Whether this practitioner's record is in active use."
+                    },
+                    "name": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The name(s) associated with the practitioner."
+                    },
+                    "telecom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact detail for the practitioner, e.g. a telephone number or an email address."
+                    },
+                    "address": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Address(es) of the practitioner that are not role specific (typically home address)."
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "other",
+                        "unknown"
+                      ],
+                      "description": "Administrative Gender — the gender that the person is considered to have for administration and record keeping purposes."
+                    },
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The date of birth for the practitioner."
+                    },
+                    "photo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Image of the person."
+                    },
+                    "qualification": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The official certifications, training, and licenses that authorize or otherwise pertain to the provision of care by the practitioner."
+                    },
+                    "communication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A language the practitioner can use in patient communication."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Practitioner",
+                  "description": "A person who is directly or indirectly involved in the provisioning of healthcare.",
+                  "required": [
+                    "resourceType"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Practitioner"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An identifier that applies to this person in this role."
+                    },
+                    "active": {
+                      "type": "boolean",
+                      "description": "Whether this practitioner's record is in active use."
+                    },
+                    "name": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The name(s) associated with the practitioner."
+                    },
+                    "telecom": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A contact detail for the practitioner, e.g. a telephone number or an email address."
+                    },
+                    "address": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Address(es) of the practitioner that are not role specific (typically home address)."
+                    },
+                    "gender": {
+                      "type": "string",
+                      "enum": [
+                        "male",
+                        "female",
+                        "other",
+                        "unknown"
+                      ],
+                      "description": "Administrative Gender — the gender that the person is considered to have for administration and record keeping purposes."
+                    },
+                    "birthDate": {
+                      "type": "string",
+                      "format": "date",
+                      "description": "The date of birth for the practitioner."
+                    },
+                    "photo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Image of the person."
+                    },
+                    "qualification": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The official certifications, training, and licenses that authorize or otherwise pertain to the provision of care by the practitioner."
+                    },
+                    "communication": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A language the practitioner can use in patient communication."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Practitioner",
+                "description": "A person who is directly or indirectly involved in the provisioning of healthcare.",
+                "required": [
+                  "resourceType"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Practitioner"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "An identifier that applies to this person in this role."
+                  },
+                  "active": {
+                    "type": "boolean",
+                    "description": "Whether this practitioner's record is in active use."
+                  },
+                  "name": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The name(s) associated with the practitioner."
+                  },
+                  "telecom": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A contact detail for the practitioner, e.g. a telephone number or an email address."
+                  },
+                  "address": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Address(es) of the practitioner that are not role specific (typically home address)."
+                  },
+                  "gender": {
+                    "type": "string",
+                    "enum": [
+                      "male",
+                      "female",
+                      "other",
+                      "unknown"
+                    ],
+                    "description": "Administrative Gender — the gender that the person is considered to have for administration and record keeping purposes."
+                  },
+                  "birthDate": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "The date of birth for the practitioner."
+                  },
+                  "photo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Image of the person."
+                  },
+                  "qualification": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The official certifications, training, and licenses that authorize or otherwise pertain to the provision of care by the practitioner."
+                  },
+                  "communication": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A language the practitioner can use in patient communication."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/Practitioner/_search": {
+      "post": {
+        "tags": [
+          "Practitioner"
+        ],
+        "operationId": "Practitioner.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
     }
   },
   "components": {
@@ -9128,6 +11874,12 @@
     },
     {
       "name": "DocumentReference"
+    },
+    {
+      "name": "DiagnosticReport"
+    },
+    {
+      "name": "Practitioner"
     }
   ]
 }

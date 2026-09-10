@@ -73,6 +73,60 @@ describe('describeResource', () => {
     expect(description.summary).toBe('Patient/pat-3')
   })
 
+  it('summarises a DiagnosticReport by code, effective date, result count and status', () => {
+    // Arrange
+    const report = {
+      resourceType: 'DiagnosticReport',
+      id: 'dr-1',
+      status: 'final',
+      code: { text: 'Laboratory report' },
+      effectiveDateTime: '2026-08-13T17:02:00.000Z',
+      result: [{ reference: 'Observation/a' }, { reference: 'Observation/b' }],
+    }
+
+    // Act / Assert
+    expect(describeResource(report)).toEqual({
+      type: 'DiagnosticReport',
+      summary: 'Laboratory report · 2026-08-13T17:02:00.000Z · 2 results · final',
+    })
+  })
+
+  it('summarises a DiagnosticReport with effectivePeriod instead of effectiveDateTime', () => {
+    // Arrange
+    const report = {
+      resourceType: 'DiagnosticReport',
+      id: 'dr-2',
+      status: 'final',
+      code: { text: 'Laboratory report' },
+      effectivePeriod: {
+        start: '2026-08-13T08:00:00.000Z',
+        end: '2026-08-13T17:00:00.000Z',
+      },
+      result: [{ reference: 'Observation/a' }],
+    }
+
+    // Act / Assert
+    expect(describeResource(report)).toEqual({
+      type: 'DiagnosticReport',
+      summary:
+        'Laboratory report · 2026-08-13T08:00:00.000Z – 2026-08-13T17:00:00.000Z · 1 result · final',
+    })
+  })
+
+  it('summarises a Practitioner by name, falling back to its id', () => {
+    // Arrange
+    const named = {
+      resourceType: 'Practitioner',
+      id: 'prac-1',
+      name: [{ text: 'Dr. Okafor' }],
+    }
+    const bare = { resourceType: 'Practitioner', id: 'prac-2' }
+
+    // Act / Assert
+    expect(describeResource(named)).toEqual({ type: 'Practitioner', summary: 'Dr. Okafor' })
+    expect(describeResource(bare)).toEqual({ type: 'Practitioner', summary: 'Practitioner/prac-2' })
+  })
+
   it('summarises a DocumentReference by its id', () => {
     // Arrange
     const document = { resourceType: 'DocumentReference', id: 'doc-1' }

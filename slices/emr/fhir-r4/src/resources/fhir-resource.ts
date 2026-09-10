@@ -1,14 +1,16 @@
 import { Schema } from 'effect'
 
 import * as Binary from './binary/binary.ts'
+import * as DiagnosticReport from './diagnostic-report/diagnostic-report.ts'
 import * as DocumentReference from './document-reference/document-reference.ts'
 import * as MedicationDispense from './medication-dispense/medication-dispense.ts'
 import * as MedicationRequest from './medication-request/medication-request.ts'
 import * as Observation from './observation/observation.ts'
 import * as Patient from './patient/patient.ts'
+import * as Practitioner from './practitioner/practitioner.ts'
 
 /**
- * The Effect Schema union matching {@link FhirResource} — the six domain
+ * The Effect Schema union matching {@link FhirResource} — the eight domain
  * resource schemas as one discriminated-by-`resourceType` schema, for a
  * caller that needs to validate an unknown value as a supported resource
  * (the importer's inline resource editor, in particular).
@@ -26,12 +28,14 @@ const FhirResourceSchema = Schema.Union(
   Observation.Schema,
   MedicationRequest.Schema,
   MedicationDispense.Schema,
-  DocumentReference.Schema
+  DocumentReference.Schema,
+  DiagnosticReport.Schema,
+  Practitioner.Schema
 )
 
 /**
  * The closed union of every FHIR resource this slice can read/write — the
- * six domain resources with a typed `Update` endpoint on
+ * eight domain resources with a typed `Update` endpoint on
  * {@link FhirR4ResourcesHttpApiClient}. Discriminated by `resourceType`, so a
  * `switch` over it is exhaustive (see {@link upsertResource}).
  *

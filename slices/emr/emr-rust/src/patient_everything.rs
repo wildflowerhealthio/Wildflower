@@ -55,7 +55,8 @@
 //! ## Scope
 //!
 //! Related resources are the patient-referencing types in
-//! [`RELATED_RESOURCE_TYPES`] — `Observation` and `MedicationRequest` today.
+//! [`RELATED_RESOURCE_TYPES`] — `Observation`, `MedicationRequest`, and
+//! `DiagnosticReport` today.
 //! FHIR `$everything` returns the whole patient compartment; we include only the
 //! types in that table, searched on their `subject` reference. HFS is a general
 //! FHIR store, so the table can grow to any patient-referencing type it serves.
@@ -89,8 +90,9 @@ struct RelatedType {
     /// (`/{resource_type}`) and the `resourceType` these rows carry.
     resource_type: &'static str,
     /// Search parameter carrying the `Patient/{id}` reference. FHIR names this
-    /// per-resource; both types we gather today use `subject`
-    /// (`Observation.subject`, `MedicationRequest.subject`). We use `subject`
+    /// per-resource; every type we gather today uses `subject`
+    /// (`Observation.subject`, `MedicationRequest.subject`,
+    /// `DiagnosticReport.subject`). We use `subject`
     /// rather than the `patient` param because `subject` indexes a plain
     /// reference, whereas `patient`'s `.where(resolve() is Patient)` expression
     /// depends on `resolve()` at index time.
@@ -102,7 +104,8 @@ struct RelatedType {
 /// add a row here — the handler loops over this table with no other change.
 ///
 /// HFS is a general FHIR store, so `$everything` gathers every patient-referencing
-/// type in this table — `Observation` and `MedicationRequest` today. See the
+/// type in this table — `Observation`, `MedicationRequest` and
+/// `DiagnosticReport` today. See the
 /// "Scope" module note and the server capability statement in this crate's
 /// `docs/Capability Statement.md`.
 const RELATED_RESOURCE_TYPES: &[RelatedType] = &[
@@ -112,6 +115,10 @@ const RELATED_RESOURCE_TYPES: &[RelatedType] = &[
     },
     RelatedType {
         resource_type: "MedicationRequest",
+        patient_search_param: "subject",
+    },
+    RelatedType {
+        resource_type: "DiagnosticReport",
         patient_search_param: "subject",
     },
 ];
