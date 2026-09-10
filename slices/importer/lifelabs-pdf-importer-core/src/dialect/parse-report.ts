@@ -1,6 +1,6 @@
 import type { PositionedTextDocument, PositionedTextPage } from 'pdf-anonymizer-core'
 
-import { columnOf } from './columns.ts'
+import * as Column from './column.ts'
 import { type Cell, type Line, lineText, linesOf } from './lines.ts'
 import type {
   LifeLabsReport,
@@ -248,7 +248,7 @@ class GridBuilder {
     }
     cells.forEach((cell, index) => {
       // The leftmost cell is the name whatever its exact x; the rest classify.
-      const column = index === 0 ? 'name' : columnOf(cell)
+      const column = index === 0 ? 'name' : Column.fromCell(cell)
       if (column === 'section' || column === 'group') parts.name.push(cell.text)
       else parts[column].push(cell.text)
     })
@@ -300,16 +300,17 @@ const readBody = (grid: GridBuilder, body: readonly Line[]): void => {
   for (const line of body) {
     const first = line.cells[0]
     if (first === undefined) continue
-    switch (columnOf(first)) {
+    switch (Column.fromCell(first)) {
       case 'section':
         grid.openSection(
-          lineText({ y: line.y, cells: line.cells.filter((c) => columnOf(c) !== 'licence') })
+          lineText({ y: line.y, cells: line.cells.filter((c) => Column.fromCell(c) !== 'licence') })
         )
-        for (const cell of line.cells) if (columnOf(cell) === 'licence') grid.setLicence(cell.text)
+        for (const cell of line.cells)
+          if (Column.fromCell(cell) === 'licence') grid.setLicence(cell.text)
         break
       case 'group': {
-        const named = line.cells.filter((cell) => columnOf(cell) !== 'licence')
-        const licence = line.cells.filter((cell) => columnOf(cell) === 'licence')
+        const named = line.cells.filter((cell) => Column.fromCell(cell) !== 'licence')
+        const licence = line.cells.filter((cell) => Column.fromCell(cell) === 'licence')
         grid.openGroup(
           named.map((cell) => cell.text).join(' '),
           licence.map((c) => c.text).join(' ')

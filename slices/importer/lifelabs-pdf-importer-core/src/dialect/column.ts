@@ -30,10 +30,10 @@ const BAND_EDGES: readonly (readonly [Column, number])[] = [
 ]
 
 /** The column a cell's left edge falls in. */
-const columnOf = (cell: Cell): Column => {
+const fromCell = (cell: Cell): Column => {
   for (const [column, edge] of BAND_EDGES) if (cell.x < edge) return column
   return 'licence'
 }
 
-export { columnOf }
+export { fromCell }
 export type { Column }
