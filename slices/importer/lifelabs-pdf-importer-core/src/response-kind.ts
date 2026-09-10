@@ -55,7 +55,15 @@ const LifeLabsReportResponseKind: HttpResponseKind.HttpResponseKind<FhirResource
       Effect.gen(function* () {
         const timeZone = yield* checkTimeZone(timeZoneOf(response.headers))
         const document = yield* decodeDocument(response.text())
-        return yield* toFhirResources(yield* Report.tryFromDocument(document), { timeZone })
+        const reports = yield* Report.tryFromDocument(document).pipe(
+          Effect.mapError(
+            (e) =>
+              new ParseResult.ParseError({
+                issue: new ParseResult.Type(Schema.String.ast, e, e.message),
+              })
+          )
+        )
+        return yield* toFhirResources(reports, { timeZone })
       }),
   })
 
