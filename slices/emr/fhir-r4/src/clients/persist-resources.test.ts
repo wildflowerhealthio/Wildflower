@@ -15,12 +15,14 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   Binary,
+  DiagnosticReport,
   DocumentReference,
   type FhirResource,
   MedicationDispense,
   MedicationRequest,
   Observation,
   Patient,
+  Practitioner,
 } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
@@ -194,6 +196,8 @@ const cases: ReadonlyArray<{
   { resourceType: 'MedicationRequest', make: (id) => genWithId(MedicationRequest.Schema, id) },
   { resourceType: 'MedicationDispense', make: (id) => genWithId(MedicationDispense.Schema, id) },
   { resourceType: 'DocumentReference', make: (id) => genWithId(DocumentReference.Schema, id) },
+  { resourceType: 'DiagnosticReport', make: (id) => genWithId(DiagnosticReport.Schema, id) },
+  { resourceType: 'Practitioner', make: (id) => genWithId(Practitioner.Schema, id) },
 ]
 
 const byType = (resourceType: FhirResource['resourceType']): (typeof cases)[number] => {

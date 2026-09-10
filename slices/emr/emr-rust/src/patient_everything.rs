@@ -55,7 +55,8 @@
 //! ## Scope
 //!
 //! Related resources are the patient-referencing types in
-//! [`RELATED_RESOURCE_TYPES`] — `Observation` and `MedicationRequest` today.
+//! [`RELATED_RESOURCE_TYPES`] — `Observation`, `MedicationRequest`, and
+//! `DiagnosticReport` today.
 //! FHIR `$everything` returns the whole patient compartment; we include only the
 //! types in that table, searched on their `subject` reference. HFS is a general
 //! FHIR store, so the table can grow to any patient-referencing type it serves.
