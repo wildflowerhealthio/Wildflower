@@ -1,9 +1,8 @@
 /**
  * The resource-agnostic upstream of the importer slice: the
  * {@link FileImporterDescriptor} contract every file-format binding implements,
- * the per-response {@link Review} model (selection state + choose-then-persist)
- * built on `Extraction.recognize` / `parseWith`, and the structural
- * {@link PersistFailure} the sinks report against.
+ * the per-resource {@link Review} model (selection state — exclude/edit per
+ * resource), and the structural {@link PersistFailure} the sinks report against.
  *
  * @remarks
  * Names no archive format and no resource type — a format binding
@@ -13,5 +12,5 @@
  * @packageDocumentation
  */
 export * as Review from './review.ts'
-export type { FileImporterDescriptor } from './file-importer-descriptor.ts'
+export type { FileImporterDescriptor, LabeledResource } from './file-importer-descriptor.ts'
 export type { PersistFailure } from './persist-failure.ts'

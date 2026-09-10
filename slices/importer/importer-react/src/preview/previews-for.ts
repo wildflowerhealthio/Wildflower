@@ -1,117 +1,94 @@
 import { Effect } from 'effect'
 
-import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
-import { Review } from 'importer-fundamentals'
+import type { FhirResource } from 'fhir-r4/resources'
+import type { LabeledResource } from 'importer-fundamentals'
 
 import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
- * Compute the previews for a batch of read files under their selections. The
- * shell shares the resulting map between the `PreviewPanel`'s render
- * (per-resource rows + counts) and the confirm step (the write set is
- * `Review.chosenResources` over exactly these), keeping the "is the same
- * object" argument honest.
+ * Compute the labeled resources for a batch of read files by running the
+ * format's `resolve` over each file's review state. The shell shares the
+ * resulting map between the `PreviewPanel`'s render (per-resource rows +
+ * counts) and the confirm step (the write set is `Review.chosenResources`
+ * over exactly these), keeping the "is the same object" argument honest.
  *
  * @remarks
- * Reads the pool from the sources on demand rather than storing a derived
- * value, matching how the descriptor exposes only `sources`. Pure — parses
- * fold synchronously through `runSync` in every registered format today; a
- * kind whose `parse` ever suspends throws at render time, so the `runSync`
- * failure is rewrapped with a clear diagnostic naming the file.
- *
- * A caller may pass a persistent {@link PreviewsCache} across renders to
- * reuse previews whose parse-relevant selection slices (`enabledKinds`,
- * `overrides`) and `responses` array kept their identity — the exclusion
- * axis never changes what is parsed, so a per-resource checkbox toggle can
- * reuse the previous previews unchanged. Without a cache, every call
- * re-parses.
- *
- * @typeParam TParsed - The resource type the sources' kinds decode to; the
- *   returned previews carry it through so the shell and the confirm see the
- *   same typed resources rather than an `unknown` bag.
+ * A caller may pass a persistent {@link ResolveCache} across renders to
+ * reuse labeled resources whose `review` object kept its identity — a
+ * per-resource checkbox toggle never changes the review, so it reuses the
+ * previous labeled resources unchanged. Without a cache, every call
+ * re-resolves. Pure — resolves fold synchronously through `runSync` in
+ * every registered format today; a format whose `resolve` ever suspends
+ * throws at render time, so the `runSync` failure is rewrapped with a clear
+ * diagnostic naming the file.
  *
  * @packageDocumentation
  */
-type FilePreviews<TParsed> = readonly Review.PreviewedResponse<
-  HttpResponseKind.HttpResponseKind<TParsed>,
-  TParsed
->[]
+
+/** The `resolve` half of a bound format — one function the cache invokes. */
+type Resolve = (review: unknown) => Effect.Effect<readonly LabeledResource<FhirResource>[]>
+
+/** The resolved labeled resources for one file. */
+type FileLabeledResources = readonly LabeledResource<FhirResource>[]
 
 /**
- * Per-file preview cache. A caller holds one across renders (a stable
+ * Per-file resolve cache. A caller holds one across renders (a stable
  * per-mount reference, seeded through `useState`'s lazy initialiser) and
- * hands it to {@link previewsFor}; entries whose parse-relevant identities
- * are unchanged reuse the cached previews rather than re-parsing.
+ * hands it to {@link resolvedFor}; entries whose `review` identity is
+ * unchanged reuse the cached labeled resources rather than re-resolving.
  */
-interface PreviewsCache<TParsed> {
+interface ResolveCache {
   readonly entries: Map<
     string,
     {
-      readonly responses: readonly unknown[]
-      readonly enabledKinds: ReadonlySet<string>
-      readonly overrides: ReadonlyMap<string, string>
-      readonly previews: FilePreviews<TParsed>
+      readonly review: unknown
+      readonly labeled: FileLabeledResources
     }
   >
 }
 
-/** Fresh, empty {@link PreviewsCache}. */
-const emptyPreviewsCache = <TParsed>(): PreviewsCache<TParsed> => ({ entries: new Map() })
+/** Fresh, empty {@link ResolveCache}. */
+const emptyResolveCache = (): ResolveCache => ({ entries: new Map() })
 
-const runPreview = <TParsed>(
-  pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
-  file: Extract<FileReadOutcome, { readonly _tag: 'read' }>,
-  selection: Review.Selection<TParsed>
-): FilePreviews<TParsed> => {
-  try {
-    return Effect.runSync(Review.preview(pool, file.responses, selection))
-  } catch (cause) {
-    throw new Error(
-      `previewsFor: Review.preview did not fold synchronously for file ${file.id}. Every registered kind's parse must be a synchronous Effect.`,
-      { cause }
-    )
-  }
-}
-
-const previewsFor = <TParsed>(
-  sources: readonly SourceDescriptor.SourceDescriptor<TParsed>[],
+/**
+ * Resolve every read file's review state into its labeled resources, caching
+ * on review identity. Files whose review kept its reference reuse the cached
+ * labeled resources unchanged.
+ */
+const resolvedFor = (
+  resolve: Resolve,
   files: readonly FileReadOutcome[],
-  selectionFor: (fileId: string) => Review.Selection<TParsed>,
-  cache?: PreviewsCache<TParsed>
-): ReadonlyMap<string, FilePreviews<TParsed>> => {
-  const pool = SourceDescriptor.poolOf(sources)
-  const entries: [string, FilePreviews<TParsed>][] = []
+  reviewFor: (fileId: string) => unknown,
+  cache?: ResolveCache
+): ReadonlyMap<string, FileLabeledResources> => {
+  const entries: [string, FileLabeledResources][] = []
   const seen = new Set<string>()
   for (const file of files) {
     if (file._tag !== 'read') continue
     seen.add(file.id)
-    const selection = selectionFor(file.id)
+    const review = reviewFor(file.id)
     const cached = cache?.entries.get(file.id)
-    if (
-      cached !== undefined &&
-      cached.responses === file.responses &&
-      cached.enabledKinds === selection.enabledKinds &&
-      cached.overrides === selection.overrides
-    ) {
-      entries.push([file.id, cached.previews])
+    if (cached !== undefined && cached.review === review) {
+      entries.push([file.id, cached.labeled])
       continue
     }
-    const fresh = runPreview(pool, file, selection)
-    cache?.entries.set(file.id, {
-      responses: file.responses,
-      enabledKinds: selection.enabledKinds,
-      overrides: selection.overrides,
-      previews: fresh,
-    })
-    entries.push([file.id, fresh])
+    let labeled: FileLabeledResources
+    try {
+      labeled = Effect.runSync(resolve(review))
+    } catch (cause) {
+      throw new Error(
+        `resolvedFor: resolve did not fold synchronously for file ${file.id}. Every registered format's resolve must be a synchronous Effect.`,
+        { cause }
+      )
+    }
+    cache?.entries.set(file.id, { review, labeled })
+    entries.push([file.id, labeled])
   }
   if (cache !== undefined) {
-    // Map iteration in JS visits only existing keys; a deleted-but-unvisited
-    // key is skipped — no snapshot needed.
     for (const id of cache.entries.keys()) if (!seen.has(id)) cache.entries.delete(id)
   }
   return new Map(entries)
 }
 
-export { emptyPreviewsCache, previewsFor }
-export type { FilePreviews, PreviewsCache }
+export { emptyResolveCache, resolvedFor }
+export type { FileLabeledResources, ResolveCache }

@@ -2,6 +2,12 @@ import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { DateTime, Effect, Option, Schema } from 'effect'
 import { type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
+import {
+  type HarSelection,
+  type PreviewedResponse,
+  initialHarSelection,
+  preview,
+} from 'har-importer-core'
 import { type Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { afterEach, describe, expect, it } from 'vite-plus/test'
@@ -45,7 +51,7 @@ const source = (
     responseKinds: kinds,
   })
 
-/** The flat pool of a source list — what the shell's `Review.initial` seeds from. */
+/** The flat pool of a source list — what the shell's `initialHarSelection` seeds from. */
 const poolOf = (
   sources: readonly SourceDescriptor.SourceDescriptor<unknown>[]
 ): readonly HttpResponseKind.HttpResponseKind<unknown>[] =>
@@ -72,9 +78,23 @@ const decodeFhirResource = (wire: unknown): FhirResource =>
 const previewOf = (
   pool: readonly HttpResponseKind.HttpResponseKind<unknown>[],
   responses: readonly Extraction.Input[],
-  selection: Review.Selection<FhirResource>
-): readonly Review.PreviewedResponse<HttpResponseKind.HttpResponseKind<unknown>, unknown>[] =>
-  Effect.runSync(Review.preview(pool, responses, selection))
+  harSelection: HarSelection
+): readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<unknown>, unknown>[] =>
+  Effect.runSync(preview(pool, responses, harSelection))
+
+/**
+ * Extract the labeled resources from a set of previews — the shape
+ * `Review.chosenResources` reads. Each previewed resource with an
+ * `outcome._tag === 'resources'` produces one entry.
+ */
+const labeledFromPreviews = (
+  previews: readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<unknown>, unknown>[]
+): readonly { key: string; title: string; resource: unknown }[] =>
+  previews.flatMap((p) =>
+    p.outcome._tag === 'resources'
+      ? p.outcome.resources.map((r) => ({ key: r.key, title: '', resource: r.resource }))
+      : []
+  )
 
 // A broad `portal` (low specificity) and a `patient` (higher) both claim /Patient.
 const portalKind = kind('portal', 10, '/Patient')
@@ -89,16 +109,19 @@ describe('ReviewBody', () => {
     const sources = [source('portal-source', portalKind), source('ehr-source', patientKind)]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.initial<FhirResource>(pool)
+    const harSel = initialHarSelection(pool)
+    const sel = Review.initial<FhirResource>()
 
     // Act
     render(
       <ReviewBody
         responses={responses}
         sources={sources}
-        previews={previewOf(pool, responses, selection)}
-        selection={selection}
-        onChange={() => undefined}
+        previews={previewOf(pool, responses, harSel)}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
+        selection={sel}
+        onSelectionChange={() => undefined}
       />
     )
 
@@ -116,16 +139,19 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', kind('PrescriptionResponseKind', 50, '/Patient'))]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.initial<FhirResource>(pool)
+    const harSel = initialHarSelection(pool)
+    const sel = Review.initial<FhirResource>()
 
     // Act
     render(
       <ReviewBody
         responses={responses}
         sources={sources}
-        previews={previewOf(pool, responses, selection)}
-        selection={selection}
-        onChange={() => undefined}
+        previews={previewOf(pool, responses, harSel)}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
+        selection={sel}
+        onSelectionChange={() => undefined}
       />
     )
 
@@ -139,16 +165,19 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', patientKind, observationKind)]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.initial<FhirResource>(pool)
+    const harSel = initialHarSelection(pool)
+    const sel = Review.initial<FhirResource>()
 
     // Act
     render(
       <ReviewBody
         responses={responses}
         sources={sources}
-        previews={previewOf(pool, responses, selection)}
-        selection={selection}
-        onChange={() => undefined}
+        previews={previewOf(pool, responses, harSel)}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
+        selection={sel}
+        onSelectionChange={() => undefined}
       />
     )
 
@@ -167,16 +196,19 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', portalKind, patientKind)]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    const selection = Review.initial<FhirResource>(pool)
+    const harSel = initialHarSelection(pool)
+    const sel = Review.initial<FhirResource>()
 
     // Act
     render(
       <ReviewBody
         responses={responses}
         sources={sources}
-        previews={previewOf(pool, responses, selection)}
-        selection={selection}
-        onChange={() => undefined}
+        previews={previewOf(pool, responses, harSel)}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
+        selection={sel}
+        onSelectionChange={() => undefined}
       />
     )
 
@@ -195,16 +227,19 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', twoObs)]
     const pool = poolOf(sources)
     const responses = [input('r-obs', 'https://ehr.test/Observation?s=1')]
-    const selection = Review.initial<FhirResource>(pool)
+    const harSel = initialHarSelection(pool)
+    const sel = Review.initial<FhirResource>()
 
     // Act
     render(
       <ReviewBody
         responses={responses}
         sources={sources}
-        previews={previewOf(pool, responses, selection)}
-        selection={selection}
-        onChange={() => undefined}
+        previews={previewOf(pool, responses, harSel)}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
+        selection={sel}
+        onSelectionChange={() => undefined}
       />
     )
 
@@ -223,15 +258,18 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', twoObs)]
     const pool = poolOf(sources)
     const responses = [input('r-obs', 'https://ehr.test/Observation?s=1')]
-    let currentSelection = Review.initial<FhirResource>(pool)
-    const previews = previewOf(pool, responses, currentSelection)
+    const harSel = initialHarSelection(pool)
+    let currentSelection = Review.initial<FhirResource>()
+    const previews = previewOf(pool, responses, harSel)
     const { rerender } = render(
       <ReviewBody
         responses={responses}
         sources={sources}
         previews={previews}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
         selection={currentSelection}
-        onChange={(next) => {
+        onSelectionChange={(next) => {
           currentSelection = next
         }}
       />
@@ -244,8 +282,10 @@ describe('ReviewBody', () => {
         responses={responses}
         sources={sources}
         previews={previews}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
         selection={currentSelection}
-        onChange={(next) => {
+        onSelectionChange={(next) => {
           currentSelection = next
         }}
       />
@@ -253,7 +293,8 @@ describe('ReviewBody', () => {
 
     // Assert — the tally now names the exclusion; chosenResources drops it too
     expect(screen.getByRole('status').textContent).toContain('2 Observation, 1 excluded')
-    const chosen = Review.chosenResources(previews, currentSelection)
+    const labeled = labeledFromPreviews(previews)
+    const chosen = Review.chosenResources(labeled, currentSelection)
     const idOf = (resource: unknown): string => {
       if (typeof resource !== 'object' || resource === null || !('id' in resource)) return ''
       const value = (resource as { readonly id: unknown }).id
@@ -267,31 +308,37 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', portalKind, patientKind)]
     const pool = poolOf(sources)
     const responses = [input('r0', 'https://ehr.test/Patient/1')]
-    let currentSelection = Review.initial<FhirResource>(pool)
+    let currentHarSel = initialHarSelection(pool)
+    const sel = Review.initial<FhirResource>()
     const { rerender } = render(
       <ReviewBody
         responses={responses}
         sources={sources}
-        previews={previewOf(pool, responses, currentSelection)}
-        selection={currentSelection}
-        onChange={(next) => {
-          currentSelection = next
+        previews={previewOf(pool, responses, currentHarSel)}
+        harSelection={currentHarSel}
+        onHarSelectionChange={(next) => {
+          currentHarSel = next
         }}
+        selection={sel}
+        onSelectionChange={() => undefined}
       />
     )
     expect(screen.getByRole('combobox', { name: /Import kind for/ })).toBeDefined()
 
-    // Act — turn `patient` off across the whole import, re-render with the new selection + previews
+    // Act — turn `patient` off across the whole import, re-render with the new
+    // har selection + previews
     await userEvent.click(screen.getByRole('checkbox', { name: 'patient' }))
     rerender(
       <ReviewBody
         responses={responses}
         sources={sources}
-        previews={previewOf(pool, responses, currentSelection)}
-        selection={currentSelection}
-        onChange={(next) => {
-          currentSelection = next
+        previews={previewOf(pool, responses, currentHarSel)}
+        harSelection={currentHarSel}
+        onHarSelectionChange={(next) => {
+          currentHarSel = next
         }}
+        selection={sel}
+        onSelectionChange={() => undefined}
       />
     )
 
@@ -309,8 +356,9 @@ describe('ReviewBody', () => {
     const sources = [source('ehr-source', patientKind)]
     const pool = poolOf(sources)
     const responses = [input('r-p', 'https://ehr.test/Patient/1')]
-    const initial = Review.initial<FhirResource>(pool)
-    const previews = previewOf(pool, responses, initial)
+    const harSel = initialHarSelection(pool)
+    const initial = Review.initial<FhirResource>()
+    const previews = previewOf(pool, responses, harSel)
     // A real, decoded Patient — the same shape a reviewer's Keep would
     // produce — so the override is typed by the selection's `TParsed`.
     const edited = decodeFhirResource({
@@ -326,8 +374,10 @@ describe('ReviewBody', () => {
         responses={responses}
         sources={sources}
         previews={previews}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
         selection={editedSelection}
-        onChange={() => undefined}
+        onSelectionChange={() => undefined}
       />
     )
 
@@ -338,13 +388,14 @@ describe('ReviewBody', () => {
     expect(screen.getByRole('button', { name: /Revert edit to Patient/ })).toBeDefined()
   })
 
-  it('should call onChange with a reverted selection when Revert is clicked', async () => {
+  it('should call onSelectionChange with a reverted selection when Revert is clicked', async () => {
     // Arrange — one edit in place
     const sources = [source('ehr-source', patientKind)]
     const pool = poolOf(sources)
     const responses = [input('r-p', 'https://ehr.test/Patient/1')]
-    const initial = Review.initial<FhirResource>(pool)
-    const previews = previewOf(pool, responses, initial)
+    const harSel = initialHarSelection(pool)
+    const initial = Review.initial<FhirResource>()
+    const previews = previewOf(pool, responses, harSel)
     const edited = decodeFhirResource({ resourceType: 'Patient', id: 'patient-1' })
     const editedSelection = Review.edit(initial, 'r-p:0', edited)
     let seen: Review.Selection<FhirResource> | null = null
@@ -355,8 +406,10 @@ describe('ReviewBody', () => {
         responses={responses}
         sources={sources}
         previews={previews}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
         selection={editedSelection}
-        onChange={(next) => {
+        onSelectionChange={(next) => {
           seen = next
         }}
       />
@@ -377,16 +430,19 @@ describe('ReviewBody', () => {
       input('r0', 'https://ehr.test/Patient/1'),
       input('r1', 'https://cdn.test/app.7f3c.js'),
     ]
-    const selection = Review.initial<FhirResource>(pool)
+    const harSel = initialHarSelection(pool)
+    const sel = Review.initial<FhirResource>()
 
     // Act
     render(
       <ReviewBody
         responses={responses}
         sources={sources}
-        previews={previewOf(pool, responses, selection)}
-        selection={selection}
-        onChange={() => undefined}
+        previews={previewOf(pool, responses, harSel)}
+        harSelection={harSel}
+        onHarSelectionChange={() => undefined}
+        selection={sel}
+        onSelectionChange={() => undefined}
       />
     )
 

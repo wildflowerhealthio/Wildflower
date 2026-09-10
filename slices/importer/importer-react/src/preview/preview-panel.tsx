@@ -1,55 +1,50 @@
 import type { FhirResource } from 'fhir-r4/resources'
-import type { HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
+import type { LabeledResource } from 'importer-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo } from 'react'
 
-import type { ReviewBodyProps } from 'har-importer-react'
+import type { ReviewBodyAdapterProps } from '../registry.tsx'
 
 import type { FileReadOutcome } from './use-import-run.ts'
 import styles from './preview-panel.module.css'
 
 /**
- * The preview view: an interactive per-URL, per-resource review of exactly what
+ * The preview view: an interactive per-resource review of exactly what
  * the import would write, shown before anything touches the server, so
  * confirming is an informed, opt-in act.
  *
  * @remarks
  * A pick is a *batch* of one or more files, each read independently and
  * rendered together under one confirm: a read file gets the format's
- * interactive `ReviewBody`, an unreadable one is reported against its own name
- * rather than sinking the batch. Parse runs at preview: each read file's
- * responses are parsed through the reviewer's current picks so the review lists
- * the actual resources, keyed for stable per-resource opt-outs. The confirm
- * appears only when at least one resource is included, and it does not write —
- * it calls `onConfirm`; the confirm step writes exactly the reviewed objects.
+ * interactive `ReviewBody` (or a default per-resource list when the format
+ * has none), an unreadable one is reported against its own name rather than
+ * sinking the batch. The confirm appears only when at least one resource is
+ * included, and it does not write — it calls `onConfirm`; the confirm step
+ * writes exactly the reviewed objects.
  *
  * @packageDocumentation
  */
-
-/** One previewed response — the parse outcome plus every resource's stable key. */
-type Preview = Review.PreviewedResponse<HttpResponseKind.HttpResponseKind<unknown>, unknown>
 
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
   /** Every picked file's read outcome, rendered together under one confirm. */
   readonly files: readonly FileReadOutcome[]
   /**
-   * The format's sources (the descriptor's `sources`): the review groups its
-   * include toggles by these, and recognition runs against their flattened
-   * kinds.
+   * The format-specific review body, when the format has routing decisions
+   * beyond the general per-resource selection. `null` when the default
+   * per-resource list suffices.
    */
-  readonly sources: readonly SourceDescriptor.SourceDescriptor<unknown>[]
-  /** The format's interactive review body, rendered per read file. */
-  readonly ReviewBody: (props: ReviewBodyProps) => JSX.Element
-  /** The reviewed selection for a file (defaults to `Review.initial(pool)` before any edit). */
+  readonly ReviewBody: ((props: ReviewBodyAdapterProps) => JSX.Element) | null
+  /** The opaque review state for a file. */
+  readonly reviewFor: (fileId: string) => unknown
+  /** The resolved labeled resources for a file. */
+  readonly labeledFor: (fileId: string) => readonly LabeledResource<FhirResource>[]
+  /** The reviewed selection for a file (defaults to `Review.initial()` before any edit). */
   readonly selectionFor: (fileId: string) => Review.Selection<FhirResource>
+  /** Called when a format-specific ReviewBody changes the review state. */
+  readonly onReviewChange: (fileId: string, review: unknown) => void
   /** Called when a file's review changes its selection. */
   readonly onSelectionChange: (fileId: string, selection: Review.Selection<FhirResource>) => void
-  /**
-   * The previews for a file — the parse outcomes the shell computed under the
-   * current selection. Reused by the confirm step so it never re-parses.
-   */
-  readonly previewFor: (fileId: string) => readonly Preview[]
   /**
    * Called when the user confirms the batch. Fires only when at least one
    * resource is included; the panel gates the affordance, so a caller can
@@ -68,8 +63,8 @@ const NOTHING_TO_IMPORT_HEADING = 'Nothing to import'
 /** Heading for a batch that has resources to write. */
 const PREVIEW_HEADING = 'Ready to import'
 
-/** Message for a file that did not parse as a HAR at all. */
-const UNREADABLE_FILE_MESSAGE = 'This file could not be read as a HAR.'
+/** Message for a file that did not parse at all. */
+const UNREADABLE_FILE_MESSAGE = 'This file could not be read.'
 
 /** `noun` singular when `count === 1`, else its `-s` plural. */
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
@@ -81,21 +76,56 @@ const confirmLabel = (writable: number, excluded: number, confirming: boolean): 
   return excluded > 0 ? `${base} (${excluded} excluded)` : base
 }
 
+/**
+ * The default per-resource view for formats with no format-specific ReviewBody:
+ * a flat list of labeled resources with include checkboxes.
+ */
+const DefaultResourceList = ({
+  labeled,
+  selection,
+  onSelectionChange,
+}: {
+  readonly labeled: readonly LabeledResource<FhirResource>[]
+  readonly selection: Review.Selection<FhirResource>
+  readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
+}): JSX.Element => (
+  <ul className={styles.resourceList}>
+    {labeled.map((entry) => {
+      const included = Review.isResourceIncluded(selection, entry.key)
+      return (
+        <li key={entry.key} className={styles.resourceRow}>
+          <label className={styles.resourceLabel}>
+            <input
+              type="checkbox"
+              checked={included}
+              aria-label={`Include ${entry.title}`}
+              onChange={() => onSelectionChange(Review.toggleResource(selection, entry.key))}
+            />
+            <span className={included ? undefined : styles.resourceExcluded}>{entry.title}</span>
+          </label>
+        </li>
+      )
+    })}
+  </ul>
+)
+
 /** One file's whole outcome, under its own name — the unit the batch is built from. */
 const FileSection = ({
   file,
-  sources,
   ReviewBody,
+  reviewFor,
+  labeledFor,
   selectionFor,
+  onReviewChange,
   onSelectionChange,
-  previewFor,
 }: {
   readonly file: FileReadOutcome
-  readonly sources: PreviewPanelProps['sources']
   readonly ReviewBody: PreviewPanelProps['ReviewBody']
+  readonly reviewFor: PreviewPanelProps['reviewFor']
+  readonly labeledFor: PreviewPanelProps['labeledFor']
   readonly selectionFor: PreviewPanelProps['selectionFor']
+  readonly onReviewChange: PreviewPanelProps['onReviewChange']
   readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
-  readonly previewFor: PreviewPanelProps['previewFor']
 }): JSX.Element => (
   <section className={styles.fileSection} aria-label={file.picked.fileName}>
     <h3 className={styles.fileHeading}>{file.picked.fileName}</h3>
@@ -103,13 +133,19 @@ const FileSection = ({
       <p role="alert" className={styles.emptyMessage}>
         {UNREADABLE_FILE_MESSAGE}
       </p>
-    ) : (
+    ) : ReviewBody !== null ? (
       <ReviewBody
-        responses={file.responses}
-        sources={sources}
-        previews={previewFor(file.id)}
+        review={reviewFor(file.id)}
+        labeled={labeledFor(file.id)}
         selection={selectionFor(file.id)}
-        onChange={(selection) => onSelectionChange(file.id, selection)}
+        onReviewChange={(review) => onReviewChange(file.id, review)}
+        onSelectionChange={(selection) => onSelectionChange(file.id, selection)}
+      />
+    ) : (
+      <DefaultResourceList
+        labeled={labeledFor(file.id)}
+        selection={selectionFor(file.id)}
+        onSelectionChange={(selection) => onSelectionChange(file.id, selection)}
       />
     )}
   </section>
@@ -148,29 +184,28 @@ const PreviewActions = ({
  */
 const PreviewPanel = ({
   files,
-  sources,
   ReviewBody,
+  reviewFor,
+  labeledFor,
   selectionFor,
+  onReviewChange,
   onSelectionChange,
-  previewFor,
   onConfirm,
   onCancel,
   confirming,
 }: PreviewPanelProps): JSX.Element => {
-  // The included/excluded aggregates read straight off the shell-supplied
-  // previews so the button count and each resource row can never disagree.
   const { writableCount, excludedCount } = useMemo(() => {
     let included = 0
     let excluded = 0
     for (const file of files) {
       if (file._tag !== 'read') continue
-      const previews = previewFor(file.id)
+      const labeled = labeledFor(file.id)
       const selection = selectionFor(file.id)
-      included += Review.includedCount(previews, selection)
-      excluded += Review.excludedCount(previews, selection)
+      included += Review.includedCount(labeled, selection)
+      excluded += Review.excludedCount(labeled, selection)
     }
     return { writableCount: included, excludedCount: excluded }
-  }, [files, previewFor, selectionFor])
+  }, [files, labeledFor, selectionFor])
   return (
     <section aria-label="Import preview" className={styles.panel}>
       <h2 className={styles.heading}>
@@ -186,11 +221,12 @@ const PreviewPanel = ({
           <FileSection
             key={file.id}
             file={file}
-            sources={sources}
             ReviewBody={ReviewBody}
+            reviewFor={reviewFor}
+            labeledFor={labeledFor}
             selectionFor={selectionFor}
+            onReviewChange={onReviewChange}
             onSelectionChange={onSelectionChange}
-            previewFor={previewFor}
           />
         ))}
       </div>
