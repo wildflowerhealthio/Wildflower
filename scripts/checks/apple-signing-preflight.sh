@@ -1,34 +1,23 @@
 #!/usr/bin/env bash
 # Pre-flight for the macOS Tauri release: prove the Apple signing secrets can
-# actually sign BEFORE the ~20 min universal compile, not after it.
+# sign BEFORE the ~20 min universal compile. Imports APPLE_CERTIFICATE into a
+# throwaway keychain and resolves APPLE_SIGNING_IDENTITY with
+# `security find-identity -v -p codesigning`, the lookup the Tauri bundler
+# performs at the end of `tauri build` — so the "failed to resolve signing
+# identity" that would otherwise end the build is reported here, with the
+# certificate names the .p12 actually holds. Also rejects anything but a
+# "Developer ID Application" cert, since notarization refuses the rest.
 #
-# Mirrors what the Tauri bundler does at the end of `tauri build` (import
-# APPLE_CERTIFICATE into a throwaway keychain, then look APPLE_SIGNING_IDENTITY
-# up with `security find-identity -v -p codesigning`), so a misconfiguration
-# that would end the build with "failed codesign application: failed to
-# resolve signing identity" is reported here, in seconds, with the reason:
-#
-#   - APPLE_CERTIFICATE is not valid base64 / not a PKCS#12 bundle
-#   - APPLE_CERTIFICATE_PASSWORD does not open it
-#   - the bundle holds no certificate named APPLE_SIGNING_IDENTITY (the real
-#     names it does hold are printed so the secret can be corrected)
-#   - the identity is not a "Developer ID Application" certificate — an
-#     "Apple Development" cert signs, but only for Macs registered to the
-#     team, and Apple's notary service rejects it, so a GitHub Release built
-#     with one is unusable
-#
-# Runs on the macOS release runner (.github/workflows/tauri-release-publish.yml)
-# and locally on any Mac to validate a freshly exported .p12 before it is
-# stored as a secret:
+# Called by .github/workflows/tauri-release-publish.yml; run it on any Mac
+# with the same env vars to vet a new .p12 before storing it as a secret:
 #
 #   APPLE_CERTIFICATE="$(base64 -i devid.p12)" \
 #   APPLE_CERTIFICATE_PASSWORD='<export password>' \
 #   APPLE_SIGNING_IDENTITY='Developer ID Application: <name> (<team id>)' \
 #     ./scripts/checks/apple-signing-preflight.sh
 #
-# Exit 0 when the identity resolves, or when none of the three secrets is set
-# (an unsigned build is a deliberate choice, e.g. a fork without a team).
-# Exit 1 on any misconfiguration.
+# Exit 0 when the identity resolves or when all three secrets are unset (a
+# deliberately unsigned build); exit 1 on any misconfiguration.
 set -euo pipefail
 
 if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -73,10 +62,8 @@ if ! security import "$workdir/cert.p12" -k "$keychain" -P "$cert_password" \
   fail "Could not import APPLE_CERTIFICATE: $(tr '\n' ' ' < "$workdir/import.err"). Either APPLE_CERTIFICATE_PASSWORD is wrong or the file is not a PKCS#12 (.p12) export that includes the private key."
 fi
 
-# The Tauri bundler resolves the identity from exactly this listing, so this
-# is the check that decides the real build's fate. `-v` lists only identities
-# with a private key AND a valid trust chain — an expired cert or one whose
-# intermediate CA is missing drops out here.
+# `-v` lists only identities with a private key and a valid trust chain, so an
+# expired cert or a missing intermediate CA drops out here too.
 valid_identities="$(security find-identity -v -p codesigning "$keychain")"
 echo "Valid code-signing identities in APPLE_CERTIFICATE:"
 echo "$valid_identities"

@@ -256,12 +256,8 @@ jobs:
 
       - name: Verify Apple signing identity (macOS)
         if: matrix.key == 'macos'
-        # Fails in seconds, before the ~20 min universal compile, if the Apple
-        # signing secrets can't produce a signed bundle: the script imports
-        # APPLE_CERTIFICATE into a throwaway keychain and resolves
-        # APPLE_SIGNING_IDENTITY exactly the way the Tauri bundler does at the
-        # end of `tauri build`. The env block is the same set tauri-action
-        # receives below; keep the two in step.
+        # Fails in seconds, not after the ~20 min compile, when the Apple
+        # secrets can't sign. Same env set as tauri-action receives below.
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
