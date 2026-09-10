@@ -57,7 +57,7 @@ const RunsView = ({
 
               return (
                 <span
-                  key={`${run.text}-${run.x}-${run.y}-${run.fontSize}`}
+                  key={i}
                   className={cn(
                     styles['runs__span'],
                     'text-body-3',

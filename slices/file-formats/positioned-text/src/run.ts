@@ -22,10 +22,10 @@ type RunType = typeof RunSchema.Type
  * Transform a run's text, keeping its position and font. Returns a new run with
  * the mapped text.
  */
-const mapText = (run: RunType, f: (text: string) => string): RunType => ({
-  ...run,
-  text: f(run.text),
-})
+const mapText = (run: RunType, f: (text: string) => string): RunType => {
+  const text = f(run.text)
+  return text === run.text ? run : { ...run, text }
+}
 
 export { RunSchema as Schema, mapText }
 export type { RunType as Type }

@@ -25,10 +25,10 @@ uploaded-archives pick source — which a host passes into that shell's
 It depends on `importer-fundamentals` (the `FileImporterDescriptor` contract and
 the pure `Review` model), `har-importer-core` (the `harImporterDescriptor`,
 `HarSettings`, and `HttpArchive.LogFromHarJson`), `har-importer-react`
-(`ReviewBody`, `HarSettingsPicker`), `web-trace-core` (the HAR
-archive codec under `/codec` and the HAR parser under `/har`), `fhir-r4` (the
-typed client and `ResourceWriteFailure`), and `fhir-r4-react` (the authed runner
-and the slice runtime layer).
+(`ReviewBody`, `HarSettingsPicker`), `http-archive` (the `HttpArchive`
+projection), `web-trace-core` (the HAR archive codec under `/codec` and the HAR
+parser under `/har`), `fhir-r4` (the typed client and `ResourceWriteFailure`),
+and `fhir-r4-react` (the authed runner and the slice runtime layer).
 
 The seam between this package and a format binding is the **descriptor** and the
 `Review` model: the read half runs the descriptor's `decode` (no services, no

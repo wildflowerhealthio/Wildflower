@@ -23,10 +23,15 @@ const FromJson = Schema.parseJson(DocumentSchema)
  * Transform the text of every run in the document, keeping page geometry and
  * each run's position and font. Returns a new document.
  */
-const mapText = (document: DocumentType, f: (text: string) => string): DocumentType => ({
-  ...document,
-  pages: document.pages.map((page) => Page.mapText(page, f)),
-})
+const mapText = (document: DocumentType, f: (text: string) => string): DocumentType => {
+  let changed = false
+  const pages = document.pages.map((page) => {
+    const mapped = Page.mapText(page, f)
+    if (mapped !== page) changed = true
+    return mapped
+  })
+  return changed ? { ...document, pages } : document
+}
 
 /**
  * Every run in the document, in page then run order — the document's runs

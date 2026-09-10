@@ -5,7 +5,7 @@ parsed `HttpArchive.Log` to review the pseudonymizer's decisions and download
 an anonymized `.har`. Presentation and interaction only — the redactor and the
 leaves traversal live in [`har-anonymizer-core`](../har-anonymizer-core/AGENTS.md),
 the HAR emitter in
-[`har-importer-core`](../../importer/har-importer-core/AGENTS.md); nothing here
+[`http-archive`](../../file-formats/http-archive/AGENTS.md); nothing here
 reimplements any of them.
 
 ## Shape
@@ -27,8 +27,8 @@ reimplements any of them.
 ## Layering
 
 An adapter. Depends on `har-anonymizer-core` (the redactor),
-`har-importer-core` (`/har` — the projection and emitter), `effect`, `react`,
-`react-kitchen-sink`, `react-tundraish`. Never imports `web-trace-core`
+`http-archive` (the `HttpArchive` projection and `emitHarFromLog` emitter),
+`effect`, `react`, `react-kitchen-sink`, `react-tundraish`. Never imports `web-trace-core`
 (the redactor and emitter are HAR-native here — this package does not speak
 `TraceExchange`), `web-trace-react`, `importer-react`, or `slices/collector`.
 

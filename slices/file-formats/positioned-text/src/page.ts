@@ -18,10 +18,15 @@ type PageType = typeof PageSchema.Type
  * Transform the text of every run on the page, keeping page geometry and each
  * run's position and font. Returns a new page.
  */
-const mapText = (page: PageType, f: (text: string) => string): PageType => ({
-  ...page,
-  runs: page.runs.map((run) => Run.mapText(run, f)),
-})
+const mapText = (page: PageType, f: (text: string) => string): PageType => {
+  let changed = false
+  const runs = page.runs.map((run) => {
+    const mapped = Run.mapText(run, f)
+    if (mapped !== run) changed = true
+    return mapped
+  })
+  return changed ? { ...page, runs } : page
+}
 
 export { PageSchema as Schema, mapText }
 export type { PageType as Type }
