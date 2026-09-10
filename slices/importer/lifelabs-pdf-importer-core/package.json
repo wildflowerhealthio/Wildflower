@@ -2,7 +2,7 @@
   "name": "lifelabs-pdf-importer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The LifeLabs PDF binding of the importer slice (core layer): the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports. No DOM, no fs, no React.",
+  "description": "The LifeLabs PDF binding of the importer slice (core layer): the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports, and the FHIR R4 synthesis. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -35,6 +35,7 @@
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",
     "positioned-text": "workspace:*",
     "typescript": "catalog:",
@@ -42,6 +43,7 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
+    "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",
     "positioned-text": "workspace:*"
   }
