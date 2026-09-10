@@ -37,7 +37,7 @@
     "fast-check": "catalog:",
     "har-anonymizer-core": "workspace:*",
     "har-anonymizer-react": "workspace:*",
-    "har-importer-core": "workspace:*",
+    "http-archive": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "pdf-anonymizer-core": "workspace:*",

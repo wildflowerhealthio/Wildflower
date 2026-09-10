@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { DateTime, Effect, Exit, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { HttpArchive } from 'har-importer-core/har'
+import { HttpArchive } from 'http-archive'
 import { mintExportSalt } from './hmac.ts'
 import { mapEntryLeaves, type LeafVisitor } from './leaves.ts'
 import { buildPolicyForLog, redactLog } from './redact.ts'

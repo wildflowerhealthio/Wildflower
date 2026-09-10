@@ -352,6 +352,9 @@ importers:
       har-importer-core:
         specifier: workspace:*
         version: link:../../slices/importer/har-importer-core
+      http-archive:
+        specifier: workspace:*
+        version: link:../../slices/file-formats/http-archive
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -1106,9 +1109,9 @@ importers:
       har-anonymizer-react:
         specifier: workspace:*
         version: link:../har-anonymizer-react
-      har-importer-core:
+      http-archive:
         specifier: workspace:*
-        version: link:../../importer/har-importer-core
+        version: link:../../file-formats/http-archive
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -1163,12 +1166,12 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
-      har-importer-core:
-        specifier: workspace:*
-        version: link:../../importer/har-importer-core
       har-schema:
         specifier: 'catalog:'
         version: 2.0.0
+      http-archive:
+        specifier: workspace:*
+        version: link:../../file-formats/http-archive
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -1208,9 +1211,9 @@ importers:
       har-anonymizer-core:
         specifier: workspace:*
         version: link:../har-anonymizer-core
-      har-importer-core:
+      http-archive:
         specifier: workspace:*
-        version: link:../../importer/har-importer-core
+        version: link:../../file-formats/http-archive
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -2299,6 +2302,45 @@ importers:
         specifier: 'catalog:'
         version: 0.3.0(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.2.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))(yaml@2.9.0)
 
+  slices/file-formats/http-archive:
+    devDependencies:
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260707.2
+      ajv:
+        specifier: 'catalog:'
+        version: 8.20.0
+      browser-sniffer-core:
+        specifier: workspace:*
+        version: link:../../browser-sniffer/browser-sniffer-core
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      har-schema:
+        specifier: 'catalog:'
+        version: 2.0.0
+      http-extraction-fundamentals:
+        specifier: workspace:*
+        version: link:../../http-extraction/http-extraction-fundamentals
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.0(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.2.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))(yaml@2.9.0)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../web-trace/web-trace-core
+
   slices/gatekeeper/gatekeeper-core:
     devDependencies:
       '@effect/platform':
@@ -2601,12 +2643,6 @@ importers:
       '@typescript/native-preview':
         specifier: 'catalog:'
         version: 7.0.0-dev.20260707.2
-      ajv:
-        specifier: 'catalog:'
-        version: 8.20.0
-      browser-sniffer-core:
-        specifier: workspace:*
-        version: link:../../browser-sniffer/browser-sniffer-core
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
@@ -2619,9 +2655,9 @@ importers:
       fhir-r4-source:
         specifier: workspace:*
         version: link:../../http-extraction/fhir-r4-source
-      har-schema:
-        specifier: 'catalog:'
-        version: 2.0.0
+      http-archive:
+        specifier: workspace:*
+        version: link:../../file-formats/http-archive
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../../http-extraction/http-extraction-fundamentals
@@ -2781,6 +2817,9 @@ importers:
       har-importer-react:
         specifier: workspace:*
         version: link:../har-importer-react
+      http-archive:
+        specifier: workspace:*
+        version: link:../../file-formats/http-archive
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../../http-extraction/http-extraction-fundamentals

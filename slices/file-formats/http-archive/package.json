@@ -1,13 +1,13 @@
 {
-  "name": "har-anonymizer-core",
+  "name": "http-archive",
   "version": "0.0.0",
   "private": true,
-  "description": "The HAR engine of the anonymizer slice: the shape-preserving pseudonymizer that redacts a captured session at the export boundary — the redaction policy (enum carve-out, namespace URIs, per-path overrides), the HMAC-keyed value→pseudonym table, the shape detectors and fake generators, and the leaf walkers over both TraceExchange and HttpArchive entries. No DOM, no fs, no React.",
+  "description": "The HTTP Archive (HAR 1.2) format as one schema read in both directions: `emitHar`/`emitHarFromLog` build an archive from captured exchanges, `HarFromJson` reads a foreign one, and the `HttpArchive` projection (`Entry`, `Log`, `LogFromHarJson`) is what an importer and a replay consume. A pure format seam of the file-formats slice, below both the importer (parse) and the anonymizer (redact). No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/anonymizer/har-anonymizer-core"
+    "directory": "slices/file-formats/http-archive"
   },
   "files": [
     "dist"
@@ -30,21 +30,20 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "ajv": "catalog:",
-    "anonymizer-fundamentals": "workspace:*",
+    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "har-schema": "catalog:",
-    "http-archive": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"
   },
   "peerDependencies": {
-    "anonymizer-fundamentals": "workspace:*",
+    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
-    "http-archive": "workspace:*",
-    "kitchen-sink": "workspace:*",
+    "http-extraction-fundamentals": "workspace:*",
     "web-trace-core": "workspace:*"
   }
 }

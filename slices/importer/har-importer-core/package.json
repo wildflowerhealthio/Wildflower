@@ -2,7 +2,7 @@
   "name": "har-importer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The HAR binding of the importer slice: the concrete FileImporterDescriptor for format 'har' — the HAR 1.2 format and HttpArchive projection (`/har`), the har-archive DocumentReference codec (`/archive`), the FHIR R4 response-kind pool, HAR settings, and the FHIR persist sink. The shape-preserving anonymizer lives in har-anonymizer-core (slices/anonymizer). No DOM, no fs, no React.",
+  "description": "The HAR binding of the importer slice: the concrete FileImporterDescriptor for format 'har' — decoding through the `http-archive` package's HttpArchive projection, the har-archive DocumentReference codec (`/archive`), the FHIR R4 response-kind pool, HAR settings, and the FHIR persist sink. The HAR format itself lives in `http-archive` (slices/file-formats); the shape-preserving anonymizer in har-anonymizer-core (slices/anonymizer). No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -17,10 +17,6 @@
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
-    },
-    "./har": {
-      "source": "./src/har/index.ts",
-      "default": "./dist/har/index.js"
     },
     "./archive": {
       "source": "./src/archive/index.ts",
@@ -38,13 +34,11 @@
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "ajv": "catalog:",
-    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-source": "workspace:*",
-    "har-schema": "catalog:",
+    "http-archive": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
@@ -55,10 +49,10 @@
     "web-trace-core": "workspace:*"
   },
   "peerDependencies": {
-    "browser-sniffer-core": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-source": "workspace:*",
+    "http-archive": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "rexall-be-well-source": "workspace:*",

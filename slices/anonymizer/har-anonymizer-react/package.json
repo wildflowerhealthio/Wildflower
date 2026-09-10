@@ -2,7 +2,7 @@
   "name": "har-anonymizer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The HAR anonymizer UI: the AnonymizePanel a host mounts over a parsed HTTP Archive to review the pseudonymizer's decisions and download an anonymized `.har`. Reads through `har-anonymizer-core`'s redactor and `har-importer-core`'s HAR emitter; the manifest, the per-path preview, the settings and the save-to-disk. Presentation and interaction only.",
+  "description": "The HAR anonymizer UI: the AnonymizePanel a host mounts over a parsed HTTP Archive to review the pseudonymizer's decisions and download an anonymized `.har`. Reads through `har-anonymizer-core`'s redactor and `http-archive`'s HAR emitter; the manifest, the per-path preview, the settings and the save-to-disk. Presentation and interaction only.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -35,7 +35,7 @@
     "effect": "catalog:",
     "fast-check": "catalog:",
     "har-anonymizer-core": "workspace:*",
-    "har-importer-core": "workspace:*",
+    "http-archive": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
@@ -48,7 +48,7 @@
   "peerDependencies": {
     "effect": "catalog:",
     "har-anonymizer-core": "workspace:*",
-    "har-importer-core": "workspace:*",
+    "http-archive": "workspace:*",
     "react": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*"

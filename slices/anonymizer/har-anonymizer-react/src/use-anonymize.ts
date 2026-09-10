@@ -1,6 +1,6 @@
 import { Cause, Effect, Exit, Option } from 'effect'
 import { DEFAULT_ENUM_THRESHOLD, mintExportSalt, type PathOverride } from 'har-anonymizer-core'
-import { emitHarFromLog, type HttpArchive } from 'har-importer-core/har'
+import { emitHarFromLog, type HttpArchive } from 'http-archive'
 import { useCallback, useEffect, useState } from 'react'
 import { usePreviousDistinctValue } from 'react-kitchen-sink'
 

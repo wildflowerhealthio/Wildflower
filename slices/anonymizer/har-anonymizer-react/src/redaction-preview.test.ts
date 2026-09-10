@@ -1,5 +1,5 @@
 import { DateTime, Effect } from 'effect'
-import type { HttpArchive } from 'har-importer-core/har'
+import type { HttpArchive } from 'http-archive'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {

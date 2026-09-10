@@ -1,6 +1,6 @@
 import { Effect, Schema } from 'effect'
 
-import { emitHar, HarFromJson } from 'har-importer-core/har'
+import { emitHar, HarFromJson } from 'http-archive'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 /** A HAR shaped like a real capture — what matters is only that it parses. */

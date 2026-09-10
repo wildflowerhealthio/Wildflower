@@ -31,10 +31,10 @@ No DOM, no `fs`, no React.
 
 ## Layering
 
-Depends on `har-importer-core/har` (the `HttpArchive` projection — the HAR
-_format_ stays owned by the importer slice), `web-trace-core` (`TraceExchange`),
-`kitchen-sink/schema` (`JsonValue`), and `effect`. Never imports a `*-react`
-package, the shell, or anything that writes.
+Depends on `http-archive` (the `HttpArchive` projection — the HAR _format_ is
+owned by the `file-formats` slice), `web-trace-core` (`TraceExchange`),
+`kitchen-sink/schema` (`JsonValue`), and `effect`. Never imports
+`har-importer-core`, a `*-react` package, the shell, or anything that writes.
 
 ## Guardrails
 
@@ -55,5 +55,5 @@ package, the shell, or anything that writes.
 - [slices/anonymizer AGENTS.md](../AGENTS.md) — the slice's package roles.
 - [har-anonymizer-react AGENTS.md](../har-anonymizer-react/AGENTS.md) — the
   panel that drives this engine.
-- [har-importer-core AGENTS.md](../../importer/har-importer-core/AGENTS.md) —
-  the owner of the `/har` seam this package reads.
+- [http-archive AGENTS.md](../../file-formats/http-archive/AGENTS.md) — the
+  owner of the `HttpArchive` seam this package reads.

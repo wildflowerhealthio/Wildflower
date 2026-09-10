@@ -50,11 +50,11 @@ mounts `AnonymizePanel` directly inside its recordings surface.
 ## Layering
 
 - **Fundamentals and cores are pure** — no DOM, no platform imports.
-- **Accepted external seams**: `har-anonymizer-core` imports
-  `har-importer-core/har` (the `HttpArchive` projection) and `web-trace-core`
-  (`TraceExchange`) — the HAR _format_ stays owned by the importer slice; this
-  slice owns only the redaction of it. Nothing here imports `importer-react`
-  or `slices/collector`.
+- **Accepted external seams**: `har-anonymizer-core` imports `http-archive`
+  (the `HttpArchive` projection, in `slices/file-formats`) and `web-trace-core`
+  (`TraceExchange`) — the HAR _format_ is owned by the `file-formats` slice;
+  this slice owns only the redaction of it. Nothing here imports
+  `har-importer-core`, `importer-react`, or `slices/collector`.
 - **The registry is closed and compile-time.** `anonymizer-react`'s registry is
   a literal `as const`; a format missing a part fails to compile.
 - **Nothing here writes.** No package in this slice may depend on a FHIR write
@@ -65,5 +65,7 @@ mounts `AnonymizePanel` directly inside its recordings surface.
 - [Anonymization Explanation](./docs/Anonymization%20Explanation.md) — the
   pseudonymizer's design and limits. Read before changing redaction behavior.
 - [slices/importer/AGENTS.md](../importer/AGENTS.md) — the sibling slice whose
-  shape this one mirrors, and the owner of the HAR format seam.
+  shape this one mirrors.
+- [slices/file-formats/AGENTS.md](../file-formats/AGENTS.md) — the slice below
+  both, which owns the HAR format seam (`http-archive`) this slice redacts.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.

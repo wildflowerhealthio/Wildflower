@@ -9,13 +9,12 @@ descriptor's `persist`.
 
 ## Shape
 
-- `src/har/` — **the HAR 1.2 format**, as one schema read in both directions.
-  Moved from `web-trace-core/har` (M1 of #578): `har.ts` is the format
-  (`Har`, `HarFromJson`); `emit.ts` builds an archive from `TraceExchange`es
-  (which still live in `web-trace-core` until the epic dissolves that slice);
-  `http-archive.ts` is the projection an importer and a replay consume, as the
-  `HttpArchive` namespace (`Entry`, `Log`, `LogFromHarJson`). Exported as the
-  `/har` subpath. See its `har/index.ts`.
+- **The HAR 1.2 format itself now lives in the `http-archive` package**
+  (`slices/file-formats/http-archive`): `Har`/`HarFromJson`, `emitHar`, and the
+  `HttpArchive` projection (`Entry`, `Log`, `LogFromHarJson`). It was the `/har`
+  subpath of this package until it was hoisted into the `file-formats` slice so
+  the anonymizer could consume it without reaching into the importer. This
+  binding consumes it from `decode-har.ts`.
 - `src/archive/` — **the FHIR encoding of an uploaded `.har` file** as a
   `DocumentReference`. Moved from `web-trace-core/codec/har-archive-codec.ts`.
   A whole archive lives as one attachment under the `har-archive` category,
@@ -28,7 +27,7 @@ descriptor's `persist`.
 FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   `HarSettings`.
 - `src/decode-har.ts` — **`decodeHar`** (the read half's only step) and
-  `toInput`. `HttpArchive.LogFromHarJson` (`web-trace-core/har`) decodes the
+  `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the
   archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated
   field-for-field as an `Extraction.Input` via `toInput`. Restated explicitly,
   not passed through, so a drift between `HttpArchive.Entry` and
@@ -70,13 +69,13 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
 
 ## Layering
 
-Depends on `importer-fundamentals` (the contract), `http-extraction-fundamentals`
+Depends on `http-archive` (the HAR format + `HttpArchive` projection it decodes
+through), `importer-fundamentals` (the contract), `http-extraction-fundamentals`
 (`Extraction.Input`), `fhir-r4-source` (the pre-adopted pool), `web-trace-core`
-(`TraceExchange` for `emitHar` — transitional until the slice dissolves —
-`sha256Base64` from `capture`, and the trace-side codec constants the archive
-codec still shares), `browser-sniffer-core` (`HeadersWire` for the archive
-projection), `fhir-r4` (resources + `persistResources`), and `effect`. Never
-imports `importer-react`, `har-importer-react`, or `slices/collector`.
+(`sha256Base64` from `capture`, and the trace-side codec constants the archive
+codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
+(resources + `persistResources`), and `effect`. Never imports `importer-react`,
+`har-importer-react`, or `slices/collector`.
 
 ## Guardrails
 
@@ -100,7 +99,9 @@ imports `importer-react`, `har-importer-react`, or `slices/collector`.
   over this descriptor.
 - [fhir-r4-source AGENTS.md](../../http-extraction/fhir-r4-source/AGENTS.md) — the
   `fhirR4Source` descriptor whose pre-adopted kinds the pool flattens.
-- [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the HAR
-  codec and `withMetaSource`.
+- [http-archive AGENTS.md](../../file-formats/http-archive/AGENTS.md) — the HAR
+  format + `HttpArchive` projection this binding decodes through.
+- [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) —
+  `withMetaSource` and the trace-side codec constants the archive codec shares.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.
