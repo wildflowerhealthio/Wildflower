@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "atool": "xcrun altool --upload-app --type ios --file \"src-tauri/gen/apple/build/arm64/Wildflower.ipa\" --apiKey 5BCV34AABD --apiIssuer 779a0265-ae31-49aa-937d-9a7e5b0d640f",
+    "atool": "xcrun altool --upload-app --type ios --file \"src-tauri/gen/apple/build/arm64/Wildflower.ipa\" --apiKey \"$APP_STORE_CONNECT_KEY_ID\" --apiIssuer \"$APP_STORE_CONNECT_ISSUER_ID\"",
     "build": "tsc && vp build",
     "build:ios:prod": "tauri ios build --export-method app-store-connect && vp run atool",
     "dev": "vp dev",

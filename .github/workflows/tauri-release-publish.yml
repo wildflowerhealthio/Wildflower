@@ -6,7 +6,8 @@ name: Tauri Release — Publish
 # a `v<version>` tag on the merged commit, then fans out to macOS (universal),
 # Windows and Linux runners. `tauri-apps/tauri-action` uploads platform bundles
 # to a GitHub Release created as a draft prerelease — publish it manually once
-# the assets look right.
+# the assets look right. An iOS build runs in parallel, signing the IPA with
+# an Apple Distribution certificate and uploading it to TestFlight via `altool`.
 #
 # Also exposes `workflow_dispatch` for two manual cases:
 #   - Re-trigger a merge that never ran (e.g. a runner outage ate the original
@@ -18,7 +19,8 @@ name: Tauri Release — Publish
 #     checks out that tag as-is, never re-tags, and re-uploads the bundles to
 #     the tag's existing draft release (tauri-action replaces same-named
 #     assets). `platforms` narrows the fan-out so a single failed runner can
-#     be rebuilt without repeating the ones that already succeeded.
+#     be rebuilt without repeating the ones that already succeeded. `ios`
+#     rebuilds and re-uploads to TestFlight only.
 
 on:
   pull_request:
@@ -38,7 +40,7 @@ on:
         required: false
         default: all
         type: choice
-        options: [all, macos, windows, linux]
+        options: [all, macos, windows, linux, ios]
 
 # One publish at a time. Never cancel a build midway: partial artifacts on a
 # draft release are worse than waiting for the previous run to finish.
@@ -232,7 +234,7 @@ jobs:
                   rustflags: "-D warnings" }
               ] | map(select($platforms == "all" or .key == $platforms))
             }' > /tmp/matrix.json
-          if [[ "$(jq '.include | length' /tmp/matrix.json)" == 0 ]]; then
+          if [[ "$platforms" != "ios" && "$(jq '.include | length' /tmp/matrix.json)" == 0 ]]; then
             echo "::error::platforms='$platforms' selected no build."
             exit 1
           fi
@@ -241,6 +243,9 @@ jobs:
   build:
     name: Build ${{ matrix.name }}
     needs: prepare
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platforms != 'ios'
     strategy:
       # One platform failing shouldn't kill the others' draft-release uploads.
       fail-fast: false
@@ -342,3 +347,98 @@ jobs:
           releaseDraft: true
           prerelease: true
           args: ${{ matrix.args }}
+
+  build-ios:
+    name: Build iOS + TestFlight
+    needs: prepare
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      inputs.platforms == 'all' ||
+      inputs.platforms == 'ios'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+
+      - name: Install Apple certificate and provisioning profile
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+        run: |
+          set -euo pipefail
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/ios-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$IOS_CERTIFICATE" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "$IOS_CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          PP_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          echo "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$PP_PATH"
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          PP_UUID="$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< \
+            "$(security cms -D -i "$PP_PATH")")"
+          cp "$PP_PATH" \
+            ~/Library/MobileDevice/Provisioning\ Profiles/"$PP_UUID.mobileprovision"
+
+      - name: Set up App Store Connect API key
+        env:
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode \
+            > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          target: aarch64-apple-ios
+          rustflags: '-D warnings'
+          cache-shared-key: tauri-release-ios
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.19.0
+        with:
+          cache: true
+
+      - name: Install workspace dependencies
+        run: vp install
+
+      - name: Build workspace (vp run pack)
+        run: vp run pack
+
+      - name: Build iOS app
+        working-directory: apps/wildflower-tauri
+        run: vp run tauri -- ios build --export-method app-store-connect
+
+      - name: Upload to TestFlight
+        env:
+          APP_STORE_CONNECT_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          xcrun altool --upload-app --type ios \
+            --file apps/wildflower-tauri/src-tauri/gen/apple/build/arm64/Wildflower.ipa \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/ios-signing.keychain-db"
+          if [[ -f "$KEYCHAIN_PATH" ]]; then
+            security delete-keychain "$KEYCHAIN_PATH"
+          fi

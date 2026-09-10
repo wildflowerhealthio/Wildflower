@@ -2,8 +2,9 @@ name: Tauri Release — Prepare
 
 # Manually-dispatched. Enter a semver version (no leading `v`); the workflow
 # cuts a `release/v<version>` branch off the dispatched ref, bumps
-# `apps/wildflower-tauri/src-tauri/tauri.conf.json` and its `Cargo.toml`
-# (plus `Cargo.lock`) and rewrites `apps/marketing-website/public/versions.json`,
+# `apps/wildflower-tauri/src-tauri/tauri.conf.json`, its `Cargo.toml`
+# (plus `Cargo.lock`), the iOS `Info.plist`, and rewrites
+# `apps/marketing-website/public/versions.json`,
 # then opens a PR back to the dispatched branch. A human reviews and merges
 # the PR the same way as any other change — no direct push to a protected
 # branch. Tagging and the platform builds happen in Tauri Release — Publish,
@@ -106,6 +107,14 @@ jobs:
           # updated in place so the release-branch commit stays
           # lockfile-consistent.
           cargo set-version --package wildflower-tauri "$version"
+
+      - name: Bump iOS Info.plist version
+        run: |
+          set -euo pipefail
+          version='${{ steps.vars.outputs.version }}'
+          plist='apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist'
+          sed -i '/<key>CFBundleShortVersionString<\/key>/{n;s/<string>[^<]*<\/string>/<string>'"$version"'<\/string>/;}' "$plist"
+          sed -i '/<key>CFBundleVersion<\/key>/{n;s/<string>[^<]*<\/string>/<string>'"$version"'<\/string>/;}' "$plist"
 
       - name: Write marketing versions.json
         # Marketing site's `public/` is served at the site root, so this lands
@@ -223,6 +232,7 @@ jobs:
             apps/wildflower-tauri/src-tauri/tauri.conf.json \
             apps/wildflower-tauri/src-tauri/Cargo.toml \
             Cargo.lock \
+            apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist \
             apps/marketing-website/public/versions.json \
             apps/wildflower-tauri/CHANGELOG.md
           if git diff --cached --quiet; then
@@ -249,15 +259,17 @@ jobs:
             printf 'Files updated:\n'
             printf -- '- `apps/wildflower-tauri/src-tauri/tauri.conf.json`\n'
             printf -- '- `apps/wildflower-tauri/src-tauri/Cargo.toml` (+ `Cargo.lock`)\n'
+            printf -- '- `apps/wildflower-tauri/src-tauri/gen/apple/wildflower-tauri_iOS/Info.plist`\n'
             printf -- '- `apps/marketing-website/public/versions.json`\n'
             printf -- '- `apps/wildflower-tauri/CHANGELOG.md` (prepended with the section below)\n\n'
             printf '## Changes since previous release\n\n'
             cat /tmp/release-commits.md
             printf '\n---\n\n'
             printf 'Merging this PR triggers **Tauri Release — Publish**, which tags '
-            printf '`%s` on `%s` and fans out to the macOS / Windows / Linux build ' "$tag" "$base"
-            printf 'runners. The GitHub Release is created as a draft prerelease — '
-            printf 'publish it manually once the assets look right.\n'
+            printf '`%s` on `%s` and fans out to macOS / Windows / Linux build ' "$tag" "$base"
+            printf 'runners plus an iOS build that uploads to TestFlight. The GitHub '
+            printf 'Release is created as a draft prerelease — publish it manually '
+            printf 'once the assets look right.\n'
           } > "$body"
           gh pr create \
             --base "$base" \
