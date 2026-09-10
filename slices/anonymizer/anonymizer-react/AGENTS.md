@@ -14,8 +14,9 @@ Panel)`. The pairing is a closure, not a lookup — `bind` takes a descriptor
   `decodeToPanel` runs the decode and hands the value straight to the panel,
   so `T` never escapes and the shell routes heterogeneous formats without a
   cast. Registry order is identification priority: crisp magic-byte tests
-  (a future PDF's `%PDF-`) go ahead of looser syntactic ones (HAR's JSON
-  sniff). The HAR entry imports `harDescriptor` from `har-anonymizer-core`.
+  (PDF's `%PDF-`) go ahead of looser syntactic ones (HAR's JSON
+  sniff). The PDF entry imports `pdfDescriptor` from `pdf-anonymizer-react`;
+  the HAR entry imports `harDescriptor` from `har-anonymizer-core`.
 - `src/local-file-picker.tsx` — **`LocalFilePicker`**, the format-blind
   drop-zone-as-button and its hidden single-file input. Reads bytes, validates
   nothing; which format claims them is the screen's routing decision.
@@ -41,9 +42,11 @@ dependency.
 ## Layering
 
 The slice's shell. Depends on `anonymizer-fundamentals` (the contract and
-routing helpers), `har-anonymizer-core` (the HAR descriptor), `har-anonymizer-react`
-(the HAR panel), `effect`, `react`, `react-tundraish`. Never imports
-`importer-react`, `web-trace-react`, or a FHIR client.
+routing helpers), `har-anonymizer-core` (the HAR descriptor),
+`har-anonymizer-react` (the HAR panel), `pdf-anonymizer-core` (the PDF
+schema), `pdf-anonymizer-react` (the PDF descriptor and panel), `effect`,
+`react`, `react-tundraish`. Never imports `importer-react`,
+`web-trace-react`, or a FHIR client.
 
 ## Traps
 
@@ -75,5 +78,7 @@ returns to the sources.
   the contract and routing helpers.
 - [har-anonymizer-react AGENTS.md](../har-anonymizer-react/AGENTS.md) — the
   HAR panel this shell mounts.
+- [pdf-anonymizer-react AGENTS.md](../pdf-anonymizer-react/AGENTS.md) — the
+  PDF panel this shell mounts.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.
