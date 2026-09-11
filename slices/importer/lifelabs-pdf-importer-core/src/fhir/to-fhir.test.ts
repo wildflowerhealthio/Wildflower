@@ -13,6 +13,7 @@ import {
   reportOriginalId,
   toFhirResources,
 } from './to-fhir.ts'
+import { UCUM_SYSTEM } from './units.ts'
 
 const TIME_ZONE = 'America/Toronto'
 
@@ -296,16 +297,22 @@ describe('toFhirResources', () => {
     )
   })
 
-  it('builds a numeric Observation: quantity with unit, interpretation from the flag, bounded reference range', () => {
+  it('builds a numeric Observation: quantity with unit and UCUM coding, interpretation from the flag, bounded reference range that carries the same coding', () => {
     const [hemoglobin] = ofType(synthesize([sample]), 'Observation')
 
     expect(hemoglobin?.code.text).toBe('Hemoglobin')
     expect(hemoglobin?.category[0]?.text).toBe('Hematology')
-    expect(hemoglobin?.valueQuantity).toMatchObject({ value: 118, unit: 'g/L', comparator: null })
+    expect(hemoglobin?.valueQuantity).toMatchObject({
+      value: 118,
+      unit: 'g/L',
+      system: UCUM_SYSTEM,
+      code: 'g/L',
+      comparator: null,
+    })
     expect(hemoglobin?.interpretation[0]?.coding[0]).toMatchObject({ code: 'L', display: 'Low' })
     expect(hemoglobin?.referenceRange[0]).toMatchObject({
-      low: { value: 120, unit: 'g/L' },
-      high: { value: 160, unit: 'g/L' },
+      low: { value: 120, unit: 'g/L', system: UCUM_SYSTEM, code: 'g/L' },
+      high: { value: 160, unit: 'g/L', system: UCUM_SYSTEM, code: 'g/L' },
       text: '120- 160',
     })
     expect(hemoglobin?.performer[0]?.display).toContain('#5687')
@@ -315,9 +322,58 @@ describe('toFhirResources', () => {
   it('carries a censored result as a comparator, and a group name into the category text', () => {
     const [, granulocytes] = ofType(synthesize([sample]), 'Observation')
 
-    expect(granulocytes?.valueQuantity).toMatchObject({ value: 0.1, comparator: '<' })
+    // `x E9/L` is a mapped display, so the quantity picks up the UCUM code.
+    expect(granulocytes?.valueQuantity).toMatchObject({
+      value: 0.1,
+      unit: 'x E9/L',
+      system: UCUM_SYSTEM,
+      code: '10*9/L',
+      comparator: '<',
+    })
     expect(granulocytes?.category[0]?.text).toBe('Hematology · Differential')
-    expect(granulocytes?.referenceRange[0]).toMatchObject({ low: null, high: { value: 0.1 } })
+    expect(granulocytes?.referenceRange[0]).toMatchObject({
+      low: null,
+      high: { value: 0.1, unit: 'x E9/L', system: UCUM_SYSTEM, code: '10*9/L' },
+    })
+  })
+
+  it('carries an unmapped display unit as `unit` alone — never guesses a UCUM code', () => {
+    const unmapped: Report.Type = {
+      ...sample,
+      sections: [
+        {
+          name: 'Hematology',
+          comments: [],
+          groups: [
+            {
+              name: '',
+              rows: [
+                {
+                  name: 'Custom test',
+                  flag: '',
+                  result: '42',
+                  referenceRange: '10- 50',
+                  unit: 'made-up unit',
+                  labLicence: '#5687',
+                  comments: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const [observation] = ofType(synthesize([unmapped]), 'Observation')
+    expect(observation?.valueQuantity).toMatchObject({
+      value: 42,
+      unit: 'made-up unit',
+      system: null,
+      code: null,
+    })
+    expect(observation?.referenceRange[0]).toMatchObject({
+      low: { value: 10, unit: 'made-up unit', system: null, code: null },
+      high: { value: 50, unit: 'made-up unit', system: null, code: null },
+    })
   })
 
   it('builds a text Observation: valueString, no range, the comments as one note', () => {

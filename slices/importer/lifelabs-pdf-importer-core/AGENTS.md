@@ -58,7 +58,10 @@ seam in the repo; the anonymizer's PDF descriptor calls the same function.
   `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
   Supporting modules: `dates.ts` (printed timestamps to FHIR `date` /
   `dateTime`), `reference-range.ts` (printed reference range to bounds),
-  `result-value.ts` (printed result to quantity or text).
+  `result-value.ts` (printed result to quantity or text), `units.ts` (the
+  LifeLabs display-unit → UCUM mapping `quantityWire` stamps as
+  `Quantity.system` / `Quantity.code` beside the printed spelling; a spelling
+  not in the table is carried as `unit` alone rather than guessing a code).
 - `src/source-system.ts` — **`LIFELABS_SYSTEM`** and
   **`LifeLabsIdentifierSystem`**: the source-system URI and the identifier
   systems the synthesis writes beside the report's own numbers. A leaf module
