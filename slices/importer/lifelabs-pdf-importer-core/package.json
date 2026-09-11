@@ -40,6 +40,7 @@
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "positioned-text": "workspace:*",
+    "positioned-text-web": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"
@@ -50,6 +51,7 @@
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "positioned-text": "workspace:*",
+    "positioned-text-web": "workspace:*",
     "web-trace-core": "workspace:*"
   }
 }

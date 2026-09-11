@@ -6,6 +6,7 @@ import { type Extraction, SourceDescriptor } from 'http-extraction-fundamentals'
 import type { FileImporterDescriptor, LabeledResource } from 'importer-fundamentals'
 
 import { decodeHar } from './decode-har.ts'
+import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
 import * as HarSelection from './har-selection.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
@@ -46,9 +47,10 @@ const harImporterDescriptor: FileImporterDescriptor<
     description: 'Import FHIR records from a captured browsing session.',
   },
   accept: ['.har', 'application/json'],
+  detect: detectHar,
   defaultSettings: defaultHarSettings,
-  decode: (fileText, settings) =>
-    Effect.map(decodeHar(fileText, settings), (responses) => ({
+  decode: (fileBytes, settings) =>
+    Effect.map(decodeHar(fileBytes, settings), (responses) => ({
       responses,
       harSelection: HarSelection.initial(pool),
     })),

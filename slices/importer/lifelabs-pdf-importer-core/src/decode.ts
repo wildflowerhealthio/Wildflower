@@ -2,14 +2,13 @@ import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { LabeledResource } from 'importer-fundamentals'
-import { Document } from 'positioned-text'
+import type { Document } from 'positioned-text'
+import { extractPositionedText } from 'positioned-text-web'
 
 import * as Report from './entities/report.ts'
 import { toFhirResources } from './fhir/to-fhir.ts'
 import type { LifeLabsPdfSettings } from './settings.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
-
-const decodeDocument = Schema.decodeUnknown(Document.FromJson)
 
 const adopt = adoptResource({ system: LIFELABS_SYSTEM })
 
@@ -31,15 +30,26 @@ const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.Pars
  * Wrap the report-parse's `UnrecognizedLifeLabsDocument` as a `ParseError` so
  * `decodeLifeLabsPdf` keeps a single, format-shaped error channel — the
  * descriptor contract's `ParseError`. `Forbidden` is the right issue kind: the
- * text decoded successfully as a positioned-text document, but the transform to
- * a LifeLabs report refused it.
+ * PDF's text extracted successfully, but the transform to a LifeLabs report
+ * refused it.
  */
-const asParseError = (
-  fileText: string,
-  e: Report.UnrecognizedLifeLabsDocument
-): ParseResult.ParseError =>
+const unrecognizedAsParseError = (e: Report.UnrecognizedLifeLabsDocument): ParseResult.ParseError =>
   new ParseResult.ParseError({
-    issue: new ParseResult.Forbidden(Document.FromJson.ast, fileText, e.message),
+    issue: new ParseResult.Forbidden(Schema.Unknown.ast, undefined, e.message),
+  })
+
+/**
+ * A pdfjs extraction failure — the bytes were not a PDF the extractor could
+ * open — surfaces as a `ParseError` too, so the descriptor's decode has one
+ * failure channel.
+ */
+const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
+  new ParseResult.ParseError({
+    issue: new ParseResult.Forbidden(
+      Schema.Unknown.ast,
+      undefined,
+      cause instanceof Error ? cause.message : 'PDF extraction failed'
+    ),
   })
 
 /**
@@ -62,28 +72,61 @@ const labelAdopted = (resource: FhirResource): LabeledResource<FhirResource> => 
 }
 
 /**
- * Decode a positioned-text JSON file into adopted, labeled FHIR resources —
- * the full pipeline from document text to the review's initial state.
+ * Decode a positioned-text document into adopted, labeled FHIR resources — the
+ * pure "document → resources" leg the outer decode wraps.
  *
- * @param fileText - The text of a `wildflower-positioned-text` JSON file (what
- *   the PDF anonymizer downloads for a LifeLabs report)
+ * @param document - The positioned-text document {@link extractPositionedText}
+ *   produced from the PDF's bytes
  * @param settings - The import's settings (time zone for date interpretation)
  * @returns The adopted FHIR resources as `LabeledResource`s; fails only with a
- *   `ParseError` when the text is not a positioned-text document or not a
- *   recognized LifeLabs report; requires nothing
+ *   `ParseError` when the document is not a recognized LifeLabs report;
+ *   requires nothing
+ *
+ * @remarks
+ * Exported so property tests can drive it directly, feeding `layoutDocument`'s
+ * printed inverse instead of round-tripping through the pdfjs extraction seam.
+ * `decodeLifeLabsPdf` is `decodeLifeLabsPdfDocument ∘ extractPositionedText`.
  */
-const decodeLifeLabsPdf = (
-  fileText: string,
+const decodeLifeLabsPdfDocument = (
+  document: Document.Type,
   settings: LifeLabsPdfSettings
 ): Effect.Effect<readonly LabeledResource<FhirResource>[], ParseResult.ParseError> =>
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
-    const document = yield* decodeDocument(fileText)
     const reports = yield* Report.tryFromDocument(document).pipe(
-      Effect.mapError((e) => asParseError(fileText, e))
+      Effect.mapError(unrecognizedAsParseError)
     )
     const resources = yield* toFhirResources(reports, { timeZone })
     return resources.map(labelAdopted)
   })
 
-export { decodeLifeLabsPdf }
+/**
+ * Decode a LifeLabs report PDF's raw bytes into adopted, labeled FHIR
+ * resources — the descriptor's `decode`.
+ *
+ * @param pdfBytes - The raw bytes of a LifeLabs "Reports" PDF, exactly as the
+ *   picker read them from disk
+ * @param settings - The import's settings (time zone for date interpretation)
+ * @returns The adopted FHIR resources as `LabeledResource`s; fails only with a
+ *   `ParseError` when the bytes are not a PDF the extractor can open or the
+ *   extracted text is not a recognized LifeLabs report; requires nothing
+ *
+ * @remarks
+ * The extraction seam is `positioned-text-web`'s `extractPositionedText`, the
+ * same one the PDF anonymizer uses to turn a PDF into a positioned-text
+ * document — so the importer and the anonymizer read the identical byte
+ * layout, and any dialect-level improvement here is picked up by the
+ * anonymizer's preview too. Nothing here reads text off disk: the LifeLabs
+ * report PDF the user picks is the format's own input, not the anonymizer's
+ * JSON download.
+ */
+const decodeLifeLabsPdf = (
+  pdfBytes: Uint8Array,
+  settings: LifeLabsPdfSettings
+): Effect.Effect<readonly LabeledResource<FhirResource>[], ParseResult.ParseError> =>
+  Effect.tryPromise({
+    try: () => extractPositionedText(pdfBytes),
+    catch: extractionAsParseError,
+  }).pipe(Effect.flatMap((document) => decodeLifeLabsPdfDocument(document, settings)))
+
+export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument }

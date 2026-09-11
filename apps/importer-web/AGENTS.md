@@ -10,8 +10,9 @@ local development. It pairs
 (`react-tundraish`'s `SegmentedToggle`) — the app itself holds no importing or
 anonymizing logic, only the tabstrip, the wiring a SMART app needs, and the
 one adapter the anonymizer's `serverSource` slot asks of a host (it passes
-`importer-react`'s `ServerHarArchiveList` through, mapping a `PickedHar` to
-the shell's `PickedFile`). The unselected screen is unmounted, not hidden.
+`importer-react`'s `ServerHarArchiveList` through — both slices' `PickedFile`
+carry `{ fileName, bytes }`, so the adapter is the identity). The unselected
+screen is unmounted, not hidden.
 
 `apps/web-trace` is the template for this shape (two HTML entries, a relative
 `base`, a build straight into the vendored `self-hosted-apps` tree, a memory

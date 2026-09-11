@@ -85,9 +85,10 @@ interface BoundFormat<K extends FormatKind> {
   readonly format: K
   readonly display: { readonly title: string; readonly description: string }
   readonly accept: readonly string[]
+  readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: FormatVariant[K]['settings']
   readonly decode: (
-    fileText: string,
+    fileBytes: Uint8Array,
     settings: FormatVariant[K]['settings']
   ) => Effect.Effect<FormatVariant[K]['review'], ParseResult.ParseError>
   readonly resolve: (
@@ -142,6 +143,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     format: 'har',
     display: harImporterDescriptor.display,
     accept: harImporterDescriptor.accept,
+    detect: harImporterDescriptor.detect,
     defaultSettings: harImporterDescriptor.defaultSettings,
     decode: harImporterDescriptor.decode,
     resolve: harImporterDescriptor.resolve,
@@ -153,6 +155,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     format: 'lifelabs-pdf',
     display: lifeLabsPdfImporterDescriptor.display,
     accept: lifeLabsPdfImporterDescriptor.accept,
+    detect: lifeLabsPdfImporterDescriptor.detect,
     defaultSettings: lifeLabsPdfImporterDescriptor.defaultSettings,
     decode: lifeLabsPdfImporterDescriptor.decode,
     resolve: lifeLabsPdfImporterDescriptor.resolve,

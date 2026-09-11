@@ -107,7 +107,7 @@ describe('ImporterScreen', () => {
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act — pick a recognized HAR through the OS picker
-    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
 
     // Assert — the preview is up, and NOT ONE write went out to reach it
     await waitFor(() => {
@@ -134,7 +134,7 @@ describe('ImporterScreen', () => {
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act — pick locally, then confirm
-    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
@@ -196,7 +196,7 @@ describe('ImporterScreen', () => {
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act
-    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
@@ -224,7 +224,7 @@ describe('ImporterScreen', () => {
     const { container } = render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act — pick locally, then confirm
-    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
@@ -247,7 +247,7 @@ describe('ImporterScreen', () => {
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act — choose two recognized HARs in one dialog, preview them together
-    await userEvent.upload(screen.getByLabelText('HAR file'), [
+    await userEvent.upload(screen.getByLabelText('Import file'), [
       harFile('session-a.har'),
       harFile('session-b.har'),
     ])
@@ -284,7 +284,7 @@ describe('ImporterScreen', () => {
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act — pick locally so the preview parses to 1 Patient + 2 Observations
-    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
@@ -313,7 +313,7 @@ describe('ImporterScreen', () => {
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act — pick locally so the preview parses to 1 Patient + 2 Observations
-    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
@@ -362,7 +362,7 @@ describe('ImporterScreen', () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
-    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
@@ -372,7 +372,7 @@ describe('ImporterScreen', () => {
 
     // Assert — back at the source picker, and nothing was written
     await waitFor(() => {
-      expect(screen.getByRole('region', { name: 'HAR source' })).toBeDefined()
+      expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
   })

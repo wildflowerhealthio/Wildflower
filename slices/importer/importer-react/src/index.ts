@@ -3,14 +3,15 @@
  * flow, from picking a file to reading the results.
  *
  * @remarks
- * {@link ImporterScreen} is the surface a host app mounts — the slice owns every
- * level. Three inputs converge on one {@link PickedHar} — a file dropped on the
- * zone, a file chosen through the OS picker, and a HAR archive already uploaded to
- * the device's own FHIR server; the read half (the format's `decode`, via
- * {@link useImportRun}) folds it into a {@link PreviewPanel} preview writing
- * nothing; and only the explicit confirm ({@link useConfirmImport}) uploads the
- * archive when needed and persists the resources, each stamped with the archive
- * it came from. Presentation and interaction only: the parsers, the review model,
+ * {@link ImporterScreen} is the surface a host app mounts — the slice owns
+ * every level. Three inputs converge on one {@link PickedFile} — a file
+ * dropped on the zone, a file chosen through the OS picker, and a HAR
+ * archive already uploaded to the device's own FHIR server; the read half
+ * (each file's format-specific `decode`, via {@link useImportRun}) folds
+ * every pick into a {@link PreviewPanel} preview writing nothing; and only
+ * the explicit confirm ({@link useConfirmImport}) uploads the archive when
+ * needed and persists the resources, each stamped with the archive it came
+ * from. Presentation and interaction only: the parsers, the review model,
  * and the persist pipeline all live below this package.
  *
  * @packageDocumentation
@@ -21,13 +22,15 @@ export {
   PREVIEW_HEADING,
   PreviewPanel,
   type PreviewPanelProps,
-  type ReviewBodyProps,
+  type ReviewBodyRegistry,
   UNREADABLE_FILE_MESSAGE,
+  UNRECOGNIZED_FILE_MESSAGE,
 } from './preview/preview-panel.tsx'
 export {
   type ConfirmImport,
   type ConfirmState,
   type LabeledFor,
+  type PersistRegistry,
   type SelectionFor,
   useConfirmImport,
 } from './preview/use-confirm-import.ts'
@@ -39,9 +42,10 @@ export {
   formatRegistry,
 } from './registry.tsx'
 export {
-  type ImportRun,
-  type ImportRunState,
   type FileReadOutcome,
+  type ImportRun,
+  type ImportRunRegistry,
+  type ImportRunState,
   useImportRun,
 } from './preview/use-import-run.ts'
 export {
@@ -75,14 +79,14 @@ export {
 export { HAR_ARCHIVES_QUERY_KEY, IMPORTER_QUERY_KEY } from './queries/keys.ts'
 export { nextPageToken, type PageLink } from './queries/page-token.ts'
 export { type UploadHarInput, useUploadHar } from './mutations/upload-har.ts'
-export { acceptLocalHar, type ReadableFile, REJECTION_MESSAGE } from './sources/local-har.ts'
+export { acceptLocalFile, type ReadableFile, REJECTION_MESSAGE } from './sources/local-file.ts'
 export {
   harArchiveReference,
   LOCAL_SOURCE,
-  type PickedHar,
-  type PickedHarSource,
+  type PickedFile,
+  type PickedFileSource,
   serverSource,
-} from './sources/picked-har.ts'
+} from './sources/picked-file.ts'
 export {
   SERVER_READ_ERROR,
   ServerHarArchiveList,

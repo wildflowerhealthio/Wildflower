@@ -5,6 +5,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import type { FileImporterDescriptor, LabeledResource } from 'importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
+import { detectLifeLabsPdf } from './detect.ts'
 import { persistFhir } from './persist-fhir.ts'
 import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
 
@@ -34,14 +35,14 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
   format: 'lifelabs-pdf',
   display: {
     title: 'LifeLabs report',
-    description:
-      'Import lab results from a LifeLabs report PDF (as the positioned text the anonymizer extracts).',
+    description: 'Import lab results from a LifeLabs report PDF.',
   },
-  // The picker hint lists both the source `.pdf` and the anonymizer's
-  // `.json` output — `decode` reads the JSON, but the OS dialog surfaces the
-  // `.pdf` a user has in hand so they can see it and route it through the
-  // anonymizer first.
-  accept: ['.pdf', 'application/pdf', '.json', 'application/json'],
+  // The picker hint is the report PDF itself — this binding opens the PDF's
+  // bytes end-to-end (`positioned-text-web`'s extraction ↦ dialect ↦ FHIR).
+  // The anonymizer's positioned-text JSON is a separate artifact the
+  // anonymizer downloads for redaction; this importer does not accept it.
+  accept: ['.pdf', 'application/pdf'],
+  detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
   decode: decodeLifeLabsPdf,
   resolve: (review) => Effect.succeed(review),

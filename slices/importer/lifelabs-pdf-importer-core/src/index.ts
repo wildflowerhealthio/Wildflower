@@ -11,7 +11,8 @@
  *
  * @packageDocumentation
  */
-export { decodeLifeLabsPdf } from './decode.ts'
+export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument } from './decode.ts'
+export { detectLifeLabsPdf } from './detect.ts'
 export { lifeLabsPdfImporterDescriptor, type LifeLabsPdfReviewState } from './descriptor.ts'
 export * as Report from './entities/report.ts'
 export type { Type as ReportGroup } from './entities/group.ts'

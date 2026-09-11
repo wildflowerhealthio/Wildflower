@@ -46,16 +46,21 @@ both an importer binding and (if the same source is ever reachable over HTTP) an
 
 ## 1. The decode
 
-`FileImporterDescriptor.decode(fileText, settings)` reads a picked file's text
-into the structural `Extraction.Input` responses the recognizer reads. Its only
-failure is a malformed file (a `ParseError`); it requires **no services** and
-writes nothing, so a preview can never reach the write client by construction —
-the whole opt-in seam rests on this.
+`FileImporterDescriptor.decode(fileBytes, settings)` reads a picked file's raw
+bytes into the format's opaque review state — the picker stays format-blind,
+so every format decodes bytes (HAR reads UTF-8 JSON, a LifeLabs PDF opens
+binary through `positioned-text-web`). Its only failure is a malformed file
+(a `ParseError`); it requires **no services** and writes nothing, so a preview
+can never reach the write client by construction — the whole opt-in seam
+rests on this.
 
-For HAR, `decodeHar` runs `web-trace-core`'s `HttpArchive.LogFromHarJson` and
-restates each `HttpArchive.Entry` as an `Extraction.Input` field-for-field
-(restated, not passed through, so a drift is a compile error at the one seam the
-two packages meet).
+For HAR, `decodeHar` runs `new TextDecoder().decode(bytes)` and then
+`http-archive`'s `HttpArchive.LogFromHarJson`, restating each
+`HttpArchive.Entry` as an `Extraction.Input` field-for-field (restated, not
+passed through, so a drift is a compile error at the one seam the two
+packages meet). For LifeLabs PDF, `decodeLifeLabsPdf` calls
+`positioned-text-web`'s `extractPositionedText` on the raw bytes and hands
+the extracted `Document.Type` to the dialect and the FHIR synthesis.
 
 ## 2. The pool
 
@@ -113,6 +118,7 @@ const myImporterDescriptor: FileImporterDescriptor<
   format: 'my-format',
   display: { title: '…', description: '…' },
   accept: ['.myfmt', 'application/my-format'],
+  detect: (bytes, fileName) => fileName.toLowerCase().endsWith('.myfmt') || myMagic(bytes),
   defaultSettings: defaultMySettings,
   pool: myPool,
   decode: decodeMyFormat,
@@ -121,10 +127,15 @@ const myImporterDescriptor: FileImporterDescriptor<
 ```
 
 `accept` is the descriptor's picker hint — the tokens the OS dialog's `accept`
-attribute lists so a user sees this format's files in one composed picker. It is
-never the format decision (drop and "All files" bypass it, and the actual
-routing is `decode`'s own rejection); the shell composes the union of every
-registered format's tokens through `importer-fundamentals`' `acceptFor`.
+attribute lists so a user sees this format's files in one composed picker. It
+is never the format decision (drop and "All files" bypass it); the shell
+composes the union of every registered format's tokens through
+`importer-fundamentals`' `acceptFor`.
+
+`detect` is the actual routing decision at the picker: the shell tries every
+registered descriptor's `detect` on the picked bytes, and the first match
+wins (`identify`). Keep it syntactic — an extension or a magic-bytes sniff —
+so the full parse still runs only in `decode`.
 
 ## 7. Register in the shell
 

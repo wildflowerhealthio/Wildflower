@@ -35,13 +35,13 @@ const tabOptions: readonly { value: Tab; label: string }[] = [
 /**
  * The anonymizer shell is server-blind; this app has an authed FHIR context,
  * so it passes the importer slice's uploaded-archives list through the
- * `serverSource` slot, adapting a `PickedHar` to the shell's `PickedFile`.
+ * `serverSource` slot. The importer's `PickedFile` and the anonymizer's
+ * `PickedFile` both carry `{ fileName, bytes }`, so the adapter is now the
+ * identity — nothing to re-encode.
  */
 const ServerSource = ({ onPick }: { readonly onPick: (file: PickedFile) => void }): JSX.Element => (
   <ServerHarArchiveList
-    onPick={(picked) =>
-      onPick({ fileName: picked.fileName, bytes: new TextEncoder().encode(picked.text) })
-    }
+    onPick={(picked) => onPick({ fileName: picked.fileName, bytes: picked.bytes })}
   />
 )
 

@@ -2934,6 +2934,9 @@ importers:
       positioned-text:
         specifier: workspace:*
         version: link:../../file-formats/positioned-text
+      positioned-text-web:
+        specifier: workspace:*
+        version: link:../../file-formats/positioned-text-web
       typescript:
         specifier: 5.9.3
         version: 5.9.3

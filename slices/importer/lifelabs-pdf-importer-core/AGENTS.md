@@ -1,13 +1,19 @@
 # AGENTS.md — slices/importer/lifelabs-pdf-importer-core
 
-The **LifeLabs PDF binding** of the importer slice (core layer): the
-positioned-text dialect that reads a LifeLabs patient "Reports" PDF's
-pages — extracted to the `wildflower-positioned-text` document the PDF
-anonymizer (`slices/anonymizer/pdf-anonymizer-*`) produces and downloads —
-into typed `LifeLabsReport` records, the FHIR R4 synthesis that turns those
-records into Patient, Practitioner, DiagnosticReport and Observation resources,
-the `FileImporterDescriptor` binding, and the decode/persist integration.
-No DOM, no `fs`, no React.
+The **LifeLabs PDF binding** of the importer slice (core layer): the descriptor
+opens a picked LifeLabs "Reports" PDF's raw bytes end-to-end. It threads the
+same `positioned-text-web` extraction seam the PDF anonymizer uses, runs the
+positioned-text dialect over the extracted `wildflower-positioned-text`
+document to typed `LifeLabsReport` records, and synthesizes Patient,
+Practitioner, DiagnosticReport, and Observation FHIR resources — the
+importer's opt-in write happens through the descriptor's `persist` afterwards.
+The picker's user hands in the PDF itself, not the anonymizer's JSON output:
+this binding does its own extraction.
+
+The core stays pure in the layering sense — no DOM, no `fs`, no React — but
+depends on `positioned-text-web`, whose `extractPositionedText` reaches
+`pdfjs-dist` behind a dynamic import. That is the one shared PDF extraction
+seam in the repo; the anonymizer's PDF descriptor calls the same function.
 
 ## Shape
 
@@ -55,16 +61,25 @@ No DOM, no `fs`, no React.
   systems the synthesis writes beside the report's own numbers. A leaf module
   so the descriptor, the response kind, and the FHIR synthesis import it
   without a cycle.
-- `src/decode.ts` — **`decodeLifeLabsPdf`**, the descriptor's `decode`: a
-  positioned-text JSON file in, adopted `LabeledResource<FhirResource>[]` out —
-  the full pipeline from document text through the dialect, the FHIR synthesis,
-  and adoption.
+- `src/decode.ts` — **`decodeLifeLabsPdf`** (the descriptor's `decode`) and
+  **`decodeLifeLabsPdfDocument`** (the pure "document ↦ resources" leg tests
+  drive directly). `decodeLifeLabsPdf(pdfBytes, settings)` calls
+  `positioned-text-web`'s `extractPositionedText` on the raw bytes and hands
+  the extracted `Document.Type` to `decodeLifeLabsPdfDocument`, which runs the
+  dialect, the FHIR synthesis, and adoption. Both extraction failure and an
+  unrecognized LifeLabs document surface as `ParseError` — the descriptor
+  contract's one error channel.
+- `src/detect.ts` — **`detectLifeLabsPdf`**, the descriptor's `detect`:
+  `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
+  call every registered format's `detect` on every drop; the real recognition
+  is `decode`.
 - `src/persist-fhir.ts` — **`persistFhir`**, the descriptor's `persist`: stamps
   every resource with `meta.source` then delegates to `fhir-r4`'s
   `persistResources`.
 - `src/descriptor.ts` — **`lifeLabsPdfImporterDescriptor`**, the concrete
-  `FileImporterDescriptor` for format `'lifelabs-pdf'`. `resolve` is the
-  identity — what `decode` returns is what the user reviews.
+  `FileImporterDescriptor` for format `'lifelabs-pdf'`. `accept` is only the
+  PDF tokens (`.pdf`, `application/pdf`); `resolve` is the identity — what
+  `decode` returns is what the user reviews.
 - `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone }`, default
   `America/Toronto`: the report prints local clock times with no zone, and
   FHIR's `dateTime`-with-time / `instant` need one. The zone is passed to
@@ -78,14 +93,15 @@ No DOM, no `fs`, no React.
 ## Layering
 
 Depends on `positioned-text` (the positioned-text schema — the neutral seam
-between the anonymizer's extraction and this dialect), `fhir-r4` (resource
-schemas, `persistResources`, `joinIdComponents`, `adoptResource`),
-`importer-fundamentals` (`FileImporterDescriptor`, `LabeledResource`),
-`web-trace-core` (`withMetaSource`), `kitchen-sink` (`fnv1a64` for
-deterministic id hashing, `numRunsFor` in tests), and `effect` (peer;
-`Report.tryFromDocument` returns an `Effect`). `fast-check` is a test-only
-`devDependency`, reached only from the `*-arbitrary.ts` modules, and must
-stay out of the production bundle. Never imports `har-importer-core`,
+between extraction and the dialect), `positioned-text-web`
+(`extractPositionedText`, the shared pdfjs seam the anonymizer also drives),
+`fhir-r4` (resource schemas, `persistResources`, `joinIdComponents`,
+`adoptResource`), `importer-fundamentals` (`FileImporterDescriptor`,
+`LabeledResource`), `web-trace-core` (`withMetaSource`), `kitchen-sink`
+(`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`
+(peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a
+test-only `devDependency`, reached only from the `*-arbitrary.ts` modules,
+and must stay out of the production bundle. Never imports `har-importer-core`,
 `pdf-anonymizer-core`, `http-extraction-fundamentals`, a `*-importer-react`,
 or `slices/collector`.
 

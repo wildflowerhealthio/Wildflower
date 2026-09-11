@@ -33,8 +33,8 @@ interface UploadHarInput {
    * @remarks
    * Bytes rather than text: the archive codec stores the file verbatim so a
    * truncated or mis-encoded upload is preserved rather than mangled and the
-   * attachment `hash` means something. A caller holding a `PickedHar`'s text
-   * encodes it (`new TextEncoder().encode(text)`) at the call site.
+   * attachment `hash` means something. Every `PickedFile` already carries
+   * its bytes, so a caller hands them through unchanged.
    */
   readonly bytes: Uint8Array
 }

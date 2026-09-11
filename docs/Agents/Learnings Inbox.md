@@ -6,6 +6,10 @@ _Last triaged 2026-07-04 — durable lessons were promoted to `Strategies.md`, t
 
 <!-- Append new entries below this line -->
 
+## Importer descriptor is bytes-in, not text-in, and identifies formats through `detect`
+
+`FileImporterDescriptor.decode(fileBytes: Uint8Array, settings)` — HAR reads UTF-8 JSON, LifeLabs PDF reads binary through `positioned-text-web`'s `extractPositionedText` (the same seam the PDF anonymizer uses). The picker gates on each registered descriptor's `detect(bytes, fileName)` before decode ever runs, so a batch can span formats; every downstream step (`resolve`, `ReviewBody`, `persist`) dispatches on the pick's `format` tag. If a `BoundFormat<K>['decode']` union balks at a widened callable, `Match.type<FormatKind>().pipe(Match.when('har', …), Match.when('lifelabs-pdf', …), Match.exhaustive)` narrows to each K inside its branch, no `as` cast needed.
+
 ## Scalar's browser defaults reach third parties unless turned off
 
 `@scalar/api-reference` in its `web` layout (what `createApiReference` gives you) defaults `proxyUrl` to `https://proxy.scalar.com` — every "send" against a non-local target is routed through Scalar's hosted proxy, bearer token included — and `withDefaultFonts: true` pulls webfonts from `fonts.scalar.com`. Vendoring the npm package instead of the CDN script does not change either. `apps/wildflower-server-docs` sets `proxyUrl: ''` and `withDefaultFonts: false` and asserts both in `configuration.test.ts`; copy that if another page ever embeds Scalar.

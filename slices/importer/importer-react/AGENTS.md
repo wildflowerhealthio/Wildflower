@@ -81,18 +81,20 @@ slice needs.
   (any failure ⇒ partial); `import-results.tsx` renders a per-file breakdown —
   writes with their provenance link, failed uploads with their cause, and skipped
   files — under one aggregate tally.
-- **`src/sources/`** — the picker. `picked-har.ts` is the vocabulary
-  (`PickedHar`, the `local` / `server` `PickedHarSource`, and `harArchiveReference`
-  — the one spelling of a `DocumentReference/<id>` reference); `local-har.ts` is
-  the pure "read a local file and validate it as a HAR" gate;
+- **`src/sources/`** — the picker. `picked-file.ts` is the vocabulary
+  (`PickedFile` — `{ fileName, bytes, source }` — the `local` / `server`
+  `PickedFileSource`, and `harArchiveReference` — the one spelling of a
+  `DocumentReference/<id>` reference); `local-file.ts` is the format-blind
+  "read a local file's bytes and identify it against the registered
+  descriptors' `detect`" gate — no descriptor's `decode` runs at pick time;
   `server-har-archive-list.tsx` is the uploaded-archives pick source (rows,
-  paging, the fetch-and-decode of a selected row), exported for the anonymizer
-  shell's `serverSource` slot as much as used here; `source-picker.tsx`
-  composes the drop-and-pick zone, the file input it opens, and that server
-  list. Two modes: `'batch'` (default; the importer flow) accepts several HARs
-  in one pick; `'single'` trims the accepted list to the first file and drops
-  the OS dialog's `multiple` attribute — the server list is single-select in
-  both.
+  paging, the fetch-and-decode of a selected row), exported for the
+  anonymizer shell's `serverSource` slot as much as used here;
+  `source-picker.tsx` composes the drop-and-pick zone, the file input it
+  opens, and that server list. Two modes: `'batch'` (default; the importer
+  flow) accepts several files in one pick; `'single'` trims the accepted
+  list to the first file and drops the OS dialog's `multiple` attribute —
+  the server list is single-select in both.
 - **`src/queries/`** — the reads. `har-archives.ts` is the paged
   `DocumentReference` search pinned to the HAR-archive category, plus
   `fetchHarArchive` — the one-archive fetch-and-decode a row selection runs;
@@ -157,16 +159,17 @@ slice needs.
   writes), and `rowsOf` still guards each entry with `isHarArchive`. The
   web-trace viewer lists traces; this lists archives; `isWebTrace` and
   `isHarArchive` never both hold. The list must never surface a trace.
-- **The picker validates each local file through the real HAR parser, not a
-  second check.** `acceptLocalHar` runs `web-trace-core`'s
-  `HttpArchive.LogFromHarJson`, so a
-  file the picker accepts is a file a `decode` can parse, and a file that is not
-  JSON and a file that is JSON-but-not-HAR both fail _at the picker_, next to the
-  control the user just used. In a batch the accepted files are handed on together
-  and the rejected ones are named in the notice; a **lone** rejected file with
-  nothing accepted keeps its full parser detail instead (`describeRejection`) —
-  the case a user is debugging one file. The parse result is discarded — this is a
-  gate, and `decode` parses the text again when it runs.
+- **The picker identifies each local file syntactically through the
+  registered descriptors' `detect`, not a full parse.** `acceptLocalFile`
+  runs `importer-fundamentals`' `identify` over the registered descriptors,
+  so every format's `detect` runs on every drop — cheap on purpose — and a
+  file no descriptor claims is rejected _at the picker_, next to the control
+  the user just used. In a batch the accepted files are handed on together
+  and the rejected ones are named in the notice; a **lone** rejected file
+  with nothing accepted keeps its own rejection message. The full parse
+  still runs in that format's `decode` one step downstream, so a file the
+  picker accepted whose bytes are malformed lands in the preview as its own
+  `unreadable` row rather than a batch-wide error.
 - **`page-token.ts` is a copy of `web-trace-react`'s, deliberately.** The two
   slices page the same FHIR server the same way, but the importer must not depend
   on the web-trace viewer to do it — an adapter reaching into another adapter is
@@ -178,28 +181,31 @@ slice needs.
   upload instant, and `fetchHarArchive` reads the one archive the user selects.
   Listing the bytes to render a title would pull every archive onto the device to
   draw a list.
-- **A row selection decodes through the archive codec, then `TextDecoder`s the
-  bytes.** `fetchHarArchive` runs `harArchiveFromDocumentReference` (a resource
-  that is not an archive fails as a `ParseError`, never yields nonsense), then
-  `new TextDecoder().decode(archive.bytes)` — a HAR is UTF-8 JSON. The `server`
-  source carries `DocumentReference/<id>` so a later step links provenance to the
-  stored archive rather than re-uploading the same bytes.
+- **A row selection decodes through the archive codec and keeps the bytes
+  verbatim.** `fetchHarArchive` runs `harArchiveFromDocumentReference` (a
+  resource that is not an archive fails as a `ParseError`, never yields
+  nonsense) and returns the archive's `bytes` on the `PickedFile` — every
+  downstream step reads bytes (`decode`, and the confirm's upload if the
+  pick were local). The `server` source carries `DocumentReference/<id>` so
+  a later step links provenance to the stored archive rather than
+  re-uploading.
 - **Every upload is a fresh document.** `useUploadHar` mints a uuid with
   `crypto.randomUUID()` per call and uses it as both the resource id and the
   `Update` path, so the PUT preserves the client-minted id and two uploads of the
   same bytes are two documents — never one silently overwriting the other. That
   is the archive codec's contract; dedupe stays _detectable_ through the
   attachment's `hash` and `size` without being forced.
-- **Upload takes bytes, not text.** The archive codec stores the file verbatim so
-  a truncated or mis-encoded upload is preserved and the attachment `hash` means
-  something. `UploadHarInput.bytes` is `Uint8Array`; a caller holding a
-  `PickedHar`'s text encodes it (`new TextEncoder().encode(text)`) at the call
-  site.
+- **Upload takes bytes, not text.** The archive codec stores the file
+  verbatim so a truncated or mis-encoded upload is preserved and the
+  attachment `hash` means something. `UploadHarInput.bytes` is `Uint8Array`;
+  every `PickedFile` already carries its bytes, so the caller hands them
+  through unchanged.
 - **The drop zone is a button, so drop is an enhancement rather than the only
-  path.** The zone itself opens the file picker on click, so the whole surface is
-  keyboard-reachable and screen-reader named; the `<input type="file">` it opens
-  is visually hidden but kept a named, reachable input (`aria-label="HAR file"`),
-  not `display: none` — some upload implementations refuse an invisible input.
+  path.** The zone itself opens the file picker on click, so the whole
+  surface is keyboard-reachable and screen-reader named; the
+  `<input type="file">` it opens is visually hidden but kept a named,
+  reachable input (`aria-label="Import file"`), not `display: none` — some
+  upload implementations refuse an invisible input.
 - **The authed runner comes from router context, one way.** `useHarArchivesQuery`
   and the picker's row-select both read `useRunAuthed()`; the query also exposes
   `harArchivesInfiniteQueryOptions(runAuthed, options)` taking the runner as its

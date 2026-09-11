@@ -34,22 +34,25 @@ const toInput = (entry: HttpArchive.Entry): Extraction.Input => ({
   bodyAbsent: entry.bodyAbsent,
 })
 
+/** Single UTF-8 decoder, reused across pick decodes. */
+const utf8 = new TextDecoder()
+
 /**
- * Decode a `.har` file's text into the structural responses the recognizer
+ * Decode a `.har` file's bytes into the structural responses the recognizer
  * reads — the read half's only step, with nothing written.
  *
- * @param fileText - The text of a `.har` file
+ * @param fileBytes - The bytes of a `.har` file (UTF-8 JSON)
  * @param _settings - The HAR settings (none today; accepted so the signature
  *   matches `FileImporterDescriptor.decode`)
  * @returns The archive's entries as `Extraction.Input`s, failing only with a
- *   `ParseError` when the text is not a well-formed HTTP Archive; requires
+ *   `ParseError` when the bytes are not a well-formed HTTP Archive; requires
  *   nothing, so the write client is unreachable from a decode by construction
  */
 const decodeHar = (
-  fileText: string,
+  fileBytes: Uint8Array,
   _settings: HarSettings
 ): Effect.Effect<readonly Extraction.Input[], ParseResult.ParseError> =>
-  Schema.decodeUnknown(HttpArchive.LogFromHarJson)(fileText).pipe(
+  Schema.decodeUnknown(HttpArchive.LogFromHarJson)(utf8.decode(fileBytes)).pipe(
     Effect.map((log) => log.entries.map(toInput))
   )
 

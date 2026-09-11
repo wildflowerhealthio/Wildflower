@@ -1,74 +1,88 @@
 import { Array as Arr, Effect } from 'effect'
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 
-import { acceptLocalHar, type ReadableFile } from './local-har.ts'
-import type { PickedHar } from './picked-har.ts'
+import {
+  acceptLocalFile,
+  type IdentifiableDescriptor,
+  type ReadableFile,
+  type RejectedFile,
+} from './local-file.ts'
+import type { PickedFile } from './picked-file.ts'
 import { ServerHarArchiveList } from './server-har-archive-list.tsx'
 import styles from './source-picker.module.css'
 
 /**
- * The one control that turns any of three sources into a {@link PickedHar}: a
- * file dropped on the zone, a file chosen through the OS picker, or a HAR archive
- * already uploaded to the device's own FHIR server.
+ * The one control that turns any of three sources into a {@link PickedFile}: a
+ * file dropped on the zone, a file chosen through the OS picker, or a HAR
+ * archive already uploaded to the device's own FHIR server.
  *
  * @remarks
  * Drop is an enhancement, not the only path: the zone is itself a button that
- * opens the file picker, so the whole surface is reachable by keyboard and named
- * for a screen reader. A local file — dropped or chosen — is validated through
- * `web-trace-core`'s HAR parser at the picker, so a file that is not a HAR is
- * rejected *here*, next to the control the user just used, rather than surfacing
- * as a failure downstream. The server picks come from
- * {@link ServerHarArchiveList}, which fetches the chosen archive and decodes it
- * through the archive codec; the resulting pick carries the archive's own
- * reference so a later step links provenance without re-uploading the bytes.
+ * opens the file picker, so the whole surface is reachable by keyboard and
+ * named for a screen reader. A local file — dropped or chosen — is
+ * identified against the registered format descriptors' `detect` at the
+ * picker, so a file no format claims is rejected *here*, next to the control
+ * the user just used, rather than surfacing downstream. The server picks come
+ * from {@link ServerHarArchiveList}, which fetches the chosen archive and
+ * decodes it through the archive codec; the resulting pick carries the
+ * archive's own reference so a later step links provenance without
+ * re-uploading the bytes.
  *
- * Presentation and interaction only. Nothing here parses HAR or encodes an
- * archive — both live in `web-trace-core`, below this package.
+ * Presentation and interaction only. Nothing here parses HAR or opens a PDF —
+ * both are the responsibility of the format's `decode` one step downstream.
  *
  * @packageDocumentation
  */
 
 /**
- * How many HARs a caller consumes at once.
+ * How many files a caller consumes at once.
  *
  * @remarks
- * The picker offers the same three sources either way — dropped, chosen through
- * the OS picker, uploaded to the FHIR server — and clamps a local batch to the
- * mode. `'batch'` (the default) is the importer flow: several HARs previewed and
- * confirmed together. `'single'` is a one-at-a-time flow: a batch that fell out
- * of a multi-file drop is trimmed to the first-accepted file, and the OS dialog
- * only offers one file to begin with.
+ * The picker offers the same three sources either way — dropped, chosen
+ * through the OS picker, uploaded to the FHIR server — and clamps a local
+ * batch to the mode. `'batch'` (the default) is the importer flow: several
+ * files previewed and confirmed together. `'single'` is a one-at-a-time
+ * flow: a batch that fell out of a multi-file drop is trimmed to the
+ * first-accepted file, and the OS dialog only offers one file to begin with.
  */
 type SourcePickerMode = 'batch' | 'single'
 
 /** Props for {@link SourcePicker}. */
 interface SourcePickerProps {
   /**
-   * Called with the chosen HARs once a source resolves to at least one.
+   * The registered file-format descriptors, in registry priority order.
+   * Each dropped or chosen file is identified against them at the picker;
+   * the first descriptor whose `detect` claims the file wins. Only its
+   * `accept` and `detect` are read here — the picker never runs a
+   * descriptor's `decode`.
+   */
+  readonly descriptors: readonly IdentifiableDescriptor[]
+  /**
+   * Called with the chosen files once a source resolves to at least one.
    *
    * @remarks
    * Local picking is a batch in the default `'batch'` mode — the OS dialog
    * allows several files and a drop can carry many — so this takes a list,
-   * previewed and confirmed together. A server archive is picked one at a time
-   * and arrives as a single-element list. In `'single'` mode this always fires
-   * with exactly one file. Fires only when at least one file was accepted; a
-   * re-pick replaces the previous batch. The picker holds no selection of its
-   * own; the caller owns what happens next.
+   * previewed and confirmed together. A server archive is picked one at a
+   * time and arrives as a single-element list. In `'single'` mode this
+   * always fires with exactly one file. Fires only when at least one file
+   * was accepted; a re-pick replaces the previous batch. The picker holds
+   * no selection of its own; the caller owns what happens next.
    */
-  readonly onPick: (picks: readonly PickedHar[]) => void
+  readonly onPick: (picks: readonly PickedFile[]) => void
   /**
-   * Whether the caller consumes a batch of HARs or a single HAR at a time.
-   * Defaults to `'batch'`. See {@link SourcePickerMode}.
+   * Whether the caller consumes a batch of files or a single file at a
+   * time. Defaults to `'batch'`. See {@link SourcePickerMode}.
    */
   readonly mode?: SourcePickerMode
   /**
-   * The OS dialog's `accept` attribute — a comma-joined list of extensions and
-   * MIME types (`'.har,application/json'`). Composed by the shell from the
-   * registered format bindings' own `accept` tokens (see
-   * `importer-fundamentals`' `acceptFor`), so a new format that lands surfaces
-   * its extensions here without the picker learning about it. A hint only:
-   * drop and "All files" bypass it, and the actual decision is downstream
-   * `decode`.
+   * The OS dialog's `accept` attribute — a comma-joined list of extensions
+   * and MIME types (`'.har,application/json,.pdf,application/pdf'`).
+   * Composed by the shell from the registered format bindings' own `accept`
+   * tokens (see `importer-fundamentals`' `acceptFor`), so a new format that
+   * lands surfaces its extensions here without the picker learning about
+   * it. A hint only: drop and "All files" bypass it, and the actual
+   * decision is `detect`.
    */
   readonly accept: string
 }
@@ -80,26 +94,19 @@ interface SourcePickerProps {
  * @returns A one-line summary listing the rejected files
  *
  * @remarks
- * Names rather than parser detail: in a batch, *which* files were not HARs is the
- * actionable fact. A single rejected file with nothing accepted keeps its full
- * parser detail instead — that is the case a user is debugging one file.
+ * Names rather than parser detail: in a batch, *which* files were not
+ * recognized is the actionable fact.
  */
 const rejectedNotice = (names: readonly string[]): string =>
-  `${names.length} ${names.length === 1 ? 'file was not a valid HAR' : 'files were not valid HARs'}: ${names.join(', ')}`
-
-/** One rejected file, its name and the parser's reason. */
-interface RejectedFile {
-  readonly name: string
-  readonly message: string
-}
+  `${names.length} ${names.length === 1 ? 'file was not recognized' : 'files were not recognized'}: ${names.join(', ')}`
 
 /**
- * The picker error to show after a batch validates, or `null` for a clean batch.
+ * The picker error to show after a batch validates, or `null` for a clean
+ * batch.
  *
  * @remarks
- * A single rejected file with nothing accepted keeps its full parser detail —
- * the case a user is debugging one file; a mix reports the rejected names, since
- * _which_ files were not HARs is the actionable fact there.
+ * A single rejected file with nothing accepted keeps its rejection message —
+ * the case a user is debugging one file; a mix reports the rejected names.
  */
 const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): string | null => {
   if (rejected.length === 0) return null
@@ -108,28 +115,33 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
 }
 
 /**
- * The picker: a drop-and-pick zone, the file input it opens, a rejection notice,
- * and the server archive list.
+ * The picker: a drop-and-pick zone, the file input it opens, a rejection
+ * notice, and the server archive list.
  */
-const SourcePicker = ({ onPick, mode = 'batch', accept }: SourcePickerProps): JSX.Element => {
+const SourcePicker = ({
+  descriptors,
+  onPick,
+  mode = 'batch',
+  accept,
+}: SourcePickerProps): JSX.Element => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
 
-  // Validate every picked file through the HAR parser concurrently, then split
-  // the outcomes with `Array.separate`: accepted picks are handed on as a batch,
-  // rejected ones reported. A lone rejected file keeps its full parser detail
-  // (the case worth debugging); a mix reports names. In `single` mode the
-  // accepted list is clamped to the first file — a drop that carried several
-  // still reaches the caller as one, since the preview downstream is per
-  // archive.
+  // Identify every picked file against the registered descriptors' `detect`
+  // concurrently, then split the outcomes with `Array.separate`: accepted
+  // picks are handed on as a batch, rejected ones reported. A lone rejected
+  // file keeps its rejection message (the case worth debugging); a mix
+  // reports names. In `single` mode the accepted list is clamped to the
+  // first file — a drop that carried several still reaches the caller as one,
+  // since the preview downstream is per file.
   const acceptFiles = (files: readonly ReadableFile[]): Promise<void> =>
     Effect.runPromise(
       Effect.forEach(
         files,
         (file) =>
-          acceptLocalHar(file).pipe(
-            Effect.mapError((message) => ({ name: file.name, message })),
+          acceptLocalFile(descriptors, file).pipe(
+            Effect.mapError((message): RejectedFile => ({ name: file.name, message })),
             Effect.either
           ),
         { concurrency: 'unbounded' }
@@ -167,7 +179,7 @@ const SourcePicker = ({ onPick, mode = 'batch', accept }: SourcePickerProps): JS
   }
 
   return (
-    <section aria-label="HAR source" className={styles.picker}>
+    <section aria-label="File source" className={styles.picker}>
       <button
         type="button"
         className={dragActive ? `${styles.zone} ${styles.zoneActive}` : styles.zone}
@@ -176,15 +188,13 @@ const SourcePicker = ({ onPick, mode = 'batch', accept }: SourcePickerProps): JS
         onDragOver={onDragOver}
         onDragLeave={() => setDragActive(false)}
       >
-        {mode === 'single'
-          ? 'Choose a HAR file, or drop it here'
-          : 'Choose HAR files, or drop them here'}
+        {mode === 'single' ? 'Choose a file, or drop it here' : 'Choose files, or drop them here'}
       </button>
       <input
         ref={fileInputRef}
         type="file"
         accept={accept}
-        aria-label="HAR file"
+        aria-label="Import file"
         multiple={mode === 'batch'}
         className={styles.fileInput}
         onChange={onFileInputChange}

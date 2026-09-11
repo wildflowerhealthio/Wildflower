@@ -3,7 +3,7 @@ import { useRunAuthed } from 'fhir-r4-react'
 import { useState, type JSX } from 'react'
 
 import { fetchHarArchive, useHarArchivesQuery } from '../queries/har-archives.ts'
-import type { PickedHar } from './picked-har.ts'
+import type { PickedFile } from './picked-file.ts'
 import styles from './server-har-archive-list.module.css'
 
 /**
@@ -32,7 +32,7 @@ const SERVER_READ_ERROR = 'That archive could not be read from the server.'
 /** Props for {@link ServerHarArchiveList}. */
 interface ServerHarArchiveListProps {
   /** Called with the fetched archive once a selected row resolves. */
-  readonly onPick: (picked: PickedHar) => void
+  readonly onPick: (picked: PickedFile) => void
 }
 
 /** Props for {@link ArchiveListContent}. */

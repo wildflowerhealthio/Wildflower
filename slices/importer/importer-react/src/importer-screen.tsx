@@ -1,62 +1,63 @@
 import type { FhirResource } from 'fhir-r4/resources'
-import type { HarReviewState } from 'har-importer-core'
 import { acceptFor, Review } from 'importer-fundamentals'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
 import { emptyResolveCache, resolvedFor } from './preview/previews-for.ts'
 import { useConfirmImport } from './preview/use-confirm-import.ts'
-import { type FileReadOutcome, useImportRun } from './preview/use-import-run.ts'
-import { formatRegistry } from './registry.tsx'
+import { useImportRun } from './preview/use-import-run.ts'
+import { type FormatKind, type FormatVariant, formatRegistry } from './registry.tsx'
 import { ImportResults } from './results/import-results.tsx'
 import { SourcePicker } from './sources/source-picker.tsx'
 import styles from './importer-screen.module.css'
 
 /**
- * The whole importer flow, top to bottom: pick one or more files, review exactly
- * what they would write (per resource), confirm once to write the included
- * resources, and read the results.
+ * The whole importer flow, top to bottom: pick one or more files, review
+ * exactly what they would write (per resource), confirm once to write the
+ * included resources, and read the results.
  *
  * @remarks
  * The screen is the opt-in seam made visible: the read half
- * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing, resolves
- * the format's opaque review state into labeled resources so the reviewer sees
- * the actual resources, and only the explicit confirm reaches the write half
- * (`useConfirmImport` — upload-then-persist, per file, verbatim from the
- * preview, best-effort). A cancel or "import another archive" discards
- * everything with nothing further written.
+ * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing,
+ * resolves each file's opaque review state into labeled resources so the
+ * reviewer sees the actual resources, and only the explicit confirm reaches
+ * the write half (`useConfirmImport` — upload-then-persist, per file, verbatim
+ * from the preview, best-effort). A batch may span formats: the picker
+ * identifies each file against the registered descriptors, and every
+ * downstream step dispatches on the file's `format` tag.
  *
- * The slice owns every level of this flow rather than the host app: an app mounts
- * only this screen. Mount it inside the host's router and `QueryClientProvider` —
- * the authed runner and the FHIR client both come from router context via
- * `fhir-r4-react`.
+ * The slice owns every level of this flow rather than the host app: an app
+ * mounts only this screen. Mount it inside the host's router and
+ * `QueryClientProvider` — the authed runner and the FHIR client both come
+ * from router context via `fhir-r4-react`.
  *
  * @packageDocumentation
  */
 
 /** The message shown while a batch is being read into review states. */
-const READING_MESSAGE = 'Reading the archives…'
+const READING_MESSAGE = 'Reading the files…'
 
-/** The bound format the flow uses today. */
-const format = formatRegistry.har
+/** The bound descriptors, one per registered format, in registry order. */
+const registeredDescriptors = Object.values(formatRegistry)
 
 /**
- * The OS dialog's `accept` attribute — the union of every registered format's
- * `accept` tokens, so a user sees the extensions of every format the app
- * supports (`.har` plus `.pdf`/`.json` for LifeLabs today) in one dialog. The
- * hint is only that; a file whose format doesn't match the currently-driven
- * format falls through to `decode`'s own rejection.
+ * The OS dialog's `accept` attribute — the union of every registered
+ * format's `accept` tokens, so a user sees the extensions of every format
+ * the app supports in one dialog. The hint is only that; a file whose
+ * format doesn't match any descriptor falls through to the picker's own
+ * rejection via `detect`.
  */
-const PICKER_ACCEPT = acceptFor(Object.values(formatRegistry))
+const PICKER_ACCEPT = acceptFor(registeredDescriptors)
+
+/** The opaque review state carried per file, indexed by the file's format. */
+type AnyReview = FormatVariant[FormatKind]['review']
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
-  const importRun = useImportRun(format)
-  const confirm = useConfirmImport(format)
+  const importRun = useImportRun(formatRegistry)
+  const confirm = useConfirmImport(formatRegistry)
 
-  const [reviewOverrides, setReviewOverrides] = useState<ReadonlyMap<string, HarReviewState>>(
-    new Map()
-  )
+  const [reviewOverrides, setReviewOverrides] = useState<ReadonlyMap<string, AnyReview>>(new Map())
   const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection<FhirResource>>>(
     new Map()
   )
@@ -64,22 +65,21 @@ const ImporterScreen = (): JSX.Element => {
   const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
 
   const initialReviews = useMemo(() => {
-    if (!readFiles) return new Map<string, HarReviewState>()
-    return new Map(
-      readFiles
-        .filter(
-          (f): f is Extract<FileReadOutcome<HarReviewState>, { _tag: 'read' }> => f._tag === 'read'
-        )
-        .map((f) => [f.id, f.review] as const)
-    )
+    const map = new Map<string, AnyReview>()
+    if (readFiles !== undefined) {
+      for (const file of readFiles) {
+        if (file._tag === 'read') map.set(file.id, file.review)
+      }
+    }
+    return map
   }, [readFiles])
 
   const reviewFor = useCallback(
-    (fileId: string): HarReviewState => reviewOverrides.get(fileId) ?? initialReviews.get(fileId)!,
+    (fileId: string): AnyReview => reviewOverrides.get(fileId) ?? initialReviews.get(fileId)!,
     [reviewOverrides, initialReviews]
   )
 
-  const onReviewChange = useCallback((fileId: string, review: HarReviewState): void => {
+  const onReviewChange = useCallback((fileId: string, review: AnyReview): void => {
     setReviewOverrides((prev) => new Map(prev).set(fileId, review))
   }, [])
 
@@ -96,13 +96,25 @@ const ImporterScreen = (): JSX.Element => {
     []
   )
 
-  const [resolveCache] = useState(() => emptyResolveCache<HarReviewState>())
+  const [resolveCache] = useState(() => emptyResolveCache())
+  // The review the resolver reads is the override when the user edited one,
+  // otherwise the initial review from the decode. `filesWithReview` bakes
+  // that lookup in so `resolvedFor` reads a single review per file rather
+  // than being handed a reviewFor callback.
+  const filesWithReview = useMemo(() => {
+    if (readFiles === undefined) return undefined
+    return readFiles.map((file) => {
+      if (file._tag !== 'read') return file
+      return { ...file, review: reviewFor(file.id) }
+    })
+  }, [readFiles, reviewFor])
+
   const labeled = useMemo(
     () =>
-      readFiles === undefined
+      filesWithReview === undefined
         ? undefined
-        : resolvedFor(format.resolve, readFiles, reviewFor, resolveCache),
-    [readFiles, reviewFor, resolveCache]
+        : resolvedFor(formatRegistry, filesWithReview, resolveCache),
+    [filesWithReview, resolveCache]
   )
   const labeledFor = useCallback((fileId: string) => labeled?.get(fileId) ?? [], [labeled])
 
@@ -126,7 +138,13 @@ const ImporterScreen = (): JSX.Element => {
   const body = ((): JSX.Element => {
     const runState = importRun.state
     if (runState._tag === 'idle')
-      return <SourcePicker onPick={importRun.run} accept={PICKER_ACCEPT} />
+      return (
+        <SourcePicker
+          descriptors={registeredDescriptors}
+          onPick={importRun.run}
+          accept={PICKER_ACCEPT}
+        />
+      )
     if (runState._tag === 'reading') {
       return (
         <p role="status" className={styles.status}>
@@ -137,8 +155,7 @@ const ImporterScreen = (): JSX.Element => {
     return (
       <PreviewPanel
         files={runState.files}
-        ReviewBody={format.ReviewBody}
-        reviewFor={reviewFor}
+        reviewBodyRegistry={formatRegistry}
         labeledFor={labeledFor}
         selectionFor={selectionFor}
         onReviewChange={onReviewChange}

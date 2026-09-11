@@ -49,19 +49,33 @@ interface FileImporterDescriptor<TSettings, TReview, TParsed, R> {
   readonly display: { readonly title: string; readonly description: string }
   /**
    * Tokens for the picker's `accept` attribute (`'.har'`, `'application/json'`,
-   * `'.pdf'`). A hint to the OS dialog only; nothing here validates a file's
-   * format — `decode` is the decision.
+   * `'.pdf'`). A hint to the OS dialog only; the actual routing decision is
+   * {@link detect}, and the actual parse is {@link decode}.
    */
   readonly accept: readonly string[]
+  /**
+   * Cheap syntactic identification: whether these bytes plausibly hold this
+   * format, by file extension or by magic bytes. Not a parse — the picker
+   * tries every registered descriptor's `detect` on every drop, so a full
+   * parse here would run every format's parser on every pick. First
+   * descriptor whose `detect` claims a file wins; register the crispest
+   * (magic bytes) ahead of the loosest (extension sniff).
+   */
+  readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   /** A valid settings value to seed a fresh import's settings form. */
   readonly defaultSettings: TSettings
   /**
-   * Decode a picked file's text into the format's opaque review state. The
+   * Decode a picked file's bytes into the format's opaque review state. The
    * only failure is a malformed file (a `ParseError`); it requires no
    * services and writes nothing.
+   *
+   * @remarks
+   * Bytes rather than text so the seam stays format-blind: a HAR decodes
+   * UTF-8 JSON, a PDF decodes binary. A format that reads text decodes
+   * (`new TextDecoder().decode(bytes)`) at the top of its own `decode`.
    */
   readonly decode: (
-    fileText: string,
+    fileBytes: Uint8Array,
     settings: TSettings
   ) => Effect.Effect<TReview, ParseResult.ParseError>
   /**
@@ -95,5 +109,25 @@ const acceptFor = (
   descriptors: readonly Pick<FileImporterDescriptor<never, never, never, never>, 'accept'>[]
 ): string => [...new Set(descriptors.flatMap((descriptor) => descriptor.accept))].join(',')
 
-export { acceptFor }
+/**
+ * The first registered descriptor whose {@link FileImporterDescriptor.detect}
+ * claims the picked bytes, or `undefined` when none does.
+ *
+ * @param descriptors - The registry's descriptors, in registry order
+ * @param file - The picked file to identify, as name plus bytes
+ * @returns The claiming descriptor, or `undefined`
+ *
+ * @remarks
+ * First match wins, so registry order is priority order — put formats with
+ * crisp magic-byte tests (PDF's `%PDF-`) ahead of looser syntactic ones.
+ * Generic over anything descriptor-shaped rather than over
+ * {@link FileImporterDescriptor} itself so the shell can route bound
+ * (descriptor + adapters) records through it.
+ */
+const identify = <D extends Pick<FileImporterDescriptor<never, never, never, never>, 'detect'>>(
+  descriptors: readonly D[],
+  file: { readonly fileName: string; readonly bytes: Uint8Array }
+): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
+
+export { acceptFor, identify }
 export type { FileImporterDescriptor, LabeledResource }

@@ -17,7 +17,7 @@ import {
 } from 'har-importer-core/archive'
 import type { DocumentReferenceType } from 'web-trace-core/codec'
 
-import { type PickedHar, serverSource } from '../sources/picked-har.ts'
+import { type PickedFile, serverSource } from '../sources/picked-file.ts'
 import { HAR_ARCHIVES_QUERY_KEY } from './keys.ts'
 import { nextPageToken } from './page-token.ts'
 
@@ -184,21 +184,22 @@ const useHarArchivesQuery = (
   useInfiniteQuery(harArchivesInfiniteQueryOptions(useRunAuthed(), options))
 
 /**
- * Fetches one archive whole and reads it back as a {@link PickedHar}.
+ * Fetches one archive whole and reads it back as a {@link PickedFile}.
  *
  * @param runAuthed - The authed runner from router context
  * @param id - The archive `DocumentReference`'s logical id, from a row
- * @returns The archive's HAR text and a `server` source pointing back at it
+ * @returns The archive's HAR bytes and a `server` source pointing back at it
  *
  * @remarks
  * Runs the archive codec's `harArchiveFromDocumentReference`, so the bytes are
- * read the one way they are written and a resource that is not an archive fails
- * as a `ParseError` rather than yielding nonsense. The bytes are decoded to text
- * with `TextDecoder` — a HAR is UTF-8 JSON — and the `server` source carries the
- * archive's own reference so a later step links provenance to the stored archive
- * instead of uploading the same bytes again.
+ * read the one way they are written and a resource that is not an archive
+ * fails as a `ParseError` rather than yielding nonsense. The bytes are
+ * carried verbatim — every downstream step reads bytes (`decode`, and the
+ * confirm's upload if the pick were local) — and the `server` source
+ * carries the archive's own reference so a later step links provenance to
+ * the stored archive instead of uploading the same bytes again.
  */
-const fetchHarArchive = (runAuthed: RunAuthed, id: string): Promise<PickedHar> =>
+const fetchHarArchive = (runAuthed: RunAuthed, id: string): Promise<PickedFile> =>
   runAuthed(
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
@@ -206,7 +207,7 @@ const fetchHarArchive = (runAuthed: RunAuthed, id: string): Promise<PickedHar> =
       const archive = yield* harArchiveFromDocumentReference(resource)
       return {
         fileName: archive.fileName,
-        text: new TextDecoder().decode(archive.bytes),
+        bytes: archive.bytes,
         source: serverSource(id),
       }
     })

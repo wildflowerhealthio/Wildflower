@@ -56,8 +56,11 @@ const searchset = (...resources: readonly unknown[]): Record<string, unknown> =>
 
 const encodeHar = Schema.encode(HarFromJson)
 
+/** Encode text to UTF-8 bytes the way a file read would produce them. */
+const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text)
+
 /**
- * Serialize constructed exchanges into `.har` file text through `emitHar`.
+ * Serialize constructed exchanges into `.har` file bytes through `emitHar`.
  *
  * `emitHar` writes `request.method: 'UNKNOWN'` verbatim on every entry — the
  * capture side never observed a verb — but the FHIR pool requires `GET` to
@@ -65,19 +68,21 @@ const encodeHar = Schema.encode(HarFromJson)
  * extraction path they were written to exercise, mirroring what a real
  * capture that observed the method would carry through.
  */
-const harTextOf = (exchanges: readonly TraceExchange[]): string =>
-  Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' }))).replaceAll(
-    '"method":"UNKNOWN"',
-    '"method":"GET"'
+const harBytesOf = (exchanges: readonly TraceExchange[]): Uint8Array =>
+  bytesOf(
+    Effect.runSync(encodeHar(emitHar(exchanges, { sessionId: 'test-session' }))).replaceAll(
+      '"method":"UNKNOWN"',
+      '"method":"GET"'
+    )
   )
 
 /** The registered sources' kinds flattened — the flat pool recognition routes against. */
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
 /** The four-way extraction of running the FHIR pool over a decoded HAR. */
-const extract = (harText: string): ExtractionResult<FhirResource> =>
+const extract = (harBytes: Uint8Array): ExtractionResult<FhirResource> =>
   Effect.runSync(
-    decodeHar(harText, defaultHarSettings).pipe(
+    decodeHar(harBytes, defaultHarSettings).pipe(
       Effect.flatMap((inputs) => runExtraction(fhirPool, inputs))
     )
   )
@@ -96,7 +101,7 @@ describe('decodeHar + runExtraction', () => {
     it('should decode re-keyed resources from an emitHar archive', () => {
       const root = 'https://r4.example.org/baseR4'
       const extraction = extract(
-        harTextOf([
+        harBytesOf([
           traceExchange({
             requestId: 'req-0',
             url: `${root}/Patient/pat-7?_format=json`,
@@ -132,7 +137,7 @@ describe('decodeHar + runExtraction', () => {
       const rootA = 'https://a.example.org/baseR4'
       const rootB = 'https://b.example.org/fhir/R4'
       const extraction = extract(
-        harTextOf([
+        harBytesOf([
           traceExchange({
             requestId: 'req-0',
             url: `${rootA}/Patient/pat-7?_format=json`,
@@ -170,7 +175,7 @@ describe('decodeHar + runExtraction', () => {
 
     it('should decode re-keyed resources from a committed Chrome DevTools export', () => {
       const root = 'https://ehr.example.com/interconnect-fhir-oauth/api/FHIR/R4'
-      const extraction = extract(JSON.stringify(chromeHar))
+      const extraction = extract(bytesOf(JSON.stringify(chromeHar)))
 
       // fonts, analytics, and the app bundle are the browser noise around the
       // FHIR traffic — matched by no entity.
@@ -192,7 +197,7 @@ describe('decodeHar + runExtraction', () => {
     // exchange with an anonymized `.har` fixture — see #562.
     it('should decode re-keyed MedicationDispense resources from a portal capture', () => {
       const extraction = extract(
-        harTextOf([
+        harBytesOf([
           traceExchange({
             requestId: 'req-0',
             url: 'https://mypharmacy.shoppersdrugmart.ca/api/v1/prescription-history?customerId=acct-1',
@@ -238,7 +243,7 @@ describe('decodeHar + runExtraction', () => {
     // synthetic exchange with an anonymized `.har` fixture — see #562.
     it('should synthesize a re-keyed Patient from a carebook profile capture', () => {
       const extraction = extract(
-        harTextOf([
+        harBytesOf([
           traceExchange({
             requestId: 'req-0',
             url: 'https://rexall-prd-tunnel.letsbewell.ca/enduser/profile/v2/me',
@@ -274,7 +279,7 @@ describe('decodeHar + runExtraction', () => {
   describe('when no response kind recognizes the traffic', () => {
     it('should count every response as unmatched for a non-FHIR archive', () => {
       const extraction = extract(
-        harTextOf([
+        harBytesOf([
           traceExchange({
             url: 'https://portal.example.com/carebook/summary',
             body: storedJson({ page: 'summary' }),
@@ -295,7 +300,7 @@ describe('decodeHar + runExtraction', () => {
       const { session } = arbitraries(fc)
       fc.assert(
         fc.property(session, (exchanges) => {
-          const extraction = extract(harTextOf(exchanges))
+          const extraction = extract(harBytesOf(exchanges))
           expect(extraction.batches).toEqual([])
           expect(extraction.unmatched).toHaveLength(exchanges.length)
         }),
@@ -308,7 +313,7 @@ describe('decodeHar + runExtraction', () => {
     it('should count unmatched extra responses alongside a claimed FHIR resource', () => {
       const root = 'https://r4.example.org/baseR4'
       const extraction = extract(
-        harTextOf([
+        harBytesOf([
           traceExchange({
             requestId: 'req-0',
             url: `${root}/Patient/pat-7?_format=json`,
@@ -341,7 +346,7 @@ describe('decodeHar + runExtraction', () => {
         reason: 'Content type outside the allowlist',
       }
       const extraction = extract(
-        harTextOf([
+        harBytesOf([
           traceExchange({
             url: `${root}/Patient/pat-7?_format=json`,
             headers: [['content-type', 'application/fhir+json']],
@@ -356,8 +361,10 @@ describe('decodeHar + runExtraction', () => {
   })
 
   describe('failures', () => {
-    it('should fail with a ParseError for text that is not a well-formed HAR', () => {
-      const result = Effect.runSync(Effect.either(decodeHar('{ not a har }', defaultHarSettings)))
+    it('should fail with a ParseError for bytes that are not a well-formed HAR', () => {
+      const result = Effect.runSync(
+        Effect.either(decodeHar(bytesOf('{ not a har }'), defaultHarSettings))
+      )
       expect(result._tag).toBe('Left')
       if (result._tag === 'Left') {
         expect(result.left._tag).toBe('ParseError')
@@ -370,14 +377,14 @@ describe('decodeHar + runExtraction', () => {
     // Type-level: annotating the requirements channel as `never` fails to compile
     // if `decodeHar` ever reached a service (in particular the write client).
     const decode: (
-      fileText: string
-    ) => Effect.Effect<readonly Extraction.Input[], ParseResult.ParseError, never> = (fileText) =>
-      decodeHar(fileText, defaultHarSettings)
+      fileBytes: Uint8Array
+    ) => Effect.Effect<readonly Extraction.Input[], ParseResult.ParseError, never> = (fileBytes) =>
+      decodeHar(fileBytes, defaultHarSettings)
     // Runtime: run with NO layers provided at all — a missing requirement would
     // surface as a defect here.
     const inputs = await Effect.runPromise(
       decode(
-        harTextOf([
+        harBytesOf([
           traceExchange({
             url: `${root}/Patient/pat-7?_format=json`,
             headers: [['content-type', 'application/fhir+json']],

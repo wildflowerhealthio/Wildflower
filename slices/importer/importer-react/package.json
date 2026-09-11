@@ -2,7 +2,7 @@
   "name": "importer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser UI adapter for the importer slice: the source picker that hands the importer one HAR to replay. A file dropped or picked on device, or a previously uploaded HAR archive read back off the device's own FHIR server, all converge on one PickedHar. Presentation and interaction only — the HAR archive codec and the HAR parser both live in web-trace-core, and this package validates a local pick through the parser rather than reimplementing it.",
+  "description": "Browser UI adapter for the importer slice: the source picker that hands the importer one or more files to import. A file dropped or picked on device (HAR or LifeLabs PDF), or a previously uploaded HAR archive read back off the device's own FHIR server, all converge on one PickedFile carrying bytes. The picker identifies each file syntactically against the registered format descriptors; the full parse runs in that format's decode one step downstream. Presentation and interaction only.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

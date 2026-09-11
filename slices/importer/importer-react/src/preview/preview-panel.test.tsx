@@ -6,22 +6,26 @@ import type { LabeledResource } from 'importer-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { LOCAL_SOURCE, type PickedHar } from '../sources/picked-har.ts'
+import type { FormatKind } from '../registry.tsx'
+import { LOCAL_SOURCE, type PickedFile } from '../sources/picked-file.ts'
 import {
   NOTHING_TO_IMPORT_HEADING,
   PREVIEW_HEADING,
   PreviewPanel,
   type PreviewPanelProps,
+  type ReviewBodyRegistry,
   UNREADABLE_FILE_MESSAGE,
+  UNRECOGNIZED_FILE_MESSAGE,
 } from './preview-panel.tsx'
 import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
  * The preview panel renders every picked file's review under one confirm.
  * Driven directly — props in, DOM out — the point under test is that every
- * file renders distinctly (a default resource list, an unreadable notice),
- * that the confirm names the batch's included-resource total, and that a
- * null `ReviewBody` falls back to the default per-resource checkbox list.
+ * file renders distinctly (a default resource list, an unreadable notice, an
+ * unrecognized-file notice), that the confirm names the batch's
+ * included-resource total, and that a null `ReviewBody` falls back to the
+ * default per-resource checkbox list.
  */
 
 afterEach(cleanup)
@@ -52,10 +56,17 @@ describe('PreviewPanel', () => {
     expect(onConfirm).toHaveBeenCalledOnce()
   })
 
-  it('sums a mixed batch with an unreadable file, each file rendered under its name', () => {
-    const files: readonly FileReadOutcome<unknown>[] = [
+  it('sums a mixed batch with an unreadable and an unrecognized file, each file rendered under its name', () => {
+    const files: readonly FileReadOutcome[] = [
       readFile('a.har'),
-      { _tag: 'unreadable', id: 'u', picked: pickedHar('broken.har'), error: anyParseError() },
+      {
+        _tag: 'unreadable',
+        id: 'u',
+        picked: pickedFile('broken.har'),
+        format: 'har',
+        error: anyParseError(),
+      },
+      { _tag: 'unrecognized', id: 'x', picked: pickedFile('notes.txt') },
       readFile('c.har'),
     ]
     const labeled = {
@@ -65,11 +76,13 @@ describe('PreviewPanel', () => {
     render(<PreviewPanel {...panelProps(files, { labeled })} />)
 
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
-    expect(screen.getByText(/2 resources across 3 files/)).toBeDefined()
+    expect(screen.getByText(/2 resources across 4 files/)).toBeDefined()
     expect(screen.getByRole('region', { name: 'a.har' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'broken.har' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'notes.txt' })).toBeDefined()
     expect(screen.getByRole('region', { name: 'c.har' })).toBeDefined()
     expect(screen.getByText(UNREADABLE_FILE_MESSAGE)).toBeDefined()
+    expect(screen.getByText(UNRECOGNIZED_FILE_MESSAGE)).toBeDefined()
     expect(screen.getByRole('button', { name: 'Import 2 resources' })).toBeDefined()
   })
 
@@ -105,18 +118,20 @@ describe('PreviewPanel', () => {
 // ---------------------------------------------------------------------------
 
 /** A `local` pick with the given name. */
-const pickedHar = (fileName: string): PickedHar => ({
+const pickedFile = (fileName: string): PickedFile => ({
   fileName,
-  text: '{}',
+  bytes: new TextEncoder().encode('{}'),
   source: LOCAL_SOURCE,
 })
 
 /** A `read` {@link FileReadOutcome} with an opaque review — labels come from the prop. */
-const readFile = (fileName = 'session.har'): FileReadOutcome<unknown> => ({
+const readFile = (fileName = 'session.har', format: FormatKind = 'har'): FileReadOutcome => ({
   _tag: 'read',
   id: fileName,
-  picked: pickedHar(fileName),
-  review: {},
+  picked: pickedFile(fileName),
+  format,
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test fixture: null-ish review, the panel never reads through it in a null-ReviewBody test
+  review: {} as never,
 })
 
 /** A synthetic labeled resource for the panel to count and display. */
@@ -127,20 +142,25 @@ const labeledResource = (key: string, title: string): LabeledResource<FhirResour
   resource: { resourceType: 'Patient', id: key } as FhirResource,
 })
 
-/** Shared panel props wired to synthetic lookups; `ReviewBody` is `null` throughout. */
+/** Registry with every `ReviewBody` null — the default resource list path. */
+const reviewBodyRegistry: ReviewBodyRegistry = {
+  har: { ReviewBody: null },
+  'lifelabs-pdf': { ReviewBody: null },
+}
+
+/** Shared panel props wired to synthetic lookups; every `ReviewBody` is `null` throughout. */
 const panelProps = (
-  files: readonly FileReadOutcome<unknown>[],
+  files: readonly FileReadOutcome[],
   overrides: {
     readonly labeled?: Record<string, readonly LabeledResource<FhirResource>[]>
     readonly onConfirm?: () => void
     readonly confirming?: boolean
   } = {}
-): PreviewPanelProps<unknown> => {
+): PreviewPanelProps => {
   const labeledMap = overrides.labeled ?? {}
   return {
     files,
-    ReviewBody: null,
-    reviewFor: () => ({}),
+    reviewBodyRegistry,
     labeledFor: (fileId) => labeledMap[fileId] ?? [],
     selectionFor: () => Review.initial<FhirResource>(),
     onReviewChange: () => undefined,
