@@ -4,7 +4,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { identify } from 'importer-fundamentals'
 
-import type { BoundFormat, FormatKind, FormatVariant } from '../registry.tsx'
+import type { BoundFormat, FormatKind, FormatReview, FormatVariant } from '../registry.tsx'
 import type { PickedFile } from '../sources/picked-file.ts'
 
 /**
@@ -51,21 +51,26 @@ type ImportRunRegistry = {
  * `persist` up.
  *
  * @remarks
- * `read` carries the format's opaque review state — an empty file, or one
- * that yields nothing, is ordinary data the review renders — and
- * `unreadable` carries the one malformed-file `ParseError`. The confirm
- * step writes only the resources the review chose from a `read` file.
- * `id` is a per-pick stable identity for a React `key`, since two files
- * in a batch can share a name.
+ * `read` carries the format's opaque review state, distributed over
+ * {@link FormatKind} so `file.format === 'har'` narrows `file.review` to
+ * `HarReviewState` at compile time — no `unknown` or union collapse.
+ * `unreadable` carries the one malformed-file `ParseError` under its
+ * format tag. `unrecognized` is a file no descriptor claimed — no format
+ * tag, no review, no error to render, just the pick under its own name.
+ * The confirm step writes only the resources the review chose from a
+ * `read` file. `id` is a per-pick stable identity for a React `key`,
+ * since two files in a batch can share a name.
  */
 type FileReadOutcome =
   | {
-      readonly _tag: 'read'
-      readonly id: string
-      readonly picked: PickedFile
-      readonly format: FormatKind
-      readonly review: FormatVariant[FormatKind]['review']
-    }
+      readonly [K in FormatKind]: {
+        readonly _tag: 'read'
+        readonly id: string
+        readonly picked: PickedFile
+        readonly format: K
+        readonly review: FormatVariant[K]['review']
+      }
+    }[FormatKind]
   | {
       readonly _tag: 'unreadable'
       readonly id: string
@@ -108,31 +113,34 @@ interface ImportRun {
 const identifyForRun = (registry: ImportRunRegistry, picked: PickedFile): FormatKind | undefined =>
   identify(Object.values(registry), picked)?.format
 
-/**
- * The result of running one format's `decode` on a pick — the union of every
- * registered format's own review type.
- */
-type AnyReviewEffect = Effect.Effect<FormatVariant[FormatKind]['review'], ParseResult.ParseError>
+/** The result of running one format's `decode`: the tagged review pair or a `ParseError`. */
+type FormatReviewEffect = Effect.Effect<FormatReview, ParseResult.ParseError>
 
 /**
  * Run one registered format's `decode` on the picked bytes, dispatching
- * through `Match.type` on `FormatKind` so TS narrows `format` to a specific K
- * per branch — a `BoundFormat<K>` and its `defaultSettings` line up naturally
- * inside each branch, no cast needed.
+ * through `Match.type` on `FormatKind` so `kind` narrows to a specific `K`
+ * per branch — a `BoundFormat<K>` and its `defaultSettings` line up
+ * naturally inside each branch. The wrapped result is a {@link FormatReview}
+ * (`{ format: K, review: FormatVariant[K]['review'] }`), so the K-correlation
+ * survives downstream.
  */
 const runDecode = (
   registry: ImportRunRegistry,
   format: FormatKind,
   bytes: Uint8Array
-): AnyReviewEffect =>
+): FormatReviewEffect =>
   Match.type<FormatKind>().pipe(
     Match.when('har', (kind) => {
       const bound = registry[kind]
-      return bound.decode(bytes, bound.defaultSettings)
+      return bound
+        .decode(bytes, bound.defaultSettings)
+        .pipe(Effect.map((review): FormatReview => ({ format: kind, review })))
     }),
     Match.when('lifelabs-pdf', (kind) => {
       const bound = registry[kind]
-      return bound.decode(bytes, bound.defaultSettings)
+      return bound
+        .decode(bytes, bound.defaultSettings)
+        .pipe(Effect.map((review): FormatReview => ({ format: kind, review })))
     }),
     Match.exhaustive
   )(format)
@@ -148,13 +156,7 @@ const readOne = (
     return Effect.succeed<FileReadOutcome>({ _tag: 'unrecognized', id, picked })
   }
   return runDecode(registry, kind, picked.bytes).pipe(
-    Effect.map((review): FileReadOutcome => ({
-      _tag: 'read',
-      id,
-      picked,
-      format: kind,
-      review,
-    })),
+    Effect.map((tagged): FileReadOutcome => ({ _tag: 'read', id, picked, ...tagged })),
     Effect.catchAll((error) =>
       Effect.succeed<FileReadOutcome>({
         _tag: 'unreadable',

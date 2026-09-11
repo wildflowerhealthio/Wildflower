@@ -64,6 +64,29 @@ interface FormatVariant {
 type FormatKind = keyof FormatVariant
 
 /**
+ * A review value tagged with the format that owns it — a discriminated union
+ * over {@link FormatKind}. `entry.format === 'har'` narrows `entry.review` to
+ * `HarReviewState`, so a per-file map that holds these values preserves the
+ * per-format concrete types at compile time (rather than collapsing to the
+ * `HarReviewState | LifeLabsPdfReviewState` union `FormatVariant[FormatKind]`
+ * would give).
+ *
+ * @remarks
+ * State that must be indexed by a shell-minted `fileId` — a UUID that carries
+ * no format info — pairs the review with its format tag through this shape.
+ * The pair is minted at the boundary where the format is known (a decoded
+ * `FileReadOutcome`, an `onReviewChange` firing from a bound `ReviewBody`),
+ * and every reader can `Match.value(entry).pipe(Match.when({ format: 'har' },
+ * …), …)` without casting.
+ */
+type FormatReview = {
+  readonly [K in FormatKind]: {
+    readonly format: K
+    readonly review: FormatVariant[K]['review']
+  }
+}[FormatKind]
+
+/**
  * The props every format-specific review body receives, parameterised on the
  * format key so the review, labeled resources, and selection carry the
  * format's concrete types.
@@ -166,4 +189,4 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
 }
 
 export { formatRegistry }
-export type { BoundFormat, FormatKind, FormatVariant, ReviewBodyAdapterProps }
+export type { BoundFormat, FormatKind, FormatReview, FormatVariant, ReviewBodyAdapterProps }

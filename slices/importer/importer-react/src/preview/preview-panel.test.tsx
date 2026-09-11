@@ -161,6 +161,7 @@ const panelProps = (
   return {
     files,
     reviewBodyRegistry,
+    reviewFor: (file) => file,
     labeledFor: (fileId) => labeledMap[fileId] ?? [],
     selectionFor: () => Review.initial<FhirResource>(),
     onReviewChange: () => undefined,

@@ -5,8 +5,8 @@ import { type JSX, useCallback, useMemo, useState } from 'react'
 import { PreviewPanel } from './preview/preview-panel.tsx'
 import { emptyResolveCache, resolvedFor } from './preview/previews-for.ts'
 import { useConfirmImport } from './preview/use-confirm-import.ts'
-import { useImportRun } from './preview/use-import-run.ts'
-import { type FormatKind, type FormatVariant, formatRegistry } from './registry.tsx'
+import { type FileReadOutcome, useImportRun } from './preview/use-import-run.ts'
+import { type FormatReview, formatRegistry } from './registry.tsx'
 import { ImportResults } from './results/import-results.tsx'
 import { SourcePicker } from './sources/source-picker.tsx'
 import styles from './importer-screen.module.css'
@@ -21,10 +21,14 @@ import styles from './importer-screen.module.css'
  * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing,
  * resolves each file's opaque review state into labeled resources so the
  * reviewer sees the actual resources, and only the explicit confirm reaches
- * the write half (`useConfirmImport` — upload-then-persist, per file, verbatim
- * from the preview, best-effort). A batch may span formats: the picker
- * identifies each file against the registered descriptors, and every
+ * the write half (`useConfirmImport` — upload-then-persist, per file,
+ * verbatim from the preview, best-effort). A batch may span formats: the
+ * picker identifies each file against the registered descriptors, and every
  * downstream step dispatches on the file's `format` tag.
+ *
+ * Review state is held per file as a {@link FormatReview} — a tagged pair
+ * of `{ format, review }` — so a `fileId → override` map preserves the K
+ * correlation TS would otherwise collapse to a union.
  *
  * The slice owns every level of this flow rather than the host app: an app
  * mounts only this screen. Mount it inside the host's router and
@@ -49,38 +53,39 @@ const registeredDescriptors = Object.values(formatRegistry)
  */
 const PICKER_ACCEPT = acceptFor(registeredDescriptors)
 
-/** The opaque review state carried per file, indexed by the file's format. */
-type AnyReview = FormatVariant[FormatKind]['review']
+/**
+ * A `read` file's tagged review from its outcome — the initial value before
+ * any override. The `read` variant of {@link FileReadOutcome} is a
+ * K-distributed union whose `format` and `review` fields are already
+ * correlated, so structurally it satisfies {@link FormatReview}; picking
+ * the two fields off explicitly would widen them to unions and lose the
+ * correlation, so we hand the file object through directly.
+ */
+const initialReviewOf = (file: Extract<FileReadOutcome, { readonly _tag: 'read' }>): FormatReview =>
+  file
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(formatRegistry)
   const confirm = useConfirmImport(formatRegistry)
 
-  const [reviewOverrides, setReviewOverrides] = useState<ReadonlyMap<string, AnyReview>>(new Map())
+  const [reviewOverrides, setReviewOverrides] = useState<ReadonlyMap<string, FormatReview>>(
+    new Map()
+  )
   const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection<FhirResource>>>(
     new Map()
   )
 
   const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
 
-  const initialReviews = useMemo(() => {
-    const map = new Map<string, AnyReview>()
-    if (readFiles !== undefined) {
-      for (const file of readFiles) {
-        if (file._tag === 'read') map.set(file.id, file.review)
-      }
-    }
-    return map
-  }, [readFiles])
-
   const reviewFor = useCallback(
-    (fileId: string): AnyReview => reviewOverrides.get(fileId) ?? initialReviews.get(fileId)!,
-    [reviewOverrides, initialReviews]
+    (file: Extract<FileReadOutcome, { readonly _tag: 'read' }>): FormatReview =>
+      reviewOverrides.get(file.id) ?? initialReviewOf(file),
+    [reviewOverrides]
   )
 
-  const onReviewChange = useCallback((fileId: string, review: AnyReview): void => {
-    setReviewOverrides((prev) => new Map(prev).set(fileId, review))
+  const onReviewChange = useCallback((fileId: string, tagged: FormatReview): void => {
+    setReviewOverrides((previous) => new Map(previous).set(fileId, tagged))
   }, [])
 
   const selectionFor = useCallback(
@@ -97,24 +102,12 @@ const ImporterScreen = (): JSX.Element => {
   )
 
   const [resolveCache] = useState(() => emptyResolveCache())
-  // The review the resolver reads is the override when the user edited one,
-  // otherwise the initial review from the decode. `filesWithReview` bakes
-  // that lookup in so `resolvedFor` reads a single review per file rather
-  // than being handed a reviewFor callback.
-  const filesWithReview = useMemo(() => {
-    if (readFiles === undefined) return undefined
-    return readFiles.map((file) => {
-      if (file._tag !== 'read') return file
-      return { ...file, review: reviewFor(file.id) }
-    })
-  }, [readFiles, reviewFor])
-
   const labeled = useMemo(
     () =>
-      filesWithReview === undefined
+      readFiles === undefined
         ? undefined
-        : resolvedFor(formatRegistry, filesWithReview, resolveCache),
-    [filesWithReview, resolveCache]
+        : resolvedFor(formatRegistry, readFiles, reviewFor, resolveCache),
+    [readFiles, reviewFor, resolveCache]
   )
   const labeledFor = useCallback((fileId: string) => labeled?.get(fileId) ?? [], [labeled])
 
@@ -156,6 +149,7 @@ const ImporterScreen = (): JSX.Element => {
       <PreviewPanel
         files={runState.files}
         reviewBodyRegistry={formatRegistry}
+        reviewFor={reviewFor}
         labeledFor={labeledFor}
         selectionFor={selectionFor}
         onReviewChange={onReviewChange}

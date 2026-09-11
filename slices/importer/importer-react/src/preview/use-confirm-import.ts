@@ -82,18 +82,24 @@ type PersistRegistry = {
 }
 
 /**
- * A uniform per-format `persist` signature — every registered format
- * produces `FhirResource` and writes through the FHIR client, so any
- * `BoundFormat<K>['persist']` collapses to this shape.
+ * Run one file's chosen resources through its own format's `persist` —
+ * dispatched through `Match.type` on `FormatKind` so `kind` narrows to a
+ * specific K per branch, and `persistRegistry[K].persist(...)` type-checks
+ * without a cast. Every registered format returns the uniform
+ * `PersistFailure[]` shape (all sinks write FHIR resources through the same
+ * client), so the outer return type collapses cleanly.
  */
-type UniformPersist = (
+const persistFor = (
+  persistRegistry: PersistRegistry,
+  format: FormatKind,
   resources: readonly FhirResource[],
   sourceRef: string
-) => Effect.Effect<readonly PersistFailure[], never, FhirR4ResourcesHttpApiClient>
-
-/** Look up a file's format's `persist` from the registry as a uniform callable. */
-const persistOf = (persistRegistry: PersistRegistry, format: FormatKind): UniformPersist =>
-  persistRegistry[format].persist
+): Effect.Effect<readonly PersistFailure[], never, FhirR4ResourcesHttpApiClient> =>
+  Match.type<FormatKind>().pipe(
+    Match.when('har', (kind) => persistRegistry[kind].persist(resources, sourceRef)),
+    Match.when('lifelabs-pdf', (kind) => persistRegistry[kind].persist(resources, sourceRef)),
+    Match.exhaustive
+  )(format)
 
 /**
  * The archive reference a file's resources write against: a `server` pick's
@@ -162,13 +168,9 @@ const importOneFile = (
       // Per-format persist through the registry — a HAR file writes through
       // `har-importer-core`'s FHIR sink, a LifeLabs one through
       // `lifelabs-pdf-importer-core`'s. Both stamp `meta.source` themselves.
-      // Both write FHIR resources through the FHIR client, so the signature
-      // is uniform across formats; the switch is `format === K` matching so
-      // the union of BoundFormat<K> collapses to a callable.
-      const persist = persistOf(persistRegistry, format)
       return secureSourceRef(picked, format, uploadHar).pipe(
         Effect.flatMap((sourceRef) =>
-          persist(resources, sourceRef).pipe(
+          persistFor(persistRegistry, format, resources, sourceRef).pipe(
             Effect.map((failures): FileImportResult => ({
               _tag: 'imported',
               id,

@@ -1,9 +1,9 @@
-import { Effect } from 'effect'
+import { Effect, Match } from 'effect'
 
 import type { FhirResource } from 'fhir-r4/resources'
 import type { LabeledResource } from 'importer-fundamentals'
 
-import type { BoundFormat, FormatKind, FormatVariant } from '../registry.tsx'
+import type { BoundFormat, FormatKind, FormatReview } from '../registry.tsx'
 import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
@@ -15,13 +15,15 @@ import type { FileReadOutcome } from './use-import-run.ts'
  *
  * @remarks
  * A caller may pass a persistent {@link ResolveCache} across renders to
- * reuse labeled resources whose `review` object kept its identity — a
- * per-resource checkbox toggle never changes the review, so it reuses the
+ * reuse labeled resources whose {@link FormatReview} identity is unchanged —
+ * a per-resource checkbox toggle never changes the review, so it reuses the
  * previous labeled resources unchanged. Without a cache, every call
  * re-resolves. Pure — resolves fold synchronously through `runSync` in
  * every registered format today; a format whose `resolve` ever suspends
  * throws at render time, so the `runSync` failure is rewrapped with a
- * clear diagnostic naming the file.
+ * clear diagnostic naming the file. Each file's tagged review is
+ * `Match.value`d on its `format` tag so `registry[K].resolve(review)`
+ * type-checks per branch — no cast.
  *
  * @packageDocumentation
  */
@@ -36,15 +38,16 @@ type FileLabeledResources = readonly LabeledResource<FhirResource>[]
 
 /**
  * Per-file resolve cache. A caller holds one across renders (a stable
- * per-mount reference, seeded through `useRef`'s initialiser) and
- * hands it to {@link resolvedFor}; entries whose `review` identity is
- * unchanged reuse the cached labeled resources rather than re-resolving.
+ * per-mount reference, seeded through `useRef`'s initialiser) and hands
+ * it to {@link resolvedFor}; entries whose {@link FormatReview} identity
+ * is unchanged reuse the cached labeled resources rather than
+ * re-resolving.
  */
 interface ResolveCache {
   readonly entries: Map<
     string,
     {
-      readonly review: unknown
+      readonly tagged: FormatReview
       readonly labeled: FileLabeledResources
     }
   >
@@ -53,24 +56,33 @@ interface ResolveCache {
 /** Fresh, empty {@link ResolveCache}. */
 const emptyResolveCache = (): ResolveCache => ({ entries: new Map() })
 
-/** A file's format's `resolve` as a uniform callable — union collapses on TParsed = FhirResource. */
-type UniformResolve = (
-  review: FormatVariant[FormatKind]['review']
-) => Effect.Effect<readonly LabeledResource<FhirResource>[]>
-
-const resolveOf = (registry: ResolveRegistry, format: FormatKind): UniformResolve =>
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- BoundFormat<K>['resolve'] distributes over K in TS; every registered format resolves to FhirResource-labeled resources, so the union is the same shape as UniformResolve.
-  registry[format].resolve as UniformResolve
+/**
+ * Resolve one tagged review through its format's own `resolve`. `Match.value`
+ * on the review's `format` tag narrows `tagged.review` to that K's review
+ * type, so `registry[K].resolve(review)` type-checks — no cast.
+ */
+const resolveOne = (
+  registry: ResolveRegistry,
+  tagged: FormatReview
+): Effect.Effect<FileLabeledResources> =>
+  Match.value(tagged).pipe(
+    Match.when({ format: 'har' }, (t) => registry.har.resolve(t.review)),
+    Match.when({ format: 'lifelabs-pdf' }, (t) => registry['lifelabs-pdf'].resolve(t.review)),
+    Match.exhaustive
+  )
 
 /**
- * Resolve every read file's review state into its labeled resources, caching
- * on review identity. Files whose review kept its reference reuse the cached
- * labeled resources unchanged. Each file's own format's `resolve` is
- * looked up from the registry.
+ * Resolve every read file's tagged review into its labeled resources,
+ * caching on {@link FormatReview} identity. Files whose review kept its
+ * reference (same override object) reuse the cached labeled resources
+ * unchanged. The caller passes each file's tagged review — an override
+ * when one exists, otherwise the read outcome's own — so the cache and
+ * the render agree on identity.
  */
 const resolvedFor = (
   registry: ResolveRegistry,
   files: readonly FileReadOutcome[],
+  reviewFor: (file: Extract<FileReadOutcome, { readonly _tag: 'read' }>) => FormatReview,
   cache?: ResolveCache
 ): ReadonlyMap<string, FileLabeledResources> => {
   const entries: [string, FileLabeledResources][] = []
@@ -78,23 +90,22 @@ const resolvedFor = (
   for (const file of files) {
     if (file._tag !== 'read') continue
     seen.add(file.id)
-    const review = file.review
+    const tagged = reviewFor(file)
     const cached = cache?.entries.get(file.id)
-    if (cached !== undefined && cached.review === review) {
+    if (cached !== undefined && cached.tagged === tagged) {
       entries.push([file.id, cached.labeled])
       continue
     }
-    const resolve = resolveOf(registry, file.format)
     let labeled: FileLabeledResources
     try {
-      labeled = Effect.runSync(resolve(review))
+      labeled = Effect.runSync(resolveOne(registry, tagged))
     } catch (cause) {
       throw new Error(
-        `resolvedFor: resolve did not fold synchronously for file ${file.id} (format ${file.format}). Every registered format's resolve must be a synchronous Effect.`,
+        `resolvedFor: resolve did not fold synchronously for file ${file.id} (format ${tagged.format}). Every registered format's resolve must be a synchronous Effect.`,
         { cause }
       )
     }
-    cache?.entries.set(file.id, { review, labeled })
+    cache?.entries.set(file.id, { tagged, labeled })
     entries.push([file.id, labeled])
   }
   if (cache !== undefined) {

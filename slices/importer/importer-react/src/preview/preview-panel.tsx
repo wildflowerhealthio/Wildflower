@@ -1,14 +1,9 @@
 import type { FhirResource } from 'fhir-r4/resources'
 import type { LabeledResource } from 'importer-fundamentals'
 import { Review } from 'importer-fundamentals'
-import { type ComponentType, type JSX, useMemo } from 'react'
+import { type JSX, useMemo } from 'react'
 
-import type {
-  BoundFormat,
-  FormatKind,
-  FormatVariant,
-  ReviewBodyAdapterProps,
-} from '../registry.tsx'
+import type { BoundFormat, FormatKind, FormatReview } from '../registry.tsx'
 import type { FileReadOutcome } from './use-import-run.ts'
 import styles from './preview-panel.module.css'
 
@@ -21,12 +16,15 @@ import styles from './preview-panel.module.css'
  * A pick is a *batch* of one or more files, each read independently and
  * rendered together under one confirm: a read file gets its own format's
  * interactive `ReviewBody` (or a default per-resource list when the format
- * has none), an unreadable one is reported against its own name rather than
- * sinking the batch. Because a batch may span formats, each file section
- * looks up its rendering off its `format` tag through the registry. The
- * confirm appears only when at least one resource is included, and it does
- * not write — it calls `onConfirm`; the confirm step writes exactly the
- * reviewed objects.
+ * has none), an unreadable one is reported against its own name rather
+ * than sinking the batch. Because a batch may span formats, each file's
+ * render dispatches on its tagged review's `format` — the pair is a
+ * {@link FormatReview}, so `Match.value(tagged).pipe(Match.when({ format:
+ * 'har' }, …))` narrows both the review type and the matching
+ * `ReviewBody` component per branch, no cast. The confirm appears only
+ * when at least one resource is included, and it does not write — it
+ * calls `onConfirm`; the confirm step writes exactly the reviewed
+ * objects.
  *
  * @packageDocumentation
  */
@@ -42,12 +40,18 @@ interface PreviewPanelProps {
   readonly files: readonly FileReadOutcome[]
   /** The registered formats' `ReviewBody` components (or `null`) indexed by kind. */
   readonly reviewBodyRegistry: ReviewBodyRegistry
+  /** The tagged review to render for a read file — override if present, otherwise the file's own. */
+  readonly reviewFor: (file: Extract<FileReadOutcome, { readonly _tag: 'read' }>) => FormatReview
   /** The resolved labeled resources for a file. */
   readonly labeledFor: (fileId: string) => readonly LabeledResource<FhirResource>[]
   /** The reviewed selection for a file (defaults to `Review.initial()` before any edit). */
   readonly selectionFor: (fileId: string) => Review.Selection<FhirResource>
-  /** Called when a format-specific ReviewBody changes the review state. */
-  readonly onReviewChange: (fileId: string, review: FormatVariant[FormatKind]['review']) => void
+  /**
+   * Called when a format-specific ReviewBody changes the review state.
+   * The tagged pair carries the file's format so the caller can store it
+   * without inspecting the file again.
+   */
+  readonly onReviewChange: (fileId: string, tagged: FormatReview) => void
   /** Called when a file's review changes its selection. */
   readonly onSelectionChange: (fileId: string, selection: Review.Selection<FhirResource>) => void
   /**
@@ -117,26 +121,53 @@ const DefaultResourceList = ({
   </ul>
 )
 
-/** The rendered body for one read file — its format's ReviewBody, or the default list. */
+/**
+ * The rendered body for one read file — its format's `ReviewBody`, or the
+ * default list when that format has none. Switches on the tagged review's
+ * `format`, so each branch works with a K-narrowed review and the
+ * matching `ReviewBody` component: no cast.
+ */
 const ReadFileBody = ({
-  format,
-  review,
+  fileId,
+  tagged,
   labeled,
   selection,
   reviewBodyRegistry,
   onReviewChange,
   onSelectionChange,
 }: {
-  readonly format: FormatKind
-  readonly review: FormatVariant[FormatKind]['review']
+  readonly fileId: string
+  readonly tagged: FormatReview
   readonly labeled: readonly LabeledResource<FhirResource>[]
   readonly selection: Review.Selection<FhirResource>
   readonly reviewBodyRegistry: ReviewBodyRegistry
-  readonly onReviewChange: (review: FormatVariant[FormatKind]['review']) => void
+  readonly onReviewChange: (fileId: string, tagged: FormatReview) => void
   readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
 }): JSX.Element => {
-  const ReviewBody = reviewBodyRegistry[format].ReviewBody
-  if (ReviewBody === null) {
+  if (tagged.format === 'har') {
+    const Body = reviewBodyRegistry.har.ReviewBody
+    if (Body === null) {
+      return (
+        <DefaultResourceList
+          labeled={labeled}
+          selection={selection}
+          onSelectionChange={onSelectionChange}
+        />
+      )
+    }
+    return (
+      <Body
+        review={tagged.review}
+        labeled={labeled}
+        selection={selection}
+        onReviewChange={(review) => onReviewChange(fileId, { format: 'har', review })}
+        onSelectionChange={onSelectionChange}
+      />
+    )
+  }
+  // tagged.format === 'lifelabs-pdf' — TS narrows tagged.review to LifeLabsPdfReviewState here.
+  const Body = reviewBodyRegistry['lifelabs-pdf'].ReviewBody
+  if (Body === null) {
     return (
       <DefaultResourceList
         labeled={labeled}
@@ -145,31 +176,34 @@ const ReadFileBody = ({
       />
     )
   }
-  // TS union distributes over K here, so hand ReviewBody its own K's props with
-  // a narrow cast. The registry construction already checked the pairing.
-  const props: ReviewBodyAdapterProps<FormatKind> = {
-    review,
-    labeled,
-    selection,
-    onReviewChange,
-    onSelectionChange,
-  }
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- see comment
-  const Body = ReviewBody as ComponentType<ReviewBodyAdapterProps<FormatKind>>
-  return <Body {...props} />
+  return (
+    <Body
+      review={tagged.review}
+      labeled={labeled}
+      selection={selection}
+      onReviewChange={(review) => onReviewChange(fileId, { format: 'lifelabs-pdf', review })}
+      onSelectionChange={onSelectionChange}
+    />
+  )
 }
 
 /** One file's whole outcome, under its own name — the unit the batch is built from. */
 const FileSection = ({
   file,
   reviewBodyRegistry,
+  reviewFor,
   labeledFor,
   selectionFor,
   onReviewChange,
   onSelectionChange,
 }: Pick<
   PreviewPanelProps,
-  'reviewBodyRegistry' | 'labeledFor' | 'selectionFor' | 'onReviewChange' | 'onSelectionChange'
+  | 'reviewBodyRegistry'
+  | 'reviewFor'
+  | 'labeledFor'
+  | 'selectionFor'
+  | 'onReviewChange'
+  | 'onSelectionChange'
 > & {
   readonly file: FileReadOutcome
 }): JSX.Element => {
@@ -190,12 +224,12 @@ const FileSection = ({
     }
     return (
       <ReadFileBody
-        format={file.format}
-        review={file.review}
+        fileId={file.id}
+        tagged={reviewFor(file)}
         labeled={labeledFor(file.id)}
         selection={selectionFor(file.id)}
         reviewBodyRegistry={reviewBodyRegistry}
-        onReviewChange={(review) => onReviewChange(file.id, review)}
+        onReviewChange={onReviewChange}
         onSelectionChange={(selection) => onSelectionChange(file.id, selection)}
       />
     )
@@ -243,6 +277,7 @@ const PreviewActions = ({
 const PreviewPanel = ({
   files,
   reviewBodyRegistry,
+  reviewFor,
   labeledFor,
   selectionFor,
   onReviewChange,
@@ -279,6 +314,7 @@ const PreviewPanel = ({
             key={file.id}
             file={file}
             reviewBodyRegistry={reviewBodyRegistry}
+            reviewFor={reviewFor}
             labeledFor={labeledFor}
             selectionFor={selectionFor}
             onReviewChange={onReviewChange}
