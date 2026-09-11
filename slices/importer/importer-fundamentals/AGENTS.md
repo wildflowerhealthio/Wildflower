@@ -20,8 +20,14 @@ TParsed, R>`**, "a file-format importer" as one value a closed registry lists:
   `defaultSettings`, `decode(fileBytes, settings) → Effect<DecodedFile,
 ParseError>` (requires nothing — a preview can never reach the write
   client), `uploadSource` (the source-archive `DocumentReference` upload a
-  confirm runs for a local pick), and `persist(resources, sourceRef) →
-Effect<PersistFailure[], never, R>` (the sink, the only carrier of `R`).
+  confirm runs for a local pick), and — the **archive-read seam** the shell
+  reads uploaded archives back through — `archiveCategoryToken` (the
+  `system|code` search token, promoted from the format's `/archive` codec),
+  `isArchive` (whether a decoded `DocumentReference` is an archive of _this_
+  format, disjoint across formats), `archiveFromDocumentReference` (the
+  bytes-and-name reader a preview or a pick calls to re-hydrate one), and
+  `archiveContentType` (drives the preview modal's renderer choice: PDF via
+  `<iframe>`, JSON via `<pre>`).
   The decode's result is a **`DecodedFile<TParsed>`**: titled
   **`LabeledSection`**s of **`LabeledResource`**s (stable `key`, one-line
   `title`, the parsed `resource`) plus file-level diagnostic note strings for
@@ -56,12 +62,18 @@ Effect<PersistFailure[], never, R>` (the sink, the only carrier of `R`).
 
 ## Layering
 
-Depends only on `effect` (and `kitchen-sink` in tests). Names no archive
-format (each binding supplies `decode`), no resource type (`TParsed`, bound to
-`FhirResource` in the bindings), no HTTP vocabulary (the HAR binding's
+Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for
+`DocumentReferenceType` alone — the archive-seam fields on the descriptor
+(`isArchive`, `archiveFromDocumentReference`) are typed against decoded
+`DocumentReference`s the shell reads back from the FHIR server, and the
+seam stays honest by naming that type. Nothing else is imported from
+`fhir-r4`: no client, no resource schemas, no persistence — the write sink
+still lives at the shell (`fhir-r4/clients`' `persistBatchBundle`) and the
+per-format resource type is still `TParsed`. Names no archive format (each
+binding supplies `decode`), no HTTP vocabulary (the HAR binding's
 recognition machinery lives in `har-importer-core`), and no UI framework.
 Never imports a `*-importer-core`, a `*-importer-react`, `slices/collector`,
-`slices/http-extraction`, or `fhir-r4`.
+or `slices/http-extraction`.
 
 ## Guardrails
 

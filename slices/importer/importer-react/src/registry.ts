@@ -3,7 +3,7 @@ import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HarSettings, harImporterDescriptor } from 'har-importer-core'
 import { HarSettingsPicker } from 'har-importer-react'
-import type { DecodedFile, SettingsPickerProps } from 'importer-fundamentals'
+import type { DecodedFile, DocumentReferenceType, SettingsPickerProps } from 'importer-fundamentals'
 import { type LifeLabsPdfSettings, lifeLabsPdfImporterDescriptor } from 'lifelabs-pdf-importer-core'
 import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
@@ -71,6 +71,15 @@ interface BoundFormat<K extends FormatKind> {
     readonly fileName: string
     readonly bytes: Uint8Array
   }) => Effect.Effect<string, unknown, FormatVariant[K]['requirements']>
+  readonly archiveCategoryToken: string
+  readonly isArchive: (resource: DocumentReferenceType) => boolean
+  readonly archiveFromDocumentReference: (
+    resource: DocumentReferenceType
+  ) => Effect.Effect<
+    { readonly fileName: string; readonly bytes: Uint8Array },
+    ParseResult.ParseError
+  >
+  readonly archiveContentType: string
   readonly SettingsPicker: (props: SettingsPickerProps<FormatVariant[K]['settings']>) => JSX.Element
 }
 
@@ -84,6 +93,10 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     defaultSettings: harImporterDescriptor.defaultSettings,
     decode: harImporterDescriptor.decode,
     uploadSource: harImporterDescriptor.uploadSource,
+    archiveCategoryToken: harImporterDescriptor.archiveCategoryToken,
+    isArchive: harImporterDescriptor.isArchive,
+    archiveFromDocumentReference: harImporterDescriptor.archiveFromDocumentReference,
+    archiveContentType: harImporterDescriptor.archiveContentType,
     SettingsPicker: HarSettingsPicker,
   },
   'lifelabs-pdf': {
@@ -94,6 +107,10 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     defaultSettings: lifeLabsPdfImporterDescriptor.defaultSettings,
     decode: lifeLabsPdfImporterDescriptor.decode,
     uploadSource: lifeLabsPdfImporterDescriptor.uploadSource,
+    archiveCategoryToken: lifeLabsPdfImporterDescriptor.archiveCategoryToken,
+    isArchive: lifeLabsPdfImporterDescriptor.isArchive,
+    archiveFromDocumentReference: lifeLabsPdfImporterDescriptor.archiveFromDocumentReference,
+    archiveContentType: lifeLabsPdfImporterDescriptor.archiveContentType,
     SettingsPicker: LifeLabsPdfSettingsPicker,
   },
 }

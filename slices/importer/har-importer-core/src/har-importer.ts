@@ -10,6 +10,12 @@ import type {
   LabeledSection,
 } from 'importer-fundamentals'
 
+import {
+  HAR_ARCHIVE_CATEGORY_TOKEN,
+  HAR_ARCHIVE_CONTENT_TYPE,
+  harArchiveFromDocumentReference,
+  isHarArchive,
+} from './archive/index.ts'
 import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
@@ -108,6 +114,13 @@ const harImporterDescriptor: FileImporterDescriptor<
       }))
     ),
   uploadSource,
+  archiveCategoryToken: HAR_ARCHIVE_CATEGORY_TOKEN,
+  isArchive: isHarArchive,
+  archiveFromDocumentReference: (resource) =>
+    harArchiveFromDocumentReference(resource).pipe(
+      Effect.map((archive) => ({ fileName: archive.fileName, bytes: archive.bytes }))
+    ),
+  archiveContentType: HAR_ARCHIVE_CONTENT_TYPE,
 }
 
 export { harImporterDescriptor }

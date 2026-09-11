@@ -15,6 +15,7 @@ export * as Review from './review.ts'
 export { acceptFor, identify, sectionResources } from './file-importer-descriptor.ts'
 export type {
   DecodedFile,
+  DocumentReferenceType,
   FileImporterDescriptor,
   LabeledResource,
   LabeledSection,
