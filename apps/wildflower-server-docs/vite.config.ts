@@ -43,6 +43,17 @@ const devPort = parsedDevPorts['web-server-docs-dev']
 export default defineConfig({
   ...base,
   base: './',
+  resolve: {
+    ...base.resolve,
+    // The base config narrows `resolve.conditions` to `['source']`, which
+    // replaces (not extends) Vite's default client conditions and so drops
+    // `browser`. `web-worker` — pulled in transitively by `@scalar/api-reference`
+    // — keys its `exports` map on that condition; without it the `default`
+    // (Node) entry resolves, running `pathToFileURL(process.cwd() + '/')` at
+    // module load and throwing `process is not defined` in the browser. Restore
+    // the client conditions on top of `source` so the browser build is picked.
+    conditions: [...(base.resolve?.conditions ?? []), 'module', 'browser'],
+  },
   server: {
     // Pinned to the shared dev-port file (above), and `strictPort` so vite fails
     // loudly rather than drifting onto the next free port: the homescreen's
