@@ -63,18 +63,25 @@ let reference: ReturnType<typeof createApiReference> | undefined
  */
 let session: Session | undefined
 
+/**
+ * Whether this copy of the console is one the client is registered for, and the
+ * redirect URI it returns to when it is. Computed once from where the page is
+ * served; the return leg lands on the same URL, so the value is stable.
+ */
+const availability = signInAvailability(window.location.href)
+
 /** The impure edges the sign-in flow runs against in the browser. */
 const signInEnvironment: SignInEnvironment = {
   fetch: (...args) => globalThis.fetch(...args),
   random: window.crypto,
   subtle: window.crypto.subtle,
   store: window.sessionStorage,
-  redirectUri: REGISTERED_REDIRECT_URI,
+  // The registered redirect matching where this copy runs. When the copy is
+  // unregistered the button is disabled and this is never sent, so the published
+  // URI is a harmless default.
+  redirectUri: availability.available ? availability.redirectUri : REGISTERED_REDIRECT_URI,
   pageIsSecure: window.location.protocol === 'https:',
 }
-
-/** Whether this copy of the console is the one the client is registered for. */
-const availability = signInAvailability(window.location.href)
 
 /** Show `message` on the status line, or clear it when `undefined`. */
 const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'): void => {
