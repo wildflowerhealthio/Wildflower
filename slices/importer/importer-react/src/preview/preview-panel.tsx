@@ -3,8 +3,6 @@ import type { LabeledResource } from 'importer-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo } from 'react'
 
-import type { ReviewBodyAdapterProps } from '../registry.tsx'
-
 import type { FileReadOutcome } from './use-import-run.ts'
 import styles from './preview-panel.module.css'
 
@@ -26,7 +24,7 @@ import styles from './preview-panel.module.css'
  */
 
 /** Props for {@link PreviewPanel}. */
-interface PreviewPanelProps {
+interface PreviewPanelProps<TReview = unknown> {
   /** Every picked file's read outcome, rendered together under one confirm. */
   readonly files: readonly FileReadOutcome[]
   /**
@@ -34,15 +32,23 @@ interface PreviewPanelProps {
    * beyond the general per-resource selection. `null` when the default
    * per-resource list suffices.
    */
-  readonly ReviewBody: ((props: ReviewBodyAdapterProps) => JSX.Element) | null
+  readonly ReviewBody:
+    | ((props: {
+        readonly review: TReview
+        readonly labeled: readonly LabeledResource<FhirResource>[]
+        readonly selection: Review.Selection<FhirResource>
+        readonly onReviewChange: (review: TReview) => void
+        readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
+      }) => JSX.Element)
+    | null
   /** The opaque review state for a file. */
-  readonly reviewFor: (fileId: string) => unknown
+  readonly reviewFor: (fileId: string) => TReview
   /** The resolved labeled resources for a file. */
   readonly labeledFor: (fileId: string) => readonly LabeledResource<FhirResource>[]
   /** The reviewed selection for a file (defaults to `Review.initial()` before any edit). */
   readonly selectionFor: (fileId: string) => Review.Selection<FhirResource>
   /** Called when a format-specific ReviewBody changes the review state. */
-  readonly onReviewChange: (fileId: string, review: unknown) => void
+  readonly onReviewChange: (fileId: string, review: TReview) => void
   /** Called when a file's review changes its selection. */
   readonly onSelectionChange: (fileId: string, selection: Review.Selection<FhirResource>) => void
   /**
@@ -110,7 +116,7 @@ const DefaultResourceList = ({
 )
 
 /** One file's whole outcome, under its own name — the unit the batch is built from. */
-const FileSection = ({
+const FileSection = <TReview,>({
   file,
   ReviewBody,
   reviewFor,
@@ -118,14 +124,16 @@ const FileSection = ({
   selectionFor,
   onReviewChange,
   onSelectionChange,
-}: {
+}: Pick<
+  PreviewPanelProps<TReview>,
+  | 'ReviewBody'
+  | 'reviewFor'
+  | 'labeledFor'
+  | 'selectionFor'
+  | 'onReviewChange'
+  | 'onSelectionChange'
+> & {
   readonly file: FileReadOutcome
-  readonly ReviewBody: PreviewPanelProps['ReviewBody']
-  readonly reviewFor: PreviewPanelProps['reviewFor']
-  readonly labeledFor: PreviewPanelProps['labeledFor']
-  readonly selectionFor: PreviewPanelProps['selectionFor']
-  readonly onReviewChange: PreviewPanelProps['onReviewChange']
-  readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
 }): JSX.Element => (
   <section className={styles.fileSection} aria-label={file.picked.fileName}>
     <h3 className={styles.fileHeading}>{file.picked.fileName}</h3>
@@ -182,7 +190,7 @@ const PreviewActions = ({
  * at least one has an included resource, the single confirm action that opts
  * into writing the whole batch.
  */
-const PreviewPanel = ({
+const PreviewPanel = <TReview,>({
   files,
   ReviewBody,
   reviewFor,
@@ -193,7 +201,7 @@ const PreviewPanel = ({
   onConfirm,
   onCancel,
   confirming,
-}: PreviewPanelProps): JSX.Element => {
+}: PreviewPanelProps<TReview>): JSX.Element => {
   const { writableCount, excludedCount } = useMemo(() => {
     let included = 0
     let excluded = 0

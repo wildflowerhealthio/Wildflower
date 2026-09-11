@@ -3,7 +3,6 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 
-import type { BoundFormat } from '../registry.tsx'
 import type { PickedHar } from '../sources/picked-har.ts'
 
 /**
@@ -25,6 +24,9 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * One pick's read outcome, held alongside the pick so a confirm can hand both to
  * the write step.
  *
+ * @typeParam TReview - The format's opaque review state; defaults to `unknown`
+ *   for consumers that don't need the concrete type
+ *
  * @remarks
  * `read` carries the format's opaque review state the preview runs over — an
  * empty file, or one that yields nothing, is ordinary data the review renders,
@@ -33,12 +35,12 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * file. `id` is a per-pick stable identity for a React `key`, since two
  * files in a batch can share a name.
  */
-type FileReadOutcome =
+type FileReadOutcome<TReview = unknown> =
   | {
       readonly _tag: 'read'
       readonly id: string
       readonly picked: PickedHar
-      readonly review: unknown
+      readonly review: TReview
     }
   | {
       readonly _tag: 'unreadable'
@@ -51,14 +53,14 @@ type FileReadOutcome =
  * The lifecycle of one batch read, holding every pick's outcome so the screen can
  * render one combined review.
  */
-type ImportRunState =
+type ImportRunState<TReview = unknown> =
   | { readonly _tag: 'idle' }
   | { readonly _tag: 'reading' }
-  | { readonly _tag: 'ready'; readonly files: readonly FileReadOutcome[] }
+  | { readonly _tag: 'ready'; readonly files: readonly FileReadOutcome<TReview>[] }
 
 /** Imperative surface the screen drives the read through. */
-interface ImportRun {
-  readonly state: ImportRunState
+interface ImportRun<TReview = unknown> {
+  readonly state: ImportRunState<TReview>
   /** Read a freshly-picked batch of files into review states, replacing any previous one. */
   readonly run: (picks: readonly PickedHar[]) => void
   /** Discard the current read and return to `idle`. */
@@ -74,9 +76,17 @@ interface ImportRun {
  * @returns The read surface: its `state`, the `run` trigger, and a `reset` back
  *   to `idle`
  */
-const useImportRun = (format: Pick<BoundFormat, 'decode' | 'defaultSettings'>): ImportRun => {
+const useImportRun = <TSettings, TReview>(
+  format: Readonly<{
+    decode: (
+      fileText: string,
+      settings: TSettings
+    ) => Effect.Effect<TReview, ParseResult.ParseError>
+    defaultSettings: TSettings
+  }>
+): ImportRun<TReview> => {
   const runAuthed = useRunAuthed()
-  const [state, setState] = useState<ImportRunState>({ _tag: 'idle' })
+  const [state, setState] = useState<ImportRunState<TReview>>({ _tag: 'idle' })
   const latest = useRef(0)
 
   const run = useCallback(
@@ -91,9 +101,14 @@ const useImportRun = (format: Pick<BoundFormat, 'decode' | 'defaultSettings'>): 
           Effect.gen(function* () {
             const id = yield* Effect.sync(() => crypto.randomUUID())
             return yield* format.decode(picked.text, format.defaultSettings).pipe(
-              Effect.map((review): FileReadOutcome => ({ _tag: 'read', id, picked, review })),
+              Effect.map((review): FileReadOutcome<TReview> => ({
+                _tag: 'read',
+                id,
+                picked,
+                review,
+              })),
               Effect.catchAll((error) =>
-                Effect.succeed<FileReadOutcome>({ _tag: 'unreadable', id, picked, error })
+                Effect.succeed<FileReadOutcome<TReview>>({ _tag: 'unreadable', id, picked, error })
               )
             )
           }),

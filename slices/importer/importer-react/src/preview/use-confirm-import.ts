@@ -7,7 +7,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { type LabeledResource, Review } from 'importer-fundamentals'
 
 import { useUploadHar } from '../mutations/upload-har.ts'
-import type { BoundFormat } from '../registry.tsx'
+import type { BoundFormat, FormatKind } from '../registry.tsx'
 import {
   type BatchOutcome,
   type FileImportResult,
@@ -105,7 +105,7 @@ const secureSourceRef = (
  */
 const importOneFile = (
   file: FileReadOutcome,
-  persist: BoundFormat['persist'],
+  persist: BoundFormat<FormatKind>['persist'],
   labeledFor: LabeledFor,
   selectionFor: SelectionFor,
   uploadHar: ReturnType<typeof useUploadHar>
@@ -154,7 +154,7 @@ const importOneFile = (
  * @returns The confirm surface: its `state`, the `confirm` trigger, and a `reset`
  *   back to `idle`
  */
-const useConfirmImport = (format: Pick<BoundFormat, 'persist'>): ConfirmImport => {
+const useConfirmImport = (format: Pick<BoundFormat<FormatKind>, 'persist'>): ConfirmImport => {
   const runAuthed = useRunAuthed()
   const uploadHar = useUploadHar()
   const [state, setState] = useState<ConfirmState>({ _tag: 'idle' })

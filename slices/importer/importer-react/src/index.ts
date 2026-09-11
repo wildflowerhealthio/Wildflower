@@ -32,7 +32,8 @@ export {
 } from './preview/use-confirm-import.ts'
 export {
   type BoundFormat,
-  type Format,
+  type FormatKind,
+  type FormatVariant,
   type ReviewBodyAdapterProps,
   formatRegistry,
 } from './registry.tsx'

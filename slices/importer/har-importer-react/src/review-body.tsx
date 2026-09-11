@@ -1,13 +1,6 @@
 import { Data, Option } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import {
-  type HarSelection,
-  type PreviewedResponse,
-  enabledCandidates,
-  isKindEnabled,
-  overridePick,
-  toggleKind,
-} from 'har-importer-core'
+import { HarSelection, type PreviewedResponse } from 'har-importer-core'
 import type { Extraction, HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo, useState } from 'react'
@@ -49,11 +42,11 @@ interface ReviewBodyProps {
   /** Previews the shell parsed for this file's responses under the current routing selection. */
   readonly previews: readonly Preview[]
   /** The HAR routing selection: kind toggles + per-response pick overrides. */
-  readonly harSelection: HarSelection
+  readonly harSelection: HarSelection.Selection
   /** The per-resource selection: exclude/edit overrides. */
   readonly selection: Review.Selection<FhirResource>
   /** Called with the new HAR routing selection on every kind toggle or pick override. */
-  readonly onHarSelectionChange: (harSelection: HarSelection) => void
+  readonly onHarSelectionChange: (harSelection: HarSelection.Selection) => void
   /** Called with the new per-resource selection on every resource toggle or edit. */
   readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
 }
@@ -139,10 +132,10 @@ const ResponsePicker = ({
   onOverride,
 }: {
   readonly preview: Preview
-  readonly harSelection: HarSelection
+  readonly harSelection: HarSelection.Selection
   readonly onOverride: (kindName: string) => void
 }): JSX.Element => {
-  const enabled = enabledCandidates(preview.recognized, harSelection)
+  const enabled = HarSelection.enabledCandidates(preview.recognized, harSelection)
   if (enabled.length === 0) {
     return <span className={styles.excluded}>Excluded — every matching kind is turned off</span>
   }
@@ -243,7 +236,7 @@ const ResponseBlock = ({
   onRevertResource,
 }: {
   readonly preview: Preview
-  readonly harSelection: HarSelection
+  readonly harSelection: HarSelection.Selection
   readonly selection: Review.Selection<FhirResource>
   readonly onOverride: (kindName: string) => void
   readonly onToggleResource: (key: string) => void
@@ -380,8 +373,10 @@ const ReviewBody = ({
                     <input
                       type="checkbox"
                       disabled={!usable}
-                      checked={usable && isKindEnabled(harSelection, kind.name)}
-                      onChange={() => onHarSelectionChange(toggleKind(harSelection, kind.name))}
+                      checked={usable && HarSelection.isKindEnabled(harSelection, kind.name)}
+                      onChange={() =>
+                        onHarSelectionChange(HarSelection.toggleKind(harSelection, kind.name))
+                      }
                     />
                     {kindLabel(kind.name)}
                   </label>
@@ -411,7 +406,9 @@ const ReviewBody = ({
                     harSelection={harSelection}
                     selection={selection}
                     onOverride={(kindName) =>
-                      onHarSelectionChange(overridePick(harSelection, preview.ref.id, kindName))
+                      onHarSelectionChange(
+                        HarSelection.overridePick(harSelection, preview.ref.id, kindName)
+                      )
                     }
                     onToggleResource={(key) =>
                       onSelectionChange(Review.toggleResource(selection, key))

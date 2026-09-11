@@ -2,102 +2,24 @@ import { Array as Arr, Effect, Option, type ParseResult } from 'effect'
 
 import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
 
+import * as HarSelection from './har-selection.ts'
+
 /**
- * The HAR-specific per-response review model: whole-import kind toggles,
- * per-response pick overrides, recognition, and preview — the HTTP routing
- * half that only HAR needs. The per-resource selection (exclude/edit) lives
- * in `importer-fundamentals`' `Review` namespace.
+ * The HAR-specific preview pipeline: given decoded responses and a routing
+ * selection, recognize each response against the kind pool and parse the
+ * chosen ones into previewed resources. The per-response routing model
+ * ({@link HarSelection}) lives in `./har-selection.ts`; the per-resource
+ * selection (exclude/edit) lives in `importer-fundamentals`' `Review`
+ * namespace.
  *
  * @packageDocumentation
  */
-
-/** One field every kind exposes that the review reads for identity + display. */
-type NamedKind = Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>
-
-/**
- * The HAR review's routing state: enabled kinds and per-response pick
- * overrides. The per-resource selection (exclude/edit) is in the general
- * `Review.Selection`.
- */
-interface HarSelection {
-  /** The kind names enabled across the import; a kind absent here is disabled everywhere. */
-  readonly enabledKinds: ReadonlySet<string>
-  /** Per-response pick overrides, response id → chosen kind name. */
-  readonly overrides: ReadonlyMap<string, string>
-}
-
-/** A default HAR selection: every kind enabled, no overrides. */
-const initialHarSelection = (pool: readonly NamedKind[]): HarSelection => ({
-  enabledKinds: new Set(pool.map((kind) => kind.name)),
-  overrides: new Map(),
-})
-
-/** Whether a kind is enabled across the import. */
-const isKindEnabled = (selection: HarSelection, kindName: string): boolean =>
-  selection.enabledKinds.has(kindName)
-
-/** Toggle a kind on/off across the whole import. */
-const toggleKind = (selection: HarSelection, kindName: string): HarSelection => {
-  const enabledKinds = new Set(selection.enabledKinds)
-  if (enabledKinds.has(kindName)) enabledKinds.delete(kindName)
-  else enabledKinds.add(kindName)
-  return { ...selection, enabledKinds }
-}
-
-/** Override one response's pick to a specific kind by name. */
-const overridePick = (
-  selection: HarSelection,
-  responseId: string,
-  kindName: string
-): HarSelection => {
-  const overrides = new Map(selection.overrides)
-  overrides.set(responseId, kindName)
-  return { ...selection, overrides }
-}
-
-/** Drop one response's override, returning it to its default pick. */
-const clearOverride = (selection: HarSelection, responseId: string): HarSelection => {
-  const overrides = new Map(selection.overrides)
-  overrides.delete(responseId)
-  return { ...selection, overrides }
-}
 
 /**
  * The stable key one previewed resource is tracked by: the response id plus its
  * index in the parse output.
  */
 const resourceKey = (responseId: string, index: number): string => `${responseId}:${index}`
-
-/** The candidates for one response that survive the enabled-kind filter, still ranked. */
-const enabledCandidates = <K extends NamedKind>(
-  recognized: Extraction.RecognizedResponse<K>,
-  selection: HarSelection
-): readonly Extraction.RecognitionCandidate<K>[] =>
-  recognized.candidates.filter((candidate) => isKindEnabled(selection, candidate.kind.name))
-
-/**
- * The candidate one response resolves to under a selection: the override if it
- * names a still-enabled candidate, else the top-specificity enabled candidate,
- * else none.
- */
-const pickFor = <K extends NamedKind>(
-  recognized: Extraction.RecognizedResponse<K>,
-  selection: HarSelection
-): Option.Option<Extraction.RecognitionCandidate<K>> => {
-  const enabled = enabledCandidates(recognized, selection)
-  const overrideName = selection.overrides.get(recognized.ref.id)
-  const overridden =
-    overrideName === undefined
-      ? undefined
-      : enabled.find((candidate) => candidate.kind.name === overrideName)
-  return overridden === undefined ? Arr.head(enabled) : Option.some(overridden)
-}
-
-/** How many of a recognized set resolve to a chosen pick under a selection. */
-const chosenCount = <K extends NamedKind>(
-  recognized: readonly Extraction.RecognizedResponse<K>[],
-  selection: HarSelection
-): number => recognized.filter((response) => Option.isSome(pickFor(response, selection))).length
 
 /** Re-exported so the HAR React package reads recognition through here. */
 const recognize = Extraction.recognize
@@ -127,7 +49,6 @@ interface PreviewedResponse<K, TParsed> {
   readonly outcome: PreviewedOutcome<TParsed>
 }
 
-// A duplicate response never routes to a kind, so the pick reads as `None`.
 const DUPLICATE_PICK: Option.Option<string> = Option.none()
 
 /**
@@ -137,7 +58,7 @@ const DUPLICATE_PICK: Option.Option<string> = Option.none()
 const preview = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[],
-  selection: HarSelection
+  selection: HarSelection.Selection
 ): Effect.Effect<
   readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>[]
 > => {
@@ -156,7 +77,7 @@ const preview = <TParsed>(
           outcome: { _tag: 'duplicate', of: duplicateOf },
         })
       }
-      const pick = pickFor(recognized, selection)
+      const pick = HarSelection.pickFor(recognized, selection)
       if (Option.isNone(pick)) {
         return Effect.succeed<
           PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>
@@ -209,17 +130,5 @@ const preview = <TParsed>(
   )
 }
 
-export {
-  chosenCount,
-  clearOverride,
-  enabledCandidates,
-  initialHarSelection,
-  isKindEnabled,
-  overridePick,
-  pickFor,
-  preview,
-  recognize,
-  resourceKey,
-  toggleKind,
-}
-export type { HarSelection, NamedKind, PreviewedOutcome, PreviewedResource, PreviewedResponse }
+export { preview, recognize, resourceKey }
+export type { PreviewedOutcome, PreviewedResource, PreviewedResponse }

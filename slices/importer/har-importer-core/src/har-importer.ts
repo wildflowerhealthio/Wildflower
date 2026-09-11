@@ -7,9 +7,10 @@ import type { FileImporterDescriptor, LabeledResource } from 'importer-fundament
 
 import { decodeHar } from './decode-har.ts'
 import { fhirSources } from './fhir-pool.ts'
+import * as HarSelection from './har-selection.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { persistFhir } from './persist-fhir.ts'
-import { type HarSelection, initialHarSelection, preview } from './review.ts'
+import { preview } from './review.ts'
 
 /**
  * The HAR format's opaque review state: the decoded responses plus the
@@ -17,7 +18,7 @@ import { type HarSelection, initialHarSelection, preview } from './review.ts'
  */
 interface HarReviewState {
   readonly responses: readonly Extraction.Input[]
-  readonly harSelection: HarSelection
+  readonly harSelection: HarSelection.Selection
 }
 
 /** The pool derived once from the sources — used by `resolve`. */
@@ -48,7 +49,7 @@ const harImporterDescriptor: FileImporterDescriptor<
   decode: (fileText, settings) =>
     Effect.map(decodeHar(fileText, settings), (responses) => ({
       responses,
-      harSelection: initialHarSelection(pool),
+      harSelection: HarSelection.initial(pool),
     })),
   resolve: (review) =>
     Effect.map(preview(pool, review.responses, review.harSelection), (previews) => {

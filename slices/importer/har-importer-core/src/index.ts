@@ -16,21 +16,12 @@ export { decodeHar, toInput } from './decode-har.ts'
 export { persistFhir } from './persist-fhir.ts'
 export { fhirSources } from './fhir-pool.ts'
 export { defaultHarSettings, type HarSettings } from './har-settings.ts'
+export * as HarSelection from './har-selection.ts'
 export {
-  chosenCount,
-  clearOverride,
-  enabledCandidates,
-  type HarSelection,
-  initialHarSelection,
-  isKindEnabled,
-  type NamedKind,
-  overridePick,
-  pickFor,
   preview,
   type PreviewedOutcome,
   type PreviewedResource,
   type PreviewedResponse,
   recognize,
   resourceKey,
-  toggleKind,
 } from './review.ts'

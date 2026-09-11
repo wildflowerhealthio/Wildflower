@@ -26,40 +26,40 @@ import type { FileReadOutcome } from './use-import-run.ts'
  */
 
 /** The `resolve` half of a bound format — one function the cache invokes. */
-type Resolve = (review: unknown) => Effect.Effect<readonly LabeledResource<FhirResource>[]>
+type Resolve<TReview> = (review: TReview) => Effect.Effect<readonly LabeledResource<FhirResource>[]>
 
 /** The resolved labeled resources for one file. */
 type FileLabeledResources = readonly LabeledResource<FhirResource>[]
 
 /**
  * Per-file resolve cache. A caller holds one across renders (a stable
- * per-mount reference, seeded through `useState`'s lazy initialiser) and
+ * per-mount reference, seeded through `useRef`'s initialiser) and
  * hands it to {@link resolvedFor}; entries whose `review` identity is
  * unchanged reuse the cached labeled resources rather than re-resolving.
  */
-interface ResolveCache {
+interface ResolveCache<TReview> {
   readonly entries: Map<
     string,
     {
-      readonly review: unknown
+      readonly review: TReview
       readonly labeled: FileLabeledResources
     }
   >
 }
 
 /** Fresh, empty {@link ResolveCache}. */
-const emptyResolveCache = (): ResolveCache => ({ entries: new Map() })
+const emptyResolveCache = <TReview>(): ResolveCache<TReview> => ({ entries: new Map() })
 
 /**
  * Resolve every read file's review state into its labeled resources, caching
  * on review identity. Files whose review kept its reference reuse the cached
  * labeled resources unchanged.
  */
-const resolvedFor = (
-  resolve: Resolve,
+const resolvedFor = <TReview>(
+  resolve: Resolve<TReview>,
   files: readonly FileReadOutcome[],
-  reviewFor: (fileId: string) => unknown,
-  cache?: ResolveCache
+  reviewFor: (fileId: string) => TReview,
+  cache?: ResolveCache<TReview>
 ): ReadonlyMap<string, FileLabeledResources> => {
   const entries: [string, FileLabeledResources][] = []
   const seen = new Set<string>()

@@ -1,9 +1,10 @@
 import type { FhirResource } from 'fhir-r4/resources'
+import type { HarReviewState } from 'har-importer-core'
 import { Review } from 'importer-fundamentals'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
-import { emptyResolveCache, type ResolveCache, resolvedFor } from './preview/previews-for.ts'
+import { emptyResolveCache, resolvedFor } from './preview/previews-for.ts'
 import { useConfirmImport } from './preview/use-confirm-import.ts'
 import { type FileReadOutcome, useImportRun } from './preview/use-import-run.ts'
 import { formatRegistry } from './registry.tsx'
@@ -44,9 +45,9 @@ const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(format)
   const confirm = useConfirmImport(format)
 
-  // Per-file review state overrides from ReviewBody changes. Falls back to the
-  // decode's initial review for files not in this map.
-  const [reviewOverrides, setReviewOverrides] = useState<ReadonlyMap<string, unknown>>(new Map())
+  const [reviewOverrides, setReviewOverrides] = useState<ReadonlyMap<string, HarReviewState>>(
+    new Map()
+  )
   const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection<FhirResource>>>(
     new Map()
   )
@@ -54,21 +55,23 @@ const ImporterScreen = (): JSX.Element => {
   const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
 
   const initialReviews = useMemo(() => {
-    if (!readFiles) return new Map<string, unknown>()
+    if (!readFiles) return new Map<string, HarReviewState>()
     return new Map(
       readFiles
-        .filter((f): f is Extract<FileReadOutcome, { _tag: 'read' }> => f._tag === 'read')
+        .filter(
+          (f): f is Extract<FileReadOutcome<HarReviewState>, { _tag: 'read' }> => f._tag === 'read'
+        )
         .map((f) => [f.id, f.review] as const)
     )
   }, [readFiles])
 
   const reviewFor = useCallback(
-    (fileId: string): unknown => reviewOverrides.get(fileId) ?? initialReviews.get(fileId),
+    (fileId: string): HarReviewState => reviewOverrides.get(fileId) ?? initialReviews.get(fileId)!,
     [reviewOverrides, initialReviews]
   )
 
-  const onReviewChange = useCallback((_fileId: string, review: unknown): void => {
-    setReviewOverrides((prev) => new Map(prev).set(_fileId, review))
+  const onReviewChange = useCallback((fileId: string, review: HarReviewState): void => {
+    setReviewOverrides((prev) => new Map(prev).set(fileId, review))
   }, [])
 
   const selectionFor = useCallback(
@@ -84,10 +87,7 @@ const ImporterScreen = (): JSX.Element => {
     []
   )
 
-  // Resolve labeled resources from the review state, cached by review identity.
-  // useState's lazy initialiser gives a stable per-mount reference without
-  // repeated allocation.
-  const [resolveCache] = useState<ResolveCache>(emptyResolveCache)
+  const [resolveCache] = useState(() => emptyResolveCache<HarReviewState>())
   const labeled = useMemo(
     () =>
       readFiles === undefined
