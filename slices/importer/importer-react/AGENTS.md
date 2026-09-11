@@ -1,16 +1,18 @@
 # AGENTS.md — slices/importer/importer-react
 
 The browser UI adapter of the importer slice, and its **shell**: the whole
-pick-review-confirm flow plus the closed `format → { descriptor, SettingsPicker,
-ReviewBody }` registry. One surface a host app mounts, reading the authed
+pick-review-confirm flow plus the closed `format → { descriptor,
+SettingsPicker }` registry. One surface a host app mounts, reading the authed
 runner out of router context:
 
-- **`ImporterScreen`** — pick one or more HARs (local files dropped or chosen,
-  or a single archive already on the device's FHIR server), review per-URL
-  exactly what every file would write in one combined view, confirm once to
-  write the reviewed, chosen responses across the batch (uploading each local
-  file's archive first), and read the per-file results. Local picking is a
-  **batch**; the server list is single-select.
+- **`ImporterScreen`** — pick one or more files (local files dropped or
+  chosen, or a single HAR archive already on the device's FHIR server),
+  review exactly what every file would write in one combined, **generalized**
+  view — each file's decoded sections with per-resource include/edit, under
+  its format's settings form — confirm once to write the reviewed, included
+  resources across the batch (uploading each local file's archive first), and
+  read the per-file results. Local picking is a **batch**; the server list is
+  single-select.
 
 The anonymize surface is the anonymizer slice's shell
 ([anonymizer-react](../../anonymizer/anonymizer-react/AGENTS.md)), not part of
@@ -32,49 +34,67 @@ and `fhir-r4-react` (the authed runner and the slice runtime layer).
 
 The seam between this package and a format binding is the **descriptor** and the
 `Review` model: the read half runs the descriptor's `decode` (no services, no
-writes), the review drives `Review`'s pure transitions, and the write half runs
-`Review.chosen` then the descriptor's `persist`. If a component needs more than
-the descriptor and `Review` expose, widen those rather than reaching around them.
+writes) into sections + notes, the review drives `Review`'s pure per-resource
+transitions over the flattened sections, and the write half runs
+`Review.chosenResources` then the descriptor's `persist`. If a component needs
+more than the descriptor and `Review` expose, widen those rather than reaching
+around them.
 
 **Presentation and interaction only.** Nothing here parses HAR, encodes an
-archive, runs entities, or writes resources. The parser
-(`HttpArchive.LogFromHarJson`), the
-archive codec, `decode`, the recognition (`Review.recognize`), and the write sink
-(`persist` → `fhir-r4`'s `persistResources`) all live below this package; it
-drives them and reimplements none.
+archive, runs entities, or writes resources. The parsers, the archive codecs,
+`decode` (including each format's recognition), and the write sink (`persist` →
+`fhir-r4`'s `persistResources`) all live below this package; it drives them and
+reimplements none.
 
 ## The registry
 
-`src/registry.ts` is the closed, compile-time `format → FormatRegistration` map —
+`src/registry.ts` is the closed, compile-time `format → BoundFormat<K>` map —
 the single edit point for wiring a file-format importer into the shell. A
-`FormatRegistration` bundles the three parts a format contributes: its
-`descriptor` (data), its `SettingsPicker`, and its `ReviewBody` (the two React
-views). The interface requires all three, so a format missing one fails to
-compile here. Only `har` is registered (`har-importer-core` +
-`har-importer-react`). The importer has no HTTP wire union to derive, so both
-halves live here — there is no separate `importer-registry` package the collector
-slice needs.
+`BoundFormat` bundles the descriptor's fields (typed per format through the
+`FormatVariant` type-level map, so per-format concrete types survive without
+casts) plus the one React part a format contributes: its `SettingsPicker`. A
+format missing a part fails to compile here. `har` and `lifelabs-pdf` are
+registered. `defaultFormatSettings` collects every format's `defaultSettings`
+into the `FormatSettings` record the shell holds, and `formatKinds` is the
+typed registry-order walk. There is no format-specific review UI slot: the
+`PreviewPanel` renders every format the same way, from its decoded sections.
+The importer has no HTTP wire union to derive, so there is no separate
+`importer-registry` package the collector slice needs.
 
 ## Module layout
 
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
   `useConfirmImport` → `ImportResults`. It holds each read file's
-  `Review.Selection`, keyed by the file's stable id (absent = the default, every
-  kind enabled, so an untouched file still imports everything recognized). A
-  cancel or "import another" discards the read, every review edit, and any confirm
-  outcome, and returns to the picker.
+  `Review.Selection`, keyed by the file's stable id (absent = the default,
+  every resource included, so an untouched file still imports everything its
+  decode yielded). A cancel or "import another" discards the read, every
+  review edit, and any confirm outcome, and returns to the picker; the
+  per-format settings persist across it.
 - **`src/registry.ts`** — the closed format registry (above).
 - **`src/preview/`** — the read half, the review view, and the write action.
-  `use-import-run.ts` runs the descriptor's `decode` (via `useRunAuthed`) once per
-  picked file and holds the batch of `FileReadOutcome`s (each a `read` — its
-  decoded `Extraction.Input` responses — or an `unreadable` file); `preview-panel.tsx`
-  renders every read file's interactive `ReviewBody` under one shared confirm,
-  gating the confirm on the batch having at least one **chosen** response
-  (`Review.chosenCount` summed across files); `use-confirm-import.ts` is the
-  opt-in write action, per file, best-effort — upload-then-persist each file whose
-  review chose something, decoding **only** the chosen responses (`Review.chosen`),
-  one file's failure never stopping the rest.
+  `use-import-run.ts` runs the descriptor's `decode` (via `useRunAuthed`) once
+  per picked file under that format's current settings, holds the batch of
+  `FileReadOutcome`s (each a `read` — its `DecodedFile` of sections + notes —
+  an `unreadable`, or an `unrecognized` file), owns the `FormatSettings`
+  record, and re-decodes a format's files from their retained bytes when
+  `applySettings` changes that format's settings (file ids survive, so keyed
+  selections keep applying); `preview-panel.tsx` renders the batch grouped by
+  format — the format's settings form over each of its files' sectioned,
+  per-resource reviews (include checkbox, one-line `describeResource`
+  summary, Edit/Revert with the `ResourceEditor` dialog, per-type tallies,
+  and the file's notes folded into a collapsed details block) — under one
+  shared confirm, gated on the batch having at least one **included**
+  resource; `use-confirm-import.ts` is the opt-in write action, per file,
+  best-effort — upload-then-persist each file whose review kept something,
+  writing `Review.chosenResources` over the file's own decoded sections, one
+  file's failure never stopping the rest. `resource-editor.tsx` (+
+  `resource-editor-helpers.ts`) is the inline JSON editor: **Keep** parses
+  the text, decodes through `Schema.decodeUnknown(FhirResourceSchema)`, and
+  refuses the edit unless it parses and preserves `resourceType` / `id`;
+  `describe-resource.ts` is the pure one-line summary per resource type.
+  Both moved here from `har-importer-react` when the review display was
+  generalized.
 - **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
   per-file `ImportOutcome` and the `FileImportResult`/`BatchOutcome` aggregate
   (`summarizeBatch`, `isPartialBatch`), all on `collectImportSummary` semantics
@@ -113,22 +133,26 @@ slice needs.
 
 ## Traps
 
-- **The read half writes nothing, and the split is the whole product.** Reaching a
-  review issues no writes — `decode` requires no services and is run for its data
-  only, and the parse of the chosen responses runs at **confirm**, not preview. A
-  test pins this on the wire (zero writes to reach a review); do not add a write to
-  the read path (e.g. an "auto-upload on pick") that would collapse the opt-in
-  seam.
+- **The read half writes nothing, and the split is the whole product.** Reaching
+  a review issues no writes — `decode` requires no services and is run for its
+  data only, and the confirm writes exactly the reviewed objects
+  (`Review.chosenResources` over the file's decoded sections) with no
+  re-parse. A test pins this on the wire (zero writes to reach a review); do
+  not add a write to the read path (e.g. an "auto-upload on pick") that would
+  collapse the opt-in seam. A settings change re-runs `decode` — still the
+  read half, still no writes.
 - **`ServerHarArchiveList` never writes.** The list is a search, a selection is
   a `DocumentReference` GET. It is exported into the anonymizer shell's
   `serverSource` slot precisely because it is read-only; do not add a write to
   it.
-- **Selection state lives in the shell, not the review body.** `ReviewBody` is
-  controlled — the shell passes `selection` in and receives every change via
-  `onChange`, and holds the canonical `Map<fileId, Selection>` so it can hand
-  the confirm the exact selection each file was reviewed with
-  (`Review.chosenResources` over the shared previews). Don't move the
-  selection down into the body, or the shell and the view can disagree.
+- **Selection state lives in the screen, not the panel.** `PreviewPanel` is
+  controlled — the screen passes `selectionFor` in and receives every change
+  via `onSelectionChange`, holding the canonical `Map<fileId, Selection>` so
+  it can hand the confirm the exact selection each file was reviewed with
+  (`Review.chosenResources` over the file's own decoded sections). Same for
+  settings: the panel renders `settings` and reports `onSettingsChange`;
+  `useImportRun` owns the record and the re-decode. Don't move either down
+  into the panel, or the shell and the view can disagree.
 - **Confirm ordering is fixed per file: archive create, then that file's resource
   writes.** A `local` pick's archive is uploaded first (its format's
   `descriptor.uploadSource`) and the
@@ -154,12 +178,13 @@ slice needs.
   **no** whole-flow `errored` state — an upload failure is a row in the results,
   and its cause is surfaced there (the FHIR server's own response), not swallowed
   behind "Try again".
-- **The confirm affordance is gated on the batch having a chosen response to
+- **The confirm affordance is gated on the batch having an included resource to
   write.** `PreviewPanel` shows the single confirm button only when
-  `Review.chosenCount` summed across the read files is positive; unreadable files
-  and read files whose review chose nothing render their own section but add
-  nothing to write. `useConfirmImport` re-checks each file (skipping the ones with
-  nothing chosen) — the gate is the affordance, the per-file check is the safety.
+  `Review.includedCount` summed across the read files is positive; unreadable
+  files and read files whose decode yielded nothing render their own section
+  but add nothing to write. `useConfirmImport` re-checks each file (skipping
+  the ones with nothing included) — the gate is the affordance, the per-file
+  check is the safety.
 - **A HAR archive and a web trace share a code system and nothing else, and the
   disjointness is load-bearing.** The archive list searches `category` for
   `` `${WEB_TRACE_CODE_SYSTEM}|har-archive` `` (`HAR_ARCHIVE_CATEGORY_TOKEN`,

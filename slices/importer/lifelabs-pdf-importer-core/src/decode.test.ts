@@ -1,32 +1,39 @@
 import { Effect, Either, ParseResult } from 'effect'
 import * as fc from 'fast-check'
+import { sectionResources } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { decodeLifeLabsPdfDocument } from './decode.ts'
+import { decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 /**
  * `decodeLifeLabsPdfDocument` is the pure "positioned-text document ↦
- * labeled FHIR resources" leg of the LifeLabs importer's `decode`. The outer
- * `decodeLifeLabsPdf(pdfBytes, ...)` wraps this with pdfjs extraction; that
- * seam is untested-by-design (see the anonymizer's PDF descriptor), so the
- * property tests here drive `decodeLifeLabsPdfDocument` directly against
- * `layoutDocument`'s printed inverse.
+ * per-report sections of labeled FHIR resources" leg of the LifeLabs
+ * importer's `decode`. The outer `decodeLifeLabsPdf(pdfBytes, ...)` wraps
+ * this with pdfjs extraction; that seam is untested-by-design (see the
+ * anonymizer's PDF descriptor), so the property tests here drive
+ * `decodeLifeLabsPdfDocument` directly against `layoutDocument`'s printed
+ * inverse.
  */
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
 describe('decodeLifeLabsPdfDocument', () => {
-  it('property: a positioned-text document with LifeLabs reports decodes to labeled FHIR resources', () => {
+  it('property: a document with LifeLabs reports decodes to one titled section per report', () => {
     fc.assert(
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
 
-        const labeled = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
+        const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
+        expect(decoded.notes).toEqual([])
+        expect(decoded.sections.map((section) => section.title)).toEqual(
+          reports.map(reportSectionTitle)
+        )
+        const labeled = sectionResources(decoded.sections)
         expect(labeled.length).toBeGreaterThan(0)
         for (const item of labeled) {
           expect(item).toHaveProperty('key')
@@ -43,9 +50,9 @@ describe('decodeLifeLabsPdfDocument', () => {
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
 
-        const labeled = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
+        const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const item of labeled) {
+        for (const item of sectionResources(decoded.sections)) {
           const type = item.resource.resourceType
           const id = item.resource.id
           expect(id).not.toBeNull()
@@ -63,9 +70,9 @@ describe('decodeLifeLabsPdfDocument', () => {
       fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }), (reports) => {
         const document = layoutDocument(reports)
 
-        const labeled = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
+        const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const item of labeled) {
+        for (const item of sectionResources(decoded.sections)) {
           const resource = item.resource
           // Adopted resources receive a derived local id with the 'wf-' prefix
           expect(resource.id).toMatch(/^wf-[0-9a-f]{32}$/)
@@ -110,5 +117,33 @@ describe('decodeLifeLabsPdfDocument', () => {
     )
     expect(Either.isLeft(outcome)).toBe(true)
     if (Either.isLeft(outcome)) expect(ParseResult.isParseError(outcome.left)).toBe(true)
+  })
+})
+
+describe('reportSectionTitle', () => {
+  it('should join the Lab No and date of service when both are printed', () => {
+    fc.assert(
+      fc.property(reportArbitrary, (report) => {
+        const title = reportSectionTitle(report)
+
+        if (report.labNo.trim() !== '' && report.dateOfService.trim() !== '') {
+          expect(title).toBe(`Lab No ${report.labNo.trim()} — ${report.dateOfService.trim()}`)
+        } else {
+          expect(title.length).toBeGreaterThan(0)
+        }
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  it('should fall back to a generic label when the report masks both fields', () => {
+    fc.assert(
+      fc.property(reportArbitrary, (report) => {
+        const masked = { ...report, labNo: '', dateOfService: '' }
+
+        expect(reportSectionTitle(masked)).toBe('LifeLabs report')
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
   })
 })

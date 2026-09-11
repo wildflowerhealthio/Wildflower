@@ -1,6 +1,3 @@
-import { Effect } from 'effect'
-import type { FhirResource } from 'fhir-r4/resources'
-import type { LabeledResource } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { lifeLabsPdfImporterDescriptor } from './descriptor.ts'
@@ -31,20 +28,5 @@ describe('lifeLabsPdfImporterDescriptor', () => {
   it('defaultSettings has a timeZone', () => {
     expect(lifeLabsPdfImporterDescriptor.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
     expect(lifeLabsPdfImporterDescriptor.defaultSettings.timeZone).toBe('America/Toronto')
-  })
-
-  it('resolve is identity: it returns exactly what it receives', () => {
-    const review: readonly LabeledResource<FhirResource>[] = [
-      {
-        key: 'Patient/abc',
-        title: 'Patient/abc',
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test fixture
-        resource: { resourceType: 'Patient' } as unknown as FhirResource,
-      },
-    ]
-
-    const result = Effect.runSync(lifeLabsPdfImporterDescriptor.resolve(review))
-
-    expect(result).toBe(review)
   })
 })

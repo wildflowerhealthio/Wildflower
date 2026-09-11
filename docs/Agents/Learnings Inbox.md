@@ -204,3 +204,9 @@ the literal and fakes only the data part.
 **Discovered during**: claude/macos-builds-failed-o56j1o (v0.2.0 Publish run)
 **Learning**: The Tauri bundler resolves `APPLE_SIGNING_IDENTITY` by substring against `security find-identity -v -p codesigning` on a keychain holding only `APPLE_CERTIFICATE`, and only after the ~20 min universal compile. The run failed with `failed codesign application: failed to resolve signing identity` because the secret named `Apple Development: ryanmarks@mac.com (X7NW4R3H9Y)` while the .p12 held `Apple Development: Ryan Marks (Ryan Marks)` — and an "Apple Development" cert would not notarize anyway; a GitHub Release needs a "Developer ID Application" cert. `scripts/checks/apple-signing-preflight.sh` now runs first on the macOS runner and reproduces the bundler's lookup, printing the certificate names the .p12 actually contains; run it locally with the same env vars to vet a new .p12 before storing it as a secret. A CSR and .p12 can be made entirely with `openssl req -newkey` / `openssl pkcs12 -export -legacy -certfile DeveloperIDG2CA.pem` when Keychain Access's certificate assistant misbehaves.
 **Suggested destination**: Rust docs (release process)
+
+## pdfjs `getDocument({ data })` detaches the caller's ArrayBuffer
+
+**Discovered during**: claude/pr-637-3-lifelabs-binding (generalized importer preview)
+**Learning**: `pdfjs-dist` transfers the `ArrayBuffer` behind `data` to its worker, detaching it in the calling realm. Any code that reuses the same `Uint8Array` afterwards — the importer re-decodes a pick on a settings change and uploads the same bytes as the source archive at confirm — dies with `TypeError: attempting to access detached ArrayBuffer` (surfacing far away, e.g. inside an Effect Schema encode). `positioned-text-web`'s `extractPositionedText` now hands pdfjs a copy (`new Uint8Array(bytes)`); keep that invariant if the seam is ever touched.
+**Suggested destination**: file-formats docs / Strategies

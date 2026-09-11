@@ -1,32 +1,63 @@
 import type { JSX } from 'react'
 
-import type { HarSettings } from 'har-importer-core'
+import { fhirSources, type HarSettings } from 'har-importer-core'
+import type { SettingsPickerProps } from 'importer-fundamentals'
 
 /**
- * The props a format's settings picker receives — the current settings and a way
- * to change them. Generic over the format's `TSettings` so each picker is
- * written against its own precise shape, mirroring the collector slice's
- * `ConfigFormProps`.
- */
-interface SettingsPickerProps<TSettings> {
-  /** The current settings value. */
-  readonly settings: TSettings
-  /** Called with the next settings when the user changes them. */
-  readonly onChange: (settings: TSettings) => void
-}
-
-/**
- * The HAR format's settings picker — a no-op today.
+ * The HAR format's settings picker: whole-import include toggles for the
+ * registered response kinds, grouped by source.
  *
  * @remarks
- * A HAR archive has no user-tunable knobs, so this renders only a hint and
- * never calls {@link SettingsPickerProps.onChange}. It exists so the shell's
- * registry has all three parts for HAR — the seam a format with real settings
- * fills in without the shell learning a new shape.
+ * The one knob the format has. The toggles drive
+ * {@link HarSettings.disabledKinds} — a pre-decode setting, so the shell
+ * re-decodes the batch's HAR files when one changes and the review shows
+ * exactly what the surviving kinds parse. Kinds default to on; the settings
+ * hold only the explicit opt-outs.
+ *
+ * @packageDocumentation
  */
-const HarSettingsPicker = (_props: SettingsPickerProps<HarSettings>): JSX.Element => (
-  <p>No import settings for a HAR archive.</p>
+
+/**
+ * The display label for a kind: its `name` without the conventional
+ * `ResponseKind` suffix every kind's identity carries.
+ */
+const kindLabel = (name: string): string => name.replace(/ResponseKind$/, '')
+
+/** Toggle one kind name in/out of the disabled list, preserving the others. */
+const toggleKind = (settings: HarSettings, kindName: string): HarSettings => {
+  const disabled = settings.disabledKinds.includes(kindName)
+  return {
+    ...settings,
+    disabledKinds: disabled
+      ? settings.disabledKinds.filter((name) => name !== kindName)
+      : [...settings.disabledKinds, kindName],
+  }
+}
+
+/** The interactive kind toggles over the HAR sources. */
+const HarSettingsPicker = ({
+  settings,
+  onChange,
+}: SettingsPickerProps<HarSettings>): JSX.Element => (
+  <fieldset>
+    <legend>Include</legend>
+    {fhirSources.map((source) => (
+      <div key={source.name} role="group" aria-label={source.display.title}>
+        <p>{source.display.title}</p>
+        <p>{source.display.description}</p>
+        {source.responseKinds.map((kind) => (
+          <label key={kind.name}>
+            <input
+              type="checkbox"
+              checked={!settings.disabledKinds.includes(kind.name)}
+              onChange={() => onChange(toggleKind(settings, kind.name))}
+            />
+            {kindLabel(kind.name)}
+          </label>
+        ))}
+      </div>
+    ))}
+  </fieldset>
 )
 
 export { HarSettingsPicker }
-export type { SettingsPickerProps }

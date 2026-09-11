@@ -1,7 +1,7 @@
 import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { LabeledResource } from 'importer-fundamentals'
+import type { DecodedFile, LabeledResource, LabeledSection } from 'importer-fundamentals'
 import type { Document } from 'positioned-text'
 import { extractPositionedText } from 'positioned-text-web'
 
@@ -72,13 +72,27 @@ const labelAdopted = (resource: FhirResource): LabeledResource<FhirResource> => 
 }
 
 /**
- * Decode a positioned-text document into adopted, labeled FHIR resources — the
- * pure "document → resources" leg the outer decode wraps.
+ * The section title one report's resources are reviewed under: the report's
+ * own printed identity — its `Lab No` and date of service — with a generic
+ * fallback when the report masks both.
+ */
+const reportSectionTitle = (report: Report.Type): string => {
+  const labNo = report.labNo.trim()
+  const dateOfService = report.dateOfService.trim()
+  const parts = [labNo === '' ? '' : `Lab No ${labNo}`, dateOfService].filter((part) => part !== '')
+  return parts.length === 0 ? 'LifeLabs report' : parts.join(' — ')
+}
+
+/**
+ * Decode a positioned-text document into per-report sections of adopted,
+ * labeled FHIR resources — the pure "document → sections" leg the outer
+ * decode wraps.
  *
  * @param document - The positioned-text document {@link extractPositionedText}
  *   produced from the PDF's bytes
  * @param settings - The import's settings (time zone for date interpretation)
- * @returns The adopted FHIR resources as `LabeledResource`s; fails only with a
+ * @returns One section per report the document carries (titled by the
+ *   report's `Lab No` and date of service), no notes; fails only with a
  *   `ParseError` when the document is not a recognized LifeLabs report;
  *   requires nothing
  *
@@ -86,30 +100,36 @@ const labelAdopted = (resource: FhirResource): LabeledResource<FhirResource> => 
  * Exported so property tests can drive it directly, feeding `layoutDocument`'s
  * printed inverse instead of round-tripping through the pdfjs extraction seam.
  * `decodeLifeLabsPdf` is `decodeLifeLabsPdfDocument ∘ extractPositionedText`.
+ * A `Patient` or `Practitioner` shared across reports appears in the section
+ * of the first report naming it — the synthesis deduplicates by id.
  */
 const decodeLifeLabsPdfDocument = (
   document: Document.Type,
   settings: LifeLabsPdfSettings
-): Effect.Effect<readonly LabeledResource<FhirResource>[], ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
     const reports = yield* Report.tryFromDocument(document).pipe(
       Effect.mapError(unrecognizedAsParseError)
     )
-    const resources = yield* toFhirResources(reports, { timeZone })
-    return resources.map(labelAdopted)
+    const groups = yield* toFhirResources(reports, { timeZone })
+    const sections = groups.map((group): LabeledSection<FhirResource> => ({
+      title: reportSectionTitle(group.report),
+      resources: group.resources.map(labelAdopted),
+    }))
+    return { sections, notes: [] }
   })
 
 /**
- * Decode a LifeLabs report PDF's raw bytes into adopted, labeled FHIR
- * resources — the descriptor's `decode`.
+ * Decode a LifeLabs report PDF's raw bytes into per-report sections of
+ * adopted, labeled FHIR resources — the descriptor's `decode`.
  *
  * @param pdfBytes - The raw bytes of a LifeLabs "Reports" PDF, exactly as the
  *   picker read them from disk
  * @param settings - The import's settings (time zone for date interpretation)
- * @returns The adopted FHIR resources as `LabeledResource`s; fails only with a
- *   `ParseError` when the bytes are not a PDF the extractor can open or the
- *   extracted text is not a recognized LifeLabs report; requires nothing
+ * @returns One section of `LabeledResource`s per report, no notes; fails only
+ *   with a `ParseError` when the bytes are not a PDF the extractor can open or
+ *   the extracted text is not a recognized LifeLabs report; requires nothing
  *
  * @remarks
  * The extraction seam is `positioned-text-web`'s `extractPositionedText`, the
@@ -123,10 +143,10 @@ const decodeLifeLabsPdfDocument = (
 const decodeLifeLabsPdf = (
   pdfBytes: Uint8Array,
   settings: LifeLabsPdfSettings
-): Effect.Effect<readonly LabeledResource<FhirResource>[], ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.tryPromise({
     try: () => extractPositionedText(pdfBytes),
     catch: extractionAsParseError,
   }).pipe(Effect.flatMap((document) => decodeLifeLabsPdfDocument(document, settings)))
 
-export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument }
+export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle }

@@ -7,7 +7,7 @@
  *
  * @packageDocumentation
  */
-export { type SettingsPickerProps } from 'har-importer-react'
+export { type SettingsPickerProps } from 'importer-fundamentals'
 export {
   LifeLabsPdfSettingsPicker,
   SUGGESTED_TIME_ZONES,

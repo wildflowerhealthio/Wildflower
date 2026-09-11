@@ -1,10 +1,12 @@
 # AGENTS.md — slices/importer/lifelabs-pdf-importer-react
 
 The **LifeLabs PDF format's UI** for the importer slice: the
-`LifeLabsPdfSettingsPicker` (the report's time zone). Presentation and
-interaction only — nothing here decodes a report, recognizes it, or writes
-resources. The format has no format-specific `ReviewBody`; the shell's default
-per-resource list suffices, so the registry binds `ReviewBody = null`.
+`LifeLabsPdfSettingsPicker` (the report's time zone), mounted by the shell in
+its per-format settings form — a change re-decodes the batch's LifeLabs files
+under the new zone. Presentation and interaction only — nothing here decodes
+a report, recognizes it, or writes resources. The format has no review UI of
+its own; the shell's generalized sectioned review (per-report sections,
+per-resource include/edit) covers it.
 
 ## Shape
 
@@ -19,13 +21,14 @@ per-resource list suffices, so the registry binds `ReviewBody = null`.
 - `src/index.ts` — the package barrel: `LifeLabsPdfSettingsPicker`, the
   `SUGGESTED_TIME_ZONES` list and `UNKNOWN_ZONE_MESSAGE` sentence the picker
   renders, and the `SettingsPickerProps` type re-exported from
-  `har-importer-react` (the format-agnostic settings-picker contract).
+  `importer-fundamentals` (the format-agnostic settings-picker contract).
 
 ## Layering
 
 Depends on `lifelabs-pdf-importer-core` (the settings type),
-`har-importer-react` (`SettingsPickerProps`), `effect`, and `react`. Never
-imports `importer-react` or `slices/collector`.
+`importer-fundamentals` (`SettingsPickerProps`), `effect`, and `react`. Never
+imports `importer-react`, a sibling format's UI package, or
+`slices/collector`.
 
 ## References
 

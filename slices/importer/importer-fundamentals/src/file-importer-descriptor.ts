@@ -19,30 +19,89 @@ interface LabeledResource<TParsed> {
 }
 
 /**
+ * One titled group of labeled resources a format's decode yields — the unit
+ * the shell's generalized review lists. A format decides what a section is
+ * from its own structure: the HAR binding sections by URL, the LifeLabs PDF
+ * binding by report.
+ *
+ * @typeParam TParsed - The concrete resource type the format decodes to
+ *   (FHIR for HAR and LifeLabs PDF)
+ */
+interface LabeledSection<TParsed> {
+  readonly title: string
+  readonly resources: readonly LabeledResource<TParsed>[]
+}
+
+/**
+ * Everything one file's decode yields for review: the titled sections of
+ * labeled resources the shell renders with per-resource include/edit, and
+ * the file-level diagnostic notes for what did not become a resource (a
+ * response no kind matched, a body the archive dropped) — surfaced so the
+ * reviewer's opt-in stays informed, folded to data so decode stays total
+ * past the one malformed-file `ParseError`.
+ *
+ * @typeParam TParsed - The concrete resource type the format decodes to
+ */
+interface DecodedFile<TParsed> {
+  readonly sections: readonly LabeledSection<TParsed>[]
+  readonly notes: readonly string[]
+}
+
+/**
+ * Every labeled resource across a decoded file's sections, in section order —
+ * the flat list the per-resource `Review` transitions and the confirm's
+ * write set fold over.
+ *
+ * @param sections - A decoded file's sections
+ * @returns The sections' resources concatenated, order preserved
+ */
+const sectionResources = <TParsed>(
+  sections: readonly LabeledSection<TParsed>[]
+): readonly LabeledResource<TParsed>[] => sections.flatMap((section) => section.resources)
+
+/**
+ * The props a format's settings picker receives — the current settings and a
+ * way to change them. Generic over the format's `TSettings` so each picker is
+ * written against its own precise shape, mirroring the collector slice's
+ * `ConfigFormProps`.
+ *
+ * @remarks
+ * Declared here — below every format's React package — so a format UI
+ * implements it without reaching into a sibling format's package. A plain
+ * props record, no React types: the picker component shape lives where the
+ * components do.
+ */
+interface SettingsPickerProps<TSettings> {
+  /** The current settings value. */
+  readonly settings: TSettings
+  /** Called with the next settings when the user changes them. */
+  readonly onChange: (settings: TSettings) => void
+}
+
+/**
  * "A file-format importer" as one first-class value: everything the shell needs
  * to turn a picked file of one format into reviewed, opt-in-written resources —
  * resource-agnostic and format-agnostic in this package, bound to a concrete
  * format and resource type in its own `*-importer-core` package.
  *
- * @typeParam TSettings - The format's per-import settings (HAR has none today, a
- *   minimal record); the shell seeds a form from {@link defaultSettings} and
- *   hands the chosen settings to {@link decode}
- * @typeParam TReview - The format's opaque review state: {@link decode} returns
- *   the initial value and the format's React body renders transitions over it;
- *   the shell holds it per file but never inspects it
- * @typeParam TParsed - The resource type this format resolves to (FHIR for HAR
+ * @typeParam TSettings - The format's per-import settings (the kind toggles
+ *   for HAR, the report time zone for LifeLabs PDF); the shell seeds a form
+ *   from {@link defaultSettings} and hands the chosen settings to
+ *   {@link decode}, re-decoding a file when its format's settings change
+ * @typeParam TParsed - The resource type this format decodes to (FHIR for HAR
  *   and LifeLabs PDF)
  * @typeParam R - The services {@link persist}'s write sink requires (the FHIR
  *   write client for HAR); stays visible so the shell provides it
  *
  * @remarks
- * The format pair (core + React) owns both the decode and the review resolution.
- * The general shell sees only {@link LabeledResource}s with per-resource
- * exclude/edit, and `TReview` is sealed by a `bind` closure at the registry so
- * the shell never names it. Only {@link persist} carries `R`: `decode` requires
- * nothing, so a preview can never reach the write client by construction.
+ * The format core owns the whole decode; the general shell sees only the
+ * {@link DecodedFile} — titled sections of {@link LabeledResource}s plus
+ * diagnostic notes — and renders one per-resource exclude/edit review over
+ * it, with no format-specific review UI. Only {@link persist} carries `R`:
+ * `decode` requires nothing, so a preview can never reach the write client
+ * by construction.
  */
-interface FileImporterDescriptor<TSettings, TReview, TParsed, R> {
+interface FileImporterDescriptor<TSettings, TParsed, R> {
   /** The format tag this descriptor binds (`'har'`, `'lifelabs-pdf'`); the registry's key. */
   readonly format: string
   /** User-facing strings the shell shows for this format. */
@@ -65,25 +124,22 @@ interface FileImporterDescriptor<TSettings, TReview, TParsed, R> {
   /** A valid settings value to seed a fresh import's settings form. */
   readonly defaultSettings: TSettings
   /**
-   * Decode a picked file's bytes into the format's opaque review state. The
-   * only failure is a malformed file (a `ParseError`); it requires no
-   * services and writes nothing.
+   * Decode a picked file's bytes into the sections and notes the shell
+   * reviews. The only failure is a malformed file (a `ParseError`); it
+   * requires no services and writes nothing.
    *
    * @remarks
    * Bytes rather than text so the seam stays format-blind: a HAR decodes
    * UTF-8 JSON, a PDF decodes binary. A format that reads text decodes
    * (`new TextDecoder().decode(bytes)`) at the top of its own `decode`.
+   * Resource keys must be stable across settings changes where the
+   * underlying resource is unchanged, so a re-decode under new settings
+   * keeps the reviewer's per-resource exclusions and edits applying.
    */
   readonly decode: (
     fileBytes: Uint8Array,
     settings: TSettings
-  ) => Effect.Effect<TReview, ParseResult.ParseError>
-  /**
-   * Resolve the current review state into the labeled resources the shell
-   * shows and the confirm step writes. Pure and total — never fails, never
-   * requires services.
-   */
-  readonly resolve: (review: TReview) => Effect.Effect<readonly LabeledResource<TParsed>[]>
+  ) => Effect.Effect<DecodedFile<TParsed>, ParseResult.ParseError>
   /**
    * Upload a local pick's bytes as a source-archive `DocumentReference` and
    * return the reference every FHIR resource this file writes will stamp
@@ -129,7 +185,7 @@ interface FileImporterDescriptor<TSettings, TReview, TParsed, R> {
  *   empty string when no descriptor lists any token
  */
 const acceptFor = (
-  descriptors: readonly Pick<FileImporterDescriptor<never, never, never, never>, 'accept'>[]
+  descriptors: readonly Pick<FileImporterDescriptor<never, never, never>, 'accept'>[]
 ): string => [...new Set(descriptors.flatMap((descriptor) => descriptor.accept))].join(',')
 
 /**
@@ -147,10 +203,16 @@ const acceptFor = (
  * {@link FileImporterDescriptor} itself so the shell can route bound
  * (descriptor + adapters) records through it.
  */
-const identify = <D extends Pick<FileImporterDescriptor<never, never, never, never>, 'detect'>>(
+const identify = <D extends Pick<FileImporterDescriptor<never, never, never>, 'detect'>>(
   descriptors: readonly D[],
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
 
-export { acceptFor, identify }
-export type { FileImporterDescriptor, LabeledResource }
+export { acceptFor, identify, sectionResources }
+export type {
+  DecodedFile,
+  FileImporterDescriptor,
+  LabeledResource,
+  LabeledSection,
+  SettingsPickerProps,
+}

@@ -1,5 +1,5 @@
 import { DateTime, Option } from 'effect'
-import type { SettingsPickerProps } from 'har-importer-react'
+import type { SettingsPickerProps } from 'importer-fundamentals'
 import type { LifeLabsPdfSettings } from 'lifelabs-pdf-importer-core'
 import { type JSX, useId } from 'react'
 

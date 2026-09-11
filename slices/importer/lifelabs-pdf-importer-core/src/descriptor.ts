@@ -1,8 +1,6 @@
-import { Effect } from 'effect'
-
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { FileImporterDescriptor, LabeledResource } from 'importer-fundamentals'
+import type { FileImporterDescriptor } from 'importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
@@ -11,25 +9,17 @@ import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings
 import { uploadSource } from './upload-source.ts'
 
 /**
- * The LifeLabs PDF format's review state: the labeled resources the decode
- * pipeline produced. This format has no routing decisions (no per-URL kind
- * picks, no source toggles) — every resource the decode yields is a candidate.
- */
-type LifeLabsPdfReviewState = readonly LabeledResource<FhirResource>[]
-
-/**
  * The concrete {@link FileImporterDescriptor} for the `lifelabs-pdf` format:
  * a LifeLabs report's positioned text in, FHIR resources out, written through
  * the FHIR store.
  *
  * @remarks
- * `TReview = LifeLabsPdfReviewState` — the decoded, adopted labeled resources.
- * `resolve` is the identity: the decode pipeline already produces the final
- * labeled resources, and there are no routing decisions to interpose.
+ * `decode` yields one section per report the PDF carries and no notes — this
+ * format has no routing decisions (no per-URL kind picks, no source toggles),
+ * so every resource the decode yields is a review candidate.
  */
 const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
   LifeLabsPdfSettings,
-  LifeLabsPdfReviewState,
   FhirResource,
   FhirR4ResourcesHttpApiClient
 > = {
@@ -46,10 +36,8 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
   decode: decodeLifeLabsPdf,
-  resolve: (review) => Effect.succeed(review),
   uploadSource,
   persist: persistFhir,
 }
 
 export { lifeLabsPdfImporterDescriptor }
-export type { LifeLabsPdfReviewState }

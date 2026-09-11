@@ -5,10 +5,10 @@ import { useCallback, useRef, useState } from 'react'
 import { useRunAuthed } from 'fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import { type LabeledResource, type PersistFailure, Review } from 'importer-fundamentals'
+import { type PersistFailure, Review, sectionResources } from 'importer-fundamentals'
 
 import { HAR_ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
-import type { BoundFormat, FormatKind } from '../registry.tsx'
+import type { BoundFormat, FormatKind } from '../registry.ts'
 import {
   type BatchOutcome,
   type FileImportResult,
@@ -67,22 +67,16 @@ type ConfirmState =
 /** How the confirm reads each file's reviewed selection. */
 type SelectionFor = (fileId: string) => Review.Selection<FhirResource>
 
-/** How the confirm reads each file's resolved labeled resources. */
-type LabeledFor = (fileId: string) => readonly LabeledResource<FhirResource>[]
-
 /** Imperative surface the screen drives the confirm through. */
 interface ConfirmImport {
   readonly state: ConfirmState
   /**
    * Run the per-file upload-then-persist action for every read file in
    * the batch, dispatching each file through its own format's
-   * `uploadSource` + `persist`.
+   * `uploadSource` + `persist`. Each read file's labeled resources come
+   * off its own decoded sections — the same objects the preview rendered.
    */
-  readonly confirm: (
-    files: readonly FileReadOutcome[],
-    labeledFor: LabeledFor,
-    selectionFor: SelectionFor
-  ) => void
+  readonly confirm: (files: readonly FileReadOutcome[], selectionFor: SelectionFor) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
@@ -151,7 +145,6 @@ const secureSourceRef = (
 const importOneFile = (
   file: FileReadOutcome,
   registry: ConfirmRegistry,
-  labeledFor: LabeledFor,
   selectionFor: SelectionFor
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
   const { id, picked } = file
@@ -161,9 +154,9 @@ const importOneFile = (
   return Match.value(file).pipe(
     Match.tag('unreadable', () => skip('unreadable')),
     Match.tag('unrecognized', () => skip('unreadable')),
-    Match.tag('read', ({ format }) => {
+    Match.tag('read', ({ format, decoded }) => {
       const selection = selectionFor(id)
-      const labeled = labeledFor(id)
+      const labeled = sectionResources(decoded.sections)
       const resources = Review.chosenResources(labeled, selection)
       const excluded = Review.excludedCount(labeled, selection)
       if (resources.length === 0) return skip('nothing')
@@ -207,19 +200,13 @@ const useConfirmImport = (registry: ConfirmRegistry): ConfirmImport => {
   const latest = useRef(0)
 
   const confirm = useCallback(
-    (
-      files: readonly FileReadOutcome[],
-      labeledFor: LabeledFor,
-      selectionFor: SelectionFor
-    ): void => {
+    (files: readonly FileReadOutcome[], selectionFor: SelectionFor): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
-      const batch = Effect.forEach(
-        files,
-        (file) => importOneFile(file, registry, labeledFor, selectionFor),
-        { concurrency: 'unbounded' }
-      )
+      const batch = Effect.forEach(files, (file) => importOneFile(file, registry, selectionFor), {
+        concurrency: 'unbounded',
+      })
       void runAuthed(batch).then((results) => {
         if (latest.current !== ticket) return
         setState({ _tag: 'done', batch: results })
@@ -245,7 +232,6 @@ export {
   type ConfirmImport,
   type ConfirmRegistry,
   type ConfirmState,
-  type LabeledFor,
   type SelectionFor,
   useConfirmImport,
 }

@@ -20,41 +20,65 @@ interface SynthesisOptions {
   readonly timeZone: string
 }
 
+/**
+ * One report's synthesized resources, still paired with the report that
+ * minted them — the grouping the importer's per-report review sections are
+ * built from.
+ *
+ * @remarks
+ * A `Patient` or `Practitioner` several reports share appears once, in the
+ * group of the first report that names it (each is deduplicated by id across
+ * the whole document), so flattening the groups in order writes every
+ * reference target before its referrer.
+ */
+interface ReportResources {
+  readonly report: Report.Type
+  readonly resources: readonly FhirResource[]
+}
+
 const decodePatient = Schema.decodeUnknown(Patient.Schema)
 const decodePractitioner = Schema.decodeUnknown(Practitioner.Schema)
 const decodeDiagnosticReport = Schema.decodeUnknown(DiagnosticReport.Schema)
 const decodeObservation = Schema.decodeUnknown(Observation.Schema)
 
 /**
- * Synthesize the FHIR resources for a set of parsed LifeLabs reports.
+ * Synthesize the FHIR resources for a set of parsed LifeLabs reports, grouped
+ * per report.
  *
  * @param reports - The reports one positioned-text document parsed to
  * @param options - The time zone the reports' printed clocks are in
- * @returns Every `Patient` and `Practitioner` the reports name (each once,
- *   by id), then per report its `Observation`s and the `DiagnosticReport`
- *   that lists them — the order a writer can persist in so a reference
- *   never precedes its target; fails with a `ParseError` when a synthesized
+ * @returns One {@link ReportResources} per report, in report order: the
+ *   `Practitioner`s and `Patient` this report is first to name, then its
+ *   `Observation`s and the `DiagnosticReport` that lists them — so the
+ *   flattened groups are an order a writer can persist in, a reference never
+ *   preceding its target; fails with a `ParseError` when a synthesized
  *   resource does not satisfy its `fhir-r4` schema
  */
 const toFhirResources = (
   reports: readonly Report.Type[],
   options: SynthesisOptions
-): Effect.Effect<readonly FhirResource[], ParseResult.ParseError> =>
+): Effect.Effect<readonly ReportResources[], ParseResult.ParseError> =>
   Effect.gen(function* () {
     const { timeZone } = options
-    const patients = new Map<string, Wire>()
-    const practitioners = new Map<string, Wire>()
-    const perReport: Wire[] = []
+    const seenPatients = new Set<string>()
+    const seenPractitioners = new Set<string>()
+    const groups: ReportResources[] = []
     for (const report of reports) {
+      const resources: FhirResource[] = []
       const orderedBy = report.orderedBy.trim()
       const orderedById = orderedBy === '' ? undefined : practitionerOriginalId(orderedBy)
       for (const name of [orderedBy, ...report.copyTo].map((n) => n.trim())) {
         if (name === '') continue
         const id = practitionerOriginalId(name)
-        if (!practitioners.has(id)) practitioners.set(id, practitionerWire(name))
+        if (seenPractitioners.has(id)) continue
+        seenPractitioners.add(id)
+        resources.push(yield* decodePractitioner(practitionerWire(name)))
       }
       const patientId = patientOriginalId(report.patient)
-      if (!patients.has(patientId)) patients.set(patientId, patientWire(report, orderedById))
+      if (!seenPatients.has(patientId)) {
+        seenPatients.add(patientId)
+        resources.push(yield* decodePatient(patientWire(report, orderedById)))
+      }
 
       const reportId = reportOriginalId(report)
       const observations: Wire[] = []
@@ -72,24 +96,16 @@ const toFhirResources = (
           }
         }
       }
-      perReport.push(
-        ...observations,
-        diagnosticReportWire(report, reportId, patientId, observationIds, timeZone)
-      )
-    }
-
-    const resources: FhirResource[] = []
-    for (const wire of practitioners.values()) resources.push(yield* decodePractitioner(wire))
-    for (const wire of patients.values()) resources.push(yield* decodePatient(wire))
-    for (const wire of perReport) {
+      for (const wire of observations) resources.push(yield* decodeObservation(wire))
       resources.push(
-        yield* wire['resourceType'] === 'DiagnosticReport'
-          ? decodeDiagnosticReport(wire)
-          : decodeObservation(wire)
+        yield* decodeDiagnosticReport(
+          diagnosticReportWire(report, reportId, patientId, observationIds, timeZone)
+        )
       )
+      groups.push({ report, resources })
     }
-    return resources
+    return groups
   })
 
 export { patientOriginalId, practitionerOriginalId, reportOriginalId, toFhirResources }
-export type { SynthesisOptions }
+export type { ReportResources, SynthesisOptions }

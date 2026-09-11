@@ -49,7 +49,10 @@ seam in the repo; the anonymizer's PDF descriptor calls the same function.
   it validates each wire object through the `fhir-r4` schema decoders and
   emits `Patient`, `Practitioner`, `DiagnosticReport`, and `Observation`
   resources with deterministic ids (FNV-1a 64-bit hashes of length-prefixed
-  identity components). The per-resource wire builders live in `wire/`:
+  identity components), grouped as one `ReportResources` per report — a
+  `Patient` or `Practitioner` several reports share is minted once, in the
+  group of the first report naming it, so flattening the groups in order
+  writes every reference target before its referrer. The per-resource wire builders live in `wire/`:
   `wire/patient.ts`, `wire/practitioner.ts`, `wire/observation.ts`,
   `wire/diagnostic-report.ts`, with shared helpers (`sourceId`, `timingWire`,
   `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
@@ -62,13 +65,16 @@ seam in the repo; the anonymizer's PDF descriptor calls the same function.
   so the descriptor, the response kind, and the FHIR synthesis import it
   without a cycle.
 - `src/decode.ts` — **`decodeLifeLabsPdf`** (the descriptor's `decode`) and
-  **`decodeLifeLabsPdfDocument`** (the pure "document ↦ resources" leg tests
+  **`decodeLifeLabsPdfDocument`** (the pure "document ↦ sections" leg tests
   drive directly). `decodeLifeLabsPdf(pdfBytes, settings)` calls
   `positioned-text-web`'s `extractPositionedText` on the raw bytes and hands
   the extracted `Document.Type` to `decodeLifeLabsPdfDocument`, which runs the
-  dialect, the FHIR synthesis, and adoption. Both extraction failure and an
-  unrecognized LifeLabs document surface as `ParseError` — the descriptor
-  contract's one error channel.
+  dialect, the FHIR synthesis, and adoption, yielding a `DecodedFile`: one
+  `LabeledSection` per report, titled by **`reportSectionTitle`** (the
+  report's `Lab No` and date of service, `'LifeLabs report'` when both are
+  masked), and no notes. Both extraction failure and an unrecognized
+  LifeLabs document surface as `ParseError` — the descriptor contract's one
+  error channel.
 - `src/detect.ts` — **`detectLifeLabsPdf`**, the descriptor's `detect`:
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition
@@ -92,8 +98,8 @@ seam in the repo; the anonymizer's PDF descriptor calls the same function.
   source-archive format lands.
 - `src/descriptor.ts` — **`lifeLabsPdfImporterDescriptor`**, the concrete
   `FileImporterDescriptor` for format `'lifelabs-pdf'`. `accept` is only the
-  PDF tokens (`.pdf`, `application/pdf`); `resolve` is the identity — what
-  `decode` returns is what the user reviews.
+  PDF tokens (`.pdf`, `application/pdf`); what `decode` returns is what the
+  user reviews — this format has no routing decisions to interpose.
 - `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone }`, default
   `America/Toronto`: the report prints local clock times with no zone, and
   FHIR's `dateTime`-with-time / `instant` need one. The zone is passed to

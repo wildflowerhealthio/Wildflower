@@ -21,31 +21,37 @@ Part of the offline FHIR HAR importer epic (#489).
 Each package's own AGENTS.md is the authority on its shape; the roles:
 
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
-  (resource-agnostic, format-agnostic) — the `FileImporterDescriptor` contract,
-  the pure per-response `Review` model, and the structural `PersistFailure`.
+  (resource-agnostic, format-agnostic) — the `FileImporterDescriptor` contract
+  (a sectioned `decode` — `DecodedFile` of titled `LabeledSection`s plus
+  diagnostic notes — and a `persist` sink), the pure per-resource `Review`
+  model, and the structural `PersistFailure`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
-  `harImporterDescriptor` for format `'har'`: HAR decode, the pre-adopted FHIR
-  response-kind pool, and the FHIR persist sink.
+  `harImporterDescriptor` for format `'har'`: HAR decode through the
+  pre-adopted FHIR response-kind pool into per-URL sections (with a note per
+  response that yielded nothing), and the FHIR persist sink. The kind
+  toggles are a _setting_ (`HarSettings.disabledKinds`), applied inside
+  `decode`.
 - **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
-  `HarSettingsPicker` (a no-op today) and the interactive per-URL `ReviewBody`,
-  presentation over the pure `Review` model.
+  `HarSettingsPicker`, the whole-import kind toggles grouped by source. The
+  format has no review UI of its own; the shell's generalized sectioned
+  review covers it.
 - **[`lifelabs-pdf-importer-core`](./lifelabs-pdf-importer-core/AGENTS.md)** (the
   LifeLabs PDF binding) — `lifeLabsPdfImporterDescriptor` for format
   `'lifelabs-pdf'`: takes a picked LifeLabs report PDF's raw bytes end-to-end,
   running `positioned-text-web`'s extraction seam (the same one the PDF
   anonymizer uses) before the positioned-text dialect and the FHIR R4
-  synthesis, and the FHIR persist sink. Its `resolve` is the identity — the
-  decode already yields the final labeled resources, and this format makes
-  no HTTP routing decisions (no response-kind recognition; this format is
-  documents, not archived HTTP traffic).
+  synthesis, and the FHIR persist sink. Its decode yields one section per
+  report the PDF carries; this format makes no HTTP routing decisions (no
+  response-kind recognition; this format is documents, not archived HTTP
+  traffic).
 - **[`lifelabs-pdf-importer-react`](./lifelabs-pdf-importer-react/AGENTS.md)**
   (the LifeLabs PDF UI) — `LifeLabsPdfSettingsPicker` (the report's time zone).
-  The format has no format-specific `ReviewBody`; the shell's default
-  per-resource list suffices.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
-  the closed `format → { descriptor, SettingsPicker, ReviewBody }` registry,
-  plus `ServerHarArchiveList`, the uploaded-archives pick source the anonymizer
+  the closed `format → { descriptor, SettingsPicker }` registry and the
+  generalized sectioned review every format shares (per-resource
+  include/edit with the inline JSON `ResourceEditor`), plus
+  `ServerHarArchiveList`, the uploaded-archives pick source the anonymizer
   slice's shell takes through its `serverSource` slot.
 
 A host that provides the FHIR write client and the authed runner sits above
@@ -84,30 +90,34 @@ sits above `http-extraction` and below every binding, exactly as
   recognition.
 - **The read half never writes.** `decode` requires no services — in
   particular not `FhirR4ResourcesHttpApiClient` — so reaching a review is a
-  pure function of the file bytes and the write client is unreachable from
-  it by construction. Writing is the descriptor's `persist`, gated on the
-  user confirming a review. Parse now runs at **preview**, not confirm
-  (`Review.preview` parses every chosen response so the reviewer sees the
-  actual resources and can opt any of them out); **writes** still only run
-  at confirm, and confirm writes exactly those reviewed objects
-  (`Review.chosenResources`) with no re-parse — the same "is the same
-  object" argument the anonymizer's preview makes. This split is the whole
-  point; do not collapse it.
+  pure function of the file bytes and its format's settings, and the write
+  client is unreachable from it by construction. Writing is the descriptor's
+  `persist`, gated on the user confirming a review. Parse runs at
+  **preview** — `decode` yields the actual resources, sectioned, so the
+  reviewer sees them and can opt any of them out or edit them inline;
+  **writes** still only run at confirm, and confirm writes exactly those
+  reviewed objects (`Review.chosenResources`) with no re-parse — the same
+  "is the same object" argument the anonymizer's preview makes. This split
+  is the whole point; do not collapse it. A settings change (a HAR kind
+  toggle, the LifeLabs time zone) re-runs `decode` from the retained bytes —
+  still the read half.
 - **The picker takes bytes, and identifies against every registered
   descriptor.** A picked file is a name + raw bytes: HAR is UTF-8 JSON, a
   LifeLabs report is a PDF, and every downstream step reads bytes. The
   picker runs each registered descriptor's `detect` on every drop and
   yields the pick tagged with the first descriptor that claims it, so a
   batch may span formats — `useImportRun` decodes each pick through its
-  own format's `decode`, and every per-file step (`resolve`,
-  `ReviewBody`, `persist`) dispatches on the file's format tag.
+  own format's `decode` under that format's settings, and every per-file
+  step (`uploadSource`, `persist`, the settings form) dispatches on the
+  file's format tag.
 - **The registry is closed and compile-time.** `importer-react`'s
-  `formatRegistry` is a literal `{ har: …, 'lifelabs-pdf': … } as const`;
-  every field (`descriptor`, `detect`, `SettingsPicker`, `ReviewBody`) is
-  typed against its format's concrete review/parsed/settings types
-  through `FormatVariant`, so a format missing one part fails to compile.
-  Unlike the collector slice there is no separate registry package — the
-  importer has no HTTP wire union to derive.
+  `formatRegistry` is a literal `{ har: …, 'lifelabs-pdf': … }`; every field
+  (`descriptor` fields, `SettingsPicker`) is typed against its format's
+  concrete parsed/settings types through `FormatVariant`, so a format
+  missing one part fails to compile. The review display is not a registry
+  slot: every format is reviewed through the shell's one generalized
+  sectioned view. Unlike the collector slice there is no separate registry
+  package — the importer has no HTTP wire union to derive.
 - **The slice imports only the accepted seams.** `har-importer-core` depends on
   `web-trace-core` (HAR codec + `withMetaSource`), `http-extraction-fundamentals`
   (extraction + recognition), `fhir-r4-source` (the pre-adopted pool),

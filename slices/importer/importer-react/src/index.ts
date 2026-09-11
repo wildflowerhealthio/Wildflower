@@ -18,11 +18,12 @@
  */
 export { ImporterScreen, READING_MESSAGE } from './importer-screen.tsx'
 export {
+  NO_RESOURCES_MESSAGE,
   NOTHING_TO_IMPORT_HEADING,
   PREVIEW_HEADING,
   PreviewPanel,
   type PreviewPanelProps,
-  type ReviewBodyRegistry,
+  type SettingsRegistry,
   UNREADABLE_FILE_MESSAGE,
   UNRECOGNIZED_FILE_MESSAGE,
 } from './preview/preview-panel.tsx'
@@ -30,17 +31,18 @@ export {
   type ConfirmImport,
   type ConfirmRegistry,
   type ConfirmState,
-  type LabeledFor,
   type SelectionFor,
   useConfirmImport,
 } from './preview/use-confirm-import.ts'
 export {
   type BoundFormat,
   type FormatKind,
+  type FormatSettings,
   type FormatVariant,
-  type ReviewBodyAdapterProps,
+  defaultFormatSettings,
+  formatKinds,
   formatRegistry,
-} from './registry.tsx'
+} from './registry.ts'
 export {
   type FileReadOutcome,
   type ImportRun,
@@ -48,6 +50,8 @@ export {
   type ImportRunState,
   useImportRun,
 } from './preview/use-import-run.ts'
+export { describeResource, type ResourceDescription } from './preview/describe-resource.ts'
+export { ResourceEditor, type ResourceEditorProps } from './preview/resource-editor.tsx'
 export {
   type BatchOutcome,
   type BatchSummary,

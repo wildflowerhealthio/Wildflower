@@ -34,7 +34,7 @@
     "@types/react-dom": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "har-importer-react": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "jsdom": "catalog:",
     "kitchen-sink": "workspace:*",
     "lifelabs-pdf-importer-core": "workspace:*",
@@ -45,7 +45,7 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
-    "har-importer-react": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "lifelabs-pdf-importer-core": "workspace:*",
     "react": "catalog:"
   }

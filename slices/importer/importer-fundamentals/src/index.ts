@@ -12,6 +12,12 @@
  * @packageDocumentation
  */
 export * as Review from './review.ts'
-export { acceptFor, identify } from './file-importer-descriptor.ts'
-export type { FileImporterDescriptor, LabeledResource } from './file-importer-descriptor.ts'
+export { acceptFor, identify, sectionResources } from './file-importer-descriptor.ts'
+export type {
+  DecodedFile,
+  FileImporterDescriptor,
+  LabeledResource,
+  LabeledSection,
+  SettingsPickerProps,
+} from './file-importer-descriptor.ts'
 export type { PersistFailure } from './persist-failure.ts'

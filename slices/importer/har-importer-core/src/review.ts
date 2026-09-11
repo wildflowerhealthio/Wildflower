@@ -2,13 +2,11 @@ import { Array as Arr, Effect, Option, type ParseResult } from 'effect'
 
 import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
 
-import * as HarSelection from './har-selection.ts'
-
 /**
- * The HAR-specific preview pipeline: given decoded responses and a routing
- * selection, recognize each response against the kind pool and parse the
- * chosen ones into previewed resources. The per-response routing model
- * ({@link HarSelection}) lives in `./har-selection.ts`; the per-resource
+ * The HAR-specific preview pipeline: given decoded responses and the enabled
+ * kind names, recognize each response against the kind pool and parse the
+ * chosen ones into previewed resources. The descriptor's decode folds these
+ * previews into the sections and notes the shell reviews; the per-resource
  * selection (exclude/edit) lives in `importer-fundamentals`' `Review`
  * namespace.
  *
@@ -17,12 +15,10 @@ import * as HarSelection from './har-selection.ts'
 
 /**
  * The stable key one previewed resource is tracked by: the response id plus its
- * index in the parse output.
+ * index in the parse output. Independent of the enabled-kind filter, so a
+ * settings change never renumbers the resources that survive it.
  */
 const resourceKey = (responseId: string, index: number): string => `${responseId}:${index}`
-
-/** Re-exported so the HAR React package reads recognition through here. */
-const recognize = Extraction.recognize
 
 /** One previewed resource: the parsed value plus its stable key. */
 interface PreviewedResource<TParsed> {
@@ -52,19 +48,32 @@ interface PreviewedResponse<K, TParsed> {
 const DUPLICATE_PICK: Option.Option<string> = Option.none()
 
 /**
- * Parse every response the selection chose through its chosen kind, producing
- * one {@link PreviewedResponse} per input response, in input order.
+ * The candidate one response resolves to: its top-specificity candidate among
+ * the enabled kinds, or none when every matching kind is disabled (or nothing
+ * matched at all). With no per-response overrides, the default routing pick is
+ * the only pick.
+ */
+const pickFor = <K extends Pick<HttpResponseKind.HttpResponseKind<unknown>, 'name'>>(
+  recognized: Extraction.RecognizedResponse<K>,
+  enabledKinds: ReadonlySet<string>
+): Option.Option<Extraction.RecognitionCandidate<K>> =>
+  Arr.head(recognized.candidates.filter((candidate) => enabledKinds.has(candidate.kind.name)))
+
+/**
+ * Parse every response the enabled kinds choose through its top-specificity
+ * kind, producing one {@link PreviewedResponse} per input response, in input
+ * order.
  */
 const preview = <TParsed>(
   pool: readonly HttpResponseKind.HttpResponseKind<TParsed>[],
   responses: readonly Extraction.Input[],
-  selection: HarSelection.Selection
+  enabledKinds: ReadonlySet<string>
 ): Effect.Effect<
   readonly PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>[]
 > => {
   const duplicates = Extraction.findDuplicates(responses)
   return Effect.forEach(
-    Arr.zip(responses, recognize(pool, responses)),
+    Arr.zip(responses, Extraction.recognize(pool, responses)),
     ([response, recognized]) => {
       const duplicateOf = duplicates.get(response.id)
       if (duplicateOf !== undefined) {
@@ -77,7 +86,7 @@ const preview = <TParsed>(
           outcome: { _tag: 'duplicate', of: duplicateOf },
         })
       }
-      const pick = HarSelection.pickFor(recognized, selection)
+      const pick = pickFor(recognized, enabledKinds)
       if (Option.isNone(pick)) {
         return Effect.succeed<
           PreviewedResponse<HttpResponseKind.HttpResponseKind<TParsed>, TParsed>
@@ -130,5 +139,5 @@ const preview = <TParsed>(
   )
 }
 
-export { preview, recognize, resourceKey }
+export { pickFor, preview, resourceKey }
 export type { PreviewedOutcome, PreviewedResource, PreviewedResponse }

@@ -24,9 +24,23 @@ descriptor's `persist`.
   build the search token from one import.
 - `src/har-importer.ts` — **`harImporterDescriptor`**, the one value the shell's
   registry lists. Binds `TParsed = FhirResource`, `R =
-FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
-  `HarSettings`.
-- `src/decode-har.ts` — **`decodeHar`** (the read half's only step) and
+FhirR4ResourcesHttpApiClient`. Its `decode` runs the whole read half:
+  `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
+  settings' enabled kinds, folded into the `DecodedFile` the shell reviews —
+  one `LabeledSection` per URL (first-seen order, only responses that parsed
+  to at least one resource) plus one diagnostic note per response that
+  yielded nothing (no kind matched, every matching kind disabled, parse
+  failure, body absent, duplicate). Resource keys are `responseId:index` —
+  independent of the kind toggles, so a settings change re-decodes to the
+  same keys for the resources that survive it.
+- `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses,
+enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
+  top-specificity enabled candidate (`pickFor` — there are no per-response
+  overrides), and parses the chosen ones (`Extraction.parseWith`), folding
+  every non-resource outcome to data so one bad response cannot abort the
+  batch. Consumed by the descriptor's decode; the per-resource selection
+  (exclude/edit) lives in `importer-fundamentals`' `Review`.
+- `src/decode-har.ts` — **`decodeHar`** (the byte-level parse step) and
   `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the
   archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated
   field-for-field as an `Extraction.Input` via `toInput`. Restated explicitly,
@@ -38,10 +52,10 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
 - `src/fhir-pool.ts` — **`fhirSources`**, the registered `SourceDescriptor`s —
   `fhir-r4-source`'s `fhirR4Source`, `rexall-be-well-source`'s
   `rexallBeWellSource`, and `shoppers-drugmart-source`'s `shoppersDrugMartSource`.
-  The descriptor exposes only these (so the review menu groups its include toggles
-  by source); the flat pool responses are recognized and decoded through is
-  `SourceDescriptor.poolOf(fhirSources)` — derived on demand, never stored, so the
-  menu and the recognizer route can never disagree. The kinds are consumed
+  `har-importer-react`'s settings picker groups its include toggles by these;
+  the flat pool responses are recognized and decoded through is
+  `SourceDescriptor.poolOf(fhirSources)` — derived from the same list, so the
+  toggles and the recognizer route can never disagree. The kinds are consumed
   **pre-adopted** (each resource already keyed under the root of the URL it arrived
   on), never re-adopted here. Registering another source is one static append to
   `fhirSources`.
@@ -62,10 +76,11 @@ FhirR4ResourcesHttpApiClient`, and wires the three seams below plus the empty
   `freeText`, and extend the example table in `shapes.test.ts` when you touch a
   pattern. `redact.ts` is the policy and the derivation loop; `leaves.ts` the
   traversal. See [Anonymization Explanation](../../anonymizer/docs/Anonymization%20Explanation.md).
-- `src/har-settings.ts` — **`HarSettings`**, an empty record. A HAR archive has no
-  user-tunable knobs today; the seam is present (`defaultSettings`, a no-op
-  `SettingsPicker` in the React package) so a future format with real settings
-  slots in without the shell learning a new shape.
+- `src/har-settings.ts` — **`HarSettings`** `{ disabledKinds }`, default the
+  empty list: the kind names turned off for an import. Stored as the
+  _disabled_ list so a newly registered kind is on by default. A pre-decode
+  setting — the shell re-decodes a HAR file when it changes, and `decode`
+  folds a disabled kind's responses into notes rather than sections.
 
 ## Layering
 

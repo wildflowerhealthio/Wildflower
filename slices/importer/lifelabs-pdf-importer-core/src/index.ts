@@ -11,9 +11,9 @@
  *
  * @packageDocumentation
  */
-export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument } from './decode.ts'
+export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
 export { detectLifeLabsPdf } from './detect.ts'
-export { lifeLabsPdfImporterDescriptor, type LifeLabsPdfReviewState } from './descriptor.ts'
+export { lifeLabsPdfImporterDescriptor } from './descriptor.ts'
 export { uploadSource } from './upload-source.ts'
 export * as Report from './entities/report.ts'
 export type { Type as ReportGroup } from './entities/group.ts'
@@ -22,7 +22,7 @@ export type { Type as ReportPatient } from './entities/patient.ts'
 export type { Type as LifeLabsReport } from './entities/report.ts'
 export type { Type as ReportSection } from './entities/section.ts'
 export type { Type as ReportRow } from './entities/test-table-row.ts'
-export { toFhirResources, type SynthesisOptions } from './fhir/to-fhir.ts'
+export { toFhirResources, type ReportResources, type SynthesisOptions } from './fhir/to-fhir.ts'
 export { persistFhir } from './persist-fhir.ts'
 export { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
 export { LIFELABS_SYSTEM, LifeLabsIdentifierSystem } from './source-system.ts'

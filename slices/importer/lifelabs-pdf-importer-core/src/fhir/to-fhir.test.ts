@@ -16,8 +16,11 @@ import {
 
 const TIME_ZONE = 'America/Toronto'
 
+/** The synthesized groups flattened in order — most assertions read the whole set. */
 const synthesize = (reports: readonly Report.Type[]): readonly FhirResource[] =>
-  Effect.runSync(toFhirResources(reports, { timeZone: TIME_ZONE }))
+  Effect.runSync(toFhirResources(reports, { timeZone: TIME_ZONE })).flatMap(
+    (group) => group.resources
+  )
 
 const ofType = <T extends FhirResource['resourceType']>(
   resources: readonly FhirResource[],
@@ -111,10 +114,27 @@ const sample: Report.Type = {
   ],
 }
 
+/**
+ * Arrays of reports with pairwise-distinct identities (`reportOriginalId`).
+ * A real decode can never hand the synthesis two reports with the same
+ * identity — `Report.tryFromDocument` yields one report per `Lab No` (masked
+ * ones told apart by footer and date of service) — so the multi-report
+ * properties mirror that invariant rather than asserting over an input the
+ * dialect cannot produce.
+ */
+const distinctReportsArbitrary = fc
+  .array(reportArbitrary, { minLength: 1, maxLength: 3 })
+  .map((reports) =>
+    reports.filter(
+      (report, index) =>
+        reports.findIndex((other) => reportOriginalId(other) === reportOriginalId(report)) === index
+    )
+  )
+
 describe('toFhirResources', () => {
   it('property: every row is one Observation the report lists, on the one Patient, and every id is unique', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 3 }), (reports) => {
+      fc.property(distinctReportsArbitrary, (reports) => {
         const resources = synthesize(reports)
 
         const ids = resources.map((resource) => `${resource.resourceType}/${resource.id}`)
@@ -320,5 +340,22 @@ describe('toFhirResources', () => {
     expect(patient?.generalPractitioner).toEqual([])
     expect(report?.effectiveDateTime).toBeNull()
     expect(report?.issued).toBeNull()
+  })
+
+  it('groups each report with its own resources, minting a shared Patient in the first group only', () => {
+    const second = { ...sample, labNo: '2024-JJ0000001' }
+
+    const groups = Effect.runSync(toFhirResources([sample, second], { timeZone: TIME_ZONE }))
+
+    expect(groups.map((group) => group.report)).toEqual([sample, second])
+    const [first, again] = groups
+    // The two reports name the same patient and practitioners — deduplicated
+    // by id, they appear in the first group and never again.
+    expect(ofType(first?.resources ?? [], 'Patient')).toHaveLength(1)
+    expect(ofType(again?.resources ?? [], 'Patient')).toHaveLength(0)
+    expect(ofType(again?.resources ?? [], 'Practitioner')).toHaveLength(0)
+    // Each group still carries its own DiagnosticReport and Observations.
+    expect(ofType(first?.resources ?? [], 'DiagnosticReport')).toHaveLength(1)
+    expect(ofType(again?.resources ?? [], 'DiagnosticReport')).toHaveLength(1)
   })
 })
