@@ -7,6 +7,9 @@
 # identity" that would otherwise end the build is reported here, with the
 # certificate names the .p12 actually holds. Also rejects anything but a
 # "Developer ID Application" cert, since notarization refuses the rest.
+# When notarization credentials (APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID)
+# are set, validates them against the notary service so an expired or
+# revoked app-specific password fails here, not after the ~20 min build.
 #
 # Called by .github/workflows/tauri-release-publish.yml; run it on any Mac
 # with the same env vars to vet a new .p12 before storing it as a secret:
@@ -91,6 +94,17 @@ esac
 
 if [[ -z "${APPLE_ID:-}" || -z "${APPLE_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" ]]; then
   warn "APPLE_ID, APPLE_PASSWORD or APPLE_TEAM_ID is unset: the bundle will be signed but not notarized, so Gatekeeper will refuse to open it on other Macs."
+else
+  echo "Validating notarization credentials…"
+  if ! xcrun notarytool history \
+    --apple-id "$APPLE_ID" \
+    --password "$APPLE_PASSWORD" \
+    --team-id "$APPLE_TEAM_ID" \
+    --page-size 0 >/dev/null 2>"$workdir/notary.err"; then
+    notary_err="$(tr '\n' ' ' < "$workdir/notary.err")"
+    fail "Notarization credentials are invalid (APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID). Generate a new app-specific password at appleid.apple.com and update the APPLE_PASSWORD secret. Error: $notary_err"
+  fi
+  echo "Notarization credentials OK."
 fi
 
 echo "checks/apple-signing-preflight: OK — APPLE_SIGNING_IDENTITY resolves to '$matched_name'."

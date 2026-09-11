@@ -18,9 +18,9 @@ name: Tauri Release — Publish
 #   - Rebuild an already-tagged release: set `tag` (e.g. `v0.2.0`). The build
 #     checks out that tag as-is, never re-tags, and re-uploads the bundles to
 #     the tag's existing draft release (tauri-action replaces same-named
-#     assets). `platforms` narrows the fan-out so a single failed runner can
-#     be rebuilt without repeating the ones that already succeeded. `ios`
-#     rebuilds and re-uploads to TestFlight only.
+#     assets). `platforms` narrows the fan-out so only the runners you need
+#     are rebuilt — pass a comma-separated list (e.g. `macos,ios`) to skip
+#     the ones that already succeeded.
 
 on:
   pull_request:
@@ -36,11 +36,10 @@ on:
         required: false
         type: string
       platforms:
-        description: 'Which platform builds to run.'
+        description: 'Comma-separated platform keys to build (macos, windows, linux, ios), or "all". e.g. "macos,ios" to rebuild only those two.'
         required: false
         default: all
-        type: choice
-        options: [all, macos, windows, linux, ios]
+        type: string
 
 # One publish at a time. Never cancel a build midway: partial artifacts on a
 # draft release are worse than waiting for the previous run to finish.
@@ -220,6 +219,7 @@ jobs:
           set -euo pipefail
           platforms='${{ github.event_name == 'workflow_dispatch' && inputs.platforms || 'all' }}'
           jq -c -n --arg platforms "$platforms" '
+            ($platforms | split(",") | map(gsub("\\s+"; ""))) as $selected |
             {
               include: [
                 { key: "macos",   name: "macOS (universal)", os: "macos-latest",
@@ -232,9 +232,10 @@ jobs:
                 { key: "linux",   name: "Linux", os: "ubuntu-22.04",
                   args: "", "rust-targets": "",
                   rustflags: "-D warnings" }
-              ] | map(select($platforms == "all" or .key == $platforms))
+              ] | map(. as $entry | select(($selected | index("all")) or ($selected | index($entry.key))))
             }' > /tmp/matrix.json
-          if [[ "$platforms" != "ios" && "$(jq '.include | length' /tmp/matrix.json)" == 0 ]]; then
+          if [[ "$(jq '.include | length' /tmp/matrix.json)" == 0 ]] && \
+             ! echo "$platforms" | tr ',' '\n' | grep -qxF ios; then
             echo "::error::platforms='$platforms' selected no build."
             exit 1
           fi
@@ -245,7 +246,7 @@ jobs:
     needs: prepare
     if: >-
       github.event_name != 'workflow_dispatch' ||
-      inputs.platforms != 'ios'
+      fromJSON(needs.prepare.outputs.matrix).include[0] != null
     strategy:
       # One platform failing shouldn't kill the others' draft-release uploads.
       fail-fast: false
@@ -353,8 +354,8 @@ jobs:
     needs: prepare
     if: >-
       github.event_name != 'workflow_dispatch' ||
-      inputs.platforms == 'all' ||
-      inputs.platforms == 'ios'
+      contains(inputs.platforms, 'all') ||
+      contains(inputs.platforms, 'ios')
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
@@ -423,7 +424,7 @@ jobs:
 
       - name: Build iOS app
         working-directory: apps/wildflower-tauri
-        run: vp run tauri -- ios build --export-method app-store-connect
+        run: vp run tauri ios build --export-method app-store-connect
 
       - name: Upload to TestFlight
         env:
