@@ -3,10 +3,11 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import type { HttpResponseKind } from 'http-extraction-fundamentals'
-import { type FileImporterDescriptor, Review } from 'importer-fundamentals'
+import type { FhirResource } from 'fhir-r4/resources'
+import { type LabeledResource, Review } from 'importer-fundamentals'
 
 import { useUploadHar } from '../mutations/upload-har.ts'
+import type { BoundFormat, FormatKind } from '../registry.tsx'
 import {
   type BatchOutcome,
   type FileImportResult,
@@ -18,15 +19,15 @@ import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
  * The opt-in write half of the flow, as one imperative action over a batch:
- * for every file with previewed resources the review kept included, upload its
- * HAR archive if the pick is local, then persist those resources verbatim,
+ * for every file with reviewed resources the review kept included, upload its
+ * archive if the pick is local, then persist those resources verbatim,
  * each stamped with the archive it came from.
  *
  * @remarks
  * The seam the preview-then-confirm promise rests on — nothing here runs until
  * the user confirms a reviewed batch. Per file the order is load-bearing:
  * secure the archive reference first (upload a `local` pick's bytes; a `server`
- * pick already has one), then persist the review's `chosenResources` — the same
+ * pick already has one), then persist the review's chosen resources — the same
  * objects the reviewer inspected, no re-parse at confirm. Each file's failure
  * is caught into its own `uploadFailed` result, so one file never stops the
  * rest; a file with nothing included is `skipped` and never touches the server.
@@ -49,25 +50,19 @@ type ConfirmState =
   | { readonly _tag: 'done'; readonly batch: BatchOutcome }
 
 /** How the confirm reads each file's reviewed selection. */
-type SelectionFor<TParsed> = (fileId: string) => Review.Selection<TParsed>
+type SelectionFor = (fileId: string) => Review.Selection<FhirResource>
 
-/** One previewed response — the parse outcome plus every resource's stable key. */
-type Preview<TParsed> = Review.PreviewedResponse<
-  HttpResponseKind.HttpResponseKind<TParsed>,
-  TParsed
->
-
-/** How the confirm reads each file's previewed resources. */
-type PreviewFor<TParsed> = (fileId: string) => readonly Preview<TParsed>[]
+/** How the confirm reads each file's resolved labeled resources. */
+type LabeledFor = (fileId: string) => readonly LabeledResource<FhirResource>[]
 
 /** Imperative surface the screen drives the confirm through. */
-interface ConfirmImport<TParsed> {
+interface ConfirmImport {
   readonly state: ConfirmState
   /** Run the per-file upload-then-persist action for every read file in the batch. */
   readonly confirm: (
-    files: readonly FileReadOutcome[],
-    previewFor: PreviewFor<TParsed>,
-    selectionFor: SelectionFor<TParsed>
+    files: readonly FileReadOutcome<unknown>[],
+    labeledFor: LabeledFor,
+    selectionFor: SelectionFor
   ) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
@@ -108,11 +103,11 @@ const secureSourceRef = (
  * Best-effort — a failed upload is caught into an `uploadFailed` result, never a
  * raised error.
  */
-const importOneFile = <TSettings, TParsed>(
-  file: FileReadOutcome,
-  descriptor: FileImporterDescriptor<TSettings, TParsed, FhirR4ResourcesHttpApiClient>,
-  previewFor: PreviewFor<TParsed>,
-  selectionFor: SelectionFor<TParsed>,
+const importOneFile = (
+  file: FileReadOutcome<unknown>,
+  persist: BoundFormat<FormatKind>['persist'],
+  labeledFor: LabeledFor,
+  selectionFor: SelectionFor,
   uploadHar: ReturnType<typeof useUploadHar>
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
   const { id, picked } = file
@@ -123,13 +118,13 @@ const importOneFile = <TSettings, TParsed>(
     Match.tag('unreadable', () => skip('unreadable')),
     Match.tag('read', () => {
       const selection = selectionFor(id)
-      const previews = previewFor(id)
-      const resources = Review.chosenResources(previews, selection)
-      const excluded = Review.excludedCount(previews, selection)
+      const labeled = labeledFor(id)
+      const resources = Review.chosenResources(labeled, selection)
+      const excluded = Review.excludedCount(labeled, selection)
       if (resources.length === 0) return skip('nothing')
       return secureSourceRef(picked, uploadHar).pipe(
         Effect.flatMap((sourceRef) =>
-          descriptor.persist(resources, sourceRef).pipe(
+          persist(resources, sourceRef).pipe(
             Effect.map((failures): FileImportResult => ({
               _tag: 'imported',
               id,
@@ -155,32 +150,28 @@ const importOneFile = <TSettings, TParsed>(
  * `fhir-r4-react`, so mount this inside the host app's router and
  * `QueryClientProvider`.
  *
- * @param descriptor - The file format's descriptor (its `persist`)
+ * @param format - The bound format (its `persist`)
  * @returns The confirm surface: its `state`, the `confirm` trigger, and a `reset`
  *   back to `idle`
  */
-const useConfirmImport = <TSettings, TParsed>(
-  descriptor: FileImporterDescriptor<TSettings, TParsed, FhirR4ResourcesHttpApiClient>
-): ConfirmImport<TParsed> => {
+const useConfirmImport = (format: Pick<BoundFormat<FormatKind>, 'persist'>): ConfirmImport => {
   const runAuthed = useRunAuthed()
   const uploadHar = useUploadHar()
   const [state, setState] = useState<ConfirmState>({ _tag: 'idle' })
-  // Ignore a resolution from a confirm the screen has since reset — a stale
-  // upload/persist must not overwrite a fresh `idle`.
   const latest = useRef(0)
 
   const confirm = useCallback(
     (
-      files: readonly FileReadOutcome[],
-      previewFor: PreviewFor<TParsed>,
-      selectionFor: SelectionFor<TParsed>
+      files: readonly FileReadOutcome<unknown>[],
+      labeledFor: LabeledFor,
+      selectionFor: SelectionFor
     ): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
       const batch = Effect.forEach(
         files,
-        (file) => importOneFile(file, descriptor, previewFor, selectionFor, uploadHar),
+        (file) => importOneFile(file, format.persist, labeledFor, selectionFor, uploadHar),
         { concurrency: 'unbounded' }
       )
       void runAuthed(batch).then((results) => {
@@ -188,7 +179,7 @@ const useConfirmImport = <TSettings, TParsed>(
         setState({ _tag: 'done', batch: results })
       })
     },
-    [descriptor, runAuthed, uploadHar]
+    [format.persist, runAuthed, uploadHar]
   )
 
   const reset = useCallback((): void => {
@@ -202,7 +193,7 @@ const useConfirmImport = <TSettings, TParsed>(
 export {
   type ConfirmImport,
   type ConfirmState,
-  type PreviewFor,
+  type LabeledFor,
   type SelectionFor,
   useConfirmImport,
 }

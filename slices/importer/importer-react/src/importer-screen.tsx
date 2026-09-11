@@ -1,106 +1,109 @@
+import type { FhirResource } from 'fhir-r4/resources'
+import type { HarReviewState } from 'har-importer-core'
+import { Review } from 'importer-fundamentals'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
-import { SourceDescriptor } from 'http-extraction-fundamentals'
-import { type FileImporterDescriptor, Review } from 'importer-fundamentals'
-
 import { PreviewPanel } from './preview/preview-panel.tsx'
-import { emptyPreviewsCache, previewsFor, type PreviewsCache } from './preview/previews-for.ts'
+import { emptyResolveCache, resolvedFor } from './preview/previews-for.ts'
 import { useConfirmImport } from './preview/use-confirm-import.ts'
-import { useImportRun } from './preview/use-import-run.ts'
-import { formatRegistry } from './registry.ts'
+import { type FileReadOutcome, useImportRun } from './preview/use-import-run.ts'
+import { formatRegistry } from './registry.tsx'
 import { ImportResults } from './results/import-results.tsx'
 import { SourcePicker } from './sources/source-picker.tsx'
 import styles from './importer-screen.module.css'
 
 /**
- * The whole importer flow, top to bottom: pick one or more HARs, review exactly
- * what they would write (per URL, per resource), confirm once to write the
- * included resources, and read the results.
+ * The whole importer flow, top to bottom: pick one or more files, review exactly
+ * what they would write (per resource), confirm once to write the included
+ * resources, and read the results.
  *
  * @remarks
  * The screen is the opt-in seam made visible: the read half
- * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing, parses at
- * preview so the reviewer sees the actual resources, and only the explicit
- * confirm reaches the write half (`useConfirmImport` — upload-then-persist, per
- * file, verbatim from the preview, best-effort). A cancel or "import another
- * archive" discards everything with nothing further written. The flow and
- * package roles are in this package's AGENTS.md.
+ * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing, resolves
+ * the format's opaque review state into labeled resources so the reviewer sees
+ * the actual resources, and only the explicit confirm reaches the write half
+ * (`useConfirmImport` — upload-then-persist, per file, verbatim from the
+ * preview, best-effort). A cancel or "import another archive" discards
+ * everything with nothing further written.
  *
  * The slice owns every level of this flow rather than the host app: an app mounts
- * only this screen, the same lesson the web-trace viewer learned about split
- * surfaces. Mount it inside the host's router and `QueryClientProvider` — the
- * authed runner and the FHIR client both come from router context via
+ * only this screen. Mount it inside the host's router and `QueryClientProvider` —
+ * the authed runner and the FHIR client both come from router context via
  * `fhir-r4-react`.
  *
  * @packageDocumentation
  */
 
-/** The message shown while a batch is being read into a preview. */
+/** The message shown while a batch is being read into review states. */
 const READING_MESSAGE = 'Reading the archives…'
 
-/** The one registered format today. Its descriptor + interactive review drive the flow. */
-const { descriptor, ReviewBody } = formatRegistry.har
-
-/** The descriptor's sources flattened once — what a default selection seeds from. */
-const pool = SourceDescriptor.poolOf(descriptor.sources)
-
-/** The resource type this shell's format decodes to (FHIR for HAR). */
-type Parsed =
-  typeof descriptor extends FileImporterDescriptor<infer _S, infer P, infer _R> ? P : never
+/** The bound format the flow uses today. */
+const format = formatRegistry.har
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
-  const importRun = useImportRun(descriptor)
-  const confirm = useConfirmImport(descriptor)
-  // Each read file's reviewed selection, keyed by its stable id. Absent = the
-  // default (every kind enabled, every resource included), so a file the user
-  // never touched still imports everything recognized.
-  const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection<Parsed>>>(
+  const importRun = useImportRun(format)
+  const confirm = useConfirmImport(format)
+
+  const [reviewOverrides, setReviewOverrides] = useState<ReadonlyMap<string, HarReviewState>>(
+    new Map()
+  )
+  const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection<FhirResource>>>(
     new Map()
   )
 
+  const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
+
+  const initialReviews = useMemo(() => {
+    if (!readFiles) return new Map<string, HarReviewState>()
+    return new Map(
+      readFiles
+        .filter(
+          (f): f is Extract<FileReadOutcome<HarReviewState>, { _tag: 'read' }> => f._tag === 'read'
+        )
+        .map((f) => [f.id, f.review] as const)
+    )
+  }, [readFiles])
+
+  const reviewFor = useCallback(
+    (fileId: string): HarReviewState => reviewOverrides.get(fileId) ?? initialReviews.get(fileId)!,
+    [reviewOverrides, initialReviews]
+  )
+
+  const onReviewChange = useCallback((fileId: string, review: HarReviewState): void => {
+    setReviewOverrides((prev) => new Map(prev).set(fileId, review))
+  }, [])
+
   const selectionFor = useCallback(
-    (fileId: string): Review.Selection<Parsed> =>
-      selections.get(fileId) ?? Review.initial<Parsed>(pool),
+    (fileId: string): Review.Selection<FhirResource> =>
+      selections.get(fileId) ?? Review.initial<FhirResource>(),
     [selections]
   )
 
   const onSelectionChange = useCallback(
-    (fileId: string, selection: Review.Selection<Parsed>): void => {
+    (fileId: string, selection: Review.Selection<FhirResource>): void => {
       setSelections((previous) => new Map(previous).set(fileId, selection))
     },
     []
   )
 
-  // The read half's resource-level output, shared with the confirm step so the
-  // same objects the reviewer inspected are what gets written.
-  const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
-  // A per-render selection-triggered re-parse of every file would block the main
-  // thread on any large HAR every time the reviewer clicks a per-resource
-  // checkbox. The cache reuses previews for a file whose parse-relevant
-  // selection slices (`enabledKinds`, `overrides`) and `responses` kept their
-  // identity — exclusions never affect what is parsed. useState's lazy
-  // initialiser gives a stable per-mount reference without repeated allocation.
-  const [previewsCache] = useState<PreviewsCache<Parsed>>(emptyPreviewsCache)
-  const previews = useMemo(
+  const [resolveCache] = useState(() => emptyResolveCache<HarReviewState>())
+  const labeled = useMemo(
     () =>
       readFiles === undefined
         ? undefined
-        : previewsFor(descriptor.sources, readFiles, selectionFor, previewsCache),
-    [readFiles, selectionFor, previewsCache]
+        : resolvedFor(format.resolve, readFiles, reviewFor, resolveCache),
+    [readFiles, reviewFor, resolveCache]
   )
-  const previewFor = useCallback((fileId: string) => previews?.get(fileId) ?? [], [previews])
+  const labeledFor = useCallback((fileId: string) => labeled?.get(fileId) ?? [], [labeled])
 
-  // Discard everything — the read, any confirm outcome, and every review edit —
-  // and return to the picker. The reset order does not matter; all drop to empty.
   const startOver = (): void => {
     confirm.reset()
     importRun.reset()
     setSelections(new Map())
+    setReviewOverrides(new Map())
   }
 
-  // A finished confirm is terminal for this run — show the results regardless of
-  // what the read state still holds behind it.
   if (confirm.state._tag === 'done') {
     return (
       <div className={styles.screen}>
@@ -121,20 +124,18 @@ const ImporterScreen = (): JSX.Element => {
         </p>
       )
     }
-    // `ready` holds every picked file's outcome; the confirm step writes only the
-    // resources each file's review kept included, which is exactly what
-    // `PreviewPanel` gates the confirm action on.
     return (
       <PreviewPanel
         files={runState.files}
-        sources={descriptor.sources}
-        ReviewBody={ReviewBody}
+        ReviewBody={format.ReviewBody}
+        reviewFor={reviewFor}
+        labeledFor={labeledFor}
         selectionFor={selectionFor}
+        onReviewChange={onReviewChange}
         onSelectionChange={onSelectionChange}
-        previewFor={previewFor}
         confirming={confirming}
         onCancel={startOver}
-        onConfirm={() => confirm.confirm(runState.files, previewFor, selectionFor)}
+        onConfirm={() => confirm.confirm(runState.files, labeledFor, selectionFor)}
       />
     )
   })()

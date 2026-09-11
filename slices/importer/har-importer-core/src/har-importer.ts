@@ -1,26 +1,42 @@
+import { Effect } from 'effect'
+
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { FileImporterDescriptor } from 'importer-fundamentals'
+import { type Extraction, SourceDescriptor } from 'http-extraction-fundamentals'
+import type { FileImporterDescriptor, LabeledResource } from 'importer-fundamentals'
 
 import { decodeHar } from './decode-har.ts'
 import { fhirSources } from './fhir-pool.ts'
+import * as HarSelection from './har-selection.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { persistFhir } from './persist-fhir.ts'
+import { preview } from './review.ts'
+
+/**
+ * The HAR format's opaque review state: the decoded responses plus the
+ * HAR-specific routing selection (kind toggles + pick overrides).
+ */
+interface HarReviewState {
+  readonly responses: readonly Extraction.Input[]
+  readonly harSelection: HarSelection.Selection
+}
+
+/** The pool derived once from the sources — used by `resolve`. */
+const pool = SourceDescriptor.poolOf(fhirSources)
 
 /**
  * The concrete {@link FileImporterDescriptor} for the `har` format: HAR decode
  * in, FHIR resources out, written through the FHIR store.
  *
  * @remarks
- * The one place the three seams meet — {@link decodeHar}, {@link fhirSources},
- * {@link persistFhir} — listed by the shell's closed registry. The review
- * between decode and persist is format-agnostic (`Review`), so it is not named
- * here; see this package's AGENTS.md for the roles. `sources` carries the FHIR
- * response kinds grouped by source, so the review menu can label its toggles by
- * source and the recognizer routes against `SourceDescriptor.poolOf(sources)`.
+ * `TReview = HarReviewState` — the decoded responses plus the HAR-specific
+ * routing selection. `resolve` runs the HTTP preview (recognition + parse)
+ * and maps each parsed resource to a `LabeledResource` with a one-line
+ * description from `describeResource`.
  */
 const harImporterDescriptor: FileImporterDescriptor<
   HarSettings,
+  HarReviewState,
   FhirResource,
   FhirR4ResourcesHttpApiClient
 > = {
@@ -30,9 +46,29 @@ const harImporterDescriptor: FileImporterDescriptor<
     description: 'Import FHIR records from a captured browsing session.',
   },
   defaultSettings: defaultHarSettings,
-  sources: fhirSources,
-  decode: decodeHar,
+  decode: (fileText, settings) =>
+    Effect.map(decodeHar(fileText, settings), (responses) => ({
+      responses,
+      harSelection: HarSelection.initial(pool),
+    })),
+  resolve: (review) =>
+    Effect.map(preview(pool, review.responses, review.harSelection), (previews) => {
+      const labeled: LabeledResource<FhirResource>[] = []
+      for (const entry of previews) {
+        if (entry.outcome._tag !== 'resources') continue
+        for (const resource of entry.outcome.resources) {
+          const r = resource.resource
+          labeled.push({
+            key: resource.key,
+            title: `${r.resourceType}/${r.id ?? '?'}`,
+            resource: r,
+          })
+        }
+      }
+      return labeled
+    }),
   persist: persistFhir,
 }
 
 export { harImporterDescriptor }
+export type { HarReviewState }

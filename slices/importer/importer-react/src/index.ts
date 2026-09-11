@@ -1,17 +1,17 @@
 /**
  * The browser UI adapter of the importer slice: the whole preview-then-confirm
- * flow, from picking a HAR to reading the results.
+ * flow, from picking a file to reading the results.
  *
  * @remarks
  * {@link ImporterScreen} is the surface a host app mounts — the slice owns every
  * level. Three inputs converge on one {@link PickedHar} — a file dropped on the
  * zone, a file chosen through the OS picker, and a HAR archive already uploaded to
- * the device's own FHIR server; the read half (`importer-core`'s `HarImport.run`,
- * via {@link useImportRun}) folds it into an {@link PreviewPanel} preview writing
+ * the device's own FHIR server; the read half (the format's `decode`, via
+ * {@link useImportRun}) folds it into a {@link PreviewPanel} preview writing
  * nothing; and only the explicit confirm ({@link useConfirmImport}) uploads the
  * archive when needed and persists the resources, each stamped with the archive
- * it came from. Presentation and interaction only: the HAR parser, the archive
- * codec, and the detect/extract/persist pipeline all live below this package.
+ * it came from. Presentation and interaction only: the parsers, the review model,
+ * and the persist pipeline all live below this package.
  *
  * @packageDocumentation
  */
@@ -21,20 +21,23 @@ export {
   PREVIEW_HEADING,
   PreviewPanel,
   type PreviewPanelProps,
+  type ReviewBodyProps,
   UNREADABLE_FILE_MESSAGE,
 } from './preview/preview-panel.tsx'
 export {
   type ConfirmImport,
   type ConfirmState,
+  type LabeledFor,
   type SelectionFor,
   useConfirmImport,
 } from './preview/use-confirm-import.ts'
 export {
-  type Format,
-  type FormatRegistration,
+  type BoundFormat,
+  type FormatKind,
+  type FormatVariant,
+  type ReviewBodyAdapterProps,
   formatRegistry,
-  harRegistration,
-} from './registry.ts'
+} from './registry.tsx'
 export {
   type ImportRun,
   type ImportRunState,
