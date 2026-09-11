@@ -24,8 +24,7 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * One pick's read outcome, held alongside the pick so a confirm can hand both to
  * the write step.
  *
- * @typeParam TReview - The format's opaque review state; defaults to `unknown`
- *   for consumers that don't need the concrete type
+ * @typeParam TReview - The format's opaque review state
  *
  * @remarks
  * `read` carries the format's opaque review state the preview runs over — an
@@ -35,7 +34,7 @@ import type { PickedHar } from '../sources/picked-har.ts'
  * file. `id` is a per-pick stable identity for a React `key`, since two
  * files in a batch can share a name.
  */
-type FileReadOutcome<TReview = unknown> =
+type FileReadOutcome<TReview> =
   | {
       readonly _tag: 'read'
       readonly id: string
@@ -53,13 +52,13 @@ type FileReadOutcome<TReview = unknown> =
  * The lifecycle of one batch read, holding every pick's outcome so the screen can
  * render one combined review.
  */
-type ImportRunState<TReview = unknown> =
+type ImportRunState<TReview> =
   | { readonly _tag: 'idle' }
   | { readonly _tag: 'reading' }
   | { readonly _tag: 'ready'; readonly files: readonly FileReadOutcome<TReview>[] }
 
 /** Imperative surface the screen drives the read through. */
-interface ImportRun<TReview = unknown> {
+interface ImportRun<TReview> {
   readonly state: ImportRunState<TReview>
   /** Read a freshly-picked batch of files into review states, replacing any previous one. */
   readonly run: (picks: readonly PickedHar[]) => void

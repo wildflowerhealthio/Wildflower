@@ -53,7 +53,7 @@ describe('PreviewPanel', () => {
   })
 
   it('sums a mixed batch with an unreadable file, each file rendered under its name', () => {
-    const files: readonly FileReadOutcome[] = [
+    const files: readonly FileReadOutcome<unknown>[] = [
       readFile('a.har'),
       { _tag: 'unreadable', id: 'u', picked: pickedHar('broken.har'), error: anyParseError() },
       readFile('c.har'),
@@ -112,7 +112,7 @@ const pickedHar = (fileName: string): PickedHar => ({
 })
 
 /** A `read` {@link FileReadOutcome} with an opaque review — labels come from the prop. */
-const readFile = (fileName = 'session.har'): FileReadOutcome => ({
+const readFile = (fileName = 'session.har'): FileReadOutcome<unknown> => ({
   _tag: 'read',
   id: fileName,
   picked: pickedHar(fileName),
@@ -129,13 +129,13 @@ const labeledResource = (key: string, title: string): LabeledResource<FhirResour
 
 /** Shared panel props wired to synthetic lookups; `ReviewBody` is `null` throughout. */
 const panelProps = (
-  files: readonly FileReadOutcome[],
+  files: readonly FileReadOutcome<unknown>[],
   overrides: {
     readonly labeled?: Record<string, readonly LabeledResource<FhirResource>[]>
     readonly onConfirm?: () => void
     readonly confirming?: boolean
   } = {}
-): PreviewPanelProps => {
+): PreviewPanelProps<unknown> => {
   const labeledMap = overrides.labeled ?? {}
   return {
     files,

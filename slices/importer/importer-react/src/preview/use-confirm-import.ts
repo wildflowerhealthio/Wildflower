@@ -60,7 +60,7 @@ interface ConfirmImport {
   readonly state: ConfirmState
   /** Run the per-file upload-then-persist action for every read file in the batch. */
   readonly confirm: (
-    files: readonly FileReadOutcome[],
+    files: readonly FileReadOutcome<unknown>[],
     labeledFor: LabeledFor,
     selectionFor: SelectionFor
   ) => void
@@ -104,7 +104,7 @@ const secureSourceRef = (
  * raised error.
  */
 const importOneFile = (
-  file: FileReadOutcome,
+  file: FileReadOutcome<unknown>,
   persist: BoundFormat<FormatKind>['persist'],
   labeledFor: LabeledFor,
   selectionFor: SelectionFor,
@@ -162,7 +162,7 @@ const useConfirmImport = (format: Pick<BoundFormat<FormatKind>, 'persist'>): Con
 
   const confirm = useCallback(
     (
-      files: readonly FileReadOutcome[],
+      files: readonly FileReadOutcome<unknown>[],
       labeledFor: LabeledFor,
       selectionFor: SelectionFor
     ): void => {

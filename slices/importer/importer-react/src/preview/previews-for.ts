@@ -57,7 +57,7 @@ const emptyResolveCache = <TReview>(): ResolveCache<TReview> => ({ entries: new 
  */
 const resolvedFor = <TReview>(
   resolve: Resolve<TReview>,
-  files: readonly FileReadOutcome[],
+  files: readonly FileReadOutcome<unknown>[],
   reviewFor: (fileId: string) => TReview,
   cache?: ResolveCache<TReview>
 ): ReadonlyMap<string, FileLabeledResources> => {

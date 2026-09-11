@@ -24,9 +24,9 @@ import styles from './preview-panel.module.css'
  */
 
 /** Props for {@link PreviewPanel}. */
-interface PreviewPanelProps<TReview = unknown> {
+interface PreviewPanelProps<TReview> {
   /** Every picked file's read outcome, rendered together under one confirm. */
-  readonly files: readonly FileReadOutcome[]
+  readonly files: readonly FileReadOutcome<unknown>[]
   /**
    * The format-specific review body, when the format has routing decisions
    * beyond the general per-resource selection. `null` when the default
@@ -133,7 +133,7 @@ const FileSection = <TReview,>({
   | 'onReviewChange'
   | 'onSelectionChange'
 > & {
-  readonly file: FileReadOutcome
+  readonly file: FileReadOutcome<unknown>
 }): JSX.Element => (
   <section className={styles.fileSection} aria-label={file.picked.fileName}>
     <h3 className={styles.fileHeading}>{file.picked.fileName}</h3>
