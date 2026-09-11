@@ -278,7 +278,7 @@ const ReadFileBody = ({
   onSelectionChange,
   onEditResource,
 }: {
-  readonly file: ReadFile
+  readonly file: ReadFile<FormatKind>
   readonly selection: Review.Selection<FhirResource>
   readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
   readonly onEditResource: (key: string, resource: unknown) => void
@@ -347,7 +347,7 @@ const FileSection = ({
   onSelectionChange,
   onEditResource,
 }: {
-  readonly file: ReadFile | UnreadableFile | FileReadOutcome
+  readonly file: ReadFile<FormatKind> | UnreadableFile<FormatKind> | FileReadOutcome
   readonly selectionFor: PreviewPanelProps['selectionFor']
   readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
   readonly onEditResource: (fileId: string, key: string, resource: unknown) => void
@@ -458,7 +458,7 @@ const PreviewPanel = ({
     .map((format) => ({
       format,
       files: files.filter(
-        (file): file is ReadFile | UnreadableFile =>
+        (file): file is ReadFile<FormatKind> | UnreadableFile<FormatKind> =>
           file._tag !== 'unrecognized' && file.format === format
       ),
     }))

@@ -62,7 +62,7 @@ type ImportRunRegistry = {
  * sections + notes — the review is a pure per-resource selection over
  * these, so there is no further per-format review state.
  */
-type ReadFile<K extends FormatKind = FormatKind> = {
+type ReadFile<K extends FormatKind> = {
   readonly [Kind in K]: {
     readonly _tag: 'read'
     readonly id: string
@@ -78,7 +78,7 @@ type ReadFile<K extends FormatKind = FormatKind> = {
  * the same way {@link ReadFile} is, so a future per-format detail on the
  * variant lines up cleanly.
  */
-type UnreadableFile<K extends FormatKind = FormatKind> = {
+type UnreadableFile<K extends FormatKind> = {
   readonly [Kind in K]: {
     readonly _tag: 'unreadable'
     readonly id: string
@@ -110,7 +110,7 @@ interface UnrecognizedFile {
  * can share a name; it survives a settings re-decode, so per-resource
  * selections keyed by file id keep applying.
  */
-type FileReadOutcome = ReadFile | UnreadableFile | UnrecognizedFile
+type FileReadOutcome = ReadFile<FormatKind> | UnreadableFile<FormatKind> | UnrecognizedFile
 
 /**
  * The lifecycle of one batch read, holding every pick's outcome so the
