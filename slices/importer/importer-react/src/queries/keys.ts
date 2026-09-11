@@ -12,10 +12,12 @@
 const IMPORTER_QUERY_KEY = ['importer'] as const
 
 /**
- * Key root for the paged `DocumentReference` read that backs the server archive
- * list. The page size is appended by the query options, since two different page
- * sizes are two different pagings of the same table rather than one cache entry.
+ * Key root for the paged `DocumentReference` read that backs the server
+ * archive list. The list spans every registered format's archives in one
+ * search, so the key names no format; the page size is appended by the
+ * query options, since two different page sizes are two different pagings
+ * of the same table rather than one cache entry.
  */
-const HAR_ARCHIVES_QUERY_KEY = [...IMPORTER_QUERY_KEY, 'har-archives'] as const
+const ARCHIVES_QUERY_KEY = [...IMPORTER_QUERY_KEY, 'archives'] as const
 
-export { HAR_ARCHIVES_QUERY_KEY, IMPORTER_QUERY_KEY }
+export { ARCHIVES_QUERY_KEY, IMPORTER_QUERY_KEY }

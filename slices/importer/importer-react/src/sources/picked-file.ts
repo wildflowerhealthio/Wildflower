@@ -42,30 +42,33 @@ interface PickedFile {
 const LOCAL_SOURCE: PickedFileSource = { _tag: 'local' }
 
 /**
- * The `DocumentReference/<id>` reference for a HAR archive by logical id.
+ * The `DocumentReference/<id>` reference for an uploaded archive by
+ * logical id, format-blind.
  *
  * @param id - The archive `DocumentReference`'s logical id
  * @returns The literal FHIR reference string, `DocumentReference/<id>`
  *
  * @remarks
- * Spelled in one place so the `server` source, the `meta.source` stamp a confirm
- * writes for a freshly-uploaded local archive, and any consumer that resolves the
- * reference back to an id all agree on the form. A `server` pick already carries
- * this reference; a `local` pick has none until its bytes are uploaded, at which
- * point the confirm step mints the archive's id and turns it into a reference the
- * same way here.
+ * Spelled in one place so the `server` source, the `meta.source` stamp a
+ * confirm writes for a freshly-uploaded local archive, and any consumer
+ * that resolves the reference back to an id all agree on the form. A
+ * `server` pick already carries this reference; a `local` pick has none
+ * until its bytes are uploaded, at which point the confirm step mints the
+ * archive's id and turns it into a reference the same way here. Every
+ * format's archive resource type is `DocumentReference`, so the shape is
+ * one string regardless of the file format.
  */
-const harArchiveReference = (id: string): string => `DocumentReference/${id}`
+const archiveReference = (id: string): string => `DocumentReference/${id}`
 
 /**
  * The `server` {@link PickedFileSource} for a server-held archive by id.
  *
  * @param id - The archive `DocumentReference`'s logical id
- * @returns A `server` source carrying its {@link harArchiveReference}
+ * @returns A `server` source carrying its {@link archiveReference}
  */
 const serverSource = (id: string): PickedFileSource => ({
   _tag: 'server',
-  reference: harArchiveReference(id),
+  reference: archiveReference(id),
 })
 
-export { harArchiveReference, LOCAL_SOURCE, type PickedFile, type PickedFileSource, serverSource }
+export { archiveReference, LOCAL_SOURCE, type PickedFile, type PickedFileSource, serverSource }

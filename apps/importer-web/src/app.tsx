@@ -11,7 +11,7 @@ import type { PickedFile } from 'anonymizer-fundamentals'
 import { AnonymizerScreen } from 'anonymizer-react'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
-import { ImporterScreen, ServerHarArchiveList } from 'importer-react'
+import { ImporterScreen, ServerArchiveList } from 'importer-react'
 import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageLoading, SegmentedToggle } from 'react-tundraish'
@@ -40,7 +40,7 @@ const tabOptions: readonly { value: Tab; label: string }[] = [
  * identity — nothing to re-encode.
  */
 const ServerSource = ({ onPick }: { readonly onPick: (file: PickedFile) => void }): JSX.Element => (
-  <ServerHarArchiveList
+  <ServerArchiveList
     onPick={(picked) => onPick({ fileName: picked.fileName, bytes: picked.bytes })}
   />
 )

@@ -12,7 +12,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { Review, sectionResources } from 'importer-fundamentals'
 import { withMetaSource } from 'web-trace-core/provenance'
 
-import { HAR_ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
+import { ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
 import type { BoundFormat, FormatKind } from '../registry.ts'
 import {
   type BatchOutcome,
@@ -45,11 +45,11 @@ import type { FileReadOutcome } from './use-import-run.ts'
  * own `uploadFailed` result, so one file never stops the rest; a file
  * with nothing included is `skipped` and never touches the server.
  *
- * After the batch resolves, the HAR archive list query is invalidated
- * once — so a freshly uploaded HAR appears in `ServerHarArchiveList` on
- * the next pick — even if no HAR file was uploaded; the invalidation
- * is cheap and the alternative (tracking which formats uploaded) buys
- * nothing.
+ * After the batch resolves, the archive list query is invalidated once —
+ * so a freshly uploaded archive of any format appears in the server list
+ * on the next pick — even when the batch did no uploads (every file was
+ * `server` or `skipped`); the invalidation is cheap and the alternative
+ * (tracking which formats uploaded) buys nothing.
  *
  * @packageDocumentation
  */
@@ -217,11 +217,7 @@ const useConfirmImport = (registry: ConfirmRegistry): ConfirmImport => {
       void runAuthed(batch).then((results) => {
         if (latest.current !== ticket) return
         setState({ _tag: 'done', batch: results })
-        // Refresh the HAR archive list — a local HAR upload landed a new
-        // DocumentReference the picker should see on next pick. Cheap
-        // even when no HAR uploaded; alternative is tracking per-format
-        // upload counts, which buys nothing.
-        void queryClient.invalidateQueries({ queryKey: HAR_ARCHIVES_QUERY_KEY })
+        void queryClient.invalidateQueries({ queryKey: ARCHIVES_QUERY_KEY })
       })
     },
     [registry, runAuthed, queryClient]

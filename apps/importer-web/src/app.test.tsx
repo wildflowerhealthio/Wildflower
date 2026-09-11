@@ -138,7 +138,9 @@ describe('ImporterApp', () => {
     mount({ archives: [{ id: 'archive-1', fileName: 'server-session.har' }] })
 
     // Act — select it from the server list, then confirm
-    await userEvent.click(await screen.findByRole('button', { name: /server-session\.har/ }))
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Use server-session.har as source' })
+    )
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
     })

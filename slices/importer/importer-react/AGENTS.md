@@ -16,9 +16,10 @@ runner out of router context:
 
 The anonymize surface is the anonymizer slice's shell
 ([anonymizer-react](../../anonymizer/anonymizer-react/AGENTS.md)), not part of
-this package. This package exports `ServerHarArchiveList` — the
-uploaded-archives pick source — which a host passes into that shell's
-`serverSource` slot.
+this package. This package exports `ServerArchiveList` — the
+uploaded-archives pick source, spanning every registered format's archives
+(HAR, LifeLabs PDF) — which a host passes into that shell's `serverSource`
+slot.
 
 ## Layering
 
@@ -103,24 +104,32 @@ The importer has no HTTP wire union to derive, so there is no separate
   files — under one aggregate tally.
 - **`src/sources/`** — the picker. `picked-file.ts` is the vocabulary
   (`PickedFile` — `{ fileName, bytes, source }` — the `local` / `server`
-  `PickedFileSource`, and `harArchiveReference` — the one spelling of a
-  `DocumentReference/<id>` reference); `local-file.ts` is the format-blind
-  "read a local file's bytes and identify it against the registered
-  descriptors' `detect`" gate — no descriptor's `decode` runs at pick time;
-  `server-har-archive-list.tsx` is the uploaded-archives pick source (rows,
-  paging, the fetch-and-decode of a selected row), exported for the
-  anonymizer shell's `serverSource` slot as much as used here;
+  `PickedFileSource`, and `archiveReference` — the one spelling of a
+  `DocumentReference/<id>` reference, format-blind); `local-file.ts` is
+  the format-blind "read a local file's bytes and identify it against
+  the registered descriptors' `detect`" gate — no descriptor's `decode`
+  runs at pick time; `server-archive-list.tsx` is the uploaded-archives
+  pick source (rows, paging, per-row explicit **Preview** + **Use as
+  source** buttons, the raw-contents modal each Preview opens), spanning
+  every registered format via the descriptor archive seam, and exported
+  for the anonymizer shell's `serverSource` slot as much as used here;
   `source-picker.tsx` composes the drop-and-pick zone, the file input it
   opens, and that server list. Two modes: `'batch'` (default; the importer
   flow) accepts several files in one pick; `'single'` trims the accepted
   list to the first file and drops the OS dialog's `multiple` attribute —
   the server list is single-select in both.
-- **`src/queries/`** — the reads. `har-archives.ts` is the paged
-  `DocumentReference` search pinned to the HAR-archive category, plus
-  `fetchHarArchive` — the one-archive fetch-and-decode a row selection runs;
-  `page-token.ts` pulls the continuation cursor out of a bundle's `next` link
-  (a copy of the web-trace viewer's, see the trap); `keys.ts` holds the query-key
-  roots.
+- **`src/queries/`** — the reads. `archives.ts` is the paged, format-blind
+  `DocumentReference` search: one request per page with `category` set to
+  the comma-joined `system|code` tokens of every registered format
+  (`ARCHIVES_CATEGORY_TOKEN`), each returned resource classified by
+  dispatching every descriptor's `isArchive` predicate in registry order
+  (disjoint by construction) so rows are tagged with the format they
+  came from; plus `fetchArchive` — the row-select's fetch-and-decode
+  through the row's format's `archiveFromDocumentReference` — and
+  `fetchArchiveContents`, the read-only variant the preview modal uses.
+  `page-token.ts` pulls the continuation cursor out of a bundle's `next`
+  link (a copy of the web-trace viewer's, see the trap); `keys.ts` holds
+  the query-key roots.
 - **The source-archive upload lives on each format's descriptor.** The shell
   no longer holds a HAR-specific upload mutation; `useConfirmImport`
   dispatches `descriptor.uploadSource(picked)` through the registry
@@ -141,10 +150,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   not add a write to the read path (e.g. an "auto-upload on pick") that would
   collapse the opt-in seam. A settings change re-runs `decode` — still the
   read half, still no writes.
-- **`ServerHarArchiveList` never writes.** The list is a search, a selection is
-  a `DocumentReference` GET. It is exported into the anonymizer shell's
-  `serverSource` slot precisely because it is read-only; do not add a write to
-  it.
+- **`ServerArchiveList` never writes.** The list is a search, a selection is
+  a `DocumentReference` GET, and a preview is the same GET plus a bytes
+  render. It is exported into the anonymizer shell's `serverSource` slot
+  precisely because it is read-only; do not add a write to it — the preview
+  modal is deliberately not editable, either.
 - **Selection state lives in the screen, not the panel.** `PreviewPanel` is
   controlled — the screen passes `selectionFor` in and receives every change
   via `onSelectionChange`, holding the canonical `Map<fileId, Selection>` so
@@ -185,13 +195,20 @@ The importer has no HTTP wire union to derive, so there is no separate
   but add nothing to write. `useConfirmImport` re-checks each file (skipping
   the ones with nothing included) — the gate is the affordance, the per-file
   check is the safety.
-- **A HAR archive and a web trace share a code system and nothing else, and the
-  disjointness is load-bearing.** The archive list searches `category` for
-  `` `${WEB_TRACE_CODE_SYSTEM}|har-archive` `` (`HAR_ARCHIVE_CATEGORY_TOKEN`,
-  built from `web-trace-core`'s constants so it cannot drift from what the codec
-  writes), and `rowsOf` still guards each entry with `isHarArchive`. The
-  web-trace viewer lists traces; this lists archives; `isWebTrace` and
-  `isHarArchive` never both hold. The list must never surface a trace.
+- **The archive list is format-blind and disjoint from web traces on the
+  same axis.** The list searches `category` for `ARCHIVES_CATEGORY_TOKEN` —
+  the comma-joined `system|code` tokens of every registered format's
+  archive coding (`WEB_TRACE_CODE_SYSTEM|har-archive` for HAR,
+  `LIFELABS_SYSTEM|lifelabs-pdf-archive` for LifeLabs), built at module
+  load from each descriptor's `archiveCategoryToken` so it cannot drift
+  from what the codec writes. Each returned resource is classified in
+  registry order through each descriptor's `isArchive`; the predicates
+  are disjoint by construction (each tests a different `system|code`),
+  so at most one claims any row and a row no predicate claims is
+  dropped. The web-trace viewer lists traces under a different category
+  code on the same system; `isWebTrace` and any format's `isArchive`
+  never both hold. The list must never surface a trace, and the trace
+  viewer must never surface an archive.
 - **The picker identifies each local file syntactically through the
   registered descriptors' `detect`, not a full parse.** `acceptLocalFile`
   runs `importer-fundamentals`' `identify` over the registered descriptors,
@@ -209,19 +226,32 @@ The importer has no HTTP wire union to derive, so there is no separate
   the wrong layer. A shared paging primitive would belong below both, not in one.
   A present-but-empty `_pageToken=` reads as token-less: `''` is not `null`, so
   TanStack Query would take it for a real cursor and re-request page one forever.
-- **The list carries rows, not archives.** An archive's bytes are the whole HAR
-  file, potentially megabytes; `HarArchiveRow` holds only the id, title, and
-  upload instant, and `fetchHarArchive` reads the one archive the user selects.
-  Listing the bytes to render a title would pull every archive onto the device to
-  draw a list.
-- **A row selection decodes through the archive codec and keeps the bytes
-  verbatim.** `fetchHarArchive` runs `harArchiveFromDocumentReference` (a
-  resource that is not an archive fails as a `ParseError`, never yields
-  nonsense) and returns the archive's `bytes` on the `PickedFile` — every
-  downstream step reads bytes (`decode`, and the confirm's upload if the
-  pick were local). The `server` source carries `DocumentReference/<id>` so
-  a later step links provenance to the stored archive rather than
+- **The list carries rows, not archives.** An archive's bytes are the whole
+  file, potentially megabytes (a multi-MB HAR, a PDF); `ArchiveRow` holds
+  only the id, its classified format, the title, and the upload instant.
+  `fetchArchive` (row select) and `fetchArchiveContents` (preview modal)
+  each read the one archive the user chose. Listing the bytes to render a
+  title would pull every archive onto the device to draw a list.
+- **A row selection decodes through its format's archive codec and keeps
+  the bytes verbatim.** `fetchArchive` dispatches to the row's format's
+  `archiveFromDocumentReference` (per the descriptor archive seam) — a
+  resource that is not an archive of that format fails as a `ParseError`,
+  never yields nonsense — and returns the archive's `bytes` on the
+  `PickedFile`. Every downstream step reads bytes (`decode`, and the
+  confirm's upload if the pick were local). The `server` source carries
+  `DocumentReference/<id>` (via `archiveReference`, format-blind) so a
+  later step links provenance to the stored archive rather than
   re-uploading.
+- **A row's Preview action opens a read-only raw-contents modal that
+  renders the file itself.** The modal fetches through
+  `fetchArchiveContents` (the same reader as a pick, minus the source
+  synthesis) and picks its renderer from the format's
+  `archiveContentType`: PDF via a `<iframe>` at a `blob:` URL over the
+  bytes (revoked on unmount), JSON pretty-printed inside a `<pre>`
+  capped at `JSON_PREVIEW_SIZE_LIMIT` (5 MiB) with a "Download raw"
+  fallback for a giant archive. The modal writes nothing and offers no
+  editing — a preview is inspection, not another entry point to the
+  review flow.
 - **Every upload is a fresh document.** Each format's `uploadSource` mints
   a uuid with `crypto.randomUUID()` per call and uses it as both the
   resource id and the `Update` path, so the PUT preserves the
@@ -240,11 +270,12 @@ The importer has no HTTP wire union to derive, so there is no separate
   `<input type="file">` it opens is visually hidden but kept a named,
   reachable input (`aria-label="Import file"`), not `display: none` — some
   upload implementations refuse an invisible input.
-- **The authed runner comes from router context, one way.** `useHarArchivesQuery`
-  and the picker's row-select both read `useRunAuthed()`; the query also exposes
-  `harArchivesInfiniteQueryOptions(runAuthed, options)` taking the runner as its
-  first argument, for a loader or a test that drives the query itself. There is no
-  prop-threaded second way in — this mirrors `web-trace-react`.
+- **The authed runner comes from router context, one way.** `useArchivesQuery`,
+  the picker's row-select, and the preview modal's fetch all read
+  `useRunAuthed()`; the query also exposes
+  `archivesInfiniteQueryOptions(runAuthed, options)` taking the runner as
+  its first argument, for a loader or a test that drives the query itself.
+  There is no prop-threaded second way in — this mirrors `web-trace-react`.
 
 ## Testing
 

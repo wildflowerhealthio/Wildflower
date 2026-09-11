@@ -7,10 +7,11 @@ import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/archive'
+import { LIFELABS_PDF_ARCHIVE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer-core/archive'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { HAR_ARCHIVE_CATEGORY_TOKEN } from '../queries/har-archives.ts'
+import { ARCHIVES_CATEGORY_TOKEN } from '../queries/archives.ts'
 import { REJECTION_MESSAGE, type IdentifiableDescriptor } from './local-file.ts'
 import { SourcePicker } from './source-picker.tsx'
 
@@ -98,7 +99,7 @@ describe('SourcePicker', () => {
       }
     )
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /portal-session\.har/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Use portal-session.har as source' })).toBeDefined()
     })
 
     // Act 1 — chosen through the OS picker
@@ -108,8 +109,8 @@ describe('SourcePicker', () => {
     await waitFor(() => {
       expect(picks).toHaveLength(2)
     })
-    // Act 3 — selected from the server list
-    await userEvent.click(screen.getByRole('button', { name: /portal-session\.har/ }))
+    // Act 3 — selected from the server list via the row's Use-as-source action
+    await userEvent.click(screen.getByRole('button', { name: 'Use portal-session.har as source' }))
     await waitFor(() => {
       expect(picks).toHaveLength(3)
     })
@@ -151,14 +152,17 @@ describe('SourcePicker', () => {
     })
     expect(screen.getByText(uploadedAt)).toBeDefined()
 
-    // …the search went out filtered by the archive category, sized, and authed
-    expect(paramsOf(0)['category']).toBe(HAR_ARCHIVE_CATEGORY_TOKEN)
-    expect(HAR_ARCHIVE_CATEGORY_TOKEN).toBe(`${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE}`)
+    // …the search went out filtered by the comma-joined archive category
+    // covering every registered format, sized, and authed
+    expect(paramsOf(0)['category']).toBe(ARCHIVES_CATEGORY_TOKEN)
+    expect(ARCHIVES_CATEGORY_TOKEN).toBe(
+      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE}`
+    )
     expect(paramsOf(0)['_count']).toBe('50')
     expect(sentRequests[0]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
 
-    // Act — select the row
-    await userEvent.click(screen.getByRole('button', { name: /portal-session\.har/ }))
+    // Act — pick the row via its Use-as-source action
+    await userEvent.click(screen.getByRole('button', { name: 'Use portal-session.har as source' }))
 
     // Assert — the chosen archive is fetched and returned as bytes
     await waitFor(() => {
@@ -186,7 +190,7 @@ describe('SourcePicker', () => {
       }
     )
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /first\.har/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Use first.har as source' })).toBeDefined()
     })
 
     // Act
@@ -194,7 +198,7 @@ describe('SourcePicker', () => {
 
     // Assert — the second search carried the cursor, and both pages are listed
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /second\.har/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Use second.har as source' })).toBeDefined()
     })
     expect(paramsOf(0)['_pageToken']).toBeUndefined()
     expect(paramsOf(1)['_pageToken']).toBe('cursor-2')

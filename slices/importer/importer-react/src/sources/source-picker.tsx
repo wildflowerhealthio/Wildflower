@@ -8,13 +8,13 @@ import {
   type RejectedFile,
 } from './local-file.ts'
 import type { PickedFile } from './picked-file.ts'
-import { ServerHarArchiveList } from './server-har-archive-list.tsx'
+import { ServerArchiveList } from './server-archive-list.tsx'
 import styles from './source-picker.module.css'
 
 /**
  * The one control that turns any of three sources into a {@link PickedFile}: a
- * file dropped on the zone, a file chosen through the OS picker, or a HAR
- * archive already uploaded to the device's own FHIR server.
+ * file dropped on the zone, a file chosen through the OS picker, or an
+ * uploaded archive on the device's own FHIR server.
  *
  * @remarks
  * Drop is an enhancement, not the only path: the zone is itself a button that
@@ -23,10 +23,11 @@ import styles from './source-picker.module.css'
  * identified against the registered format descriptors' `detect` at the
  * picker, so a file no format claims is rejected *here*, next to the control
  * the user just used, rather than surfacing downstream. The server picks come
- * from {@link ServerHarArchiveList}, which fetches the chosen archive and
- * decodes it through the archive codec; the resulting pick carries the
- * archive's own reference so a later step links provenance without
- * re-uploading the bytes.
+ * from {@link ServerArchiveList}, which lists every registered format's
+ * uploaded archives — HAR, LifeLabs PDF, and any future format — and fetches
+ * the chosen one back through that format's archive codec; the resulting pick
+ * carries the archive's own reference so a later step links provenance
+ * without re-uploading the bytes.
  *
  * Presentation and interaction only. Nothing here parses HAR or opens a PDF —
  * both are the responsibility of the format's `decode` one step downstream.
@@ -204,7 +205,7 @@ const SourcePicker = ({
           {error}
         </p>
       )}
-      <ServerHarArchiveList
+      <ServerArchiveList
         onPick={(picked) => {
           setError(null)
           onPick([picked])

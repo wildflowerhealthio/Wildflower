@@ -166,8 +166,11 @@ describe('ImporterScreen', () => {
     })
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
-    // Act — select it from the server list, then confirm
-    await userEvent.click(await screen.findByRole('button', { name: /server-session\.har/ }))
+    // Act — pick it from the server list via the row's Use-as-source action,
+    // then confirm
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Use server-session.har as source' })
+    )
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
