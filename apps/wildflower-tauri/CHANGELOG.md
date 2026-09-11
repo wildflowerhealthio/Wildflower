@@ -10,6 +10,20 @@ add prose above or below them if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.2.2 — 2026-09-11
+
+- ci: add iOS build + TestFlight upload to release workflow (#642) (f9b5f4d6)
+- ci: add iOS build + TestFlight upload to release workflow (#638) (3d519828)
+- ci: verify Apple signing identity before the macOS release compile (#636) (5aed1adf)
+- LifeLabs positioned-text dialect: parse reports from PDF extraction (#635) (8953bc68)
+- DiagnosticReport + Practitioner FHIR resource types (#634) (fc603bf0)
+- PDF anonymizer: fix preview, add frequent-substring suggestions (#632) (6ec7e31c)
+- New slices/anonymizer: unified anonymizer shell, HAR engine/panel moved in (#631) (24107013)
+- ci: fix Tauri release failures, add tag-rebuild dispatch, drive builds via vp (#629) (9f993bc3)
+- har-anonymizer: pseudonymize .NET /Date(…)/ tokens as their own shape (#630) (bdcf5916)
+- Ruthmarks/dependabot consolidated 2026 09 (#627) (cc882aea)
+- V2: Importer preview — edit a resource's JSON inline, validated against fhir-r4 (#620) (0f051533)
+
 ## v0.2.0 — 2026-09-08
 
 - ci: split Tauri release into prepare-PR + publish-on-merge (#619) (e2012469)
