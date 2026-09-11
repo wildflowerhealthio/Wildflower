@@ -4,7 +4,7 @@ import { Review } from 'importer-fundamentals'
 import { type JSX, useMemo } from 'react'
 
 import type { BoundFormat, FormatKind, FormatReview } from '../registry.tsx'
-import type { FileReadOutcome } from './use-import-run.ts'
+import type { FileReadOutcome, ReadFile } from './use-import-run.ts'
 import styles from './preview-panel.module.css'
 
 /**
@@ -41,7 +41,7 @@ interface PreviewPanelProps {
   /** The registered formats' `ReviewBody` components (or `null`) indexed by kind. */
   readonly reviewBodyRegistry: ReviewBodyRegistry
   /** The tagged review to render for a read file — override if present, otherwise the file's own. */
-  readonly reviewFor: (file: Extract<FileReadOutcome, { readonly _tag: 'read' }>) => FormatReview
+  readonly reviewFor: (file: ReadFile) => FormatReview
   /** The resolved labeled resources for a file. */
   readonly labeledFor: (fileId: string) => readonly LabeledResource<FhirResource>[]
   /** The reviewed selection for a file (defaults to `Review.initial()` before any edit). */

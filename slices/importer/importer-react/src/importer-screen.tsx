@@ -5,7 +5,7 @@ import { type JSX, useCallback, useMemo, useState } from 'react'
 import { PreviewPanel } from './preview/preview-panel.tsx'
 import { emptyResolveCache, resolvedFor } from './preview/previews-for.ts'
 import { useConfirmImport } from './preview/use-confirm-import.ts'
-import { type FileReadOutcome, useImportRun } from './preview/use-import-run.ts'
+import { type ReadFile, useImportRun } from './preview/use-import-run.ts'
 import { type FormatReview, formatRegistry } from './registry.tsx'
 import { ImportResults } from './results/import-results.tsx'
 import { SourcePicker } from './sources/source-picker.tsx'
@@ -55,14 +55,13 @@ const PICKER_ACCEPT = acceptFor(registeredDescriptors)
 
 /**
  * A `read` file's tagged review from its outcome — the initial value before
- * any override. The `read` variant of {@link FileReadOutcome} is a
- * K-distributed union whose `format` and `review` fields are already
- * correlated, so structurally it satisfies {@link FormatReview}; picking
- * the two fields off explicitly would widen them to unions and lose the
- * correlation, so we hand the file object through directly.
+ * any override. A {@link ReadFile} is a K-distributed union whose `format`
+ * and `review` fields are already correlated, so structurally it satisfies
+ * {@link FormatReview}; picking the two fields off explicitly would widen
+ * them to unions and lose the correlation, so we hand the file object
+ * through directly.
  */
-const initialReviewOf = (file: Extract<FileReadOutcome, { readonly _tag: 'read' }>): FormatReview =>
-  file
+const initialReviewOf = (file: ReadFile): FormatReview => file
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
@@ -79,8 +78,7 @@ const ImporterScreen = (): JSX.Element => {
   const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
 
   const reviewFor = useCallback(
-    (file: Extract<FileReadOutcome, { readonly _tag: 'read' }>): FormatReview =>
-      reviewOverrides.get(file.id) ?? initialReviewOf(file),
+    (file: ReadFile): FormatReview => reviewOverrides.get(file.id) ?? initialReviewOf(file),
     [reviewOverrides]
   )
 

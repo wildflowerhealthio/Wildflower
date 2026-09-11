@@ -46,43 +46,62 @@ type ImportRunRegistry = {
 }
 
 /**
+ * A read file for one specific `K`. Default `K = FormatKind` gives the
+ * discriminated union across every registered format, so
+ * `file.format === 'har'` narrows `file.review` to `HarReviewState`
+ * without an `Extract` gymnastics; `ReadFile<'har'>` alone gives just
+ * the HAR variant for a per-K caller.
+ */
+type ReadFile<K extends FormatKind = FormatKind> = {
+  readonly [Kind in K]: {
+    readonly _tag: 'read'
+    readonly id: string
+    readonly picked: PickedFile
+    readonly format: Kind
+    readonly review: FormatVariant[Kind]['review']
+  }
+}[K]
+
+/**
+ * A file whose format was identified but whose {@link BoundFormat.decode}
+ * rejected the bytes — the pick's own `ParseError`. Distributed over `K`
+ * the same way {@link ReadFile} is, so a future per-format detail on the
+ * variant lines up cleanly.
+ */
+type UnreadableFile<K extends FormatKind = FormatKind> = {
+  readonly [Kind in K]: {
+    readonly _tag: 'unreadable'
+    readonly id: string
+    readonly picked: PickedFile
+    readonly format: Kind
+    readonly error: ParseResult.ParseError
+  }
+}[K]
+
+/** A picked file no registered descriptor's `detect` claimed. No format, no review. */
+interface UnrecognizedFile {
+  readonly _tag: 'unrecognized'
+  readonly id: string
+  readonly picked: PickedFile
+}
+
+/**
  * One pick's read outcome, tagged with the format that claimed it so a
  * confirm and a preview can look the right format's `resolve` and
  * `persist` up.
  *
  * @remarks
- * `read` carries the format's opaque review state, distributed over
- * {@link FormatKind} so `file.format === 'har'` narrows `file.review` to
- * `HarReviewState` at compile time — no `unknown` or union collapse.
- * `unreadable` carries the one malformed-file `ParseError` under its
- * format tag. `unrecognized` is a file no descriptor claimed — no format
- * tag, no review, no error to render, just the pick under its own name.
- * The confirm step writes only the resources the review chose from a
- * `read` file. `id` is a per-pick stable identity for a React `key`,
- * since two files in a batch can share a name.
+ * The union of {@link ReadFile}, {@link UnreadableFile}, and
+ * {@link UnrecognizedFile}. `read` carries the format's opaque review
+ * state, K-correlated with its `format` tag; `unreadable` carries the
+ * one malformed-file `ParseError` under its format tag; `unrecognized`
+ * is a file no descriptor claimed — no format tag, no review, just the
+ * pick under its own name. The confirm step writes only the resources
+ * the review chose from a `read` file. `id` is a per-pick stable
+ * identity for a React `key`, since two files in a batch can share a
+ * name.
  */
-type FileReadOutcome =
-  | {
-      readonly [K in FormatKind]: {
-        readonly _tag: 'read'
-        readonly id: string
-        readonly picked: PickedFile
-        readonly format: K
-        readonly review: FormatVariant[K]['review']
-      }
-    }[FormatKind]
-  | {
-      readonly _tag: 'unreadable'
-      readonly id: string
-      readonly picked: PickedFile
-      readonly format: FormatKind
-      readonly error: ParseResult.ParseError
-    }
-  | {
-      readonly _tag: 'unrecognized'
-      readonly id: string
-      readonly picked: PickedFile
-    }
+type FileReadOutcome = ReadFile | UnreadableFile | UnrecognizedFile
 
 /**
  * The lifecycle of one batch read, holding every pick's outcome so the
@@ -222,5 +241,8 @@ export {
   type ImportRun,
   type ImportRunRegistry,
   type ImportRunState,
+  type ReadFile,
+  type UnreadableFile,
+  type UnrecognizedFile,
   useImportRun,
 }
