@@ -75,7 +75,10 @@ describe('ImporterApp', () => {
     mount({})
 
     // Act — pick a recognized HAR through the OS picker
-    await userEvent.upload(await screen.findByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(
+      await screen.findByLabelText('Import file'),
+      harFile('portal-session.har')
+    )
 
     // Assert — the preview is up and NOT ONE write went out to reach it
     await waitFor(() => {
@@ -167,7 +170,7 @@ describe('ImporterApp', () => {
       'false'
     )
     expect(screen.getByText('Import FHIR records from a captured browsing session.')).toBeDefined()
-    expect(screen.getByRole('region', { name: 'HAR source' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
     // Nothing from the anonymize surface mounts on the Import tab.
     expect(screen.queryByRole('region', { name: 'Anonymize' })).toBeNull()
   })
@@ -428,7 +431,7 @@ const mount = (config: { readonly archives?: readonly ServerArchive[] }): void =
 /** Drive the local-pick flow from an empty server all the way to a completed import. */
 const importOneArchive = async (): Promise<void> => {
   mount({})
-  await userEvent.upload(await screen.findByLabelText('HAR file'), harFile('portal-session.har'))
+  await userEvent.upload(await screen.findByLabelText('Import file'), harFile('portal-session.har'))
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
   })
