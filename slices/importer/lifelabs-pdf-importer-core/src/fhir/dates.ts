@@ -38,7 +38,6 @@ interface PrintedParts {
   readonly day: number
   readonly hours: number
   readonly minutes: number
-  readonly hasTime: boolean
 }
 
 const parts = (text: string): Option.Option<PrintedParts> => {
@@ -53,7 +52,6 @@ const parts = (text: string): Option.Option<PrintedParts> => {
     day: Number(dayText),
     hours: hoursText === undefined ? 0 : Number(hoursText),
     minutes: minutesText === undefined ? 0 : Number(minutesText),
-    hasTime: hoursText !== undefined,
   })
 }
 
