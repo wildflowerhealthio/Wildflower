@@ -239,8 +239,13 @@ jobs:
             echo "::error::No version-bump changes to commit. Was the workspace already at $tag?"
             exit 1
           fi
-          git commit -m "chore(release): $tag"
-          git push -u origin "$branch"
+          # --no-verify: the pre-commit hook (rust.sh pre-commit) needs
+          # GTK/webkit libs or xcodebuild for the Tauri crates, neither of
+          # which exists on this ubuntu runner. The files are already
+          # formatted (vp fmt) and linted (lint:docs) above; the real CI
+          # gates run on the resulting PR.
+          git commit --no-verify -m "chore(release): $tag"
+          git push --no-verify -u origin "$branch"
 
       - name: Open release PR
         env:
