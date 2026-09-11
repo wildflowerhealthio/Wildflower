@@ -1,4 +1,5 @@
 import { Data, Option } from 'effect'
+import type { DiffStatus } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { LabeledSection } from 'importer-fundamentals'
 import { Review, sectionResources } from 'importer-fundamentals'
@@ -50,6 +51,13 @@ interface PreviewPanelProps {
   readonly settingsRegistry: SettingsRegistry
   /** The reviewed selection for a file (defaults to `Review.initial()` before any edit). */
   readonly selectionFor: (fileId: string) => Review.Selection<FhirResource>
+  /**
+   * Each labeled resource's server-diff status (`new` / `unchanged` /
+   * `changed`), keyed by {@link LabeledResource.key}. Rendered as a badge on
+   * each row; a key absent from the map (the pre-fetch is still in flight,
+   * or the resource is not covered by the classifier) renders no badge.
+   */
+  readonly diffStatuses: ReadonlyMap<string, DiffStatus>
   /** Called when a file's review changes its selection. */
   readonly onSelectionChange: (fileId: string, selection: Review.Selection<FhirResource>) => void
   /** Called when the user changes one format's settings; the caller re-decodes. */
@@ -162,10 +170,36 @@ const FormatSettingsForm = ({
  * Edit/Revert affordance, and the "edited" chip when a per-resource override
  * is in place.
  */
+/** User-visible label for each diff status. */
+const DIFF_STATUS_LABEL: Record<DiffStatus, string> = {
+  new: 'New',
+  unchanged: 'Already on server',
+  changed: 'Differs from server',
+}
+
+/**
+ * Badge shown on a resource row when the server-diff pre-fetch classified
+ * it. Absent when the status is unknown (the pre-fetch is still in flight,
+ * or the row's key is not in the map).
+ */
+const DiffBadge = ({ status }: { readonly status: DiffStatus | undefined }): JSX.Element | null => {
+  if (status === undefined) return null
+  return (
+    <Chip
+      className={styles[`diffBadge_${status}`] ?? styles.diffBadge}
+      data-diff-status={status}
+      aria-label={DIFF_STATUS_LABEL[status]}
+    >
+      {DIFF_STATUS_LABEL[status]}
+    </Chip>
+  )
+}
+
 const ResourceRow = ({
   resourceKey,
   resource,
   selection,
+  diffStatus,
   onToggle,
   onEdit,
   onRevert,
@@ -173,6 +207,7 @@ const ResourceRow = ({
   readonly resourceKey: string
   readonly resource: unknown
   readonly selection: Review.Selection<FhirResource>
+  readonly diffStatus: DiffStatus | undefined
   readonly onToggle: (key: string) => void
   readonly onEdit: (key: string, resource: unknown) => void
   readonly onRevert: (key: string) => void
@@ -197,6 +232,7 @@ const ResourceRow = ({
           {description.summary}
         </span>
       </label>
+      <DiffBadge status={diffStatus} />
       {isEdited && <Chip className={styles.editedChip}>Edited</Chip>}
       <button
         type="button"
@@ -275,11 +311,13 @@ const SectionToggle = ({
 const ReadFileBody = ({
   file,
   selection,
+  diffStatuses,
   onSelectionChange,
   onEditResource,
 }: {
   readonly file: ReadFile<FormatKind>
   readonly selection: Review.Selection<FhirResource>
+  readonly diffStatuses: ReadonlyMap<string, DiffStatus>
   readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
   readonly onEditResource: (key: string, resource: unknown) => void
 }): JSX.Element => {
@@ -314,6 +352,7 @@ const ReadFileBody = ({
                 resourceKey={resource.key}
                 resource={resource.resource}
                 selection={selection}
+                diffStatus={diffStatuses.get(resource.key)}
                 onToggle={(key) => onSelectionChange(Review.toggleResource(selection, key))}
                 onEdit={onEditResource}
                 onRevert={(key) => onSelectionChange(Review.revert(selection, key))}
@@ -344,11 +383,13 @@ const ReadFileBody = ({
 const FileSection = ({
   file,
   selectionFor,
+  diffStatuses,
   onSelectionChange,
   onEditResource,
 }: {
   readonly file: ReadFile<FormatKind> | UnreadableFile<FormatKind> | FileReadOutcome
   readonly selectionFor: PreviewPanelProps['selectionFor']
+  readonly diffStatuses: ReadonlyMap<string, DiffStatus>
   readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
   readonly onEditResource: (fileId: string, key: string, resource: unknown) => void
 }): JSX.Element => (
@@ -368,6 +409,7 @@ const FileSection = ({
       <ReadFileBody
         file={file}
         selection={selectionFor(file.id)}
+        diffStatuses={diffStatuses}
         onSelectionChange={(selection) => onSelectionChange(file.id, selection)}
         onEditResource={(key, resource) => onEditResource(file.id, key, resource)}
       />
@@ -420,6 +462,7 @@ const PreviewPanel = ({
   settings,
   settingsRegistry,
   selectionFor,
+  diffStatuses,
   onSelectionChange,
   onSettingsChange,
   onConfirm,
@@ -497,6 +540,7 @@ const PreviewPanel = ({
                   key={file.id}
                   file={file}
                   selectionFor={selectionFor}
+                  diffStatuses={diffStatuses}
                   onSelectionChange={onSelectionChange}
                   onEditResource={openEditor}
                 />
@@ -509,6 +553,7 @@ const PreviewPanel = ({
             key={file.id}
             file={file}
             selectionFor={selectionFor}
+            diffStatuses={diffStatuses}
             onSelectionChange={onSelectionChange}
             onEditResource={openEditor}
           />

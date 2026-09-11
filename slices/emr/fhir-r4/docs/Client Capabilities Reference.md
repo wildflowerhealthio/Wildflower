@@ -131,6 +131,22 @@ Per FHIR R4 § Practitioner.search, the standard parameters include `_id`, `_las
 
 Per FHIR R4, `MedicationRequest.search` and `MedicationDispense.search` define parameters such as `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`/`context`, `status`, `intent` (request only), `authoredon` / `whenprepared` / `whenhandedover` (with date prefixes), `identifier`, `medication`, and `prescription` (dispense only). The `HttpApi` description declares `_count` and `_pageToken` only — same minimal paging surface as Observation. HFS indexes the full R4 parameter set server-side (e.g. `MedicationRequest.subject` feeds Patient `$everything`), but the typed client can't express those filters. Adding `subject`/`patient`/`code`/`status` would unlock the canonical medication workflows.
 
+## `POST /` batch bundle (endpoint + persist client)
+
+The `HttpApi` declares the FHIR `POST /` bundle-submit endpoint (`Bundle.Submit` in the typed client). The endpoint accepts a `Bundle{ type: 'batch' | 'transaction' }` and returns a `Bundle{ type: 'batch-response' | 'transaction-response' }` with a per-entry `response.status` (and, for reads, a `resource`). The mount prefix `/fhir-r4` is applied by consumers (see "The `HttpApi` is base-relative" above), so the endpoint lives at bare `/`.
+
+Only **batch** semantics are exercised by this client's helpers today:
+
+- **`persistBatchBundle(resources)`** (in `fhir-r4/clients`) is the batch counterpart of `persistResources`: one `POST /` submission carrying N PUT entries, one round trip per batch. Per-entry non-2xx responses become `ResourceWriteFailure[]` (structurally identical to `persistResources`), and a whole-bundle failure attributes every resource to that one cause. Null-id resources are skipped defensively (a PUT needs an id). It is the importer's write sink; the collector slice still uses `persistResources` (real-time sync with per-resource retries).
+- **`classifyAgainstServer(resources)`** (same package) pre-fetches the FHIR store's current copy of each id in one `POST /` batch of GET entries and classifies each as `new` (absent), `unchanged` (server holds a wire-equal copy after dropping the server-managed `meta.versionId` / `meta.lastUpdated` / `meta.source`), or `changed` (present + differs). Never fails — a whole-bundle failure attributes every id to `new` so the caller's writes still attempt. The importer's shell runs it at preview mount and pre-excludes `unchanged` rows so a re-import writes nothing by default.
+
+Two shape narrowings on this client:
+
+- **The endpoint's entry `resource` type is `Schema.Any`, not the FHIR union.** Modeling `Bundle{entry.resource}` as `FhirResourceSchema` (the discriminated union of the eight domain resources) exploded the inferred client type past TS's serialize limit ("inferred type … exceeds the maximum length" on `FhirR4ResourcesHttpApiClient`). Every in-slice caller inspects a response by `entry.response.status` and decodes any returned `entry.resource` through `FhirResourceSchema` separately when it needs the typed shape, so the loose entry-body type never reaches a caller as truth.
+- **Transaction semantics (atomic all-or-nothing) is not implemented.** The `Bundle.Submit` endpoint accepts a `transaction`-typed bundle at the type level, but no client helper builds one; a caller that wanted transaction semantics would raise both `entry.request` and the response-parsing side (a `500` on the whole bundle fails the transaction as a unit). Batch is enough for the importer's needs today (the reviewed set is preview-confirmed, so per-entry failure is the observability the user wants).
+
+The server (HFS) supports both batch and transaction bundles at `POST /fhir-r4` per its capability statement — the client-side narrowing is the only asymmetry.
+
 ## `$everything` declared for Patient only (matches the server)
 
 The `HttpApi` declares `GET /Patient/{id}/$everything` (with `_count`, returning a `Bundle`) on the Patient group only — added via `buildEverythingEndpoint` in `patient.ts`, not by `buildDomainResourceHttpApiGroup`. This matches the server, which implements the operation for Patient only. A resource that gains a server-side `$everything` later opts in with one `.add(buildEverythingEndpoint(...))` line.

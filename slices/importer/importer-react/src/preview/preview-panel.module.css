@@ -137,6 +137,19 @@
   font-size: var(--font-size-1);
 }
 
+/*
+ * Diff badges on each row — the pre-fetched server status:
+ *   .diffBadge_new       an id the server does not hold; the write creates fresh
+ *   .diffBadge_unchanged the server already holds an equivalent copy (default excluded)
+ *   .diffBadge_changed   the server holds a copy that differs; the write replaces
+ */
+.diffBadge,
+.diffBadge_new,
+.diffBadge_unchanged,
+.diffBadge_changed {
+  font-size: var(--font-size-1);
+}
+
 .editButton,
 .revertButton {
   font: inherit;

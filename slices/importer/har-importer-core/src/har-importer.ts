@@ -14,7 +14,6 @@ import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
-import { persistFhir } from './persist-fhir.ts'
 import { preview, type PreviewedResponse } from './review.ts'
 import { uploadSource } from './upload-source.ts'
 
@@ -109,7 +108,6 @@ const harImporterDescriptor: FileImporterDescriptor<
       }))
     ),
   uploadSource,
-  persist: persistFhir,
 }
 
 export { harImporterDescriptor }

@@ -94,6 +94,13 @@ const Write = {
  * {@link Write}, which names the server's handling of one.
  */
 const Persist = {
+  /** Attribute keys shared across the persist spans. */
+  Attributes: {
+    /** Number of resources placed on the wire — bundle entries or per-resource PUTs. */
+    ResourceCount: 'fhir.persist.resource_count',
+    /** Number of entries the server (or transport) reported as failed. */
+    FailureCount: 'fhir.persist.failure_count',
+  },
   /**
    * One resource's write within a batch, retries included.
    *
@@ -107,6 +114,21 @@ const Persist = {
    * emitted here.
    */
   Write: { Span: { Name: 'fhir.persist.write' } },
+  /**
+   * One `POST /` submission — a whole batch Bundle in one round trip.
+   *
+   * @remarks
+   * Tagged with the sent {@link Attributes.ResourceCount} and the counted
+   * {@link Attributes.FailureCount}. Unlike {@link Write}, this is one span per
+   * whole batch (not per resource) because the wire is one HTTP request.
+   */
+  Bundle: { Span: { Name: 'fhir.persist.bundle' } },
+  /**
+   * One `POST /` submission of a batch of GET entries — the existence /
+   * server-copy pre-fetch a caller uses to reconcile a would-be write against
+   * what the server already holds. Tagged with {@link Attributes.ResourceCount}.
+   */
+  Classify: { Span: { Name: 'fhir.persist.classify' } },
 } as const
 
 /** `$everything`: the primary resource plus its related resources. */

@@ -3,7 +3,7 @@ import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HarSettings, harImporterDescriptor } from 'har-importer-core'
 import { HarSettingsPicker } from 'har-importer-react'
-import type { DecodedFile, PersistFailure, SettingsPickerProps } from 'importer-fundamentals'
+import type { DecodedFile, SettingsPickerProps } from 'importer-fundamentals'
 import { type LifeLabsPdfSettings, lifeLabsPdfImporterDescriptor } from 'lifelabs-pdf-importer-core'
 import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
@@ -71,10 +71,6 @@ interface BoundFormat<K extends FormatKind> {
     readonly fileName: string
     readonly bytes: Uint8Array
   }) => Effect.Effect<string, unknown, FormatVariant[K]['requirements']>
-  readonly persist: (
-    resources: readonly FormatVariant[K]['parsed'][],
-    sourceRef: string
-  ) => Effect.Effect<readonly PersistFailure[], never, FormatVariant[K]['requirements']>
   readonly SettingsPicker: (props: SettingsPickerProps<FormatVariant[K]['settings']>) => JSX.Element
 }
 
@@ -88,7 +84,6 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     defaultSettings: harImporterDescriptor.defaultSettings,
     decode: harImporterDescriptor.decode,
     uploadSource: harImporterDescriptor.uploadSource,
-    persist: harImporterDescriptor.persist,
     SettingsPicker: HarSettingsPicker,
   },
   'lifelabs-pdf': {
@@ -99,7 +94,6 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     defaultSettings: lifeLabsPdfImporterDescriptor.defaultSettings,
     decode: lifeLabsPdfImporterDescriptor.decode,
     uploadSource: lifeLabsPdfImporterDescriptor.uploadSource,
-    persist: lifeLabsPdfImporterDescriptor.persist,
     SettingsPicker: LifeLabsPdfSettingsPicker,
   },
 }

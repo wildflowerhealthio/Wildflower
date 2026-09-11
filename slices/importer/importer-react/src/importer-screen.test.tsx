@@ -529,15 +529,66 @@ const routingServer = (config: {
     readonly fileName: string
     readonly harText: string
   }[]
-  readonly failWrite?: (request: HttpClientRequest.HttpClientRequest) => boolean
+  readonly failWrite?: (request: { readonly method: string; readonly url: string }) => boolean
 }): RunAuthed => {
   const archives = config.archives ?? []
   const httpLayer = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       const body = decodeBody(request.body)
-      recorded.push({ method: request.method, url: request.url, body })
       const params = Object.fromEntries(request.urlParams)
+
+      // A `POST /` at the FHIR base with a Bundle body is `fhir-r4`'s
+      // bundle-submit — a batch of PUT entries (persistBatchBundle) or GET
+      // entries (classifyAgainstServer). Unwrap it: record each entry as its
+      // own request (method + url from `entry.request`), and mirror the
+      // batch-response bundle. That keeps `writes()` / `isResourceWrite`
+      // seeing one recorded request per resource operation.
+      if (request.method === 'POST' && (request.url === '/' || request.url.endsWith('/'))) {
+        const parsed = safeParseBundle(body)
+        if (parsed !== undefined) {
+          const entries = parsed.entry ?? []
+          const responseEntries: unknown[] = []
+          for (const entry of entries) {
+            const entryReq = entry.request
+            if (entryReq === undefined) {
+              responseEntries.push({ response: { status: '400 Bad Request' } })
+              continue
+            }
+            const entryUrl = `/${entryReq.url}`
+            const entryBody = entry.resource === undefined ? '' : JSON.stringify(entry.resource)
+            recorded.push({ method: entryReq.method, url: entryUrl, body: entryBody })
+            if (
+              entryReq.method === 'PUT' &&
+              config.failWrite?.({ method: entryReq.method, url: entryUrl }) === true
+            ) {
+              responseEntries.push({ response: { status: '503 Service Unavailable' } })
+              continue
+            }
+            if (entryReq.method === 'GET') {
+              // No prior write in this suite — every classify probe answers 404.
+              responseEntries.push({ response: { status: '404 Not Found' } })
+              continue
+            }
+            responseEntries.push({
+              response: { status: '200 OK' },
+              ...(entry.resource !== undefined ? { resource: entry.resource } : {}),
+            })
+          }
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              jsonResponse({
+                resourceType: 'Bundle',
+                type: 'batch-response',
+                entry: responseEntries,
+              })
+            )
+          )
+        }
+      }
+
+      recorded.push({ method: request.method, url: request.url, body })
       if (request.method === 'GET' && params['category'] !== undefined) {
         const wires = archives.map((archive) => archiveWire(archive))
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
@@ -554,7 +605,7 @@ const routingServer = (config: {
           )
         )
       }
-      if (config.failWrite?.(request) === true) {
+      if (config.failWrite?.({ method: request.method, url: request.url }) === true) {
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 503)))
       }
       // Echo the written wire back as a 200 so the client decodes it and succeeds.
@@ -581,6 +632,32 @@ const searchset = (resources: readonly unknown[]): unknown => ({
   entry: resources.map((resource) => ({ resource })),
   link: [],
 })
+
+/** Minimal shape read from the request body of a `POST /` batch bundle. */
+interface RecordedBundleShape {
+  readonly entry?: readonly {
+    readonly request?: { readonly method: string; readonly url: string }
+    readonly resource?: unknown
+  }[]
+}
+
+/**
+ * Best-effort parse of a `POST /` body as a batch Bundle — `undefined` when
+ * the body isn't a bundle so a non-bundle POST at `/` falls through.
+ */
+const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
+  if (body === '') return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body) as unknown
+  } catch {
+    return undefined
+  }
+  if (parsed === null || typeof parsed !== 'object') return undefined
+  const record = parsed as { readonly resourceType?: unknown }
+  if (record.resourceType !== 'Bundle') return undefined
+  return parsed
+}
 
 const withQueryClient = ({ children }: { readonly children: ReactNode }): JSX.Element => (
   <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>

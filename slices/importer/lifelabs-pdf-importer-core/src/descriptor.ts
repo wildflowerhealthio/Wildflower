@@ -4,14 +4,15 @@ import type { FileImporterDescriptor } from 'importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
-import { persistFhir } from './persist-fhir.ts'
 import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
 import { uploadSource } from './upload-source.ts'
 
 /**
  * The concrete {@link FileImporterDescriptor} for the `lifelabs-pdf` format:
- * a LifeLabs report's positioned text in, FHIR resources out, written through
- * the FHIR store.
+ * a LifeLabs report's positioned text in, FHIR resources out. Persistence is
+ * shell-owned — every FHIR-targeting importer writes through one shared
+ * `POST /` batch bundle (`persistBatchBundle` in `fhir-r4/clients`), so no
+ * format brings its own `persist`.
  *
  * @remarks
  * `decode` yields one section per report the PDF carries and no notes — this
@@ -37,7 +38,6 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
   defaultSettings: defaultLifeLabsPdfSettings,
   decode: decodeLifeLabsPdf,
   uploadSource,
-  persist: persistFhir,
 }
 
 export { lifeLabsPdfImporterDescriptor }

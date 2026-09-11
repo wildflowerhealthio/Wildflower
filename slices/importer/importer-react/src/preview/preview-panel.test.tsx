@@ -330,6 +330,7 @@ const panelProps = (
     settings,
     settingsRegistry,
     selectionFor: overrides.selectionFor ?? (() => Review.initial<FhirResource>()),
+    diffStatuses: new Map(),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),
     onSettingsChange: overrides.onSettingsChange ?? (() => undefined),
     onConfirm: overrides.onConfirm ?? (() => undefined),

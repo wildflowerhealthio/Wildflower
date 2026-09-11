@@ -3,9 +3,14 @@ import { Effect, Match } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
-import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
+import {
+  type FhirR4ResourcesHttpApiClient,
+  persistBatchBundle,
+  type ResourceWriteFailure,
+} from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import { type PersistFailure, Review, sectionResources } from 'importer-fundamentals'
+import { Review, sectionResources } from 'importer-fundamentals'
+import { withMetaSource } from 'web-trace-core/provenance'
 
 import { HAR_ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
 import type { BoundFormat, FormatKind } from '../registry.ts'
@@ -81,9 +86,9 @@ interface ConfirmImport {
   readonly reset: () => void
 }
 
-/** The format lookup this hook needs: the format's own `uploadSource` + `persist`. */
+/** The format lookup this hook needs: the format's own `uploadSource`. */
 type ConfirmRegistry = {
-  readonly [K in FormatKind]: Pick<BoundFormat<K>, 'uploadSource' | 'persist'>
+  readonly [K in FormatKind]: Pick<BoundFormat<K>, 'uploadSource'>
 }
 
 /**
@@ -104,22 +109,24 @@ const uploadSourceFor = (
   )(format)
 
 /**
- * Run one file's chosen resources through its own format's `persist` —
- * dispatched through `Match.type` on `FormatKind` so `kind` narrows to a
- * specific K per branch. Every registered format returns the uniform
- * `PersistFailure[]` shape.
+ * Persist a file's reviewed resources through the one shared write path —
+ * stamp each with `meta.source = sourceRef` (so a downstream reader can find
+ * the archive it came from), then submit them as one `POST /` batch bundle.
+ *
+ * @remarks
+ * `withMetaSource` mints a new resource per input rather than mutating in
+ * place. The caller's identity on the reviewed objects is intentionally lost
+ * here — the source stamp is what the write is *of* — so this is the one
+ * place in the flow where the objects change shape after the review saw
+ * them. `persistBatchBundle` returns `ResourceWriteFailure[]` on `never`;
+ * that structural shape *is* `PersistFailure` from `importer-fundamentals`,
+ * so downstream results reading (`import-outcome`) needs no change.
  */
-const persistFor = (
-  registry: ConfirmRegistry,
-  format: FormatKind,
+const persistFile = (
   resources: readonly FhirResource[],
   sourceRef: string
-): Effect.Effect<readonly PersistFailure[], never, FhirR4ResourcesHttpApiClient> =>
-  Match.type<FormatKind>().pipe(
-    Match.when('har', (kind) => registry[kind].persist(resources, sourceRef)),
-    Match.when('lifelabs-pdf', (kind) => registry[kind].persist(resources, sourceRef)),
-    Match.exhaustive
-  )(format)
+): Effect.Effect<readonly ResourceWriteFailure[], never, FhirR4ResourcesHttpApiClient> =>
+  persistBatchBundle(resources.map((resource) => withMetaSource(resource, sourceRef)))
 
 /**
  * The archive reference a file's resources write against: a `server`
@@ -162,7 +169,7 @@ const importOneFile = (
       if (resources.length === 0) return skip('nothing')
       return secureSourceRef(registry, format, picked).pipe(
         Effect.flatMap((sourceRef) =>
-          persistFor(registry, format, resources, sourceRef).pipe(
+          persistFile(resources, sourceRef).pipe(
             Effect.map((failures): FileImportResult => ({
               _tag: 'imported',
               id,

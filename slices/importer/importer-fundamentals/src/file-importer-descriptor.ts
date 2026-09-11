@@ -1,7 +1,5 @@
 import type { Effect, ParseResult } from 'effect'
 
-import type { PersistFailure } from './persist-failure.ts'
-
 /**
  * A titled resource a format binding yields from its review state — the
  * general-purpose unit the shell and the confirm step work with. The key
@@ -90,16 +88,23 @@ interface SettingsPickerProps<TSettings> {
  *   {@link decode}, re-decoding a file when its format's settings change
  * @typeParam TParsed - The resource type this format decodes to (FHIR for HAR
  *   and LifeLabs PDF)
- * @typeParam R - The services {@link persist}'s write sink requires (the FHIR
- *   write client for HAR); stays visible so the shell provides it
+ * @typeParam R - The services {@link uploadSource}'s DocumentReference write
+ *   requires (the FHIR write client for HAR and LifeLabs); stays visible so
+ *   the shell provides it
  *
  * @remarks
- * The format core owns the whole decode; the general shell sees only the
- * {@link DecodedFile} — titled sections of {@link LabeledResource}s plus
+ * The format core owns the whole decode + upload; the general shell sees only
+ * the {@link DecodedFile} — titled sections of {@link LabeledResource}s plus
  * diagnostic notes — and renders one per-resource exclude/edit review over
- * it, with no format-specific review UI. Only {@link persist} carries `R`:
- * `decode` requires nothing, so a preview can never reach the write client
- * by construction.
+ * it, with no format-specific review UI. Persistence of the reviewed FHIR
+ * resources themselves is *not* the format's job: every FHIR-targeting
+ * importer writes through the shared `persistBatchBundle` in
+ * `fhir-r4/clients` at the shell (see `use-confirm-import.ts` in
+ * `importer-react`), so no format can bring its own persistence approach —
+ * dropped after HAR and LifeLabs proved to share a verbatim identical
+ * `withMetaSource → persistResources` sink. Only {@link uploadSource} carries
+ * `R`; `decode` requires nothing, so a preview can never reach the write
+ * client by construction.
  */
 interface FileImporterDescriptor<TSettings, TParsed, R> {
   /** The format tag this descriptor binds (`'har'`, `'lifelabs-pdf'`); the registry's key. */
@@ -163,16 +168,6 @@ interface FileImporterDescriptor<TSettings, TParsed, R> {
     readonly fileName: string
     readonly bytes: Uint8Array
   }) => Effect.Effect<string, unknown, R>
-  /**
-   * Write the reviewed, chosen resources to this format's target, stamping each
-   * with the source archive `sourceRef`. Returns the resources it could not
-   * write as {@link PersistFailure} data on a `never` error channel — one bad
-   * write never stops the rest.
-   */
-  readonly persist: (
-    resources: readonly TParsed[],
-    sourceRef: string
-  ) => Effect.Effect<readonly PersistFailure[], never, R>
 }
 
 /**
