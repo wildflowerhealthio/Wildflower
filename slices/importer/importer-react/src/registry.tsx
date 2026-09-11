@@ -16,7 +16,7 @@ import {
 } from 'har-importer-react'
 import { SourceDescriptor } from 'http-extraction-fundamentals'
 import type { LabeledResource, PersistFailure, Review } from 'importer-fundamentals'
-import { type JSX, useMemo } from 'react'
+import { type ComponentType, type JSX, useMemo } from 'react'
 
 /**
  * The closed, compile-time format registry. Each format maps to its concrete
@@ -90,7 +90,7 @@ interface BoundFormat<K extends FormatKind> {
    * beyond the general per-resource selection. `null` when the general
    * per-resource view (labeled resources + exclude/edit) suffices.
    */
-  readonly ReviewBody: ((props: ReviewBodyAdapterProps<K>) => JSX.Element) | null
+  readonly ReviewBody: ComponentType<ReviewBodyAdapterProps<K>> | null
 }
 
 /** The pool for HAR preview computation. */

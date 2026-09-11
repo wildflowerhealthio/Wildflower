@@ -21,6 +21,7 @@ export {
   PREVIEW_HEADING,
   PreviewPanel,
   type PreviewPanelProps,
+  type ReviewBodyProps,
   UNREADABLE_FILE_MESSAGE,
 } from './preview/preview-panel.tsx'
 export {

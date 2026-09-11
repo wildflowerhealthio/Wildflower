@@ -1,7 +1,7 @@
 import type { FhirResource } from 'fhir-r4/resources'
 import type { LabeledResource } from 'importer-fundamentals'
 import { Review } from 'importer-fundamentals'
-import { type JSX, useMemo } from 'react'
+import { type ComponentType, type JSX, useMemo } from 'react'
 
 import type { FileReadOutcome } from './use-import-run.ts'
 import styles from './preview-panel.module.css'
@@ -23,6 +23,15 @@ import styles from './preview-panel.module.css'
  * @packageDocumentation
  */
 
+/** Props the format-specific review body component receives. */
+interface ReviewBodyProps<TReview> {
+  readonly review: TReview
+  readonly labeled: readonly LabeledResource<FhirResource>[]
+  readonly selection: Review.Selection<FhirResource>
+  readonly onReviewChange: (review: TReview) => void
+  readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
+}
+
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps<TReview> {
   /** Every picked file's read outcome, rendered together under one confirm. */
@@ -32,15 +41,7 @@ interface PreviewPanelProps<TReview> {
    * beyond the general per-resource selection. `null` when the default
    * per-resource list suffices.
    */
-  readonly ReviewBody:
-    | ((props: {
-        readonly review: TReview
-        readonly labeled: readonly LabeledResource<FhirResource>[]
-        readonly selection: Review.Selection<FhirResource>
-        readonly onReviewChange: (review: TReview) => void
-        readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
-      }) => JSX.Element)
-    | null
+  readonly ReviewBody: ComponentType<ReviewBodyProps<TReview>> | null
   /** The opaque review state for a file. */
   readonly reviewFor: (fileId: string) => TReview
   /** The resolved labeled resources for a file. */
@@ -254,5 +255,6 @@ export {
   PREVIEW_HEADING,
   PreviewPanel,
   type PreviewPanelProps,
+  type ReviewBodyProps,
   UNREADABLE_FILE_MESSAGE,
 }
