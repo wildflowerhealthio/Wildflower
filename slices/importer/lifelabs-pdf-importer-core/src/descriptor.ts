@@ -8,6 +8,7 @@ import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
 import { persistFhir } from './persist-fhir.ts'
 import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
+import { uploadSource } from './upload-source.ts'
 
 /**
  * The LifeLabs PDF format's review state: the labeled resources the decode
@@ -46,6 +47,7 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
   defaultSettings: defaultLifeLabsPdfSettings,
   decode: decodeLifeLabsPdf,
   resolve: (review) => Effect.succeed(review),
+  uploadSource,
   persist: persistFhir,
 }
 

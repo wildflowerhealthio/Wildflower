@@ -117,6 +117,10 @@ interface BoundFormat<K extends FormatKind> {
   readonly resolve: (
     review: FormatVariant[K]['review']
   ) => Effect.Effect<readonly LabeledResource<FormatVariant[K]['parsed']>[]>
+  readonly uploadSource: (picked: {
+    readonly fileName: string
+    readonly bytes: Uint8Array
+  }) => Effect.Effect<string, unknown, FormatVariant[K]['requirements']>
   readonly persist: (
     resources: readonly FormatVariant[K]['parsed'][],
     sourceRef: string
@@ -170,6 +174,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     defaultSettings: harImporterDescriptor.defaultSettings,
     decode: harImporterDescriptor.decode,
     resolve: harImporterDescriptor.resolve,
+    uploadSource: harImporterDescriptor.uploadSource,
     persist: harImporterDescriptor.persist,
     SettingsPicker: HarSettingsPicker,
     ReviewBody: HarReviewBodyAdapter,
@@ -182,6 +187,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     defaultSettings: lifeLabsPdfImporterDescriptor.defaultSettings,
     decode: lifeLabsPdfImporterDescriptor.decode,
     resolve: lifeLabsPdfImporterDescriptor.resolve,
+    uploadSource: lifeLabsPdfImporterDescriptor.uploadSource,
     persist: lifeLabsPdfImporterDescriptor.persist,
     SettingsPicker: LifeLabsPdfSettingsPicker,
     ReviewBody: null,

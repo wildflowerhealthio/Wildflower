@@ -18,6 +18,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./archive": {
+      "source": "./src/archive/index.ts",
+      "default": "./dist/archive.js"
+    },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",
       "default": "./dist/test-helpers.js"

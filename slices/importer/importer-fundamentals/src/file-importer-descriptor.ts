@@ -85,6 +85,29 @@ interface FileImporterDescriptor<TSettings, TReview, TParsed, R> {
    */
   readonly resolve: (review: TReview) => Effect.Effect<readonly LabeledResource<TParsed>[]>
   /**
+   * Upload a local pick's bytes as a source-archive `DocumentReference` and
+   * return the reference every FHIR resource this file writes will stamp
+   * onto `meta.source`. The seam a shell calls to secure the provenance
+   * link before writing resources.
+   *
+   * @remarks
+   * The provenance stamp lets a reader trace an imported resource back to
+   * the raw source it came from — a HAR for the HAR binding, a report PDF
+   * for the LifeLabs binding. Each format uploads with its own codec, so
+   * the returned reference always points at a resource decoded by the
+   * matching `…FromDocumentReference` reader. The upload is best-effort at
+   * the shell: a failure surfaces on the pick's own row as `uploadFailed`,
+   * never stops the batch.
+   *
+   * A server pick is not this seam's concern — its reference is already on
+   * the pick — so this only ever runs for a `local` pick and receives its
+   * bytes verbatim. Requires the write client (`R`), same as `persist`.
+   */
+  readonly uploadSource: (picked: {
+    readonly fileName: string
+    readonly bytes: Uint8Array
+  }) => Effect.Effect<string, unknown, R>
+  /**
    * Write the reviewed, chosen resources to this format's target, stamping each
    * with the source archive `sourceRef`. Returns the resources it could not
    * write as {@link PersistFailure} data on a `never` error channel — one bad

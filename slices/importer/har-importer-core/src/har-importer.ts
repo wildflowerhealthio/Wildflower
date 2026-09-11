@@ -12,6 +12,7 @@ import * as HarSelection from './har-selection.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { persistFhir } from './persist-fhir.ts'
 import { preview } from './review.ts'
+import { uploadSource } from './upload-source.ts'
 
 /**
  * The HAR format's opaque review state: the decoded responses plus the
@@ -66,6 +67,7 @@ const harImporterDescriptor: FileImporterDescriptor<
           : []
       )
     ),
+  uploadSource,
   persist: persistFhir,
 }
 

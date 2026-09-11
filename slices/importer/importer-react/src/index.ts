@@ -28,9 +28,9 @@ export {
 } from './preview/preview-panel.tsx'
 export {
   type ConfirmImport,
+  type ConfirmRegistry,
   type ConfirmState,
   type LabeledFor,
-  type PersistRegistry,
   type SelectionFor,
   useConfirmImport,
 } from './preview/use-confirm-import.ts'
@@ -78,7 +78,6 @@ export {
 } from './queries/har-archives.ts'
 export { HAR_ARCHIVES_QUERY_KEY, IMPORTER_QUERY_KEY } from './queries/keys.ts'
 export { nextPageToken, type PageLink } from './queries/page-token.ts'
-export { type UploadHarInput, useUploadHar } from './mutations/upload-har.ts'
 export { acceptLocalFile, type ReadableFile, REJECTION_MESSAGE } from './sources/local-file.ts'
 export {
   harArchiveReference,

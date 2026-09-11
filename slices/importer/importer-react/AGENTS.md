@@ -101,8 +101,15 @@ slice needs.
   `page-token.ts` pulls the continuation cursor out of a bundle's `next` link
   (a copy of the web-trace viewer's, see the trap); `keys.ts` holds the query-key
   roots.
-- **`src/mutations/`** — the write. `upload-har.ts` mints a fresh archive from a
-  local file's bytes and PUTs it, then invalidates the archive list.
+- **The source-archive upload lives on each format's descriptor.** The shell
+  no longer holds a HAR-specific upload mutation; `useConfirmImport`
+  dispatches `descriptor.uploadSource(picked)` through the registry
+  (`Match.type<FormatKind>()`), so HAR uploads via `har-importer-core`'s
+  archive codec and LifeLabs uploads via
+  `lifelabs-pdf-importer-core/archive`'s. The archive-list query is
+  invalidated once at end-of-batch (any local HAR upload lands a new
+  `DocumentReference` the picker should see next pick — cheap even when
+  no HAR uploaded).
 
 ## Traps
 
@@ -123,7 +130,8 @@ slice needs.
   (`Review.chosenResources` over the shared previews). Don't move the
   selection down into the body, or the shell and the view can disagree.
 - **Confirm ordering is fixed per file: archive create, then that file's resource
-  writes.** A `local` pick's archive is uploaded first (`useUploadHar`) and the
+  writes.** A `local` pick's archive is uploaded first (its format's
+  `descriptor.uploadSource`) and the
   reference it mints is stamped onto every resource from _that file_; only then
   does the descriptor's `persist` run for it. A `server` pick uploads nothing and
   links to the document it was fetched from. Sequencing matters — a resource must
@@ -189,12 +197,13 @@ slice needs.
   pick were local). The `server` source carries `DocumentReference/<id>` so
   a later step links provenance to the stored archive rather than
   re-uploading.
-- **Every upload is a fresh document.** `useUploadHar` mints a uuid with
-  `crypto.randomUUID()` per call and uses it as both the resource id and the
-  `Update` path, so the PUT preserves the client-minted id and two uploads of the
-  same bytes are two documents — never one silently overwriting the other. That
-  is the archive codec's contract; dedupe stays _detectable_ through the
-  attachment's `hash` and `size` without being forced.
+- **Every upload is a fresh document.** Each format's `uploadSource` mints
+  a uuid with `crypto.randomUUID()` per call and uses it as both the
+  resource id and the `Update` path, so the PUT preserves the
+  client-minted id and two uploads of the same bytes are two documents —
+  never one silently overwriting the other. That is the archive codec's
+  contract; dedupe stays _detectable_ through the attachment's `hash`
+  and `size` without being forced.
 - **Upload takes bytes, not text.** The archive codec stores the file
   verbatim so a truncated or mis-encoded upload is preserved and the
   attachment `hash` means something. `UploadHarInput.bytes` is `Uint8Array`;
@@ -230,10 +239,6 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   the server archive fixtures are hand-built `DocumentReference` JSON with base64
   `data` so a `Uint8Array` from jsdom's realm never has to satisfy the codec's
   `instanceof` check.
-- `mutations/upload-har.test.tsx` renders the hook over a _stateful_ stub that
-  stores each PUT under its minted id and answers a later search with it, so the
-  list refetches on invalidation and the new archive appears as an observed fact;
-  it also asserts two uploads of the same bytes produce two distinct ids.
 - `importer-screen.test.tsx` is the end-to-end one: it replaces only the router
   seam and drives the whole flow over a recording stub `HttpClient`, reading one
   ordered write log back. It pins the opt-in seam (zero writes to reach a review),

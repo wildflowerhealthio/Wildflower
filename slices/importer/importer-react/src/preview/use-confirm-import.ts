@@ -1,4 +1,5 @@
-import { Cause, Effect, Match, Runtime } from 'effect'
+import { useQueryClient } from '@tanstack/react-query'
+import { Effect, Match } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
@@ -6,7 +7,7 @@ import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type LabeledResource, type PersistFailure, Review } from 'importer-fundamentals'
 
-import { useUploadHar } from '../mutations/upload-har.ts'
+import { HAR_ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
 import type { BoundFormat, FormatKind } from '../registry.tsx'
 import {
   type BatchOutcome,
@@ -14,27 +15,36 @@ import {
   importOutcome,
   type SkipReason,
 } from '../results/import-outcome.ts'
-import { harArchiveReference, type PickedFile } from '../sources/picked-file.ts'
+import type { PickedFile } from '../sources/picked-file.ts'
 import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
- * The opt-in write half of the flow, as one imperative action over a batch:
- * for every file with reviewed resources the review kept included, secure a
- * `sourceRef` for the file, then persist those resources through the file's
- * format-specific `persist` — verbatim, each stamped with the archive it
- * came from.
+ * The opt-in write half of the flow, as one imperative action over a
+ * batch: for every file with reviewed resources the review kept
+ * included, secure a `sourceRef` for the file (its own format's
+ * `uploadSource`), then persist those resources through the file's
+ * format-specific `persist` — verbatim, each stamped with the archive
+ * it came from.
  *
  * @remarks
  * The seam the preview-then-confirm promise rests on — nothing here runs
  * until the user confirms a reviewed batch. Per file the order is
- * load-bearing: secure the archive reference first (a `local` HAR uploads
- * its bytes; a `server` HAR already has one; a LifeLabs PDF is not yet
- * writable — the PR that fixes the file-type assumption stops short of a
- * PDF-archive upload codec), then persist the review's chosen resources —
- * the same objects the reviewer inspected, no re-parse at confirm. Each
- * file's failure is caught into its own `uploadFailed` result, so one file
- * never stops the rest; a file with nothing included is `skipped` and
- * never touches the server.
+ * load-bearing: secure the archive reference first (a `server` pick
+ * already has one; a `local` pick uploads its bytes via the format's
+ * `uploadSource`), then persist the review's chosen resources — the
+ * same objects the reviewer inspected, no re-parse at confirm. Every
+ * step dispatches per-file through the registry, so a HAR file writes
+ * via `har-importer-core` and a LifeLabs PDF via
+ * `lifelabs-pdf-importer-core`, each stamped with its own source
+ * archive `DocumentReference`. Each file's failure is caught into its
+ * own `uploadFailed` result, so one file never stops the rest; a file
+ * with nothing included is `skipped` and never touches the server.
+ *
+ * After the batch resolves, the HAR archive list query is invalidated
+ * once — so a freshly uploaded HAR appears in `ServerHarArchiveList` on
+ * the next pick — even if no HAR file was uploaded; the invalidation
+ * is cheap and the alternative (tracking which formats uploaded) buys
+ * nothing.
  *
  * @packageDocumentation
  */
@@ -44,8 +54,8 @@ import type { FileReadOutcome } from './use-import-run.ts'
  *
  * @remarks
  * `done` carries the whole {@link BatchOutcome} — every file's result — and
- * the results view derives the complete-or-partial framing from it. There
- * is no separate error state: a file's upload failure is a per-file
+ * the results view derives the complete-or-partial framing from it.
+ * There is no separate error state: a file's upload failure is a per-file
  * result, not a batch-wide abort, so the flow always resolves to `done`
  * once started.
  */
@@ -64,8 +74,9 @@ type LabeledFor = (fileId: string) => readonly LabeledResource<FhirResource>[]
 interface ConfirmImport {
   readonly state: ConfirmState
   /**
-   * Run the per-file upload-then-persist action for every read file in the
-   * batch, dispatching each file through its own format's `persist`.
+   * Run the per-file upload-then-persist action for every read file in
+   * the batch, dispatching each file through its own format's
+   * `uploadSource` + `persist`.
    */
   readonly confirm: (
     files: readonly FileReadOutcome[],
@@ -76,81 +87,72 @@ interface ConfirmImport {
   readonly reset: () => void
 }
 
-/** The format lookup this hook needs: `persist` per registered format. */
-type PersistRegistry = {
-  readonly [K in FormatKind]: Pick<BoundFormat<K>, 'persist'>
+/** The format lookup this hook needs: the format's own `uploadSource` + `persist`. */
+type ConfirmRegistry = {
+  readonly [K in FormatKind]: Pick<BoundFormat<K>, 'uploadSource' | 'persist'>
 }
+
+/**
+ * Upload one local pick's bytes through its format's `uploadSource`,
+ * dispatched with `Match.type<FormatKind>()` so `kind` narrows to a
+ * specific K per branch. No `as` cast — each branch calls
+ * `registry[K].uploadSource(picked)` with a `BoundFormat<K>`-typed value.
+ */
+const uploadSourceFor = (
+  registry: ConfirmRegistry,
+  format: FormatKind,
+  picked: PickedFile
+): Effect.Effect<string, unknown, FhirR4ResourcesHttpApiClient> =>
+  Match.type<FormatKind>().pipe(
+    Match.when('har', (kind) => registry[kind].uploadSource(picked)),
+    Match.when('lifelabs-pdf', (kind) => registry[kind].uploadSource(picked)),
+    Match.exhaustive
+  )(format)
 
 /**
  * Run one file's chosen resources through its own format's `persist` —
  * dispatched through `Match.type` on `FormatKind` so `kind` narrows to a
- * specific K per branch, and `persistRegistry[K].persist(...)` type-checks
- * without a cast. Every registered format returns the uniform
- * `PersistFailure[]` shape (all sinks write FHIR resources through the same
- * client), so the outer return type collapses cleanly.
+ * specific K per branch. Every registered format returns the uniform
+ * `PersistFailure[]` shape.
  */
 const persistFor = (
-  persistRegistry: PersistRegistry,
+  registry: ConfirmRegistry,
   format: FormatKind,
   resources: readonly FhirResource[],
   sourceRef: string
 ): Effect.Effect<readonly PersistFailure[], never, FhirR4ResourcesHttpApiClient> =>
   Match.type<FormatKind>().pipe(
-    Match.when('har', (kind) => persistRegistry[kind].persist(resources, sourceRef)),
-    Match.when('lifelabs-pdf', (kind) => persistRegistry[kind].persist(resources, sourceRef)),
+    Match.when('har', (kind) => registry[kind].persist(resources, sourceRef)),
+    Match.when('lifelabs-pdf', (kind) => registry[kind].persist(resources, sourceRef)),
     Match.exhaustive
   )(format)
 
 /**
- * The archive reference a file's resources write against: a `server` pick's
- * own reference, the reference minted by uploading a `local` HAR pick's
- * bytes, or a failure for a `local` LifeLabs PDF pick — until the PDF
- * archive codec lands there is nowhere to upload the source PDF.
- *
- * @remarks
- * The upload crosses a TanStack mutation, so its rejection is a
- * `FiberFailure` that hides the real error behind a summary. `Cause.squash`
- * unwraps it back to the typed failure the FHIR client raised. The bytes
- * are passed to the upload verbatim — a `PickedFile` already carries them,
- * no re-encode.
+ * The archive reference a file's resources write against: a `server`
+ * pick's own reference, or the reference minted by the format's
+ * `uploadSource` for a `local` pick.
  */
 const secureSourceRef = (
-  picked: PickedFile,
+  registry: ConfirmRegistry,
   format: FormatKind,
-  uploadHar: ReturnType<typeof useUploadHar>
-): Effect.Effect<string, unknown> => {
+  picked: PickedFile
+): Effect.Effect<string, unknown, FhirR4ResourcesHttpApiClient> => {
   if (picked.source._tag === 'server') return Effect.succeed(picked.source.reference)
-  if (format !== 'har') {
-    return Effect.fail(
-      new Error(
-        `Uploading a ${format} pick as an archive DocumentReference is not yet supported. Preview only.`
-      )
-    )
-  }
-  return Effect.tryPromise({
-    try: () =>
-      uploadHar.mutateAsync({
-        fileName: picked.fileName,
-        bytes: picked.bytes,
-      }),
-    catch: (error) =>
-      Runtime.isFiberFailure(error) ? Cause.squash(error[Runtime.FiberFailureCauseId]) : error,
-  }).pipe(Effect.map(harArchiveReference))
+  return uploadSourceFor(registry, format, picked)
 }
 
 /**
- * Run one read file to its {@link FileImportResult}: skip a file the review
- * kept nothing from, otherwise secure a source reference and persist its
- * included resources through the file's own format's `persist`. Best-effort
- * — a failed upload is caught into an `uploadFailed` result, never a raised
- * error.
+ * Run one read file to its {@link FileImportResult}: skip a file the
+ * review kept nothing from, otherwise secure a source reference and
+ * persist its included resources through the file's own format's
+ * `persist`. Best-effort — a failed upload is caught into an
+ * `uploadFailed` result, never a raised error.
  */
 const importOneFile = (
   file: FileReadOutcome,
-  persistRegistry: PersistRegistry,
+  registry: ConfirmRegistry,
   labeledFor: LabeledFor,
-  selectionFor: SelectionFor,
-  uploadHar: ReturnType<typeof useUploadHar>
+  selectionFor: SelectionFor
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
   const { id, picked } = file
   const fileName = picked.fileName
@@ -165,12 +167,9 @@ const importOneFile = (
       const resources = Review.chosenResources(labeled, selection)
       const excluded = Review.excludedCount(labeled, selection)
       if (resources.length === 0) return skip('nothing')
-      // Per-format persist through the registry — a HAR file writes through
-      // `har-importer-core`'s FHIR sink, a LifeLabs one through
-      // `lifelabs-pdf-importer-core`'s. Both stamp `meta.source` themselves.
-      return secureSourceRef(picked, format, uploadHar).pipe(
+      return secureSourceRef(registry, format, picked).pipe(
         Effect.flatMap((sourceRef) =>
-          persistFor(persistRegistry, format, resources, sourceRef).pipe(
+          persistFor(registry, format, resources, sourceRef).pipe(
             Effect.map((failures): FileImportResult => ({
               _tag: 'imported',
               id,
@@ -189,21 +188,21 @@ const importOneFile = (
 }
 
 /**
- * Drives a single confirmed batch — for each file, upload (if applicable)
- * then persist the review's included resources — as one Effect run through
- * `runAuthed`, mapping its per-file lifecycle onto a {@link BatchOutcome}.
- * The authed runner and the HAR upload mutation both come from router
- * context via `fhir-r4-react`, so mount this inside the host app's router
- * and `QueryClientProvider`.
+ * Drives a single confirmed batch — for each file, upload (if
+ * applicable) then persist the review's included resources — as one
+ * Effect run through `runAuthed`, mapping its per-file lifecycle onto a
+ * {@link BatchOutcome}. The authed runner comes from router context via
+ * `fhir-r4-react`, so mount this inside the host app's router and
+ * `QueryClientProvider`.
  *
- * @param persistRegistry - The registered formats' `persist` sinks indexed
- *   by format kind
- * @returns The confirm surface: its `state`, the `confirm` trigger, and a
- *   `reset` back to `idle`
+ * @param registry - The registered formats' `uploadSource` and `persist`
+ *   indexed by kind (typically the whole `formatRegistry`)
+ * @returns The confirm surface: its `state`, the `confirm` trigger, and
+ *   a `reset` back to `idle`
  */
-const useConfirmImport = (persistRegistry: PersistRegistry): ConfirmImport => {
+const useConfirmImport = (registry: ConfirmRegistry): ConfirmImport => {
   const runAuthed = useRunAuthed()
-  const uploadHar = useUploadHar()
+  const queryClient = useQueryClient()
   const [state, setState] = useState<ConfirmState>({ _tag: 'idle' })
   const latest = useRef(0)
 
@@ -218,15 +217,20 @@ const useConfirmImport = (persistRegistry: PersistRegistry): ConfirmImport => {
       setState({ _tag: 'confirming' })
       const batch = Effect.forEach(
         files,
-        (file) => importOneFile(file, persistRegistry, labeledFor, selectionFor, uploadHar),
+        (file) => importOneFile(file, registry, labeledFor, selectionFor),
         { concurrency: 'unbounded' }
       )
       void runAuthed(batch).then((results) => {
         if (latest.current !== ticket) return
         setState({ _tag: 'done', batch: results })
+        // Refresh the HAR archive list — a local HAR upload landed a new
+        // DocumentReference the picker should see on next pick. Cheap
+        // even when no HAR uploaded; alternative is tracking per-format
+        // upload counts, which buys nothing.
+        void queryClient.invalidateQueries({ queryKey: HAR_ARCHIVES_QUERY_KEY })
       })
     },
-    [persistRegistry, runAuthed, uploadHar]
+    [registry, runAuthed, queryClient]
   )
 
   const reset = useCallback((): void => {
@@ -239,9 +243,9 @@ const useConfirmImport = (persistRegistry: PersistRegistry): ConfirmImport => {
 
 export {
   type ConfirmImport,
+  type ConfirmRegistry,
   type ConfirmState,
   type LabeledFor,
-  type PersistRegistry,
   type SelectionFor,
   useConfirmImport,
 }

@@ -76,6 +76,20 @@ seam in the repo; the anonymizer's PDF descriptor calls the same function.
 - `src/persist-fhir.ts` — **`persistFhir`**, the descriptor's `persist`: stamps
   every resource with `meta.source` then delegates to `fhir-r4`'s
   `persistResources`.
+- `src/archive/` — **the FHIR encoding of an uploaded LifeLabs report PDF**
+  as a `DocumentReference`, exported as the `/archive` subpath. Structurally
+  analogous to `har-importer-core/archive` (differences: PDF content type,
+  LifeLabs coding under `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no
+  web-trace security label). Nothing here parses the PDF; the bytes are
+  carried, hashed, and handed back exactly as they arrived. Every
+  imported resource stamps this archive's reference onto `meta.source` —
+  the provenance link that ties a `Patient`/`DiagnosticReport`/
+  `Observation` back to the raw source PDF.
+- `src/upload-source.ts` — **`uploadSource`**, the descriptor's
+  `uploadSource`: mint uuid + upload instant, encode via the archive
+  codec, PUT, return the `DocumentReference/<id>` reference. Same shape
+  as HAR's; the shared shape is a candidate for factoring when a third
+  source-archive format lands.
 - `src/descriptor.ts` — **`lifeLabsPdfImporterDescriptor`**, the concrete
   `FileImporterDescriptor` for format `'lifelabs-pdf'`. `accept` is only the
   PDF tokens (`.pdf`, `application/pdf`); `resolve` is the identity — what
