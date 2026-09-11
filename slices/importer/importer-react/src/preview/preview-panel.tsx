@@ -2,7 +2,7 @@ import { Data, Option } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { LabeledSection } from 'importer-fundamentals'
 import { Review, sectionResources } from 'importer-fundamentals'
-import { type JSX, useMemo, useState } from 'react'
+import { type JSX, useEffect, useMemo, useRef, useState } from 'react'
 import { Chip } from 'react-tundraish'
 
 import type { BoundFormat, FormatKind, FormatSettings } from '../registry.ts'
@@ -221,6 +221,52 @@ const ResourceRow = ({
 }
 
 /**
+ * A section's heading with a tri-state include toggle: checked when every
+ * resource in the section is included, unchecked when none are, indeterminate
+ * in between. Clicking it opts the whole section in or out in one go — out when
+ * everything was included, in otherwise — through {@link Review.setResourcesIncluded}.
+ *
+ * @remarks
+ * `indeterminate` is not a React-settable attribute, so it is written onto the
+ * input element through a ref after render whenever the mixed state changes.
+ */
+const SectionToggle = ({
+  title,
+  resourceKeys,
+  selection,
+  onSelectionChange,
+}: {
+  readonly title: string
+  readonly resourceKeys: readonly string[]
+  readonly selection: Review.Selection<FhirResource>
+  readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
+}): JSX.Element => {
+  const includedCount = resourceKeys.filter((key) =>
+    Review.isResourceIncluded(selection, key)
+  ).length
+  const allIncluded = resourceKeys.length > 0 && includedCount === resourceKeys.length
+  const noneIncluded = includedCount === 0
+  const checkbox = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    if (checkbox.current !== null) checkbox.current.indeterminate = !allIncluded && !noneIncluded
+  }, [allIncluded, noneIncluded])
+  return (
+    <label className={styles.sectionHeadingLabel}>
+      <input
+        ref={checkbox}
+        type="checkbox"
+        checked={allIncluded}
+        aria-label={`Include all in ${title}`}
+        onChange={() => {
+          onSelectionChange(Review.setResourcesIncluded(selection, resourceKeys, !allIncluded))
+        }}
+      />
+      <h4 className={styles.sectionHeading}>{title}</h4>
+    </label>
+  )
+}
+
+/**
  * One read file's decoded sections and notes — the generalized review body
  * every format shares: a per-type tally, one titled section per decode
  * section with per-resource rows, and the file's diagnostic notes folded
@@ -255,7 +301,12 @@ const ReadFileBody = ({
           className={styles.decodeSection}
           aria-label={section.title}
         >
-          <h4 className={styles.sectionHeading}>{section.title}</h4>
+          <SectionToggle
+            title={section.title}
+            resourceKeys={section.resources.map((resource) => resource.key)}
+            selection={selection}
+            onSelectionChange={onSelectionChange}
+          />
           <ul className={styles.resourceList}>
             {section.resources.map((resource) => (
               <ResourceRow

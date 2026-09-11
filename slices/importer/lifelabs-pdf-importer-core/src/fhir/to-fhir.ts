@@ -65,11 +65,22 @@ const toFhirResources = (
     const groups: ReportResources[] = []
     for (const report of reports) {
       const resources: FhirResource[] = []
-      const orderedBy = report.orderedBy.trim()
-      const orderedById = orderedBy === '' ? undefined : practitionerOriginalId(orderedBy)
-      for (const name of [orderedBy, ...report.copyTo].map((n) => n.trim())) {
-        if (name === '') continue
+      // Every provider the report names — the ordering provider and each CC'd
+      // provider — becomes a `resultsInterpreter` reference on this report's
+      // DiagnosticReport. The ids are collected per report (deduped within it),
+      // while the Practitioner resources they point at are minted once across
+      // the whole document, in the first group that names each.
+      const providerNames = [report.orderedBy, ...report.copyTo]
+        .map((name) => name.trim())
+        .filter((name) => name !== '')
+      const interpreterIds: string[] = []
+      const seenInReport = new Set<string>()
+      for (const name of providerNames) {
         const id = practitionerOriginalId(name)
+        if (!seenInReport.has(id)) {
+          seenInReport.add(id)
+          interpreterIds.push(id)
+        }
         if (seenPractitioners.has(id)) continue
         seenPractitioners.add(id)
         resources.push(yield* decodePractitioner(practitionerWire(name)))
@@ -77,7 +88,7 @@ const toFhirResources = (
       const patientId = patientOriginalId(report.patient)
       if (!seenPatients.has(patientId)) {
         seenPatients.add(patientId)
-        resources.push(yield* decodePatient(patientWire(report, orderedById)))
+        resources.push(yield* decodePatient(patientWire(report)))
       }
 
       const reportId = reportOriginalId(report)
@@ -99,7 +110,14 @@ const toFhirResources = (
       for (const wire of observations) resources.push(yield* decodeObservation(wire))
       resources.push(
         yield* decodeDiagnosticReport(
-          diagnosticReportWire(report, reportId, patientId, observationIds, timeZone)
+          diagnosticReportWire(
+            report,
+            reportId,
+            patientId,
+            observationIds,
+            timeZone,
+            interpreterIds
+          )
         )
       )
       groups.push({ report, resources })

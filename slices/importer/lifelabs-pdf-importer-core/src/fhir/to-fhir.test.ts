@@ -168,6 +168,19 @@ describe('toFhirResources', () => {
           const subject = observation.subject?.reference ?? ''
           expect(patientIds.has(subject.replace(/^Patient\//, ''))).toBe(true)
         }
+
+        // Every resultsInterpreter reference resolves to a Practitioner minted
+        // somewhere in the batch — a provider deduped into an earlier report's
+        // group is still present once the groups are flattened.
+        const practitionerIds = new Set(
+          ofType(resources, 'Practitioner').map((practitioner) => practitioner.id)
+        )
+        for (const report of diagnosticReports) {
+          for (const interpreter of report.resultsInterpreter) {
+            const reference = interpreter.reference ?? ''
+            expect(practitionerIds.has(reference.replace(/^Practitioner\//, ''))).toBe(true)
+          }
+        }
       }),
       { numRuns: numRunsFor({ base: 40 }) }
     )
@@ -195,7 +208,7 @@ describe('toFhirResources', () => {
     expect(ofType(resources, 'DiagnosticReport')).toHaveLength(2)
   })
 
-  it('builds the Patient from the header: name parts, gender, birth date, health card, phone, GP', () => {
+  it('builds the Patient from the header: name parts, gender, birth date, health card, phone', () => {
     const [patient] = ofType(synthesize([sample]), 'Patient')
 
     expect(patient?.id).toBe(patientOriginalId(sample.patient))
@@ -211,9 +224,10 @@ describe('toFhirResources', () => {
       value: '1234567890 AB',
     })
     expect(patient?.telecom[0]).toMatchObject({ system: 'phone', value: '(416) 555-0100' })
-    expect(patient?.generalPractitioner[0]?.reference).toBe(
-      `Practitioner/${practitionerOriginalId(sample.orderedBy)}`
-    )
+    // The report's providers are the DiagnosticReport's resultsInterpreter, not
+    // the patient's GP — a lab report names who to send results to, not who the
+    // patient's family doctor is.
+    expect(patient?.generalPractitioner).toEqual([])
   })
 
   it('keys a patient by Patient ID first, then health card digits, then name and birth date', () => {
@@ -245,7 +259,7 @@ describe('toFhirResources', () => {
     )
   })
 
-  it('builds the DiagnosticReport: lab number, LOINC code, sections as text, timing in the zone, results, performer', () => {
+  it('builds the DiagnosticReport: lab number, LOINC code, sections as text, timing in the zone, results, performer, resultsInterpreter', () => {
     const [report] = ofType(synthesize([sample]), 'DiagnosticReport')
 
     expect(report?.id).toBe(reportOriginalId(sample))
@@ -265,6 +279,12 @@ describe('toFhirResources', () => {
     expect(report?.performer.map((p) => p.display)).toEqual([
       'Lab Lic. #5687 · 100 International Blvd., Toronto, Ontario, Canada M9W 6J6',
       'Lab Lic. #5407 · 100 International Blvd., Toronto, Ontario, Canada M9W 6J6',
+    ])
+    // Every provider named on the report — the ordering provider and each CC'd
+    // provider — is a resultsInterpreter reference, in that order.
+    expect(report?.resultsInterpreter.map((interpreter) => interpreter.reference)).toEqual([
+      `Practitioner/${practitionerOriginalId(sample.orderedBy)}`,
+      `Practitioner/${practitionerOriginalId(sample.copyTo[0] ?? '')}`,
     ])
   })
 
@@ -338,6 +358,7 @@ describe('toFhirResources', () => {
     expect(patient?.telecom).toEqual([])
     expect(patient?.identifier).toEqual([])
     expect(patient?.generalPractitioner).toEqual([])
+    expect(report?.resultsInterpreter).toEqual([])
     expect(report?.effectiveDateTime).toBeNull()
     expect(report?.issued).toBeNull()
   })

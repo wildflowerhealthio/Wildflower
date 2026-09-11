@@ -192,6 +192,63 @@ describe('PreviewPanel', () => {
       Review.toggleResource(Review.initial<FhirResource>(), 'pat-1')
     )
   })
+
+  it('opts a whole section out in one click when every resource was included', async () => {
+    const onSelectionChange = vi.fn()
+    const files = [
+      readFile(
+        'reports.pdf',
+        decoded([
+          section('Lab No 2024-JJ1', [
+            labeledResource('p1', 'Patient/p1'),
+            labeledResource('o1', 'Observation/o1'),
+          ]),
+        ]),
+        'lifelabs-pdf'
+      ),
+    ]
+    render(<PreviewPanel {...panelProps(files, { onSelectionChange })} />)
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Include all in Lab No 2024-JJ1' }))
+
+    expect(onSelectionChange).toHaveBeenCalledWith(
+      'reports.pdf',
+      Review.setResourcesIncluded(Review.initial<FhirResource>(), ['p1', 'o1'], false)
+    )
+  })
+
+  it('opts a partially-included section fully in, and shows the toggle indeterminate', async () => {
+    const onSelectionChange = vi.fn()
+    // One of the two resources is already excluded — the section toggle reads
+    // indeterminate, and clicking it includes the whole section.
+    const partial = Review.toggleResource(Review.initial<FhirResource>(), 'o1')
+    const files = [
+      readFile(
+        'reports.pdf',
+        decoded([
+          section('Lab No 2024-JJ1', [
+            labeledResource('p1', 'Patient/p1'),
+            labeledResource('o1', 'Observation/o1'),
+          ]),
+        ]),
+        'lifelabs-pdf'
+      ),
+    ]
+    render(
+      <PreviewPanel {...panelProps(files, { onSelectionChange, selectionFor: () => partial })} />
+    )
+
+    const toggle = screen.getByRole('checkbox', { name: 'Include all in Lab No 2024-JJ1' })
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the query returns the section-toggle input element
+    expect((toggle as HTMLInputElement).indeterminate).toBe(true)
+
+    await userEvent.click(toggle)
+
+    expect(onSelectionChange).toHaveBeenCalledWith(
+      'reports.pdf',
+      Review.setResourcesIncluded(partial, ['p1', 'o1'], true)
+    )
+  })
 })
 
 // Helpers
@@ -263,6 +320,7 @@ const panelProps = (
     readonly onConfirm?: () => void
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']
     readonly onSettingsChange?: PreviewPanelProps['onSettingsChange']
+    readonly selectionFor?: PreviewPanelProps['selectionFor']
     readonly confirming?: boolean
   } = {}
 ): PreviewPanelProps => {
@@ -271,7 +329,7 @@ const panelProps = (
     files,
     settings,
     settingsRegistry,
-    selectionFor: () => Review.initial<FhirResource>(),
+    selectionFor: overrides.selectionFor ?? (() => Review.initial<FhirResource>()),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),
     onSettingsChange: overrides.onSettingsChange ?? (() => undefined),
     onConfirm: overrides.onConfirm ?? (() => undefined),

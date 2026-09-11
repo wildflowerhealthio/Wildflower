@@ -22,7 +22,8 @@ const diagnosticReportWire = (
   id: string,
   patientId: string,
   observationIds: readonly string[],
-  timeZone: string
+  timeZone: string,
+  resultsInterpreterIds: readonly string[]
 ): Wire => {
   const sections = report.sections.map((section) => section.name).filter((name) => name !== '')
   const wire: Wire = {
@@ -40,6 +41,11 @@ const diagnosticReportWire = (
     subject: { reference: `Patient/${patientId}` },
     ...timingWire(report, timeZone),
     result: observationIds.map((observationId) => ({ reference: `Observation/${observationId}` })),
+  }
+  if (resultsInterpreterIds.length > 0) {
+    wire['resultsInterpreter'] = resultsInterpreterIds.map((practitionerId) => ({
+      reference: `Practitioner/${practitionerId}`,
+    }))
   }
   const licences = new Set(
     report.sections.flatMap((section) =>

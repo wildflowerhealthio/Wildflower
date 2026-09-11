@@ -37,7 +37,9 @@ Effect<PersistFailure[], never, R>` (the sink, the only carrier of `R`).
   (per-resource opt-outs, keyed by `LabeledResource.key`) and
   `resourceOverrides` (per-resource inline edits, same keying — the
   reviewer's edited resource replaces the decoded original at confirm).
-  `initial` / `toggleResource` / `edit` / `revert` are the transitions;
+  `initial` / `toggleResource` / `setResourcesIncluded` (the batch form of
+  `toggleResource`, so the shell can opt a whole section in or out at once) /
+  `edit` / `revert` are the transitions;
   `isResourceIncluded` / `isResourceEdited` / `editedResource` the reads;
   `chosenResources` folds a flat labeled list through the exclusions and
   edit overrides into the confirm's write set — no re-parse at confirm, the
