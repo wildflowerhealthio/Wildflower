@@ -84,6 +84,7 @@ interface ReviewBodyAdapterProps<K extends FormatKind> {
 interface BoundFormat<K extends FormatKind> {
   readonly format: K
   readonly display: { readonly title: string; readonly description: string }
+  readonly accept: readonly string[]
   readonly defaultSettings: FormatVariant[K]['settings']
   readonly decode: (
     fileText: string,
@@ -140,6 +141,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
   har: {
     format: 'har',
     display: harImporterDescriptor.display,
+    accept: harImporterDescriptor.accept,
     defaultSettings: harImporterDescriptor.defaultSettings,
     decode: harImporterDescriptor.decode,
     resolve: harImporterDescriptor.resolve,
@@ -150,6 +152,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
   'lifelabs-pdf': {
     format: 'lifelabs-pdf',
     display: lifeLabsPdfImporterDescriptor.display,
+    accept: lifeLabsPdfImporterDescriptor.accept,
     defaultSettings: lifeLabsPdfImporterDescriptor.defaultSettings,
     decode: lifeLabsPdfImporterDescriptor.decode,
     resolve: lifeLabsPdfImporterDescriptor.resolve,

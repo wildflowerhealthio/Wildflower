@@ -28,6 +28,40 @@ const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.Pars
 }
 
 /**
+ * Wrap the report-parse's `UnrecognizedLifeLabsDocument` as a `ParseError` so
+ * `decodeLifeLabsPdf` keeps a single, format-shaped error channel — the
+ * descriptor contract's `ParseError`. `Forbidden` is the right issue kind: the
+ * text decoded successfully as a positioned-text document, but the transform to
+ * a LifeLabs report refused it.
+ */
+const asParseError = (
+  fileText: string,
+  e: Report.UnrecognizedLifeLabsDocument
+): ParseResult.ParseError =>
+  new ParseResult.ParseError({
+    issue: new ParseResult.Forbidden(Document.FromJson.ast, fileText, e.message),
+  })
+
+/**
+ * Every resource `toFhirResources` mints carries a derived id, and `adoptResource`
+ * only ever nulls out an id it started with; so after synthesis+adoption every
+ * resource must have one. A null here is an unreachable invariant break — die
+ * rather than paper over it with a shared `'?'` key that would collide across
+ * resources and defeat `Review.Selection`.
+ */
+const labelAdopted = (resource: FhirResource): LabeledResource<FhirResource> => {
+  const adopted = adopt(resource)
+  const type = adopted.resourceType
+  const id = adopted.id
+  if (id === null) {
+    throw new Error(
+      `unreachable: adopted ${type} has no id — toFhirResources mints one for every resource`
+    )
+  }
+  return { key: `${type}/${id}`, title: `${type}/${id}`, resource: adopted }
+}
+
+/**
  * Decode a positioned-text JSON file into adopted, labeled FHIR resources —
  * the full pipeline from document text to the review's initial state.
  *
@@ -46,20 +80,10 @@ const decodeLifeLabsPdf = (
     const timeZone = yield* checkTimeZone(settings.timeZone)
     const document = yield* decodeDocument(fileText)
     const reports = yield* Report.tryFromDocument(document).pipe(
-      Effect.mapError(
-        (e) =>
-          new ParseResult.ParseError({
-            issue: new ParseResult.Type(Schema.String.ast, e, e.message),
-          })
-      )
+      Effect.mapError((e) => asParseError(fileText, e))
     )
     const resources = yield* toFhirResources(reports, { timeZone })
-    return resources.map((resource): LabeledResource<FhirResource> => {
-      const adopted = adopt(resource)
-      const type = adopted.resourceType
-      const id = adopted.id ?? '?'
-      return { key: `${type}/${id}`, title: `${type}/${id}`, resource: adopted }
-    })
+    return resources.map(labelAdopted)
   })
 
 export { decodeLifeLabsPdf }

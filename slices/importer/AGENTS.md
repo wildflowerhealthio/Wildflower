@@ -31,8 +31,11 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   presentation over the pure `Review` model.
 - **[`lifelabs-pdf-importer-core`](./lifelabs-pdf-importer-core/AGENTS.md)** (the
   LifeLabs PDF binding) — `lifeLabsPdfImporterDescriptor` for format
-  `'lifelabs-pdf'`: the positioned-text dialect, FHIR R4 synthesis, decode,
-  response-kind recognition, and the FHIR persist sink.
+  `'lifelabs-pdf'`: the positioned-text dialect, FHIR R4 synthesis, decode, and
+  the FHIR persist sink. Its `resolve` is the identity — the decode already
+  yields the final labeled resources, and this format makes no HTTP routing
+  decisions (no response-kind recognition; this format is documents, not
+  archived HTTP traffic).
 - **[`lifelabs-pdf-importer-react`](./lifelabs-pdf-importer-react/AGENTS.md)**
   (the LifeLabs PDF UI) — `LifeLabsPdfSettingsPicker` (the report's time zone).
   The format has no format-specific `ReviewBody`; the shell's default

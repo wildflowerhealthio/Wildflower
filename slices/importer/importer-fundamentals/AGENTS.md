@@ -13,11 +13,13 @@ React package drive.
 
 - `src/file-importer-descriptor.ts` — **`FileImporterDescriptor<TSettings,
 TParsed, R>`**, "a file-format importer" as one value a closed registry lists.
-  `format` (the registry key), `display`, `defaultSettings`, `sources` (the
-  `SourceDescriptor<TParsed>[]` responses are recognized and decoded through, each
-  grouping its kinds under a name + detail a review menu labels by — the flat pool
-  routing needs is `SourceDescriptor.poolOf(sources)`, derived on demand rather
-  than stored),
+  `format` (the registry key), `display`, `accept` (the picker `accept`
+  tokens for this format — a hint to the OS dialog, never the decision, joined
+  across every registered format by **`acceptFor`**, the sibling helper here),
+  `defaultSettings`, `sources` (the `SourceDescriptor<TParsed>[]` responses are
+  recognized and decoded through, each grouping its kinds under a name + detail
+  a review menu labels by — the flat pool routing needs is
+  `SourceDescriptor.poolOf(sources)`, derived on demand rather than stored),
   `decode(fileText, settings) → Effect<Extraction.Input[], ParseError>` (requires
   nothing, `R = never` — a preview can never reach the write client), and
   `persist(resources, sourceRef) → Effect<PersistFailure[], never, R>` (the sink,

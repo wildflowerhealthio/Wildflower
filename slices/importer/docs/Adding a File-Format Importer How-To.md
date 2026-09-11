@@ -112,12 +112,19 @@ const myImporterDescriptor: FileImporterDescriptor<
 > = {
   format: 'my-format',
   display: { title: '…', description: '…' },
+  accept: ['.myfmt', 'application/my-format'],
   defaultSettings: defaultMySettings,
   pool: myPool,
   decode: decodeMyFormat,
   persist: persistFhir,
 }
 ```
+
+`accept` is the descriptor's picker hint — the tokens the OS dialog's `accept`
+attribute lists so a user sees this format's files in one composed picker. It is
+never the format decision (drop and "All files" bypass it, and the actual
+routing is `decode`'s own rejection); the shell composes the union of every
+registered format's tokens through `importer-fundamentals`' `acceptFor`.
 
 ## 7. Register in the shell
 

@@ -61,6 +61,16 @@ interface SourcePickerProps {
    * Defaults to `'batch'`. See {@link SourcePickerMode}.
    */
   readonly mode?: SourcePickerMode
+  /**
+   * The OS dialog's `accept` attribute — a comma-joined list of extensions and
+   * MIME types (`'.har,application/json'`). Composed by the shell from the
+   * registered format bindings' own `accept` tokens (see
+   * `importer-fundamentals`' `acceptFor`), so a new format that lands surfaces
+   * its extensions here without the picker learning about it. A hint only:
+   * drop and "All files" bypass it, and the actual decision is downstream
+   * `decode`.
+   */
+  readonly accept: string
 }
 
 /**
@@ -101,7 +111,7 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
  * The picker: a drop-and-pick zone, the file input it opens, a rejection notice,
  * and the server archive list.
  */
-const SourcePicker = ({ onPick, mode = 'batch' }: SourcePickerProps): JSX.Element => {
+const SourcePicker = ({ onPick, mode = 'batch', accept }: SourcePickerProps): JSX.Element => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -173,7 +183,7 @@ const SourcePicker = ({ onPick, mode = 'batch' }: SourcePickerProps): JSX.Elemen
       <input
         ref={fileInputRef}
         type="file"
-        accept=".har,application/json"
+        accept={accept}
         aria-label="HAR file"
         multiple={mode === 'batch'}
         className={styles.fileInput}

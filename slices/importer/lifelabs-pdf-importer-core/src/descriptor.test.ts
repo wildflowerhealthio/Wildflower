@@ -12,6 +12,15 @@ describe('lifeLabsPdfImporterDescriptor', () => {
     expect(lifeLabsPdfImporterDescriptor.format).toBe('lifelabs-pdf')
   })
 
+  it('surfaces both the source PDF and the anonymizer JSON in the picker accept tokens', () => {
+    expect([...lifeLabsPdfImporterDescriptor.accept]).toEqual([
+      '.pdf',
+      'application/pdf',
+      '.json',
+      'application/json',
+    ])
+  })
+
   it('defaultSettings has a timeZone', () => {
     expect(lifeLabsPdfImporterDescriptor.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
     expect(lifeLabsPdfImporterDescriptor.defaultSettings.timeZone).toBe('America/Toronto')

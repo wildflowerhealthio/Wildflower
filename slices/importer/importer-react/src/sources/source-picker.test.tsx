@@ -34,6 +34,8 @@ vi.mock('fhir-r4-react', async (importOriginal) => {
 
 const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
 const ACCESS_TOKEN = 'tok-abc'
+/** The `accept` attribute the shell composes and passes; the tests only need any value. */
+const TEST_ACCEPT = '.har,application/json'
 
 /** A minimal but complete HAR 1.2 archive, shared by every source in a test. */
 const VALID_HAR = JSON.stringify({
@@ -73,7 +75,7 @@ describe('SourcePicker', () => {
       harTextById: { 'archive-1': VALID_HAR },
     })
     const picks: Array<{ fileName: string; text: string; source: unknown }> = []
-    render(<SourcePicker onPick={(chosen) => picks.push(...chosen)} />, {
+    render(<SourcePicker accept={TEST_ACCEPT} onPick={(chosen) => picks.push(...chosen)} />, {
       wrapper: withQueryClient,
     })
     await waitFor(() => {
@@ -114,7 +116,9 @@ describe('SourcePicker', () => {
       harTextById: { 'archive-1': VALID_HAR },
     })
     let picked: { text: string; source: unknown } | undefined
-    render(<SourcePicker onPick={(chosen) => (picked = chosen[0])} />, { wrapper: withQueryClient })
+    render(<SourcePicker accept={TEST_ACCEPT} onPick={(chosen) => (picked = chosen[0])} />, {
+      wrapper: withQueryClient,
+    })
 
     // Assert — the row shows the title and the upload date
     await waitFor(() => {
@@ -149,7 +153,9 @@ describe('SourcePicker', () => {
       ],
       harTextById: {},
     })
-    render(<SourcePicker onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<SourcePicker accept={TEST_ACCEPT} onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /first\.har/ })).toBeDefined()
     })
@@ -168,7 +174,9 @@ describe('SourcePicker', () => {
   it('should expose the drop zone as a labeled button and the file input as a named control', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
-    render(<SourcePicker onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<SourcePicker accept={TEST_ACCEPT} onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
 
     // Assert — a real button (so keyboard-activatable) with an accessible name,
     // inside a labeled region, and a named file input drop is an enhancement over
@@ -183,7 +191,7 @@ describe('SourcePicker', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const picks: unknown[] = []
-    render(<SourcePicker onPick={(chosen) => picks.push(...chosen)} />, {
+    render(<SourcePicker accept={TEST_ACCEPT} onPick={(chosen) => picks.push(...chosen)} />, {
       wrapper: withQueryClient,
     })
 
@@ -206,9 +214,13 @@ describe('SourcePicker', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const calls: string[][] = []
-    render(<SourcePicker onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))} />, {
-      wrapper: withQueryClient,
-    })
+    render(
+      <SourcePicker
+        accept={TEST_ACCEPT}
+        onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))}
+      />,
+      { wrapper: withQueryClient }
+    )
 
     // Act — two HAR files chosen in one dialog
     await userEvent.upload(screen.getByLabelText('HAR file'), [
@@ -227,9 +239,13 @@ describe('SourcePicker', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const picks: string[] = []
-    render(<SourcePicker onPick={(chosen) => picks.push(...chosen.map((one) => one.fileName))} />, {
-      wrapper: withQueryClient,
-    })
+    render(
+      <SourcePicker
+        accept={TEST_ACCEPT}
+        onPick={(chosen) => picks.push(...chosen.map((one) => one.fileName))}
+      />,
+      { wrapper: withQueryClient }
+    )
 
     // Act — one real HAR and one text file, dropped together
     fireEvent.drop(zone(), {

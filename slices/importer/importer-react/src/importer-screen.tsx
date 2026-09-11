@@ -1,6 +1,6 @@
 import type { FhirResource } from 'fhir-r4/resources'
 import type { HarReviewState } from 'har-importer-core'
-import { Review } from 'importer-fundamentals'
+import { acceptFor, Review } from 'importer-fundamentals'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
@@ -39,6 +39,15 @@ const READING_MESSAGE = 'Reading the archives…'
 
 /** The bound format the flow uses today. */
 const format = formatRegistry.har
+
+/**
+ * The OS dialog's `accept` attribute — the union of every registered format's
+ * `accept` tokens, so a user sees the extensions of every format the app
+ * supports (`.har` plus `.pdf`/`.json` for LifeLabs today) in one dialog. The
+ * hint is only that; a file whose format doesn't match the currently-driven
+ * format falls through to `decode`'s own rejection.
+ */
+const PICKER_ACCEPT = acceptFor(Object.values(formatRegistry))
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
@@ -116,7 +125,8 @@ const ImporterScreen = (): JSX.Element => {
 
   const body = ((): JSX.Element => {
     const runState = importRun.state
-    if (runState._tag === 'idle') return <SourcePicker onPick={importRun.run} />
+    if (runState._tag === 'idle')
+      return <SourcePicker onPick={importRun.run} accept={PICKER_ACCEPT} />
     if (runState._tag === 'reading') {
       return (
         <p role="status" className={styles.status}>

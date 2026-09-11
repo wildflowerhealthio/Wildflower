@@ -37,6 +37,11 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
     description:
       'Import lab results from a LifeLabs report PDF (as the positioned text the anonymizer extracts).',
   },
+  // The picker hint lists both the source `.pdf` and the anonymizer's
+  // `.json` output — `decode` reads the JSON, but the OS dialog surfaces the
+  // `.pdf` a user has in hand so they can see it and route it through the
+  // anonymizer first.
+  accept: ['.pdf', 'application/pdf', '.json', 'application/json'],
   defaultSettings: defaultLifeLabsPdfSettings,
   decode: decodeLifeLabsPdf,
   resolve: (review) => Effect.succeed(review),

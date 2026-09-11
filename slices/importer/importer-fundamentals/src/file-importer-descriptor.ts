@@ -47,6 +47,12 @@ interface FileImporterDescriptor<TSettings, TReview, TParsed, R> {
   readonly format: string
   /** User-facing strings the shell shows for this format. */
   readonly display: { readonly title: string; readonly description: string }
+  /**
+   * Tokens for the picker's `accept` attribute (`'.har'`, `'application/json'`,
+   * `'.pdf'`). A hint to the OS dialog only; nothing here validates a file's
+   * format — `decode` is the decision.
+   */
+  readonly accept: readonly string[]
   /** A valid settings value to seed a fresh import's settings form. */
   readonly defaultSettings: TSettings
   /**
@@ -76,4 +82,18 @@ interface FileImporterDescriptor<TSettings, TReview, TParsed, R> {
   ) => Effect.Effect<readonly PersistFailure[], never, R>
 }
 
+/**
+ * The comma-joined `accept` attribute for a picker offering every registered
+ * format — duplicates removed in first-seen order. Mirrors
+ * `anonymizer-fundamentals`' helper of the same name.
+ *
+ * @param descriptors - The registered file-format descriptors
+ * @returns The joined attribute value (`'.har,application/json,.pdf'`), or the
+ *   empty string when no descriptor lists any token
+ */
+const acceptFor = (
+  descriptors: readonly Pick<FileImporterDescriptor<never, never, never, never>, 'accept'>[]
+): string => [...new Set(descriptors.flatMap((descriptor) => descriptor.accept))].join(',')
+
+export { acceptFor }
 export type { FileImporterDescriptor, LabeledResource }

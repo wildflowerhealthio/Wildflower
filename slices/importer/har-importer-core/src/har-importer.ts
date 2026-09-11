@@ -45,6 +45,7 @@ const harImporterDescriptor: FileImporterDescriptor<
     title: 'HAR archive',
     description: 'Import FHIR records from a captured browsing session.',
   },
+  accept: ['.har', 'application/json'],
   defaultSettings: defaultHarSettings,
   decode: (fileText, settings) =>
     Effect.map(decodeHar(fileText, settings), (responses) => ({
@@ -52,21 +53,17 @@ const harImporterDescriptor: FileImporterDescriptor<
       harSelection: HarSelection.initial(pool),
     })),
   resolve: (review) =>
-    Effect.map(preview(pool, review.responses, review.harSelection), (previews) => {
-      const labeled: LabeledResource<FhirResource>[] = []
-      for (const entry of previews) {
-        if (entry.outcome._tag !== 'resources') continue
-        for (const resource of entry.outcome.resources) {
-          const r = resource.resource
-          labeled.push({
-            key: resource.key,
-            title: `${r.resourceType}/${r.id ?? '?'}`,
-            resource: r,
-          })
-        }
-      }
-      return labeled
-    }),
+    Effect.map(preview(pool, review.responses, review.harSelection), (previews) =>
+      previews.flatMap((entry) =>
+        entry.outcome._tag === 'resources'
+          ? entry.outcome.resources.map((resource): LabeledResource<FhirResource> => ({
+              key: resource.key,
+              title: `${resource.resource.resourceType}/${resource.resource.id ?? '?'}`,
+              resource: resource.resource,
+            }))
+          : []
+      )
+    ),
   persist: persistFhir,
 }
 
