@@ -10,6 +10,11 @@ add prose above or below them if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.2.3 — 2026-09-11
+
+- fix(ci): reference Apple/ASC config as vars, not secrets (#644) (3b6dc0b3)
+- LifeLabs PDF: FHIR R4 synthesis layer (#639) (28aa933e)
+
 ## v0.2.2 — 2026-09-11
 
 - ci: add iOS build + TestFlight upload to release workflow (#642) (f9b5f4d6)
