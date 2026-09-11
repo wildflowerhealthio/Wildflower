@@ -38,13 +38,16 @@ them to standard resources. No DOM, no `fs`, no React.
   `fast-check` stays out of the bundle.
 - `src/fhir/` — **the FHIR R4 synthesis** that converts parsed reports into
   standard resources. `to-fhir.ts` (`toFhirResources`) is the orchestrator:
-  it builds wire objects from the report model, validates each through the
-  `fhir-r4` schema decoders, and emits `Patient`, `Practitioner`,
-  `DiagnosticReport`, and `Observation` resources with deterministic ids
-  (FNV-1a 64-bit hashes of length-prefixed identity components). Supporting
-  modules: `dates.ts` (printed timestamps to FHIR `date` / `dateTime`),
-  `reference-range.ts` (printed reference range to bounds), `result-value.ts`
-  (printed result to quantity or text).
+  it validates each wire object through the `fhir-r4` schema decoders and
+  emits `Patient`, `Practitioner`, `DiagnosticReport`, and `Observation`
+  resources with deterministic ids (FNV-1a 64-bit hashes of length-prefixed
+  identity components). The per-resource wire builders live in `wire/`:
+  `wire/patient.ts`, `wire/practitioner.ts`, `wire/observation.ts`,
+  `wire/diagnostic-report.ts`, with shared helpers (`sourceId`, `timingWire`,
+  `reportStatus`, `performerWire`, `quantityWire`) in `wire/shared.ts`.
+  Supporting modules: `dates.ts` (printed timestamps to FHIR `date` /
+  `dateTime`), `reference-range.ts` (printed reference range to bounds),
+  `result-value.ts` (printed result to quantity or text).
 - `src/source-system.ts` — **`LIFELABS_SYSTEM`** and
   **`LifeLabsIdentifierSystem`**: the source-system URI and the identifier
   systems the synthesis writes beside the report's own numbers. A leaf module
