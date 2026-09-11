@@ -245,7 +245,7 @@ jobs:
           # formatted (vp fmt) and linted (lint:docs) above; the real CI
           # gates run on the resulting PR.
           git commit --no-verify -m "chore(release): $tag"
-          git push -u origin "$branch"
+          git push --no-verify -u origin "$branch"
 
       - name: Open release PR
         env:
