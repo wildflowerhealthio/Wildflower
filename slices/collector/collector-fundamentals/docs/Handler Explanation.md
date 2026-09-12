@@ -13,7 +13,8 @@ see the [Collector Sync Explanation](./Collector%20Sync%20Explanation.md).
 
 `CollectorBridgeMessageHandler.make` ([collector-bridge-message-handler.ts](../src/handler/collector-bridge-message-handler.ts))
 composes **two independent machines plus a lifecycle** into the single handler
-record the bridge dispatches inbound messages to:
+record the bridge dispatches inbound messages to, with an optional recorder
+observing the traffic as it goes:
 
 - The **response tracker** ([sniffer-response-tracker.ts](../src/handler/sniffer-response-tracker.ts))
   owns the five response events (`ResponseStart` / `ResponseData` /
@@ -29,6 +30,10 @@ record the bridge dispatches inbound messages to:
   owns the `requestSniffingResults` stream and every way a run can end —
   `handleSniffingComplete`, `abandonAllRequestSniffing`, `cancelAllRequestSniffing`
   — see [Termination](#termination-the-run-lifecycle).
+- The **run recorder** ([run-recorder.ts](../src/handler/run-recorder.ts)) is
+  optional and passive: given one, the tracker offers it every response that
+  finished on the wire, and it accumulates `Extraction.Input`s in settle order
+  — see [The run recorder](#the-run-recorder-seeing-what-routing-discards).
 
 The two machines share **no state**. Their only channel to each other is the
 supplied `sendMessage` — both ask the host to send outbound messages, but
@@ -62,6 +67,73 @@ tracker is a keyed collection of independent per-id accumulators, not an
 automaton, so it is _not_ modelled as a state machine even though the
 automatic-navigation machine is. Forcing a transition table onto it would add
 ceremony (a state per id) for no benefit.
+
+## The run recorder: seeing what routing discards
+
+Routing is lossy on purpose. The tracker asks `Extraction.routeTo` which entity
+claims a `ResponseStart`; a response no entity claims is cancelled on the spot,
+and a response that _is_ claimed leaves the handler only as whatever its entity
+decoded — the `CollectorHttpResponse` itself is discarded the moment the settle
+is offered. Both are the right behaviour for a sync run, and both mean a run
+cannot answer "what did the portal actually serve?" after the fact.
+
+The **run recorder** is the seam that can. It is injected into
+`CollectorBridgeMessageHandler.make` by the runner rather than declared by the
+plan — recording is a property of the _run_, not of what a portal serves, so
+every plan records the same way or not at all — and passed straight through to
+the tracker. `ResponseFinished` offers it the response **before** the parse
+runs, so what is recorded never depends on what an entity made of it: a parse
+that fails, throws, or produces nothing still leaves the response in the
+recording. It accumulates `Extraction.Input`s — the same struct an archive
+reader produces, defined in `http-extraction-fundamentals` — in settle order,
+with **no size cap**. A recording that silently stopped part way through would
+be worse than none, because nothing downstream could distinguish "the portal
+served nothing more" from "the recorder gave up".
+
+Two rules shape what lands in it:
+
+- **Page furniture is dropped entirely**, via
+  `http-extraction-fundamentals`' `isOmittedContentType` — JavaScript, CSS, and
+  every `image/`, `font/`, `audio/` and `video/` type. Dropped means _no entry_,
+  not an entry with the body elided. The predicate lives in
+  `http-extraction-fundamentals` so the browser extension applies the identical
+  rule; a recording made by one must be comparable to a recording made by the
+  other. It reads the response's own content type and never the URL, and a
+  response with no `Content-Type` is kept.
+- **Only a response that finished on the wire is recorded.** A `RequestError`
+  or a `Cancelled` ack leaves however many chunks happened to arrive, and a
+  truncated body replayed later would manufacture a parse failure the live run
+  never saw.
+
+### The unclaimed shadow map
+
+Recording an _unclaimed_ response needs somewhere to put its chunks, because
+`incompleteSniffedRequests` is not that place. That map is the lifecycle's
+drained gate and its abandon/cancel accounting: an unclaimed response added to
+it would hold a finished run open and settle as a `SnifferCancelled` failure on
+the results stream, so a run would start reporting failures for traffic it
+never wanted. So the tracker keeps a second, recorder-only
+`unclaimedResponses` map — populated only when a recorder is present, invisible
+to `hasIncompleteSniffedRequests`, and never the source of a `SniffResult`. The
+id-addressed handlers consult it as a fallback when an id is not tracked; an id
+in neither map WARNs exactly as it always did.
+
+The cancel at `ResponseStart` is unchanged, so today most unclaimed responses
+are dropped by the `Cancelled` ack before a body arrives. That is the point of
+the seam rather than a gap in it: the recording is complete for whatever the
+page did deliver, and it becomes complete for _everything_ the moment the
+cancel goes away.
+
+### Why parity is the test that matters
+
+`extraction-parity.test.ts` already pins that the live tracker and
+`runExtraction` route and decode identically. The recorder adds a stronger
+round trip: feeding the recorder's own entries back through `runExtraction`
+must produce the resources the live run produced. Record now, extract later,
+same result — that is the property everything built on the recording rests on,
+and a recorder that lost a response, reordered entries, or read `text()`
+instead of `bytes()` would fail it rather than shipping a useless recording
+silently.
 
 ## Response tracker: the generate-then-drop-then-offer invariant
 

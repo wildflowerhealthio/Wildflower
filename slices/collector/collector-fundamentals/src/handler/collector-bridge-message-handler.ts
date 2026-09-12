@@ -13,6 +13,7 @@ import { type CollectorHttpResponse, ScrapingPlan, WebViewSource } from '../mode
 import type * as Step from '../model/step.ts'
 import * as AutomaticNavigation from './automatic-navigation/index.ts'
 import * as RunLifecycleState from './run-lifecycle-state.ts'
+import type * as RunRecorder from './run-recorder.ts'
 import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
 import {
   type IncompleteSniffedRequest,
@@ -147,6 +148,7 @@ const make = <TParsed>({
   scrapingPlan,
   sendMessage,
   runId,
+  recorder,
 }: {
   scrapingPlan: ScrapingPlan.ScrapingPlan<TParsed>
   sendMessage: (message: OutboundMessage) => Effect.Effect<void, never, never>
@@ -157,6 +159,14 @@ const make = <TParsed>({
    * every trace the run writes shares it.
    */
   runId: string
+  /**
+   * The run's {@link RunRecorder}, when the run is recording. Injected by the
+   * runner rather than declared by the plan — recording is a property of the
+   * *run*, not of what a portal serves — and passed straight to the tracker,
+   * which offers it every response that finished on the wire. See
+   * [The run recorder](../../docs/Handler%20Explanation.md#the-run-recorder-seeing-what-routing-discards).
+   */
+  recorder?: RunRecorder.RunRecorder
 }): Effect.Effect<CollectorBridgeMessageHandler<TParsed>, never, never> =>
   Effect.gen(function* () {
     // Bind the plan's provenance hook (declared as a method for covariance —
@@ -247,6 +257,7 @@ const make = <TParsed>({
         handleNewSniffResult: (result) => lifecycle.handleNewSniffResult(result),
         handleGeneratedSteps: (steps) => enqueueGeneratedSteps(steps),
         captureProvenance,
+        recorder,
       })
 
     const lifecycle: RunLifecycleState.RunLifecycleState<TParsed> =

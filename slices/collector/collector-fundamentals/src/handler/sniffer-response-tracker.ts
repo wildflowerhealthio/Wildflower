@@ -18,6 +18,7 @@ import type * as CollectorHttpResponseKind from '../model/collector-http-respons
 import { CollectorHttpResponse } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as Telemetry from '../telemetry/index.ts'
+import type * as RunRecorder from './run-recorder.ts'
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
@@ -132,12 +133,44 @@ interface SnifferResponseTracker<TParsed> {
   ) => Effect.Effect<void, never, never>
 }
 
+/**
+ * WARN-and-no-op for an id-addressed event whose id no map knows. Always
+ * benign — a late or duplicate event for an entry that already reached its
+ * terminal, or an unsolicited `Cancelled` ack — so it is logged and dropped,
+ * never an error. `handlerName` names the caller in the log line.
+ */
+const warnUntracked = (handlerName: string, id: string): Effect.Effect<void, never, never> =>
+  Effect.logWarning(
+    `CollectorBridgeMessageHandler.${handlerName}: no tracked response for id ${id}; ignoring`
+  )
+
+/**
+ /**
+  * Append a base64 `ResponseData` payload to `response`, or report the decode
+  * failure. Shared by the claimed and the recorder-only path, so a body that
+  * reaches the recording is assembled by the rule that assembles a parsed one.
+ */
+const appendResponseData = (
+  response: CollectorHttpResponse,
+  data: string
+): Either.Either<void, UnknownException> =>
+  Either.map(
+    Either.mapLeft(
+      Encoding.decodeBase64(data),
+      (error) => new UnknownException(error, `Failed to decode base64 response data`)
+    ),
+    (chunk) => {
+      response.appendChunk(chunk)
+    }
+  )
+
 const make = <TParsed>({
   matchResponseKind,
   sendMessage,
   handleNewSniffResult,
   handleGeneratedSteps,
   captureProvenance,
+  recorder,
 }: {
   matchResponseKind: (
     url: string,
@@ -158,6 +191,14 @@ const make = <TParsed>({
     response: CollectorHttpResponse,
     produced: readonly TParsed[]
   ) => Effect.Effect<SniffedBatch<TParsed>, unknown>
+  /**
+   /**
+    * The run's recorder, when the run is recording. Offered every response that
+    * finished on the wire — the entity's, and the ones no entity claimed —
+    * before the parse for that response runs. Absent means the tracker behaves
+    * exactly as it did before recording existed. See [Handler Explanation](../../docs/Handler%20Explanation.md).
+   */
+  recorder?: RunRecorder.RunRecorder
   /**
    * Publish one settled {@link SniffResult} onto the {@link RunLifecycleState}'s
    * stream. Offers the result, then runs the lifecycle's stream-close check —
@@ -186,6 +227,16 @@ const make = <TParsed>({
     >()
 
     /**
+     /**
+      * Responses no entity claimed, kept only so the {@link RunRecorder} can see
+      * them settle: invisible to `hasIncompleteSniffedRequests`, never the source
+      * of a `SniffResult`, empty unless the run is recording. Deliberately *not*
+      * `incompleteSniffedRequests` — see [The unclaimed shadow
+      * map](../../docs/Handler%20Explanation.md#the-unclaimed-shadow-map).
+     */
+    const unclaimedResponses = MutableHashMap.empty<string, CollectorHttpResponse>()
+
+    /**
      * Run `body` with the tracked entry for `id`, or WARN-and-no-op when
      * the id isn't tracked. Shared by every id-addressed handler
      * (`ResponseData` / `ResponseFinished` / `RequestError` / `Cancelled`):
@@ -197,17 +248,51 @@ const make = <TParsed>({
     const withTracked = (
       handlerName: string,
       id: string,
-      body: (entry: IncompleteSniffedRequest<TParsed>) => Effect.Effect<void, never, never>
+      body: (entry: IncompleteSniffedRequest<TParsed>) => Effect.Effect<void, never, never>,
+      /**
+       /**
+        * What to do when `id` is not a tracked (claimed) request. Defaults to
+        * {@link warnUntracked}; the recording paths pass a fallback that looks the
+        * id up in {@link unclaimedResponses} instead.
+       */
+      onUntracked: (
+        handlerName: string,
+        id: string
+      ) => Effect.Effect<void, never, never> = warnUntracked
     ): Effect.Effect<void, never, never> =>
       Effect.gen(function* () {
         const maybe = MutableHashMap.get(id)(incompleteSniffedRequests)
         if (Option.isNone(maybe)) {
-          yield* Effect.logWarning(
-            `CollectorBridgeMessageHandler.${handlerName}: no tracked response for id ${id}; ignoring`
-          )
+          yield* onUntracked(handlerName, id)
           return
         }
         yield* body(maybe.value)
+      })
+
+    /**
+     /**
+      * Run `body` with the recorder-only entry for `id`, or {@link warnUntracked}
+      * when the id is in neither map — reported identically either way, so a log
+      * reader need not know which map an id was expected in.
+     */
+    const withUnclaimed = (
+      handlerName: string,
+      id: string,
+      body: (response: CollectorHttpResponse) => Effect.Effect<void, never, never>
+    ): Effect.Effect<void, never, never> =>
+      Effect.gen(function* () {
+        const maybe = MutableHashMap.get(id)(unclaimedResponses)
+        if (Option.isNone(maybe)) {
+          yield* warnUntracked(handlerName, id)
+          return
+        }
+        yield* body(maybe.value)
+      })
+
+    /** Forget the recorder-only entry for `id`, if there is one. */
+    const dropUnclaimed = (id: string): Effect.Effect<void, never, never> =>
+      Effect.sync(() => {
+        MutableHashMap.remove(unclaimedResponses, id)
       })
 
     /**
@@ -254,140 +339,178 @@ const make = <TParsed>({
         const method: Option.Option<HttpMethod> = isHttpMethod(event.method)
           ? Option.some(event.method)
           : Option.none()
+        // Read here rather than at settle: this is the instant the response
+        // *started*, the only one the sniffer reports, and a capturing entity
+        // *started*, the only one the sniffer reports, and a capturing entity that
+        // timestamps an exchange must not label the settle as the start. Read before
+        // routing, so a claimed and an unclaimed response are stamped alike.
+        const startedAt = yield* DateTime.now
+        const response = new CollectorHttpResponse(
+          event.id,
+          event.url,
+          method,
+          event.status,
+          event.statusText,
+          event.headers,
+          startedAt
+        )
         const responseKind = matchResponseKind(event.url, method)
         if (Option.isNone(responseKind)) {
           yield* sendMessage({
             _tag: 'CancelSnifferRequest',
             id: event.id,
           } satisfies typeof CancelSnifferRequestMessage.Type)
+          // The cancel above is unchanged; the recorder just gets somewhere to
+          // accumulate whatever the page delivers before the cancel lands.
+          if (recorder !== undefined) {
+            yield* Effect.sync(() => {
+              MutableHashMap.set(event.id, response)(unclaimedResponses)
+            })
+          }
           return
         }
-        // Read here rather than at settle: this is the instant the response
-        // *started*, the only one the sniffer reports, and a capturing entity
-        // that timestamps an exchange must not label the settle as the start.
-        const startedAt = yield* DateTime.now
         MutableHashMap.set(event.id, {
-          response: new CollectorHttpResponse(
-            event.id,
-            event.url,
-            method,
-            event.status,
-            event.statusText,
-            event.headers,
-            startedAt
-          ),
+          response,
           responseKind: responseKind.value,
         })(incompleteSniffedRequests)
       })
 
     const handleResponseData: Service['ResponseData'] = (event) =>
-      withTracked('ResponseData', event.id, ({ response }) =>
-        Effect.gen(function* () {
-          const decoded = Encoding.decodeBase64(event.data)
-          if (Either.isLeft(decoded)) {
-            // Decode failure on a tracked response routes through the error
-            // channel (mirrors `RequestError`) and drops the entry — one
-            // terminal observation per id, no chunk appended.
-            yield* offerSniffResultAndUntrack(
-              event.id,
-              response,
-              Either.left(
-                new UnknownException(decoded.left, `Failed to decode base64 response data`)
-              )
-            )
-            return
-          }
-          yield* Effect.sync(() => response.appendChunk(decoded.right))
-        })
-      )
-
-    const handleResponseFinished: Service['ResponseFinished'] = (event) =>
-      withTracked('ResponseFinished', event.id, ({ response, responseKind }) =>
-        Effect.gen(function* () {
-          // `url.path` is a path-only OTel semconv key: strip scheme/host/query
-          // from the captured full URL, falling back to the raw string if it
-          // doesn't parse as an absolute URL.
-          const urlPath = Either.getOrElse(
-            Either.try(() => new URL(response.url).pathname),
-            () => response.url
-          )
-          const result = yield* Effect.either(responseKind.parse(response)).pipe(
-            // `Effect.either` always succeeds, so the span closes OK; record the
-            // OTel-standard `error.type` (the ParseError tag) only on the Left
-            // branch so failures stay queryable without flipping span status.
-            Effect.tap((either) =>
-              Either.isLeft(either)
-                ? Effect.annotateCurrentSpan(
-                    Telemetry.Importing.Parse.Span.Attributes.ErrorType,
-                    either.left._tag
-                  )
-                : Effect.void
-            ),
-            Effect.withSpan(Telemetry.Importing.Parse.Span.Name, {
-              attributes: {
-                [Telemetry.Entity.Attributes.Name]: responseKind.name,
-                [Telemetry.Entity.Attributes.Size]: response.byteLength,
-                [Telemetry.Entity.Chunk.Attributes.ChunkCount]: response.chunkCount,
-                [Telemetry.Entity.Attributes.UrlPath]: urlPath,
-              },
+      withTracked(
+        'ResponseData',
+        event.id,
+        ({ response }) =>
+          Effect.gen(function* () {
+            const appended = appendResponseData(response, event.data)
+            if (Either.isLeft(appended)) {
+              // Decode failure on a tracked response routes through the error
+              // channel (mirrors `RequestError`) and drops the entry — one
+              // terminal observation per id, no chunk appended.
+              yield* offerSniffResultAndUntrack(event.id, response, Either.left(appended.left))
+            }
+          }),
+        (handlerName, id) =>
+          withUnclaimed(handlerName, id, (response) =>
+            Effect.gen(function* () {
+              const appended = appendResponseData(response, event.data)
+              if (Either.isLeft(appended)) {
+                // No results stream for an unclaimed response, so nothing to settle.
+                // Drop the whole entry rather than record a body with a hole in it:
+                // an entry is every byte the page sent, or it is absent.
+                yield* Effect.logWarning(
+                  `CollectorBridgeMessageHandler.${handlerName}: failed to decode base64 response data for unrecorded response ${id}; dropping it from the recording (${appended.left.message})`
+                )
+                yield* dropUnclaimed(id)
+              }
             })
           )
-          // Generate → drop → offer: a successful parse's `followUpSteps` are
-          // fed to the queue *before* the settle is dropped and offered, so the
-          // automatic-navigation machine leaves `Drained` (if idle) ahead of the
-          // offer's `NoMoreResultsExpected` close-check. Failed parses,
-          // `RequestError`, `Cancelled`, and abandons generate nothing.
-          if (Either.isRight(result) && responseKind.followUpSteps !== undefined) {
-            const parsed = result.right
-            // Bind the pure, this-free method so the thunk can call it.
-            // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method; the call is safe
-            const generateFollowUps = responseKind.followUpSteps
-            // A generator running on malformed scraped data can throw; contain it
-            // like `parse`'s `Effect.either` above so a throw WARNs and generates
-            // nothing but still reaches the drop-then-offer below — skipping it
-            // would strand this id and hang the run (see Handler Explanation).
-            yield* Effect.try(() => generateFollowUps(parsed, response)).pipe(
-              Effect.flatMap(handleGeneratedSteps),
-              Effect.catchAll((error) =>
-                Effect.logWarning(
-                  `CollectorBridgeMessageHandler.ResponseFinished: ${responseKind.name}.followUpSteps threw; generating no follow-ups (${error.message})`
+      )
+
+    /** Offer a wire-finished response to the run recorder, if the run has one. */
+    const recordSettled = (response: CollectorHttpResponse): Effect.Effect<void, never, never> =>
+      recorder === undefined ? Effect.void : recorder.record(response)
+
+    const handleResponseFinished: Service['ResponseFinished'] = (event) =>
+      withTracked(
+        'ResponseFinished',
+        event.id,
+        ({ response, responseKind }) =>
+          Effect.gen(function* () {
+            // Record before the parse: the recording is of the traffic, not of the
+            // extraction, so a parse that fails, throws, or produces nothing still
+            // leaves the response in it.
+            yield* recordSettled(response)
+            // `url.path` is a path-only OTel semconv key: strip scheme/host/query
+            // from the captured full URL, falling back to the raw string if it
+            // doesn't parse as an absolute URL.
+            const urlPath = Either.getOrElse(
+              Either.try(() => new URL(response.url).pathname),
+              () => response.url
+            )
+            const result = yield* Effect.either(responseKind.parse(response)).pipe(
+              // `Effect.either` always succeeds, so the span closes OK; record the
+              // OTel-standard `error.type` (the ParseError tag) only on the Left
+              // branch so failures stay queryable without flipping span status.
+              Effect.tap((either) =>
+                Either.isLeft(either)
+                  ? Effect.annotateCurrentSpan(
+                      Telemetry.Importing.Parse.Span.Attributes.ErrorType,
+                      either.left._tag
+                    )
+                  : Effect.void
+              ),
+              Effect.withSpan(Telemetry.Importing.Parse.Span.Name, {
+                attributes: {
+                  [Telemetry.Entity.Attributes.Name]: responseKind.name,
+                  [Telemetry.Entity.Attributes.Size]: response.byteLength,
+                  [Telemetry.Entity.Chunk.Attributes.ChunkCount]: response.chunkCount,
+                  [Telemetry.Entity.Attributes.UrlPath]: urlPath,
+                },
+              })
+            )
+            // Generate → drop → offer: a successful parse's `followUpSteps` are
+            // fed to the queue *before* the settle is dropped and offered, so the
+            // automatic-navigation machine leaves `Drained` (if idle) ahead of the
+            // offer's `NoMoreResultsExpected` close-check. Failed parses,
+            // `RequestError`, `Cancelled`, and abandons generate nothing.
+            if (Either.isRight(result) && responseKind.followUpSteps !== undefined) {
+              const parsed = result.right
+              // Bind the pure, this-free method so the thunk can call it.
+              // oxlint-disable-next-line typescript-eslint/unbound-method -- pure, this-free method; the call is safe
+              const generateFollowUps = responseKind.followUpSteps
+              // A generator running on malformed scraped data can throw; contain it
+              // like `parse`'s `Effect.either` above so a throw WARNs and generates
+              // nothing but still reaches the drop-then-offer below — skipping it
+              // would strand this id and hang the run (see Handler Explanation).
+              yield* Effect.try(() => generateFollowUps(parsed, response)).pipe(
+                Effect.flatMap(handleGeneratedSteps),
+                Effect.catchAll((error) =>
+                  Effect.logWarning(
+                    `CollectorBridgeMessageHandler.ResponseFinished: ${responseKind.name}.followUpSteps threw; generating no follow-ups (${error.message})`
+                  )
                 )
               )
-            )
-          }
-          // Capture provenance *after* generation (the hook must never change
-          // what `followUpSteps` sees) and *before* the drop-then-offer. The
-          // rules that keep the hook a diagnostic are enforced here, once, for
-          // every plan: a failed parse was never captured (this branch is
-          // Right-only), an empty parse is never captured — that rule is the
-          // line between deliberate provenance collection and bulk recording —
-          // and a failing or *dying* hook is WARN-logged and the parse output
-          // flows on unchanged, so a diagnostic can never take a run down.
-          // `Effect.suspend` turns a synchronously-throwing hook into a caught
-          // defect rather than an escape from this pipeline.
-          const settled = Either.isLeft(result)
-            ? Either.left(result.left)
-            : Either.right(
-                yield* result.right.length === 0 || captureProvenance === undefined
-                  ? Effect.succeed<SniffedBatch<TParsed>>({
-                      resources: result.right,
-                      diagnostics: [],
-                    })
-                  : Effect.suspend(() => captureProvenance(response, result.right)).pipe(
-                      Effect.catchAllCause((cause) =>
-                        Effect.as(
-                          Effect.logWarning(
-                            `CollectorBridgeMessageHandler.ResponseFinished: capturing provenance for ${response.url} failed; keeping the parsed resources (${Cause.pretty(cause)})`
-                          ),
-                          { resources: result.right, diagnostics: [] }
+            }
+            // Capture provenance *after* generation (the hook must never change
+            // what `followUpSteps` sees) and *before* the drop-then-offer. The
+            // rules that keep the hook a diagnostic are enforced here, once, for
+            // every plan: a failed parse was never captured (this branch is
+            // Right-only), an empty parse is never captured — that rule is the
+            // line between deliberate provenance collection and bulk recording —
+            // and a failing or *dying* hook is WARN-logged and the parse output
+            // flows on unchanged, so a diagnostic can never take a run down.
+            // `Effect.suspend` turns a synchronously-throwing hook into a caught
+            // defect rather than an escape from this pipeline.
+            const settled = Either.isLeft(result)
+              ? Either.left(result.left)
+              : Either.right(
+                  yield* result.right.length === 0 || captureProvenance === undefined
+                    ? Effect.succeed<SniffedBatch<TParsed>>({
+                        resources: result.right,
+                        diagnostics: [],
+                      })
+                    : Effect.suspend(() => captureProvenance(response, result.right)).pipe(
+                        Effect.catchAllCause((cause) =>
+                          Effect.as(
+                            Effect.logWarning(
+                              `CollectorBridgeMessageHandler.ResponseFinished: capturing provenance for ${response.url} failed; keeping the parsed resources (${Cause.pretty(cause)})`
+                            ),
+                            { resources: result.right, diagnostics: [] }
+                          )
                         )
                       )
-                    )
-              )
-          // The parse is span-wrapped and latency-bearing, so the drop-then-offer
-          // ordering matters most here (see `offerSniffResultAndUntrack`).
-          yield* offerSniffResultAndUntrack(event.id, response, settled)
-        })
+                )
+            // The parse is span-wrapped and latency-bearing, so the drop-then-offer
+            // ordering matters most here (see `offerSniffResultAndUntrack`).
+            yield* offerSniffResultAndUntrack(event.id, response, settled)
+          }),
+        (handlerName, id) =>
+          withUnclaimed(handlerName, id, (response) =>
+            // No entity, so the recording is all this response produces. Drop after
+            // recording, so a duplicate `ResponseFinished` cannot record the same
+            // body twice.
+            Effect.andThen(recordSettled(response), dropUnclaimed(id))
+          )
       )
 
     const handleRequestError: Service['RequestError'] = (event) =>
@@ -396,21 +519,35 @@ const make = <TParsed>({
       // already pinned there, so a redirected `event.url` is not
       // load-bearing (the start URL stays on `response.url` for the
       // consumer). See the [Handler Explanation](../../docs/Handler%20Explanation.md).
-      withTracked('RequestError', event.id, ({ response }) =>
-        offerSniffResultAndUntrack(
-          event.id,
-          response,
-          Either.left(new UnknownException(event.message))
-        )
+      withTracked(
+        'RequestError',
+        event.id,
+        ({ response }) =>
+          offerSniffResultAndUntrack(
+            event.id,
+            response,
+            Either.left(new UnknownException(event.message))
+          ),
+        // Never finished, so there is no body to record — only the chunks that
+        // happened to arrive, and replaying a truncated body would manufacture a
+        // parse failure the live run never saw.
+        (handlerName, id) => withUnclaimed(handlerName, id, () => dropUnclaimed(id))
       )
 
     const handleCancelled: Service['Cancelled'] = (event) =>
-      withTracked('Cancelled', event.id, ({ response }) =>
-        offerSniffResultAndUntrack(
-          event.id,
-          response,
-          Either.left(new SnifferCancelled({ id: event.id }))
-        )
+      withTracked(
+        'Cancelled',
+        event.id,
+        ({ response }) =>
+          offerSniffResultAndUntrack(
+            event.id,
+            response,
+            Either.left(new SnifferCancelled({ id: event.id }))
+          ),
+        // The expected end for an unclaimed response today: the page
+        // acknowledging the cancel `ResponseStart` sent. Nothing finished, so the
+        // entry is forgotten unrecorded.
+        (handlerName, id) => withUnclaimed(handlerName, id, () => dropUnclaimed(id))
       )
 
     const hasIncompleteSniffedRequests = (): boolean =>
@@ -443,6 +580,9 @@ const make = <TParsed>({
           { discard: true }
         )
         MutableHashMap.clear(incompleteSniffedRequests)
+        // Nothing to abandon for an unclaimed response: it never finished, so it
+        // was never going to be recorded.
+        MutableHashMap.clear(unclaimedResponses)
       }
     )
 
@@ -455,7 +595,15 @@ const make = <TParsed>({
         Array.from(MutableHashMap.keys(incompleteSniffedRequests)).map((id) =>
           send({ _tag: 'CancelSnifferRequest', id })
         )
-      ).pipe(Effect.andThen(Effect.sync(() => MutableHashMap.clear(incompleteSniffedRequests))))
+      ).pipe(
+        Effect.andThen(
+          Effect.sync(() => {
+            MutableHashMap.clear(incompleteSniffedRequests)
+            // Already cancelled at `ResponseStart`; no second cancel to send.
+            MutableHashMap.clear(unclaimedResponses)
+          })
+        )
+      )
 
     return {
       incompleteSniffedRequests,

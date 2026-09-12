@@ -22,6 +22,18 @@ runtime.run(context => buildImportEffect({ context, ...wiring }))
 buildImportEffect  ── the drive Stream ─►  CollectorBridgeMessageHandler
    │   pulls parsed resources off a mailbox,        (sniffs pages, decodes
    │   writes each batch, folds the failures         responses to Resources)
+   │                                                      │
+   │                                                      ├─►  RunRecorder (optional)
+   │                                                      │      every response that
+   │                                                      │      finished on the wire,
+   │                                                      │      claimed or not, minus
+   │                                                      │      scripts/styles/media —
+   │                                                      │      as Extraction.Inputs in
+   │                                                      │      settle order. Recorded
+   │                                                      │      before the parse runs,
+   │                                                      │      so it is a record of the
+   │                                                      │      traffic, not of the
+   │                                                      │      extraction.
    ▼
 persistResources(batch)                the descriptor's batch write sink
    │        (fhir-r4: retries + spans around fhir-r4's upsertResource,
@@ -29,6 +41,13 @@ persistResources(batch)                the descriptor's batch write sink
    ▼
 target store
 ```
+
+The recorder hangs off the handler rather than sitting in the flow: the run's
+resources reach the store exactly as they did before it existed, and the
+recording is a second, passive read of the same traffic. The runner injects it
+(recording is a property of the run, not of the plan) and drains `entries()`
+when the run ends. See
+[The run recorder](./Handler%20Explanation.md#the-run-recorder-seeing-what-routing-discards).
 
 The runner in the middle (`buildImportEffect`) never names a collector's
 resource type. It hands each decoded batch to the injected `persistResources`

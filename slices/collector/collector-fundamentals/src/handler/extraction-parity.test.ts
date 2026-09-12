@@ -9,6 +9,7 @@ import {
   type Echo,
 } from 'http-extraction-fundamentals/test-helpers'
 import { runHandlerSync } from './collector-bridge-message-handler.test-helpers.ts'
+import * as RunRecorder from './run-recorder.ts'
 import * as SnifferResponseTracker from './sniffer-response-tracker.ts'
 
 const AlphaEntity = echoResponseKind('AlphaEntity', 'alpha')
@@ -51,7 +52,8 @@ const exchanges: readonly Extraction.Input[] = [
  */
 const resourcesViaTracker = (
   responses: readonly Extraction.Input[],
-  kinds: readonly HttpResponseKind.HttpResponseKind<Echo>[] = responseKinds
+  kinds: readonly HttpResponseKind.HttpResponseKind<Echo>[] = responseKinds,
+  recorder?: RunRecorder.RunRecorder
 ): readonly (readonly Echo[])[] => {
   const results: SnifferResponseTracker.SniffResult<Echo>[] = []
   const tracker = Effect.runSync(
@@ -66,6 +68,7 @@ const resourcesViaTracker = (
           results.push(result)
         }),
       handleGeneratedSteps: () => Effect.void,
+      recorder,
     })
   )
 
@@ -139,6 +142,61 @@ describe('runExtraction / SnifferResponseTracker parity', () => {
     expect(viaExtraction.batches.map((batch) => batch.responseKindName)).toEqual(['NarrowEntity'])
     expect(viaExtraction.batches.map((batch) => batch.resources)).toEqual(
       resourcesViaTracker(overlap, overlapping)
+    )
+  })
+})
+
+/**
+ * The round trip the whole recording epic rests on: what the recorder wrote
+ * down during a live run, replayed offline, must produce the resources the
+ * live run produced. Record now, extract later, same result.
+ *
+ * @remarks
+ * This is stronger than the parity above it. That one pins *two
+ * implementations against one input set* — the archive runner and the live
+ * tracker read the same `exchanges` fixture. This one closes the loop: the
+ * input set for the offline half is no longer a fixture a test wrote, it is
+ * the recorder's own output from the live half. If the recorder loses a
+ * response, mangles a body, or reorders anything, the fixture on the left and
+ * the recording on the right stop agreeing and this fails — which is exactly
+ * the failure a run that uploaded a useless HAR would have shipped silently.
+ */
+describe('RunRecorder / runExtraction parity', () => {
+  it("produces the same resources from the recorder's entries as the live run produced", () => {
+    const recorder = Effect.runSync(RunRecorder.make)
+    const viaTracker = resourcesViaTracker(exchanges, responseKinds, recorder)
+
+    const viaRecording = Effect.runSync(
+      runExtraction(responseKinds, recorder.entries())
+    ).batches.map((batch) => batch.resources)
+
+    expect(viaRecording).toEqual(viaTracker)
+    expect(viaRecording.flat()).toHaveLength(3)
+  })
+
+  it('records the unclaimed response the live run threw away', () => {
+    const recorder = Effect.runSync(RunRecorder.make)
+    resourcesViaTracker(exchanges, responseKinds, recorder)
+
+    // `r3` is the one response no entity claims — cancelled and gone from the
+    // live run's output, present in the recording. Replaying the recording
+    // therefore accounts for it as `unmatched` rather than losing it, which is
+    // the whole reason the recorder sits beside routing instead of after it.
+    expect(recorder.entries().map((entry) => entry.id)).toEqual(['r1', 'r2', 'r3', 'r4'])
+    expect(Effect.runSync(runExtraction(responseKinds, recorder.entries())).unmatched).toEqual([
+      { id: 'r3', url: 'https://example.com/gamma/3' },
+    ])
+  })
+
+  it('preserves the non-UTF-8 body through the recording', () => {
+    const recorder = Effect.runSync(RunRecorder.make)
+    resourcesViaTracker(exchanges, responseKinds, recorder)
+
+    // `r4`'s body is not valid UTF-8. A recorder that read `text()` would hand
+    // the offline run a body peppered with U+FFFD, and the two halves above
+    // would agree only because the echo entity re-encodes the same damage.
+    expect(recorder.entries().find((entry) => entry.id === 'r4')?.body).toEqual(
+      new Uint8Array([0xff, 0x00, 0xfe, 0x42])
     )
   })
 })

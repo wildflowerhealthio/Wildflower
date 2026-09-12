@@ -20,6 +20,11 @@ export type { HarMethodValue, HttpMethod } from './http-method.ts'
 export * as HttpResponse from './http-response.ts'
 export * as SourceDescriptor from './source-descriptor.ts'
 export { extractJson } from './extract-json.ts'
+export {
+  contentTypeOf,
+  isOmittedContentType,
+  UNKNOWN_CONTENT_TYPE,
+} from './omitted-content-types.ts'
 export { recognizePortal } from './recognize-portal.ts'
 export { Specificity } from './specificity.ts'
 export * as UrlMatch from './url-match.ts'
