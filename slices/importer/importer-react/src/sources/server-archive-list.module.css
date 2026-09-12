@@ -1,0 +1,173 @@
+.server {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.serverHeading {
+  margin: 0;
+  font-size: var(--font-size-2);
+}
+
+.error {
+  margin: 0;
+  color: var(--color-neutral-2);
+}
+
+.empty {
+  margin: 0;
+  color: var(--color-neutral-4);
+}
+
+.archiveList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/*
+ * Each row is a flex container of the archive's metadata and two explicit
+ * actions — no longer a single clickable button. The metadata block flexes
+ * to fill; the action group sits at the end.
+ */
+.archiveRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: transparent;
+}
+
+.archiveMeta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: var(--space-1);
+}
+
+.archiveTitle {
+  font-weight: var(--font-weight-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archiveDate {
+  color: var(--color-neutral-4);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+}
+
+.archiveActions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.actionButton {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.actionButton:hover,
+.actionButton:focus-visible {
+  border-color: var(--color-neutral-9);
+}
+
+.pickAction {
+  background: var(--color-neutral-11, transparent);
+  border-color: var(--color-neutral-11);
+}
+
+.loadMore {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Preview modal body */
+
+.preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-width: min(80vw, 60rem);
+  max-width: 90vw;
+}
+
+.previewHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.previewFileName {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-4);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.previewFrame {
+  width: 100%;
+  height: min(70vh, 40rem);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: var(--color-neutral-12, #fff);
+}
+
+.previewText {
+  margin: 0;
+  padding: var(--space-3);
+  max-height: min(60vh, 32rem);
+  overflow: auto;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: var(--color-neutral-12, #f6f6f6);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  white-space: pre;
+  tab-size: 2;
+}
+
+.previewNote {
+  margin: 0;
+  color: var(--color-neutral-4);
+  font-size: var(--font-size-1);
+}
+
+.previewActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
+.downloadLink {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}

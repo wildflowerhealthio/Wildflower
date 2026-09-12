@@ -19,7 +19,31 @@
   color: var(--color-neutral-4);
 }
 
-/* The files in a batch, stacked and separated so each reads as its own unit. */
+/* The formats in a batch, stacked so each group reads as its own unit. */
+.formatGroups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.formatGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.formatHeading {
+  margin: 0;
+  font-size: var(--font-size-3);
+}
+
+/* The format's settings form, boxed so it reads as controls over the files below. */
+.settingsForm {
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+}
+
 .fileSections {
   display: flex;
   flex-direction: column;
@@ -34,12 +58,6 @@
   border-top: 1px solid var(--color-divider);
 }
 
-/* The first file needs no divider above it — the heading already opens the list. */
-.fileSection:first-child {
-  padding-top: 0;
-  border-top: none;
-}
-
 .fileHeading {
   margin: 0;
   font-size: var(--font-size-3);
@@ -47,129 +65,125 @@
   word-break: break-all;
 }
 
-.recognition {
+.readBody {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  margin: 0;
-  padding: var(--space-4);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-2);
-}
-
-.recognitionRow {
-  display: flex;
   gap: var(--space-4);
-  align-items: baseline;
 }
 
-.recognitionTerm {
-  flex: 0 0 8rem;
+.tally {
   margin: 0;
   color: var(--color-neutral-4);
   font-size: var(--font-size-2);
 }
 
-.recognitionValue {
-  margin: 0;
-  font-family: var(--font-mono);
-}
-
-.rootList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.rootUrl {
-  word-break: break-all;
-}
-
-.muted {
-  color: var(--color-neutral-4);
-  font-family: inherit;
-}
-
-.typeSections {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.typeSection {
+.decodeSection {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
 }
 
-.typeHeading {
-  margin: 0;
-  font-size: var(--font-size-3);
+.sectionHeadingLabel {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
 }
 
-.typeCount {
-  color: var(--color-neutral-4);
-  font-weight: var(--font-weight-1);
+.sectionHeading {
+  margin: 0;
+  font-size: var(--font-size-2);
+  font-family: var(--font-mono);
+  word-break: break-all;
 }
 
 .resourceList {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: 0 0 0 var(--space-3);
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
 .resourceRow {
-  padding: var(--space-2) var(--space-3);
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.resourceLabel {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.resourceType {
+  font-weight: var(--font-weight-3);
+}
+
+.resourceSummary {
+  color: var(--color-neutral-4);
+}
+
+.resourceExcluded {
+  text-decoration: line-through;
+  color: var(--color-neutral-4);
+}
+
+.editedChip {
+  font-size: var(--font-size-1);
+}
+
+/*
+ * Diff badges on each row — the pre-fetched server status:
+ *   .diffBadge_new       an id the server does not hold; the write creates fresh
+ *   .diffBadge_unchanged the server already holds an equivalent copy (default excluded)
+ *   .diffBadge_changed   the server holds a copy that differs; the write replaces
+ */
+.diffBadge,
+.diffBadge_new,
+.diffBadge_unchanged,
+.diffBadge_changed {
+  font-size: var(--font-size-1);
+}
+
+.editButton,
+.revertButton {
+  font: inherit;
+  font-size: var(--font-size-1);
+  padding: 0 var(--space-2);
+  background: transparent;
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-1);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-2);
-  word-break: break-all;
+  cursor: pointer;
+  color: inherit;
 }
 
-.notices {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
+/* The file's diagnostic notes, folded away — browser noise, not review work. */
+.notes {
+  border-top: 1px solid var(--color-divider);
+  padding-top: var(--space-2);
 }
 
-.notice {
-  margin: 0;
+.notesSummary {
+  cursor: pointer;
   color: var(--color-neutral-4);
   font-size: var(--font-size-2);
 }
 
-.noticeStrong {
-  margin: 0;
-  color: var(--color-neutral-9);
-  font-size: var(--font-size-2);
-}
-
-.parseFailures {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-2);
-}
-
-.parseFailureList {
+.noteList {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: var(--space-2) 0 0 var(--space-3);
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
-.parseFailureUrl {
+.note {
   font-family: var(--font-mono);
   font-size: var(--font-size-1);
   color: var(--color-neutral-4);
@@ -210,17 +224,4 @@
 .cancel:disabled {
   cursor: default;
   opacity: 0.6;
-}
-
-/* Default per-resource view — shown for formats with no format-specific ReviewBody. */
-.resourceLabel {
-  display: flex;
-  gap: var(--space-2);
-  align-items: baseline;
-  cursor: pointer;
-}
-
-.resourceExcluded {
-  opacity: 0.5;
-  text-decoration: line-through;
 }

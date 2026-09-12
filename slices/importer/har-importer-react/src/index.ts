@@ -1,16 +1,16 @@
 /**
- * The HAR format's UI for the importer slice: the (no-op) HAR
- * {@link HarSettingsPicker} and the interactive per-URL, per-resource
- * {@link ReviewBody} the shell mounts inside its preview.
+ * The HAR format's UI for the importer slice: the {@link HarSettingsPicker},
+ * the whole-import response-kind toggles the shell mounts with its settings
+ * form.
  *
  * @remarks
- * Presentation and interaction only — a view over `importer-fundamentals`' pure
- * `Review` model and `har-importer-core`'s descriptor. Nothing here decodes a
- * HAR, recognizes traffic, or writes resources; it drives the selection state
- * the shell decodes on confirm.
+ * Presentation and interaction only — a view over `har-importer-core`'s
+ * sources and settings. Nothing here decodes a HAR, recognizes traffic, or
+ * writes resources; the shell re-decodes through the descriptor when the
+ * settings change. The format needs no review UI of its own — the shell's
+ * generalized sectioned review (per-resource include/edit) covers it.
  *
  * @packageDocumentation
  */
-export { describeResource, type ResourceDescription } from './describe-resource.ts'
-export { ReviewBody, type Preview, type ReviewBodyProps } from './review-body.tsx'
-export { HarSettingsPicker, type SettingsPickerProps } from './settings-picker.tsx'
+export { HarSettingsPicker } from './settings-picker.tsx'
+export type { SettingsPickerProps } from 'importer-fundamentals'

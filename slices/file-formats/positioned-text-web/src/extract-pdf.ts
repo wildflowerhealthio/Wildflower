@@ -20,7 +20,11 @@ const extractPositionedText = async (
     import.meta.url
   ).href
 
-  const pdf = await pdfjs.getDocument({ data: bytes }).promise
+  // pdfjs transfers the ArrayBuffer behind `data` to its worker, detaching it
+  // in this realm — hand over a copy so the caller's bytes stay readable (the
+  // importer re-decodes on a settings change and uploads the same bytes as
+  // the source archive at confirm).
+  const pdf = await pdfjs.getDocument({ data: new Uint8Array(bytes) }).promise
   const pages: Page.Type[] = await Promise.all(
     Array.from({ length: pdf.numPages }).map(async (_, i) => {
       const page = await pdf.getPage(i + 1)

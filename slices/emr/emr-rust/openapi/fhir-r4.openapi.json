@@ -11844,6 +11844,244 @@
           "required": true
         }
       }
+    },
+    "/fhir-r4/": {
+      "post": {
+        "tags": [
+          "Bundle"
+        ],
+        "operationId": "Bundle.Submit",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "Bundle",
+                "description": "A container for a collection of resources.",
+                "required": [
+                  "resourceType",
+                  "type"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "Bundle"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri"
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "identifier": {
+                    "type": "object",
+                    "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "document",
+                      "message",
+                      "transaction",
+                      "transaction-response",
+                      "batch",
+                      "batch-response",
+                      "history",
+                      "searchset",
+                      "collection"
+                    ],
+                    "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                  },
+                  "timestamp": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "The date/time that the bundle was assembled."
+                  },
+                  "total": {
+                    "type": "integer",
+                    "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                  },
+                  "link": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A series of links that provide context to this bundle."
+                  },
+                  "entry": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                      "properties": {
+                        "fullUrl": {
+                          "type": "string"
+                        },
+                        "link": {
+                          "type": "array",
+                          "items": {
+                            "type": "object"
+                          }
+                        },
+                        "request": {
+                          "type": "object"
+                        },
+                        "resource": {
+                          "type": "object"
+                        },
+                        "response": {
+                          "type": "object"
+                        },
+                        "search": {
+                          "type": "object"
+                        }
+                      }
+                    },
+                    "description": "An entry in a bundle resource."
+                  },
+                  "signature": {
+                    "type": "object",
+                    "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
     }
   },
   "components": {
@@ -11880,6 +12118,9 @@
     },
     {
       "name": "Practitioner"
+    },
+    {
+      "name": "Bundle"
     }
   ]
 }

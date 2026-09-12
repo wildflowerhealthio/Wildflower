@@ -2,7 +2,7 @@
   "name": "lifelabs-pdf-importer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The LifeLabs PDF binding of the importer slice (core layer): the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports, and the FHIR R4 synthesis. No DOM, no fs, no React.",
+  "description": "The LifeLabs PDF binding of the importer slice (core layer): the positioned-text dialect that reads a LifeLabs patient report's pages into lab reports, and the FHIR R4 synthesis, importer descriptor, and decode/persist integration. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -18,6 +18,10 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
+    "./archive": {
+      "source": "./src/archive/index.ts",
+      "default": "./dist/archive.js"
+    },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",
       "default": "./dist/test-helpers.js"
@@ -31,20 +35,27 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "positioned-text": "workspace:*",
+    "positioned-text-web": "workspace:*",
     "typescript": "catalog:",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "web-trace-core": "workspace:*"
   },
   "peerDependencies": {
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
+    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
-    "positioned-text": "workspace:*"
+    "positioned-text": "workspace:*",
+    "positioned-text-web": "workspace:*",
+    "web-trace-core": "workspace:*"
   }
 }

@@ -3,95 +3,27 @@
  * flow, from picking a file to reading the results.
  *
  * @remarks
- * {@link ImporterScreen} is the surface a host app mounts — the slice owns every
- * level. Three inputs converge on one {@link PickedHar} — a file dropped on the
- * zone, a file chosen through the OS picker, and a HAR archive already uploaded to
- * the device's own FHIR server; the read half (the format's `decode`, via
- * {@link useImportRun}) folds it into a {@link PreviewPanel} preview writing
- * nothing; and only the explicit confirm ({@link useConfirmImport}) uploads the
- * archive when needed and persists the resources, each stamped with the archive
- * it came from. Presentation and interaction only: the parsers, the review model,
- * and the persist pipeline all live below this package.
+ * The package's public surface is deliberately small. A host app mounts
+ * {@link ImporterScreen} — that alone runs the flow, owning every level below
+ * it: the three pick sources (a file dropped on the zone, a file chosen through
+ * the OS picker, and an uploaded archive already on the device's own FHIR
+ * server via {@link ServerArchiveList}, spanning every registered format);
+ * the read half that folds each pick's format-specific decode into a shared
+ * sectioned preview writing nothing; and the explicit confirm that uploads
+ * the source archive when needed and persists the reviewed resources, each
+ * stamped with the archive it came from.
+ *
+ * Only three other symbols are exported, and each for a stated reason:
+ * {@link ServerArchiveList}, because the anonymizer slice's shell mounts it
+ * in its own `serverSource` slot; and {@link PREVIEW_HEADING} /
+ * {@link COMPLETE_HEADING}, the stable heading strings a host drives its own
+ * end-to-end assertions against. Everything else — the registry, the review
+ * model view, the queries, the individual pick sources — is an internal
+ * building block reached through {@link ImporterScreen}, not imported directly.
  *
  * @packageDocumentation
  */
-export { ImporterScreen, READING_MESSAGE } from './importer-screen.tsx'
-export {
-  NOTHING_TO_IMPORT_HEADING,
-  PREVIEW_HEADING,
-  PreviewPanel,
-  type PreviewPanelProps,
-  type ReviewBodyProps,
-  UNREADABLE_FILE_MESSAGE,
-} from './preview/preview-panel.tsx'
-export {
-  type ConfirmImport,
-  type ConfirmState,
-  type LabeledFor,
-  type SelectionFor,
-  useConfirmImport,
-} from './preview/use-confirm-import.ts'
-export {
-  type BoundFormat,
-  type FormatKind,
-  type FormatVariant,
-  type ReviewBodyAdapterProps,
-  formatRegistry,
-} from './registry.tsx'
-export {
-  type ImportRun,
-  type ImportRunState,
-  type FileReadOutcome,
-  useImportRun,
-} from './preview/use-import-run.ts'
-export {
-  type BatchOutcome,
-  type BatchSummary,
-  type FileImportResult,
-  type ImportOutcome,
-  importOutcome,
-  isPartialBatch,
-  isPartialOutcome,
-  type SkipReason,
-  summarizeBatch,
-} from './results/import-outcome.ts'
-export {
-  COMPLETE_HEADING,
-  ImportResults,
-  type ImportResultsProps,
-  PARTIAL_HEADING,
-} from './results/import-results.tsx'
-export {
-  fetchHarArchive,
-  HAR_ARCHIVE_CATEGORY_TOKEN,
-  type HarArchivePage,
-  type HarArchiveRow,
-  harArchivesInfiniteQueryOptions,
-  type HarArchivesQueryKey,
-  type HarArchivesQueryOptions,
-  DEFAULT_PAGE_SIZE as HAR_ARCHIVES_DEFAULT_PAGE_SIZE,
-  useHarArchivesQuery,
-} from './queries/har-archives.ts'
-export { HAR_ARCHIVES_QUERY_KEY, IMPORTER_QUERY_KEY } from './queries/keys.ts'
-export { nextPageToken, type PageLink } from './queries/page-token.ts'
-export { type UploadHarInput, useUploadHar } from './mutations/upload-har.ts'
-export { acceptLocalHar, type ReadableFile, REJECTION_MESSAGE } from './sources/local-har.ts'
-export {
-  harArchiveReference,
-  LOCAL_SOURCE,
-  type PickedHar,
-  type PickedHarSource,
-  serverSource,
-} from './sources/picked-har.ts'
-export {
-  SERVER_READ_ERROR,
-  ServerHarArchiveList,
-  type ServerHarArchiveListProps,
-  UNDATED_LABEL,
-  UNTITLED_LABEL,
-} from './sources/server-har-archive-list.tsx'
-export {
-  SourcePicker,
-  type SourcePickerMode,
-  type SourcePickerProps,
-} from './sources/source-picker.tsx'
+export { ImporterScreen } from './importer-screen.tsx'
+export { PREVIEW_HEADING } from './preview/preview-panel.tsx'
+export { COMPLETE_HEADING } from './results/import-results.tsx'
+export { ServerArchiveList } from './sources/server-archive-list.tsx'

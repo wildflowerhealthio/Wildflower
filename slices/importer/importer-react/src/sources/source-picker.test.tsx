@@ -7,12 +7,25 @@ import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/archive'
+import { LIFELABS_PDF_ARCHIVE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer-core/archive'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { HAR_ARCHIVE_CATEGORY_TOKEN } from '../queries/har-archives.ts'
-import { REJECTION_MESSAGE } from './local-har.ts'
+import { ARCHIVES_CATEGORY_TOKEN } from '../queries/archives.ts'
+import { REJECTION_MESSAGE, type IdentifiableDescriptor } from './local-file.ts'
 import { SourcePicker } from './source-picker.tsx'
+
+/**
+ * A minimal HAR descriptor stub — extension `.har` or JSON-object shape.
+ * Matches `har-importer-core`'s `detectHar` semantics; kept inline here so
+ * the picker test does not depend on the concrete binding.
+ */
+const harDescriptor: IdentifiableDescriptor = {
+  accept: ['.har', 'application/json'],
+  detect: (bytes, name) => name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
+}
+
+const testDescriptors: readonly IdentifiableDescriptor[] = [harDescriptor]
 
 /**
  * The whole picker, driven over the real
@@ -34,6 +47,8 @@ vi.mock('fhir-r4-react', async (importOriginal) => {
 
 const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
 const ACCESS_TOKEN = 'tok-abc'
+/** The `accept` attribute the shell composes and passes; the tests only need any value. */
+const TEST_ACCEPT = '.har,application/json'
 
 /** A minimal but complete HAR 1.2 archive, shared by every source in a test. */
 const VALID_HAR = JSON.stringify({
@@ -72,35 +87,41 @@ describe('SourcePicker', () => {
       pages: [{ archives: [{ id: 'archive-1', fileName: 'portal-session.har' }] }],
       harTextById: { 'archive-1': VALID_HAR },
     })
-    const picks: Array<{ fileName: string; text: string; source: unknown }> = []
-    render(<SourcePicker onPick={(chosen) => picks.push(...chosen)} />, {
-      wrapper: withQueryClient,
-    })
+    const picks: Array<{ fileName: string; bytes: Uint8Array; source: unknown }> = []
+    render(
+      <SourcePicker
+        accept={TEST_ACCEPT}
+        descriptors={testDescriptors}
+        onPick={(chosen) => picks.push(...chosen)}
+      />,
+      {
+        wrapper: withQueryClient,
+      }
+    )
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /portal-session\.har/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Use portal-session.har as source' })).toBeDefined()
     })
 
     // Act 1 — chosen through the OS picker
-    await userEvent.upload(screen.getByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     // Act 2 — dropped on the zone via a synthesized DataTransfer
     fireEvent.drop(zone(), { dataTransfer: dataTransferOf(harFile('portal-session.har')) })
     await waitFor(() => {
       expect(picks).toHaveLength(2)
     })
-    // Act 3 — selected from the server list
-    await userEvent.click(screen.getByRole('button', { name: /portal-session\.har/ }))
+    // Act 3 — selected from the server list via the row's Use-as-source action
+    await userEvent.click(screen.getByRole('button', { name: 'Use portal-session.har as source' }))
     await waitFor(() => {
       expect(picks).toHaveLength(3)
     })
 
-    // Assert — every path carried the same text; the two local picks are identical
-    expect(picks.map((pick) => pick.text)).toEqual([VALID_HAR, VALID_HAR, VALID_HAR])
-    expect(picks[0]).toEqual({
-      fileName: 'portal-session.har',
-      text: VALID_HAR,
-      source: { _tag: 'local' },
-    })
-    expect(picks[1]).toEqual(picks[0])
+    // Assert — every path carried the same HAR bytes; the two local picks are identical
+    const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes)
+    expect(picks.map((pick) => decode(pick.bytes))).toEqual([VALID_HAR, VALID_HAR, VALID_HAR])
+    expect(picks[0]?.fileName).toBe('portal-session.har')
+    expect(picks[0]?.source).toEqual({ _tag: 'local' })
+    expect(decode(picks[1]?.bytes ?? new Uint8Array())).toBe(VALID_HAR)
+    expect(picks[1]?.source).toEqual({ _tag: 'local' })
     expect(picks[2]?.source).toEqual({ _tag: 'server', reference: 'DocumentReference/archive-1' })
   })
 
@@ -113,8 +134,17 @@ describe('SourcePicker', () => {
       ],
       harTextById: { 'archive-1': VALID_HAR },
     })
-    let picked: { text: string; source: unknown } | undefined
-    render(<SourcePicker onPick={(chosen) => (picked = chosen[0])} />, { wrapper: withQueryClient })
+    let picked: { bytes: Uint8Array; source: unknown } | undefined
+    render(
+      <SourcePicker
+        accept={TEST_ACCEPT}
+        descriptors={testDescriptors}
+        onPick={(chosen) => (picked = chosen[0])}
+      />,
+      {
+        wrapper: withQueryClient,
+      }
+    )
 
     // Assert — the row shows the title and the upload date
     await waitFor(() => {
@@ -122,19 +152,23 @@ describe('SourcePicker', () => {
     })
     expect(screen.getByText(uploadedAt)).toBeDefined()
 
-    // …the search went out filtered by the archive category, sized, and authed
-    expect(paramsOf(0)['category']).toBe(HAR_ARCHIVE_CATEGORY_TOKEN)
-    expect(HAR_ARCHIVE_CATEGORY_TOKEN).toBe(`${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE}`)
+    // …the search went out filtered by the comma-joined archive category
+    // covering every registered format, sized, and authed
+    expect(paramsOf(0)['category']).toBe(ARCHIVES_CATEGORY_TOKEN)
+    expect(ARCHIVES_CATEGORY_TOKEN).toBe(
+      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE}`
+    )
     expect(paramsOf(0)['_count']).toBe('50')
     expect(sentRequests[0]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
 
-    // Act — select the row
-    await userEvent.click(screen.getByRole('button', { name: /portal-session\.har/ }))
+    // Act — pick the row via its Use-as-source action
+    await userEvent.click(screen.getByRole('button', { name: 'Use portal-session.har as source' }))
 
-    // Assert — the chosen archive is fetched and decoded to its HAR text
+    // Assert — the chosen archive is fetched and returned as bytes
     await waitFor(() => {
-      expect(picked?.text).toBe(VALID_HAR)
+      expect(picked !== undefined).toBe(true)
     })
+    expect(new TextDecoder().decode(picked?.bytes ?? new Uint8Array())).toBe(VALID_HAR)
     expect(picked?.source).toEqual({ _tag: 'server', reference: 'DocumentReference/archive-1' })
     // The fetch was a second, authed request
     expect(sentRequests[1]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
@@ -149,9 +183,14 @@ describe('SourcePicker', () => {
       ],
       harTextById: {},
     })
-    render(<SourcePicker onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(
+      <SourcePicker accept={TEST_ACCEPT} descriptors={testDescriptors} onPick={() => undefined} />,
+      {
+        wrapper: withQueryClient,
+      }
+    )
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /first\.har/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Use first.har as source' })).toBeDefined()
     })
 
     // Act
@@ -159,7 +198,7 @@ describe('SourcePicker', () => {
 
     // Assert — the second search carried the cursor, and both pages are listed
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /second\.har/ })).toBeDefined()
+      expect(screen.getByRole('button', { name: 'Use second.har as source' })).toBeDefined()
     })
     expect(paramsOf(0)['_pageToken']).toBeUndefined()
     expect(paramsOf(1)['_pageToken']).toBe('cursor-2')
@@ -168,24 +207,36 @@ describe('SourcePicker', () => {
   it('should expose the drop zone as a labeled button and the file input as a named control', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
-    render(<SourcePicker onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(
+      <SourcePicker accept={TEST_ACCEPT} descriptors={testDescriptors} onPick={() => undefined} />,
+      {
+        wrapper: withQueryClient,
+      }
+    )
 
     // Assert — a real button (so keyboard-activatable) with an accessible name,
     // inside a labeled region, and a named file input drop is an enhancement over
-    const region = screen.getByRole('region', { name: 'HAR source' })
-    const button = screen.getByRole('button', { name: /Choose HAR files, or drop them here/ })
+    const region = screen.getByRole('region', { name: 'File source' })
+    const button = screen.getByRole('button', { name: /Choose files, or drop them here/ })
     expect(region).toBeDefined()
     expect(button.tagName).toBe('BUTTON')
-    expect(screen.getByLabelText('HAR file')).toBeDefined()
+    expect(screen.getByLabelText('Import file')).toBeDefined()
   })
 
   it('should reject a dropped file that is not a HAR at the picker, without calling onPick', async () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const picks: unknown[] = []
-    render(<SourcePicker onPick={(chosen) => picks.push(...chosen)} />, {
-      wrapper: withQueryClient,
-    })
+    render(
+      <SourcePicker
+        accept={TEST_ACCEPT}
+        descriptors={testDescriptors}
+        onPick={(chosen) => picks.push(...chosen)}
+      />,
+      {
+        wrapper: withQueryClient,
+      }
+    )
 
     // Act — a text file, not a HAR
     fireEvent.drop(zone(), {
@@ -206,12 +257,17 @@ describe('SourcePicker', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const calls: string[][] = []
-    render(<SourcePicker onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))} />, {
-      wrapper: withQueryClient,
-    })
+    render(
+      <SourcePicker
+        accept={TEST_ACCEPT}
+        descriptors={testDescriptors}
+        onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))}
+      />,
+      { wrapper: withQueryClient }
+    )
 
     // Act — two HAR files chosen in one dialog
-    await userEvent.upload(screen.getByLabelText('HAR file'), [
+    await userEvent.upload(screen.getByLabelText('Import file'), [
       harFile('one.har'),
       harFile('two.har'),
     ])
@@ -227,9 +283,14 @@ describe('SourcePicker', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const picks: string[] = []
-    render(<SourcePicker onPick={(chosen) => picks.push(...chosen.map((one) => one.fileName))} />, {
-      wrapper: withQueryClient,
-    })
+    render(
+      <SourcePicker
+        accept={TEST_ACCEPT}
+        descriptors={testDescriptors}
+        onPick={(chosen) => picks.push(...chosen.map((one) => one.fileName))}
+      />,
+      { wrapper: withQueryClient }
+    )
 
     // Act — one real HAR and one text file, dropped together
     fireEvent.drop(zone(), {
@@ -257,7 +318,7 @@ const harFile = (name: string): File => new File([VALID_HAR], name, { type: 'app
 
 /** The drop-and-pick zone button. */
 const zone = (): HTMLElement =>
-  screen.getByRole('button', { name: /Choose HAR files, or drop them here/ })
+  screen.getByRole('button', { name: /Choose files, or drop them here/ })
 
 /**
  * A `DataTransfer`-like carrying one or more files, enough for a synthesized

@@ -11,7 +11,7 @@ import type { PickedFile } from 'anonymizer-fundamentals'
 import { AnonymizerScreen } from 'anonymizer-react'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
-import { ImporterScreen, ServerHarArchiveList } from 'importer-react'
+import { ImporterScreen, ServerArchiveList } from 'importer-react'
 import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageLoading, SegmentedToggle } from 'react-tundraish'
@@ -35,13 +35,13 @@ const tabOptions: readonly { value: Tab; label: string }[] = [
 /**
  * The anonymizer shell is server-blind; this app has an authed FHIR context,
  * so it passes the importer slice's uploaded-archives list through the
- * `serverSource` slot, adapting a `PickedHar` to the shell's `PickedFile`.
+ * `serverSource` slot. The importer's `PickedFile` and the anonymizer's
+ * `PickedFile` both carry `{ fileName, bytes }`, so the adapter is now the
+ * identity — nothing to re-encode.
  */
 const ServerSource = ({ onPick }: { readonly onPick: (file: PickedFile) => void }): JSX.Element => (
-  <ServerHarArchiveList
-    onPick={(picked) =>
-      onPick({ fileName: picked.fileName, bytes: new TextEncoder().encode(picked.text) })
-    }
+  <ServerArchiveList
+    onPick={(picked) => onPick({ fileName: picked.fileName, bytes: picked.bytes })}
   />
 )
 

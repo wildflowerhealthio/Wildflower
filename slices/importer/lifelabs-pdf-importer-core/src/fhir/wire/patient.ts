@@ -39,7 +39,7 @@ const genderOf = (sex: string): string | undefined => {
   }
 }
 
-const patientWire = (report: Report.Type, generalPractitionerId: string | undefined): Wire => {
+const patientWire = (report: Report.Type): Wire => {
   const { patient } = report
   const identifier: Wire[] = []
   if (patient.patientId !== '') {
@@ -59,9 +59,6 @@ const patientWire = (report: Report.Type, generalPractitionerId: string | undefi
   const birthDate = parsePrintedDate(patient.dateOfBirth)
   if (Option.isSome(birthDate)) wire['birthDate'] = birthDate.value
   if (patient.phone !== '') wire['telecom'] = [{ system: 'phone', value: patient.phone }]
-  if (generalPractitionerId !== undefined) {
-    wire['generalPractitioner'] = [{ reference: `Practitioner/${generalPractitionerId}` }]
-  }
   return wire
 }
 

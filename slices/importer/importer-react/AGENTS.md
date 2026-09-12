@@ -1,22 +1,25 @@
 # AGENTS.md — slices/importer/importer-react
 
 The browser UI adapter of the importer slice, and its **shell**: the whole
-pick-review-confirm flow plus the closed `format → { descriptor, SettingsPicker,
-ReviewBody }` registry. One surface a host app mounts, reading the authed
+pick-review-confirm flow plus the closed `format → { descriptor,
+SettingsPicker }` registry. One surface a host app mounts, reading the authed
 runner out of router context:
 
-- **`ImporterScreen`** — pick one or more HARs (local files dropped or chosen,
-  or a single archive already on the device's FHIR server), review per-URL
-  exactly what every file would write in one combined view, confirm once to
-  write the reviewed, chosen responses across the batch (uploading each local
-  file's archive first), and read the per-file results. Local picking is a
-  **batch**; the server list is single-select.
+- **`ImporterScreen`** — pick one or more files (local files dropped or
+  chosen, or a single HAR archive already on the device's FHIR server),
+  review exactly what every file would write in one combined, **generalized**
+  view — each file's decoded sections with per-resource include/edit, under
+  its format's settings form — confirm once to write the reviewed, included
+  resources across the batch (uploading each local file's archive first), and
+  read the per-file results. Local picking is a **batch**; the server list is
+  single-select.
 
 The anonymize surface is the anonymizer slice's shell
 ([anonymizer-react](../../anonymizer/anonymizer-react/AGENTS.md)), not part of
-this package. This package exports `ServerHarArchiveList` — the
-uploaded-archives pick source — which a host passes into that shell's
-`serverSource` slot.
+this package. This package exports `ServerArchiveList` — the
+uploaded-archives pick source, spanning every registered format's archives
+(HAR, LifeLabs PDF) — which a host passes into that shell's `serverSource`
+slot.
 
 ## Layering
 
@@ -32,96 +35,137 @@ and `fhir-r4-react` (the authed runner and the slice runtime layer).
 
 The seam between this package and a format binding is the **descriptor** and the
 `Review` model: the read half runs the descriptor's `decode` (no services, no
-writes), the review drives `Review`'s pure transitions, and the write half runs
-`Review.chosen` then the descriptor's `persist`. If a component needs more than
-the descriptor and `Review` expose, widen those rather than reaching around them.
+writes) into sections + notes, the review drives `Review`'s pure per-resource
+transitions over the flattened sections, and the write half runs
+`Review.chosenResources` then the descriptor's `persist`. If a component needs
+more than the descriptor and `Review` expose, widen those rather than reaching
+around them.
 
 **Presentation and interaction only.** Nothing here parses HAR, encodes an
-archive, runs entities, or writes resources. The parser
-(`HttpArchive.LogFromHarJson`), the
-archive codec, `decode`, the recognition (`Review.recognize`), and the write sink
-(`persist` → `fhir-r4`'s `persistResources`) all live below this package; it
-drives them and reimplements none.
+archive, runs entities, or writes resources. The parsers, the archive codecs,
+`decode` (including each format's recognition), and the write sink (`persist` →
+`fhir-r4`'s `persistResources`) all live below this package; it drives them and
+reimplements none.
 
 ## The registry
 
-`src/registry.ts` is the closed, compile-time `format → FormatRegistration` map —
+`src/registry.ts` is the closed, compile-time `format → BoundFormat<K>` map —
 the single edit point for wiring a file-format importer into the shell. A
-`FormatRegistration` bundles the three parts a format contributes: its
-`descriptor` (data), its `SettingsPicker`, and its `ReviewBody` (the two React
-views). The interface requires all three, so a format missing one fails to
-compile here. Only `har` is registered (`har-importer-core` +
-`har-importer-react`). The importer has no HTTP wire union to derive, so both
-halves live here — there is no separate `importer-registry` package the collector
-slice needs.
+`BoundFormat` bundles the descriptor's fields (typed per format through the
+`FormatVariant` type-level map, so per-format concrete types survive without
+casts) plus the one React part a format contributes: its `SettingsPicker`. A
+format missing a part fails to compile here. `har` and `lifelabs-pdf` are
+registered. `defaultFormatSettings` collects every format's `defaultSettings`
+into the `FormatSettings` record the shell holds, and `formatKinds` is the
+typed registry-order walk. There is no format-specific review UI slot: the
+`PreviewPanel` renders every format the same way, from its decoded sections.
+The importer has no HTTP wire union to derive, so there is no separate
+`importer-registry` package the collector slice needs.
 
 ## Module layout
 
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
   `useConfirmImport` → `ImportResults`. It holds each read file's
-  `Review.Selection`, keyed by the file's stable id (absent = the default, every
-  kind enabled, so an untouched file still imports everything recognized). A
-  cancel or "import another" discards the read, every review edit, and any confirm
-  outcome, and returns to the picker.
+  `Review.Selection`, keyed by the file's stable id (absent = the default,
+  every resource included, so an untouched file still imports everything its
+  decode yielded). A cancel or "import another" discards the read, every
+  review edit, and any confirm outcome, and returns to the picker; the
+  per-format settings persist across it.
 - **`src/registry.ts`** — the closed format registry (above).
 - **`src/preview/`** — the read half, the review view, and the write action.
-  `use-import-run.ts` runs the descriptor's `decode` (via `useRunAuthed`) once per
-  picked file and holds the batch of `FileReadOutcome`s (each a `read` — its
-  decoded `Extraction.Input` responses — or an `unreadable` file); `preview-panel.tsx`
-  renders every read file's interactive `ReviewBody` under one shared confirm,
-  gating the confirm on the batch having at least one **chosen** response
-  (`Review.chosenCount` summed across files); `use-confirm-import.ts` is the
-  opt-in write action, per file, best-effort — upload-then-persist each file whose
-  review chose something, decoding **only** the chosen responses (`Review.chosen`),
-  one file's failure never stopping the rest.
+  `use-import-run.ts` runs the descriptor's `decode` (via `useRunAuthed`) once
+  per picked file under that format's current settings, holds the batch of
+  `FileReadOutcome`s (each a `read` — its `DecodedFile` of sections + notes —
+  an `unreadable`, or an `unrecognized` file), owns the `FormatSettings`
+  record, and re-decodes a format's files from their retained bytes when
+  `applySettings` changes that format's settings (file ids survive, so keyed
+  selections keep applying); `preview-panel.tsx` renders the batch grouped by
+  format — the format's settings form over each of its files' sectioned,
+  per-resource reviews (include checkbox, one-line `describeResource`
+  summary, Edit/Revert with the `ResourceEditor` dialog, per-type tallies,
+  and the file's notes folded into a collapsed details block) — under one
+  shared confirm, gated on the batch having at least one **included**
+  resource; `use-confirm-import.ts` is the opt-in write action, per file,
+  best-effort — upload-then-persist each file whose review kept something,
+  writing `Review.chosenResources` over the file's own decoded sections, one
+  file's failure never stopping the rest. `resource-editor.tsx` (+
+  `resource-editor-helpers.ts`) is the inline JSON editor: **Keep** parses
+  the text, decodes through `Schema.decodeUnknown(FhirResourceSchema)`, and
+  refuses the edit unless it parses and preserves `resourceType` / `id`;
+  `describe-resource.ts` is the pure one-line summary per resource type.
+  Both moved here from `har-importer-react` when the review display was
+  generalized.
 - **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
   per-file `ImportOutcome` and the `FileImportResult`/`BatchOutcome` aggregate
   (`summarizeBatch`, `isPartialBatch`), all on `collectImportSummary` semantics
   (any failure ⇒ partial); `import-results.tsx` renders a per-file breakdown —
   writes with their provenance link, failed uploads with their cause, and skipped
   files — under one aggregate tally.
-- **`src/sources/`** — the picker. `picked-har.ts` is the vocabulary
-  (`PickedHar`, the `local` / `server` `PickedHarSource`, and `harArchiveReference`
-  — the one spelling of a `DocumentReference/<id>` reference); `local-har.ts` is
-  the pure "read a local file and validate it as a HAR" gate;
-  `server-har-archive-list.tsx` is the uploaded-archives pick source (rows,
-  paging, the fetch-and-decode of a selected row), exported for the anonymizer
-  shell's `serverSource` slot as much as used here; `source-picker.tsx`
-  composes the drop-and-pick zone, the file input it opens, and that server
-  list. Two modes: `'batch'` (default; the importer flow) accepts several HARs
-  in one pick; `'single'` trims the accepted list to the first file and drops
-  the OS dialog's `multiple` attribute — the server list is single-select in
-  both.
-- **`src/queries/`** — the reads. `har-archives.ts` is the paged
-  `DocumentReference` search pinned to the HAR-archive category, plus
-  `fetchHarArchive` — the one-archive fetch-and-decode a row selection runs;
-  `page-token.ts` pulls the continuation cursor out of a bundle's `next` link
-  (a copy of the web-trace viewer's, see the trap); `keys.ts` holds the query-key
-  roots.
-- **`src/mutations/`** — the write. `upload-har.ts` mints a fresh archive from a
-  local file's bytes and PUTs it, then invalidates the archive list.
+- **`src/sources/`** — the picker. `picked-file.ts` is the vocabulary
+  (`PickedFile` — `{ fileName, bytes, source }` — the `local` / `server`
+  `PickedFileSource`, and `archiveReference` — the one spelling of a
+  `DocumentReference/<id>` reference, format-blind); `local-file.ts` is
+  the format-blind "read a local file's bytes and identify it against
+  the registered descriptors' `detect`" gate — no descriptor's `decode`
+  runs at pick time; `server-archive-list.tsx` is the uploaded-archives
+  pick source (rows, paging, per-row explicit **Preview** + **Use as
+  source** buttons, the raw-contents modal each Preview opens), spanning
+  every registered format via the descriptor archive seam, and exported
+  for the anonymizer shell's `serverSource` slot as much as used here;
+  `source-picker.tsx` composes the drop-and-pick zone, the file input it
+  opens, and that server list. Two modes: `'batch'` (default; the importer
+  flow) accepts several files in one pick; `'single'` trims the accepted
+  list to the first file and drops the OS dialog's `multiple` attribute —
+  the server list is single-select in both.
+- **`src/queries/`** — the reads. `archives.ts` is the paged, format-blind
+  `DocumentReference` search: one request per page with `category` set to
+  the comma-joined `system|code` tokens of every registered format
+  (`ARCHIVES_CATEGORY_TOKEN`), each returned resource classified by
+  dispatching every descriptor's `isArchive` predicate in registry order
+  (disjoint by construction) so rows are tagged with the format they
+  came from; plus `fetchArchive` — the row-select's fetch-and-decode
+  through the row's format's `archiveFromDocumentReference` — and
+  `fetchArchiveContents`, the read-only variant the preview modal uses.
+  `page-token.ts` pulls the continuation cursor out of a bundle's `next`
+  link (a copy of the web-trace viewer's, see the trap); `keys.ts` holds
+  the query-key roots.
+- **The source-archive upload lives on each format's descriptor.** The shell
+  no longer holds a HAR-specific upload mutation; `useConfirmImport`
+  dispatches `descriptor.uploadSource(picked)` through the registry
+  (`Match.type<FormatKind>()`), so HAR uploads via `har-importer-core`'s
+  archive codec and LifeLabs uploads via
+  `lifelabs-pdf-importer-core/archive`'s. The archive-list query is
+  invalidated once at end-of-batch (any local HAR upload lands a new
+  `DocumentReference` the picker should see next pick — cheap even when
+  no HAR uploaded).
 
 ## Traps
 
-- **The read half writes nothing, and the split is the whole product.** Reaching a
-  review issues no writes — `decode` requires no services and is run for its data
-  only, and the parse of the chosen responses runs at **confirm**, not preview. A
-  test pins this on the wire (zero writes to reach a review); do not add a write to
-  the read path (e.g. an "auto-upload on pick") that would collapse the opt-in
-  seam.
-- **`ServerHarArchiveList` never writes.** The list is a search, a selection is
-  a `DocumentReference` GET. It is exported into the anonymizer shell's
-  `serverSource` slot precisely because it is read-only; do not add a write to
-  it.
-- **Selection state lives in the shell, not the review body.** `ReviewBody` is
-  controlled — the shell passes `selection` in and receives every change via
-  `onChange`, and holds the canonical `Map<fileId, Selection>` so it can hand
-  the confirm the exact selection each file was reviewed with
-  (`Review.chosenResources` over the shared previews). Don't move the
-  selection down into the body, or the shell and the view can disagree.
+- **The read half writes nothing, and the split is the whole product.** Reaching
+  a review issues no writes — `decode` requires no services and is run for its
+  data only, and the confirm writes exactly the reviewed objects
+  (`Review.chosenResources` over the file's decoded sections) with no
+  re-parse. A test pins this on the wire (zero writes to reach a review); do
+  not add a write to the read path (e.g. an "auto-upload on pick") that would
+  collapse the opt-in seam. A settings change re-runs `decode` — still the
+  read half, still no writes.
+- **`ServerArchiveList` never writes.** The list is a search, a selection is
+  a `DocumentReference` GET, and a preview is the same GET plus a bytes
+  render. It is exported into the anonymizer shell's `serverSource` slot
+  precisely because it is read-only; do not add a write to it — the preview
+  modal is deliberately not editable, either.
+- **Selection state lives in the screen, not the panel.** `PreviewPanel` is
+  controlled — the screen passes `selectionFor` in and receives every change
+  via `onSelectionChange`, holding the canonical `Map<fileId, Selection>` so
+  it can hand the confirm the exact selection each file was reviewed with
+  (`Review.chosenResources` over the file's own decoded sections). Same for
+  settings: the panel renders `settings` and reports `onSettingsChange`;
+  `useImportRun` owns the record and the re-decode. Don't move either down
+  into the panel, or the shell and the view can disagree.
 - **Confirm ordering is fixed per file: archive create, then that file's resource
-  writes.** A `local` pick's archive is uploaded first (`useUploadHar`) and the
+  writes.** A `local` pick's archive is uploaded first (its format's
+  `descriptor.uploadSource`) and the
   reference it mints is stamped onto every resource from _that file_; only then
   does the descriptor's `persist` run for it. A `server` pick uploads nothing and
   links to the document it was fetched from. Sequencing matters — a resource must
@@ -144,67 +188,94 @@ slice needs.
   **no** whole-flow `errored` state — an upload failure is a row in the results,
   and its cause is surfaced there (the FHIR server's own response), not swallowed
   behind "Try again".
-- **The confirm affordance is gated on the batch having a chosen response to
+- **The confirm affordance is gated on the batch having an included resource to
   write.** `PreviewPanel` shows the single confirm button only when
-  `Review.chosenCount` summed across the read files is positive; unreadable files
-  and read files whose review chose nothing render their own section but add
-  nothing to write. `useConfirmImport` re-checks each file (skipping the ones with
-  nothing chosen) — the gate is the affordance, the per-file check is the safety.
-- **A HAR archive and a web trace share a code system and nothing else, and the
-  disjointness is load-bearing.** The archive list searches `category` for
-  `` `${WEB_TRACE_CODE_SYSTEM}|har-archive` `` (`HAR_ARCHIVE_CATEGORY_TOKEN`,
-  built from `web-trace-core`'s constants so it cannot drift from what the codec
-  writes), and `rowsOf` still guards each entry with `isHarArchive`. The
-  web-trace viewer lists traces; this lists archives; `isWebTrace` and
-  `isHarArchive` never both hold. The list must never surface a trace.
-- **The picker validates each local file through the real HAR parser, not a
-  second check.** `acceptLocalHar` runs `web-trace-core`'s
-  `HttpArchive.LogFromHarJson`, so a
-  file the picker accepts is a file a `decode` can parse, and a file that is not
-  JSON and a file that is JSON-but-not-HAR both fail _at the picker_, next to the
-  control the user just used. In a batch the accepted files are handed on together
-  and the rejected ones are named in the notice; a **lone** rejected file with
-  nothing accepted keeps its full parser detail instead (`describeRejection`) —
-  the case a user is debugging one file. The parse result is discarded — this is a
-  gate, and `decode` parses the text again when it runs.
+  `Review.includedCount` summed across the read files is positive; unreadable
+  files and read files whose decode yielded nothing render their own section
+  but add nothing to write. `useConfirmImport` re-checks each file (skipping
+  the ones with nothing included) — the gate is the affordance, the per-file
+  check is the safety.
+- **The archive list is format-blind and disjoint from web traces on the
+  same axis.** The list searches `category` for `ARCHIVES_CATEGORY_TOKEN` —
+  the comma-joined `system|code` tokens of every registered format's
+  archive coding (`WEB_TRACE_CODE_SYSTEM|har-archive` for HAR,
+  `LIFELABS_SYSTEM|lifelabs-pdf-archive` for LifeLabs), built at module
+  load from each descriptor's `archiveCategoryToken` so it cannot drift
+  from what the codec writes. Each returned resource is classified in
+  registry order through each descriptor's `isArchive`; the predicates
+  are disjoint by construction (each tests a different `system|code`),
+  so at most one claims any row and a row no predicate claims is
+  dropped. The web-trace viewer lists traces under a different category
+  code on the same system; `isWebTrace` and any format's `isArchive`
+  never both hold. The list must never surface a trace, and the trace
+  viewer must never surface an archive.
+- **The picker identifies each local file syntactically through the
+  registered descriptors' `detect`, not a full parse.** `acceptLocalFile`
+  runs `importer-fundamentals`' `identify` over the registered descriptors,
+  so every format's `detect` runs on every drop — cheap on purpose — and a
+  file no descriptor claims is rejected _at the picker_, next to the control
+  the user just used. In a batch the accepted files are handed on together
+  and the rejected ones are named in the notice; a **lone** rejected file
+  with nothing accepted keeps its own rejection message. The full parse
+  still runs in that format's `decode` one step downstream, so a file the
+  picker accepted whose bytes are malformed lands in the preview as its own
+  `unreadable` row rather than a batch-wide error.
 - **`page-token.ts` is a copy of `web-trace-react`'s, deliberately.** The two
   slices page the same FHIR server the same way, but the importer must not depend
   on the web-trace viewer to do it — an adapter reaching into another adapter is
   the wrong layer. A shared paging primitive would belong below both, not in one.
   A present-but-empty `_pageToken=` reads as token-less: `''` is not `null`, so
   TanStack Query would take it for a real cursor and re-request page one forever.
-- **The list carries rows, not archives.** An archive's bytes are the whole HAR
-  file, potentially megabytes; `HarArchiveRow` holds only the id, title, and
-  upload instant, and `fetchHarArchive` reads the one archive the user selects.
-  Listing the bytes to render a title would pull every archive onto the device to
-  draw a list.
-- **A row selection decodes through the archive codec, then `TextDecoder`s the
-  bytes.** `fetchHarArchive` runs `harArchiveFromDocumentReference` (a resource
-  that is not an archive fails as a `ParseError`, never yields nonsense), then
-  `new TextDecoder().decode(archive.bytes)` — a HAR is UTF-8 JSON. The `server`
-  source carries `DocumentReference/<id>` so a later step links provenance to the
-  stored archive rather than re-uploading the same bytes.
-- **Every upload is a fresh document.** `useUploadHar` mints a uuid with
-  `crypto.randomUUID()` per call and uses it as both the resource id and the
-  `Update` path, so the PUT preserves the client-minted id and two uploads of the
-  same bytes are two documents — never one silently overwriting the other. That
-  is the archive codec's contract; dedupe stays _detectable_ through the
-  attachment's `hash` and `size` without being forced.
-- **Upload takes bytes, not text.** The archive codec stores the file verbatim so
-  a truncated or mis-encoded upload is preserved and the attachment `hash` means
-  something. `UploadHarInput.bytes` is `Uint8Array`; a caller holding a
-  `PickedHar`'s text encodes it (`new TextEncoder().encode(text)`) at the call
-  site.
+- **The list carries rows, not archives.** An archive's bytes are the whole
+  file, potentially megabytes (a multi-MB HAR, a PDF); `ArchiveRow` holds
+  only the id, its classified format, the title, and the upload instant.
+  `fetchArchive` (row select) and `fetchArchiveContents` (preview modal)
+  each read the one archive the user chose. Listing the bytes to render a
+  title would pull every archive onto the device to draw a list.
+- **A row selection decodes through its format's archive codec and keeps
+  the bytes verbatim.** `fetchArchive` dispatches to the row's format's
+  `archiveFromDocumentReference` (per the descriptor archive seam) — a
+  resource that is not an archive of that format fails as a `ParseError`,
+  never yields nonsense — and returns the archive's `bytes` on the
+  `PickedFile`. Every downstream step reads bytes (`decode`, and the
+  confirm's upload if the pick were local). The `server` source carries
+  `DocumentReference/<id>` (via `archiveReference`, format-blind) so a
+  later step links provenance to the stored archive rather than
+  re-uploading.
+- **A row's Preview action opens a read-only raw-contents modal that
+  renders the file itself.** The modal fetches through
+  `fetchArchiveContents` (the same reader as a pick, minus the source
+  synthesis) and picks its renderer from the format's
+  `archiveContentType`: PDF via a `<iframe>` at a `blob:` URL over the
+  bytes (revoked on unmount), JSON pretty-printed inside a `<pre>`
+  capped at `JSON_PREVIEW_SIZE_LIMIT` (5 MiB) with a "Download raw"
+  fallback for a giant archive. The modal writes nothing and offers no
+  editing — a preview is inspection, not another entry point to the
+  review flow.
+- **Every upload is a fresh document.** Each format's `uploadSource` mints
+  a uuid with `crypto.randomUUID()` per call and uses it as both the
+  resource id and the `Update` path, so the PUT preserves the
+  client-minted id and two uploads of the same bytes are two documents —
+  never one silently overwriting the other. That is the archive codec's
+  contract; dedupe stays _detectable_ through the attachment's `hash`
+  and `size` without being forced.
+- **Upload takes bytes, not text.** The archive codec stores the file
+  verbatim so a truncated or mis-encoded upload is preserved and the
+  attachment `hash` means something. `UploadHarInput.bytes` is `Uint8Array`;
+  every `PickedFile` already carries its bytes, so the caller hands them
+  through unchanged.
 - **The drop zone is a button, so drop is an enhancement rather than the only
-  path.** The zone itself opens the file picker on click, so the whole surface is
-  keyboard-reachable and screen-reader named; the `<input type="file">` it opens
-  is visually hidden but kept a named, reachable input (`aria-label="HAR file"`),
-  not `display: none` — some upload implementations refuse an invisible input.
-- **The authed runner comes from router context, one way.** `useHarArchivesQuery`
-  and the picker's row-select both read `useRunAuthed()`; the query also exposes
-  `harArchivesInfiniteQueryOptions(runAuthed, options)` taking the runner as its
-  first argument, for a loader or a test that drives the query itself. There is no
-  prop-threaded second way in — this mirrors `web-trace-react`.
+  path.** The zone itself opens the file picker on click, so the whole
+  surface is keyboard-reachable and screen-reader named; the
+  `<input type="file">` it opens is visually hidden but kept a named,
+  reachable input (`aria-label="Import file"`), not `display: none` — some
+  upload implementations refuse an invisible input.
+- **The authed runner comes from router context, one way.** `useArchivesQuery`,
+  the picker's row-select, and the preview modal's fetch all read
+  `useRunAuthed()`; the query also exposes
+  `archivesInfiniteQueryOptions(runAuthed, options)` taking the runner as
+  its first argument, for a loader or a test that drives the query itself.
+  There is no prop-threaded second way in — this mirrors `web-trace-react`.
 
 ## Testing
 
@@ -224,10 +295,6 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
   the server archive fixtures are hand-built `DocumentReference` JSON with base64
   `data` so a `Uint8Array` from jsdom's realm never has to satisfy the codec's
   `instanceof` check.
-- `mutations/upload-har.test.tsx` renders the hook over a _stateful_ stub that
-  stores each PUT under its minted id and answers a later search with it, so the
-  list refetches on invalidation and the new archive appears as an observed fact;
-  it also asserts two uploads of the same bytes produce two distinct ids.
 - `importer-screen.test.tsx` is the end-to-end one: it replaces only the router
   seam and drives the whole flow over a recording stub `HttpClient`, reading one
   ordered write log back. It pins the opt-in seam (zero writes to reach a review),

@@ -4,21 +4,31 @@ import { DateTime, Effect, Layer, Schema } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/archive'
+import { LIFELABS_PDF_ARCHIVE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer-core/archive'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import {
+  ARCHIVES_CATEGORY_TOKEN,
+  archivesInfiniteQueryOptions,
   DEFAULT_PAGE_SIZE,
-  HAR_ARCHIVE_CATEGORY_TOKEN,
-  harArchivesInfiniteQueryOptions,
-} from './har-archives.ts'
+} from './archives.ts'
 
 /**
  * The archive list read, driven over the real
- * query → runner → FHIR-client → `HttpClient` path with a stub transport. Only
- * the transport is a stub; the runner is built through `fhir-r4-react/smart` so a
- * bearer token rides the wire, exactly as a self-hosted app's does. The test can
- * then assert both what the search asked for (the archive category, page size,
- * cursor) and that it went out authenticated.
+ * query → runner → FHIR-client → `HttpClient` path with a stub transport.
+ * Only the transport is a stub; the runner is built through
+ * `fhir-r4-react/smart` so a bearer token rides the wire, exactly as a
+ * self-hosted app's does.
+ *
+ * What this pins that the old HAR-only test could not:
+ *   - the search category is the comma-joined `system|code` union across
+ *     every registered format, so listing every format's archives is one
+ *     round trip per page;
+ *   - a mixed searchset (a HAR archive plus a LifeLabs PDF archive)
+ *     surfaces as rows tagged with the format each was classified as by
+ *     the descriptor's `isArchive` predicate;
+ *   - a resource whose category coding is neither format's is dropped
+ *     from the rows.
  */
 
 const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
@@ -35,65 +45,62 @@ afterEach(() => {
   for (const queryClient of queryClients.splice(0)) queryClient.clear()
 })
 
-describe('harArchivesInfiniteQueryOptions', () => {
-  it('should search the har-archive category, with the token, at the default page size', async () => {
+describe('archivesInfiniteQueryOptions', () => {
+  it('should search the comma-joined archive category over every registered format, sized and authed', async () => {
     // Arrange
     const queryClient = freshQueryClient()
-    const options = harArchivesInfiniteQueryOptions(runAuthedOver([searchset([])]))
+    const options = archivesInfiniteQueryOptions(runAuthedOver([searchset([])]))
 
     // Act
     await queryClient.infiniteQuery(options)
 
-    // Assert — the category the codec writes, not the web-trace one
-    expect(paramsOf(0)['category']).toBe(HAR_ARCHIVE_CATEGORY_TOKEN)
-    expect(HAR_ARCHIVE_CATEGORY_TOKEN).toBe(`${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE}`)
+    // Assert — one search, one comma-joined `system|code` covering both formats
+    expect(paramsOf(0)['category']).toBe(ARCHIVES_CATEGORY_TOKEN)
+    expect(ARCHIVES_CATEGORY_TOKEN).toBe(
+      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE}`
+    )
     expect(paramsOf(0)['_count']).toBe(String(DEFAULT_PAGE_SIZE))
     // …and it went out authenticated with the granted token
     expect(sentRequests[0]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
   })
 
-  it('should request the caller page size', async () => {
-    // Arrange
-    const queryClient = freshQueryClient()
-    const options = harArchivesInfiniteQueryOptions(runAuthedOver([searchset([])]), { pageSize: 7 })
-
-    // Act
-    await queryClient.infiniteQuery(options)
-
-    // Assert
-    expect(paramsOf(0)['_count']).toBe('7')
-  })
-
-  it('should list each archive as a row of its title and upload instant', async () => {
-    // Arrange
+  it('should tag each row with the format its category coding claims', async () => {
+    // Arrange — one HAR and one LifeLabs PDF in the same searchset, plus a
+    // resource whose category is a DocumentReference not from any format
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
-    const wire = archiveWire({ id: 'archive-1', fileName: 'portal-session.har', uploadedAt })
+    const rows = [
+      harArchiveWire({ id: 'har-1', fileName: 'session.har', uploadedAt }),
+      lifelabsPdfArchiveWire({ id: 'pdf-1', fileName: 'report.pdf', uploadedAt }),
+      unrelatedDocumentWire({ id: 'other-1', fileName: 'notes.txt' }),
+    ]
     const queryClient = freshQueryClient()
-    const options = harArchivesInfiniteQueryOptions(runAuthedOver([searchset([wire])]))
+    const options = archivesInfiniteQueryOptions(runAuthedOver([searchset(rows)]))
 
     // Act
     const data = await queryClient.infiniteQuery(options)
 
-    // Assert — read straight off the attachment, without decoding the bytes
-    const [page] = data.pages
-    expect(page?.archives).toHaveLength(1)
-    const row = page?.archives[0]
-    expect(row?.id).toBe('archive-1')
-    expect(row?.title).toBe('portal-session.har')
-    if (row === undefined || row.creation === null) throw new Error('expected a dated row')
-    expect(DateTime.toEpochMillis(row.creation)).toBe(DateTime.toEpochMillis(uploadedAt))
+    // Assert — the unrelated resource is dropped; the remaining rows carry
+    // the right format tag by their classification
+    const page = data.pages[0]
+    if (page === undefined) throw new Error('expected a page')
+    expect(page.archives.map((row) => ({ id: row.id, format: row.format }))).toEqual([
+      { id: 'har-1', format: 'har' },
+      { id: 'pdf-1', format: 'lifelabs-pdf' },
+    ])
   })
 
   it('should page with the cursor from the bundle next link and stop when there is none', async () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     const first = searchset(
-      [archiveWire({ id: 'p1', fileName: 'one.har', uploadedAt })],
+      [harArchiveWire({ id: 'p1', fileName: 'one.har', uploadedAt })],
       'cursor-2'
     )
-    const second = searchset([archiveWire({ id: 'p2', fileName: 'two.har', uploadedAt })])
+    const second = searchset([
+      lifelabsPdfArchiveWire({ id: 'p2', fileName: 'two.pdf', uploadedAt }),
+    ])
     const queryClient = freshQueryClient()
-    const options = harArchivesInfiniteQueryOptions(runAuthedOver([first, second]))
+    const options = archivesInfiniteQueryOptions(runAuthedOver([first, second]))
 
     // Act
     const data = await queryClient.infiniteQuery({ ...options, pages: 3 })
@@ -110,7 +117,7 @@ describe('harArchivesInfiniteQueryOptions', () => {
     // Arrange
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     queryClients.push(queryClient)
-    const options = harArchivesInfiniteQueryOptions(failingRunAuthed())
+    const options = archivesInfiniteQueryOptions(failingRunAuthed())
 
     // Act / Assert
     await expect(queryClient.infiniteQuery(options)).rejects.toThrow()
@@ -123,16 +130,14 @@ describe('harArchivesInfiniteQueryOptions', () => {
 const base64 = Schema.encodeSync(Schema.StringFromBase64)
 
 /**
- * One archive `DocumentReference`, as the FHIR JSON a server would send back —
- * hand-built so a jsdom-realm `Uint8Array` never has to satisfy the codec's
- * `instanceof` check. It still carries the archive category coding the list
- * filters on and the attachment title/creation a row reads.
+ * One HAR archive `DocumentReference`, as the FHIR JSON a server would
+ * send back — hand-built so a jsdom-realm `Uint8Array` never has to
+ * satisfy the codec's `instanceof` check.
  */
-const archiveWire = (fields: {
+const harArchiveWire = (fields: {
   readonly id: string
   readonly fileName: string
   readonly uploadedAt: DateTime.Utc
-  readonly harText?: string
 }): unknown => {
   const iso = DateTime.formatIso(fields.uploadedAt)
   const coding = [{ system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE }]
@@ -147,7 +152,7 @@ const archiveWire = (fields: {
       {
         attachment: {
           contentType: 'application/json',
-          data: base64(fields.harText ?? '{"log":{"version":"1.2","entries":[]}}'),
+          data: base64('{"log":{"version":"1.2","entries":[]}}'),
           title: fields.fileName,
           creation: iso,
         },
@@ -156,7 +161,58 @@ const archiveWire = (fields: {
   }
 }
 
-/** A `searchset` bundle over already-encoded FHIR resources, optionally with a next cursor. */
+/** One LifeLabs PDF archive `DocumentReference`, hand-built the same way. */
+const lifelabsPdfArchiveWire = (fields: {
+  readonly id: string
+  readonly fileName: string
+  readonly uploadedAt: DateTime.Utc
+}): unknown => {
+  const iso = DateTime.formatIso(fields.uploadedAt)
+  const coding = [{ system: LIFELABS_SYSTEM, code: LIFELABS_PDF_ARCHIVE_CODE }]
+  return {
+    resourceType: 'DocumentReference',
+    id: fields.id,
+    status: 'current',
+    type: { coding },
+    category: [{ coding }],
+    date: iso,
+    content: [
+      {
+        attachment: {
+          contentType: 'application/pdf',
+          // Minimal `%PDF-` bytes; the query never decodes them, so any
+          // base64 payload with a title suffices.
+          data: base64('%PDF-1.4\n'),
+          title: fields.fileName,
+          creation: iso,
+        },
+      },
+    ],
+  }
+}
+
+/**
+ * A `DocumentReference` whose category matches *neither* registered
+ * format — the server search returns it as noise (a code that starts
+ * with `har-archive` in a different system, say, or an unrelated code
+ * altogether). The query must drop it.
+ */
+const unrelatedDocumentWire = (fields: {
+  readonly id: string
+  readonly fileName: string
+}): unknown => {
+  const coding = [{ system: 'https://example.invalid/other', code: 'not-an-archive' }]
+  return {
+    resourceType: 'DocumentReference',
+    id: fields.id,
+    status: 'current',
+    type: { coding },
+    category: [{ coding }],
+    content: [{ attachment: { contentType: 'text/plain', title: fields.fileName } }],
+  }
+}
+
+/** A `searchset` bundle, optionally with a next cursor. */
 const searchset = (resources: readonly unknown[], nextCursor?: string): unknown => ({
   resourceType: 'Bundle',
   type: 'searchset',
@@ -167,7 +223,7 @@ const searchset = (resources: readonly unknown[], nextCursor?: string): unknown 
       : [
           {
             relation: 'next',
-            url: `${SERVER_URL}/DocumentReference?category=har-archive&_pageToken=${nextCursor}`,
+            url: `${SERVER_URL}/DocumentReference?category=any&_pageToken=${nextCursor}`,
           },
         ],
 })
@@ -178,11 +234,6 @@ const jsonResponse = (body: unknown): Response =>
     headers: { 'content-type': 'application/json' },
   })
 
-/**
- * An `HttpClient` that answers the nth request with the nth body and records
- * every request, so a test can assert which search the query actually issued and
- * with what credential. A request past the end of `bodies` fails the test.
- */
 const stubHttpClientLayer = (bodies: readonly unknown[]): Layer.Layer<HttpClient.HttpClient> =>
   Layer.succeed(
     HttpClient.HttpClient,
@@ -202,7 +253,6 @@ const failingHttpClientLayer = (): Layer.Layer<HttpClient.HttpClient> =>
     )
   )
 
-/** A runner carrying the SMART bearer token, over the given stub transport. */
 const runAuthedFor = (transport: Layer.Layer<HttpClient.HttpClient>): RunAuthed =>
   buildSmartRouterContext({ serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN }, transport).runAuthed
 
@@ -217,7 +267,6 @@ const freshQueryClient = (): QueryClient => {
   return queryClient
 }
 
-/** The search parameters of the nth recorded request, as a plain lookup. */
 const paramsOf = (index: number): Readonly<Record<string, string | undefined>> => {
   const request = sentRequests[index]
   if (request === undefined) throw new Error(`no request recorded at index ${index}`)

@@ -30,17 +30,22 @@ const ResourceHeader = Schema.Struct({
   id: Schema.optional(Schema.String),
 })
 
+/**
+ * The `HumanName` fields the summaries read — the shared shape a Patient and a
+ * Practitioner both carry, so both summaries reference it rather than repeating
+ * it.
+ */
+const HumanNames = Schema.Array(
+  Schema.Struct({
+    text: Schema.optional(Schema.String),
+    given: Schema.optional(Schema.Array(Schema.String)),
+    family: Schema.optional(Schema.String),
+  })
+)
+
 /** The Patient summary fields. */
 const PatientSummary = Schema.Struct({
-  name: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        text: Schema.optional(Schema.String),
-        given: Schema.optional(Schema.Array(Schema.String)),
-        family: Schema.optional(Schema.String),
-      })
-    )
-  ),
+  name: Schema.optional(HumanNames),
   birthDate: Schema.optional(Schema.String),
 })
 
@@ -88,15 +93,7 @@ const DiagnosticReportSummary = Schema.Struct({
 
 /** The Practitioner summary fields — its names, the same shape a Patient carries. */
 const PractitionerSummary = Schema.Struct({
-  name: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        text: Schema.optional(Schema.String),
-        given: Schema.optional(Schema.Array(Schema.String)),
-        family: Schema.optional(Schema.String),
-      })
-    )
-  ),
+  name: Schema.optional(HumanNames),
 })
 
 /** The Observation summary fields. */

@@ -61,6 +61,26 @@ const toggleResource = <TParsed>(
 }
 
 /**
+ * Include or exclude several resources at once — the batch form of
+ * {@link toggleResource}, so a reviewer can opt a whole section in or out in a
+ * single action. `included: false` opts every listed key out; `included: true`
+ * clears the opt-out on every listed key. Keys not listed are left untouched,
+ * and a key already in the wanted state is a no-op.
+ */
+const setResourcesIncluded = <TParsed>(
+  selection: Selection<TParsed>,
+  keys: Iterable<string>,
+  included: boolean
+): Selection<TParsed> => {
+  const excludedResources = new Set(selection.excludedResources)
+  for (const key of keys) {
+    if (included) excludedResources.delete(key)
+    else excludedResources.add(key)
+  }
+  return { ...selection, excludedResources }
+}
+
+/**
  * Replace the resource at `key` with `resource` — the reviewer's inline edit.
  * `chosenResources` returns the override in place of the resolved value.
  */
@@ -137,6 +157,7 @@ export {
   isResourceEdited,
   isResourceIncluded,
   revert,
+  setResourcesIncluded,
   toggleResource,
 }
 export type { Selection }

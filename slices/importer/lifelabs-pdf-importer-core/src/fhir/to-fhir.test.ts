@@ -13,11 +13,15 @@ import {
   reportOriginalId,
   toFhirResources,
 } from './to-fhir.ts'
+import { UCUM_SYSTEM } from './units.ts'
 
 const TIME_ZONE = 'America/Toronto'
 
+/** The synthesized groups flattened in order — most assertions read the whole set. */
 const synthesize = (reports: readonly Report.Type[]): readonly FhirResource[] =>
-  Effect.runSync(toFhirResources(reports, { timeZone: TIME_ZONE }))
+  Effect.runSync(toFhirResources(reports, { timeZone: TIME_ZONE })).flatMap(
+    (group) => group.resources
+  )
 
 const ofType = <T extends FhirResource['resourceType']>(
   resources: readonly FhirResource[],
@@ -111,10 +115,27 @@ const sample: Report.Type = {
   ],
 }
 
+/**
+ * Arrays of reports with pairwise-distinct identities (`reportOriginalId`).
+ * A real decode can never hand the synthesis two reports with the same
+ * identity — `Report.tryFromDocument` yields one report per `Lab No` (masked
+ * ones told apart by footer and date of service) — so the multi-report
+ * properties mirror that invariant rather than asserting over an input the
+ * dialect cannot produce.
+ */
+const distinctReportsArbitrary = fc
+  .array(reportArbitrary, { minLength: 1, maxLength: 3 })
+  .map((reports) =>
+    reports.filter(
+      (report, index) =>
+        reports.findIndex((other) => reportOriginalId(other) === reportOriginalId(report)) === index
+    )
+  )
+
 describe('toFhirResources', () => {
   it('property: every row is one Observation the report lists, on the one Patient, and every id is unique', () => {
     fc.assert(
-      fc.property(fc.array(reportArbitrary, { minLength: 1, maxLength: 3 }), (reports) => {
+      fc.property(distinctReportsArbitrary, (reports) => {
         const resources = synthesize(reports)
 
         const ids = resources.map((resource) => `${resource.resourceType}/${resource.id}`)
@@ -148,6 +169,19 @@ describe('toFhirResources', () => {
           const subject = observation.subject?.reference ?? ''
           expect(patientIds.has(subject.replace(/^Patient\//, ''))).toBe(true)
         }
+
+        // Every resultsInterpreter reference resolves to a Practitioner minted
+        // somewhere in the batch — a provider deduped into an earlier report's
+        // group is still present once the groups are flattened.
+        const practitionerIds = new Set(
+          ofType(resources, 'Practitioner').map((practitioner) => practitioner.id)
+        )
+        for (const report of diagnosticReports) {
+          for (const interpreter of report.resultsInterpreter) {
+            const reference = interpreter.reference ?? ''
+            expect(practitionerIds.has(reference.replace(/^Practitioner\//, ''))).toBe(true)
+          }
+        }
       }),
       { numRuns: numRunsFor({ base: 40 }) }
     )
@@ -175,7 +209,7 @@ describe('toFhirResources', () => {
     expect(ofType(resources, 'DiagnosticReport')).toHaveLength(2)
   })
 
-  it('builds the Patient from the header: name parts, gender, birth date, health card, phone, GP', () => {
+  it('builds the Patient from the header: name parts, gender, birth date, health card, phone', () => {
     const [patient] = ofType(synthesize([sample]), 'Patient')
 
     expect(patient?.id).toBe(patientOriginalId(sample.patient))
@@ -191,9 +225,10 @@ describe('toFhirResources', () => {
       value: '1234567890 AB',
     })
     expect(patient?.telecom[0]).toMatchObject({ system: 'phone', value: '(416) 555-0100' })
-    expect(patient?.generalPractitioner[0]?.reference).toBe(
-      `Practitioner/${practitionerOriginalId(sample.orderedBy)}`
-    )
+    // The report's providers are the DiagnosticReport's resultsInterpreter, not
+    // the patient's GP — a lab report names who to send results to, not who the
+    // patient's family doctor is.
+    expect(patient?.generalPractitioner).toEqual([])
   })
 
   it('keys a patient by Patient ID first, then health card digits, then name and birth date', () => {
@@ -225,7 +260,7 @@ describe('toFhirResources', () => {
     )
   })
 
-  it('builds the DiagnosticReport: lab number, LOINC code, sections as text, timing in the zone, results, performer', () => {
+  it('builds the DiagnosticReport: lab number, LOINC code, sections as text, timing in the zone, results, performer, resultsInterpreter', () => {
     const [report] = ofType(synthesize([sample]), 'DiagnosticReport')
 
     expect(report?.id).toBe(reportOriginalId(sample))
@@ -246,6 +281,12 @@ describe('toFhirResources', () => {
       'Lab Lic. #5687 · 100 International Blvd., Toronto, Ontario, Canada M9W 6J6',
       'Lab Lic. #5407 · 100 International Blvd., Toronto, Ontario, Canada M9W 6J6',
     ])
+    // Every provider named on the report — the ordering provider and each CC'd
+    // provider — is a resultsInterpreter reference, in that order.
+    expect(report?.resultsInterpreter.map((interpreter) => interpreter.reference)).toEqual([
+      `Practitioner/${practitionerOriginalId(sample.orderedBy)}`,
+      `Practitioner/${practitionerOriginalId(sample.copyTo[0] ?? '')}`,
+    ])
   })
 
   it('reads a report with no FINAL footer as status unknown', () => {
@@ -256,16 +297,22 @@ describe('toFhirResources', () => {
     )
   })
 
-  it('builds a numeric Observation: quantity with unit, interpretation from the flag, bounded reference range', () => {
+  it('builds a numeric Observation: quantity with unit and UCUM coding, interpretation from the flag, bounded reference range that carries the same coding', () => {
     const [hemoglobin] = ofType(synthesize([sample]), 'Observation')
 
     expect(hemoglobin?.code.text).toBe('Hemoglobin')
     expect(hemoglobin?.category[0]?.text).toBe('Hematology')
-    expect(hemoglobin?.valueQuantity).toMatchObject({ value: 118, unit: 'g/L', comparator: null })
+    expect(hemoglobin?.valueQuantity).toMatchObject({
+      value: 118,
+      unit: 'g/L',
+      system: UCUM_SYSTEM,
+      code: 'g/L',
+      comparator: null,
+    })
     expect(hemoglobin?.interpretation[0]?.coding[0]).toMatchObject({ code: 'L', display: 'Low' })
     expect(hemoglobin?.referenceRange[0]).toMatchObject({
-      low: { value: 120, unit: 'g/L' },
-      high: { value: 160, unit: 'g/L' },
+      low: { value: 120, unit: 'g/L', system: UCUM_SYSTEM, code: 'g/L' },
+      high: { value: 160, unit: 'g/L', system: UCUM_SYSTEM, code: 'g/L' },
       text: '120- 160',
     })
     expect(hemoglobin?.performer[0]?.display).toContain('#5687')
@@ -275,9 +322,58 @@ describe('toFhirResources', () => {
   it('carries a censored result as a comparator, and a group name into the category text', () => {
     const [, granulocytes] = ofType(synthesize([sample]), 'Observation')
 
-    expect(granulocytes?.valueQuantity).toMatchObject({ value: 0.1, comparator: '<' })
+    // `x E9/L` is a mapped display, so the quantity picks up the UCUM code.
+    expect(granulocytes?.valueQuantity).toMatchObject({
+      value: 0.1,
+      unit: 'x E9/L',
+      system: UCUM_SYSTEM,
+      code: '10*9/L',
+      comparator: '<',
+    })
     expect(granulocytes?.category[0]?.text).toBe('Hematology · Differential')
-    expect(granulocytes?.referenceRange[0]).toMatchObject({ low: null, high: { value: 0.1 } })
+    expect(granulocytes?.referenceRange[0]).toMatchObject({
+      low: null,
+      high: { value: 0.1, unit: 'x E9/L', system: UCUM_SYSTEM, code: '10*9/L' },
+    })
+  })
+
+  it('carries an unmapped display unit as `unit` alone — never guesses a UCUM code', () => {
+    const unmapped: Report.Type = {
+      ...sample,
+      sections: [
+        {
+          name: 'Hematology',
+          comments: [],
+          groups: [
+            {
+              name: '',
+              rows: [
+                {
+                  name: 'Custom test',
+                  flag: '',
+                  result: '42',
+                  referenceRange: '10- 50',
+                  unit: 'made-up unit',
+                  labLicence: '#5687',
+                  comments: [],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    }
+    const [observation] = ofType(synthesize([unmapped]), 'Observation')
+    expect(observation?.valueQuantity).toMatchObject({
+      value: 42,
+      unit: 'made-up unit',
+      system: null,
+      code: null,
+    })
+    expect(observation?.referenceRange[0]).toMatchObject({
+      low: { value: 10, unit: 'made-up unit', system: null, code: null },
+      high: { value: 50, unit: 'made-up unit', system: null, code: null },
+    })
   })
 
   it('builds a text Observation: valueString, no range, the comments as one note', () => {
@@ -318,7 +414,25 @@ describe('toFhirResources', () => {
     expect(patient?.telecom).toEqual([])
     expect(patient?.identifier).toEqual([])
     expect(patient?.generalPractitioner).toEqual([])
+    expect(report?.resultsInterpreter).toEqual([])
     expect(report?.effectiveDateTime).toBeNull()
     expect(report?.issued).toBeNull()
+  })
+
+  it('groups each report with its own resources, minting a shared Patient in the first group only', () => {
+    const second = { ...sample, labNo: '2024-JJ0000001' }
+
+    const groups = Effect.runSync(toFhirResources([sample, second], { timeZone: TIME_ZONE }))
+
+    expect(groups.map((group) => group.report)).toEqual([sample, second])
+    const [first, again] = groups
+    // The two reports name the same patient and practitioners — deduplicated
+    // by id, they appear in the first group and never again.
+    expect(ofType(first?.resources ?? [], 'Patient')).toHaveLength(1)
+    expect(ofType(again?.resources ?? [], 'Patient')).toHaveLength(0)
+    expect(ofType(again?.resources ?? [], 'Practitioner')).toHaveLength(0)
+    // Each group still carries its own DiagnosticReport and Observations.
+    expect(ofType(first?.resources ?? [], 'DiagnosticReport')).toHaveLength(1)
+    expect(ofType(again?.resources ?? [], 'DiagnosticReport')).toHaveLength(1)
   })
 })

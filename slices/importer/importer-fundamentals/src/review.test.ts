@@ -109,6 +109,55 @@ describe('Review.toggleResource', () => {
 })
 
 // ---------------------------------------------------------------------------
+// Review.setResourcesIncluded
+// ---------------------------------------------------------------------------
+
+describe('Review.setResourcesIncluded', () => {
+  it('should exclude every listed key when included is false', () => {
+    const selection = Review.setResourcesIncluded(Review.initial<string>(), ['a', 'b'], false)
+
+    expect(Review.excludedCount(threeLabeled, selection)).toBe(2)
+    expect(Review.isResourceIncluded(selection, 'a')).toBe(false)
+    expect(Review.isResourceIncluded(selection, 'b')).toBe(false)
+    expect(Review.isResourceIncluded(selection, 'c')).toBe(true)
+  })
+
+  it('should re-include every listed key when included is true', () => {
+    const excluded = Review.setResourcesIncluded(Review.initial<string>(), ['a', 'b', 'c'], false)
+    const reincluded = Review.setResourcesIncluded(excluded, ['a', 'b'], true)
+
+    expect(Review.isResourceIncluded(reincluded, 'a')).toBe(true)
+    expect(Review.isResourceIncluded(reincluded, 'b')).toBe(true)
+    expect(Review.isResourceIncluded(reincluded, 'c')).toBe(false)
+  })
+
+  it('should leave keys outside the batch untouched', () => {
+    const start = Review.toggleResource(Review.initial<string>(), 'c')
+    const next = Review.setResourcesIncluded(start, ['a'], false)
+
+    expect(Review.isResourceIncluded(next, 'c')).toBe(false)
+  })
+
+  it('should preserve resourceOverrides across the batch change', () => {
+    const edited = Review.edit(Review.initial<string>(), 'a', 'edited-alpha')
+    const next = Review.setResourcesIncluded(edited, ['a', 'b'], false)
+
+    expect(next.resourceOverrides.get('a')).toBe('edited-alpha')
+  })
+
+  it('property: excluding then re-including the same keys restores inclusion', () => {
+    fc.assert(
+      fc.property(fc.array(fc.string()), (keys) => {
+        const excluded = Review.setResourcesIncluded(Review.initial<string>(), keys, false)
+        const reincluded = Review.setResourcesIncluded(excluded, keys, true)
+        for (const key of keys) expect(Review.isResourceIncluded(reincluded, key)).toBe(true)
+      }),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
 // Review.edit / Review.isResourceEdited / Review.editedResource
 // ---------------------------------------------------------------------------
 

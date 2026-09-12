@@ -2751,42 +2751,21 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.2.7(@types/react@19.2.18)
-      effect:
-        specifier: 3.21.4
-        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
-      fast-check:
-        specifier: 'catalog:'
-        version: 3.23.2
-      fhir-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4
       har-importer-core:
         specifier: workspace:*
         version: link:../har-importer-core
-      http-extraction-fundamentals:
-        specifier: workspace:*
-        version: link:../../http-extraction/http-extraction-fundamentals
       importer-fundamentals:
         specifier: workspace:*
         version: link:../importer-fundamentals
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
-      kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/kitchen-sink
       react:
         specifier: 'catalog:'
         version: 19.2.8
       react-dom:
         specifier: 19.2.8
         version: 19.2.8(react@19.2.8)
-      react-kitchen-sink:
-        specifier: workspace:*
-        version: link:../../../global/react-kitchen-sink
-      react-tundraish:
-        specifier: workspace:*
-        version: link:../../../global/react-tundraish
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -2811,9 +2790,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
-      http-extraction-fundamentals:
+      fhir-r4:
         specifier: workspace:*
-        version: link:../../http-extraction/http-extraction-fundamentals
+        version: link:../../emr/fhir-r4
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
@@ -2880,6 +2859,12 @@ importers:
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
+      lifelabs-pdf-importer-core:
+        specifier: workspace:*
+        version: link:../lifelabs-pdf-importer-core
+      lifelabs-pdf-importer-react:
+        specifier: workspace:*
+        version: link:../lifelabs-pdf-importer-react
       react:
         specifier: 'catalog:'
         version: 19.2.8
@@ -2901,6 +2886,9 @@ importers:
 
   slices/importer/lifelabs-pdf-importer-core:
     devDependencies:
+      '@effect/platform':
+        specifier: 0.96.1
+        version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
       '@types/node':
         specifier: ^26
         version: 26.1.0
@@ -2916,12 +2904,69 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../../emr/fhir-r4
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../importer-fundamentals
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
       positioned-text:
         specifier: workspace:*
         version: link:../../file-formats/positioned-text
+      positioned-text-web:
+        specifier: workspace:*
+        version: link:../../file-formats/positioned-text-web
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.0(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(vite@8.2.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(yaml@2.9.0))(yaml@2.9.0)
+      web-trace-core:
+        specifier: workspace:*
+        version: link:../../web-trace/web-trace-core
+
+  slices/importer/lifelabs-pdf-importer-react:
+    devDependencies:
+      '@testing-library/dom':
+        specifier: 'catalog:'
+        version: 10.4.1
+      '@testing-library/react':
+        specifier: 'catalog:'
+        version: 16.3.3(@testing-library/dom@10.4.1)(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      '@testing-library/user-event':
+        specifier: 'catalog:'
+        version: 14.6.7(@testing-library/dom@10.4.1)
+      '@types/react':
+        specifier: 'catalog:'
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 'catalog:'
+        version: 19.2.7(@types/react@19.2.18)
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../importer-fundamentals
+      jsdom:
+        specifier: 'catalog:'
+        version: 30.0.1
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      lifelabs-pdf-importer-core:
+        specifier: workspace:*
+        version: link:../lifelabs-pdf-importer-core
+      react:
+        specifier: 'catalog:'
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
       typescript:
         specifier: 5.9.3
         version: 5.9.3

@@ -8,7 +8,7 @@ import styles from './resource-editor.module.css'
 
 /**
  * The reviewer's inline JSON editor for one previewed FHIR resource — the
- * "manually edit them a little" affordance a `ReviewBody` row opens on
+ * "manually edit them a little" affordance a preview resource row opens on
  * demand. A plain `<textarea>` over the pretty-printed JSON, kept behind
  * two invariants: an edit is refused unless it parses as JSON and decodes
  * through `Schema.decodeUnknown(FhirResource)`, and `resourceType` / `id`

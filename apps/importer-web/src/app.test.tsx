@@ -75,7 +75,10 @@ describe('ImporterApp', () => {
     mount({})
 
     // Act — pick a recognized HAR through the OS picker
-    await userEvent.upload(await screen.findByLabelText('HAR file'), harFile('portal-session.har'))
+    await userEvent.upload(
+      await screen.findByLabelText('Import file'),
+      harFile('portal-session.har')
+    )
 
     // Assert — the preview is up and NOT ONE write went out to reach it
     await waitFor(() => {
@@ -135,7 +138,9 @@ describe('ImporterApp', () => {
     mount({ archives: [{ id: 'archive-1', fileName: 'server-session.har' }] })
 
     // Act — select it from the server list, then confirm
-    await userEvent.click(await screen.findByRole('button', { name: /server-session\.har/ }))
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'Use server-session.har as source' })
+    )
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
     })
@@ -167,7 +172,7 @@ describe('ImporterApp', () => {
       'false'
     )
     expect(screen.getByText('Import FHIR records from a captured browsing session.')).toBeDefined()
-    expect(screen.getByRole('region', { name: 'HAR source' })).toBeDefined()
+    expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
     // Nothing from the anonymize surface mounts on the Import tab.
     expect(screen.queryByRole('region', { name: 'Anonymize' })).toBeNull()
   })
@@ -385,10 +390,62 @@ const recordingServer = (archives: readonly ServerArchive[]): Layer.Layer<HttpCl
     HttpClient.HttpClient,
     HttpClient.make((request) => {
       const body = decodeBody(request.body)
+      const authorization = request.headers['authorization']
+
+      // A `POST /` at the FHIR base with a Bundle body is `fhir-r4`'s
+      // bundle-submit (a batch of PUT entries from persistBatchBundle, or a
+      // batch of GET entries from classifyAgainstServer). Unwrap: record each
+      // entry as its own request, mirror the batch-response. This keeps
+      // `writes()` / `isResourceWrite` seeing one recorded request per
+      // resource operation.
+      if (
+        request.method === 'POST' &&
+        (request.url === `${SERVER_URL}/` || request.url === SERVER_URL)
+      ) {
+        const parsed = safeParseBundle(body)
+        if (parsed !== undefined) {
+          const entries = parsed.entry ?? []
+          const responseEntries: unknown[] = []
+          for (const entry of entries) {
+            const entryReq = entry.request
+            if (entryReq === undefined) {
+              responseEntries.push({ response: { status: '400 Bad Request' } })
+              continue
+            }
+            const entryUrl = `${SERVER_URL}/${entryReq.url}`
+            const entryBody = entry.resource === undefined ? '' : JSON.stringify(entry.resource)
+            recorded.push({
+              method: entryReq.method,
+              url: entryUrl,
+              authorization,
+              body: entryBody,
+            })
+            if (entryReq.method === 'GET') {
+              responseEntries.push({ response: { status: '404 Not Found' } })
+              continue
+            }
+            responseEntries.push({
+              response: { status: '200 OK' },
+              ...(entry.resource !== undefined ? { resource: entry.resource } : {}),
+            })
+          }
+          return Effect.succeed(
+            HttpClientResponse.fromWeb(
+              request,
+              jsonResponse({
+                resourceType: 'Bundle',
+                type: 'batch-response',
+                entry: responseEntries,
+              })
+            )
+          )
+        }
+      }
+
       recorded.push({
         method: request.method,
         url: request.url,
-        authorization: request.headers['authorization'],
+        authorization,
         body,
       })
       const params = Object.fromEntries(request.urlParams)
@@ -413,6 +470,32 @@ const recordingServer = (archives: readonly ServerArchive[]): Layer.Layer<HttpCl
     })
   )
 
+/** Minimal shape read from the request body of a `POST /` batch bundle. */
+interface RecordedBundleShape {
+  readonly entry?: readonly {
+    readonly request?: { readonly method: string; readonly url: string }
+    readonly resource?: unknown
+  }[]
+}
+
+/**
+ * Best-effort parse of a `POST /` body as a batch Bundle — `undefined` when
+ * the body isn't a bundle so a non-bundle POST at `/` falls through.
+ */
+const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
+  if (body === '') return undefined
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(body) as unknown
+  } catch {
+    return undefined
+  }
+  if (parsed === null || typeof parsed !== 'object') return undefined
+  const record = parsed as { readonly resourceType?: unknown }
+  if (record.resourceType !== 'Bundle') return undefined
+  return parsed
+}
+
 /**
  * Mount the app through the **real** `buildSmartRouterContext`, so the URL
  * prefixing and the bearer header under test are the production ones.
@@ -428,7 +511,7 @@ const mount = (config: { readonly archives?: readonly ServerArchive[] }): void =
 /** Drive the local-pick flow from an empty server all the way to a completed import. */
 const importOneArchive = async (): Promise<void> => {
   mount({})
-  await userEvent.upload(await screen.findByLabelText('HAR file'), harFile('portal-session.har'))
+  await userEvent.upload(await screen.findByLabelText('Import file'), harFile('portal-session.har'))
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
   })
