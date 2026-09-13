@@ -16,6 +16,14 @@ It composes three existing primitives and adds nothing to their semantics:
 - **[`har-recorder-core`](./har-recorder-core/AGENTS.md)** — the pure layer:
   `Recording` (sniffer events → `HttpArchive.Log`), `isOmittedFromRecording`,
   `recordingFileName`, `toHar`, and `HarRecorderBridge`. Platform-neutral.
+- **`har-recorder-rust`** — serde mirror of the bridge wire (`bridge.rs`) plus
+  the validated, atomic `save_har` and the one Rust definition of the
+  `saved_data` folder name (`save.rs`). No `tauri` dependency, so it compiles
+  and tests without GTK.
+- **`har-recorder-tauri-rust`** — the host glue: one `BRIDGE_EVENT` listener
+  that decodes `SaveHar`, writes off the event thread, and answers `HarSaved` /
+  `HarSaveFailed`. Attached from `wildflower-tauri`'s `setup()`, which hands it
+  the app data directory it already resolved.
 
 Still to come, in the phases of #652:
 
@@ -24,11 +32,6 @@ Still to come, in the phases of #652:
   hooks (the data-plane tags live on `CollectorBridge`, and a tag must be unique
   across the shared channel), which makes `collector-react` an intrinsic
   dependency.
-- **`har-recorder-rust`** — serde mirror of the bridge wire plus the validated,
-  atomic `save_har`. No `tauri` dependency, so it compiles and tests without
-  GTK.
-- **`har-recorder-tauri-rust`** — the host glue that listens on `BRIDGE_EVENT`,
-  writes the file off-thread, and answers `HarSaved` / `HarSaveFailed`.
 
 ## Layering
 

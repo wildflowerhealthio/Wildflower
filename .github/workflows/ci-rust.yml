@@ -8,7 +8,7 @@ on:
     # This workflow no longer runs on pushes to main — CI is a pre-merge gate
     # only. It compiles, lints, and tests the ENTIRE Cargo workspace in one job,
     # including the crates that pull in `tauri = "2"` (wildflower-tauri,
-    # browser-sniffer-tauri-rust, shared-structures-tauri-rust,
+    # browser-sniffer-tauri-rust, har-recorder-tauri-rust, shared-structures-tauri-rust,
     # tauri-plugin-native-webview). Those need GTK/webkit system libs, so the
     # job installs them and stubs the generated web bundles the Tauri crates
     # `include_str!`. (This used to be a separate ci-rust-tauri.yml; the split

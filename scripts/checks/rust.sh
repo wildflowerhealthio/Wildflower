@@ -42,10 +42,11 @@ fi
 non_tauri=(--workspace
   --exclude wildflower-tauri
   --exclude browser-sniffer-tauri-rust
+  --exclude har-recorder-tauri-rust
   --exclude shared-structures-tauri-rust
   --exclude tauri-plugin-native-webview)
-tauri=(-p wildflower-tauri -p browser-sniffer-tauri-rust -p shared-structures-tauri-rust -p tauri-plugin-native-webview)
-tauri_names=" wildflower-tauri browser-sniffer-tauri-rust shared-structures-tauri-rust tauri-plugin-native-webview "
+tauri=(-p wildflower-tauri -p browser-sniffer-tauri-rust -p har-recorder-tauri-rust -p shared-structures-tauri-rust -p tauri-plugin-native-webview)
+tauri_names=" wildflower-tauri browser-sniffer-tauri-rust har-recorder-tauri-rust shared-structures-tauri-rust tauri-plugin-native-webview "
 
 # Exact-match a crate name against the Tauri set. Iterating + string equality
 # avoids the substring ambiguity a `case "$tauri_names" in *" $n "*)` glob would

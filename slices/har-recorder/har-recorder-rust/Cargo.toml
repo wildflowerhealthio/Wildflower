@@ -1,0 +1,24 @@
+[package]
+name = "har-recorder-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+# `SaveError`'s `Display`/`source` wiring. The message the host puts on
+# `HarSaveFailed` is this enum's `Display`, so the variants carry their own
+# prose rather than the caller formatting each arm.
+thiserror = "2"
+
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true
+
+[dev-dependencies]
+proptest = "1"
+# Real directories for the `save_har` tests: the atomic-rename and
+# refuse-to-clobber behaviour only exists against a filesystem, so the tests
+# drive one instead of mocking `fs`.
+tempfile = "3"

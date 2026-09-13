@@ -3168,6 +3168,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "har-recorder-rust"
+version = "0.0.0"
+dependencies = [
+ "proptest",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.20",
+]
+
+[[package]]
+name = "har-recorder-tauri-rust"
+version = "0.0.0"
+dependencies = [
+ "har-recorder-rust",
+ "serde_json",
+ "shared-structures-rust",
+ "tauri",
+ "tauri-plugin-log",
+]
+
+[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9147,6 +9169,7 @@ dependencies = [
  "dotenvy",
  "emr-rust",
  "gatekeeper-rust",
+ "har-recorder-tauri-rust",
  "ohif-server-rust",
  "openssl",
  "persistence-rust",

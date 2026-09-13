@@ -1,0 +1,19 @@
+[package]
+name = "har-recorder-tauri-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-log = "2"
+serde_json.workspace = true
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust" }
+# The wire mirror and the validated, atomic write. Everything that can be
+# wrong lives there, under tests that run without a webview toolkit; this
+# crate is only the listener, the thread, and the two emits.
+har-recorder-rust = { path = "../har-recorder-rust" }
+
+# Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
+[lints]
+workspace = true
