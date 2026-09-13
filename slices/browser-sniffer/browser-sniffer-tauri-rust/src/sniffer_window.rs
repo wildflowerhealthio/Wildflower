@@ -16,9 +16,8 @@ use crate::bootstrap::SNIFFER_BOOTSTRAP;
 /// (`__TAURI__.event`).
 ///
 /// Page-initiated downloads are enabled for the sniffer instance and land in
-/// [`sniffer_download_dir`]; the plugin blocks them on every instance that
-/// names no directory. Only the desktop backend implements downloads at all —
-/// the request rides the mobile wire and both native sides ignore it.
+/// [`sniffer_download_dir`] — desktop only; the plugin blocks them on any
+/// instance that names no directory.
 ///
 /// The plugin's `open` is idempotent: a second call while a native webview is up
 /// navigates the existing content webview to `url` rather than stacking a new
@@ -79,19 +78,12 @@ pub(crate) fn open_or_navigate(app: &AppHandle, url: WebviewUrl) -> anyhow::Resu
 }
 
 /// Where the sniffer instance's page-initiated downloads land:
-/// `<app data dir>/saved_data`. The plugin creates the directory on demand and
-/// picks a sanitised, non-clobbering name inside it; nothing else about the
-/// download is under the page's control.
+/// `<app data dir>/saved_data`, beside the rest of the captured data rather
+/// than in the user's OS downloads folder. The plugin creates the directory
+/// and picks the name; nothing about the download is under the page's control.
 ///
-/// A download that reaches the sniffer is a file the EMR chose to hand over
-/// instead of rendering (a PDF report, a CSV export), so it belongs with the
-/// rest of the captured data under the app's own data directory rather than in
-/// the user's OS downloads folder.
-///
-/// `None` when the platform cannot resolve an app data directory; the plugin
-/// then blocks downloads outright. An unresolvable directory must not stop the
-/// scrape from opening at all, so this logs and degrades rather than failing
-/// `open_or_navigate`.
+/// `None` when the platform resolves no app data directory — the plugin then
+/// blocks downloads, which must not stop the scrape from opening at all.
 fn sniffer_download_dir(app: &AppHandle) -> Option<std::path::PathBuf> {
     match app.path().app_data_dir() {
         Ok(dir) => Some(dir.join("saved_data")),

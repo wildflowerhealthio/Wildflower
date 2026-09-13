@@ -6,20 +6,15 @@ import { Bridge } from 'effect-messaging-core'
  * it to disk and answers with the path it wrote or the reason it did not.
  *
  * @remarks
- * A separate bridge from `CollectorBridge` rather than two more tags on it: the
- * recorder's *intake* is the collector's data plane (the sniffer events), but
- * its *output* is a filesystem write that the collector has no part in, and a
- * tag must be unique across every listener on the shared `BRIDGE_EVENT`
- * channel. `SaveHar` / `HarSaved` / `HarSaveFailed` are unused by any other
- * bridge.
+ * Separate from `CollectorBridge` — which carries the recorder's sniffer-event
+ * intake — because the save is a filesystem write the collector has no part in
+ * and tags must be unique across the shared `BRIDGE_EVENT` channel. The archive
+ * rides as already-encoded `.har` text, so the host needs no HAR model. See the
+ * slice's [Design Explanation](../../docs/Design%20Explanation.md).
  *
- * The archive rides as `text` — the already-encoded contents of the `.har`
- * file — so there is one HAR emitter (`http-archive`) and the host needs no
- * HAR model of its own, only a validated file name and a write.
- *
- * See the [Wire Pinning How-To](../../../docs/Messaging/Wire%20Pinning%20How-To.md):
- * the wire strings below are the contract `har-recorder-rust`'s serde mirror is
- * pinned to by its golden tests.
+ * The wire strings below are the contract `har-recorder-rust`'s serde mirror is
+ * pinned to by its golden tests — see the
+ * [Wire Pinning How-To](../../../docs/Messaging/Wire%20Pinning%20How-To.md).
  *
  * @packageDocumentation
  */
@@ -48,8 +43,7 @@ type SaveHar = Schema.Schema.Type<typeof SaveHar>
  * Host → Web: the archive was written, and `path` is where it landed.
  *
  * @remarks
- * `path` is the absolute path of the written file, which the page shows as the
- * recording's result. `fileName` echoes the request so a page that has since
+ * `path` is absolute. `fileName` echoes the request so a page that has since
  * started another recording can tell whose answer this is.
  *
  * Wire: `{"_tag":"HarSaved","fileName":"…","path":"/…/saved_data/….har"}`
@@ -66,9 +60,8 @@ type HarSaved = Schema.Schema.Type<typeof HarSaved>
  * Host → Web: nothing was written, and `message` says why.
  *
  * @remarks
- * Covers both a rejected `fileName` and a failed write. The recording's bytes
- * are gone with the page state either way, so the page surfaces this to the
- * user rather than retrying silently.
+ * Covers both a rejected `fileName` and a failed write. The bytes are gone with
+ * the page state either way, so the page surfaces this rather than retrying.
  *
  * Wire: `{"_tag":"HarSaveFailed","fileName":"…","message":"…"}`
  */
@@ -95,12 +88,10 @@ type HarRecorderBridge = Bridge.Bridge<
  * Slice-level bridge between the HAR Recorder page and its Tauri host.
  *
  * @remarks
- * One request (`SaveHar`) and its two terminal answers (`HarSaved`,
- * `HarSaveFailed`). No `urlParams`: a recording exists only inside a running
- * page, so there is no initial message to carry on a WebView source URL.
- *
- * The sniffer events the recording is built from do **not** ride here — they
- * arrive on `CollectorBridge`, whose host→web data plane already declares them.
+ * One request (`SaveHar`) and its two terminal answers. No `urlParams`: a
+ * recording exists only inside a running page, so there is no initial message
+ * to carry on a WebView source URL. The sniffer events it is built from arrive
+ * on `CollectorBridge`, not here.
  */
 const HarRecorderBridge: HarRecorderBridge = Bridge.make({
   name: 'HarRecorder',

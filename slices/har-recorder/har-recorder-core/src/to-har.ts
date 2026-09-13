@@ -14,13 +14,11 @@ import { MAX_BODY_BYTES, type Recording } from './recording.ts'
 const CREATOR_NAME = 'Wildflower HAR Recorder'
 
 /**
- * Why a recorded entry states no request side.
+ * Why a recorded entry states no request side, carried on every entry.
  *
  * @remarks
- * Carried on every entry so a reader learns it from the file rather than from
- * this repository. Distinct from `http-archive`'s
- * `DROPPED_REQUEST_ON_IMPORT_COMMENT`, which speaks for an archive that *had* a
- * request side and lost it at import: here there was never one to lose.
+ * Distinct from `http-archive`'s `DROPPED_REQUEST_ON_IMPORT_COMMENT`, which
+ * speaks for an archive that *had* a request side and lost it at import.
  */
 const REQUEST_COMMENT =
   'The injected sniffer observes fetch and XMLHttpRequest on the response side only, so this exchange’s method, request headers and request body were never observed. They are reported as UNKNOWN and absent rather than guessed — a GET and a POST to this URL are indistinguishable in this recording.'
@@ -54,11 +52,9 @@ interface ToHarOptions {
  *
  * @remarks
  * The whole of the recorder's HAR knowledge is this call: `http-archive` owns
- * the format, and this states only who produced the file and what the recording
- * did not carry — the omitted content types, the body cap, and the missing
- * request side. Encoding it to the text of a `.har` file is `harToJson`.
- *
- * Entries come out in settle order, as {@link Recording.entries} holds them.
+ * the format, and this adds only who produced the file and what the recording
+ * did not carry. Encoding it to `.har` text is `harToJson`. Entries come out in
+ * settle order, as {@link Recording.entries} holds them.
  */
 const toHar = (recording: Recording, options: ToHarOptions): Har =>
   emitHarFromLog(

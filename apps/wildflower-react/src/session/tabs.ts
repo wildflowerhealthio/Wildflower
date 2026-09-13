@@ -6,10 +6,9 @@
  * the active tab itself (exact-or-descendant prefix match) — no separate
  * lookup helper is needed.
  *
- * `har-recorder` is not in {@link TABS}: it is a platform tab, contributed by
- * the Tauri entry through `platformTabs` because the recorder needs a sniffer
- * webview and a host filesystem. Its key and path are named here anyway so
- * every tab a bar can render is described by one union.
+ * `har-recorder` is named here but absent from {@link TABS}: it is a platform
+ * tab the Tauri entry contributes through `platformTabs`, and one union should
+ * still describe every tab a bar can render.
  */
 type TabKey = 'home' | 'collector' | 'settings' | 'har-recorder'
 

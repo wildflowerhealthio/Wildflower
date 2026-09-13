@@ -160,13 +160,10 @@ interface RenderAppOptions {
   readonly platformSettingsItems: readonly SettingsItem[]
   /**
    * Platform-specific tabs this entry contributes to the primary bar, after the
-   * shared `TABS`. Threaded into `AppRootTree`, which provides them to the tree
-   * for `<TabBar>` to render (see `session/platform-tabs-context.ts`).
-   * `main-tauri` contributes the HAR Recorder — it needs a sniffer webview and
-   * a host filesystem, neither of which a browser tab has; standalone-web
-   * entries pass `[]`. Keeping the choice at the entry — the only place that
-   * knows the platform — means the bar stays a dumb renderer with no
-   * `entry`-sniffing branch.
+   * shared `TABS` (see `session/platform-tabs-context.ts`). Chosen at the entry
+   * for the same reason as `platformSettingsItems`: only the entry knows the
+   * platform, so the bar needs no `entry`-sniffing branch. `main-tauri`
+   * contributes the HAR Recorder; web entries pass `[]`.
    */
   readonly platformTabs: AppRootTreeProps['platformTabs']
   /**

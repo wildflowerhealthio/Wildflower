@@ -101,15 +101,11 @@ pub(super) struct InstanceState {
     /// latest open's [`crate::models::OpenRequest::download_dir`]; `None`
     /// blocks them.
     ///
-    /// Behind a `Mutex` rather than captured by the `on_download` closure
-    /// because a rewire (a second `open_url` on a live instance) must be able
-    /// to change it *without* rebuilding the content webview — the closure is
-    /// installed once, at build time, and cannot be swapped afterwards. The
-    /// closure therefore reads this cell at download-request time, exactly as
-    /// the window listeners read [`Self::current_channel`] at fire time, and a
-    /// download started after a rewire lands in the new directory instead of
-    /// the one the build happened to see. See
-    /// [`super::lifecycle::apply_rewire`].
+    /// A cell rather than a capture because the `on_download` closure is
+    /// installed once at build time and cannot be swapped: it reads this at
+    /// request time, exactly as the window listeners read
+    /// [`Self::current_channel`] at fire time, so a rewire re-points or
+    /// re-blocks a live instance. See [`super::lifecycle::apply_rewire`].
     pub(super) download_dir: Mutex<Option<PathBuf>>,
 }
 
@@ -179,8 +175,7 @@ pub(super) fn lock_state<'a, T>(
 /// overwrites any prior entry for the same id — equivalent to the old reset.
 /// [`InstanceState::open_generation`] is the one field carried across that
 /// overwrite (see its doc: the token must not restart); `download_dir` is
-/// (re)set from the building open's request, and a later rewire updates it in
-/// place rather than through here.
+/// (re)set from the building open's request, and a rewire updates it in place.
 pub(super) fn install_instance_state<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,

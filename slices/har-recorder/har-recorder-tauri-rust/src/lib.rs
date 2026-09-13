@@ -1,11 +1,9 @@
 //! Tauri host glue for the HAR Recorder: one listener on the multiplexed
-//! bridge channel, the write moved off the event thread, and the two
-//! terminal answers.
+//! bridge channel, the write moved off the event thread, and the two terminal
+//! answers. See the [Design Explanation](../../docs/Design%20Explanation.md).
 //!
-//! Every decision lives in [`har_recorder_rust`] — which names are safe,
-//! where `saved_data` is, what happens when the target exists — so this
-//! module stays thin enough to read in one screen and needs no webview to
-//! be trusted.
+//! Every decision lives in [`har_recorder_rust`], which needs no webview to be
+//! tested; this module is only the glue.
 
 use std::path::{Path, PathBuf};
 
@@ -17,32 +15,27 @@ use tauri_plugin_log::log;
 
 /// Wire the recorder's listener on the multiplexed bridge event.
 ///
-/// `app_data_dir` is the directory the host already resolved and created
-/// in `setup()` — passed in rather than resolved a second way, so the
-/// recorder writes into the same tree the rest of the app uses. The
-/// `saved_data` folder under it is named once, in
+/// `app_data_dir` is the directory the host already resolved and created in
+/// `setup()`, passed in rather than resolved a second way; the `saved_data`
+/// folder under it is named once, in
 /// [`har_recorder_rust::save::saved_data_dir`].
 ///
-/// Registers synchronously, so calling it in `setup()` cannot miss a
-/// message: the webview's first `SaveHar` can only follow its own
-/// `__Ready`, which is much later. Idempotent at the listener level —
-/// call once per app lifecycle.
+/// Registers synchronously, so a `setup()` call cannot miss a message — the
+/// webview's first `SaveHar` can only follow its own `__Ready`. Call once per
+/// app lifecycle.
 ///
-/// Tags this crate does not own (sibling slices' bridge traffic) are
-/// dropped silently; an undecodable payload is warned and, when the
-/// requested file name can still be read out of it, answered with
+/// Sibling slices' tags are dropped silently; an undecodable payload is warned
+/// and, when a file name can still be read out of it, answered with
 /// `HarSaveFailed` so the page does not wait forever.
 pub fn attach_har_recorder(app: &AppHandle, app_data_dir: PathBuf) {
-    // The bridge channel is shared across listeners with no automated
-    // cross-process tag guard; log this crate's tag set at attach time so
-    // the boot log shows who dispatches what. See the effect-messaging-tauri
+    // The shared bridge channel has no automated cross-process tag guard, so
+    // the boot log records who dispatches what. See the effect-messaging-tauri
     // README ("Tag uniqueness across processes").
     log::info!(
         "[har-recorder] listening on '{BRIDGE_EVENT}' for tags: {:?}",
         TAGS
     );
-    // Resolved once, from the directory the host already created — the
-    // folder name is never joined a second way.
+    // Resolved once, from the directory the host already created.
     let directory = saved_data_dir(&app_data_dir);
     let handle = app.clone();
     app.listen(BRIDGE_EVENT, move |event| {
@@ -62,9 +55,9 @@ pub fn attach_har_recorder(app: &AppHandle, app_data_dir: PathBuf) {
 
 /// Decode a `SaveHar` and hand the write to a blocking worker.
 ///
-/// The archive can be tens of megabytes, and the listener runs on the
-/// event thread that every other bridge message shares — so nothing here
-/// touches the filesystem. See [Review Standards][rs] rule 7.
+/// The archive can be tens of megabytes and the listener runs on the event
+/// thread every other bridge message shares, so nothing here touches the
+/// filesystem. See [Review Standards][rs] rule 7.
 ///
 /// [rs]: ../../../../docs/Agents/Review%20Standards%20Reference.md
 fn handle_save_har(app: &AppHandle, directory: &Path, payload: &str) {
@@ -72,10 +65,9 @@ fn handle_save_har(app: &AppHandle, directory: &Path, payload: &str) {
         Ok(HarRecorderWebToHost::SaveHar { file_name, text }) => (file_name, text),
         Err(error) => {
             log::warn!("[har-recorder] undecodable {SAVE_HAR} payload: {error}");
-            // The page is waiting on a terminal answer, so answer whenever
-            // the envelope still says which recording this was. A payload
-            // too broken to name one is dropped — there is nothing to
-            // address the failure to.
+            // The page waits on a terminal answer, so answer whenever the
+            // envelope still names the recording. One too broken to name it is
+            // dropped — there is nothing to address the failure to.
             match recover_file_name(payload) {
                 Some(file_name) => emit(
                     app,
@@ -94,8 +86,7 @@ fn handle_save_har(app: &AppHandle, directory: &Path, payload: &str) {
 
     let handle = app.clone();
     let directory = directory.to_path_buf();
-    // Detached on purpose: the answer is the emit inside, and nothing
-    // upstream waits on this handle.
+    // Detached on purpose: the answer is the emit inside.
     let _worker = tauri::async_runtime::spawn_blocking(move || {
         let answer = match save_har(&directory, &file_name, &text) {
             Ok(path) => {
@@ -118,8 +109,8 @@ fn handle_save_har(app: &AppHandle, directory: &Path, payload: &str) {
 }
 
 /// The `fileName` of a `SaveHar` whose full payload did not decode — the
-/// envelope peek, widened by one field, so a page that sent an unreadable
-/// `text` still gets told which recording failed.
+/// envelope peek widened by one field, so a page that sent an unreadable
+/// `text` is still told which recording failed.
 fn recover_file_name(payload: &str) -> Option<String> {
     let decoded: serde_json::Value = serde_json::from_str(payload).ok()?;
     decoded.get("fileName")?.as_str().map(str::to_owned)
@@ -135,9 +126,9 @@ fn emit(app: &AppHandle, message: HarRecorderHostToWeb) {
 mod tests {
     use super::*;
 
-    /// The recovery path is what turns a malformed request into an answer
-    /// rather than a page that waits forever, so it has to survive exactly
-    /// the payloads that made the typed decode fail.
+    /// Recovery is what turns a malformed request into an answer rather than
+    /// a page that waits forever, so it must survive exactly the payloads that
+    /// made the typed decode fail.
     #[test]
     fn a_file_name_is_recovered_from_a_payload_the_typed_decode_rejects() {
         // `text` is a number, so `HarRecorderWebToHost` will not decode it.

@@ -185,14 +185,10 @@ const emitHar = (exchanges: readonly TraceExchange[], options: EmitHarOptions): 
  */
 interface EmitHarFromLogOptions {
   /**
-   * Name for `log.creator.name` — who produced this archive.
+   * Name for `log.creator.name` — who produced this archive, so a reader can
+   * tell a recorder's file from an anonymizer's.
    *
    * @defaultValue {@link CREATOR_NAME}
-   *
-   * @remarks
-   * An emitter that is not the web trace names itself here, so a reader of the
-   * file can tell a recorder's archive from an anonymizer's without consulting
-   * anything outside it.
    */
   readonly creatorName?: string
   /**
@@ -210,11 +206,9 @@ interface EmitHarFromLogOptions {
    * @defaultValue {@link DROPPED_REQUEST_ON_IMPORT_COMMENT}
    *
    * @remarks
-   * The default speaks for the anonymize path, where the request side existed
-   * in a source archive and was dropped at import. An emitter whose request
-   * side was never observed at all — a live recorder reading a response-only
-   * capture — states that instead, so the file does not claim a history it
-   * does not have.
+   * The default speaks for the anonymize path, where a request side existed and
+   * was dropped at import. An emitter that never observed one says so instead,
+   * rather than claiming a history it does not have.
    */
   readonly requestComment?: string
 }
@@ -289,11 +283,9 @@ const entryFromArchiveEntry = (entry: HttpArchive.Entry, requestComment: string)
  * guessed: `request.method` is `UNKNOWN`, timings are `-1`, and a dropped body
  * is a `HarNoBody` with the archive stating why in the entry `comment`.
  *
- * Two producers share this emitter — the anonymizer's re-encode and the HAR
- * recorder's live capture — and they differ only in who they say they are and
- * why their entries have no request side. Those are `creatorName` and
- * `requestComment`; both default to the anonymize path's wording, so a caller
- * that passes neither gets exactly what it got before.
+ * The anonymizer's re-encode and the HAR recorder's live capture share this
+ * emitter, differing only in `creatorName` and `requestComment`; both default
+ * to the anonymize path's wording.
  *
  * This function does not redact. Pass it a log that has already been through
  * {@link redactLog} when the source needed redacting — an archive built from a

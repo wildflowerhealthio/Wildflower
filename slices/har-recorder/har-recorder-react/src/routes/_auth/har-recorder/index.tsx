@@ -11,10 +11,9 @@ import styles from './har-recorder.module.css'
  * Does this string name a page the sniffer will open?
  *
  * @remarks
- * The collector's own `HttpUriString` — the refinement the `Open` message's
- * `uri` is decoded against — rather than a second URL rule here. A URL this
- * rejects would fail to decode at the bridge boundary and never reach the
- * host, so the Start button is disabled on exactly the inputs the wire refuses.
+ * The collector's own `HttpUriString` — what the `Open` message's `uri` decodes
+ * against — rather than a second URL rule, so Start is disabled on exactly the
+ * inputs the wire would refuse.
  */
 const isStartableUrl = Schema.is(WebViewSource.HttpUriString)
 
@@ -23,20 +22,18 @@ const isStartableUrl = Schema.is(WebViewSource.HttpUriString)
  * reports, and save them as a `.har` file in the app's `saved_data` directory.
  *
  * @remarks
- * A desktop-only surface — it is reached through the Tauri shell's own tab (the
- * entry contributes it via `platformTabs`), because the sniffer webview and the
- * filesystem write both live in the host. The page itself is only the state
- * machine's face: {@link useHarRecorder} owns the recording, the ordering, and
- * the two bridges.
+ * Desktop-only: the Tauri entry contributes the tab via `platformTabs`, because
+ * the sniffer webview and the filesystem write both live in the host. The page
+ * is only the state machine's face — {@link useHarRecorder} owns the recording,
+ * the ordering and the two bridges.
  */
 function HarRecorderPage(): JSX.Element {
   const [url, setUrl] = useState('')
   const { state, start, stop } = useHarRecorder()
 
   const isRecording = state._tag === 'Recording'
-  // `Saving` is the one state a new recording must not start from: its archive
-  // is still with the host, and starting again would re-point the file name the
-  // pending answer is matched on.
+  // `Saving` blocks a new recording: starting again would re-point the file
+  // name the host's pending answer is matched on.
   const canStart = state._tag !== 'Recording' && state._tag !== 'Saving' && isStartableUrl(url)
 
   return (

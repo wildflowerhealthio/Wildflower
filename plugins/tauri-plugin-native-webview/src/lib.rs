@@ -69,8 +69,7 @@ mod error;
 mod models;
 mod url_scheme;
 
-// Desktop-only: the download hook that consumes it is a `WebviewBuilder`
-// concern, and the mobile backends implement no downloads at all (see
+// Desktop-only: the mobile backends implement no downloads (see
 // `docs/Explanation.md` § "Downloads (desktop)").
 #[cfg(desktop)]
 mod download_name;

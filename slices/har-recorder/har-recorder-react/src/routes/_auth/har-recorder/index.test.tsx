@@ -138,12 +138,9 @@ const isStartDisabled = (): boolean => startButton().hasAttribute('disabled')
  * can hold.
  *
  * @remarks
- * A `BridgeHandlerRecord`'s handlers take `never`, so a record stored under a
- * string key cannot be called back without re-imposing the shape the transport
- * itself dispatches through: one `(message: DecodedMessage) => Effect<void>`
- * per tag. This is the same erasure `makeHandlerCoordinator`'s `recompose`
- * performs, and it is what lets these tests feed a decoded host message into
- * the record the hook registered.
+ * A `BridgeHandlerRecord`'s handlers take `never`, so calling one back needs
+ * the shape the transport dispatches through re-imposed: the same erasure
+ * `makeHandlerCoordinator`'s `recompose` performs.
  */
 const erase = (handlers: object): MessageHandler.AnyHandlers =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion

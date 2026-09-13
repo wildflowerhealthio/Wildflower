@@ -1,9 +1,5 @@
-/*
- * Layout for the recorder page: the row holding Start / Stop & Save, and the
- * two status lines (the live response counter and the saved file's path). Only
- * spacing and the monospace treatment of a machine string — every colour and
- * control style comes from tundra-css and `react-tundraish`.
- */
+/* Spacing for the recorder page; every colour and control style comes from
+ * tundra-css and `react-tundraish`. */
 .buttons {
   display: flex;
   gap: var(--space-5);

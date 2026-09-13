@@ -1,13 +1,10 @@
 //! Turning a webview-suggested download file name into a safe, non-clobbering
-//! file name inside a caller-chosen directory.
+//! file name inside a caller-chosen directory — see
+//! [Explanation.md](../docs/Explanation.md) § "Downloads (desktop)".
 //!
-//! Deliberately **tauri-free**: the suggested name is attacker-controlled (it
-//! comes from a `Content-Disposition` header or a `download` attribute on an
-//! arbitrary third-party page), so the sanitising and collision logic is the
-//! part that most needs unit tests — and the rest of the crate links tauri,
-//! whose desktop build needs GTK/WebKit system libs that a plain
-//! `cargo test` host may not have. Keeping this module free of tauri imports
-//! keeps [`unique_name`] testable wherever the crate compiles at all.
+//! Deliberately **tauri-free**: the suggested name is attacker-controlled, so
+//! the sanitising and collision logic stays unit-testable on a host without
+//! the GTK/WebKit libs the rest of the crate links.
 
 use std::path::Path;
 
@@ -15,45 +12,32 @@ use std::path::Path;
 /// `"..."`, or a name made entirely of non-allowlisted characters).
 const FALLBACK_NAME: &str = "download";
 
-/// Byte cap on the sanitised name before any `-N` de-duplication suffix. Well
-/// under the 255-byte per-component limit every filesystem the desktop backend
-/// runs on enforces, leaving room for the suffix (at most 5 more bytes, see
-/// [`MAX_DEDUPE_SUFFIX`]) without a second truncation pass.
+/// Byte cap on the sanitised name before any `-N` de-duplication suffix, far
+/// enough under the universal 255-byte component limit that the suffix needs
+/// no second truncation pass.
 const MAX_NAME_BYTES: usize = 150;
 
-/// Highest `-N` suffix tried before [`unique_name`] gives up. Reaching it means
-/// the directory already holds 1000 downloads of the same name, which is far
-/// past "the user downloaded the file twice" and into "something is looping";
-/// giving up (and letting the caller block the download) is preferred over
-/// overwriting a file the user already has.
+/// Highest `-N` suffix tried before [`unique_name`] gives up — reaching it
+/// means something is looping, and blocking the download beats overwriting a
+/// file the user already has.
 const MAX_DEDUPE_SUFFIX: u32 = 1000;
 
-/// Pick a file name for a download landing in `dir`, derived from the
-/// webview-`suggested` name and guaranteed not to name an existing entry of
-/// `dir`.
+/// Pick a file name for a download landing in `dir`, derived from the fully
+/// untrusted `suggested` name and guaranteed not to name an existing entry of
+/// `dir`, which is only probed — never created or modified here.
 ///
-/// `dir` is the absolute directory the download will be written into; it is
-/// only probed for existing entries, never created or modified here.
-/// `suggested` is the name the webview proposed and is fully untrusted.
+/// Returns a single path segment, never absolute, never `.`/`..`, never
+/// containing a separator: that is what makes `dir.join(name)` unable to
+/// escape `dir`. `None` when the sanitised name and all
+/// [`MAX_DEDUPE_SUFFIX`] of its `-N` variants are taken, so the caller blocks
+/// the download rather than clobbering.
 ///
-/// Returns the chosen file name — a single path segment, never absolute, never
-/// `.`/`..`, never containing a separator — or `None` when `dir` already holds
-/// the sanitised name and all [`MAX_DEDUPE_SUFFIX`] of its de-duplicated
-/// variants (the caller then blocks the download rather than clobbering).
-///
-/// Sanitising is an **allowlist**: `A-Z`, `a-z`, `0-9`, `.`, `_` and `-`
-/// survive; every other character (including every non-ASCII one, and both
-/// path separators) becomes `_`. Leading dots are then stripped, so the result
-/// can be neither a dotfile nor a `.`/`..` traversal, and a name that empties
-/// out becomes [`FALLBACK_NAME`]. The output is therefore always a single
-/// segment, which is what makes `dir.join(name)` unable to escape `dir`.
-///
-/// De-duplication appends `-1`, `-2`, … **before** the extension (the last
-/// `.`), so `report.pdf` becomes `report-1.pdf` rather than `report.pdf-1`.
-/// The check is a `Path::exists` probe per candidate and so is inherently
-/// racy against a concurrent writer; the desktop backend is the only writer
-/// into its own per-instance download directory, so the race is not worth a
-/// create-exclusive dance here.
+/// Sanitising is an allowlist (`A-Za-z0-9._-`, others become `_`, leading dots
+/// stripped, [`FALLBACK_NAME`] when nothing survives) and `-N` is inserted
+/// before the extension; see [Explanation.md](../docs/Explanation.md) §
+/// "Downloads (desktop)". The per-candidate `Path::exists` probe is racy in
+/// principle, but the desktop backend is the only writer into its own
+/// per-instance download directory.
 pub(crate) fn unique_name(dir: &Path, suggested: &str) -> Option<String> {
     let base = sanitize_segment(suggested);
     if !dir.join(&base).exists() {
@@ -67,8 +51,7 @@ pub(crate) fn unique_name(dir: &Path, suggested: &str) -> Option<String> {
 }
 
 /// Reduce an untrusted suggested name to one safe path segment — see
-/// [`unique_name`]'s remarks for the allowlist, the leading-dot strip, the
-/// [`MAX_NAME_BYTES`] cap and the [`FALLBACK_NAME`].
+/// [`unique_name`] for the allowlist, the leading-dot strip and the cap.
 fn sanitize_segment(suggested: &str) -> String {
     let mapped: String = suggested
         .chars()
@@ -91,10 +74,9 @@ fn sanitize_segment(suggested: &str) -> String {
     }
 }
 
-/// Split a sanitised name into `(stem, extension)` at its **last** `.`, with
-/// the extension carrying the dot (`("report", ".pdf")`) or empty when there
-/// is none. A name whose only dot is leading cannot occur — [`sanitize_segment`]
-/// strips those — so the stem is never empty.
+/// Split a sanitised name into `(stem, extension)` at its **last** `.`, the
+/// extension carrying the dot (`("report", ".pdf")`) or empty when there is
+/// none. [`sanitize_segment`] strips leading dots, so the stem is never empty.
 fn split_extension(name: &str) -> (&str, &str) {
     match name.rfind('.') {
         Some(index) => name.split_at(index),
@@ -108,8 +90,7 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    /// A plain name in an empty directory is returned unchanged — the common
-    /// case must not mangle what the server suggested.
+    /// The common case must not mangle what the server suggested.
     #[test]
     fn plain_name_in_empty_dir_is_returned_unchanged() {
         let dir = tempdir().expect("tempdir");
@@ -119,12 +100,10 @@ mod tests {
         );
     }
 
-    /// Path separators and traversal segments are neutralised into `_`, so the
-    /// result names a file *inside* `dir` — this is the guard that keeps a
-    /// hostile `Content-Disposition` from writing outside the download
-    /// directory. Asserted on the joined path, not just the name, so the test
-    /// fails if `unique_name` ever returned something `join` treats as
-    /// absolute or parent-relative.
+    /// The guard that keeps a hostile `Content-Disposition` from writing
+    /// outside the download directory. Asserted on the joined path, not just
+    /// the name, so anything `join` treats as absolute or parent-relative
+    /// fails here too.
     #[test]
     fn traversal_and_separators_cannot_escape_the_directory() {
         let dir = tempdir().expect("tempdir");
@@ -149,10 +128,9 @@ mod tests {
         }
     }
 
-    /// A name that is empty or nothing but dots (`..`, `...`) sanitises away
-    /// entirely and falls back to `download` — never to an empty name, which
-    /// `join` would resolve back to the directory itself. (A name of rejected
-    /// characters does *not* empty out: each becomes `_`, e.g. `"   "` →
+    /// A name that is empty or nothing but dots must fall back to `download`,
+    /// never to an empty name — `join` would resolve that back to the
+    /// directory itself. (Rejected characters do not empty out: `"   "` →
     /// `"___"`.)
     #[test]
     fn fully_stripped_names_fall_back_to_download() {
@@ -166,9 +144,8 @@ mod tests {
         }
     }
 
-    /// Leading dots are stripped so a download can never land as a dotfile
-    /// (invisible to the user in Finder/Explorer) — while interior dots, which
-    /// carry the extension, survive.
+    /// A download must never land as a dotfile, invisible in Finder/Explorer —
+    /// while interior dots, which carry the extension, survive.
     #[test]
     fn leading_dots_are_stripped_but_interior_dots_survive() {
         let dir = tempdir().expect("tempdir");
@@ -193,9 +170,8 @@ mod tests {
         );
     }
 
-    /// An over-long suggestion is capped, and the cap leaves headroom for the
-    /// de-duplication suffix so no filesystem's 255-byte component limit is
-    /// approached.
+    /// An over-long suggestion is capped well short of any filesystem's
+    /// 255-byte component limit, leaving headroom for the `-N` suffix.
     #[test]
     fn over_long_names_are_capped() {
         let dir = tempdir().expect("tempdir");
@@ -203,9 +179,8 @@ mod tests {
         assert_eq!(name.len(), MAX_NAME_BYTES);
     }
 
-    /// An existing file makes the next download land beside it as `-1`, with
-    /// the suffix **before** the extension so the file stays openable by type.
-    /// Repeated collisions keep counting up rather than reusing `-1`.
+    /// The suffix goes **before** the extension so the file stays openable by
+    /// type, and repeated collisions count up rather than reusing `-1`.
     #[test]
     fn collisions_append_an_incrementing_suffix_before_the_extension() {
         let dir = tempdir().expect("tempdir");
@@ -233,8 +208,7 @@ mod tests {
         );
     }
 
-    /// A directory entry collides just like a file does — the download must
-    /// not be pointed at a path that already names a directory.
+    /// A directory entry collides just like a file does.
     #[test]
     fn an_existing_directory_also_counts_as_a_collision() {
         let dir = tempdir().expect("tempdir");
@@ -245,9 +219,8 @@ mod tests {
         );
     }
 
-    /// Exhausting every de-duplication suffix yields `None` rather than a name
-    /// that would overwrite one of the existing files. The caller blocks the
-    /// download on `None`.
+    /// Exhaustion must yield `None` — the caller blocks the download — rather
+    /// than a name that would overwrite an existing file.
     #[test]
     fn exhausting_every_suffix_yields_none() {
         let dir = tempdir().expect("tempdir");
@@ -258,9 +231,8 @@ mod tests {
         assert_eq!(unique_name(dir.path(), "f.bin"), None);
     }
 
-    /// The sanitised name is deterministic: two calls for the same suggestion
-    /// against the same (unchanged) directory agree. Guards against any future
-    /// entropy (timestamps, randomness) creeping into the name.
+    /// Guards against entropy (timestamps, randomness) creeping into the name:
+    /// two calls against an unchanged directory must agree.
     #[test]
     fn naming_is_deterministic_for_an_unchanged_directory() {
         let dir = tempdir().expect("tempdir");

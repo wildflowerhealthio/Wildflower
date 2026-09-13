@@ -1,16 +1,11 @@
 //! The HAR Recorder's host-side logic: the bridge wire mirror and the
-//! validated, atomic write into the app's `saved_data` directory.
+//! validated, atomic write into the app's `saved_data` directory. See the
+//! [Design Explanation](../../docs/Design%20Explanation.md).
 //!
-//! This crate deliberately has no `tauri` dependency — it compiles and
-//! tests on a machine without a webview toolkit, and the Tauri glue
-//! (listener, thread, emit) lives in `har-recorder-tauri-rust`. The split
-//! keeps every decision that can be wrong — which names are safe, what the
-//! wire looks like, what happens when the target exists — under a test
-//! that runs everywhere.
-//!
-//! The archive itself is built on the web side (`har-recorder-core` →
-//! `http-archive`) and rides the bridge as already-encoded text, so there
-//! is one HAR emitter and no HAR model here.
+//! Deliberately no `tauri` dependency, so every decision that can be wrong
+//! is testable on a machine without a webview toolkit; the Tauri glue lives
+//! in `har-recorder-tauri-rust`. The archive arrives as already-encoded
+//! text — there is one HAR emitter, and it is on the web side.
 
 pub mod bridge;
 pub mod save;

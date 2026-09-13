@@ -299,32 +299,20 @@ pub(super) fn present<R: Runtime>(
     Ok(PresentOutcome::Presented(generation))
 }
 
-/// Attach the content webview's download hook to `builder`.
+/// Attach the content webview's download hook to `builder` — see
+/// [Explanation.md](../../docs/Explanation.md) § "Downloads (desktop)".
 ///
-/// Downloads are **opt-in per instance**: the hook consults
-/// [`super::state::InstanceState::download_dir`] on every request and returns
-/// `false` — wry cancels the download, nothing is written — unless that cell
-/// holds a directory. The cell is read at request time rather than captured
-/// here, so a rewire can re-point or re-block downloads without rebuilding the
-/// webview (see that field's doc); `app` and `id` are all this closure holds.
+/// Downloads are **opt-in per instance**: the hook reads
+/// [`super::state::InstanceState::download_dir`] at request time rather than
+/// capturing it — which is what lets a rewire re-point or re-block a live
+/// instance — and returns `false` (wry cancels, nothing is written) unless it
+/// holds a directory. An allowed request keeps only the final component of
+/// wry's attacker-controlled suggested `destination` and passes it through
+/// [`unique_name`], which is what confines the write to that directory.
 ///
-/// On an allowed request the destination is rewritten to
-/// `<download dir>/<sanitised, non-clobbering name>`. wry pre-fills
-/// `destination` with `<OS downloads dir>/<name the page suggested>`, and that
-/// name is attacker-controlled (a `Content-Disposition` header or a `download`
-/// attribute on an arbitrary third-party page), so only its final component is
-/// kept and it goes through [`unique_name`] before being joined — which is what
-/// confines the write to the download directory. The directory is created
-/// on demand; a creation failure, an unusable name, or a poisoned lock all
-/// block the download rather than letting it fall back to the OS downloads
-/// folder.
-///
-/// A finished download is reported to the instance's current channel as
-/// [`NativeWebviewEvent::Downloaded`], carrying wry's `success`. Whether a
-/// *refused* request also produces one is platform-dependent — the GTK backend
-/// cancels the `WebKitDownload`, which still fires its `finished` signal — so
-/// the event means "a download ended", never "a download was saved"; `success`
-/// is the only outcome signal.
+/// A finished download reports [`NativeWebviewEvent::Downloaded`] on the
+/// instance's current channel. It means "a download ended", not "a download
+/// was saved" — `success` is the only outcome signal.
 fn install_download_handler<R: Runtime>(
     builder: WebviewBuilder<R>,
     app: &AppHandle<R>,
@@ -343,9 +331,7 @@ fn install_download_handler<R: Runtime>(
                 );
                 return false;
             };
-            // No directory configured for this instance: downloads stay blocked,
-            // which is the behaviour every instance has until a Rust caller opts
-            // one in with `OpenRequest::download_dir`.
+            // No directory: blocked, which is every instance's default.
             let Some(directory) = configured.as_ref() else {
                 return false;
             };
@@ -379,22 +365,21 @@ fn install_download_handler<R: Runtime>(
             let Some(instance) = instance_state(&app_for_download, &id_for_download) else {
                 return true;
             };
-            // Read the channel at fire time (never captured) so a rewire routes
-            // the event to the latest caller — same rule as the window listeners.
+            // Read at fire time (never captured) so a rewire routes the event to
+            // the latest caller — same rule as the window listeners.
             if let Ok(channel) = instance.current_channel.lock() {
                 let _ = channel.send(NativeWebviewEvent::Downloaded {
                     url: url.to_string(),
-                    // macOS reports no path even on success — `success` is the
-                    // authoritative field. See [`NativeWebviewEvent::Downloaded`].
+                    // `None` on macOS even on success — see
+                    // [`NativeWebviewEvent::Downloaded`].
                     path: path.map(|path| path.to_string_lossy().into_owned()),
                     success,
                 });
             }
             true
         }
-        // `DownloadEvent` is `#[non_exhaustive]`: a variant added by a future
-        // Tauri release is unknown to this handler, so refuse rather than
-        // authorise whatever it turns out to mean.
+        // `DownloadEvent` is `#[non_exhaustive]`: refuse a future variant rather
+        // than authorise whatever it turns out to mean.
         _ => false,
     })
 }
@@ -432,11 +417,8 @@ fn apply_rewire<R: Runtime>(
         // clear `nav_can_forward` (fresh nav truncates the forward stack). See
         // [`super::state::InstanceState`].
         instance.nav_can_forward.store(false, Ordering::SeqCst);
-        // The content webview's `on_download` hook was installed at build time
-        // and cannot be replaced, so it reads this cell at request time — which
-        // is what lets a rewire re-point (or, with `None`, re-block) downloads
-        // on a live instance without a rebuild. See
-        // [`super::state::InstanceState::download_dir`].
+        // The build-time `on_download` hook cannot be replaced, so it reads this
+        // cell per request — see [`super::state::InstanceState::download_dir`].
         *lock_state(&instance.download_dir, "download-dir")? = payload.download_dir.clone();
     }
     if let Some(script) = &payload.init_script {

@@ -7,9 +7,8 @@ publish.workspace = true
 [dependencies]
 serde.workspace = true
 serde_json.workspace = true
-# `SaveError`'s `Display`/`source` wiring. The message the host puts on
-# `HarSaveFailed` is this enum's `Display`, so the variants carry their own
-# prose rather than the caller formatting each arm.
+# `SaveError`'s `Display`/`source` wiring — the message the host forwards on
+# `HarSaveFailed` is that `Display`.
 thiserror = "2"
 
 # Opt this crate into the workspace lints (notably `unsafe_code = "forbid"`).
@@ -18,7 +17,6 @@ workspace = true
 
 [dev-dependencies]
 proptest = "1"
-# Real directories for the `save_har` tests: the atomic-rename and
-# refuse-to-clobber behaviour only exists against a filesystem, so the tests
-# drive one instead of mocking `fs`.
+# The atomic-rename and refuse-to-clobber behaviour only exists against a real
+# filesystem, so the `save_har` tests drive one.
 tempfile = "3"

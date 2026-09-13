@@ -9,8 +9,7 @@ use serde::{Deserialize, Serialize};
 
 /// Web→host tag literal, for routing an envelope `_tag` peek before
 /// committing to a payload shape. Pinned to the serde representation of
-/// [`HarRecorderWebToHost::SaveHar`] by the tag drift guard in this
-/// module's tests, so the literal and the enum cannot drift apart.
+/// [`HarRecorderWebToHost::SaveHar`] by this module's tag drift guard.
 pub const SAVE_HAR: &str = "SaveHar";
 
 /// Host→web tag literal for [`HarRecorderHostToWeb::HarSaved`].
@@ -19,9 +18,8 @@ pub const HAR_SAVED: &str = "HarSaved";
 /// Host→web tag literal for [`HarRecorderHostToWeb::HarSaveFailed`].
 pub const HAR_SAVE_FAILED: &str = "HarSaveFailed";
 
-/// Every tag this slice dispatches on the multiplexed bridge channel, in
-/// both directions — the one list the host's boot log reads from, so the
-/// log cannot fall out of step with what the listener actually routes.
+/// Every tag this slice dispatches on the multiplexed bridge channel, in both
+/// directions. The host's boot log reads from this list rather than its own.
 pub const TAGS: [&str; 3] = [SAVE_HAR, HAR_SAVED, HAR_SAVE_FAILED];
 
 /// Web→host messages on the HAR recorder bridge.
@@ -35,12 +33,10 @@ pub const TAGS: [&str; 3] = [SAVE_HAR, HAR_SAVED, HAR_SAVE_FAILED];
 pub enum HarRecorderWebToHost {
     /// Write this archive into the app's `saved_data` directory.
     ///
-    /// `file_name` is one path segment as `recordingFileName` produces it;
-    /// the host validates it again (see
-    /// [`validate_file_name`][crate::save::validate_file_name]) before any
-    /// filesystem call. `text` is the `.har` file's already-encoded
-    /// contents, not a nested object — there is one HAR emitter, and it is
-    /// on the web side.
+    /// `file_name` is one path segment as `recordingFileName` produces it,
+    /// re-validated by [`validate_file_name`][crate::save::validate_file_name]
+    /// before any filesystem call. `text` is the `.har` file's already-encoded
+    /// contents, not a nested object.
     ///
     /// Wire: `{"_tag":"SaveHar","fileName":"…","text":"…"}`.
     #[serde(rename_all = "camelCase")]
@@ -57,15 +53,14 @@ pub enum HarRecorderWebToHost {
 #[serde(tag = "_tag")]
 pub enum HarRecorderHostToWeb {
     /// The archive was written, and `path` is where it landed. `file_name`
-    /// echoes the request so a page that has since started another
-    /// recording can tell whose answer this is.
+    /// echoes the request so the page can tell whose answer this is.
     ///
     /// Wire: `{"_tag":"HarSaved","fileName":"…","path":"/…/saved_data/….har"}`.
     #[serde(rename_all = "camelCase")]
     HarSaved { file_name: String, path: String },
-    /// Nothing was written, and `message` says why — a rejected file name
-    /// or a failed write. Both are terminal: the recording's bytes live
-    /// only in the page, so the page surfaces this rather than retrying.
+    /// Nothing was written, and `message` says why — a rejected file name or
+    /// a failed write. Terminal either way: the page surfaces it, never
+    /// retries.
     ///
     /// Wire: `{"_tag":"HarSaveFailed","fileName":"…","message":"…"}`.
     #[serde(rename_all = "camelCase")]
@@ -78,9 +73,8 @@ mod tests {
     use proptest::prelude::*;
     use serde_json::Value;
 
-    /// The `_tag` a message actually serializes with — read back out of the
-    /// encoded JSON rather than restated, so this derives from serde
-    /// instead of from a second hand-written copy.
+    /// The `_tag` a message actually serializes with, read back out of the
+    /// encoded JSON rather than restated as a second hand-written copy.
     fn encoded_tag(message: &impl Serialize) -> String {
         let encoded: Value = serde_json::to_value(message).expect("serialize");
         encoded
@@ -90,9 +84,8 @@ mod tests {
             .to_owned()
     }
 
-    /// Drift guard for the routing literals: the listener matches on these
-    /// constants but decodes into the enums, so a rename of either half
-    /// without the other would silently stop dispatching.
+    /// The listener matches on these constants but decodes into the enums, so
+    /// renaming either half alone would silently stop dispatching.
     #[test]
     fn tag_literals_match_the_serde_representation() {
         assert_eq!(
@@ -119,8 +112,8 @@ mod tests {
         assert_eq!(TAGS, [SAVE_HAR, HAR_SAVED, HAR_SAVE_FAILED]);
     }
 
-    /// Golden test: the wire shape is shared with the TS side, so any drift
-    /// here is a cross-language protocol break, not a refactor.
+    /// Golden test: drift here is a cross-language protocol break, not a
+    /// refactor.
     #[test]
     fn har_saved_serializes_to_pinned_wire_format() {
         let message = HarRecorderHostToWeb::HarSaved {
@@ -145,8 +138,8 @@ mod tests {
         );
     }
 
-    /// The inbound direction: the exact string the TSDoc documents must
-    /// decode, field renames included.
+    /// The inbound direction: the exact string the TS side sends must decode,
+    /// field renames included.
     #[test]
     fn save_har_deserializes_from_the_pinned_wire_format() {
         let decoded: HarRecorderWebToHost =
@@ -171,8 +164,8 @@ mod tests {
         assert!(error.is_err(), "expected an unknown `_tag` to be rejected");
     }
 
-    /// A `SaveHar` missing `text` is not half-decoded into an empty
-    /// archive — it fails, and the host answers `HarSaveFailed`.
+    /// A `SaveHar` missing `text` must fail rather than half-decode into an
+    /// empty archive.
     #[test]
     fn save_har_without_text_fails_to_decode() {
         let error = serde_json::from_str::<HarRecorderWebToHost>(

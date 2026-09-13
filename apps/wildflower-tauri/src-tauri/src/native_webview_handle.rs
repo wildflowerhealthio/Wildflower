@@ -266,8 +266,8 @@ fn open_app_in_native_webview(
                 initial_subtitle: None,
                 initial_message: None,
                 cookies,
-                // A launched self-hosted app has no download story yet, so
-                // leave the plugin's default in place: downloads are blocked.
+                // No download story for launched apps yet; the plugin's
+                // default blocks them.
                 download_dir: None,
             },
         )

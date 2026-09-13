@@ -14,11 +14,10 @@ import { useHarRecorderSender } from './use-har-recorder-sender.ts'
  * every response it reports, and hand the finished archive to the host.
  *
  * @remarks
- * The recorder straddles two bridges. Its *intake* is the collector's data
- * plane — the sniffer events ride `CollectorBridge`, so this hook borrows
- * `collector-react`'s register and sender hooks rather than re-declaring those
- * tags. Its *output* is `HarRecorderBridge`: `SaveHar` out, `HarSaved` /
- * `HarSaveFailed` back.
+ * The recorder straddles two bridges: the sniffer events ride `CollectorBridge`
+ * (so this hook borrows `collector-react`'s hooks rather than re-declaring
+ * those tags), while `SaveHar` and its answers ride `HarRecorderBridge`. See
+ * the [package AGENTS.md](../AGENTS.md).
  *
  * @packageDocumentation
  */
@@ -34,8 +33,7 @@ type HarRecorderHandlers = MessageHandler.HandlersFor<HarRecorderBridge['HostToW
  *
  * @remarks
  * `Saved` and `Failed` are terminal for *that* recording, not for the hook: a
- * new {@link HarRecorder.start} from either lands back in `Recording`, which is
- * what lets a page record twice without remounting.
+ * new {@link HarRecorder.start} from either lands back in `Recording`.
  */
 type HarRecorderState =
   | { readonly _tag: 'Idle' }
@@ -89,29 +87,18 @@ const messageOf = (error: unknown): string =>
  *   `start(url)` and `stop()`
  *
  * @remarks
- * **Ordering.** `start(url)` registers the `CollectorBridge` handler record and
- * *then* sends one `Open`, so the sniffer's first events cannot land on a
- * dropped receiver. `stop()` sends `SaveHar`, then `SniffingComplete` (which is
- * what closes the sniffer webview), then unregisters: the host must hold the
- * bytes before the webview that produced them goes away.
+ * **Ordering.** `start` registers the `CollectorBridge` handlers *before*
+ * sending `Open`, and `stop` sends `SaveHar` before `SniffingComplete` (which
+ * closes the sniffer webview) and only then unregisters. The
+ * [Design Explanation](../../docs/Design%20Explanation.md) says why both orders
+ * are the way round they are.
  *
- * **The window's X saves too.** The host reports a dismissed sniffer window as
- * `UserDismissed`, which runs the same `stop()` — the recording exists only in
- * this page, so discarding it on a close would lose it silently.
- *
- * **Idempotence.** A `stop()` past the first is a no-op: the active recording
- * is cleared synchronously, before any Effect runs, so a `UserDismissed`
- * racing the button cannot send `SaveHar` twice.
- *
- * **Re-renders.** `count` is bumped only on `ResponseFinished` — one render per
- * settled response and none for the chunks in between, which for a body
- * arriving in hundreds of `ResponseData` messages is the difference between a
- * counter and a render storm. The {@link Recording} itself is a ref, never
- * state: it is megabytes of body bytes, and none of it is rendered.
- *
- * **Answers are matched by file name.** A `HarSaved` / `HarSaveFailed` whose
- * `fileName` is not the pending one is ignored, so a late answer for an earlier
- * recording cannot overwrite the current one's result.
+ * `stop` is idempotent and a dismissed sniffer window runs it too, so the
+ * recording — which exists only in this page — is never lost silently. A
+ * `HarSaved` / `HarSaveFailed` for a file name other than the pending one is
+ * ignored, so a late answer cannot overwrite the current result. `count` is
+ * bumped only on `ResponseFinished`, and the {@link Recording} is a ref rather
+ * than state: both keep a body's hundreds of chunks from re-rendering the page.
  */
 const useHarRecorder = (): HarRecorder => {
   const sendCollectorMessage = useCollectorSender()
@@ -126,16 +113,12 @@ const useHarRecorder = (): HarRecorder => {
   const activeRef = useRef<ActiveRecording | null>(null)
   /** The file name the host's next answer must carry to be ours. */
   const pendingFileNameRef = useRef<string | null>(null)
-  /**
-   * Lets the `UserDismissed` handler — built once, below — call the latest
-   * `stop`, which is defined after it.
-   */
+  /** Lets the `UserDismissed` handler, built once below, call the latest `stop`. */
   const stopRef = useRef<() => void>(() => {})
 
-  // One handler record per hook instance, for both bridges, built once by a
-  // lazy `useState` initializer. `unregister` is set-if-equal (see
-  // `makeHandlerCoordinator`), so handing it a freshly-built object each render
-  // would leave the coordinator unable to evict the one it holds.
+  // One handler record per hook instance, built once: `unregister` is
+  // set-if-equal (see `makeHandlerCoordinator`), so a freshly-built object each
+  // render would leave the coordinator unable to evict the one it holds.
   const [handlers] = useState<{
     readonly collector: CollectorHandlers
     readonly harRecorder: HarRecorderHandlers
@@ -175,10 +158,8 @@ const useHarRecorder = (): HarRecorder => {
           Effect.sync(() => {
             stopRef.current()
           }),
-        // Not part of a recording: the two page notifications that drive the
-        // collector's step machine, and the teardown signal that follows our
-        // own `SniffingComplete`. A handler record must cover every inbound tag
-        // of its bridge, so these are explicit no-ops rather than absent.
+        // Not part of a recording, but a handler record must cover every
+        // inbound tag of its bridge, so these are explicit no-ops.
         PageLoaded: () => Effect.void,
         PageRequested: () => Effect.void,
         SnifferDisposed: () => Effect.void,
@@ -242,9 +223,8 @@ const useHarRecorder = (): HarRecorder => {
     Effect.runPromise(
       harToJson(har).pipe(
         Effect.flatMap((text) => sendHarRecorderMessage({ _tag: 'SaveHar', fileName, text })),
-        // A failure to encode or to send is surfaced here rather than thrown,
-        // because the webview still has to be closed below: otherwise the user
-        // is left with a live sniffer window and no way to end the run.
+        // Caught rather than thrown so the `SniffingComplete` below still
+        // runs; otherwise a failed encode leaves an unclosable sniffer window.
         Effect.catchAll((error) =>
           Effect.sync(() => {
             pendingFileNameRef.current = null
@@ -260,22 +240,19 @@ const useHarRecorder = (): HarRecorder => {
   }, [collectorRegister, handlers, sendCollectorMessage, sendHarRecorderMessage])
 
   // Mirror-written after every render (no deps) so the unmount teardown below
-  // reaches the current sender and coordinator without listing either as a
-  // dependency — a dependency change would run the teardown mid-recording and
-  // close the sniffer window out from under the user.
+  // reaches the current sender and coordinator without depending on either —
+  // a dependency change would tear down mid-recording and close the sniffer
+  // window out from under the user. `stop` is mirrored for the same reason.
   const sendCollectorMessageRef = useRef(sendCollectorMessage)
   const collectorRegisterRef = useRef(collectorRegister)
   useEffect(() => {
-    // Same reason for `stop`: the `UserDismissed` handler is built once and
-    // reads the latest `stop` through this ref rather than being rebuilt.
     stopRef.current = stop
     sendCollectorMessageRef.current = sendCollectorMessage
     collectorRegisterRef.current = collectorRegister
   })
 
-  // The recorder's own answers are listened for over the whole mounted
-  // lifetime, not just while recording: `HarSaved` arrives after `stop()` has
-  // already torn the collector handlers down.
+  // Listened for over the whole mounted lifetime, not just while recording:
+  // `HarSaved` arrives after `stop()` tore the collector handlers down.
   useEffect(() => {
     Effect.runFork(
       harRecorderRegister
@@ -299,10 +276,9 @@ const useHarRecorder = (): HarRecorder => {
     }
   }, [handlers, harRecorderRegister])
 
-  // Unmounting mid-recording still has to close the sniffer webview: the host
-  // opened it on our `Open` and only `SniffingComplete` takes it down, so
-  // navigating away without one leaves an orphaned window. The archive is lost
-  // with the page either way — there is no one left to show a path to.
+  // Unmounting mid-recording still closes the sniffer webview: only
+  // `SniffingComplete` takes it down, so navigating away without one orphans
+  // the window. The archive is lost with the page either way.
   useEffect(() => {
     const teardown = (): void => {
       const wasRecording = activeRef.current !== null

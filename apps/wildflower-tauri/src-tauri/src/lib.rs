@@ -857,10 +857,8 @@ pub fn run() {
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
             // Wire the HarRecorderBridge.webToHost listener that writes a
-            // finished recording into `<app data dir>/saved_data`. It takes
-            // the directory this `setup()` already resolved and created
-            // (the same one the server task runs on) rather than resolving
-            // its own.
+            // finished recording into `<app data dir>/saved_data`, taking the
+            // directory this `setup()` already resolved rather than its own.
             har_recorder_tauri_rust::attach_har_recorder(app.handle(), app_data_dir.clone());
 
             let error_handle = app.handle().clone();

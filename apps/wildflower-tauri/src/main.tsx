@@ -40,10 +40,8 @@ renderApp({
   // clearing a cookie logs nothing out, and this origin doesn't serve
   // `/access/logout`). The entry, not the settings route, encodes that.
   platformSettingsItems: [],
-  // The HAR Recorder is desktop-only: it drives the native sniffer webview and
-  // the host writes the `.har` into the app's `saved_data` directory, neither
-  // of which a browser tab has. So this entry — the only one that knows it is
-  // the Tauri shell — is where the tab is contributed.
+  // Desktop-only: the recorder drives the native sniffer webview and the host
+  // writes the `.har` into `saved_data`, neither of which a browser tab has.
   platformTabs: [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }],
   // A 401 here is anomalous (a boot-race before the host token is minted, or an
   // expired host token), NOT a prompt to sign in: the webview is

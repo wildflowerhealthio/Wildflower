@@ -10,13 +10,7 @@ import { DateTime } from 'effect'
 /** The host used when the start URL has none that survives reduction. */
 const FALLBACK_HOST = 'recording'
 
-/**
- * The longest name produced, matching the host's own validation.
- *
- * @remarks
- * The host rejects anything longer before it writes, so the producer stays
- * under the same number rather than discovering the limit as a failed save.
- */
+/** The longest name produced; the Rust validator rejects anything longer before it writes. */
 const MAX_FILE_NAME_LENGTH = 200
 
 const EXTENSION = '.har'
@@ -29,9 +23,8 @@ const EXTENSION = '.har'
  *   dropped, or {@link FALLBACK_HOST} when nothing usable is left
  *
  * @remarks
- * An allowlist, not an escape: an unparseable URL, an IPv6 host (whose brackets
- * and colons a file name cannot hold), and a punycode-free international host
- * all reduce to something safe rather than to a name the host will reject.
+ * An allowlist, not an escape, so an unparseable URL, an IPv6 host or an
+ * international one reduces to something safe rather than to a rejected name.
  */
 const hostOf = (startUrl: string): string => {
   let hostname: string
@@ -48,9 +41,8 @@ const hostOf = (startUrl: string): string => {
  * The instant, as a file name may hold it: `YYYY-MM-DDTHH-mm-ssZ`.
  *
  * @remarks
- * ISO 8601 with the time's colons replaced by hyphens — Windows forbids `:` in
- * a path segment — and the sub-second part dropped, which no recording needs to
- * be distinguished by.
+ * ISO 8601 with the time's colons hyphenated (Windows forbids `:` in a path
+ * segment) and the sub-second part dropped.
  */
 const timestampOf = (startedAt: DateTime.Utc): string =>
   `${DateTime.formatIsoDateUtc(startedAt)}T${DateTime.formatIso(startedAt).slice(11, 19).replaceAll(':', '-')}Z`
@@ -64,15 +56,13 @@ const timestampOf = (startedAt: DateTime.Utc): string =>
  *   {@link MAX_FILE_NAME_LENGTH} characters
  *
  * @remarks
- * Flat by design: recordings land side by side in `saved_data/`, so the name
- * carries everything that distinguishes one — when, and from where. The
- * timestamp leads so a directory listing sorts chronologically.
- *
- * Over-long names are trimmed from the *host*, never from the timestamp: a
- * truncated instant would read as a different one, while a truncated host is
- * visibly partial. The result is a valid single segment for any input,
- * including a URL that does not parse — which is what keeps a bad URL from
- * becoming a rejected save or, worse, a path traversal.
+ * Recordings land flat in `saved_data/`, so the name carries what distinguishes
+ * one: when, and from where. The timestamp leads so a listing sorts
+ * chronologically, and over-long names are trimmed from the *host* — a
+ * truncated instant would read as a different one. The result is a valid single
+ * segment for any input, including a URL that does not parse, which is what
+ * keeps a bad URL from becoming a path traversal. See the slice's
+ * [Design Explanation](../../docs/Design%20Explanation.md) (Naming).
  */
 const recordingFileName = (startedAt: DateTime.Utc, startUrl: string): string => {
   const timestamp = timestampOf(startedAt)
