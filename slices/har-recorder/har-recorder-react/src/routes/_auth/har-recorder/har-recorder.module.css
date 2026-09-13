@@ -1,0 +1,22 @@
+/*
+ * Layout for the recorder page: the row holding Start / Stop & Save, and the
+ * two status lines (the live response counter and the saved file's path). Only
+ * spacing and the monospace treatment of a machine string — every colour and
+ * control style comes from tundra-css and `react-tundraish`.
+ */
+.buttons {
+  display: flex;
+  gap: var(--space-5);
+  flex-wrap: wrap;
+}
+
+.status {
+  margin: 0;
+}
+
+/* The written file's absolute path: a machine string, so mono and wrapping. */
+.path {
+  margin: 0;
+  font-family: var(--font-family-mono);
+  word-break: break-all;
+}

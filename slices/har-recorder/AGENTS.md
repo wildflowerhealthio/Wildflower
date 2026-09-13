@@ -20,18 +20,17 @@ It composes three existing primitives and adds nothing to their semantics:
   the validated, atomic `save_har` and the one Rust definition of the
   `saved_data` folder name (`save.rs`). No `tauri` dependency, so it compiles
   and tests without GTK.
+- **[`har-recorder-react`](./har-recorder-react/AGENTS.md)** — the `/har-recorder`
+  page and its `useHarRecorder` state machine. Intakes sniffer events through
+  `collector-react`'s register/sender hooks (the data-plane tags live on
+  `CollectorBridge`, and a tag must be unique across the shared channel), which
+  makes `collector-react` an intrinsic dependency. The tab is contributed by the
+  Tauri entry through `platformTabs`, so the recorder appears only where a
+  sniffer webview and a host filesystem exist.
 - **`har-recorder-tauri-rust`** — the host glue: one `BRIDGE_EVENT` listener
   that decodes `SaveHar`, writes off the event thread, and answers `HarSaved` /
   `HarSaveFailed`. Attached from `wildflower-tauri`'s `setup()`, which hands it
   the app data directory it already resolved.
-
-Still to come, in the phases of #652:
-
-- **`har-recorder-react`** — the recorder page and its `useHarRecorder` state
-  machine. Intakes sniffer events through `collector-react`'s register/sender
-  hooks (the data-plane tags live on `CollectorBridge`, and a tag must be unique
-  across the shared channel), which makes `collector-react` an intrinsic
-  dependency.
 
 ## Layering
 
@@ -48,6 +47,8 @@ Still to come, in the phases of #652:
 ## References
 
 - [har-recorder-core AGENTS.md](./har-recorder-core/AGENTS.md) — the pure layer.
+- [har-recorder-react AGENTS.md](./har-recorder-react/AGENTS.md) — the page and
+  the state machine.
 - [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.
 - [http-archive AGENTS.md](../file-formats/http-archive/AGENTS.md) — the HAR
   format the recorder emits through.

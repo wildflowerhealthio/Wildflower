@@ -81,6 +81,9 @@ vi.mock('tunnel-react', () => ({
 vi.mock('./collector-sender-forwarder.tsx', () => ({
   CollectorSenderForwarder: Passthrough,
 }))
+vi.mock('./har-recorder-sender-forwarder.tsx', () => ({
+  HarRecorderSenderForwarder: Passthrough,
+}))
 vi.mock('telemetry-web', () => ({
   ErrorBoundary: ({ children }: { readonly children?: ReactNode }): JSX.Element => <>{children}</>,
   Sentry: { captureException: () => {} },
@@ -144,6 +147,7 @@ describe('in-memory QueryClientProvider', () => {
         awaitAuthReady: () => () => Promise.resolve(),
         makeTransport: () => Promise.resolve(stubTransport),
         platformSettingsItems: [],
+        platformTabs: [],
         redirectToDeviceLoginOnUnauthorized: false,
       })
     })

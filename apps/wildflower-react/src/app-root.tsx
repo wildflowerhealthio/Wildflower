@@ -17,7 +17,7 @@ import type { BaseRouterContext, SettingsItem } from 'shared-structures-react'
 import { Sentry } from 'telemetry-web'
 
 import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
-import { AppRootTree } from './bridges/app-root-tree.tsx'
+import { AppRootTree, type AppRootTreeProps } from './bridges/app-root-tree.tsx'
 import type { ReactTransport } from './bridges/transport-context.ts'
 import { routeTree } from './routeTree.gen.ts'
 // Self-hosted Wildflower fonts — loaded here so every entry (web, single-web,
@@ -159,6 +159,17 @@ interface RenderAppOptions {
    */
   readonly platformSettingsItems: readonly SettingsItem[]
   /**
+   * Platform-specific tabs this entry contributes to the primary bar, after the
+   * shared `TABS`. Threaded into `AppRootTree`, which provides them to the tree
+   * for `<TabBar>` to render (see `session/platform-tabs-context.ts`).
+   * `main-tauri` contributes the HAR Recorder — it needs a sniffer webview and
+   * a host filesystem, neither of which a browser tab has; standalone-web
+   * entries pass `[]`. Keeping the choice at the entry — the only place that
+   * knows the platform — means the bar stays a dumb renderer with no
+   * `entry`-sniffing branch.
+   */
+  readonly platformTabs: AppRootTreeProps['platformTabs']
+  /**
    * Whether a 401 that outlives the boot-race retry should redirect the user to
    * device login. Web entries set `true` (they have a device-login flow);
    * `main-tauri` sets `false` — the webview is host-authenticated, so there's no
@@ -209,6 +220,7 @@ const renderApp = ({
   localGrantedScopes,
   firstPartyClientId,
   platformSettingsItems,
+  platformTabs,
   redirectToDeviceLoginOnUnauthorized,
 }: RenderAppOptions): void => {
   // Router isn't built until after the query runtime (its context needs the
@@ -309,6 +321,7 @@ const renderApp = ({
                 router={router}
                 transportPromise={transportPromise}
                 platformSettingsItems={platformSettingsItems}
+                platformTabs={platformTabs}
               />
             </ActiveDeviceUserCodeProvider>
           </AuthStateProvider>

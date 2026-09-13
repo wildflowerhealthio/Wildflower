@@ -54,6 +54,7 @@ export const routes = rootRoute('__root.tsx', [
   layout('_auth', '_auth.tsx', [
     index('_auth/index.tsx'),
     physical('', routesDir('collector', '_auth')),
+    physical('', routesDir('har-recorder', '_auth')),
     route('/home', '_auth/home.tsx', [physical('', routesDir('apps', '_auth/home'))]),
     route('/gatekeeper', '_auth/gatekeeper.tsx', [
       physical('', routesDir('gatekeeper', '_auth/gatekeeper')),

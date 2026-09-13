@@ -1,0 +1,71 @@
+{
+  "name": "har-recorder-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The HAR Recorder's browser surface: the `/har-recorder` page and the `useHarRecorder` state machine behind it. Intakes the sniffer's response events over `CollectorBridge` (register/sender hooks from `collector-react`), accumulates them with `har-recorder-core`'s `Recording`, and carries the encoded archive to the host over `HarRecorderBridge`. No fs — the host writes the file.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/har-recorder/har-recorder-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@tanstack/react-router": "catalog:",
+    "@tanstack/router-plugin": "catalog:",
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "browser-sniffer-core": "workspace:*",
+    "collector-fundamentals": "workspace:*",
+    "collector-react": "workspace:*",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "effect-messaging-react": "workspace:*",
+    "fast-check": "catalog:",
+    "har-recorder-core": "workspace:*",
+    "http-archive": "workspace:*",
+    "jsdom": "catalog:",
+    "kitchen-sink": "workspace:*",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "@tanstack/react-router": "catalog:",
+    "browser-sniffer-core": "workspace:*",
+    "collector-fundamentals": "workspace:*",
+    "collector-react": "workspace:*",
+    "effect": "catalog:",
+    "effect-messaging-core": "workspace:*",
+    "effect-messaging-react": "workspace:*",
+    "har-recorder-core": "workspace:*",
+    "http-archive": "workspace:*",
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*",
+    "react-tundraish": "workspace:*"
+  }
+}

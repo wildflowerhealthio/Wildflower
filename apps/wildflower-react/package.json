@@ -62,6 +62,8 @@
     "fhir-r4-react": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "gatekeeper-react": "workspace:*",
+    "har-recorder-core": "workspace:*",
+    "har-recorder-react": "workspace:*",
     "kitchen-sink": "workspace:*",
     "navigation-core": "workspace:*",
     "navigation-react": "workspace:*",
