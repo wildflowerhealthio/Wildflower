@@ -14,8 +14,13 @@ anonymizer reaching sideways into the importer.
   `HarResponse`, `HarBody` and friends, `NOT_MEASURED`), held to the published
   spec by `har-schema` compiled through `ajv`.
 - `src/emit.ts` — **`emitHar` / `emitHarFromLog`**: build an archive from
-  captured `TraceExchange`es, plus the comment constants that annotate what an
-  import did not carry through (`DROPPED_REQUEST_ON_IMPORT_COMMENT`, etc.).
+  captured `TraceExchange`es or from an `HttpArchive.Log`, plus the comment
+  constants that annotate what an import did not carry through
+  (`DROPPED_REQUEST_ON_IMPORT_COMMENT`, etc.). `emitHarFromLog` serves more
+  than one producer, so `creatorName` and `requestComment` are options — the
+  HAR recorder names itself and states that its request side was never
+  observed, while the anonymizer takes the defaults (`CREATOR_NAME`,
+  `DROPPED_REQUEST_ON_IMPORT_COMMENT`).
 - `src/http-archive.ts` — the **`HttpArchive`** projection an importer and a
   replay consume (`Entry`, `Log`, `LogFromHarJson`): the response half of each
   archived exchange, a schema in both directions.
