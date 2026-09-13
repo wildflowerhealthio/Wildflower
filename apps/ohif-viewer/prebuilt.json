@@ -1,4 +1,7 @@
 {
-  "$comment": "The prebuilt OHIF viewer this app publishes. `pin` is null until the first release of wildflowerhealthio/ohif-viewer-dist exists; then it is { url, sha256 } of that release's ohif-viewer.tar.gz. See README.md.",
-  "pin": null
+  "$comment": "The prebuilt OHIF viewer this app publishes: one release of wildflowerhealthio/ohif-viewer-dist, pinned by asset URL and the sha256 the release publishes alongside it. See README.md.",
+  "pin": {
+    "url": "https://github.com/wildflowerhealthio/ohif-viewer-dist/releases/download/v2026.09.13-2f2d015-0935326/ohif-viewer.tar.gz",
+    "sha256": "4e0b61d0032ce89b3a094bc6c15d4c9bb242b3f3949e184cd8239d6764081dc7"
+  }
 }
