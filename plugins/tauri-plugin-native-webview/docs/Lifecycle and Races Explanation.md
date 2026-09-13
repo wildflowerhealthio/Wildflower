@@ -325,3 +325,15 @@ or a sniffer-driven navigation) **reuses** the webview rather than rebuilding it
 - Back/forward history **persists** across the in-place navigation (it pushes a
   new entry), so "Back" stays correct; only the forward-stack bookkeeping is
   reset.
+
+The desktop download directory survives a rewire the same way the event channel
+does. Tauri's `on_download` hook is a `WebviewBuilder` option, so it can only be
+installed at build time and never swapped on a live webview — a rewire that
+captured the directory would be stuck with whatever the _first_ open passed.
+Instead the hook holds only the instance id and reads the instance state's
+`download_dir` cell each time a download is requested, and the rewire writes the
+new request's value into that cell. A download started after the rewire
+therefore lands in the new directory, and a rewire whose request carries no
+directory re-blocks downloads on a webview that previously allowed them. The
+deferred (dispose→open) replay runs through the same rewire, so a deferred open
+carries its download directory too.

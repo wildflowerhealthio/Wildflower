@@ -19,7 +19,7 @@ dispose→open switch race, teardown backstops, the chrome URL-fallback, and the
 re-open rewire — live in [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md);
 the backends' inline comments point there rather than re-deriving them.
 
-- `open_url(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?, cookies?)` — ensure the native webview exists (created **hidden** if absent) and navigate it to `url`. Does **not** present it. When `cookies` is non-empty, each is written into the webview's cookie store **before** the navigation so it rides the very first request: the webview is built parked at `about:blank`, and the target load is issued from the cookie writes' completions on every platform (macOS writes `WKHTTPCookieStore` directly — see [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "Cookie seeding must not pump the main run loop"; other desktop targets queue wry `set_cookie` messages ahead of the navigation on the main loop's FIFO; iOS/Android issue the load from the native completion handlers). A cookie-carrying `open_url` therefore returns **before** the cookies commit and before the target starts loading; a later open of the same instance supersedes the pending navigation rather than being overwritten by it (§ "A seed's navigation belongs to the open that scheduled it"). Rust-caller only — the JS `open_url` command never accepts cookies (a page must not hand the plugin credential material).
+- `open_url(url, initScript, nativeWebviewEventChannel, initialTitle?, initialSubtitle?, initialMessage?, cookies?, downloadDir?)` — ensure the native webview exists (created **hidden** if absent) and navigate it to `url`. Does **not** present it. When `cookies` is non-empty, each is written into the webview's cookie store **before** the navigation so it rides the very first request: the webview is built parked at `about:blank`, and the target load is issued from the cookie writes' completions on every platform (macOS writes `WKHTTPCookieStore` directly — see [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "Cookie seeding must not pump the main run loop"; other desktop targets queue wry `set_cookie` messages ahead of the navigation on the main loop's FIFO; iOS/Android issue the load from the native completion handlers). A cookie-carrying `open_url` therefore returns **before** the cookies commit and before the target starts loading; a later open of the same instance supersedes the pending navigation rather than being overwritten by it (§ "A seed's navigation belongs to the open that scheduled it"). Rust-caller only — the JS `open_url` command never accepts cookies (a page must not hand the plugin credential material). `downloadDir` is Rust-caller only for the same reason and desktop-only in effect — see "Downloads (desktop)" below.
 - `show()` — present the native webview (a freshly-created or previously-hidden instance).
 - `evaluate_js(script)` — evaluate JS inside the open native webview.
 - `patch_window_text({title?, subtitle?, message?})` — update one or more of the chrome's title/subtitle/message labels.
@@ -132,6 +132,7 @@ plugins/tauri-plugin-native-webview/
 │   ├── models.rs              — OpenRequest/OpenResponse, EvaluateJsRequest/EvaluateJsResponse, PatchWindowTextRequest/PatchWindowTextResponse, NativeWebviewEvent + tests
 │   ├── error.rs               — Error (PluginInvoke on mobile / Internal on desktop)
 │   ├── url_scheme.rs          — http(s)-only URL parse/validate, shared by both backends
+│   ├── download_name.rs       — tauri-free sanitise + de-duplicate of a page-suggested download file name (desktop)
 │   ├── desktop.rs             — parent Window + chrome/content child webviews, initialization_script on content, eval for evaluate_js/patch_window_text
 │   └── mobile.rs              — registers + forwards each command (keyed by instance id via WithId/IdOnly) to the Swift (iOS) / Kotlin (Android) plugin
 ├── ios/
@@ -201,6 +202,18 @@ serialises as `"__CHANNEL__:<id>"` into the `open` invoke payload; Swift's
 `Channel: Decodable` / Kotlin's `ChannelDeserializer` re-wires it on the native
 side; `channel.send(...)` from native flows back through the `sendChannelData`
 callback into the Rust closure. No JS detour, transport-agnostic.
+
+## Downloads (desktop)
+
+A page can start a download (a link with `download`, a `Content-Disposition: attachment` response). **Desktop blocks every download by default** and writes nothing anywhere. An instance opts in when its `open_url` request carries a `download_dir`, and only then:
+
+- **What triggers it** — the content webview's `on_download` hook. On `Requested` the backend consults the instance's current download directory, creates it if missing (`create_dir_all`), and rewrites the destination to `<download dir>/<name>`; returning `false` from the hook is what cancels a download, and it does so whenever there is no directory, the directory cannot be created, or no free file name is left.
+- **Where files go** — inside the download directory and nowhere else. wry pre-fills the destination with `<OS downloads dir>/<name the page suggested>`; only the final component is kept, and it is reduced to one safe path segment (allowlist `A-Za-z0-9._-`, other characters become `_`, leading dots stripped, `download` as the fallback, ~150-byte cap) before being joined, so a `../../` or absolute suggestion cannot escape. A collision appends `-1`, `-2`, … before the extension rather than overwriting; `src/download_name.rs` owns that logic and its tests.
+- **What the caller hears** — `NativeWebviewEvent::Downloaded { url, path, success }` on the instance's channel when a download finishes, successfully or not. `path` is `None` on macOS even for a file that saved fine (WebKit reports no path), so `success` is the field to read. The event means "a download ended", not "a download was saved" — a request the backend refused can still surface one with `success: false` on platforms whose cancel path fires the finished signal (GTK does).
+- **Rust-caller only** — the JS `open_url` command always passes `None`. A page choosing where its own bytes land on disk is exactly the thing the directory exists to prevent.
+- **Survives a rewire** — the directory lives in the per-instance state, not in the hook's captures, so a second `open_url` on a live instance re-points (or re-blocks) downloads without rebuilding the webview. See [Lifecycle and Races Explanation.md](./Lifecycle%20and%20Races%20Explanation.md) § "Re-open rewire".
+
+**Mobile implements no downloads.** The Swift and Kotlin backends have no download hook and never emit `Downloaded`; `downloadDir` rides the mobile wire when set and both decoders drop it as an unknown key. A mobile caller must not wait for a `Downloaded` event.
 
 ## Deliberately deferred
 

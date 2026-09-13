@@ -40,6 +40,12 @@ pub(crate) async fn open_url<R: Runtime>(
             // page must never hand the plugin credential material; the Rust host
             // (`native_webview_handle`) is the only seeding path.
             cookies: vec![],
+            // Same rule for the download directory: a page must never choose
+            // where its own downloads land on disk. `None` keeps downloads
+            // blocked for every JS-driven open; a Rust caller
+            // (`browser-sniffer-tauri-rust`'s `sniffer_window`) opts in by
+            // going through the backend directly.
+            download_dir: None,
         },
     )
 }

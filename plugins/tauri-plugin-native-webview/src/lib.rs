@@ -38,6 +38,7 @@
 //!     initial_subtitle: None,
 //!     initial_message: None,
 //!     cookies: vec![],
+//!     download_dir: None,
 //! })?;
 //! // `open_url` navigates without presenting; reveal it with `show()`.
 //! app.native_webview().show(id)?;
@@ -67,6 +68,12 @@ mod commands;
 mod error;
 mod models;
 mod url_scheme;
+
+// Desktop-only: the download hook that consumes it is a `WebviewBuilder`
+// concern, and the mobile backends implement no downloads at all (see
+// `docs/Explanation.md` § "Downloads (desktop)").
+#[cfg(desktop)]
+mod download_name;
 
 #[cfg(desktop)]
 mod desktop;
