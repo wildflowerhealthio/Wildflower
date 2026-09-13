@@ -4,7 +4,8 @@ The **HAR Recorder**: a desktop tool that opens a URL in the sniffer webview,
 records every fetch/XHR response the injected `browser-sniffer` reports, and
 writes a HAR 1.2 file into the app's `saved_data` directory when the recording
 stops. The in-app cousin of the browser extension in #578 — same output format,
-saved locally. Designed in [#652](https://github.com/wildflowerhealthio/Wildflower/issues/652).
+saved locally. Designed in [#652](https://github.com/wildflowerhealthio/Wildflower/issues/652);
+read the [Design Explanation](./docs/Design%20Explanation.md) before changing anything here.
 
 It composes three existing primitives and adds nothing to their semantics:
 `slices/browser-sniffer` (the injected shims and the webview lifecycle),
@@ -46,6 +47,8 @@ It composes three existing primitives and adds nothing to their semantics:
 
 ## References
 
+- [Design Explanation](./docs/Design%20Explanation.md) — the flow, where each
+  piece lives and why, the decision table, and what is deliberately absent.
 - [har-recorder-core AGENTS.md](./har-recorder-core/AGENTS.md) — the pure layer.
 - [har-recorder-react AGENTS.md](./har-recorder-react/AGENTS.md) — the page and
   the state machine.
