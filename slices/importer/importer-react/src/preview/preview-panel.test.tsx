@@ -1,7 +1,8 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { Either, type ParseResult, Schema } from 'effect'
-import type { FhirResource } from 'fhir-r4/resources'
+import type { DiffSlot, FieldDiff, ServerComparison } from 'fhir-r4/clients'
+import { type FhirResource, Patient } from 'fhir-r4/resources'
 import type { DecodedFile, LabeledResource, LabeledSection } from 'importer-fundamentals'
 import { Review } from 'importer-fundamentals'
 import type { JSX } from 'react'
@@ -249,9 +250,146 @@ describe('PreviewPanel', () => {
       Review.setResourcesIncluded(partial, ['p1', 'o1'], true)
     )
   })
+
+  it('shows a static badge for a resource the server does not hold', () => {
+    // Arrange
+    const files = [
+      readFile('a.har', decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])])),
+    ]
+    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+      ['pat-1', { status: 'new', fields: [] }],
+    ])
+
+    // Act
+    render(<PreviewPanel {...panelProps(files, { comparisons })} />)
+
+    // Assert
+    expect(screen.getByText('New')).toBeDefined()
+  })
+
+  it('reveals the field-level diffs when the changed badge is clicked', async () => {
+    // Arrange: the server holds a copy whose gender differs (the incoming
+    // fixture will not re-encode, so the badge falls back to these fields).
+    const files = [
+      readFile('a.har', decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])])),
+    ]
+    const field: FieldDiff = {
+      path: ['gender'],
+      server: valueSlot('male'),
+      incoming: valueSlot('female'),
+    }
+    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+      ['pat-1', { status: 'changed', fields: [field], server: {} }],
+    ])
+    render(<PreviewPanel {...panelProps(files, { comparisons })} />)
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: /Differs from server/ }))
+
+    // Assert: the leaf, the server value, and the incoming value are all shown.
+    expect(screen.getByText('gender')).toBeDefined()
+    expect(screen.getByText('"male"')).toBeDefined()
+    expect(screen.getByText('"female"')).toBeDefined()
+  })
+
+  it('reveals the field-level diffs when the changed badge is hovered', async () => {
+    // Arrange
+    const files = [
+      readFile('a.har', decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])])),
+    ]
+    const field: FieldDiff = {
+      path: ['gender'],
+      server: valueSlot('male'),
+      incoming: valueSlot('female'),
+    }
+    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+      ['pat-1', { status: 'changed', fields: [field], server: {} }],
+    ])
+    render(<PreviewPanel {...panelProps(files, { comparisons })} />)
+
+    // Act
+    await userEvent.hover(screen.getByRole('button', { name: /Differs from server/ }))
+
+    // Assert
+    expect(screen.getByText('gender')).toBeDefined()
+  })
+
+  it('surfaces the diff for a resource that was unchanged until the reviewer edited it', async () => {
+    // Arrange: the server holds an equal copy; the reviewer has edited gender.
+    const onServer = { resourceType: 'Patient', id: 'pat-1' }
+    const patient = Schema.decodeUnknownSync(Patient.Schema)(onServer)
+    const edited = Schema.decodeUnknownSync(Patient.Schema)({ ...onServer, gender: 'male' })
+    const labeled: LabeledResource<FhirResource> = {
+      key: 'pat-1',
+      title: 'Patient/pat-1',
+      resource: patient,
+    }
+    const files = [readFile('a.har', decoded([section('s', [labeled])]))]
+    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+      ['pat-1', { status: 'unchanged', fields: [], server: patientWire(onServer) }],
+    ])
+    const selectionFor = (): Review.Selection<FhirResource> =>
+      Review.edit(Review.initial<FhirResource>(), 'pat-1', edited)
+    render(<PreviewPanel {...panelProps(files, { comparisons, selectionFor })} />)
+
+    // Act: the once-unchanged badge is now the interactive "differs" disclosure.
+    await userEvent.click(screen.getByRole('button', { name: /Differs from server/ }))
+
+    // Assert
+    expect(screen.getByText('gender')).toBeDefined()
+  })
+
+  it('edits the resource to the server value when "keep server value" is clicked', async () => {
+    // Arrange: a real (schema-decodable) resource, so the reset can round-trip,
+    // and a server copy whose gender differs — the badge diffs against it live.
+    const patient = Schema.decodeUnknownSync(Patient.Schema)({
+      resourceType: 'Patient',
+      id: 'pat-1',
+    })
+    const labeled: LabeledResource<FhirResource> = {
+      key: 'pat-1',
+      title: 'Patient/pat-1',
+      resource: patient,
+    }
+    const files = [readFile('a.har', decoded([section('s', [labeled])]))]
+    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+      [
+        'pat-1',
+        { status: 'changed', fields: [], server: patientWire({ id: 'pat-1', gender: 'male' }) },
+      ],
+    ])
+    const onSelectionChange = vi.fn()
+    render(<PreviewPanel {...panelProps(files, { comparisons, onSelectionChange })} />)
+
+    // Act
+    await userEvent.click(screen.getByRole('button', { name: /Differs from server/ }))
+    await userEvent.click(screen.getByRole('button', { name: 'Keep the server value for gender' }))
+
+    // Assert: the file's selection now overrides pat-1 with the server's gender.
+    expect(onSelectionChange).toHaveBeenCalledTimes(1)
+    const call = onSelectionChange.mock.calls[0]
+    expect(call?.[0]).toBe('a.har')
+    expect(call?.[1].resourceOverrides.get('pat-1')).toMatchObject({
+      resourceType: 'Patient',
+      gender: 'male',
+    })
+  })
 })
 
 // Helpers
+
+/** A present diff slot around `value`. */
+const valueSlot = (value: unknown): DiffSlot => ({ _tag: 'value', value })
+
+/**
+ * A normalized server wire object, decoded then re-encoded through
+ * `Patient.Schema` so it has the exact shape the classifier's `server` copy
+ * has — the form the badge diffs the edited resource against.
+ */
+const patientWire = (wire: Record<string, unknown>): unknown =>
+  Schema.encodeSync(Patient.Schema)(
+    Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', ...wire })
+  )
 
 /** A `local` pick with the given name. */
 const pickedFile = (fileName: string): PickedFile => ({
@@ -321,6 +459,7 @@ const panelProps = (
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']
     readonly onSettingsChange?: PreviewPanelProps['onSettingsChange']
     readonly selectionFor?: PreviewPanelProps['selectionFor']
+    readonly comparisons?: PreviewPanelProps['comparisons']
     readonly confirming?: boolean
   } = {}
 ): PreviewPanelProps => {
@@ -330,7 +469,7 @@ const panelProps = (
     settings,
     settingsRegistry,
     selectionFor: overrides.selectionFor ?? (() => Review.initial<FhirResource>()),
-    diffStatuses: new Map(),
+    comparisons: overrides.comparisons ?? new Map(),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),
     onSettingsChange: overrides.onSettingsChange ?? (() => undefined),
     onConfirm: overrides.onConfirm ?? (() => undefined),

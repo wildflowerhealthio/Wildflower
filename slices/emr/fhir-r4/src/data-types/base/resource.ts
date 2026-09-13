@@ -3,6 +3,7 @@ import { Schema } from 'effect'
 import {
   mutableEncoded,
   OrNullAsOptional,
+  OrNullAsOptionalWithDefault,
   StructNoContext,
   type FieldsNoContext,
 } from 'kitchen-sink/schema'
@@ -14,8 +15,19 @@ import * as Meta from './meta.ts'
 
 const metaField: Schema.optionalWith<
   Schema.Schema<typeof Meta.Schema.Type | null, FhirR4.Meta | undefined>,
-  { default: () => null }
-> = OrNullAsOptional(Meta.Schema)
+  { default: () => typeof Meta.Schema.Type }
+> = OrNullAsOptionalWithDefault(
+  Meta.Schema,
+  (): typeof Meta.Schema.Type =>
+    ({
+      lastUpdated: null,
+      source: null,
+      versionId: null,
+      security: [],
+      tag: [],
+      profile: [],
+    }) as const
+)
 
 const fields = {
   id: OrNullAsOptional(Schema.String),

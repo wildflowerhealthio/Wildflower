@@ -141,13 +141,90 @@
  * Diff badges on each row — the pre-fetched server status:
  *   .diffBadge_new       an id the server does not hold; the write creates fresh
  *   .diffBadge_unchanged the server already holds an equivalent copy (default excluded)
- *   .diffBadge_changed   the server holds a copy that differs; the write replaces
+ *   .diffBadge_changed   the server holds a copy that differs; click/hover to see fields
  */
 .diffBadge,
 .diffBadge_new,
 .diffBadge_unchanged,
 .diffBadge_changed {
   font-size: var(--font-size-1);
+}
+
+/* The `changed` badge is a disclosure: the badge button plus its popover. */
+.diffContainer {
+  position: relative;
+  display: inline-flex;
+}
+
+/* The `changed` badge, styled as a clickable chip. */
+.diffBadge_changed {
+  font: inherit;
+  font-size: var(--font-size-1);
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+  color: inherit;
+}
+
+/* The field-diff popover, anchored under the badge. */
+.diffDetails {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 1;
+  min-width: 16rem;
+  max-width: 32rem;
+  max-height: 20rem;
+  overflow: auto;
+  padding: var(--space-2);
+  background: var(--color-background);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+}
+
+.diffFieldList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.diffField {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--font-size-1);
+}
+
+.diffPath {
+  font-family: var(--font-mono);
+  color: var(--color-neutral-11);
+}
+
+.diffServer,
+.diffIncoming {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.diffArrow {
+  color: var(--color-neutral-4);
+}
+
+.keepServerButton {
+  font: inherit;
+  font-size: var(--font-size-1);
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+  color: inherit;
 }
 
 .editButton,

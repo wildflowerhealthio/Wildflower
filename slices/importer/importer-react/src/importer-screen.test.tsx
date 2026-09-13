@@ -113,6 +113,9 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
+    // The preview blocked on the server diff: badges are already resolved the
+    // instant it paints (all four probes 404 → New), never popping in later.
+    expect(screen.getAllByText('New').length).toBeGreaterThan(0)
     expect(writes()).toHaveLength(0)
     // The two recognized responses are named in the interactive review (per URL).
     expect(screen.getByText(/\/Patient\/pat-7/)).toBeDefined()

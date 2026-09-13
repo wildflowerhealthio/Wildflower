@@ -1,5 +1,14 @@
 import { Data, Option } from 'effect'
-import type { DiffStatus } from 'fhir-r4/clients'
+import {
+  diffJson,
+  type DiffStatus,
+  type FieldDiff,
+  formatPath,
+  formatSlot,
+  normalizedEncode,
+  resetFieldToServer,
+  type ServerComparison,
+} from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { LabeledSection } from 'importer-fundamentals'
 import { Review, sectionResources } from 'importer-fundamentals'
@@ -52,12 +61,15 @@ interface PreviewPanelProps {
   /** The reviewed selection for a file (defaults to `Review.initial()` before any edit). */
   readonly selectionFor: (fileId: string) => Review.Selection<FhirResource>
   /**
-   * Each labeled resource's server-diff status (`new` / `unchanged` /
-   * `changed`), keyed by {@link LabeledResource.key}. Rendered as a badge on
-   * each row; a key absent from the map (the pre-fetch is still in flight,
-   * or the resource is not covered by the classifier) renders no badge.
+   * Each labeled resource's server comparison (`new` / `unchanged` /
+   * `changed`, and for `changed` the leaf-level field diffs), keyed by
+   * {@link LabeledResource.key}. Rendered as a badge on each row — the
+   * `changed` badge opens to show `field "server" -> "import"` with a
+   * per-field reset. A key absent from the map (the pre-fetch is still in
+   * flight, or the resource is not covered by the classifier) renders no
+   * badge.
    */
-  readonly diffStatuses: ReadonlyMap<string, DiffStatus>
+  readonly comparisons: ReadonlyMap<string, ServerComparison>
   /** Called when a file's review changes its selection. */
   readonly onSelectionChange: (fileId: string, selection: Review.Selection<FhirResource>) => void
   /** Called when the user changes one format's settings; the caller re-decodes. */
@@ -178,20 +190,148 @@ const DIFF_STATUS_LABEL: Record<DiffStatus, string> = {
 }
 
 /**
- * Badge shown on a resource row when the server-diff pre-fetch classified
- * it. Absent when the status is unknown (the pre-fetch is still in flight,
- * or the row's key is not in the map).
+ * The leaf diffs standing between the current (possibly edited) resource and
+ * the server, recomputed against `current` — not the classify snapshot — so
+ * the badge reflects exactly what a save would write: an edit to an otherwise
+ * unchanged resource surfaces here, and a reset leaf drops out the instant it
+ * matches again. Falls back to the snapshot `fields` when the current resource
+ * cannot be re-encoded. `undefined` when the server holds no copy to diff
+ * against (`new`, or an opaque `changed`).
  */
-const DiffBadge = ({ status }: { readonly status: DiffStatus | undefined }): JSX.Element | null => {
-  if (status === undefined) return null
+const liveFields = (
+  comparison: ServerComparison,
+  current: unknown
+): readonly FieldDiff[] | undefined => {
+  const server = comparison.server
+  if (server === undefined) return undefined
+  return Option.match(normalizedEncode(current), {
+    onNone: () => comparison.fields,
+    onSome: (value) => diffJson(server, value),
+  })
+}
+
+/**
+ * The interactive detail for a `changed` badge: one `path "server" ->
+ * "import"` line per differing leaf, each with a "keep server value" button
+ * that resets that one leaf on the incoming resource back to the server's.
+ */
+const DiffFieldList = ({
+  fields,
+  current,
+  onKeepServerValue,
+}: {
+  readonly fields: readonly FieldDiff[]
+  readonly current: unknown
+  readonly onKeepServerValue: (resource: FhirResource) => void
+}): JSX.Element => (
+  <ul className={styles.diffFieldList} role="group" aria-label="Field differences">
+    {fields.map((field) => {
+      const path = formatPath(field.path)
+      return (
+        <li key={path} className={styles.diffField}>
+          <code className={styles.diffPath}>{path}</code>
+          <span className={styles.diffServer}>{formatSlot(field.server)}</span>
+          <span className={styles.diffArrow} aria-hidden="true">
+            →
+          </span>
+          <span className={styles.diffIncoming}>{formatSlot(field.incoming)}</span>
+          <button
+            type="button"
+            className={styles.keepServerButton}
+            aria-label={`Keep the server value for ${path}`}
+            onClick={() =>
+              Option.match(resetFieldToServer(current, field), {
+                onNone: () => undefined,
+                onSome: onKeepServerValue,
+              })
+            }
+          >
+            Keep server value
+          </button>
+        </li>
+      )
+    })}
+  </ul>
+)
+
+/**
+ * Badge shown on a resource row from the server-diff pre-fetch, reflecting the
+ * *current* (possibly edited) resource against the server:
+ *
+ * - `new` (no server copy) — a static "New" chip.
+ * - a server copy the current resource matches — a static "Already on server"
+ *   chip (whether it always matched, or an edit/reset just brought it back).
+ * - a server copy the current resource differs from — an interactive
+ *   disclosure: hover *or* click the badge to reveal each `field "server" ->
+ *   "import"` line and its per-field reset. This is what surfaces an edit to
+ *   an otherwise-unchanged resource, and updates live as the reviewer edits.
+ *
+ * Absent when the status is unknown (the pre-fetch is still in flight, or the
+ * row's key is not in the map).
+ */
+const DiffBadge = ({
+  comparison,
+  current,
+  onKeepServerValue,
+}: {
+  readonly comparison: ServerComparison | undefined
+  readonly current: unknown
+  readonly onKeepServerValue: (resource: FhirResource) => void
+}): JSX.Element | null => {
+  const [pinned, setPinned] = useState(false)
+  const [hovered, setHovered] = useState(false)
+  if (comparison === undefined) return null
+  const fields = liveFields(comparison, current)
+  // No server copy to diff against: report the classify-time status verbatim
+  // (`new`, or an opaque `changed` whose server copy would not decode).
+  if (fields === undefined) {
+    const { status } = comparison
+    return (
+      <Chip
+        className={styles[`diffBadge_${status}`] ?? styles.diffBadge}
+        data-diff-status={status}
+        aria-label={DIFF_STATUS_LABEL[status]}
+      >
+        {DIFF_STATUS_LABEL[status]}
+      </Chip>
+    )
+  }
+  // A server copy exists and the current resource matches it.
+  if (fields.length === 0) {
+    return (
+      <Chip
+        className={styles.diffBadge_unchanged ?? styles.diffBadge}
+        data-diff-status="unchanged"
+        aria-label={DIFF_STATUS_LABEL.unchanged}
+      >
+        {DIFF_STATUS_LABEL.unchanged}
+      </Chip>
+    )
+  }
+  const open = pinned || hovered
+  const label = `${DIFF_STATUS_LABEL.changed}: ${fields.length} ${plural(fields.length, 'field')}`
   return (
-    <Chip
-      className={styles[`diffBadge_${status}`] ?? styles.diffBadge}
-      data-diff-status={status}
-      aria-label={DIFF_STATUS_LABEL[status]}
+    <span
+      className={styles.diffContainer}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
     >
-      {DIFF_STATUS_LABEL[status]}
-    </Chip>
+      <button
+        type="button"
+        className={styles.diffBadge_changed ?? styles.diffBadge}
+        data-diff-status="changed"
+        aria-expanded={open}
+        aria-label={`${label}; show differences`}
+        onClick={() => setPinned((previous) => !previous)}
+      >
+        {label}
+      </button>
+      {open && (
+        <div className={styles.diffDetails}>
+          <DiffFieldList fields={fields} current={current} onKeepServerValue={onKeepServerValue} />
+        </div>
+      )}
+    </span>
   )
 }
 
@@ -199,18 +339,20 @@ const ResourceRow = ({
   resourceKey,
   resource,
   selection,
-  diffStatus,
+  comparison,
   onToggle,
   onEdit,
   onRevert,
+  onKeepServerValue,
 }: {
   readonly resourceKey: string
   readonly resource: unknown
   readonly selection: Review.Selection<FhirResource>
-  readonly diffStatus: DiffStatus | undefined
+  readonly comparison: ServerComparison | undefined
   readonly onToggle: (key: string) => void
   readonly onEdit: (key: string, resource: unknown) => void
   readonly onRevert: (key: string) => void
+  readonly onKeepServerValue: (key: string, resource: FhirResource) => void
 }): JSX.Element => {
   const edited = Option.getOrElse(Review.editedResource(selection, resourceKey), () => resource)
   const description = describeResource(edited)
@@ -232,7 +374,11 @@ const ResourceRow = ({
           {description.summary}
         </span>
       </label>
-      <DiffBadge status={diffStatus} />
+      <DiffBadge
+        comparison={comparison}
+        current={edited}
+        onKeepServerValue={(next) => onKeepServerValue(resourceKey, next)}
+      />
       {isEdited && <Chip className={styles.editedChip}>Edited</Chip>}
       <button
         type="button"
@@ -311,13 +457,13 @@ const SectionToggle = ({
 const ReadFileBody = ({
   file,
   selection,
-  diffStatuses,
+  comparisons,
   onSelectionChange,
   onEditResource,
 }: {
   readonly file: ReadFile<FormatKind>
   readonly selection: Review.Selection<FhirResource>
-  readonly diffStatuses: ReadonlyMap<string, DiffStatus>
+  readonly comparisons: ReadonlyMap<string, ServerComparison>
   readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
   readonly onEditResource: (key: string, resource: unknown) => void
 }): JSX.Element => {
@@ -352,10 +498,13 @@ const ReadFileBody = ({
                 resourceKey={resource.key}
                 resource={resource.resource}
                 selection={selection}
-                diffStatus={diffStatuses.get(resource.key)}
+                comparison={comparisons.get(resource.key)}
                 onToggle={(key) => onSelectionChange(Review.toggleResource(selection, key))}
                 onEdit={onEditResource}
                 onRevert={(key) => onSelectionChange(Review.revert(selection, key))}
+                onKeepServerValue={(key, next) =>
+                  onSelectionChange(Review.edit(selection, key, next))
+                }
               />
             ))}
           </ul>
@@ -383,13 +532,13 @@ const ReadFileBody = ({
 const FileSection = ({
   file,
   selectionFor,
-  diffStatuses,
+  comparisons,
   onSelectionChange,
   onEditResource,
 }: {
   readonly file: ReadFile<FormatKind> | UnreadableFile<FormatKind> | FileReadOutcome
   readonly selectionFor: PreviewPanelProps['selectionFor']
-  readonly diffStatuses: ReadonlyMap<string, DiffStatus>
+  readonly comparisons: ReadonlyMap<string, ServerComparison>
   readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
   readonly onEditResource: (fileId: string, key: string, resource: unknown) => void
 }): JSX.Element => (
@@ -409,7 +558,7 @@ const FileSection = ({
       <ReadFileBody
         file={file}
         selection={selectionFor(file.id)}
-        diffStatuses={diffStatuses}
+        comparisons={comparisons}
         onSelectionChange={(selection) => onSelectionChange(file.id, selection)}
         onEditResource={(key, resource) => onEditResource(file.id, key, resource)}
       />
@@ -462,7 +611,7 @@ const PreviewPanel = ({
   settings,
   settingsRegistry,
   selectionFor,
-  diffStatuses,
+  comparisons,
   onSelectionChange,
   onSettingsChange,
   onConfirm,
@@ -540,7 +689,7 @@ const PreviewPanel = ({
                   key={file.id}
                   file={file}
                   selectionFor={selectionFor}
-                  diffStatuses={diffStatuses}
+                  comparisons={comparisons}
                   onSelectionChange={onSelectionChange}
                   onEditResource={openEditor}
                 />
@@ -553,7 +702,7 @@ const PreviewPanel = ({
             key={file.id}
             file={file}
             selectionFor={selectionFor}
-            diffStatuses={diffStatuses}
+            comparisons={comparisons}
             onSelectionChange={onSelectionChange}
             onEditResource={openEditor}
           />
