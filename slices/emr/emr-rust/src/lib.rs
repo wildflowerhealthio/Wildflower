@@ -168,7 +168,16 @@ pub fn setup_fhir_r4(
         .merge(patient_everything_route)
         .fallback_service(hfs_router);
 
-    Ok(Router::new().nest(FHIR_R4_PATH, fhir_with_override))
+    // `nest_service`, not `nest`: the FHIR *base* is a real endpoint — a client
+    // submits a batch/transaction Bundle as one `POST /`, which mounted here is
+    // `POST /fhir-r4/` (with the trailing slash a FHIR base URL carries). `nest`
+    // registers only an exact `/fhir-r4` matcher and a `/fhir-r4/{*rest}`
+    // catch-all, and matchit's catch-all does not match zero trailing segments,
+    // so `/fhir-r4/` matched neither and escaped the nest to the host's SPA
+    // fallback (a 200 HTML page for any method). `nest_service` claims the whole
+    // `/fhir-r4` subtree — bare root and trailing slash included — for the inner
+    // router, so the base reaches HFS. Covered by `tests/batch_bundle_at_base.rs`.
+    Ok(Router::new().nest_service(FHIR_R4_PATH, fhir_with_override))
 }
 
 /// Filename HFS's `SearchParameterLoader` expects for the R4 spec bundle inside
