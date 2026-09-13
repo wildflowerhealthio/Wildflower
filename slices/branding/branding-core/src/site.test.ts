@@ -9,17 +9,19 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'medications',
   'importer',
   'webTrace',
-  'serverDocs'
+  'serverDocs',
+  'ohifViewer'
 )
 
 describe('SECTION_PATHS', () => {
-  it('should contain exactly five sections with the correct deploy-contract paths', () => {
+  it('should contain exactly six sections with the correct deploy-contract paths', () => {
     expect(SECTION_PATHS).toStrictEqual({
       marketing: '',
       medications: 'medications-app',
       importer: 'importer-app',
       webTrace: 'web-trace-app',
       serverDocs: 'wildflower-server-docs',
+      ohifViewer: 'ohif-viewer',
     })
   })
 })

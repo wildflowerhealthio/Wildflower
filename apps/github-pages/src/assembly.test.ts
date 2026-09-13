@@ -91,6 +91,12 @@ describe('site layout', () => {
     ])
   })
 
+  it('serves the OHIF viewer from /ohif-viewer', () => {
+    const [ohif] = resolveSections(repoRoot, outDir, [sectionFor('ohif-viewer')])
+    expect(ohif?.to).toBe(join(outDir, 'ohif-viewer'))
+    expect(ohif?.requiredPaths).toEqual([join(outDir, 'ohif-viewer', 'index.html')])
+  })
+
   it('serves the web trace app from /web-trace-app with both SMART entries', () => {
     const [webTrace] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-web-trace')])
     expect(webTrace?.to).toBe(join(outDir, 'web-trace-app'))
@@ -155,7 +161,14 @@ describe('site layout', () => {
   it('should pin the deploy-contract paths as literal values', () => {
     const destPaths = siteSections.map((s) => s.destPath).toSorted()
     expect(destPaths).toEqual(
-      ['', 'importer-app', 'medications-app', 'web-trace-app', 'wildflower-server-docs'].toSorted()
+      [
+        '',
+        'importer-app',
+        'medications-app',
+        'ohif-viewer',
+        'web-trace-app',
+        'wildflower-server-docs',
+      ].toSorted()
     )
   })
 })
@@ -227,6 +240,16 @@ describe('layout reconciliation with the packages it assembles', () => {
     const config = readFileSync(configPath, 'utf8')
     expect(config).not.toMatch(/\boutDir\s*:/)
     expect(sectionFor('wildflower-server-docs').sourceDir).toBe('apps/wildflower-server-docs/dist')
+  })
+
+  it('reads the OHIF viewer from the dist its build script writes', () => {
+    // The build script owns `dist/` outright (it removes and recreates it), so
+    // this pins the assembly to the directory that script names rather than a
+    // second copy of the path.
+    const buildPath = join(repoRoot, 'apps', 'ohif-viewer', 'src', 'build.ts')
+    const build = readFileSync(buildPath, 'utf8')
+    expect(build).toMatch(/join\(packageRoot, 'dist'\)/)
+    expect(sectionFor('ohif-viewer').sourceDir).toBe('apps/ohif-viewer/dist')
   })
 
   it('declares every assembled package as a workspace dependency', () => {

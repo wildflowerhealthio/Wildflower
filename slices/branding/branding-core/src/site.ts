@@ -12,6 +12,7 @@ const SECTION_PATHS = {
   importer: 'importer-app',
   webTrace: 'web-trace-app',
   serverDocs: 'wildflower-server-docs',
+  ohifViewer: 'ohif-viewer',
 } as const
 
 /** Identifies one section of the assembled site. */

@@ -11,6 +11,7 @@ that owns it, and this package places those outputs at their public URLs.
 | `/importer-app`           | `wildflower-importer` (`apps/importer-web`)              |
 | `/wildflower-server-docs` | `wildflower-server-docs` (`apps/wildflower-server-docs`) |
 | `/web-trace-app`          | `wildflower-web-trace` (`apps/web-trace`)                |
+| `/ohif-viewer`            | `ohif-viewer` (`apps/ohif-viewer`)                       |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 
@@ -33,7 +34,8 @@ Importer keep building into `slices/apps/self-hosted-apps/medication`,
 resources. Those paths are each a seeded app row's (or its debug-only `-dev`
 row's) `content_folder`, so this package only copies from them rather than
 redirecting them. The server-docs console builds into its own `dist/` and is
-copied verbatim.
+copied verbatim, and so is the OHIF viewer, whose `dist/` is a downloaded
+prebuilt bundle (or a stub page while none is pinned) rather than a Vite build.
 
 Each of those three apps sets a relative `base: './'` in its own Vite config,
 which is what lets the same build serve from a loopback origin's root on device

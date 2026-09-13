@@ -1,0 +1,4 @@
+{
+  "$comment": "The prebuilt OHIF viewer this app publishes. `pin` is null until the first release of wildflowerhealthio/ohif-viewer-dist exists; then it is { url, sha256 } of that release's ohif-viewer.tar.gz. See README.md.",
+  "pin": null
+}

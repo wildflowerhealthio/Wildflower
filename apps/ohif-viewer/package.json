@@ -1,10 +1,10 @@
 {
-  "name": "github-pages",
+  "name": "ohif-viewer",
   "version": "0.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node ./src/assemble.ts",
+    "build": "node ./src/build.ts",
     "check": "vp check",
     "dev": "vp preview",
     "test": "vp test"
@@ -13,14 +13,8 @@
     "branding-core": "workspace:*",
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
-    "marketing-website": "workspace:*",
-    "medications-app": "workspace:*",
-    "ohif-viewer": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "wildflower-importer": "workspace:*",
-    "wildflower-server-docs": "workspace:*",
-    "wildflower-web-trace": "workspace:*"
+    "vite-plus": "catalog:"
   }
 }

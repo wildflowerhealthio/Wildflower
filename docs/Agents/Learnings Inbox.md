@@ -210,3 +210,9 @@ the literal and fakes only the data part.
 **Discovered during**: claude/pr-637-3-lifelabs-binding (generalized importer preview)
 **Learning**: `pdfjs-dist` transfers the `ArrayBuffer` behind `data` to its worker, detaching it in the calling realm. Any code that reuses the same `Uint8Array` afterwards — the importer re-decodes a pick on a settings change and uploads the same bytes as the source archive at confirm — dies with `TypeError: attempting to access detached ArrayBuffer` (surfacing far away, e.g. inside an Effect Schema encode). `positioned-text-web`'s `extractPositionedText` now hands pdfjs a copy (`new Uint8Array(bytes)`); keep that invariant if the seam is ever touched.
 **Suggested destination**: file-formats docs / Strategies
+
+## OHIF builds live in `ohif-viewer-dist`, and out-of-tree plugins register via `directory`
+
+**Discovered during**: claude/zealous-planck-nxyki7 (adding the OHIF FHIR viewer to the site)
+**Learning**: OHIF/Viewers is its own pnpm 11 workspace with a ~10 min rspack build, so it is never built inside this monorepo: `wildflowerhealthio/ohif-viewer-dist` pins the upstream commits, builds, and publishes a release tarball plus digest that `apps/ohif-viewer/prebuilt.json` pins. OHIF master's `platform/app/.webpack/writePluginImportsFile.js` accepts `{ packageName, directory }` entries in `pluginConfig.json` for extensions and modes outside its workspace, which replaces the yarn-hardcoded `pnpm run cli link-extension` step the FHIR viewer guide describes. OHIF reads `app-config.js` at page load, so runtime config (router basename, data sources, SMART client ID) is overlaid at assembly time here and never needs an upstream rebuild.
+**Suggested destination**: apps docs / Strategies
