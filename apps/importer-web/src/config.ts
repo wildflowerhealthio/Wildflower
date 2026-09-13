@@ -17,21 +17,19 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * unreachable through patient context and a `patient/` scope would match
  * nothing.
  *
- * The scopes are **SMART v2 letter granularity**, tightened to exactly the FHIR
- * interactions the flow issues (never the mechanical v1 `.read`/`.write`
- * expansion):
+ * The scopes are **SMART v2 letter granularity**, `.cruds` (create + read +
+ * update + delete + search) on every FHIR resource type the importer handles —
+ * `DocumentReference`, `Patient`, `Observation`, `Practitioner`,
+ * `DiagnosticReport`:
  *
- * - `system/DocumentReference.rs` — read + search. The app **searches** the
- *   server for existing HAR archives (`DocumentReference.SearchByGet`) and reads
- *   one back by id when the user picks a server-held archive.
- * - `system/DocumentReference.u`, `system/Patient.u`, `system/Observation.u` —
- *   update only. Every write is a `PUT /{type}/{client-minted-uuid}` (the
- *   `.Update` endpoint / `fhir-r4`'s `upsertResource`), i.e. update-as-create:
- *   the app never issues a `POST` create (`.c`) or a `DELETE` (`.d`), so those
- *   letters are deliberately withheld. A server that gates update-as-create on
- *   `create` would reject these — negotiating scopes from the server's advertised
- *   capabilities is the dynamic-scope follow-up, not something to widen for
- *   pre-emptively here.
+ * - The app **searches** the server for existing HAR archives
+ *   (`DocumentReference.SearchByGet`) and reads one back by id when the user
+ *   picks a server-held archive.
+ * - Every write is a `PUT /{type}/{client-minted-uuid}` (the `.Update` endpoint /
+ *   `fhir-r4`'s `upsertResource`), i.e. update-as-create. The full `.cruds`
+ *   grant deliberately includes `create` and `delete` even though the flow
+ *   issues neither today, so a server that gates update-as-create on `create`
+ *   accepts the writes and the set has room to grow without a scope change.
  *
  * `clientId` depends on how this build is being served, because the two ways it
  * is served are two different registrations:
@@ -52,9 +50,12 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * through: the host's self-hosted redirect resolver looks an app up by
  * `client_id`, so the app-relative redirect only resolves when the two match.
  *
- * The scope string MUST equal the `allowed_scopes` JSON array in
- * `gatekeeper-rust`'s `0008_seed_wildflower_importer_client` migration, element
- * for element — a scope the app requests but the client is not allowed fails the
+ * The scope string MUST equal the `allowed_scopes` JSON array the
+ * `gatekeeper-rust` migrations seed for `importer-app` — originally
+ * `0008_seed_wildflower_importer_client`, widened by
+ * `0009_widen_importer_client_write_scopes` (adds `Practitioner` +
+ * `DiagnosticReport` writes) — element for element: a scope the app requests but
+ * the client is not allowed fails the
  * authorize step. Nothing enforces that across the TS/Rust boundary, so the
  * pairing is pinned here, in the migration's own comment, and in
  * [AGENTS.md](../AGENTS.md); the Rust assertion in `gatekeeper-rust`'s
@@ -70,7 +71,7 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
 const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'importer-app-dev' : 'importer-app',
   scope:
-    'launch openid fhirUser system/DocumentReference.rs system/DocumentReference.u system/Patient.u system/Observation.u',
+    'launch openid fhirUser system/DocumentReference.cruds system/Patient.cruds system/Observation.cruds system/Practitioner.cruds system/DiagnosticReport.cruds',
 }
 
 /**
@@ -91,7 +92,7 @@ const smartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
 const standaloneSmartConfig: Omit<SmartLaunchConfig, 'redirectUri' | 'iss'> = {
   clientId: import.meta.env.DEV ? 'importer-app-dev' : 'importer-app',
   scope:
-    'launch openid fhirUser system/DocumentReference.rs system/DocumentReference.u system/Patient.u system/Observation.u',
+    'launch openid fhirUser system/DocumentReference.cruds system/Patient.cruds system/Observation.cruds system/Practitioner.cruds system/DiagnosticReport.cruds',
 }
 
 export { smartConfig, standaloneSmartConfig }
