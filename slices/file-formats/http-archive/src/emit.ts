@@ -185,6 +185,17 @@ const emitHar = (exchanges: readonly TraceExchange[], options: EmitHarOptions): 
  */
 interface EmitHarFromLogOptions {
   /**
+   * Name for `log.creator.name` — who produced this archive.
+   *
+   * @defaultValue {@link CREATOR_NAME}
+   *
+   * @remarks
+   * An emitter that is not the web trace names itself here, so a reader of the
+   * file can tell a recorder's archive from an anonymizer's without consulting
+   * anything outside it.
+   */
+  readonly creatorName?: string
+  /**
    * Version string for `log.creator.version`.
    *
    * @defaultValue `'0'`
@@ -192,6 +203,20 @@ interface EmitHarFromLogOptions {
   readonly creatorVersion?: string
   /** Free-text note placed on `log.comment`, e.g. the redaction settings used. */
   readonly comment?: string
+  /**
+   * The `comment` carried on every entry's `request`, saying why the archive
+   * states no request side.
+   *
+   * @defaultValue {@link DROPPED_REQUEST_ON_IMPORT_COMMENT}
+   *
+   * @remarks
+   * The default speaks for the anonymize path, where the request side existed
+   * in a source archive and was dropped at import. An emitter whose request
+   * side was never observed at all — a live recorder reading a response-only
+   * capture — states that instead, so the file does not claim a history it
+   * does not have.
+   */
+  readonly requestComment?: string
 }
 
 /**
@@ -207,7 +232,7 @@ const bodyOfEntry = (entry: HttpArchive.Entry): HarBody =>
     ? { _tag: 'HarNoBody' }
     : { _tag: 'HarBase64Body', text: Encoding.encodeBase64(entry.body) }
 
-const requestFromEntry = (entry: HttpArchive.Entry): HarRequest => ({
+const requestFromEntry = (entry: HttpArchive.Entry, requestComment: string): HarRequest => ({
   method: 'UNKNOWN',
   url: entry.url,
   httpVersion: '',
@@ -216,13 +241,13 @@ const requestFromEntry = (entry: HttpArchive.Entry): HarRequest => ({
   queryString: queryStringOf(entry.url),
   headersSize: NOT_MEASURED,
   bodySize: NOT_MEASURED,
-  comment: DROPPED_REQUEST_ON_IMPORT_COMMENT,
+  comment: requestComment,
 })
 
-const entryFromArchiveEntry = (entry: HttpArchive.Entry): HarEntry => ({
+const entryFromArchiveEntry = (entry: HttpArchive.Entry, requestComment: string): HarEntry => ({
   startedDateTime: entry.startedAt,
   time: NOT_MEASURED,
-  request: requestFromEntry(entry),
+  request: requestFromEntry(entry, requestComment),
   response: {
     status: entry.status,
     statusText: entry.statusText,
@@ -249,10 +274,12 @@ const entryFromArchiveEntry = (entry: HttpArchive.Entry): HarEntry => ({
 })
 
 /**
- * Emits a HAR 1.2 archive from an already-anonymized {@link HttpArchive.Log}.
+ * Emits a HAR 1.2 archive from an {@link HttpArchive.Log}.
  *
- * @param log - The entries to include, typically what {@link redactLog} produced
- * @param options - Creator version and the settings-describing comment
+ * @param log - The entries to include, e.g. what {@link redactLog} produced or
+ *   what a live recorder accumulated
+ * @param options - Creator identity, and the comments that annotate what the
+ *   archive does not carry
  * @returns An archive that encodes to one the HAR 1.2 schema validates
  *
  * @remarks
@@ -262,21 +289,30 @@ const entryFromArchiveEntry = (entry: HttpArchive.Entry): HarEntry => ({
  * guessed: `request.method` is `UNKNOWN`, timings are `-1`, and a dropped body
  * is a `HarNoBody` with the archive stating why in the entry `comment`.
  *
+ * Two producers share this emitter — the anonymizer's re-encode and the HAR
+ * recorder's live capture — and they differ only in who they say they are and
+ * why their entries have no request side. Those are `creatorName` and
+ * `requestComment`; both default to the anonymize path's wording, so a caller
+ * that passes neither gets exactly what it got before.
+ *
  * This function does not redact. Pass it a log that has already been through
- * {@link redactLog} — an archive built from a raw log contains everything the
- * archive held.
+ * {@link redactLog} when the source needed redacting — an archive built from a
+ * raw log contains everything the log held.
  */
-const emitHarFromLog = (log: HttpArchive.Log, options: EmitHarFromLogOptions = {}): Har => ({
-  log: {
-    version: '1.2',
-    creator: {
-      name: CREATOR_NAME,
-      version: options.creatorVersion ?? '0',
+const emitHarFromLog = (log: HttpArchive.Log, options: EmitHarFromLogOptions = {}): Har => {
+  const requestComment = options.requestComment ?? DROPPED_REQUEST_ON_IMPORT_COMMENT
+  return {
+    log: {
+      version: '1.2',
+      creator: {
+        name: options.creatorName ?? CREATOR_NAME,
+        version: options.creatorVersion ?? '0',
+      },
+      entries: log.entries.map((entry) => entryFromArchiveEntry(entry, requestComment)),
+      ...(options.comment === undefined ? {} : { comment: options.comment }),
     },
-    entries: log.entries.map(entryFromArchiveEntry),
-    ...(options.comment === undefined ? {} : { comment: options.comment }),
-  },
-})
+  }
+}
 
 /** Serializes an archive to the text of a `.har` file. */
 const harToJson = Schema.encode(HarFromJson)

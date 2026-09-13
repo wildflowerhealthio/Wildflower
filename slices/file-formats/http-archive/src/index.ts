@@ -14,6 +14,8 @@ export {
   type EmitHarOptions,
   emitHar,
   emitHarFromLog,
+  harFromJson,
+  harToJson,
   METHOD_COMMENT,
   REQUEST_COMMENT,
   SKIPPED_BODY_COMMENT,

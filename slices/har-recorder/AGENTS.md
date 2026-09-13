@@ -1,0 +1,54 @@
+# AGENTS.md — slices/har-recorder
+
+The **HAR Recorder**: a desktop tool that opens a URL in the sniffer webview,
+records every fetch/XHR response the injected `browser-sniffer` reports, and
+writes a HAR 1.2 file into the app's `saved_data` directory when the recording
+stops. The in-app cousin of the browser extension in #578 — same output format,
+saved locally. Designed in [#652](https://github.com/wildflowerhealthio/Wildflower/issues/652).
+
+It composes three existing primitives and adds nothing to their semantics:
+`slices/browser-sniffer` (the injected shims and the webview lifecycle),
+`plugins/tauri-plugin-native-webview` (the presentation surface), and
+`slices/file-formats/http-archive` (the one HAR emitter).
+
+## Package roles
+
+- **[`har-recorder-core`](./har-recorder-core/AGENTS.md)** — the pure layer:
+  `Recording` (sniffer events → `HttpArchive.Log`), `isOmittedFromRecording`,
+  `recordingFileName`, `toHar`, and `HarRecorderBridge`. Platform-neutral.
+
+Still to come, in the phases of #652:
+
+- **`har-recorder-react`** — the recorder page and its `useHarRecorder` state
+  machine. Intakes sniffer events through `collector-react`'s register/sender
+  hooks (the data-plane tags live on `CollectorBridge`, and a tag must be unique
+  across the shared channel), which makes `collector-react` an intrinsic
+  dependency.
+- **`har-recorder-rust`** — serde mirror of the bridge wire plus the validated,
+  atomic `save_har`. No `tauri` dependency, so it compiles and tests without
+  GTK.
+- **`har-recorder-tauri-rust`** — the host glue that listens on `BRIDGE_EVENT`,
+  writes the file off-thread, and answers `HarSaved` / `HarSaveFailed`.
+
+## Layering
+
+- **`har-recorder-core` is pure** — no DOM, no `fs`, no React, no Effect
+  runtime. The SPA accumulates and builds the archive; Rust only writes bytes,
+  so there is one HAR emitter and no `fs` grant to the web layer.
+- **Intrinsic dependencies**: `browser-sniffer-core` (message types),
+  `http-archive` (the format), `effect-messaging-core` (the bridge),
+  `web-trace-core` (`contentTypeOf`, transitional until #578), and — for the
+  React package — `collector-react`.
+- **Nothing here is imported by the slices it builds on.** `browser-sniffer`,
+  `collector`, `file-formats` and the plugin know nothing about the recorder.
+
+## References
+
+- [har-recorder-core AGENTS.md](./har-recorder-core/AGENTS.md) — the pure layer.
+- [slices/AGENTS.md](../AGENTS.md) — slice layering rules this slice follows.
+- [http-archive AGENTS.md](../file-formats/http-archive/AGENTS.md) — the HAR
+  format the recorder emits through.
+- [browser-sniffer AGENTS.md](../browser-sniffer/AGENTS.md) — the capture
+  primitive the recording is built from.
+- [Wire Pinning How-To](../../docs/Messaging/Wire%20Pinning%20How-To.md) — the
+  TS ⇄ Rust discipline `HarRecorderBridge` follows.

@@ -30,8 +30,9 @@ import { describe, expect, test } from 'vite-plus/test'
 import { noTimings } from 'web-trace-core'
 import type { TraceExchange } from 'web-trace-core'
 import { arbitraries, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
-import { emitHar } from './emit.ts'
+import { CREATOR_NAME, DROPPED_REQUEST_ON_IMPORT_COMMENT, emitHar, emitHarFromLog } from './emit.ts'
 import { Har } from './har.ts'
+import type * as HttpArchive from './http-archive.ts'
 
 const { session: sessionArbitrary } = arbitraries(fc)
 
@@ -207,5 +208,60 @@ describe('emitHar', () => {
       ['Content-Type', 'application/json'],
       ['X-Request-Id', 'abc'],
     ])
+  })
+})
+
+/**
+ * One settled entry, in the shape the {@link HttpArchive.Log} projection holds
+ * it. The fields the creator/request options do not touch are fixed here so a
+ * failure names the option, not the fixture.
+ */
+const logOf = (): HttpArchive.Log => ({
+  version: '1.2',
+  entries: [
+    {
+      id: 'har-entry-0',
+      url: 'https://portal.example.org/api/v2/patients',
+      method: 'UNKNOWN',
+      status: 200,
+      statusText: 'OK',
+      headers: [['content-type', 'application/json']],
+      startedAt: DateTime.unsafeMake('2026-09-13T14:02:11Z'),
+      body: new TextEncoder().encode('{"ok":true}'),
+      bodyAbsent: false,
+    },
+  ],
+})
+
+describe('emitHarFromLog', () => {
+  test('names the web trace and states the import-dropped request side by default', () => {
+    const archive = emitHarFromLog(logOf())
+    expect(archive.log.creator.name).toBe(CREATOR_NAME)
+    expect(archive.log.entries[0]?.request.comment).toBe(DROPPED_REQUEST_ON_IMPORT_COMMENT)
+  })
+
+  test('creatorName names a different producer on log.creator', () => {
+    const archive = emitHarFromLog(logOf(), { creatorName: 'Wildflower HAR Recorder' })
+    expect(archive.log.creator.name).toBe('Wildflower HAR Recorder')
+    // The override replaces the name only; the version keeps its own default.
+    expect(archive.log.creator.version).toBe('0')
+  })
+
+  test('property: requestComment lands on every entry request, replacing the default', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }), (requestComment) => {
+        const archive = emitHarFromLog(logOf(), { requestComment })
+        expect(archive.log.entries.map((entry) => entry.request.comment)).toEqual([requestComment])
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  test('an archive emitted with both overrides still validates against the HAR 1.2 schema', () => {
+    const archive = emitHarFromLog(logOf(), {
+      creatorName: 'Wildflower HAR Recorder',
+      requestComment: 'The request side was never observed.',
+    })
+    expect(validateHar(encode(archive))).toBe(true)
   })
 })
