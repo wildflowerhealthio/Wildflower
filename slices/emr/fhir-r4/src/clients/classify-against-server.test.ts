@@ -1,15 +1,18 @@
 import { HttpClient, HttpClientRequest, HttpClientResponse } from '@effect/platform'
-import { Arbitrary, Effect, FastCheck as fc, Layer, Schema } from 'effect'
+import { Arbitrary, Effect, FastCheck as fc, Layer, Option, Schema } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { Patient, type FhirResource } from '../resources/index.ts'
 import {
   classifyAgainstServer,
   diffKey,
+  resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
   type DiffStatus,
+  type ServerComparison,
 } from './classify-against-server.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
+import { formatPath, present } from './field-diff.ts'
 
 /**
  * Covers the existence + content pre-fetch: one `POST /` batch of GET entries,
@@ -28,7 +31,7 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '404 Not Found' }))
     )
-    expect(result.classifications.get(diffKey(patient))).toBe<DiffStatus>('new')
+    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('new')
   })
 
   it('classifies an id as unchanged when the server returns a byte-equal resource (minus server-managed meta)', async () => {
@@ -42,7 +45,11 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK', resource: echoed }))
     )
-    expect(result.classifications.get(diffKey(patient))).toBe<DiffStatus>('unchanged')
+    const comparison = result.classifications.get(diffKey(patient))
+    expect(comparison?.status).toBe<DiffStatus>('unchanged')
+    // The server copy is carried even when nothing differs, so a later edit
+    // to this resource can be diffed against it.
+    expect(comparison?.server).toBeDefined()
   })
 
   it('classifies an id as changed when the returned resource differs on non-meta content', async () => {
@@ -52,13 +59,32 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK', resource: encodePatient(drifted) }))
     )
-    expect(result.classifications.get(diffKey(patient))).toBe<DiffStatus>('changed')
+    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
+  })
+
+  it('carries the leaf-level field diffs (server value) for a changed resource', async () => {
+    // Arrange: the server holds a copy that differs only on gender.
+    const patient = makePatient('drift-fields')
+    const serverGender = patient.gender === 'female' ? 'male' : 'female'
+    const onServer = { ...patient, gender: serverGender } as const
+
+    // Act
+    const result = await runWith(
+      [patient],
+      perEntry(() => ({ status: '200 OK', resource: encodePatient(onServer) }))
+    )
+
+    // Assert: the changed status names the gender leaf, showing the server's value.
+    const comparison = result.classifications.get(diffKey(patient))
+    expect(comparison?.status).toBe<DiffStatus>('changed')
+    const genderDiff = comparison?.fields.find((field) => formatPath(field.path) === 'gender')
+    expect(genderDiff?.server).toEqual(present(serverGender))
   })
 
   it('classifies as new when the whole submission fails, so writes still attempt', async () => {
     const patient = makePatient('svc-out')
     const result = await runWith([patient], rawResponse(new Response('', { status: 503 })))
-    expect(result.classifications.get(diffKey(patient))).toBe<DiffStatus>('new')
+    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('new')
   })
 
   it('classifies as changed when the server returns 2xx with no body', async () => {
@@ -67,7 +93,7 @@ describe('classifyAgainstServer', () => {
       [patient],
       perEntry(() => ({ status: '200 OK' }))
     )
-    expect(result.classifications.get(diffKey(patient))).toBe<DiffStatus>('changed')
+    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
   })
 
   it('classifies as changed when the returned resource is not decodable through the FHIR union', async () => {
@@ -80,7 +106,7 @@ describe('classifyAgainstServer', () => {
         resource: { resourceType: 'Organization', id: 'nope' },
       }))
     )
-    expect(result.classifications.get(diffKey(patient))).toBe<DiffStatus>('changed')
+    expect(result.classifications.get(diffKey(patient))?.status).toBe<DiffStatus>('changed')
   })
 
   it('skips null-id resources and returns nothing for them', async () => {
@@ -125,6 +151,45 @@ describe('SERVER_MANAGED_META_FIELDS', () => {
 describe('diffKey', () => {
   it('joins resourceType and logical id with a slash', () => {
     expect(diffKey(makePatient('p-1'))).toBe('Patient/p-1')
+  })
+})
+
+describe('resetFieldToServer', () => {
+  it('replaces one leaf of the incoming resource with the server value', () => {
+    // Arrange: a gender leaf that differs from the server.
+    const patient = makePatient('reset-1')
+    const serverGender = patient.gender === 'female' ? 'male' : 'female'
+    const field = {
+      path: ['gender'] as const,
+      server: present(serverGender),
+      incoming: present(patient.gender),
+    }
+
+    // Act
+    const reset = resetFieldToServer(patient, field)
+
+    // Assert: a decodable resource with just that leaf now matching the server.
+    expect(Option.isSome(reset)).toBe(true)
+    if (Option.isSome(reset)) {
+      expect(reset.value).toMatchObject({ resourceType: 'Patient', gender: serverGender })
+    }
+  })
+
+  it('leaves the incoming resource unedited on the rest of its content', () => {
+    // Arrange
+    const patient = makePatient('reset-2')
+    const serverGender = patient.gender === 'female' ? 'male' : 'female'
+    const field = {
+      path: ['gender'] as const,
+      server: present(serverGender),
+      incoming: present(patient.gender),
+    }
+
+    // Act
+    const reset = resetFieldToServer(patient, field)
+
+    // Assert: the id (and therefore the resource's identity) is untouched.
+    if (Option.isSome(reset)) expect(reset.value.id).toBe(patient.id)
   })
 })
 
@@ -233,7 +298,7 @@ const runWith = async (
   responder: Responder
 ): Promise<{
   readonly requests: ReadonlyArray<RecordedRequest>
-  readonly classifications: ReadonlyMap<string, DiffStatus>
+  readonly classifications: ReadonlyMap<string, ServerComparison>
 }> => {
   const records: Array<RecordedRequest> = []
   const clientLayer = FhirR4ResourcesHttpApiClient.layer.pipe(

@@ -4,8 +4,8 @@ The **HAR binding** of the importer slice: the concrete
 `FileImporterDescriptor` for format `'har'`, assembled from three seams that each
 already have a home. It is where the resource-agnostic `importer-fundamentals`
 contract is bound to a concrete format (HAR) and resource type (FHIR). No DOM, no
-`fs`, no React: HAR text in, FHIR resources out, an opt-in write behind the
-descriptor's `persist`.
+`fs`, no React: HAR text in, FHIR resources out, an opt-in write through the
+shell's shared `persistBatchBundle`.
 
 ## Shape
 
@@ -16,15 +16,31 @@ descriptor's `persist`.
   the anonymizer could consume it without reaching into the importer. This
   binding consumes it from `decode-har.ts`.
 - `src/archive/` — **the FHIR encoding of an uploaded `.har` file** as a
-  `DocumentReference`. Moved from `web-trace-core/codec/har-archive-codec.ts`.
-  A whole archive lives as one attachment under the `har-archive` category,
-  disjoint from a trace on the same axis (`isHarArchive` / `isWebTrace` never
-  both hold). Exported as the `/archive` subpath. Re-exports
-  `HAR_ARCHIVE_CODE` and `WEB_TRACE_CODE_SYSTEM` so a downstream reader can
-  build the search token from one import.
+  `DocumentReference`. A thin config + re-export shim over
+  `importer-fundamentals`' shared **`sourceArchiveCodec`**: it passes HAR's
+  coding, `application/json` content type, and the web-trace raw `securityLabel`
+  in as data and re-exports only what the binding consumes —
+  `HAR_ARCHIVE_CATEGORY_TOKEN` (`codec.categoryToken`),
+  `harArchiveFromDocumentReference`, `isHarArchive`, and `sourceArchive`. (The
+  codec logic itself moved from `web-trace-core/codec/har-archive-codec.ts` here
+  in M1 of #578, then to the shared builder in fundamentals; the encode
+  direction, the wire builder, and the schema aliases are no longer re-exported
+  per format — the shared builder's own test covers that machinery.) A whole
+  archive lives as one attachment under the `har-archive` category, disjoint
+  from a trace on the same axis (`isHarArchive` / `isWebTrace` never both hold).
+  Exported as the `/archive` subpath. Re-exports `HAR_ARCHIVE_CODE` and
+  `WEB_TRACE_CODE_SYSTEM` so a downstream reader can build the search token from
+  one import.
+- **`sourceArchive`** — the descriptor's `sourceArchive`, now the shared
+  `sourceArchiveCodec.sourceArchive` re-exported through `src/archive/` (the
+  standalone `src/source-archive.ts` was folded into the builder). It derives a
+  deterministic id from the file's SHA-256 and name, mints the upload instant,
+  and encodes to a `DocumentReference` — **no PUT**. The shell shows it in the
+  review as a "Source file" section and writes it in the same
+  `persistBatchBundle` as the extracted resources; re-importing the same file
+  upserts rather than duplicating.
 - `src/har-importer.ts` — **`harImporterDescriptor`**, the one value the shell's
-  registry lists. Binds `TParsed = FhirResource`, `R =
-FhirR4ResourcesHttpApiClient`. Its `decode` runs the whole read half:
+  registry lists. Binds `TParsed = FhirResource`. Its `decode` runs the whole read half:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
   settings' enabled kinds, folded into the `DecodedFile` the shell reviews —
   one `LabeledSection` per URL (first-seen order, only responses that parsed
@@ -59,12 +75,6 @@ enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
   **pre-adopted** (each resource already keyed under the root of the URL it arrived
   on), never re-adopted here. Registering another source is one static append to
   `fhirSources`.
-- `src/persist-fhir.ts` — **`persistFhir`**, the descriptor's write sink:
-  `withMetaSource` (`web-trace-core`) stamps each resource's `meta.source` with
-  the source archive `sourceRef`, then `fhir-r4`'s `persistResources` writes them
-  with bounded retries/concurrency and failure-as-data. Its `ResourceWriteFailure`
-  satisfies `importer-fundamentals`' `PersistFailure` structurally, so a drift is
-  a compile error here. An empty `resources` never touches the client.
 - `src/anonymizer/` — **the shape-preserving pseudonymizer** behind the
   anonymized `.har` export. `shapes.ts` is `detectShape` / `generateFake`: the
   classes (`iso8601`, `dotNetDate`, `jwt`, `uuid`, `email`, `currency`,
@@ -95,8 +105,9 @@ codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
 ## Guardrails
 
 - **The read half never writes.** `decodeHar` requires no services, so the write
-  client is unreachable from a decode by construction. Writing is `persistFhir`'s
-  separate step behind the descriptor's `persist`, gated on a confirmed review.
+  client is unreachable from a decode by construction. Writing is the shell's
+  shared `persistBatchBundle`, gated on a confirmed review; no descriptor field
+  takes a write client.
 - **The pool is consumed pre-adopted, never re-adopted.** `fhirR4Source`'s
   `responseKinds` are already wrapped with `adoptUnderRecognizedRoot` in
   `fhir-r4-source`; adopting again would hash a hash. Live and archive share

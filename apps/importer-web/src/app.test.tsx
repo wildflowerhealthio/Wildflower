@@ -86,8 +86,8 @@ describe('ImporterApp', () => {
     })
     expect(writes()).toHaveLength(0)
 
-    // Act — confirm
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    // Act — confirm (one Patient + two Observations + the source-file archive)
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
     // Assert — the import completes, and the archive create lands before the
     // first resource write, so every written resource can name it
@@ -515,7 +515,10 @@ const importOneArchive = async (): Promise<void> => {
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
   })
-  await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+  // One Patient + two Observations + the source-file archive (a local pick
+  // creates its own DocumentReference; a server-sourced HAR reuses the existing
+  // one and previews only the three extracted resources).
+  await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
   })

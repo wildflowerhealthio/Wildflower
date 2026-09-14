@@ -1,6 +1,5 @@
 import { Effect } from 'effect'
 
-import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import type {
@@ -15,13 +14,13 @@ import {
   HAR_ARCHIVE_CONTENT_TYPE,
   harArchiveFromDocumentReference,
   isHarArchive,
+  sourceArchive,
 } from './archive/index.ts'
 import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { preview, type PreviewedResponse } from './review.ts'
-import { uploadSource } from './upload-source.ts'
 
 /** One previewed response at the concrete FHIR binding. */
 type FhirPreview = PreviewedResponse<HttpResponseKind.HttpResponseKind<FhirResource>, FhirResource>
@@ -92,11 +91,7 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
  * `responseId:index`, independent of the kind toggles, so a settings change
  * re-decodes to the same keys for the resources that survive it.
  */
-const harImporterDescriptor: FileImporterDescriptor<
-  HarSettings,
-  FhirResource,
-  FhirR4ResourcesHttpApiClient
-> = {
+const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> = {
   format: 'har',
   display: {
     title: 'HAR archive',
@@ -113,7 +108,7 @@ const harImporterDescriptor: FileImporterDescriptor<
         notes: notesFor(previews),
       }))
     ),
-  uploadSource,
+  sourceArchive,
   archiveCategoryToken: HAR_ARCHIVE_CATEGORY_TOKEN,
   isArchive: isHarArchive,
   archiveFromDocumentReference: (resource) =>

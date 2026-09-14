@@ -1,55 +1,58 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Effect, Match } from 'effect'
+import { Effect, Match, Option } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
-import {
-  type FhirR4ResourcesHttpApiClient,
-  persistBatchBundle,
-  type ResourceWriteFailure,
-} from 'fhir-r4/clients'
+import { type FhirR4ResourcesHttpApiClient, persistBatchBundle } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { Review, sectionResources } from 'importer-fundamentals'
 import { withMetaSource } from 'web-trace-core/provenance'
 
 import { ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
-import type { BoundFormat, FormatKind } from '../registry.ts'
 import {
   type BatchOutcome,
   type FileImportResult,
   importOutcome,
   type SkipReason,
 } from '../results/import-outcome.ts'
-import type { PickedFile } from '../sources/picked-file.ts'
+import { archiveReference, type PickedFile } from '../sources/picked-file.ts'
 import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
- * The opt-in write half of the flow, as one imperative action over a
- * batch: for every file with reviewed resources the review kept
- * included, secure a `sourceRef` for the file (its own format's
- * `uploadSource`), then persist those resources through the file's
- * format-specific `persist` — verbatim, each stamped with the archive
- * it came from.
+ * The opt-in write half of the flow, as one imperative action over a batch:
+ * for every file with reviewed resources the review kept included, submit
+ * those resources — including the file's own source-file archive, when the
+ * reviewer left it in — as one `persistBatchBundle`, each extracted resource
+ * stamped with the archive it came from.
  *
  * @remarks
  * The seam the preview-then-confirm promise rests on — nothing here runs
- * until the user confirms a reviewed batch. Per file the order is
- * load-bearing: secure the archive reference first (a `server` pick
- * already has one; a `local` pick uploads its bytes via the format's
- * `uploadSource`), then persist the review's chosen resources — the
- * same objects the reviewer inspected, no re-parse at confirm. Every
- * step dispatches per-file through the registry, so a HAR file writes
- * via `har-importer-core` and a LifeLabs PDF via
- * `lifelabs-pdf-importer-core`, each stamped with its own source
- * archive `DocumentReference`. Each file's failure is caught into its
- * own `uploadFailed` result, so one file never stops the rest; a file
- * with nothing included is `skipped` and never touches the server.
+ * until the user confirms a reviewed batch. The source-file archive is no
+ * longer uploaded on its own: it is one of the reviewed resources (its own
+ * "Source file" section, minted at read time), so a confirm writes it in the
+ * *same* `POST /` batch bundle as the extracted resources — one round trip,
+ * not an upload-then-persist. Per file:
  *
- * After the batch resolves, the archive list query is invalidated once —
- * so a freshly uploaded archive of any format appears in the server list
- * on the next pick — even when the batch did no uploads (every file was
- * `server` or `skipped`); the invalidation is cheap and the alternative
- * (tracking which formats uploaded) buys nothing.
+ * - Every extracted resource the review kept is stamped with `meta.source =
+ *   sourceRef`, the archive's `DocumentReference/<id>`. The archive's own id
+ *   is locked to the value it was minted with, so a reviewer's inline edit
+ *   (a rename, say) can never drift the link, and the archive is not stamped
+ *   onto itself.
+ * - `sourceRef` is the server pick's existing reference, or the local pick's
+ *   archive reference when the archive is included. When the reviewer **skips**
+ *   the archive (excludes it), there is nothing to point at, so the extracted
+ *   resources are written **without** `meta.source`.
+ *
+ * Each file's write is one `persistBatchBundle`, whose error channel is
+ * `never`, so a failed entry (the archive included) is a per-entry result in
+ * the batch — one file never stops the rest, and a file with nothing included
+ * is `skipped` and never touches the server. There is no separate upload to
+ * fail: the archive's write shows up as an ordinary row in the results.
+ *
+ * After the batch resolves, the archive list query is invalidated once — so a
+ * freshly written archive appears in the server list on the next pick — even
+ * when the batch wrote none; the invalidation is cheap and the alternative
+ * (tracking which files wrote an archive) buys nothing.
  *
  * @packageDocumentation
  */
@@ -60,7 +63,7 @@ import type { FileReadOutcome } from './use-import-run.ts'
  * @remarks
  * `done` carries the whole {@link BatchOutcome} — every file's result — and
  * the results view derives the complete-or-partial framing from it.
- * There is no separate error state: a file's upload failure is a per-file
+ * There is no separate error state: a resource's write failure is a per-entry
  * result, not a batch-wide abort, so the flow always resolves to `done`
  * once started.
  */
@@ -76,82 +79,73 @@ type SelectionFor = (fileId: string) => Review.Selection<FhirResource>
 interface ConfirmImport {
   readonly state: ConfirmState
   /**
-   * Run the per-file upload-then-persist action for every read file in
-   * the batch, dispatching each file through its own format's
-   * `uploadSource` + `persist`. Each read file's labeled resources come
-   * off its own decoded sections — the same objects the preview rendered.
+   * Run the per-file persist action for every read file in the batch. Each
+   * read file's labeled resources come off its own decoded sections — the
+   * same objects the preview rendered, including its source-file archive.
    */
   readonly confirm: (files: readonly FileReadOutcome[], selectionFor: SelectionFor) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
 
-/** The format lookup this hook needs: the format's own `uploadSource`. */
-type ConfirmRegistry = {
-  readonly [K in FormatKind]: Pick<BoundFormat<K>, 'uploadSource'>
+/** One chosen resource carried with the review key it was chosen under. */
+interface ChosenEntry {
+  readonly key: string
+  readonly resource: FhirResource
 }
 
 /**
- * Upload one local pick's bytes through its format's `uploadSource`,
- * dispatched with `Match.type<FormatKind>()` so `kind` narrows to a
- * specific K per branch. No `as` cast — each branch calls
- * `registry[K].uploadSource(picked)` with a `BoundFormat<K>`-typed value.
+ * Every labeled resource the reviewer left included, with any inline edit
+ * substituted in, carried alongside its {@link Review.Selection} key — the
+ * key form of {@link Review.chosenResources}, so the confirm can tell the
+ * file's source-file archive apart from the extracted resources by its stable
+ * key rather than by re-recognizing its coding.
  */
-const uploadSourceFor = (
-  registry: ConfirmRegistry,
-  format: FormatKind,
-  picked: PickedFile
-): Effect.Effect<string, unknown, FhirR4ResourcesHttpApiClient> =>
-  Match.type<FormatKind>().pipe(
-    Match.when('har', (kind) => registry[kind].uploadSource(picked)),
-    Match.when('lifelabs-pdf', (kind) => registry[kind].uploadSource(picked)),
-    Match.exhaustive
-  )(format)
+const chosenEntries = (
+  labeled: readonly { readonly key: string; readonly resource: FhirResource }[],
+  selection: Review.Selection<FhirResource>
+): readonly ChosenEntry[] =>
+  labeled
+    .filter((entry) => Review.isResourceIncluded(selection, entry.key))
+    .map((entry) => ({
+      key: entry.key,
+      resource: Option.getOrElse(Review.editedResource(selection, entry.key), () => entry.resource),
+    }))
+
+/** Replace a resource's `id`, preserving its concrete type — mirrors {@link withMetaSource}. */
+const withId = <TResource extends { readonly id: string | null }>(
+  resource: TResource,
+  id: string
+): TResource => ({ ...resource, id })
 
 /**
- * Persist a file's reviewed resources through the one shared write path —
- * stamp each with `meta.source = sourceRef` (so a downstream reader can find
- * the archive it came from), then submit them as one `POST /` batch bundle.
+ * The archive reference a file's extracted resources stamp onto `meta.source`,
+ * or `undefined` when there is nothing to point at.
  *
  * @remarks
- * `withMetaSource` mints a new resource per input rather than mutating in
- * place. The caller's identity on the reviewed objects is intentionally lost
- * here — the source stamp is what the write is *of* — so this is the one
- * place in the flow where the objects change shape after the review saw
- * them. `persistBatchBundle` returns `ResourceWriteFailure[]` on `never`;
- * that structural shape *is* `PersistFailure` from `importer-fundamentals`,
- * so downstream results reading (`import-outcome`) needs no change.
+ * A `server` pick's archive is already on the server, so its own reference is
+ * the stamp. A `local` pick's archive rides this batch, so its minted id
+ * becomes the reference — but only when the reviewer kept it included; a
+ * skipped archive leaves the extracted resources unstamped.
  */
-const persistFile = (
-  resources: readonly FhirResource[],
-  sourceRef: string
-): Effect.Effect<readonly ResourceWriteFailure[], never, FhirR4ResourcesHttpApiClient> =>
-  persistBatchBundle(resources.map((resource) => withMetaSource(resource, sourceRef)))
-
-/**
- * The archive reference a file's resources write against: a `server`
- * pick's own reference, or the reference minted by the format's
- * `uploadSource` for a `local` pick.
- */
-const secureSourceRef = (
-  registry: ConfirmRegistry,
-  format: FormatKind,
-  picked: PickedFile
-): Effect.Effect<string, unknown, FhirR4ResourcesHttpApiClient> => {
-  if (picked.source._tag === 'server') return Effect.succeed(picked.source.reference)
-  return uploadSourceFor(registry, format, picked)
+const provenanceRef = (
+  picked: PickedFile,
+  canonicalId: string | null,
+  archiveIncluded: boolean
+): string | undefined => {
+  if (picked.source._tag === 'server') return picked.source.reference
+  if (archiveIncluded && canonicalId !== null) return archiveReference(canonicalId)
+  return undefined
 }
 
 /**
- * Run one read file to its {@link FileImportResult}: skip a file the
- * review kept nothing from, otherwise secure a source reference and
- * persist its included resources through the file's own format's
- * `persist`. Best-effort — a failed upload is caught into an
- * `uploadFailed` result, never a raised error.
+ * Run one read file to its {@link FileImportResult}: skip a file the review
+ * kept nothing from, otherwise submit its included resources as one batch
+ * bundle. Best-effort — `persistBatchBundle` never fails, so a rejected
+ * resource is a per-entry outcome, never a raised error.
  */
 const importOneFile = (
   file: FileReadOutcome,
-  registry: ConfirmRegistry,
   selectionFor: SelectionFor
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
   const { id, picked } = file
@@ -161,26 +155,36 @@ const importOneFile = (
   return Match.value(file).pipe(
     Match.tag('unreadable', () => skip('unreadable')),
     Match.tag('unrecognized', () => skip('unreadable')),
-    Match.tag('read', ({ format, decoded }) => {
+    Match.tag('read', ({ decoded, sourceArchive }) => {
       const selection = selectionFor(id)
       const labeled = sectionResources(decoded.sections)
-      const resources = Review.chosenResources(labeled, selection)
+      const chosen = chosenEntries(labeled, selection)
       const excluded = Review.excludedCount(labeled, selection)
-      if (resources.length === 0) return skip('nothing')
-      return secureSourceRef(registry, format, picked).pipe(
-        Effect.flatMap((sourceRef) =>
-          persistFile(resources, sourceRef).pipe(
-            Effect.map((failures): FileImportResult => ({
-              _tag: 'imported',
-              id,
-              fileName,
-              outcome: importOutcome(resources.length, sourceRef, failures, excluded),
-            }))
-          )
-        ),
-        Effect.catchAll((error) =>
-          Effect.succeed<FileImportResult>({ _tag: 'uploadFailed', id, fileName, error })
-        )
+      if (chosen.length === 0) return skip('nothing')
+
+      // The archive is identified by its stable review key (not its coding),
+      // so a reviewer's inline edit to it cannot change how it is treated.
+      const archiveKey = sourceArchive?.key
+      const canonicalId = sourceArchive?.resource.id ?? null
+      const archiveIncluded =
+        sourceArchive !== undefined && Review.isResourceIncluded(selection, sourceArchive.key)
+      const sourceRef = provenanceRef(picked, canonicalId, archiveIncluded)
+
+      const resources = chosen.map(({ key, resource }) => {
+        // The archive is the source: lock its id so the stamp stays valid, and
+        // never stamp it onto itself.
+        if (key === archiveKey)
+          return canonicalId === null ? resource : withId(resource, canonicalId)
+        return sourceRef === undefined ? resource : withMetaSource(resource, sourceRef)
+      })
+
+      return persistBatchBundle(resources).pipe(
+        Effect.map((entries): FileImportResult => ({
+          _tag: 'imported',
+          id,
+          fileName,
+          outcome: importOutcome(resources.length, sourceRef, fileName, entries, excluded),
+        }))
       )
     }),
     Match.exhaustive
@@ -188,19 +192,17 @@ const importOneFile = (
 }
 
 /**
- * Drives a single confirmed batch — for each file, upload (if
- * applicable) then persist the review's included resources — as one
+ * Drives a single confirmed batch — for each file, persist the review's
+ * included resources (its source-file archive among them, when kept) — as one
  * Effect run through `runAuthed`, mapping its per-file lifecycle onto a
- * {@link BatchOutcome}. The authed runner comes from router context via
- * `fhir-r4-react`, so mount this inside the host app's router and
- * `QueryClientProvider`.
+ * {@link BatchOutcome}. The authed runner and the FHIR write client both come
+ * from router context via `fhir-r4-react`, so mount this inside the host app's
+ * router and `QueryClientProvider`.
  *
- * @param registry - The registered formats' `uploadSource` and `persist`
- *   indexed by kind (typically the whole `formatRegistry`)
- * @returns The confirm surface: its `state`, the `confirm` trigger, and
- *   a `reset` back to `idle`
+ * @returns The confirm surface: its `state`, the `confirm` trigger, and a
+ *   `reset` back to `idle`
  */
-const useConfirmImport = (registry: ConfirmRegistry): ConfirmImport => {
+const useConfirmImport = (): ConfirmImport => {
   const runAuthed = useRunAuthed()
   const queryClient = useQueryClient()
   const [state, setState] = useState<ConfirmState>({ _tag: 'idle' })
@@ -211,7 +213,7 @@ const useConfirmImport = (registry: ConfirmRegistry): ConfirmImport => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })
-      const batch = Effect.forEach(files, (file) => importOneFile(file, registry, selectionFor), {
+      const batch = Effect.forEach(files, (file) => importOneFile(file, selectionFor), {
         concurrency: 'unbounded',
       })
       void runAuthed(batch).then((results) => {
@@ -220,7 +222,7 @@ const useConfirmImport = (registry: ConfirmRegistry): ConfirmImport => {
         void queryClient.invalidateQueries({ queryKey: ARCHIVES_QUERY_KEY })
       })
     },
-    [registry, runAuthed, queryClient]
+    [runAuthed, queryClient]
   )
 
   const reset = useCallback((): void => {
@@ -231,10 +233,4 @@ const useConfirmImport = (registry: ConfirmRegistry): ConfirmImport => {
   return { state, confirm, reset }
 }
 
-export {
-  type ConfirmImport,
-  type ConfirmRegistry,
-  type ConfirmState,
-  type SelectionFor,
-  useConfirmImport,
-}
+export { type ConfirmImport, type ConfirmState, type SelectionFor, useConfirmImport }

@@ -25,14 +25,19 @@ import { ImporterScreen } from './importer-screen.tsx'
  * The load-bearing assertions are the opt-in seam itself:
  *
  * - **the preview issues no writes** — reaching a preview touches the server only
- *   for the source list; the archive create and every resource write appear only
- *   after an explicit confirm;
- * - **confirm's ordering is fixed** — the HAR-archive create lands before the
- *   first resource write, and every resource write body carries `meta.source`
- *   naming that archive (a server-sourced HAR uploads nothing and links to the
- *   document it was fetched from);
- * - **a failing write folds into a partial result**, and **cancel discards with
- *   no writes**.
+ *   for the source list; the source-file archive and every resource write appear
+ *   only after an explicit confirm;
+ * - **the source-file archive is a reviewed resource** — a local pick shows it in
+ *   its own "Source file" section, and it is written in the *same* batch as the
+ *   resources it stamps (its entry first in the bundle), each resource body
+ *   carrying `meta.source` naming that archive (a server-sourced HAR shows no
+ *   archive section, uploads nothing, and links to the document it was fetched
+ *   from);
+ * - **skipping the archive strips `meta.source`** — unticking the "Source file"
+ *   row writes the resources with no provenance stamp and no `DocumentReference`;
+ * - **a failing write folds into a partial result** (a rejected archive is just
+ *   one failed row, not a gate on the rest), and **cancel discards with no
+ *   writes**.
  */
 
 vi.mock('fhir-r4-react', async (importOriginal) => {
@@ -113,13 +118,18 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
+    // The preview blocked on the server diff: badges are already resolved the
+    // instant it paints (all four probes 404 → New), never popping in later.
+    expect(screen.getAllByText('New').length).toBeGreaterThan(0)
     expect(writes()).toHaveLength(0)
     // The two recognized responses are named in the interactive review (per URL).
     expect(screen.getByText(/\/Patient\/pat-7/)).toBeDefined()
     expect(screen.getByText(/\/Observation\?/)).toBeDefined()
+    // The source file is its own reviewable section, above the extracted rows.
+    expect(screen.getByRole('checkbox', { name: 'Include all in Source file' })).toBeDefined()
 
-    // Act — confirm (two chosen responses → one Patient + two Observations written)
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    // Act — confirm (one Patient + two Observations + the source-file archive)
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
     // Assert — writes appear only now
     await waitFor(() => {
@@ -128,7 +138,7 @@ describe('ImporterScreen', () => {
     expect(writes().length).toBeGreaterThan(0)
   })
 
-  it('uploads the HAR archive before the first resource write and stamps every resource with it', async () => {
+  it('writes the source-file archive in the same batch, first, and stamps every resource with it', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -138,12 +148,13 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — one HAR-archive create, and it lands before the first resource write
+    // Assert — one HAR-archive write, its entry first in the batch (the "Source
+    // file" section is prepended), ahead of the first resource write
     const archiveCreate = writes().findIndex((write) => write.url.includes('/DocumentReference/'))
     const firstResource = writes().findIndex((write) => isResourceWrite(write))
     expect(archiveCreate).toBeGreaterThanOrEqual(0)
@@ -191,7 +202,7 @@ describe('ImporterScreen', () => {
     }
   })
 
-  it('folds a failing write into a partial result that lists the failed resource', async () => {
+  it('folds a failing write into a partial result that groups the failed resources by code', async () => {
     // Arrange — the store rejects every Observation write
     currentRunAuthed = routingServer({
       failWrite: (request) => request.url.includes('/Observation/'),
@@ -203,45 +214,46 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
-    // Assert — a partial result: the Patient wrote, both Observations are listed
-    // as failures (retry backoff runs on the real clock, so allow for it)
+    // Assert — a partial result: the source-file archive and the Patient wrote,
+    // both Observations are grouped under their failure status code (retry
+    // backoff runs on the real clock).
     await waitFor(
       () => {
         expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
       },
       { timeout: 6000 }
     )
-    const failures = screen.getByRole('alert')
-    expect(failures.textContent).toMatch(/Observation\//)
-    expect(screen.getByRole('status').textContent).toMatch(/Wrote 1 of 3/)
+    expect(screen.getByText(/503 Service Unavailable/)).toBeDefined()
+    expect(screen.getAllByText(/Observation\//).length).toBeGreaterThan(0)
+    expect(screen.getByRole('status').textContent).toMatch(/Wrote 2 of 4/)
   })
 
-  it("surfaces a file's upload failure cause and writes none of its resources", async () => {
-    // Arrange — the store rejects the archive `DocumentReference` upload, so the
-    // file's whole write fails before any resource is stamped.
+  it("still writes a file's resources when its source-file archive is rejected, as a partial batch", async () => {
+    // Arrange — the store rejects the archive `DocumentReference` entry. It rides
+    // the same batch as the resources, so its rejection is one failed row — not a
+    // gate that stops the rest.
     currentRunAuthed = routingServer({
       failWrite: (request) => request.url.includes('/DocumentReference/'),
     })
-    const { container } = render(<ImporterScreen />, { wrapper: withQueryClient })
+    render(<ImporterScreen />, { wrapper: withQueryClient })
 
     // Act — pick locally, then confirm
     await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
-    // Assert — a partial result naming the failed file and showing the underlying
-    // cause rather than hiding it, and the failed archive means no resource wrote.
+    // Assert — a partial result: the archive's failed row shows under its status,
+    // yet the three resources still wrote (each stamped with the archive ref).
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
     })
-    expect(screen.getByText(/its archive could not be uploaded/i)).toBeDefined()
-    const detail = container.querySelector('pre')
-    expect((detail?.textContent ?? '').length).toBeGreaterThan(0)
-    expect(writes().some(isResourceWrite)).toBe(false)
+    expect(screen.getByText(/503 Service Unavailable/)).toBeDefined()
+    expect(screen.getAllByText(/DocumentReference\//).length).toBeGreaterThan(0)
+    expect(writes().filter(isResourceWrite)).toHaveLength(3)
   })
 
   it('imports several files at once as one batch, each stamped with its own archive', async () => {
@@ -255,13 +267,13 @@ describe('ImporterScreen', () => {
       harFile('session-b.har'),
     ])
     await waitFor(() => {
-      // Two files × three resources previewed under one confirm.
-      expect(screen.getByRole('button', { name: /Import 6 resources/ })).toBeDefined()
+      // Two files × (three resources + one source-file archive) under one confirm.
+      expect(screen.getByRole('button', { name: /Import 8 resources/ })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
 
     // Confirm the whole batch
-    await userEvent.click(screen.getByRole('button', { name: /Import 6 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 8 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -298,9 +310,10 @@ describe('ImporterScreen', () => {
     if (first === undefined) throw new Error('unreachable: obsBoxes has at least two entries')
     await userEvent.click(first)
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Import 2 resources/ })).toBeDefined()
+      // 1 Patient + 1 Observation + the source-file archive remain.
+      expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 2 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -346,7 +359,7 @@ describe('ImporterScreen', () => {
     })
 
     // Confirm — the edit rides through as the value the wire carries
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
@@ -359,6 +372,36 @@ describe('ImporterScreen', () => {
     if (patientWrite === undefined) throw new Error('unreachable: exactly one Patient write')
     const body: unknown = JSON.parse(patientWrite.body)
     expect(body).toMatchObject({ resourceType: 'Patient', gender: 'female' })
+  })
+
+  it('skips the source-file archive when unticked — resources write with no meta.source', async () => {
+    // Arrange
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — pick locally (1 Patient + 2 Observations + the source-file archive)
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
+    })
+    // Untick the whole "Source file" section, dropping the archive from the batch.
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Include all in Source file' }))
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+
+    // Assert — no archive `DocumentReference` write, and the three resources wrote
+    // with no `meta.source` (nothing to point at once the archive is skipped).
+    expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
+    const resourceWrites = writes().filter(isResourceWrite)
+    expect(resourceWrites).toHaveLength(3)
+    for (const write of resourceWrites) {
+      expect(hasMetaSource(write.body)).toBe(false)
+    }
   })
 
   it('discards the preview with no writes when the user cancels', async () => {
@@ -471,6 +514,17 @@ const isResourceWrite = (write: RecordedRequest): boolean =>
 const MetaSourceWire = Schema.Struct({ meta: Schema.Struct({ source: Schema.String }) })
 const metaSourceOf = (body: string): string =>
   Schema.decodeUnknownSync(MetaSourceWire)(JSON.parse(body)).meta.source
+
+/** Whether a written resource carries a non-null `meta.source` — false when the archive was skipped. */
+const OptionalMetaSourceWire = Schema.Struct({
+  meta: Schema.optional(
+    Schema.NullOr(Schema.Struct({ source: Schema.optional(Schema.NullOr(Schema.String)) }))
+  ),
+})
+const hasMetaSource = (body: string): boolean => {
+  const meta = Schema.decodeUnknownSync(OptionalMetaSourceWire)(JSON.parse(body)).meta
+  return meta != null && meta.source != null
+}
 
 /** The last path segment of a request URL — a resource's logical id on a PUT/GetById. */
 const idFromUrl = (url: string): string => {

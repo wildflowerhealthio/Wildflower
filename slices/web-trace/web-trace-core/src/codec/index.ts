@@ -13,8 +13,8 @@
  * both fail with a `ParseError` like any other schema.
  *
  * A second, deliberately disjoint encoding sits on the same category axis:
- * `har-importer-core/archive`'s `HarArchiveFromDocumentReference` stores a whole
- * uploaded `.har` file as one attachment. `isWebTrace` and `isHarArchive` never
+ * `har-importer-core/archive` stores a whole uploaded `.har` file as one
+ * attachment. `isWebTrace` and `isHarArchive` never
  * both hold — the viewer lists traces, the importer lists archives. The two
  * still share this file's systems constants (`WEB_TRACE_CODE_SYSTEM`,
  * `WEB_TRACE_RAW_CODE`, `WEB_TRACE_REDACTION_SYSTEM`, and `HAR_ARCHIVE_CODE`),

@@ -191,20 +191,25 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             "importer-app-dev",
             "Importer (Dev)",
             // Mirrors the production `importer-app` client's write-carrying set
-            // (`apps/importer-web/src/config.ts`) — a dev build requests the same
-            // scopes, and unlike the two viewers above the Importer writes.
-            // SMART v2 letters, tightened to the interactions issued:
-            // `DocumentReference.rs` (read + search) and `.u` (PUT
-            // update-as-create) on each written type — no create/`.c` or
-            // delete/`.d` are ever sent.
+            // (`apps/importer-web/src/config.ts`, as widened by gatekeeper
+            // migration `0009_widen_importer_client_write_scopes`) — a dev build
+            // requests the same scopes, and unlike the two viewers above the
+            // Importer writes. Full `.cruds` (create + read + update + delete +
+            // search) on each handled type.
             [
                 "launch",
                 "openid",
                 "fhirUser",
-                "system/DocumentReference.rs",
-                "system/DocumentReference.u",
-                "system/Patient.u",
-                "system/Observation.u",
+                "system/DocumentReference.cruds",
+                "system/Patient.cruds",
+                "system/Observation.cruds",
+                "system/Practitioner.cruds",
+                "system/DiagnosticReport.cruds",
+                "system/Medication.cruds",
+                "system/MedicationRequest.cruds",
+                "system/MedicationDispense.cruds",
+                "system/ServiceRequest.cruds",
+                "system/ImagingStudy.cruds",
             ]
             .as_slice(),
             ports.importer_app_dev,

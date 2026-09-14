@@ -48,7 +48,48 @@ const EntryRequestSchema: Schema.Schema<
   never
 > = EntryRequestStruct
 
+// FHIR R4 § OperationOutcome.issue.details — only `text` is read here (a
+// human-readable message); the coded part is not modeled.
+const OperationOutcomeDetailsStruct = mutableEncoded(
+  StructNoContext({
+    ...BackboneElement.fields,
+    text: OrNullAsOptional(Schema.String),
+  })
+)
+
+// FHIR R4 § OperationOutcome.issue. `severity`/`code` are the spec's coded
+// value sets, but a batch-response only needs them rendered, so they stay
+// `Schema.String` (the server's exact token) rather than mirroring the full
+// enums.
+const OperationOutcomeIssueStruct = mutableEncoded(
+  StructNoContext({
+    ...BackboneElement.fields,
+    severity: Schema.String,
+    code: Schema.String,
+    diagnostics: OrNullAsOptional(Schema.String),
+    details: OrNullAsOptional(OperationOutcomeDetailsStruct),
+  })
+)
+
+// FHIR R4 § OperationOutcome — modeled only as far as a caller needs to
+// render a batch-response entry's diagnostics (`Bundle.entry.response.outcome`,
+// which the spec types as any `Resource`). Not a member of `FhirResourceSchema`:
+// it exists only inside an entry response, never on its own. `resourceType`
+// stays `Schema.String` (not a literal) so this stays mutually assignable with
+// the base `Resource` the entry-response schema is pinned against — the
+// server always sends `"OperationOutcome"` here regardless.
+const OperationOutcomeStruct = mutableEncoded(
+  StructNoContext({
+    resourceType: Schema.String,
+    issue: Schema.optionalWith(mutableEncoded(Schema.Array(OperationOutcomeIssueStruct)), {
+      default: (): readonly (typeof OperationOutcomeIssueStruct.Type)[] => [],
+    }),
+  })
+)
+
 // FHIR R4 § Bundle.entry.response — populated on transaction/batch-response.
+// `outcome` carries an OperationOutcome with the entry's diagnostics (errors
+// on a batch failure, hints/warnings otherwise).
 const EntryResponseStruct = mutableEncoded(
   StructNoContext({
     ...BackboneElement.fields,
@@ -56,6 +97,7 @@ const EntryResponseStruct = mutableEncoded(
     location: OrNullAsOptional(Schema.String),
     etag: OrNullAsOptional(Schema.String),
     lastModified: OrNullAsOptional(Schema.DateTimeUtc),
+    outcome: OrNullAsOptional(OperationOutcomeStruct),
   })
 )
 
@@ -250,4 +292,7 @@ const BundleSchema = <FhirResourceSchema extends Schema.Schema.AnyNoContext>(
     )
   ).annotations({ jsonSchema: bundleJsonSchema })
 
-export { BundleType, EntrySchema, BundleSchema as Schema, type BundleValue }
+/** Decoded shape of a Bundle entry's `response` — including the `outcome` OperationOutcome. */
+type EntryResponseType = typeof EntryResponseSchema.Type
+
+export { BundleType, type EntryResponseType, EntrySchema, BundleSchema as Schema, type BundleValue }

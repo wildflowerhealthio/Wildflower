@@ -107,9 +107,11 @@ sits above `http-extraction` and below every binding, exactly as
   picker runs each registered descriptor's `detect` on every drop and
   yields the pick tagged with the first descriptor that claims it, so a
   batch may span formats — `useImportRun` decodes each pick through its
-  own format's `decode` under that format's settings, and every per-file
-  step (`uploadSource`, `persist`, the settings form) dispatches on the
-  file's format tag.
+  own format's `decode` under that format's settings and builds its
+  source-file archive through that format's `sourceArchive`, and each
+  per-format step (`decode`, `sourceArchive`, the settings form) dispatches
+  on the file's format tag. The write itself is format-blind — one shared
+  `persistBatchBundle` at the shell.
 - **The registry is closed and compile-time.** `importer-react`'s
   `formatRegistry` is a literal `{ har: …, 'lifelabs-pdf': … }`; every field
   (`descriptor` fields, `SettingsPicker`) is typed against its format's

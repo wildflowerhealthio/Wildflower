@@ -4,6 +4,7 @@ import type * as Bundle from '../data-types/resources/bundle.ts'
 import { FhirResourceSchema, type FhirResource } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
+import { diffJson, setAtPath, type FieldDiff } from './field-diff.ts'
 import { statusOk } from './persist-batch-bundle.ts'
 
 /**
@@ -11,7 +12,11 @@ import { statusOk } from './persist-batch-bundle.ts'
  * the id is `new` (absent), `unchanged` (present + wire-equal after dropping
  * server-managed fields), or `changed` (present + differs) — so a preview can
  * badge each row and a caller (the importer's confirmed batch) can opt-out
- * `unchanged` resources by default rather than blind-overwriting them.
+ * `unchanged` resources by default rather than blind-overwriting them. A
+ * `changed` result also carries the leaf-level {@link FieldDiff}s (server value
+ * → incoming value) so the badge can show *what* differs, and the server's
+ * normalized copy so a reviewer can reset any leaf back to it
+ * ({@link resetFieldToServer}).
  *
  * @packageDocumentation
  */
@@ -29,6 +34,28 @@ import { statusOk } from './persist-batch-bundle.ts'
  *   overwrite an equivalent stored resource.
  */
 type DiffStatus = 'new' | 'unchanged' | 'changed'
+
+/**
+ * A resource's full comparison against the server: its {@link DiffStatus}, and
+ * — whenever the server holds a decodable copy — the leaf-level
+ * {@link FieldDiff}s (empty for `unchanged`) plus that server copy.
+ *
+ * @remarks
+ * `fields` is the classify-time snapshot of what differed (server → incoming),
+ * for a badge to show `name[0].family "Smith" -> "Smyth"`. `server` is the
+ * server's normalized wire object, present whenever the server holds a
+ * decodable copy — both `unchanged` and `changed`, absent only for `new` (no
+ * copy) or an opaque `changed` (a copy that would not decode). Carrying it on
+ * `unchanged` too is deliberate: a caller can *recompute* the diff against the
+ * resource as it edits it (`diffJson(server, normalizedEncode(edited))`), so an
+ * edit to an `unchanged` resource surfaces as a diff, and a per-leaf reset
+ * drops a line the moment it matches again.
+ */
+interface ServerComparison {
+  readonly status: DiffStatus
+  readonly fields: readonly FieldDiff[]
+  readonly server?: unknown
+}
 
 /**
  * `meta` fields the server sets on write and echoes back on read — comparing
@@ -80,15 +107,35 @@ const encodeResource = Schema.encodeUnknownEither(FhirResourceSchema)
 const decodeResource = Schema.decodeUnknownEither(FhirResourceSchema)
 
 /**
- * Encode + normalize once, JSON-stringify for a stable content compare.
- * Falls back to `Option.none` on an encode failure — a resource that cannot
- * be encoded is treated as `changed` (safer than `unchanged`, which would
- * silently skip it).
+ * Encode a resource through its schema and drop the server-managed meta
+ * fields — the wire object the content compare and the field diff both work
+ * over. `Option.none` on an encode failure: a resource that cannot be encoded
+ * is treated as `changed` (safer than `unchanged`, which would silently skip
+ * it).
  */
-const canonicalize = (resource: FhirResource): Option.Option<string> => {
+const normalizedEncode = (resource: unknown): Option.Option<unknown> => {
   const encoded = encodeResource(resource)
   if (encoded._tag !== 'Right') return Option.none()
-  return Option.some(JSON.stringify(normalize(encoded.right)))
+  return Option.some(normalize(encoded.right))
+}
+
+/**
+ * Reset one leaf of a resource back to the server's value: encode the
+ * resource, {@link setAtPath | set} the leaf `field` names to `field.server`
+ * (removing it when the server has none there), and decode the result back to
+ * a typed resource.
+ *
+ * @param resource - The current (possibly already-edited) incoming resource
+ * @param field - The leaf to reset, from a {@link ServerComparison}'s `fields`
+ * @returns `Some` the resource with that one leaf matching the server, or
+ *   `None` when the resource cannot round-trip through the schema
+ */
+const resetFieldToServer = (resource: unknown, field: FieldDiff): Option.Option<FhirResource> => {
+  const encoded = encodeResource(resource)
+  if (encoded._tag !== 'Right') return Option.none()
+  const patched = setAtPath(encoded.right, field.path, field.server)
+  const decoded = decodeResource(patched)
+  return decoded._tag === 'Right' ? Option.some(decoded.right) : Option.none()
 }
 
 /**
@@ -109,16 +156,17 @@ const asFhirResource = (serverCopy: unknown): Option.Option<FhirResource> => {
  *
  * @param resources - The resources a caller (the importer's preview) is about
  *   to write; null-id resources are skipped and get no entry
- * @returns A map from `Type/id` to {@link DiffStatus}; empty when nothing
- *   readable was submitted. Never fails — if the whole `POST /` fails, every
- *   probed id is reported as `new` (the caller's writes will still attempt).
+ * @returns A map from `Type/id` to {@link ServerComparison}; empty when
+ *   nothing readable was submitted. Never fails — if the whole `POST /` fails,
+ *   every probed id is reported as `new` (the caller's writes will still
+ *   attempt).
  */
 const classifyAgainstServer = (
   resources: ReadonlyArray<FhirResource>
-): Effect.Effect<ReadonlyMap<string, DiffStatus>, never, FhirR4ResourcesHttpApiClient> =>
+): Effect.Effect<ReadonlyMap<string, ServerComparison>, never, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
     const readable = resources.filter((resource) => resource.id !== null)
-    if (readable.length === 0) return new Map<string, DiffStatus>()
+    if (readable.length === 0) return new Map<string, ServerComparison>()
 
     const client = yield* FhirR4ResourcesHttpApiClient
 
@@ -164,10 +212,15 @@ const classifyAgainstServer = (
       })
     )
 
-    const classifications = new Map<string, DiffStatus>()
+    const classifications = new Map<string, ServerComparison>()
+    const asNew: ServerComparison = { status: 'new', fields: [] }
+    // A `changed` we could not open up to leaf detail — no field list, no
+    // server copy to reset against. Distinct object per use is unnecessary; it
+    // carries no mutable state.
+    const opaqueChange: ServerComparison = { status: 'changed', fields: [] }
 
     if (submission._tag === 'failed') {
-      for (const resource of readable) classifications.set(diffKey(resource), 'new')
+      for (const resource of readable) classifications.set(diffKey(resource), asNew)
       return classifications
     }
 
@@ -175,14 +228,14 @@ const classifyAgainstServer = (
       const key = diffKey(resource)
       const status = entry.response?.status
       if (status === undefined) {
-        classifications.set(key, 'new')
+        classifications.set(key, asNew)
         continue
       }
       if (!statusOk(status)) {
         // `404 Not Found` and any other non-2xx (`410 Gone` included) — the
         // server does not present a stored copy at this id, so a caller's
         // write will create fresh.
-        classifications.set(key, 'new')
+        classifications.set(key, asNew)
         continue
       }
       const serverCopy: unknown = entry.resource
@@ -191,21 +244,31 @@ const classifyAgainstServer = (
         // send for a GET, but a real server can (an OperationOutcome, a
         // stripped body). Treat it as `changed` so we don't silently
         // overwrite an equivalent server copy we couldn't verify.
-        classifications.set(key, 'changed')
+        classifications.set(key, opaqueChange)
         continue
       }
       const decoded = asFhirResource(serverCopy)
       if (decoded._tag !== 'Some') {
-        classifications.set(key, 'changed')
+        classifications.set(key, opaqueChange)
         continue
       }
-      const incoming = canonicalize(resource)
-      const existing = canonicalize(decoded.value)
+      const incoming = normalizedEncode(resource)
+      const existing = normalizedEncode(decoded.value)
       if (incoming._tag !== 'Some' || existing._tag !== 'Some') {
-        classifications.set(key, 'changed')
+        classifications.set(key, opaqueChange)
         continue
       }
-      classifications.set(key, incoming.value === existing.value ? 'unchanged' : 'changed')
+      if (JSON.stringify(incoming.value) === JSON.stringify(existing.value)) {
+        // Carry the server copy even though nothing differs now, so an edit
+        // to this resource can be diffed against it (see ServerComparison).
+        classifications.set(key, { status: 'unchanged', fields: [], server: existing.value })
+        continue
+      }
+      classifications.set(key, {
+        status: 'changed',
+        fields: diffJson(existing.value, incoming.value),
+        server: existing.value,
+      })
     }
 
     // Any resources missing a matched response entry (a truncated response)
@@ -213,7 +276,7 @@ const classifyAgainstServer = (
     // report itself as a persist failure.
     for (const resource of readable) {
       const key = diffKey(resource)
-      if (!classifications.has(key)) classifications.set(key, 'new')
+      if (!classifications.has(key)) classifications.set(key, asNew)
     }
 
     return classifications
@@ -225,4 +288,12 @@ const classifyAgainstServer = (
     })
   )
 
-export { classifyAgainstServer, diffKey, SERVER_MANAGED_META_FIELDS, type DiffStatus }
+export {
+  classifyAgainstServer,
+  diffKey,
+  normalizedEncode,
+  resetFieldToServer,
+  SERVER_MANAGED_META_FIELDS,
+  type DiffStatus,
+  type ServerComparison,
+}

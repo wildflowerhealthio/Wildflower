@@ -373,7 +373,12 @@ mod tests {
         // self-hosted dev row, plus the absolute published-site redirect it
         // launches from as a cloud app (seeded by `0008`). It is the one seeded
         // SMART client whose scopes **carry writes**: importing persists what a
-        // captured session contained. This vector must stay element-for-element
+        // captured session contained. The set `0008` seeded was widened by
+        // `0009_widen_importer_client_write_scopes` to add `Practitioner`,
+        // `DiagnosticReport`, `Medication`, `MedicationRequest`,
+        // `MedicationDispense`, `ServiceRequest`, and `ImagingStudy`, and to
+        // broaden every type to full `.cruds` (create + read + update + delete +
+        // search). This vector must stay element-for-element
         // equal to the `scope` string in `apps/importer-web/src/config.ts` —
         // nothing spans the TS/Rust boundary to check it, so this assertion is the
         // Rust-side mirror of that pin, and a scope added on one side alone fails
@@ -396,10 +401,16 @@ mod tests {
                 "launch".to_string(),
                 "openid".to_string(),
                 "fhirUser".to_string(),
-                "system/DocumentReference.rs".to_string(),
-                "system/DocumentReference.u".to_string(),
-                "system/Patient.u".to_string(),
-                "system/Observation.u".to_string(),
+                "system/DocumentReference.cruds".to_string(),
+                "system/Patient.cruds".to_string(),
+                "system/Observation.cruds".to_string(),
+                "system/Practitioner.cruds".to_string(),
+                "system/DiagnosticReport.cruds".to_string(),
+                "system/Medication.cruds".to_string(),
+                "system/MedicationRequest.cruds".to_string(),
+                "system/MedicationDispense.cruds".to_string(),
+                "system/ServiceRequest.cruds".to_string(),
+                "system/ImagingStudy.cruds".to_string(),
             ],
         );
         // `ohif-viewer` (the OHIF imaging viewer) is a cloud client like the three

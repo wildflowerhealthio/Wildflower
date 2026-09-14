@@ -1,5 +1,4 @@
 import { Effect } from 'effect'
-import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { FileImporterDescriptor } from 'importer-fundamentals'
 
@@ -8,11 +7,11 @@ import {
   LIFELABS_PDF_ARCHIVE_CATEGORY_TOKEN,
   LIFELABS_PDF_ARCHIVE_CONTENT_TYPE,
   lifeLabsPdfArchiveFromDocumentReference,
+  sourceArchive,
 } from './archive/index.ts'
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
 import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
-import { uploadSource } from './upload-source.ts'
 
 /**
  * The concrete {@link FileImporterDescriptor} for the `lifelabs-pdf` format:
@@ -26,11 +25,7 @@ import { uploadSource } from './upload-source.ts'
  * format has no routing decisions (no per-URL kind picks, no source toggles),
  * so every resource the decode yields is a review candidate.
  */
-const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
-  LifeLabsPdfSettings,
-  FhirResource,
-  FhirR4ResourcesHttpApiClient
-> = {
+const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<LifeLabsPdfSettings, FhirResource> = {
   format: 'lifelabs-pdf',
   display: {
     title: 'LifeLabs report',
@@ -44,7 +39,7 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
   decode: decodeLifeLabsPdf,
-  uploadSource,
+  sourceArchive,
   archiveCategoryToken: LIFELABS_PDF_ARCHIVE_CATEGORY_TOKEN,
   isArchive: isLifeLabsPdfArchive,
   archiveFromDocumentReference: (resource) =>

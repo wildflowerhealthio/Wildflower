@@ -80,33 +80,47 @@ completion path serves both.
 `src/config.ts` requests (in both `smartConfig` and `standaloneSmartConfig`):
 
 ```text
-launch openid fhirUser system/DocumentReference.rs
-system/DocumentReference.u system/Patient.u system/Observation.u
+launch openid fhirUser system/DocumentReference.cruds
+system/Patient.cruds system/Observation.cruds
+system/Practitioner.cruds system/DiagnosticReport.cruds
+system/Medication.cruds system/MedicationRequest.cruds
+system/MedicationDispense.cruds system/ServiceRequest.cruds
+system/ImagingStudy.cruds
 ```
 
-SMART v2 letter granularity, tightened to the interactions the flow issues (not
-the mechanical v1 `.read`/`.write` expansion): `DocumentReference.rs` = read +
-search (it searches for existing archives and reads one back by id); `.u` =
-update on each written type (every write is a `PUT /{type}/{uuid}`
-update-as-create — no `POST` create `.c`, no `DELETE` `.d`).
+SMART v2 letter granularity: `.cruds` (create + read + update + delete + search)
+on every handled type. The app searches for existing archives and reads one back
+by id (`DocumentReference`), and every write is a `PUT /{type}/{uuid}`
+update-as-create; `create` and `delete` are granted too even though the flow
+issues neither today, so a server that gates update-as-create on `create`
+accepts the writes and the set has room to grow.
 
 - **Why writes at all.** Importing means persisting what a captured session
-  contained. The write set is exactly what the flow produces today: the archive
-  `DocumentReference` the confirm step uploads, plus the `Patient` and
-  `Observation` resources the registered `fhir-r4` source extracts out of a
-  capture. Widen it alongside a new collector or entity, never ahead of one.
+  contained. The auto-extracted write set is the archive `DocumentReference` the
+  confirm step uploads, plus the `Patient` and `Observation` resources the
+  registered `fhir-r4` source extracts out of a capture. `Practitioner`,
+  `DiagnosticReport`, `Medication`, `MedicationRequest`, `MedicationDispense`,
+  `ServiceRequest`, and `ImagingStudy` are also granted (`0009`): the `fhir-r4`
+  source does not yet recognize those from HAR traffic, so today they reach the
+  store only through the preview's inline JSON editor — a resource the reviewer
+  hand-authors or edits into one of those types.
 - **Why `system/` and not `patient/`.** A HAR archive carries no `subject` — it
   records a browsing session, not a clinical fact about a person — so it is
   unreachable through patient context and a `patient/` scope would match
   nothing.
-- **The pin.** This string MUST equal the `allowed_scopes` JSON array in
-  `gatekeeper-rust`'s `0008_seed_wildflower_importer_client` migration, element
-  for element: a scope the app requests but the client is not allowed fails the
-  authorize step. **There is no cross-language test that checks this** — the
-  repo's derive-both-sides pattern needs one source, and a SQL seed and a TS
-  constant have none in common. So the pairing is held by three mirrors instead:
-  the doc comment in `src/config.ts`, the migration's own comment, and the exact
-  seven-element vector asserted in `gatekeeper-rust`'s `db/clients.rs`. Change
+- **The pin.** This string MUST equal the `allowed_scopes` JSON array the
+  `gatekeeper-rust` migrations seed for `importer-app` — originally
+  `0008_seed_wildflower_importer_client`, widened by
+  `0009_widen_importer_client_write_scopes` (which broadens every type to full
+  `.cruds` and adds `Practitioner`, `DiagnosticReport`, `Medication`,
+  `MedicationRequest`, `MedicationDispense`, `ServiceRequest`, and
+  `ImagingStudy`) — element for element: a scope the app requests but
+  the client is not allowed fails the authorize step. **There is no
+  cross-language test that checks this** — the repo's derive-both-sides pattern
+  needs one source, and a SQL seed and a TS constant have none in common. So the
+  pairing is held by three mirrors instead: the doc comment in `src/config.ts`,
+  the migrations' own comments, and the exact
+  vector asserted in `gatekeeper-rust`'s `db/clients.rs`. Change
   one, change all four. A **dev** build authorizes against the sibling
   `importer-app-dev` client instead (`gatekeeper-rust`'s `seed_dev_app_clients`,
   see [Seeded registration](#seeded-registration) below), which carries the same

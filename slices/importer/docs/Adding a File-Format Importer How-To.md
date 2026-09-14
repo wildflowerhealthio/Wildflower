@@ -25,16 +25,16 @@ JSON edit, diagnostic notes). A format's whole review surface is what its
 `decode` puts in the `DecodedFile` — sections of labeled resources, plus a note
 per thing that did not become a resource.
 
-| Piece           | Where                                              | Contract                                                         |
-| --------------- | -------------------------------------------------- | ---------------------------------------------------------------- |
-| Decode dialect  | a pure dialect package (below both transports)     | the format's document → structural records                       |
-| Response kinds  | `slices/http-extraction/*-source/`                 | `HttpResponseKind` — recognize + parse (only if HTTP-shaped)     |
-| Descriptor      | `*-importer-core/src/*-importer.ts`                | `FileImporterDescriptor` — `decode` / `uploadSource` / `persist` |
-| Settings        | `*-importer-core/src/*-settings.ts`                | `TSettings` + `defaultSettings` (an empty record if none)        |
-| Persist sink    | `*-importer-core/src/persist-*.ts`                 | import `fhir-r4`'s `persistResources` — don't write your own     |
-| Source archive  | `*-importer-core/src/archive/`, `upload-source.ts` | the picked file as a `DocumentReference`, for provenance         |
-| Settings picker | `*-importer-react/src/settings-picker.tsx`         | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)       |
-| Registry entry  | `importer-react/src/registry.ts`                   | one `BoundFormat` entry + `FormatVariant` / defaults / order     |
+| Piece           | Where                                          | Contract                                                     |
+| --------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| Decode dialect  | a pure dialect package (below both transports) | the format's document → structural records                   |
+| Response kinds  | `slices/http-extraction/*-source/`             | `HttpResponseKind` — recognize + parse (only if HTTP-shaped) |
+| Descriptor      | `*-importer-core/src/*-importer.ts`            | `decode` / `sourceArchive` / archive-read seam               |
+| Settings        | `*-importer-core/src/*-settings.ts`            | `TSettings` + `defaultSettings` (an empty record if none)    |
+| Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink              |
+| Source archive  | `*-importer-core/src/archive/`                 | the picked file as a reviewed `DocumentReference`            |
+| Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)   |
+| Registry entry  | `importer-react/src/registry.ts`               | one `BoundFormat` entry + `FormatVariant` / defaults / order |
 
 ## When a format is _not_ HTTP traffic
 
@@ -84,42 +84,51 @@ setting — HAR's response-kind toggles (`disabledKinds`) and the LifeLabs
 report time zone both live here. There is no post-decode review state besides
 the shell's per-resource selection.
 
-## 3. The persist sink
+## 3. Persistence — nothing to write
 
-`persist(resources, sourceRef)` writes the chosen resources and returns the ones
-it could not write as `PersistFailure` data on a `never` error channel — one bad
-write never stops the rest. **Don't write one** for a FHIR target: wrap
-`fhir-r4`'s `persistResources`, stamping each resource's `meta.source` with the
-source archive (`withMetaSource`), as both bindings' `persistFhir` do. `fhir-r4`'s
-`ResourceWriteFailure` satisfies `PersistFailure` structurally, so a drift is a
-compile error at the binding. The write requirement (`R`, here
-`FhirR4ResourcesHttpApiClient`) stays visible so the shell provides it.
+There is no `persist` field. Every FHIR-targeting importer writes through the
+shell's one shared `persistBatchBundle` (`fhir-r4/clients`), so a binding brings
+no write sink and names no write client — the `FileImporterDescriptor` takes no
+`R` parameter. The reviewed resources (and the source-file archive, when kept)
+go out as one `POST /` batch bundle at confirm, each extracted resource stamped
+with the archive's `meta.source`; the shell owns all of that.
 
 ## 4. The source archive
 
-`uploadSource(picked)` uploads a local pick's bytes as a `DocumentReference`
-(mint uuid + upload instant, encode through the format's own archive codec
-under `src/archive/`, PUT) and returns the `DocumentReference/<id>` reference
-every resource the file writes stamps onto `meta.source` — the provenance
-link back to the raw source file. Mirror `har-importer-core/src/archive` /
-`lifelabs-pdf-importer-core/src/archive`.
+`sourceArchive(picked)` builds a local pick's bytes into a source-archive
+`DocumentReference` — a **deterministic** id from the bytes' SHA-256 and name,
+plus the upload instant, encoded through the format's archive codec — and
+**returns it** (no PUT). The shell mints it once at read time, shows it in the
+review as a "Source file" section (renamable, skippable), and writes it in the
+same batch as the extracted resources; its logical id is what those resources
+stamp onto `meta.source`. Because the id is derived from the content, re-importing
+the same file under the same name upserts rather than piling up duplicates.
+
+The codec under `src/archive/` is a thin config over
+`importer-fundamentals`' shared **`sourceArchiveCodec`** — pass your coding,
+content type, description prefix, and (if any) `securityLabel` as data, and
+re-export only what your binding consumes: `categoryToken`, `isArchive`,
+`archiveFromDocumentReference`, and the builder's `sourceArchive`. See
+`har-importer-core/src/archive` / `lifelabs-pdf-importer-core/src/archive`.
+You write no `source-archive.ts` of your own — `sourceArchive` comes from the
+shared builder, which derives the id and mints the instant for you.
 
 ## 5. Assemble the descriptor
 
 ```ts
-const myImporterDescriptor: FileImporterDescriptor<
-  MySettings,
-  FhirResource,
-  FhirR4ResourcesHttpApiClient
-> = {
+const myImporterDescriptor: FileImporterDescriptor<MySettings, FhirResource> = {
   format: 'my-format',
   display: { title: '…', description: '…' },
   accept: ['.myfmt', 'application/my-format'],
   detect: (bytes, fileName) => fileName.toLowerCase().endsWith('.myfmt') || myMagic(bytes),
   defaultSettings: defaultMySettings,
   decode: decodeMyFormat,
-  uploadSource,
-  persist: persistFhir,
+  sourceArchive,
+  // the archive-read seam (re-picking uploaded archives from the server):
+  archiveCategoryToken: MY_ARCHIVE_CATEGORY_TOKEN,
+  isArchive: isMyArchive,
+  archiveFromDocumentReference: readMyArchive,
+  archiveContentType: MY_ARCHIVE_CONTENT_TYPE,
 }
 ```
 

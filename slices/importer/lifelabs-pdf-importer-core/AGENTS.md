@@ -6,7 +6,8 @@ same `positioned-text-web` extraction seam the PDF anonymizer uses, runs the
 positioned-text dialect over the extracted `wildflower-positioned-text`
 document to typed `LifeLabsReport` records, and synthesizes Patient,
 Practitioner, DiagnosticReport, and Observation FHIR resources — the
-importer's opt-in write happens through the descriptor's `persist` afterwards.
+importer's opt-in write happens through the shell's shared `persistBatchBundle`
+afterwards.
 The picker's user hands in the PDF itself, not the anonymizer's JSON output:
 this binding does its own extraction.
 
@@ -82,23 +83,25 @@ seam in the repo; the anonymizer's PDF descriptor calls the same function.
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition
   is `decode`.
-- `src/persist-fhir.ts` — **`persistFhir`**, the descriptor's `persist`: stamps
-  every resource with `meta.source` then delegates to `fhir-r4`'s
-  `persistResources`.
 - `src/archive/` — **the FHIR encoding of an uploaded LifeLabs report PDF**
-  as a `DocumentReference`, exported as the `/archive` subpath. Structurally
-  analogous to `har-importer-core/archive` (differences: PDF content type,
-  LifeLabs coding under `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no
-  web-trace security label). Nothing here parses the PDF; the bytes are
-  carried, hashed, and handed back exactly as they arrived. Every
-  imported resource stamps this archive's reference onto `meta.source` —
-  the provenance link that ties a `Patient`/`DiagnosticReport`/
-  `Observation` back to the raw source PDF.
-- `src/upload-source.ts` — **`uploadSource`**, the descriptor's
-  `uploadSource`: mint uuid + upload instant, encode via the archive
-  codec, PUT, return the `DocumentReference/<id>` reference. Same shape
-  as HAR's; the shared shape is a candidate for factoring when a third
-  source-archive format lands.
+  as a `DocumentReference`, exported as the `/archive` subpath. A thin config +
+  re-export shim over `importer-fundamentals`' shared **`sourceArchiveCodec`**:
+  it supplies the differences as data (PDF content type, LifeLabs coding under
+  `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no web-trace security label) and
+  re-exports only what the binding consumes (`isLifeLabsPdfArchive`,
+  `LIFELABS_PDF_ARCHIVE_CATEGORY_TOKEN`, `LIFELABS_PDF_ARCHIVE_CODE`,
+  `LIFELABS_PDF_ARCHIVE_CONTENT_TYPE`, `lifeLabsPdfArchiveFromDocumentReference`,
+  and `sourceArchive`). Nothing here parses the PDF; the bytes are carried,
+  hashed, and handed back exactly as they arrived. Every imported resource
+  stamps this archive's reference onto `meta.source` — the provenance link that
+  ties a `Patient`/`DiagnosticReport`/`Observation` back to the raw source PDF.
+- **`sourceArchive`** — the descriptor's `sourceArchive`, now the shared
+  `sourceArchiveCodec.sourceArchive` re-exported through `src/archive/` (the
+  standalone `src/source-archive.ts` was folded into the builder). It derives a
+  deterministic id from the file's SHA-256 and name, mints the upload instant,
+  and encodes to a `DocumentReference` — **no PUT**. The shell shows it in the
+  review as a "Source file" section and writes it in the same
+  `persistBatchBundle` as the synthesized resources. Same shape as HAR's.
 - `src/descriptor.ts` — **`lifeLabsPdfImporterDescriptor`**, the concrete
   `FileImporterDescriptor` for format `'lifelabs-pdf'`. `accept` is only the
   PDF tokens (`.pdf`, `application/pdf`); what `decode` returns is what the

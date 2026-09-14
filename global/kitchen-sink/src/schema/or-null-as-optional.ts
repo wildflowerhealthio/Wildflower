@@ -7,9 +7,10 @@ import {
   Schema,
 } from 'effect'
 
-export const OrNullAsOptional = <A, I>(
-  innerSchema: Schema.Schema<A, I, never>
-): Schema.optionalWith<Schema.Schema<A | null, I | undefined>, { default: () => null }> =>
+const OrNullAsOptionalWithDefault = <A, I, ADefault extends A | null>(
+  innerSchema: Schema.Schema<A, I, never>,
+  defaultValue: () => ADefault
+): Schema.optionalWith<Schema.Schema<A | null, I | undefined>, { default: () => ADefault }> =>
   Schema.optionalWith(
     Schema.declare<null | A, undefined | I, [Schema.Schema<A, I, never>]>([innerSchema], {
       decode: (s) => {
@@ -49,5 +50,12 @@ export const OrNullAsOptional = <A, I>(
         (a, b) =>
           a === null || b === null ? a === b : inner(a, b),
     }),
-    { default: () => null }
+    { default: defaultValue }
   )
+
+const OrNullAsOptional = <A, I>(
+  innerSchema: Schema.Schema<A, I, never>
+): Schema.optionalWith<Schema.Schema<A | null, I | undefined>, { default: () => null }> =>
+  OrNullAsOptionalWithDefault(innerSchema, () => null)
+
+export { OrNullAsOptionalWithDefault, OrNullAsOptional }

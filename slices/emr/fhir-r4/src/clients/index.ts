@@ -2,13 +2,31 @@ export {
   classifyAgainstServer,
   type DiffStatus,
   diffKey,
+  normalizedEncode,
+  resetFieldToServer,
   SERVER_MANAGED_META_FIELDS,
+  type ServerComparison,
 } from './classify-against-server.ts'
+export {
+  diffJson,
+  formatPath,
+  formatSlot,
+  type DiffSlot,
+  type FieldDiff,
+  type PathSegment,
+} from './field-diff.ts'
 export {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,
 } from './fhir-r4-resources-http-api-client.ts'
-export { entryUrl, persistBatchBundle, statusOk } from './persist-batch-bundle.ts'
+export {
+  type BatchEntryOutcome,
+  entryUrl,
+  NO_RESPONSE_STATUS,
+  persistBatchBundle,
+  statusOk,
+  type WriteIssue,
+} from './persist-batch-bundle.ts'
 export {
   describeResource,
   persistResources,

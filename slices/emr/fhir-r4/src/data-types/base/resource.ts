@@ -12,10 +12,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import { Code } from './code.ts'
 import * as Meta from './meta.ts'
 
-const metaField: Schema.optionalWith<
-  Schema.Schema<typeof Meta.Schema.Type | null, FhirR4.Meta | undefined>,
-  { default: () => null }
-> = OrNullAsOptional(Meta.Schema)
+const metaField = OrNullAsOptional(Meta.Schema)
 
 const fields = {
   id: OrNullAsOptional(Schema.String),

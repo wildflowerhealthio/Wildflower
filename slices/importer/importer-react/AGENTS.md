@@ -37,7 +37,7 @@ The seam between this package and a format binding is the **descriptor** and the
 `Review` model: the read half runs the descriptor's `decode` (no services, no
 writes) into sections + notes, the review drives `Review`'s pure per-resource
 transitions over the flattened sections, and the write half runs
-`Review.chosenResources` then the descriptor's `persist`. If a component needs
+`Review.chosenResources` through the shell's shared `persistBatchBundle`. If a component needs
 more than the descriptor and `Review` expose, widen those rather than reaching
 around them.
 
@@ -87,9 +87,13 @@ The importer has no HTTP wire union to derive, so there is no separate
   and the file's notes folded into a collapsed details block) — under one
   shared confirm, gated on the batch having at least one **included**
   resource; `use-confirm-import.ts` is the opt-in write action, per file,
-  best-effort — upload-then-persist each file whose review kept something,
-  writing `Review.chosenResources` over the file's own decoded sections, one
-  file's failure never stopping the rest. `resource-editor.tsx` (+
+  best-effort — one `persistBatchBundle` of each file's `Review.chosenResources`
+  (its source-file archive among them, when the reviewer kept it), each
+  extracted resource stamped with the archive's reference and the archive's own
+  id locked so an edit can't drift the link; a skipped archive leaves the
+  resources unstamped. One file's failure never stops the rest, and a rejected
+  archive is just one failed entry — there is no separate upload step to fail.
+  `resource-editor.tsx` (+
   `resource-editor-helpers.ts`) is the inline JSON editor: **Keep** parses
   the text, decodes through `Schema.decodeUnknown(FhirResourceSchema)`, and
   refuses the edit unless it parses and preserves `resourceType` / `id`;
@@ -99,9 +103,11 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
   per-file `ImportOutcome` and the `FileImportResult`/`BatchOutcome` aggregate
   (`summarizeBatch`, `isPartialBatch`), all on `collectImportSummary` semantics
-  (any failure ⇒ partial); `import-results.tsx` renders a per-file breakdown —
-  writes with their provenance link, failed uploads with their cause, and skipped
-  files — under one aggregate tally.
+  (any failure ⇒ partial); `import-results.tsx` renders the batch grouped by
+  response code — every submitted resource (the source-file archive included)
+  with its status, plus the files that had nothing to import — under one
+  aggregate tally. There is no upload-failed section: a rejected archive is an
+  ordinary failure row.
 - **`src/sources/`** — the picker. `picked-file.ts` is the vocabulary
   (`PickedFile` — `{ fileName, bytes, source }` — the `local` / `server`
   `PickedFileSource`, and `archiveReference` — the one spelling of a
@@ -130,15 +136,16 @@ The importer has no HTTP wire union to derive, so there is no separate
   `page-token.ts` pulls the continuation cursor out of a bundle's `next`
   link (a copy of the web-trace viewer's, see the trap); `keys.ts` holds
   the query-key roots.
-- **The source-archive upload lives on each format's descriptor.** The shell
-  no longer holds a HAR-specific upload mutation; `useConfirmImport`
-  dispatches `descriptor.uploadSource(picked)` through the registry
-  (`Match.type<FormatKind>()`), so HAR uploads via `har-importer-core`'s
-  archive codec and LifeLabs uploads via
-  `lifelabs-pdf-importer-core/archive`'s. The archive-list query is
-  invalidated once at end-of-batch (any local HAR upload lands a new
-  `DocumentReference` the picker should see next pick — cheap even when
-  no HAR uploaded).
+- **The source-file archive is a reviewed resource, built at read time.**
+  `useImportRun` mints a `local` pick's archive `DocumentReference` once
+  (`descriptor.sourceArchive`, `Match.type<FormatKind>()`-dispatched) and
+  injects it as its own "Source file" `LabeledSection` (stable key
+  `source-archive`) ahead of the extracted sections, so the reviewer can rename
+  its JSON or skip it like any resource; a settings re-decode reuses the same
+  archive rather than minting a fresh one, so its id and the reviewer's edit
+  stay put. The archive-list query is invalidated once at end-of-batch (a fresh
+  archive is a new `DocumentReference` the picker should see next pick — cheap
+  even when none wrote).
 
 ## Traps
 
@@ -163,31 +170,34 @@ The importer has no HTTP wire union to derive, so there is no separate
   settings: the panel renders `settings` and reports `onSettingsChange`;
   `useImportRun` owns the record and the re-decode. Don't move either down
   into the panel, or the shell and the view can disagree.
-- **Confirm ordering is fixed per file: archive create, then that file's resource
-  writes.** A `local` pick's archive is uploaded first (its format's
-  `descriptor.uploadSource`) and the
-  reference it mints is stamped onto every resource from _that file_; only then
-  does the descriptor's `persist` run for it. A `server` pick uploads nothing and
-  links to the document it was fetched from. Sequencing matters — a resource must
-  never be written pointing at an archive that is not there yet — so each file's
-  upload is `flatMap`ped before its persist, inside `importOneFile`. The whole
-  batch is one Effect (`Effect.forEach` at unbounded concurrency, `Match`-dispatched
-  per file) run through `runAuthed`; cross-file interleaving is fine because each
-  resource is stamped with its own file's reference. The upload crosses a TanStack
-  mutation, so its `FiberFailure` rejection is `Cause.squash`ed back to the typed
-  FHIR-client error before it is stored on the `uploadFailed` result — which is
-  what lets the results view render a `ParseError`'s schema tree in full.
-- **The batch is best-effort, and provenance stays per-file.** One file's upload
-  failure is caught and recorded as its own `FileImportResult` (`uploadFailed`,
-  carrying the cause) — the remaining files still import, the multi-file echo of
-  `persist` returning per-resource failures as data. A file whose review chose
-  nothing (no kind recognized it, or every matching kind toggled off) or that was
-  `unreadable` is `skipped`, never a failure. `isPartialBatch` lifts
-  `collectImportSummary` to the batch: any upload failure or any per-resource
-  failure makes the whole batch partial; a `skipped` file alone does not. There is
-  **no** whole-flow `errored` state — an upload failure is a row in the results,
-  and its cause is surfaced there (the FHIR server's own response), not swallowed
-  behind "Try again".
+- **A file's confirm is one `persistBatchBundle`, archive included.** Since the
+  archive is one of the reviewed resources, a `local` pick's write set is
+  `[archive, ...extracted]` in one bundle — no upload-then-persist sequence, no
+  ordering to protect. `importOneFile` finds the archive in the chosen set by
+  its stable review key (not by re-recognizing its coding, so an inline edit
+  can't change how it is treated), locks its id to the minted value, and stamps
+  every _other_ chosen resource's `meta.source` with the archive reference.
+  `sourceRef` is: a `server` pick's existing reference; the local archive's
+  reference when it is kept; or **absent** when the reviewer skipped it, in
+  which case the extracted resources are written **without** `meta.source`. The
+  batch is one Effect (`Effect.forEach` at unbounded concurrency) run through
+  `runAuthed`; cross-file interleaving is fine because each resource is stamped
+  with its own file's reference. `useConfirmImport` needs nothing from the
+  registry — persistence and stamping are format-blind.
+- **The batch is best-effort, and there is no upload-failed case.**
+  `persistBatchBundle`'s error channel is `never`, so a rejected resource —
+  the archive included — is a per-entry outcome, not a raised error; one file's
+  failures never stop the rest. A file whose review chose nothing (no kind
+  recognized it, or every matching kind toggled off) or that was `unreadable` is
+  `skipped`, never a failure. `isPartialBatch` lifts `collectImportSummary` to
+  the batch: any rejected resource makes it partial; a `skipped` file alone does
+  not. There is **no** whole-flow `errored` state and no `uploadFailed` result —
+  a failed archive is an ordinary row in the results, its cause the server's own
+  response. Note the trade-off the fold-in accepts: if the archive is included
+  but its write fails while the resources succeed, those resources carry a
+  `meta.source` pointing at an archive that is not there — FHIR batch entries
+  are independent, so there is no way to gate them on the archive within one
+  bundle. The failed archive row makes this visible rather than silent.
 - **The confirm affordance is gated on the batch having an included resource to
   write.** `PreviewPanel` shows the single confirm button only when
   `Review.includedCount` summed across the read files is positive; unreadable
@@ -252,13 +262,15 @@ The importer has no HTTP wire union to derive, so there is no separate
   fallback for a giant archive. The modal writes nothing and offers no
   editing — a preview is inspection, not another entry point to the
   review flow.
-- **Every upload is a fresh document.** Each format's `uploadSource` mints
-  a uuid with `crypto.randomUUID()` per call and uses it as both the
-  resource id and the `Update` path, so the PUT preserves the
-  client-minted id and two uploads of the same bytes are two documents —
-  never one silently overwriting the other. That is the archive codec's
-  contract; dedupe stays _detectable_ through the attachment's `hash`
-  and `size` without being forced.
+- **An archive's id is derived from its bytes and name, so re-importing upserts.**
+  Each format's `sourceArchive` (the shared `sourceArchiveCodec.sourceArchive`)
+  derives the resource id with `localResourceId` over the file's SHA-256 and
+  name — deterministic, not a per-pick uuid — so its bundle entry is a PUT to a
+  stable `DocumentReference/<id>` and re-importing the same file under the same
+  name overwrites in place rather than piling up duplicates. The attachment's
+  `hash` and `size` still describe the bytes. (The per-pick `crypto.randomUUID()`
+  in `use-import-run.ts` is the client-side batch/run id for a file, not the
+  archive resource id.)
 - **Upload takes bytes, not text.** The archive codec stores the file
   verbatim so a truncated or mis-encoded upload is preserved and the
   attachment `hash` means something. `UploadHarInput.bytes` is `Uint8Array`;
