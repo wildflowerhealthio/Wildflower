@@ -25,16 +25,16 @@ JSON edit, diagnostic notes). A format's whole review surface is what its
 `decode` puts in the `DecodedFile` — sections of labeled resources, plus a note
 per thing that did not become a resource.
 
-| Piece           | Where                                              | Contract                                                         |
-| --------------- | -------------------------------------------------- | ---------------------------------------------------------------- |
-| Decode dialect  | a pure dialect package (below both transports)     | the format's document → structural records                       |
-| Response kinds  | `slices/http-extraction/*-source/`                 | `HttpResponseKind` — recognize + parse (only if HTTP-shaped)     |
-| Descriptor      | `*-importer-core/src/*-importer.ts`                | `decode` / `sourceArchive` / archive-read seam                   |
-| Settings        | `*-importer-core/src/*-settings.ts`                | `TSettings` + `defaultSettings` (an empty record if none)        |
-| Persistence     | shell-owned                                        | one shared `persistBatchBundle` — write no sink                  |
-| Source archive  | `*-importer-core/src/archive/`                     | the picked file as a reviewed `DocumentReference`                |
-| Settings picker | `*-importer-react/src/settings-picker.tsx`         | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)       |
-| Registry entry  | `importer-react/src/registry.ts`                   | one `BoundFormat` entry + `FormatVariant` / defaults / order     |
+| Piece           | Where                                          | Contract                                                     |
+| --------------- | ---------------------------------------------- | ------------------------------------------------------------ |
+| Decode dialect  | a pure dialect package (below both transports) | the format's document → structural records                   |
+| Response kinds  | `slices/http-extraction/*-source/`             | `HttpResponseKind` — recognize + parse (only if HTTP-shaped) |
+| Descriptor      | `*-importer-core/src/*-importer.ts`            | `decode` / `sourceArchive` / archive-read seam               |
+| Settings        | `*-importer-core/src/*-settings.ts`            | `TSettings` + `defaultSettings` (an empty record if none)    |
+| Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink              |
+| Source archive  | `*-importer-core/src/archive/`                 | the picked file as a reviewed `DocumentReference`            |
+| Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)   |
+| Registry entry  | `importer-react/src/registry.ts`               | one `BoundFormat` entry + `FormatVariant` / defaults / order |
 
 ## When a format is _not_ HTTP traffic
 

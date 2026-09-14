@@ -50,15 +50,43 @@ const ABSENT: DiffSlot = { _tag: 'absent' }
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
 
+/**
+ * Read `key` as an own property, or `undefined` when it is not one — so
+ * descending through a `__proto__` segment reads the object's own value rather
+ * than the inherited prototype.
+ */
+const ownValue = (object: Record<string, unknown>, key: string): unknown =>
+  Object.hasOwn(object, key) ? object[key] : undefined
+
+/**
+ * Set `key` to `value` as an own data property and return `object`. A plain
+ * `object[key] = value` would hit `Object.prototype`'s `__proto__` setter for
+ * that one key (silently dropping a non-object value) rather than writing an
+ * own property, so define the property explicitly.
+ */
+const withKey = (
+  object: Record<string, unknown>,
+  key: string,
+  value: unknown
+): Record<string, unknown> => {
+  Object.defineProperty(object, key, { value, writable: true, enumerable: true, configurable: true })
+  return object
+}
+
 /** `Array.isArray`, narrowing to `readonly unknown[]` rather than `any[]`. */
 const isArray = (value: unknown): value is readonly unknown[] => Array.isArray(value)
 
 /** Structural equality via a stable stringify — both sides come from the same schema encode, so key order matches. */
 const equalJson = (a: unknown, b: unknown): boolean => JSON.stringify(a) === JSON.stringify(b)
 
-/** The slot for `key` on a record: its value, or absent when the key is not present. */
+/**
+ * The slot for `key` on a record: its value, or absent when the key is not
+ * present. Uses {@link Object.hasOwn} rather than `in` so an inherited key
+ * (`__proto__`, `toString`) reads as absent unless it is genuinely present as
+ * an own property.
+ */
 const slotOf = (record: Record<string, unknown>, key: string): DiffSlot =>
-  key in record ? present(record[key]) : ABSENT
+  Object.hasOwn(record, key) ? present(record[key]) : ABSENT
 
 /** The slot for `index` on an array: its element, or absent when out of range. */
 const slotAt = (array: readonly unknown[], index: number): DiffSlot =>
@@ -70,7 +98,7 @@ const unionKeys = (
   incoming: Record<string, unknown>
 ): string[] => {
   const keys = Object.keys(server)
-  for (const key of Object.keys(incoming)) if (!(key in server)) keys.push(key)
+  for (const key of Object.keys(incoming)) if (!Object.hasOwn(server, key)) keys.push(key)
   return keys
 }
 
@@ -173,11 +201,9 @@ const setAtPath = (root: unknown, path: readonly PathSegment[], slot: DiffSlot):
       delete object[head]
       return object
     }
-    object[head] = slot.value
-    return object
+    return withKey(object, head, slot.value)
   }
-  object[head] = setAtPath(object[head], rest, slot)
-  return object
+  return withKey(object, head, setAtPath(ownValue(object, head), rest, slot))
 }
 
 export {
