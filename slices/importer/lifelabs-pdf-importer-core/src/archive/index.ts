@@ -16,12 +16,7 @@ export {
   LIFELABS_PDF_ARCHIVE_CATEGORY_TOKEN,
   LIFELABS_PDF_ARCHIVE_CODE,
   LIFELABS_PDF_ARCHIVE_CONTENT_TYPE,
-  LifeLabsPdfArchive,
-  LifeLabsPdfArchiveFromDocumentReference,
-  LifeLabsPdfArchiveFromFhirJson,
   lifeLabsPdfArchiveFromDocumentReference,
-  LifeLabsPdfArchiveId,
-  lifeLabsPdfArchiveToDocumentReference,
-  lifeLabsPdfArchiveToWire,
+  sourceArchive,
 } from './lifelabs-pdf-archive-codec.ts'
 export { LIFELABS_SYSTEM } from '../source-system.ts'

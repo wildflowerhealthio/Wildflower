@@ -1,5 +1,4 @@
 import type { Effect, ParseResult } from 'effect'
-import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HarSettings, harImporterDescriptor } from 'har-importer-core'
 import { HarSettingsPicker } from 'har-importer-react'
@@ -26,20 +25,24 @@ import type { JSX } from 'react'
  */
 
 /**
- * Type-level map from format tag to its concrete type triple. Each entry
- * defines the format's settings, parsed resource type, and the services its
- * write sink requires.
+ * Type-level map from format tag to its concrete type pair. Each entry
+ * defines the format's settings and parsed resource type.
+ *
+ * @remarks
+ * There is no per-format write-client requirement any more: no descriptor
+ * field takes a client. The one FHIR write the confirm runs
+ * (`persistBatchBundle`) names its own `FhirR4ResourcesHttpApiClient` at the
+ * shell, and the source-archive `DocumentReference` rides that same batch
+ * rather than a private upload.
  */
 interface FormatVariant {
   har: {
     settings: HarSettings
     parsed: FhirResource
-    requirements: FhirR4ResourcesHttpApiClient
   }
   'lifelabs-pdf': {
     settings: LifeLabsPdfSettings
     parsed: FhirResource
-    requirements: FhirR4ResourcesHttpApiClient
   }
 }
 
@@ -67,10 +70,10 @@ interface BoundFormat<K extends FormatKind> {
     fileBytes: Uint8Array,
     settings: FormatVariant[K]['settings']
   ) => Effect.Effect<DecodedFile<FormatVariant[K]['parsed']>, ParseResult.ParseError>
-  readonly uploadSource: (picked: {
+  readonly sourceArchive: (picked: {
     readonly fileName: string
     readonly bytes: Uint8Array
-  }) => Effect.Effect<string, unknown, FormatVariant[K]['requirements']>
+  }) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
   readonly archiveCategoryToken: string
   readonly isArchive: (resource: DocumentReferenceType) => boolean
   readonly archiveFromDocumentReference: (
@@ -92,7 +95,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     detect: harImporterDescriptor.detect,
     defaultSettings: harImporterDescriptor.defaultSettings,
     decode: harImporterDescriptor.decode,
-    uploadSource: harImporterDescriptor.uploadSource,
+    sourceArchive: harImporterDescriptor.sourceArchive,
     archiveCategoryToken: harImporterDescriptor.archiveCategoryToken,
     isArchive: harImporterDescriptor.isArchive,
     archiveFromDocumentReference: harImporterDescriptor.archiveFromDocumentReference,
@@ -106,7 +109,7 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     detect: lifeLabsPdfImporterDescriptor.detect,
     defaultSettings: lifeLabsPdfImporterDescriptor.defaultSettings,
     decode: lifeLabsPdfImporterDescriptor.decode,
-    uploadSource: lifeLabsPdfImporterDescriptor.uploadSource,
+    sourceArchive: lifeLabsPdfImporterDescriptor.sourceArchive,
     archiveCategoryToken: lifeLabsPdfImporterDescriptor.archiveCategoryToken,
     isArchive: lifeLabsPdfImporterDescriptor.isArchive,
     archiveFromDocumentReference: lifeLabsPdfImporterDescriptor.archiveFromDocumentReference,

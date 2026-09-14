@@ -24,8 +24,12 @@ import type { BatchEntryOutcome, WriteIssue } from 'fhir-r4/clients'
 interface ResourceResult extends BatchEntryOutcome {
   /** The file this resource was decoded from. */
   readonly fileName: string
-  /** The `DocumentReference/<id>` its `meta.source` names. */
-  readonly sourceRef: string
+  /**
+   * The `DocumentReference/<id>` its `meta.source` names, or `undefined` when
+   * the reviewer skipped this file's source-file archive so nothing was
+   * stamped onto its extracted resources.
+   */
+  readonly sourceRef: string | undefined
 }
 
 /** The tally a confirmed, written file resolves with. */
@@ -37,8 +41,12 @@ interface ImportOutcome {
    * reported for symmetry with `attempted`.
    */
   readonly excluded: number
-  /** The `DocumentReference/<id>` every written resource's `meta.source` names. */
-  readonly sourceRef: string
+  /**
+   * The `DocumentReference/<id>` every extracted resource's `meta.source`
+   * names, or `undefined` when the source-file archive was skipped so nothing
+   * was stamped.
+   */
+  readonly sourceRef: string | undefined
   /** One result per attempted resource, in submit order — successes and failures alike. */
   readonly results: readonly ResourceResult[]
 }
@@ -48,7 +56,8 @@ interface ImportOutcome {
  * per-entry outcome with the file name and provenance ref.
  *
  * @param attempted - How many resources the confirm attempted to write
- * @param sourceRef - The archive reference stamped onto every written resource
+ * @param sourceRef - The archive reference stamped onto every extracted
+ *   resource, or `undefined` when the archive was skipped
  * @param fileName - The file the resources were decoded from
  * @param entries - The write sink's per-entry outcomes, in submit order
  * @param excluded - How many previewed resources the reviewer opted out (default 0)
@@ -56,7 +65,7 @@ interface ImportOutcome {
  */
 const importOutcome = (
   attempted: number,
-  sourceRef: string,
+  sourceRef: string | undefined,
   fileName: string,
   entries: readonly BatchEntryOutcome[],
   excluded = 0
@@ -100,13 +109,13 @@ type SkipReason = 'nothing' | 'unreadable'
  * @remarks
  * Best-effort per the batch semantics: one file's failure never stops the rest,
  * so every file lands on exactly one of these. `imported` carries the file's own
- * {@link ImportOutcome} (which may itself be partial — some of its resources
- * failed to write); `uploadFailed` is the terminal case for a file whose archive
- * `DocumentReference` could not be uploaded, so none of its resources were
- * written and none could be stamped; `skipped` is a file that had nothing to
- * write. `fileName` names the file in every case, and `id` is the picked file's
- * stable identity, carried from its `FileReadOutcome` for a React `key` since two files
- * in a batch can share a name.
+ * {@link ImportOutcome} (which may itself be partial — some of its resources,
+ * the source-file archive among them, failed to write); `skipped` is a file
+ * that had nothing to write. There is no `uploadFailed` case: the archive is
+ * no longer uploaded on its own, so its write is just one of the `imported`
+ * file's per-entry results. `fileName` names the file in every case, and `id`
+ * is the picked file's stable identity, carried from its `FileReadOutcome` for
+ * a React `key` since two files in a batch can share a name.
  */
 type FileImportResult =
   | {
@@ -114,12 +123,6 @@ type FileImportResult =
       readonly id: string
       readonly fileName: string
       readonly outcome: ImportOutcome
-    }
-  | {
-      readonly _tag: 'uploadFailed'
-      readonly id: string
-      readonly fileName: string
-      readonly error: unknown
     }
   | {
       readonly _tag: 'skipped'
@@ -134,12 +137,6 @@ type BatchOutcome = readonly FileImportResult[]
 /** Every written-or-attempted resource across the batch, flattened out of the imported files. */
 const allResults = (batch: BatchOutcome): readonly ResourceResult[] =>
   batch.flatMap((result) => (result._tag === 'imported' ? result.outcome.results : []))
-
-/** Every file whose archive upload failed (so none of its resources were written). */
-const uploadFailures = (
-  batch: BatchOutcome
-): readonly Extract<FileImportResult, { readonly _tag: 'uploadFailed' }>[] =>
-  batch.filter((result) => result._tag === 'uploadFailed')
 
 /** Every file the reviewer confirmed that had nothing to write. */
 const skips = (
@@ -197,7 +194,7 @@ interface BatchSummary {
   readonly attempted: number
   /** Previewed resources the reviewer opted out before confirm, across every file. */
   readonly excluded: number
-  /** Files whose archive uploaded and whose resources were persisted (whole or partial). */
+  /** Files whose resources were persisted (whole or partial). */
   readonly importedFiles: number
   /** Every file the user confirmed, whatever its result. */
   readonly totalFiles: number
@@ -229,21 +226,17 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
  * Whether a confirmed batch is a partial import.
  *
  * @param batch - Every file's result
- * @returns `true` when any file's upload failed or any resource failed to write
+ * @returns `true` when any resource failed to write
  *
  * @remarks
- * The `collectImportSummary` semantics, lifted to the batch: **any** failure —
- * a file whose archive would not upload, or a single resource the store
- * rejected — makes the whole batch partial. A `skipped` file is not a failure
+ * The `collectImportSummary` semantics, lifted to the batch: **any** rejected
+ * resource — the source-file archive included, since it now writes in the same
+ * batch — makes the whole batch partial. A `skipped` file is not a failure
  * (an empty preview is ordinary data), so it does not make a batch partial on
  * its own.
  */
 const isPartialBatch = (batch: BatchOutcome): boolean =>
-  batch.some(
-    (result) =>
-      result._tag === 'uploadFailed' ||
-      (result._tag === 'imported' && isPartialOutcome(result.outcome))
-  )
+  batch.some((result) => result._tag === 'imported' && isPartialOutcome(result.outcome))
 
 export {
   allResults,
@@ -260,7 +253,6 @@ export {
   skips,
   type StatusGroup,
   summarizeBatch,
-  uploadFailures,
   writtenCount,
   type WriteIssue,
 }

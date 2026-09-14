@@ -12,16 +12,19 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 ## Shape
 
 - `src/file-importer-descriptor.ts` — **`FileImporterDescriptor<TSettings,
-TParsed, R>`**, "a file-format importer" as one value a closed registry lists:
+TParsed>`**, "a file-format importer" as one value a closed registry lists:
   `format` (the registry key), `display`, `accept` (the picker `accept`
   tokens — a hint to the OS dialog, never the decision, joined across every
   registered format by **`acceptFor`**), `detect` (cheap syntactic
   identification; **`identify`** finds the first claiming descriptor),
   `defaultSettings`, `decode(fileBytes, settings) → Effect<DecodedFile,
-ParseError>` (requires nothing — a preview can never reach the write
-  client), `uploadSource` (the source-archive `DocumentReference` upload a
-  confirm runs for a local pick), and — the **archive-read seam** the shell
-  reads uploaded archives back through — `archiveCategoryToken` (the
+ParseError>` (requires nothing — a preview can never reach a write client),
+  `sourceArchive` (**pure** — builds a local pick's bytes into a source-archive
+  `DocumentReference`, minted at read time and reviewed like any resource; it
+  is written in the shell's one `persistBatchBundle`, not a private upload, so
+  no descriptor field takes a write client and the `R` parameter is gone), and
+  — the **archive-read seam** the shell reads uploaded archives back through —
+  `archiveCategoryToken` (the
   `system|code` search token, promoted from the format's `/archive` codec),
   `isArchive` (whether a decoded `DocumentReference` is an archive of _this_
   format, disjoint across formats), `archiveFromDocumentReference` (the
@@ -59,18 +62,47 @@ ParseError>` (requires nothing — a preview can never reach the write
   checked **structurally** at each binding's seam, mirroring how
   `collector-fundamentals` declares its `PersistFailure` against `fhir-r4`'s
   `ResourceWriteFailure`.
+- `src/source-archive-codec.ts` — **`sourceArchiveCodec(config)`**, the one
+  definition of how any uploaded source file is stored as a FHIR R4
+  `DocumentReference` (one attachment carrying the bytes verbatim, `subject`
+  deliberately absent). The HAR and LifeLabs codecs were identical bar their
+  coding, content type, description text, and (HAR only) a `securityLabel`, so
+  the shape lives here and each binding passes those in as **data** —
+  `har-importer-core/archive` and `lifelabs-pdf-importer-core/archive` are now
+  thin config + re-export shims. Returns the `Archive` schema (+ `ArchiveId`),
+  both directions (`ArchiveFromDocumentReference` / `ArchiveFromFhirJson` and
+  their `encode`/`decode`), the pure `toWire` builder, `isArchive`, the
+  `categoryToken`, and **`sourceArchive`** — the descriptor's mint for a picked
+  file: it derives a **deterministic** id from the bytes' SHA-256 and the file
+  name via `fhir-r4/identity`'s `localResourceId` (so re-importing the same
+  file upserts rather than duplicating), stamps the upload instant, and encodes.
+  The mint lives here, not per binding, because the id needs the digest and the
+  shared derivation, both of which this package owns (the per-binding
+  `source-archive.ts` files that used to mint a uuid were folded in). A binding
+  still owns its own coding constants (a HAR binding passes `web-trace-core`'s),
+  so this module names no format and imports no format slice. The shared builder
+  is pinned by `source-archive-codec.test.ts`, so a format's `/archive` test
+  asserts only its own config.
+- `src/sha256.ts` — **`sha256Base64`** (+ `DigestUnavailable`), the base64
+  SHA-256 the archive attachment's `hash` carries, over Web Crypto. A verbatim
+  copy of `web-trace-core`'s helper (the standard digest, no project-specific
+  behaviour), kept here so the codec above needs no `web-trace-core` dependency
+  — a copy, because moving it would invert the importer → web-trace direction.
 
 ## Layering
 
-Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for
-`DocumentReferenceType` alone — the archive-seam fields on the descriptor
-(`isArchive`, `archiveFromDocumentReference`) are typed against decoded
-`DocumentReference`s the shell reads back from the FHIR server, and the
-seam stays honest by naming that type. Nothing else is imported from
-`fhir-r4`: no client, no resource schemas, no persistence — the write sink
-still lives at the shell (`fhir-r4/clients`' `persistBatchBundle`) and the
-per-format resource type is still `TParsed`. Names no archive format (each
-binding supplies `decode`), no HTTP vocabulary (the HAR binding's
+Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
+`DocumentReference` schema and `DocumentReferenceType`, and `fhir`'s wire
+types. It used to name `fhir-r4` for `DocumentReferenceType` alone; hosting the
+shared `sourceArchiveCodec` widened that to the `DocumentReference` runtime
+schema (the codec builds and decodes the resource) — but still no client, no
+other resource schemas, and no `persistResources`: the write sink stays at the
+shell (`fhir-r4/clients`' `persistBatchBundle`) and the per-format extracted
+resource type is still `TParsed`. It deliberately does **not** depend on
+`web-trace-core` — the digest helper the codec needs is copied into `sha256.ts`
+rather than imported, and a HAR binding passes web-trace's coding constants in
+as data. Names no archive _format_ (each binding supplies `decode` and its
+coding), no HTTP vocabulary (the HAR binding's
 recognition machinery lives in `har-importer-core`), and no UI framework.
 Never imports a `*-importer-core`, a `*-importer-react`, `slices/collector`,
 or `slices/http-extraction`.

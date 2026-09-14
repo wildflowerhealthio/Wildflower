@@ -14,6 +14,6 @@
 export { harImporterDescriptor } from './har-importer.ts'
 export { decodeHar, toInput } from './decode-har.ts'
 export { detectHar, looksLikeJson } from './detect-har.ts'
-export { uploadSource } from './upload-source.ts'
+export { sourceArchive } from './archive/index.ts'
 export { fhirSources } from './fhir-pool.ts'
 export { defaultHarSettings, type HarSettings } from './har-settings.ts'

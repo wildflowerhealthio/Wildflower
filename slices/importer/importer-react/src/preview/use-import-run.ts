@@ -3,7 +3,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import type { FhirResource } from 'fhir-r4/resources'
-import { type DecodedFile, identify } from 'importer-fundamentals'
+import { type DecodedFile, identify, type LabeledResource } from 'importer-fundamentals'
 
 import {
   type BoundFormat,
@@ -51,9 +51,18 @@ import type { PickedFile } from '../sources/picked-file.ts'
 type ImportRunRegistry = {
   readonly [K in FormatKind]: Pick<
     BoundFormat<K>,
-    'format' | 'detect' | 'decode' | 'defaultSettings'
+    'format' | 'detect' | 'decode' | 'defaultSettings' | 'sourceArchive'
   >
 }
+
+/**
+ * The stable review key and section title for a local pick's source-file
+ * archive `DocumentReference`. The key is fixed (one archive per file), so a
+ * settings re-decode leaves the reviewer's edit or skip of it applying; the
+ * title heads its own section in the preview, above the extracted resources.
+ */
+const SOURCE_ARCHIVE_KEY = 'source-archive'
+const SOURCE_SECTION_TITLE = 'Source file'
 
 /**
  * A read file for one specific `K`. Default `K = FormatKind` gives the
@@ -61,6 +70,16 @@ type ImportRunRegistry = {
  * alone gives just the HAR variant for a per-K caller. Carries the decoded
  * sections + notes — the review is a pure per-resource selection over
  * these, so there is no further per-format review state.
+ *
+ * @remarks
+ * `sourceArchive` is the local pick's source-file `DocumentReference` as a
+ * {@link LabeledResource}, minted once at read time so its id and upload
+ * instant stay stable across settings re-decodes — `undefined` for a server
+ * pick (its archive already exists) or when the archive could not be built.
+ * It is prepended to `decoded.sections` as its own "Source file" section, so
+ * the generalized review renders, edits, and skips it like any other
+ * resource; the field is kept alongside so a re-decode can re-inject the same
+ * archive rather than mint a fresh one.
  */
 type ReadFile<K extends FormatKind> = {
   readonly [Kind in K]: {
@@ -69,6 +88,7 @@ type ReadFile<K extends FormatKind> = {
     readonly picked: PickedFile
     readonly format: Kind
     readonly decoded: DecodedFile<FhirResource>
+    readonly sourceArchive: LabeledResource<FhirResource> | undefined
   }
 }[K]
 
@@ -77,6 +97,11 @@ type ReadFile<K extends FormatKind> = {
  * rejected the bytes — the pick's own `ParseError`. Distributed over `K`
  * the same way {@link ReadFile} is, so a future per-format detail on the
  * variant lines up cleanly.
+ *
+ * @remarks
+ * Carries the same `sourceArchive` as {@link ReadFile} so that a settings
+ * re-decode which turns this file readable re-injects the archive minted on
+ * the first read rather than a fresh one.
  */
 type UnreadableFile<K extends FormatKind> = {
   readonly [Kind in K]: {
@@ -85,6 +110,7 @@ type UnreadableFile<K extends FormatKind> = {
     readonly picked: PickedFile
     readonly format: Kind
     readonly error: ParseResult.ParseError
+    readonly sourceArchive: LabeledResource<FhirResource> | undefined
   }
 }[K]
 
@@ -168,7 +194,98 @@ const runDecode = (
     Match.exhaustive
   )(format)
 
-/** Read one pick through its matching format's decode, under `settings`. */
+/**
+ * Build one local pick's source-file archive `DocumentReference` through its
+ * format's `sourceArchive`, dispatched with `Match.type` so `kind` narrows to
+ * a specific `K` per branch — no cast. A server pick has none (its archive is
+ * already on the server), and a build failure (a near-impossible `ParseError`
+ * — a digest unavailable in an insecure context) folds to `undefined` so the
+ * file still imports, just with no source-file section to review.
+ */
+const buildSourceArchive = (
+  registry: ImportRunRegistry,
+  format: FormatKind,
+  picked: PickedFile
+): Effect.Effect<LabeledResource<FhirResource> | undefined> => {
+  if (picked.source._tag !== 'local') return Effect.succeed(undefined)
+  return Match.type<FormatKind>()
+    .pipe(
+      Match.when('har', (kind) => registry[kind].sourceArchive(picked)),
+      Match.when('lifelabs-pdf', (kind) => registry[kind].sourceArchive(picked)),
+      Match.exhaustive
+    )(format)
+    .pipe(
+      Effect.map((resource): LabeledResource<FhirResource> => ({
+        key: SOURCE_ARCHIVE_KEY,
+        title: picked.fileName,
+        resource,
+      })),
+      Effect.catchAll(() => Effect.succeed(undefined))
+    )
+}
+
+/**
+ * Prepend the source-file archive as its own titled section, above the
+ * extracted resources, so the generalized review lists it like any other
+ * resource. A decode with no archive (a server pick, or a build that failed)
+ * is returned unchanged.
+ */
+const withSourceSection = (
+  decoded: DecodedFile<FhirResource>,
+  sourceArchive: LabeledResource<FhirResource> | undefined
+): DecodedFile<FhirResource> =>
+  sourceArchive === undefined
+    ? decoded
+    : {
+        ...decoded,
+        sections: [
+          { title: SOURCE_SECTION_TITLE, resources: [sourceArchive] },
+          ...decoded.sections,
+        ],
+      }
+
+/**
+ * Decode one identified pick under `settings` and fold its outcome into a
+ * {@link FileReadOutcome}, prepending the (already-minted) source-file section
+ * on success. Both the `read` and `unreadable` outcomes carry `sourceArchive`,
+ * so a settings re-decode re-injects the same archive rather than mint a fresh
+ * one.
+ */
+const decodeInto = (
+  registry: ImportRunRegistry,
+  settings: FormatSettings,
+  format: FormatKind,
+  picked: PickedFile,
+  id: string,
+  sourceArchive: LabeledResource<FhirResource> | undefined
+): Effect.Effect<FileReadOutcome> =>
+  runDecode(registry, settings, format, picked.bytes).pipe(
+    Effect.map((decoded): FileReadOutcome => ({
+      _tag: 'read',
+      id,
+      picked,
+      format,
+      decoded: withSourceSection(decoded, sourceArchive),
+      sourceArchive,
+    })),
+    Effect.catchAll((error) =>
+      Effect.succeed<FileReadOutcome>({
+        _tag: 'unreadable',
+        id,
+        picked,
+        format,
+        error,
+        sourceArchive,
+      })
+    )
+  )
+
+/**
+ * Read one pick end-to-end: identify its format, mint its source-file archive
+ * (local picks only, minted once here so a later re-decode reuses it), then
+ * decode. The archive mint runs before the decode so it exists whether the
+ * decode succeeds or fails.
+ */
 const readOne = (
   registry: ImportRunRegistry,
   settings: FormatSettings,
@@ -179,16 +296,9 @@ const readOne = (
   if (kind === undefined) {
     return Effect.succeed<FileReadOutcome>({ _tag: 'unrecognized', id, picked })
   }
-  return runDecode(registry, settings, kind, picked.bytes).pipe(
-    Effect.map((decoded): FileReadOutcome => ({ _tag: 'read', id, picked, format: kind, decoded })),
-    Effect.catchAll((error) =>
-      Effect.succeed<FileReadOutcome>({
-        _tag: 'unreadable',
-        id,
-        picked,
-        format: kind,
-        error,
-      })
+  return buildSourceArchive(registry, kind, picked).pipe(
+    Effect.flatMap((sourceArchive) =>
+      decodeInto(registry, settings, kind, picked, id, sourceArchive)
     )
   )
 }
@@ -251,7 +361,10 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
         state.files,
         (file) =>
           file._tag !== 'unrecognized' && file.format === format
-            ? readOne(registry, merged, file.picked, file.id)
+            ? // Reuse the archive minted on the first read — never mint a fresh
+              // one on a settings change, so its id (and the reviewer's edit or
+              // skip of it) stays stable across re-decodes.
+              decodeInto(registry, merged, file.format, file.picked, file.id, file.sourceArchive)
             : Effect.succeed(file),
         { concurrency: 'unbounded' }
       )

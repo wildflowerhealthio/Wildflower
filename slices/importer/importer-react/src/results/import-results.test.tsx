@@ -8,14 +8,15 @@ import {
   ImportResults,
   PARTIAL_HEADING,
   SKIPPED_HEADING,
-  UPLOAD_FAILED_HEADING,
 } from './import-results.tsx'
 
 /**
  * The results view: every submitted resource grouped by response code in
  * foldable sections (failures open to their diagnostics, successes folded),
- * then the files whose upload failed and those with nothing to import. Driven
- * directly — a `BatchOutcome` in, DOM out.
+ * then the files with nothing to import. The source-file archive writes in the
+ * same batch, so a failed archive is just another failure row — there is no
+ * separate upload-failed section. Driven directly — a `BatchOutcome` in, DOM
+ * out.
  */
 afterEach(cleanup)
 
@@ -54,17 +55,22 @@ describe('ImportResults', () => {
     expect(summaries[1]?.textContent).toMatch(/201 Created/)
   })
 
-  it('reports a file whose archive upload failed, showing the underlying cause', () => {
+  it('renders a failed source-file archive as an ordinary failure row, framing the batch as partial', () => {
     const batch: BatchOutcome = [
-      { _tag: 'uploadFailed', id: 'b', fileName: 'b.har', error: new Error('server said 503') },
+      importedFile('b', [
+        failed('DocumentReference/archive-1', '422 Unprocessable Entity', [
+          { severity: 'error', code: 'invariant', text: 'archive rejected by the server' },
+        ]),
+        ok('Observation/o1', '201 Created'),
+      ]),
     ]
 
     render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
 
     expect(screen.getByRole('heading', { name: PARTIAL_HEADING })).toBeDefined()
-    expect(screen.getByRole('region', { name: UPLOAD_FAILED_HEADING })).toBeDefined()
-    expect(screen.getByText(/its archive could not be uploaded/i)).toBeDefined()
-    expect(screen.getByText(/server said 503/)).toBeDefined()
+    // The archive's failure is a normal per-entry row, not a separate section.
+    expect(screen.getByText('DocumentReference/archive-1')).toBeDefined()
+    expect(screen.getByText('archive rejected by the server')).toBeDefined()
   })
 
   it('notes a file that had nothing to import without framing the batch as partial', () => {

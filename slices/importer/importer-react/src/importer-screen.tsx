@@ -71,7 +71,7 @@ const EMPTY_COMPARISONS: ReadonlyMap<string, ServerComparison> = new Map()
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(formatRegistry)
-  const confirm = useConfirmImport(formatRegistry)
+  const confirm = useConfirmImport()
 
   const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection<FhirResource>>>(
     new Map()

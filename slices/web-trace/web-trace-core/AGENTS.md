@@ -178,11 +178,15 @@ either. See the [slice AGENTS.md](../AGENTS.md) for that argument in full.
   means something. Reading the contents is `src/har/`'s job — `HarFromJson` and
   the `HttpArchive.LogFromHarJson` projection — and it is where a malformed upload
   is meant to fail, not here.
-- **Every upload is a fresh document.** The id is a uuid the caller mints, not a
-  derivation over the bytes — the same file twice is two documents on purpose.
-  Dedupe stays _detectable_ through `hash`/`size` without being forced, which is
-  the opposite of a trace, whose id **is** its `(sessionId, requestId)` identity
-  so a retried write upserts.
+- **An upload's id is derived from its bytes and name, so re-importing the same
+  file upserts.** The archive id is `localResourceId` over the file's SHA-256 and
+  name (minted in `importer-fundamentals`' `sourceArchiveCodec.sourceArchive`),
+  not a per-upload uuid, so the same file under the same name is one document —
+  a retried or repeated import overwrites rather than duplicating. Like a trace
+  (whose id **is** its `(sessionId, requestId)` identity), an archive's id is a
+  deterministic derivation and a write is an idempotent upsert. (This inverts
+  the earlier uuid-per-upload design; the archive codec now lives in
+  `har-importer-core/archive` over the shared builder.)
 - **The `-core` layer talks to `globalThis.crypto.subtle`, not `node:crypto`.**
   That is what keeps the pure layer platform-free, and it is why the
   pseudonymizer is `Effect`-returning: Web Crypto has no synchronous digest.

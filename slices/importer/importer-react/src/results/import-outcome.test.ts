@@ -64,7 +64,6 @@ describe('summarizeBatch and isPartialBatch', () => {
     const batch: FileImportResult[] = [
       imported('a', 3, 0, 2),
       imported('b', 1, 1, 0),
-      { _tag: 'uploadFailed', id: 'c', fileName: 'c.har', error: new Error('boom') },
       { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'nothing' },
     ]
     const summary = summarizeBatch(batch)
@@ -72,10 +71,10 @@ describe('summarizeBatch and isPartialBatch', () => {
     expect(summary.attempted).toBe(5) // 3 + 2
     expect(summary.excluded).toBe(2)
     expect(summary.importedFiles).toBe(2)
-    expect(summary.totalFiles).toBe(4)
+    expect(summary.totalFiles).toBe(3)
   })
 
-  it('is partial when any file upload-failed or wrote partially, complete otherwise', () => {
+  it('is partial when any resource failed to write, complete otherwise', () => {
     expect(isPartialBatch([imported('a', 3, 0)])).toBe(false)
     // A skipped file alone is not a failure — an empty review is ordinary data.
     expect(
@@ -84,13 +83,9 @@ describe('summarizeBatch and isPartialBatch', () => {
         { _tag: 'skipped', id: 'b', fileName: 'b.har', reason: 'nothing' },
       ])
     ).toBe(false)
+    // A rejected resource (the source-file archive counts, since it writes in
+    // the same batch) makes the whole batch partial.
     expect(isPartialBatch([imported('a', 2, 1)])).toBe(true)
-    expect(
-      isPartialBatch([
-        imported('a', 3, 0),
-        { _tag: 'uploadFailed', id: 'b', fileName: 'b.har', error: new Error('boom') },
-      ])
-    ).toBe(true)
   })
 })
 
@@ -122,10 +117,9 @@ describe('groupResultsByStatus', () => {
     expect(groups[0]?.ok).toBe(false)
   })
 
-  it('flattens only the imported files, skipping upload-failed and skipped files', () => {
+  it('flattens only the imported files, skipping skipped files', () => {
     const batch: FileImportResult[] = [
       fileWith('a', [outcome('Patient/p1', '201 Created', true)]),
-      { _tag: 'uploadFailed', id: 'b', fileName: 'b.har', error: new Error('boom') },
       { _tag: 'skipped', id: 'c', fileName: 'c.har', reason: 'nothing' },
     ]
     expect(allResults(batch)).toHaveLength(1)

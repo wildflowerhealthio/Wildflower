@@ -103,13 +103,10 @@ interface SettingsPickerProps<TSettings> {
  *   {@link decode}, re-decoding a file when its format's settings change
  * @typeParam TParsed - The resource type this format decodes to (FHIR for HAR
  *   and LifeLabs PDF)
- * @typeParam R - The services {@link uploadSource}'s DocumentReference write
- *   requires (the FHIR write client for HAR and LifeLabs); stays visible so
- *   the shell provides it
  *
  * @remarks
- * The format core owns the whole decode + upload; the general shell sees only
- * the {@link DecodedFile} — titled sections of {@link LabeledResource}s plus
+ * The format core owns the whole decode; the general shell sees only the
+ * {@link DecodedFile} — titled sections of {@link LabeledResource}s plus
  * diagnostic notes — and renders one per-resource exclude/edit review over
  * it, with no format-specific review UI. Persistence of the reviewed FHIR
  * resources themselves is *not* the format's job: every FHIR-targeting
@@ -117,11 +114,13 @@ interface SettingsPickerProps<TSettings> {
  * `fhir-r4/clients` at the shell (see `use-confirm-import.ts` in
  * `importer-react`), so no format can bring its own persistence approach —
  * dropped after HAR and LifeLabs proved to share a verbatim identical
- * `withMetaSource → persistResources` sink. Only {@link uploadSource} carries
- * `R`; `decode` requires nothing, so a preview can never reach the write
- * client by construction.
+ * `withMetaSource → persistResources` sink. No field on the descriptor
+ * requires a write client: {@link decode} and {@link sourceArchive} are both
+ * pure, so a preview can never reach the write client by construction, and
+ * the source-archive `DocumentReference` rides the same reviewed batch as the
+ * extracted resources rather than a private upload of its own.
  */
-interface FileImporterDescriptor<TSettings, TParsed, R> {
+interface FileImporterDescriptor<TSettings, TParsed> {
   /** The format tag this descriptor binds (`'har'`, `'lifelabs-pdf'`); the registry's key. */
   readonly format: string
   /** User-facing strings the shell shows for this format. */
@@ -161,28 +160,35 @@ interface FileImporterDescriptor<TSettings, TParsed, R> {
     settings: TSettings
   ) => Effect.Effect<DecodedFile<TParsed>, ParseResult.ParseError>
   /**
-   * Upload a local pick's bytes as a source-archive `DocumentReference` and
-   * return the reference every FHIR resource this file writes will stamp
-   * onto `meta.source`. The seam a shell calls to secure the provenance
-   * link before writing resources.
+   * Build a local pick's bytes into a source-archive `DocumentReference` —
+   * the resource that carries the raw file whole, so a reader can trace an
+   * imported resource back to the source it came from. Pure: it mints a
+   * fresh id, hashes the bytes, and returns the resource, but writes
+   * nothing.
    *
    * @remarks
-   * The provenance stamp lets a reader trace an imported resource back to
-   * the raw source it came from — a HAR for the HAR binding, a report PDF
-   * for the LifeLabs binding. Each format uploads with its own codec, so
-   * the returned reference always points at a resource decoded by the
-   * matching `…FromDocumentReference` reader. The upload is best-effort at
-   * the shell: a failure surfaces on the pick's own row as `uploadFailed`,
-   * never stops the batch.
+   * The shell mints this once per local pick at read time and shows it in
+   * the review as its own "Source file" section, so the reviewer can rename
+   * it (edit the JSON) or skip uploading it (exclude it) like any other
+   * resource. On confirm it rides the *same* `persistBatchBundle` as the
+   * extracted resources — one bundle, not a private upload — and its logical
+   * id is what those resources stamp onto `meta.source` (stripped when the
+   * archive is excluded). Each format builds with its own archive codec, so
+   * the resource always round-trips through the matching
+   * {@link archiveFromDocumentReference} reader.
    *
-   * A server pick is not this seam's concern — its reference is already on
-   * the pick — so this only ever runs for a `local` pick and receives its
-   * bytes verbatim. Requires the write client (`R`), same as `persist`.
+   * A server pick is not this seam's concern — its archive already exists on
+   * the server and its reference is on the pick — so this only ever runs for
+   * a `local` pick and receives its bytes verbatim. The archive is always a
+   * FHIR `DocumentReference` regardless of `TParsed`; both formats decode to
+   * FHIR and persist through the FHIR batch sink. Fails only as a
+   * `ParseError`, the way the archive codec's encode does (a digest
+   * unavailable in an insecure context).
    */
-  readonly uploadSource: (picked: {
+  readonly sourceArchive: (picked: {
     readonly fileName: string
     readonly bytes: Uint8Array
-  }) => Effect.Effect<string, unknown, R>
+  }) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
   /**
    * FHIR `category` search token — `system|code` form — every server-side
    * archive read filters on for this format's uploaded archives. The one
@@ -259,7 +265,7 @@ interface FileImporterDescriptor<TSettings, TParsed, R> {
  *   empty string when no descriptor lists any token
  */
 const acceptFor = (
-  descriptors: readonly Pick<FileImporterDescriptor<never, never, never>, 'accept'>[]
+  descriptors: readonly Pick<FileImporterDescriptor<never, never>, 'accept'>[]
 ): string => [...new Set(descriptors.flatMap((descriptor) => descriptor.accept))].join(',')
 
 /**
@@ -277,7 +283,7 @@ const acceptFor = (
  * {@link FileImporterDescriptor} itself so the shell can route bound
  * (descriptor + adapters) records through it.
  */
-const identify = <D extends Pick<FileImporterDescriptor<never, never, never>, 'detect'>>(
+const identify = <D extends Pick<FileImporterDescriptor<never, never>, 'detect'>>(
   descriptors: readonly D[],
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
