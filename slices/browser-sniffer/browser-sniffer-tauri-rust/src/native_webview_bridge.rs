@@ -10,7 +10,10 @@
 //!   `UserDismissed` control message on `BRIDGE_EVENT` for the collector SPA, and
 //!   `Disposed` into a host-origin `SnifferDisposed` one. `Hidden` is the
 //!   user-dismissal signal *in practice* — see `classify_event` for the caveat
-//!   that a programmatic `hide()` would also emit it. The two stay separate tags
+//!   that a programmatic `hide()` would also emit it. `Downloaded` is logged and
+//!   goes no further: a file the sniffer saved is not bus traffic, and giving it
+//!   a bus tag would add one more thing an untrusted page could spoof. The two
+//!   dismissal/teardown tags stay separate
 //!   because a dispose is also the normal outcome of the SPA-driven
 //!   `SniffingComplete` teardown, so it arrives on every run and the SPA must be
 //!   able to tell it apart from a user's dismissal. The channel is cloned and
@@ -204,6 +207,10 @@ enum BridgeAction<'a> {
     /// `Disposed` → `SnifferDisposed` signals — the payload is host-generated,
     /// not forwarded from the page.
     EmitControl(&'static str),
+    /// Emit nothing; log the carried line at info. Used for events that are
+    /// real host-side news but not sniffer bus traffic — see the `Downloaded`
+    /// arm of [`classify_event`].
+    LogOnly(String),
 }
 
 /// Decide what to do with a decoded native-webview event. Pure (no `AppHandle`,
@@ -229,6 +236,17 @@ fn classify_event(event: &NativeWebviewEvent) -> BridgeAction<'_> {
         // can ignore it except while an `AwaitUserDismiss` step is waiting on a
         // window that no longer exists.
         NativeWebviewEvent::Disposed => BridgeAction::EmitControl(events::SNIFFER_DISPOSED),
+        // A finished download is host-side news, not a sniffer event: the bytes
+        // landed in the app's own data directory, no capture step is waiting on
+        // them, and nothing in the collector SPA's protocol describes them. It
+        // is deliberately NOT given a `_tag`: `NATIVE_WEBVIEW_DATA_PLANE_TAGS`
+        // is the page→host allowlist, and adding a download tag to the bus
+        // would hand an arbitrary third-party page a tag to spoof. Logged
+        // instead, at info, so a run's saved files are traceable afterwards.
+        NativeWebviewEvent::Downloaded { url, path, success } => BridgeAction::LogOnly(format!(
+            "native-webview download from {url} finished (success: {success}, path: {})",
+            path.as_deref().unwrap_or("<unreported>")
+        )),
     }
 }
 
@@ -261,6 +279,7 @@ fn dispatch_body(app: &AppHandle, body: &InvokeResponseBody) {
         BridgeAction::Drop(reason) => {
             log::warn!("[browser-sniffer] native-webview message dropped: {reason}");
         }
+        BridgeAction::LogOnly(line) => log::info!("[browser-sniffer] {line}"),
         BridgeAction::EmitControl(tag) => {
             match app.emit(BRIDGE_EVENT, serde_json::json!({ "_tag": tag })) {
                 // Log the success too, not just the failure: these tags are the
@@ -632,6 +651,67 @@ mod tests {
             classify_event(&NativeWebviewEvent::Disposed),
             BridgeAction::EmitControl(events::SNIFFER_DISPOSED)
         ));
+    }
+
+    /// Dispatch classification: a `Downloaded` is logged and forwarded nowhere.
+    /// Asserted as "not any emitting action" rather than just "is `LogOnly`", so
+    /// a future refactor that gave downloads a bus tag fails here — the point of
+    /// the arm is that nothing reaches `BRIDGE_EVENT`.
+    #[test]
+    fn downloaded_classifies_as_log_only() {
+        let event = NativeWebviewEvent::Downloaded {
+            url: "https://emr.example.test/report.pdf".to_owned(),
+            path: Some("/data/saved_data/report.pdf".to_owned()),
+            success: true,
+        };
+        let action = classify_event(&event);
+        assert!(
+            !matches!(
+                &action,
+                BridgeAction::ReEmit(_) | BridgeAction::EmitControl(_)
+            ),
+            "a download must not reach the bridge bus, got {action:?}"
+        );
+        let BridgeAction::LogOnly(line) = action else {
+            panic!("expected LogOnly");
+        };
+        // The log line is the only trace of a saved file, so it must name both
+        // the source and the destination.
+        assert!(
+            line.contains("https://emr.example.test/report.pdf"),
+            "{line}"
+        );
+        assert!(line.contains("/data/saved_data/report.pdf"), "{line}");
+    }
+
+    /// A failed, path-less download still classifies as log-only (never an
+    /// emit) and its line records the failure rather than silently reading like
+    /// a success.
+    #[test]
+    fn failed_downloaded_logs_the_failure_and_emits_nothing() {
+        let event = NativeWebviewEvent::Downloaded {
+            url: "https://emr.example.test/report.pdf".to_owned(),
+            path: None,
+            success: false,
+        };
+        let action = classify_event(&event);
+        let BridgeAction::LogOnly(line) = action else {
+            panic!("expected LogOnly");
+        };
+        assert!(line.contains("success: false"), "{line}");
+    }
+
+    /// No download-shaped tag is in the page→host allowlist. A page must not be
+    /// able to fabricate a "file saved" claim by posting a message, which is
+    /// exactly what adding such a tag would permit.
+    #[test]
+    fn no_download_tag_is_reachable_from_the_page_allowlist() {
+        assert!(
+            !NATIVE_WEBVIEW_DATA_PLANE_TAGS
+                .iter()
+                .any(|tag| tag.to_lowercase().contains("download")),
+            "a download tag reached the page→host allowlist: {NATIVE_WEBVIEW_DATA_PLANE_TAGS:?}"
+        );
     }
 
     /// The two lifecycle signals carry distinct tags. Pinned explicitly because

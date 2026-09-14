@@ -74,6 +74,10 @@ tauri-plugin = { version = "2", features = ["build"] }
 [dev-dependencies]
 # Drift-guard tests round-trip the wire models through JSON.
 serde_json = { workspace = true }
+# `download_name`'s collision tests need a real directory to probe with
+# `Path::exists`. Already in the workspace lockfile (MIT OR Apache-2.0, both on
+# the cargo-deny allowlist), so this adds nothing new for cargo-deny to clear.
+tempfile = "3"
 
 # `deny`, not the workspace's `forbid`, so exactly one module can opt out:
 # `desktop/cookies/wkwebview.rs` (macOS) has to message WebKit's

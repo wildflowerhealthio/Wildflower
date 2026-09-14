@@ -40,7 +40,9 @@ pub fn arb_opt_timestamp() -> impl Strategy<Value = Option<DateTime<Utc>>> {
 }
 
 /// A syntactically valid `https`/`http` `Url`, assembled from safe components
-/// so the parse never fails and the canonical form matches what `SQLite` stores.
+/// whose canonical form matches what `SQLite` stores. The host regex can still
+/// emit labels IDNA rejects (e.g. hyphens in positions 3–4, as in `xn--`), so a
+/// filter step drops any candidate the parser refuses.
 pub fn arb_url() -> impl Strategy<Value = Url> {
     (
         prop_oneof![Just("https"), Just("http")],
@@ -48,8 +50,8 @@ pub fn arb_url() -> impl Strategy<Value = Url> {
         "[a-z]{2,6}",
         prop::option::of("[a-z0-9/_-]{0,24}"),
     )
-        .prop_map(|(scheme, host, tld, path)| {
+        .prop_filter_map("host must be IDNA-valid", |(scheme, host, tld, path)| {
             let path = path.unwrap_or_default();
-            Url::parse(&format!("{scheme}://{host}.{tld}/{path}")).expect("valid url")
+            Url::parse(&format!("{scheme}://{host}.{tld}/{path}")).ok()
         })
 }

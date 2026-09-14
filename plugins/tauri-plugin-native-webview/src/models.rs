@@ -60,6 +60,25 @@ pub struct OpenRequest {
     /// omitted from the wire so the Swift/Kotlin optionals decode cleanly.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cookies: Vec<CookieSpec>,
+    /// Directory downloads started by the page are written into (**desktop
+    /// only**). `None` — the default — **blocks** every download: the desktop
+    /// backend's `on_download` hook refuses the request, so nothing is written
+    /// anywhere. A directory opts the instance in: the file lands there under a
+    /// sanitised, non-clobbering name. Either way the outcome may be reported
+    /// as [`NativeWebviewEvent::Downloaded`] — read its `success`. The
+    /// directory is created at download time if missing; the caller does not
+    /// have to pre-create it.
+    ///
+    /// Rust-caller only, exactly like `cookies`: the JS `open_url` command
+    /// never forwards a page-supplied value, because choosing where a
+    /// third-party page's bytes land on disk is a host decision.
+    ///
+    /// The mobile backends ignore it — neither implements downloads (see
+    /// `docs/Explanation.md` § "Downloads (desktop)"). It still rides the
+    /// mobile wire as `downloadDir` when set, which the Swift `Decodable` and
+    /// Kotlin `@InvokeArg` decoders drop as an unknown key.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_dir: Option<std::path::PathBuf>,
 }
 
 /// One cookie to seed into the native webview's store, expressed as the
@@ -156,6 +175,32 @@ pub enum NativeWebviewEvent {
     /// a subsequent `open` builds a fresh one.
     #[serde(rename = "disposed")]
     Disposed,
+    /// A download started by the page **finished** — successfully or not.
+    /// Desktop-only: emitted from the content webview's `on_download` hook,
+    /// which saves the file only when the instance's latest open carried an
+    /// [`OpenRequest::download_dir`]. The mobile backends never emit it (see
+    /// `docs/Explanation.md` § "Downloads (desktop)"), so a mobile caller must
+    /// not wait on one.
+    ///
+    /// This is a *completion* notice, not a request notice, and it means "a
+    /// download ended", not "a download was saved": a request the backend
+    /// refused (no download directory, or no free file name) may still surface
+    /// one with `success: false` on platforms whose cancel path fires the
+    /// finished signal. Read `success`.
+    #[serde(rename = "downloaded", rename_all = "camelCase")]
+    Downloaded {
+        /// The URL the download was requested from.
+        url: String,
+        /// Where the bytes landed. `None` does **not** by itself mean failure
+        /// — always read `success`: on macOS the underlying WebKit API never
+        /// reports the path, so this is `None` even for a file that saved
+        /// fine. Serialised as an explicit `null` (not omitted) so the two
+        /// sides of the channel round-trip byte-for-byte.
+        path: Option<String>,
+        /// Whether the download completed successfully. The authoritative
+        /// outcome field.
+        success: bool,
+    },
 }
 
 /// Arguments for evaluating JavaScript in the currently-open native webview.
@@ -329,6 +374,7 @@ mod tests {
             initial_subtitle: None,
             initial_message: None,
             cookies: vec![],
+            download_dir: None,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -345,6 +391,9 @@ mod tests {
         assert!(!object.contains_key("initialMessage"));
         // No cookies to seed → the key is omitted entirely, same rationale.
         assert!(!object.contains_key("cookies"));
+        // No download directory → the key is omitted entirely (downloads stay
+        // blocked), same rationale.
+        assert!(!object.contains_key("downloadDir"));
         // Channel serialises as an opaque IPC handle string; we only check the
         // prefix to stay version-agnostic.
         assert!(object
@@ -364,6 +413,7 @@ mod tests {
             initial_subtitle: None,
             initial_message: None,
             cookies: vec![],
+            download_dir: None,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -386,6 +436,7 @@ mod tests {
             initial_subtitle: Some("Collecting Automatically".to_owned()),
             initial_message: None,
             cookies: vec![],
+            download_dir: None,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -423,6 +474,7 @@ mod tests {
                 same_site: CookieSameSite::Lax,
                 max_age: Some(3600),
             }],
+            download_dir: None,
         })
         .expect("serialize");
         let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
@@ -462,6 +514,30 @@ mod tests {
         assert_eq!(
             object.get("sameSite").and_then(|v| v.as_str()),
             Some("strict")
+        );
+    }
+
+    /// A download directory rides under the camelCase `downloadDir` key. The
+    /// mobile decoders drop it as unknown (neither implements downloads), but
+    /// the key is pinned here so a future mobile implementation reads the same
+    /// name the desktop backend writes.
+    #[test]
+    fn open_request_serializes_download_dir_camel_case() {
+        let json = serde_json::to_string(&OpenRequest {
+            url: "https://example.test/x".to_owned(),
+            init_script: None,
+            native_webview_event_channel: noop_channel(),
+            initial_title: None,
+            initial_subtitle: None,
+            initial_message: None,
+            cookies: vec![],
+            download_dir: Some(std::path::PathBuf::from("/tmp/wf/saved_data")),
+        })
+        .expect("serialize");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("parse");
+        assert_eq!(
+            parsed.get("downloadDir").and_then(|v| v.as_str()),
+            Some("/tmp/wf/saved_data")
         );
     }
 
@@ -581,6 +657,45 @@ mod tests {
         assert_eq!(
             serde_json::to_string(&event).expect("ser"),
             r#"{"event":"disposed"}"#
+        );
+    }
+
+    /// `NativeWebviewEvent::Downloaded` with a known path serialises to the
+    /// exact golden bytes and decodes back. Its consumer is the browser-sniffer
+    /// Rust bridge, which matches on the variant — a rename of the `downloaded`
+    /// tag or of any field would silently stop downloads from being reported.
+    #[test]
+    fn native_webview_event_downloaded_round_trips_with_a_path() {
+        let event = NativeWebviewEvent::Downloaded {
+            url: "https://example.test/report.pdf".to_owned(),
+            path: Some("/tmp/saved_data/report.pdf".to_owned()),
+            success: true,
+        };
+        let json = r#"{"event":"downloaded","url":"https://example.test/report.pdf","path":"/tmp/saved_data/report.pdf","success":true}"#;
+        assert_eq!(serde_json::to_string(&event).expect("ser"), json);
+        assert_eq!(
+            serde_json::from_str::<NativeWebviewEvent>(json).expect("de"),
+            event
+        );
+    }
+
+    /// A path-less `Downloaded` serialises `path` as an explicit `null` rather
+    /// than omitting the key — the macOS case, where WebKit reports no path
+    /// even for a download that succeeded. Pinned so nobody "tidies" it into a
+    /// `skip_serializing_if` that would make an absent path indistinguishable
+    /// from a truncated payload.
+    #[test]
+    fn native_webview_event_downloaded_round_trips_without_a_path() {
+        let event = NativeWebviewEvent::Downloaded {
+            url: "https://example.test/report.pdf".to_owned(),
+            path: None,
+            success: false,
+        };
+        let json = r#"{"event":"downloaded","url":"https://example.test/report.pdf","path":null,"success":false}"#;
+        assert_eq!(serde_json::to_string(&event).expect("ser"), json);
+        assert_eq!(
+            serde_json::from_str::<NativeWebviewEvent>(json).expect("de"),
+            event
         );
     }
 

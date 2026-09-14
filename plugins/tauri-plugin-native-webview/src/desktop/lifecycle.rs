@@ -6,7 +6,7 @@
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use tauri::webview::{Webview, WebviewBuilder};
+use tauri::webview::{DownloadEvent, Webview, WebviewBuilder};
 use tauri::window::WindowBuilder;
 use tauri::{
     AppHandle, LogicalPosition, LogicalSize, Manager, Runtime, WebviewUrl, Window, WindowEvent,
@@ -20,6 +20,7 @@ use super::chrome::{
 use super::cookies::seed_then_navigate;
 use super::labels::{chrome_label, content_label, window_label};
 use super::state::{install_instance_state, instance_state, lock_state};
+use crate::download_name::unique_name;
 use crate::models::{NativeWebviewEvent, OpenRequest};
 
 /// What [`present`] did, so [`super::NativeWebview::open_url`] knows whether the
@@ -180,6 +181,7 @@ pub(super) fn present<R: Runtime>(
 
     let init_script = payload.init_script;
     let channel = payload.native_webview_event_channel;
+    let download_dir = payload.download_dir;
     let initial_url = target_url.as_str().to_owned();
 
     // OS-level title (taskbar / title bar) is the caller's initial title, else
@@ -205,7 +207,7 @@ pub(super) fn present<R: Runtime>(
 
     // Must precede `add_child` so the chrome's first height report (on
     // DOMContentLoaded) and the resize listener find the instance state present.
-    install_instance_state(app, id, channel);
+    install_instance_state(app, id, channel, download_dir);
     // The claim reads that state too, so it has to come after — this build now
     // owns the content webview (see [`claim_open_generation`]).
     let generation = claim_open_generation(app, id);
@@ -281,6 +283,7 @@ pub(super) fn present<R: Runtime>(
             ));
         }
     });
+    content_builder = install_download_handler(content_builder, app, id);
     window.add_child(
         content_builder,
         LogicalPosition::<f64>::new(0.0, CHROME_HEIGHT_BASE),
@@ -294,6 +297,106 @@ pub(super) fn present<R: Runtime>(
     arm_absolute_timeout(app, id);
 
     Ok(PresentOutcome::Presented(generation))
+}
+
+/// Attach the content webview's download hook to `builder`.
+///
+/// Downloads are **opt-in per instance**: the hook consults
+/// [`super::state::InstanceState::download_dir`] on every request and returns
+/// `false` — wry cancels the download, nothing is written — unless that cell
+/// holds a directory. The cell is read at request time rather than captured
+/// here, so a rewire can re-point or re-block downloads without rebuilding the
+/// webview (see that field's doc); `app` and `id` are all this closure holds.
+///
+/// On an allowed request the destination is rewritten to
+/// `<download dir>/<sanitised, non-clobbering name>`. wry pre-fills
+/// `destination` with `<OS downloads dir>/<name the page suggested>`, and that
+/// name is attacker-controlled (a `Content-Disposition` header or a `download`
+/// attribute on an arbitrary third-party page), so only its final component is
+/// kept and it goes through [`unique_name`] before being joined — which is what
+/// confines the write to the download directory. The directory is created
+/// on demand; a creation failure, an unusable name, or a poisoned lock all
+/// block the download rather than letting it fall back to the OS downloads
+/// folder.
+///
+/// A finished download is reported to the instance's current channel as
+/// [`NativeWebviewEvent::Downloaded`], carrying wry's `success`. Whether a
+/// *refused* request also produces one is platform-dependent — the GTK backend
+/// cancels the `WebKitDownload`, which still fires its `finished` signal — so
+/// the event means "a download ended", never "a download was saved"; `success`
+/// is the only outcome signal.
+fn install_download_handler<R: Runtime>(
+    builder: WebviewBuilder<R>,
+    app: &AppHandle<R>,
+    id: &str,
+) -> WebviewBuilder<R> {
+    let app_for_download = app.clone();
+    let id_for_download = id.to_owned();
+    builder.on_download(move |_webview, event| match event {
+        DownloadEvent::Requested { url, destination } => {
+            let Some(instance) = instance_state(&app_for_download, &id_for_download) else {
+                return false;
+            };
+            let Ok(configured) = instance.download_dir.lock() else {
+                log::error!(
+                    "[native-webview] download-dir state lock poisoned; blocking download of {url}"
+                );
+                return false;
+            };
+            // No directory configured for this instance: downloads stay blocked,
+            // which is the behaviour every instance has until a Rust caller opts
+            // one in with `OpenRequest::download_dir`.
+            let Some(directory) = configured.as_ref() else {
+                return false;
+            };
+            if let Err(error) = std::fs::create_dir_all(directory) {
+                log::error!(
+                    "[native-webview] blocking download of {url}: could not create download \
+                     directory {}: {error}",
+                    directory.display()
+                );
+                return false;
+            }
+            let suggested = destination
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default();
+            let Some(name) = unique_name(directory, suggested) else {
+                log::error!(
+                    "[native-webview] blocking download of {url}: no free file name left in {}",
+                    directory.display()
+                );
+                return false;
+            };
+            *destination = directory.join(name);
+            log::info!(
+                "[native-webview] download of {url} allowed into {}",
+                destination.display()
+            );
+            true
+        }
+        DownloadEvent::Finished { url, path, success } => {
+            let Some(instance) = instance_state(&app_for_download, &id_for_download) else {
+                return true;
+            };
+            // Read the channel at fire time (never captured) so a rewire routes
+            // the event to the latest caller — same rule as the window listeners.
+            if let Ok(channel) = instance.current_channel.lock() {
+                let _ = channel.send(NativeWebviewEvent::Downloaded {
+                    url: url.to_string(),
+                    // macOS reports no path even on success — `success` is the
+                    // authoritative field. See [`NativeWebviewEvent::Downloaded`].
+                    path: path.map(|path| path.to_string_lossy().into_owned()),
+                    success,
+                });
+            }
+            true
+        }
+        // `DownloadEvent` is `#[non_exhaustive]`: a variant added by a future
+        // Tauri release is unknown to this handler, so refuse rather than
+        // authorise whatever it turns out to mean.
+        _ => false,
+    })
 }
 
 /// Replay an `open` request onto instance `id`'s existing chrome + content
@@ -329,6 +432,12 @@ fn apply_rewire<R: Runtime>(
         // clear `nav_can_forward` (fresh nav truncates the forward stack). See
         // [`super::state::InstanceState`].
         instance.nav_can_forward.store(false, Ordering::SeqCst);
+        // The content webview's `on_download` hook was installed at build time
+        // and cannot be replaced, so it reads this cell at request time — which
+        // is what lets a rewire re-point (or, with `None`, re-block) downloads
+        // on a live instance without a rebuild. See
+        // [`super::state::InstanceState::download_dir`].
+        *lock_state(&instance.download_dir, "download-dir")? = payload.download_dir.clone();
     }
     if let Some(script) = &payload.init_script {
         let _ = content.eval(script);

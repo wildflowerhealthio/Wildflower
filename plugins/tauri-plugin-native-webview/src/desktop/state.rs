@@ -4,6 +4,7 @@
 //! app-global too; see [`install_instance_state`]) lives here in a per-id map.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
@@ -96,13 +97,31 @@ pub(super) struct InstanceState {
     /// teardown) so a parked backstop thread wakes the instant it's superseded
     /// instead of lingering until the absolute timeout — keeps ≤1 thread parked.
     pub(super) timeout_changed: Condvar,
+    /// Where this instance's page-initiated downloads are written, from the
+    /// latest open's [`crate::models::OpenRequest::download_dir`]; `None`
+    /// blocks them.
+    ///
+    /// Behind a `Mutex` rather than captured by the `on_download` closure
+    /// because a rewire (a second `open_url` on a live instance) must be able
+    /// to change it *without* rebuilding the content webview — the closure is
+    /// installed once, at build time, and cannot be swapped afterwards. The
+    /// closure therefore reads this cell at download-request time, exactly as
+    /// the window listeners read [`Self::current_channel`] at fire time, and a
+    /// download started after a rewire lands in the new directory instead of
+    /// the one the build happened to see. See
+    /// [`super::lifecycle::apply_rewire`].
+    pub(super) download_dir: Mutex<Option<PathBuf>>,
 }
 
 impl InstanceState {
     /// A fresh instance's state (nav history at 0, not disposing, no pending
-    /// replay), bound to `channel`. `open_generation` is carried in rather than
-    /// zeroed — see [`Self::open_generation`].
-    fn new(channel: Channel<NativeWebviewEvent>, open_generation: u64) -> Self {
+    /// replay), bound to `channel` and to `download_dir`. `open_generation` is
+    /// carried in rather than zeroed — see [`Self::open_generation`].
+    fn new(
+        channel: Channel<NativeWebviewEvent>,
+        download_dir: Option<PathBuf>,
+        open_generation: u64,
+    ) -> Self {
         Self {
             chrome_height: Mutex::new(CHROME_HEIGHT_BASE),
             applied_layout: Mutex::new(None),
@@ -115,6 +134,7 @@ impl InstanceState {
             timeout_generation: AtomicU64::new(0),
             timeout_wait: Mutex::new(()),
             timeout_changed: Condvar::new(),
+            download_dir: Mutex::new(download_dir),
         }
     }
 }
@@ -158,11 +178,14 @@ pub(super) fn lock_state<'a, T>(
 /// are kept across dispose/reopen (ids are a small fixed set), so a fresh build
 /// overwrites any prior entry for the same id — equivalent to the old reset.
 /// [`InstanceState::open_generation`] is the one field carried across that
-/// overwrite (see its doc: the token must not restart).
+/// overwrite (see its doc: the token must not restart); `download_dir` is
+/// (re)set from the building open's request, and a later rewire updates it in
+/// place rather than through here.
 pub(super) fn install_instance_state<R: Runtime>(
     app: &AppHandle<R>,
     id: &str,
     channel: Channel<NativeWebviewEvent>,
+    download_dir: Option<PathBuf>,
 ) {
     let Some(state) = app.try_state::<PluginState>() else {
         return;
@@ -175,6 +198,6 @@ pub(super) fn install_instance_state<R: Runtime>(
         .map_or(0, |prior| prior.open_generation.load(Ordering::SeqCst));
     map.insert(
         id.to_owned(),
-        Arc::new(InstanceState::new(channel, open_generation)),
+        Arc::new(InstanceState::new(channel, download_dir, open_generation)),
     );
 }
