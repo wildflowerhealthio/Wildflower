@@ -15,9 +15,23 @@ import { type FhirResource, FhirResourceSchema } from 'fhir-r4/resources'
 /** How many spaces each nesting level is indented by in the editable JSON. */
 const JSON_INDENT = 2
 
+/**
+ * String values at or above this byte length are replaced with a
+ * `[N bytes]` placeholder in the editor's display text. The actual
+ * resource data stays intact — truncation is purely presentational.
+ */
+const TRUNCATION_THRESHOLD = 10_000
+
+const truncatingReplacer = (_key: string, value: unknown): unknown => {
+  if (typeof value === 'string' && value.length >= TRUNCATION_THRESHOLD) {
+    return `[${value.length.toLocaleString('en-US')} bytes]`
+  }
+  return value
+}
+
 /** The text a mount seeds its textarea with: `resource` pretty-printed as JSON. */
 const prettyPrintResource = (resource: unknown): string =>
-  JSON.stringify(resource, null, JSON_INDENT)
+  JSON.stringify(resource, truncatingReplacer, JSON_INDENT)
 
 /** Raised by {@link tryKeep} when the edit text is not valid JSON. */
 class InvalidJsonError extends Error {
@@ -80,4 +94,10 @@ const tryKeep = (text: string, original: unknown): Either.Either<FhirResource, u
   return Either.right(decoded.right)
 }
 
-export { ImmutableFieldChangedError, InvalidJsonError, prettyPrintResource, tryKeep }
+export {
+  ImmutableFieldChangedError,
+  InvalidJsonError,
+  prettyPrintResource,
+  TRUNCATION_THRESHOLD,
+  tryKeep,
+}

@@ -2,7 +2,7 @@
   "name": "dicom-importer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The DICOM binding of the importer slice (core layer): byte-level .dcm detection, the archive codec that stores a DICOM file as a FHIR DocumentReference, and the importer descriptor. No DOM, no fs, no React.",
+  "description": "The DICOM binding of the importer slice (core layer): byte-level .dcm detection, the source file codec that stores a DICOM file as a FHIR DocumentReference, and the importer descriptor. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -18,9 +18,9 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./archive": {
-      "source": "./src/archive/index.ts",
-      "default": "./dist/archive.js"
+    "./source-file": {
+      "source": "./src/source-file/index.ts",
+      "default": "./dist/source-file.js"
     },
     "./package.json": "./package.json"
   },

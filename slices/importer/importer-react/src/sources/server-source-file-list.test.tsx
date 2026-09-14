@@ -6,24 +6,27 @@ import { DateTime, Effect, Layer, Schema } from 'effect'
 import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
-import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/archive'
-import { LIFELABS_PDF_ARCHIVE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer-core/archive'
+import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
+import {
+  LIFELABS_PDF_SOURCE_FILE_CODE,
+  LIFELABS_SYSTEM,
+} from 'lifelabs-pdf-importer-core/source-file'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { ServerArchiveList } from './server-archive-list.tsx'
+import { ServerSourceFileList } from './server-source-file-list.tsx'
 
 /**
- * The uploaded-archives list, driven over a stub `HttpClient`, exercising:
+ * The uploaded-source-files list, driven over a stub `HttpClient`, exercising:
  *
  *   - a mixed searchset (a HAR and a LifeLabs PDF) both list under the
  *     format-neutral heading, each with a Preview and a Use-as-source
  *     action;
- *   - Preview opens the modal, fetches the archive contents through the
- *     row's format's `archiveFromDocumentReference`, and renders the
+ *   - Preview opens the modal, fetches the source file contents through the
+ *     row's format's `sourceFileFromDocumentReference`, and renders the
  *     bytes (a JSON archive as pretty-printed text, a PDF via an
  *     `<iframe>` at a `blob:` URL);
- *   - Use as source fetches the archive and calls `onPick` with the
+ *   - Use as source fetches the source file and calls `onPick` with the
  *     bytes + a `server` source.
  *
  * jsdom does not implement `<dialog>`, so the two methods `Dialog` calls
@@ -91,7 +94,7 @@ afterEach(() => {
   restoreDialog('close', originalClose)
 })
 
-describe('ServerArchiveList', () => {
+describe('ServerSourceFileList', () => {
   it('should list a HAR and a LifeLabs PDF archive together under the format-neutral heading', async () => {
     // Arrange — a mixed searchset carrying one of each format
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
@@ -99,12 +102,12 @@ describe('ServerArchiveList', () => {
       harArchiveWire({ id: 'har-1', fileName: 'portal.har', uploadedAt }),
       lifelabsPdfArchiveWire({ id: 'pdf-1', fileName: 'report.pdf', uploadedAt }),
     ])
-    render(<ServerArchiveList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
 
     // Assert — the format-neutral heading and both rows land, each with a
     // Preview and a Use-as-source action bearing the file name
     expect(
-      await screen.findByRole('heading', { name: 'Uploaded archives on the FHIR server' })
+      await screen.findByRole('heading', { name: 'Uploaded source files on the FHIR server' })
     ).toBeDefined()
     expect(await screen.findByText('portal.har')).toBeDefined()
     expect(screen.getByText('report.pdf')).toBeDefined()
@@ -118,7 +121,7 @@ describe('ServerArchiveList', () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     serveArchives([harArchiveWire({ id: 'har-1', fileName: 'portal.har', uploadedAt })])
-    render(<ServerArchiveList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
     await screen.findByRole('button', { name: 'Preview portal.har' })
 
     // Act — open the preview
@@ -144,7 +147,7 @@ describe('ServerArchiveList', () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     serveArchives([lifelabsPdfArchiveWire({ id: 'pdf-1', fileName: 'report.pdf', uploadedAt })])
-    render(<ServerArchiveList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
     await screen.findByRole('button', { name: 'Preview report.pdf' })
 
     // Act
@@ -161,20 +164,20 @@ describe('ServerArchiveList', () => {
     expect(createdBlobs[0]?.type).toBe('application/pdf')
   })
 
-  it('should pick the archive as a source when Use-as-source is clicked, fetching it by id', async () => {
+  it('should pick the source file as a source when Use-as-source is clicked, fetching it by id', async () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     serveArchives([harArchiveWire({ id: 'har-1', fileName: 'portal.har', uploadedAt })])
     let picked:
       | { readonly fileName: string; readonly bytes: Uint8Array; readonly source: unknown }
       | undefined
-    render(<ServerArchiveList onPick={(one) => (picked = one)} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList onPick={(one) => (picked = one)} />, { wrapper: withQueryClient })
     await screen.findByRole('button', { name: 'Use portal.har as source' })
 
     // Act
     await userEvent.click(screen.getByRole('button', { name: 'Use portal.har as source' }))
 
-    // Assert — onPick fires with the archive bytes and a `server` source
+    // Assert — onPick fires with the source file bytes and a `server` source
     // pointing at the fetched DocumentReference
     await waitFor(() => {
       expect(picked !== undefined).toBe(true)
@@ -184,14 +187,14 @@ describe('ServerArchiveList', () => {
     expect(picked?.source).toEqual({ _tag: 'server', reference: 'DocumentReference/har-1' })
   })
 
-  it('should render the empty state format-neutrally when the server has no archives', async () => {
+  it('should render the empty state format-neutrally when the server has no source files', async () => {
     // Arrange
     serveArchives([])
-    render(<ServerArchiveList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
 
     // Assert
     expect(
-      await screen.findByText('No archives have been uploaded to the FHIR server.')
+      await screen.findByText('No source files have been uploaded to the FHIR server.')
     ).toBeDefined()
   })
 })
@@ -233,7 +236,7 @@ const lifelabsPdfArchiveWire = (fields: {
   readonly uploadedAt: DateTime.Utc
 }): unknown => {
   const iso = DateTime.formatIso(fields.uploadedAt)
-  const coding = [{ system: LIFELABS_SYSTEM, code: LIFELABS_PDF_ARCHIVE_CODE }]
+  const coding = [{ system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE }]
   return {
     resourceType: 'DocumentReference',
     id: fields.id,
@@ -268,9 +271,9 @@ const jsonResponse = (body: unknown): Response =>
   })
 
 /**
- * Serves the archive search and the per-id GetById off one rule: a request
+ * Serves the source file search and the per-id GetById off one rule: a request
  * with a `category` param is the search (answers the whole `resources`
- * array as one page), anything else is a GetById (find the archive whose
+ * array as one page), anything else is a GetById (find the source file whose
  * id matches the last URL path segment).
  */
 const idOf = (resource: unknown): string | undefined => {

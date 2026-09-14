@@ -2,17 +2,20 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { DICOM_ARCHIVE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/archive'
+import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
-import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/archive'
-import { LIFELABS_PDF_ARCHIVE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer-core/archive'
+import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
+import {
+  LIFELABS_PDF_SOURCE_FILE_CODE,
+  LIFELABS_SYSTEM,
+} from 'lifelabs-pdf-importer-core/source-file'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { ARCHIVES_CATEGORY_TOKEN } from '../queries/archives.ts'
+import { SOURCE_FILES_CATEGORY_TOKEN } from '../queries/source-files.ts'
 import { REJECTION_MESSAGE, type IdentifiableDescriptor } from './local-file.ts'
 import { SourcePicker } from './source-picker.tsx'
 
@@ -22,7 +25,6 @@ import { SourcePicker } from './source-picker.tsx'
  * the picker test does not depend on the concrete binding.
  */
 const harDescriptor: IdentifiableDescriptor = {
-  accept: ['.har', 'application/json'],
   detect: (bytes, name) => name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
 }
 
@@ -48,8 +50,6 @@ vi.mock('fhir-r4-react', async (importOriginal) => {
 
 const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
 const ACCESS_TOKEN = 'tok-abc'
-/** The `accept` attribute the shell composes and passes; the tests only need any value. */
-const TEST_ACCEPT = '.har,application/json'
 
 /** A minimal but complete HAR 1.2 archive, shared by every source in a test. */
 const VALID_HAR = JSON.stringify({
@@ -90,11 +90,7 @@ describe('SourcePicker', () => {
     })
     const picks: Array<{ fileName: string; bytes: Uint8Array; source: unknown }> = []
     render(
-      <SourcePicker
-        accept={TEST_ACCEPT}
-        descriptors={testDescriptors}
-        onPick={(chosen) => picks.push(...chosen)}
-      />,
+      <SourcePicker descriptors={testDescriptors} onPick={(chosen) => picks.push(...chosen)} />,
       {
         wrapper: withQueryClient,
       }
@@ -137,11 +133,7 @@ describe('SourcePicker', () => {
     })
     let picked: { bytes: Uint8Array; source: unknown } | undefined
     render(
-      <SourcePicker
-        accept={TEST_ACCEPT}
-        descriptors={testDescriptors}
-        onPick={(chosen) => (picked = chosen[0])}
-      />,
+      <SourcePicker descriptors={testDescriptors} onPick={(chosen) => (picked = chosen[0])} />,
       {
         wrapper: withQueryClient,
       }
@@ -155,9 +147,9 @@ describe('SourcePicker', () => {
 
     // …the search went out filtered by the comma-joined archive category
     // covering every registered format, sized, and authed
-    expect(paramsOf(0)['category']).toBe(ARCHIVES_CATEGORY_TOKEN)
-    expect(ARCHIVES_CATEGORY_TOKEN).toBe(
-      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE},${DICOM_SYSTEM}|${DICOM_ARCHIVE_CODE}`
+    expect(paramsOf(0)['category']).toBe(SOURCE_FILES_CATEGORY_TOKEN)
+    expect(SOURCE_FILES_CATEGORY_TOKEN).toBe(
+      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_SOURCE_FILE_CODE},${DICOM_SYSTEM}|${DICOM_SOURCE_FILE_CODE}`
     )
     expect(paramsOf(0)['_count']).toBe('50')
     expect(sentRequests[0]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
@@ -184,18 +176,15 @@ describe('SourcePicker', () => {
       ],
       harTextById: {},
     })
-    render(
-      <SourcePicker accept={TEST_ACCEPT} descriptors={testDescriptors} onPick={() => undefined} />,
-      {
-        wrapper: withQueryClient,
-      }
-    )
+    render(<SourcePicker descriptors={testDescriptors} onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Use first.har as source' })).toBeDefined()
     })
 
     // Act
-    await userEvent.click(screen.getByRole('button', { name: 'Show more archives' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Show more source files' }))
 
     // Assert — the second search carried the cursor, and both pages are listed
     await waitFor(() => {
@@ -208,12 +197,9 @@ describe('SourcePicker', () => {
   it('should expose the drop zone as a labeled button and the file input as a named control', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
-    render(
-      <SourcePicker accept={TEST_ACCEPT} descriptors={testDescriptors} onPick={() => undefined} />,
-      {
-        wrapper: withQueryClient,
-      }
-    )
+    render(<SourcePicker descriptors={testDescriptors} onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
 
     // Assert — a real button (so keyboard-activatable) with an accessible name,
     // inside a labeled region, and a named file input drop is an enhancement over
@@ -229,11 +215,7 @@ describe('SourcePicker', () => {
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const picks: unknown[] = []
     render(
-      <SourcePicker
-        accept={TEST_ACCEPT}
-        descriptors={testDescriptors}
-        onPick={(chosen) => picks.push(...chosen)}
-      />,
+      <SourcePicker descriptors={testDescriptors} onPick={(chosen) => picks.push(...chosen)} />,
       {
         wrapper: withQueryClient,
       }
@@ -260,7 +242,6 @@ describe('SourcePicker', () => {
     const calls: string[][] = []
     render(
       <SourcePicker
-        accept={TEST_ACCEPT}
         descriptors={testDescriptors}
         onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))}
       />,
@@ -286,7 +267,6 @@ describe('SourcePicker', () => {
     const picks: string[] = []
     render(
       <SourcePicker
-        accept={TEST_ACCEPT}
         descriptors={testDescriptors}
         onPick={(chosen) => picks.push(...chosen.map((one) => one.fileName))}
       />,

@@ -1,21 +1,24 @@
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
-import { DICOM_ARCHIVE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/archive'
+import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
-import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/archive'
-import { LIFELABS_PDF_ARCHIVE_CODE, LIFELABS_SYSTEM } from 'lifelabs-pdf-importer-core/archive'
+import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
+import {
+  LIFELABS_PDF_SOURCE_FILE_CODE,
+  LIFELABS_SYSTEM,
+} from 'lifelabs-pdf-importer-core/source-file'
 import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import {
-  ARCHIVES_CATEGORY_TOKEN,
-  archivesInfiniteQueryOptions,
+  SOURCE_FILES_CATEGORY_TOKEN,
+  sourceFilesInfiniteQueryOptions,
   DEFAULT_PAGE_SIZE,
-} from './archives.ts'
+} from './source-files.ts'
 
 /**
- * The archive list read, driven over the real
+ * The source file list read, driven over the real
  * query → runner → FHIR-client → `HttpClient` path with a stub transport.
  * Only the transport is a stub; the runner is built through
  * `fhir-r4-react/smart` so a bearer token rides the wire, exactly as a
@@ -23,11 +26,11 @@ import {
  *
  * What this pins that the old HAR-only test could not:
  *   - the search category is the comma-joined `system|code` union across
- *     every registered format, so listing every format's archives is one
+ *     every registered format, so listing every format's source files is one
  *     round trip per page;
- *   - a mixed searchset (a HAR archive plus a LifeLabs PDF archive)
+ *   - a mixed searchset (a HAR source file plus a LifeLabs PDF source file)
  *     surfaces as rows tagged with the format each was classified as by
- *     the descriptor's `isArchive` predicate;
+ *     the descriptor's `isSourceFile` predicate;
  *   - a resource whose category coding is neither format's is dropped
  *     from the rows.
  */
@@ -46,19 +49,19 @@ afterEach(() => {
   for (const queryClient of queryClients.splice(0)) queryClient.clear()
 })
 
-describe('archivesInfiniteQueryOptions', () => {
+describe('sourceFilesInfiniteQueryOptions', () => {
   it('should search the comma-joined archive category over every registered format, sized and authed', async () => {
     // Arrange
     const queryClient = freshQueryClient()
-    const options = archivesInfiniteQueryOptions(runAuthedOver([searchset([])]))
+    const options = sourceFilesInfiniteQueryOptions(runAuthedOver([searchset([])]))
 
     // Act
     await queryClient.infiniteQuery(options)
 
     // Assert — one search, one comma-joined `system|code` covering both formats
-    expect(paramsOf(0)['category']).toBe(ARCHIVES_CATEGORY_TOKEN)
-    expect(ARCHIVES_CATEGORY_TOKEN).toBe(
-      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE},${DICOM_SYSTEM}|${DICOM_ARCHIVE_CODE}`
+    expect(paramsOf(0)['category']).toBe(SOURCE_FILES_CATEGORY_TOKEN)
+    expect(SOURCE_FILES_CATEGORY_TOKEN).toBe(
+      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_SOURCE_FILE_CODE},${DICOM_SYSTEM}|${DICOM_SOURCE_FILE_CODE}`
     )
     expect(paramsOf(0)['_count']).toBe(String(DEFAULT_PAGE_SIZE))
     // …and it went out authenticated with the granted token
@@ -75,7 +78,7 @@ describe('archivesInfiniteQueryOptions', () => {
       unrelatedDocumentWire({ id: 'other-1', fileName: 'notes.txt' }),
     ]
     const queryClient = freshQueryClient()
-    const options = archivesInfiniteQueryOptions(runAuthedOver([searchset(rows)]))
+    const options = sourceFilesInfiniteQueryOptions(runAuthedOver([searchset(rows)]))
 
     // Act
     const data = await queryClient.infiniteQuery(options)
@@ -84,7 +87,7 @@ describe('archivesInfiniteQueryOptions', () => {
     // the right format tag by their classification
     const page = data.pages[0]
     if (page === undefined) throw new Error('expected a page')
-    expect(page.archives.map((row) => ({ id: row.id, format: row.format }))).toEqual([
+    expect(page.sourceFiles.map((row) => ({ id: row.id, format: row.format }))).toEqual([
       { id: 'har-1', format: 'har' },
       { id: 'pdf-1', format: 'lifelabs-pdf' },
     ])
@@ -101,7 +104,7 @@ describe('archivesInfiniteQueryOptions', () => {
       lifelabsPdfArchiveWire({ id: 'p2', fileName: 'two.pdf', uploadedAt }),
     ])
     const queryClient = freshQueryClient()
-    const options = archivesInfiniteQueryOptions(runAuthedOver([first, second]))
+    const options = sourceFilesInfiniteQueryOptions(runAuthedOver([first, second]))
 
     // Act
     const data = await queryClient.infiniteQuery({ ...options, pages: 3 })
@@ -110,7 +113,10 @@ describe('archivesInfiniteQueryOptions', () => {
     expect(sentRequests).toHaveLength(2)
     expect(paramsOf(0)['_pageToken']).toBeUndefined()
     expect(paramsOf(1)['_pageToken']).toBe('cursor-2')
-    expect(data.pages.flatMap((page) => page.archives.map((one) => one.id))).toEqual(['p1', 'p2'])
+    expect(data.pages.flatMap((page) => page.sourceFiles.map((one) => one.id))).toEqual([
+      'p1',
+      'p2',
+    ])
     expect(data.pageParams).toEqual([null, 'cursor-2'])
   })
 
@@ -118,7 +124,7 @@ describe('archivesInfiniteQueryOptions', () => {
     // Arrange
     const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     queryClients.push(queryClient)
-    const options = archivesInfiniteQueryOptions(failingRunAuthed())
+    const options = sourceFilesInfiniteQueryOptions(failingRunAuthed())
 
     // Act / Assert
     await expect(queryClient.infiniteQuery(options)).rejects.toThrow()
@@ -169,7 +175,7 @@ const lifelabsPdfArchiveWire = (fields: {
   readonly uploadedAt: DateTime.Utc
 }): unknown => {
   const iso = DateTime.formatIso(fields.uploadedAt)
-  const coding = [{ system: LIFELABS_SYSTEM, code: LIFELABS_PDF_ARCHIVE_CODE }]
+  const coding = [{ system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE }]
   return {
     resourceType: 'DocumentReference',
     id: fields.id,

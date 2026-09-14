@@ -34,7 +34,7 @@ import type { JSX } from 'react'
  * There is no per-format write-client requirement any more: no descriptor
  * field takes a client. The one FHIR write the confirm runs
  * (`persistBatchBundle`) names its own `FhirR4ResourcesHttpApiClient` at the
- * shell, and the source-archive `DocumentReference` rides that same batch
+ * shell, and the source-file `DocumentReference` rides that same batch
  * rather than a private upload.
  */
 interface FormatVariant {
@@ -69,26 +69,25 @@ type FormatSettings = { readonly [K in FormatKind]: FormatVariant[K]['settings']
 interface BoundFormat<K extends FormatKind> {
   readonly format: K
   readonly display: { readonly title: string; readonly description: string }
-  readonly accept: readonly string[]
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: FormatVariant[K]['settings']
   readonly decode: (
     fileBytes: Uint8Array,
     settings: FormatVariant[K]['settings']
   ) => Effect.Effect<DecodedFile<FormatVariant[K]['parsed']>, ParseResult.ParseError>
-  readonly sourceArchive: (picked: {
+  readonly buildSourceFile: (picked: {
     readonly fileName: string
     readonly bytes: Uint8Array
   }) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
-  readonly archiveCategoryToken: string
-  readonly isArchive: (resource: DocumentReferenceType) => boolean
-  readonly archiveFromDocumentReference: (
+  readonly sourceFileCategoryToken: string
+  readonly isSourceFile: (resource: DocumentReferenceType) => boolean
+  readonly sourceFileFromDocumentReference: (
     resource: DocumentReferenceType
   ) => Effect.Effect<
     { readonly fileName: string; readonly bytes: Uint8Array },
     ParseResult.ParseError
   >
-  readonly archiveContentType: string
+  readonly sourceFileContentType: string
   readonly SettingsPicker: (props: SettingsPickerProps<FormatVariant[K]['settings']>) => JSX.Element
 }
 
@@ -97,43 +96,40 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
   har: {
     format: 'har',
     display: harImporterDescriptor.display,
-    accept: harImporterDescriptor.accept,
     detect: harImporterDescriptor.detect,
     defaultSettings: harImporterDescriptor.defaultSettings,
     decode: harImporterDescriptor.decode,
-    sourceArchive: harImporterDescriptor.sourceArchive,
-    archiveCategoryToken: harImporterDescriptor.archiveCategoryToken,
-    isArchive: harImporterDescriptor.isArchive,
-    archiveFromDocumentReference: harImporterDescriptor.archiveFromDocumentReference,
-    archiveContentType: harImporterDescriptor.archiveContentType,
+    buildSourceFile: harImporterDescriptor.buildSourceFile,
+    sourceFileCategoryToken: harImporterDescriptor.sourceFileCategoryToken,
+    isSourceFile: harImporterDescriptor.isSourceFile,
+    sourceFileFromDocumentReference: harImporterDescriptor.sourceFileFromDocumentReference,
+    sourceFileContentType: harImporterDescriptor.sourceFileContentType,
     SettingsPicker: HarSettingsPicker,
   },
   'lifelabs-pdf': {
     format: 'lifelabs-pdf',
     display: lifeLabsPdfImporterDescriptor.display,
-    accept: lifeLabsPdfImporterDescriptor.accept,
     detect: lifeLabsPdfImporterDescriptor.detect,
     defaultSettings: lifeLabsPdfImporterDescriptor.defaultSettings,
     decode: lifeLabsPdfImporterDescriptor.decode,
-    sourceArchive: lifeLabsPdfImporterDescriptor.sourceArchive,
-    archiveCategoryToken: lifeLabsPdfImporterDescriptor.archiveCategoryToken,
-    isArchive: lifeLabsPdfImporterDescriptor.isArchive,
-    archiveFromDocumentReference: lifeLabsPdfImporterDescriptor.archiveFromDocumentReference,
-    archiveContentType: lifeLabsPdfImporterDescriptor.archiveContentType,
+    buildSourceFile: lifeLabsPdfImporterDescriptor.buildSourceFile,
+    sourceFileCategoryToken: lifeLabsPdfImporterDescriptor.sourceFileCategoryToken,
+    isSourceFile: lifeLabsPdfImporterDescriptor.isSourceFile,
+    sourceFileFromDocumentReference: lifeLabsPdfImporterDescriptor.sourceFileFromDocumentReference,
+    sourceFileContentType: lifeLabsPdfImporterDescriptor.sourceFileContentType,
     SettingsPicker: LifeLabsPdfSettingsPicker,
   },
   dicom: {
     format: 'dicom',
     display: dicomImporterDescriptor.display,
-    accept: dicomImporterDescriptor.accept,
     detect: dicomImporterDescriptor.detect,
     defaultSettings: dicomImporterDescriptor.defaultSettings,
     decode: dicomImporterDescriptor.decode,
-    sourceArchive: dicomImporterDescriptor.sourceArchive,
-    archiveCategoryToken: dicomImporterDescriptor.archiveCategoryToken,
-    isArchive: dicomImporterDescriptor.isArchive,
-    archiveFromDocumentReference: dicomImporterDescriptor.archiveFromDocumentReference,
-    archiveContentType: dicomImporterDescriptor.archiveContentType,
+    buildSourceFile: dicomImporterDescriptor.buildSourceFile,
+    sourceFileCategoryToken: dicomImporterDescriptor.sourceFileCategoryToken,
+    isSourceFile: dicomImporterDescriptor.isSourceFile,
+    sourceFileFromDocumentReference: dicomImporterDescriptor.sourceFileFromDocumentReference,
+    sourceFileContentType: dicomImporterDescriptor.sourceFileContentType,
     SettingsPicker: DicomSettingsPicker,
   },
 }

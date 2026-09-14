@@ -1,6 +1,6 @@
 import type { ServerComparison } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import { acceptFor, Review, sectionResources } from 'importer-fundamentals'
+import { Review, sectionResources } from 'importer-fundamentals'
 import { type JSX, useCallback, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
@@ -51,15 +51,6 @@ const CHECKING_SERVER_MESSAGE = 'Checking the server for existing copies…'
 
 /** The bound descriptors, one per registered format, in registry order. */
 const registeredDescriptors = Object.values(formatRegistry)
-
-/**
- * The OS dialog's `accept` attribute — the union of every registered
- * format's `accept` tokens, so a user sees the extensions of every format
- * the app supports in one dialog. The hint is only that; a file whose
- * format doesn't match any descriptor falls through to the picker's own
- * rejection via `detect`.
- */
-const PICKER_ACCEPT = acceptFor(registeredDescriptors)
 
 /**
  * The empty comparison map, held once so `PreviewPanel`'s `comparisons`
@@ -131,13 +122,7 @@ const ImporterScreen = (): JSX.Element => {
   const body = ((): JSX.Element => {
     const runState = importRun.state
     if (runState._tag === 'idle')
-      return (
-        <SourcePicker
-          descriptors={registeredDescriptors}
-          onPick={importRun.run}
-          accept={PICKER_ACCEPT}
-        />
-      )
+      return <SourcePicker descriptors={registeredDescriptors} onPick={importRun.run} />
     if (runState._tag === 'reading') {
       return (
         <p role="status" className={styles.status}>

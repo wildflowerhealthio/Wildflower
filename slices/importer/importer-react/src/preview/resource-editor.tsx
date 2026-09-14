@@ -1,6 +1,6 @@
 import { Either } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import { type JSX, useState } from 'react'
+import { type JSX, useRef, useState } from 'react'
 import { Dialog, ErrorBanner } from 'react-tundraish'
 
 import { prettyPrintResource, tryKeep } from './resource-editor-helpers.ts'
@@ -54,9 +54,11 @@ const EditorBody = ({
 }): JSX.Element => {
   const [text, setText] = useState(() => prettyPrintResource(resource))
   const [error, setError] = useState<unknown>(null)
+  const modified = useRef(false)
 
   const handleKeep = (): void => {
-    const result = tryKeep(text, resource)
+    const source = modified.current ? text : JSON.stringify(resource)
+    const result = tryKeep(source, resource)
     if (Either.isLeft(result)) {
       setError(result.left)
       return
@@ -75,7 +77,10 @@ const EditorBody = ({
         aria-label="Resource JSON"
         className={styles.textarea}
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          modified.current = true
+          setText(event.target.value)
+        }}
         spellCheck={false}
         rows={20}
       />

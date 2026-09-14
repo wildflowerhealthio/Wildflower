@@ -18,9 +18,9 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./archive": {
-      "source": "./src/archive/index.ts",
-      "default": "./dist/archive.js"
+    "./source-file": {
+      "source": "./src/source-file/index.ts",
+      "default": "./dist/source-file.js"
     },
     "./test-helpers": {
       "source": "./src/test-helpers.ts",

@@ -5,10 +5,10 @@
  * @remarks
  * Bytes rather than text so the picker stays format-blind: a HAR decodes
  * UTF-8 JSON, a PDF decodes binary. Every downstream step — format
- * identification, `decode`, and the archive upload — reads bytes. The three
- * source variants stay distinguishable through {@link PickedFileSource}: a
- * `local` pick is a file that never touched the server (the importer uploads
- * its bytes when the user confirms), and a `server` pick is a
+ * identification, `decode`, and the source-file upload — reads bytes. The
+ * three source variants stay distinguishable through {@link PickedFileSource}:
+ * a `local` pick is a file that never touched the server (the importer
+ * uploads its bytes when the user confirms), and a `server` pick is a
  * `DocumentReference` already on the device whose `reference` is stamped onto
  * `meta.source` without a fresh upload.
  *
@@ -21,8 +21,8 @@
  * @remarks
  * A `local` pick's bytes are what the shell uploads at confirm. A `server`
  * pick's `reference` is the `DocumentReference/<id>` a later step stamps onto
- * every resource's `meta.source` — the archive is already on the device, so
- * nothing new is uploaded.
+ * every resource's `meta.source` — the source file is already on the device,
+ * so nothing new is uploaded.
  */
 type PickedFileSource =
   | { readonly _tag: 'local' }
@@ -42,33 +42,33 @@ interface PickedFile {
 const LOCAL_SOURCE: PickedFileSource = { _tag: 'local' }
 
 /**
- * The `DocumentReference/<id>` reference for an uploaded archive by
+ * The `DocumentReference/<id>` reference for an uploaded source file by
  * logical id, format-blind.
  *
- * @param id - The archive `DocumentReference`'s logical id
+ * @param id - The source-file `DocumentReference`'s logical id
  * @returns The literal FHIR reference string, `DocumentReference/<id>`
  *
  * @remarks
  * Spelled in one place so the `server` source, the `meta.source` stamp a
- * confirm writes for a freshly-uploaded local archive, and any consumer
+ * confirm writes for a freshly-uploaded local source file, and any consumer
  * that resolves the reference back to an id all agree on the form. A
  * `server` pick already carries this reference; a `local` pick has none
  * until its bytes are uploaded, at which point the confirm step mints the
- * archive's id and turns it into a reference the same way here. Every
- * format's archive resource type is `DocumentReference`, so the shape is
- * one string regardless of the file format.
+ * source file's id and turns it into a reference the same way here. Every
+ * format's source-file resource type is `DocumentReference`, so the shape
+ * is one string regardless of the file format.
  */
-const archiveReference = (id: string): string => `DocumentReference/${id}`
+const sourceFileReference = (id: string): string => `DocumentReference/${id}`
 
 /**
- * The `server` {@link PickedFileSource} for a server-held archive by id.
+ * The `server` {@link PickedFileSource} for a server-held source file by id.
  *
- * @param id - The archive `DocumentReference`'s logical id
- * @returns A `server` source carrying its {@link archiveReference}
+ * @param id - The source-file `DocumentReference`'s logical id
+ * @returns A `server` source carrying its {@link sourceFileReference}
  */
 const serverSource = (id: string): PickedFileSource => ({
   _tag: 'server',
-  reference: archiveReference(id),
+  reference: sourceFileReference(id),
 })
 
-export { archiveReference, LOCAL_SOURCE, type PickedFile, type PickedFileSource, serverSource }
+export { sourceFileReference, LOCAL_SOURCE, type PickedFile, type PickedFileSource, serverSource }

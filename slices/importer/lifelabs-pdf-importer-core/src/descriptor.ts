@@ -2,16 +2,16 @@ import { Effect } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { FileImporterDescriptor } from 'importer-fundamentals'
 
-import {
-  isLifeLabsPdfArchive,
-  LIFELABS_PDF_ARCHIVE_CATEGORY_TOKEN,
-  LIFELABS_PDF_ARCHIVE_CONTENT_TYPE,
-  lifeLabsPdfArchiveFromDocumentReference,
-  sourceArchive,
-} from './archive/index.ts'
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
 import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
+import {
+  buildSourceFile,
+  isLifeLabsPdfSourceFile,
+  LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
+  LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
+  lifeLabsPdfSourceFileFromDocumentReference,
+} from './source-file/index.ts'
 
 /**
  * The concrete {@link FileImporterDescriptor} for the `lifelabs-pdf` format:
@@ -31,22 +31,17 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<LifeLabsPdfSettings,
     title: 'LifeLabs report',
     description: 'Import lab results from a LifeLabs report PDF.',
   },
-  // The picker hint is the report PDF itself — this binding opens the PDF's
-  // bytes end-to-end (`positioned-text-web`'s extraction ↦ dialect ↦ FHIR).
-  // The anonymizer's positioned-text JSON is a separate artifact the
-  // anonymizer downloads for redaction; this importer does not accept it.
-  accept: ['.pdf', 'application/pdf'],
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
   decode: decodeLifeLabsPdf,
-  sourceArchive,
-  archiveCategoryToken: LIFELABS_PDF_ARCHIVE_CATEGORY_TOKEN,
-  isArchive: isLifeLabsPdfArchive,
-  archiveFromDocumentReference: (resource) =>
-    lifeLabsPdfArchiveFromDocumentReference(resource).pipe(
-      Effect.map((archive) => ({ fileName: archive.fileName, bytes: archive.bytes }))
+  buildSourceFile,
+  sourceFileCategoryToken: LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
+  isSourceFile: isLifeLabsPdfSourceFile,
+  sourceFileFromDocumentReference: (resource) =>
+    lifeLabsPdfSourceFileFromDocumentReference(resource).pipe(
+      Effect.map((sourceFile) => ({ fileName: sourceFile.fileName, bytes: sourceFile.bytes }))
     ),
-  archiveContentType: LIFELABS_PDF_ARCHIVE_CONTENT_TYPE,
+  sourceFileContentType: LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
 }
 
 export { lifeLabsPdfImporterDescriptor }

@@ -67,8 +67,8 @@ const unrecognizedRejection = (file: ReadableFile): RejectedFile => ({
   message: REJECTION_MESSAGE,
 })
 
-/** Descriptors carry only `accept` + `detect` through this gate. */
-type IdentifiableDescriptor = Pick<FileImporterDescriptor<never, never>, 'accept' | 'detect'>
+/** Descriptors carry only `detect` through this gate. */
+type IdentifiableDescriptor = Pick<FileImporterDescriptor<never, never>, 'detect'>
 
 /**
  * Reads a local file's bytes and rejects it if no registered descriptor's

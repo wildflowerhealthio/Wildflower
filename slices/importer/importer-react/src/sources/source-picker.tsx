@@ -8,7 +8,7 @@ import {
   type RejectedFile,
 } from './local-file.ts'
 import type { PickedFile } from './picked-file.ts'
-import { ServerArchiveList } from './server-archive-list.tsx'
+import { ServerSourceFileList } from './server-source-file-list.tsx'
 import styles from './source-picker.module.css'
 
 /**
@@ -23,8 +23,8 @@ import styles from './source-picker.module.css'
  * identified against the registered format descriptors' `detect` at the
  * picker, so a file no format claims is rejected *here*, next to the control
  * the user just used, rather than surfacing downstream. The server picks come
- * from {@link ServerArchiveList}, which lists every registered format's
- * uploaded archives — HAR, LifeLabs PDF, and any future format — and fetches
+ * from {@link ServerSourceFileList}, which lists every registered format's
+ * uploaded source files — HAR, LifeLabs PDF, and any future format — and fetches
  * the chosen one back through that format's archive codec; the resulting pick
  * carries the archive's own reference so a later step links provenance
  * without re-uploading the bytes.
@@ -54,8 +54,7 @@ interface SourcePickerProps {
    * The registered file-format descriptors, in registry priority order.
    * Each dropped or chosen file is identified against them at the picker;
    * the first descriptor whose `detect` claims the file wins. Only its
-   * `accept` and `detect` are read here — the picker never runs a
-   * descriptor's `decode`.
+   * `detect` is read here — the picker never runs a descriptor's `decode`.
    */
   readonly descriptors: readonly IdentifiableDescriptor[]
   /**
@@ -76,16 +75,6 @@ interface SourcePickerProps {
    * time. Defaults to `'batch'`. See {@link SourcePickerMode}.
    */
   readonly mode?: SourcePickerMode
-  /**
-   * The OS dialog's `accept` attribute — a comma-joined list of extensions
-   * and MIME types (`'.har,application/json,.pdf,application/pdf'`).
-   * Composed by the shell from the registered format bindings' own `accept`
-   * tokens (see `importer-fundamentals`' `acceptFor`), so a new format that
-   * lands surfaces its extensions here without the picker learning about
-   * it. A hint only: drop and "All files" bypass it, and the actual
-   * decision is `detect`.
-   */
-  readonly accept: string
 }
 
 /**
@@ -119,12 +108,7 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
  * The picker: a drop-and-pick zone, the file input it opens, a rejection
  * notice, and the server archive list.
  */
-const SourcePicker = ({
-  descriptors,
-  onPick,
-  mode = 'batch',
-  accept,
-}: SourcePickerProps): JSX.Element => {
+const SourcePicker = ({ descriptors, onPick, mode = 'batch' }: SourcePickerProps): JSX.Element => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
@@ -194,7 +178,6 @@ const SourcePicker = ({
       <input
         ref={fileInputRef}
         type="file"
-        accept={accept}
         aria-label="Import file"
         multiple={mode === 'batch'}
         className={styles.fileInput}
@@ -205,7 +188,7 @@ const SourcePicker = ({
           {error}
         </p>
       )}
-      <ServerArchiveList
+      <ServerSourceFileList
         onPick={(picked) => {
           setError(null)
           onPick([picked])

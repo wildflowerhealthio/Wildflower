@@ -14,7 +14,7 @@
 export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
 export { detectLifeLabsPdf } from './detect.ts'
 export { lifeLabsPdfImporterDescriptor } from './descriptor.ts'
-export { sourceArchive } from './archive/index.ts'
+export { buildSourceFile } from './source-file/index.ts'
 export * as Report from './entities/report.ts'
 export type { Type as ReportGroup } from './entities/group.ts'
 export type { Type as ReportLab } from './entities/lab.ts'

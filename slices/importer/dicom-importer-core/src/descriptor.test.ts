@@ -8,10 +8,6 @@ describe('dicomImporterDescriptor', () => {
     expect(dicomImporterDescriptor.format).toBe('dicom')
   })
 
-  it('accepts .dcm extension and application/dicom MIME type', () => {
-    expect([...dicomImporterDescriptor.accept]).toEqual(['.dcm', 'application/dicom'])
-  })
-
   it('detects a file with DICM magic bytes at offset 128', () => {
     const bytes = new Uint8Array(132)
     bytes.set([0x44, 0x49, 0x43, 0x4d], 128)

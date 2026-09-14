@@ -11,7 +11,7 @@ import type { PickedFile } from 'anonymizer-fundamentals'
 import { AnonymizerScreen } from 'anonymizer-react'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
 import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
-import { ImporterScreen, ServerArchiveList } from 'importer-react'
+import { ImporterScreen, ServerSourceFileList } from 'importer-react'
 import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { PageLoading, SegmentedToggle } from 'react-tundraish'
@@ -34,13 +34,13 @@ const tabOptions: readonly { value: Tab; label: string }[] = [
 
 /**
  * The anonymizer shell is server-blind; this app has an authed FHIR context,
- * so it passes the importer slice's uploaded-archives list through the
+ * so it passes the importer slice's uploaded-source-files list through the
  * `serverSource` slot. The importer's `PickedFile` and the anonymizer's
  * `PickedFile` both carry `{ fileName, bytes }`, so the adapter is now the
  * identity — nothing to re-encode.
  */
 const ServerSource = ({ onPick }: { readonly onPick: (file: PickedFile) => void }): JSX.Element => (
-  <ServerArchiveList
+  <ServerSourceFileList
     onPick={(picked) => onPick({ fileName: picked.fileName, bytes: picked.bytes })}
   />
 )
@@ -61,7 +61,7 @@ const subtitleFor = (tab: Tab): string =>
  * every level below it — source pick, preview, confirm/download, results.
  * `ImporterScreen` takes no props and reads its authed runner out of route
  * context; `AnonymizerScreen` is server-blind and takes only the
- * `serverSource` slot this app fills with `ServerHarArchiveList`. The app owns
+ * `serverSource` slot this app fills with `ServerSourceFileList`. The app owns
  * the tabstrip and the header copy, nothing else; see the traps in
  * [AGENTS.md](../AGENTS.md) for why splitting a flow across the app boundary is
  * the mistake this shape exists to avoid.

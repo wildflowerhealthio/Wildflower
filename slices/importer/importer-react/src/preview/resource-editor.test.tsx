@@ -5,7 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import type { KeptEdit } from './resource-editor.tsx'
 
-import { ImmutableFieldChangedError, InvalidJsonError, tryKeep } from './resource-editor-helpers.ts'
+import {
+  ImmutableFieldChangedError,
+  InvalidJsonError,
+  prettyPrintResource,
+  TRUNCATION_THRESHOLD,
+  tryKeep,
+} from './resource-editor-helpers.ts'
 import { ResourceEditor } from './resource-editor.tsx'
 
 // jsdom does not implement the native <dialog> element. Patch the two
@@ -140,6 +146,29 @@ describe('tryKeep', () => {
   })
 })
 
+describe('prettyPrintResource truncation', () => {
+  it('should leave short strings intact', () => {
+    const resource = { resourceType: 'Patient', id: 'p-1', text: { div: '<div>hello</div>' } }
+    const printed = prettyPrintResource(resource)
+    expect(printed).toContain('<div>hello</div>')
+  })
+
+  it('should truncate string values at or above the threshold', () => {
+    const longValue = 'x'.repeat(TRUNCATION_THRESHOLD)
+    const resource = { resourceType: 'Patient', id: 'p-1', data: longValue }
+    const printed = prettyPrintResource(resource)
+    expect(printed).not.toContain(longValue)
+    expect(printed).toContain(`[${TRUNCATION_THRESHOLD.toLocaleString('en-US')} bytes]`)
+  })
+
+  it('should leave strings just below the threshold intact', () => {
+    const justUnder = 'y'.repeat(TRUNCATION_THRESHOLD - 1)
+    const resource = { resourceType: 'Patient', id: 'p-1', data: justUnder }
+    const printed = prettyPrintResource(resource)
+    expect(printed).toContain(justUnder)
+  })
+})
+
 describe('ResourceEditor dialog', () => {
   it('should call onEdit with the decoded resource when a valid edit is kept', async () => {
     // Arrange
@@ -185,6 +214,28 @@ describe('ResourceEditor dialog', () => {
     // Assert — the failure is surfaced (role="alert") and the edit was refused
     expect(onEdit).not.toHaveBeenCalled()
     expect(screen.getByRole('alert')).toBeDefined()
+  })
+
+  it('should preserve full data when Keep is clicked without editing a truncated resource', async () => {
+    const longValue = 'z'.repeat(TRUNCATION_THRESHOLD + 500)
+    const original = { resourceType: 'Patient', id: 'pat-1', data: longValue }
+    const onEdit = vi.fn<(edit: KeptEdit) => void>()
+    render(
+      <ResourceEditor open={true} resource={original} onEdit={onEdit} onCancel={() => undefined} />
+    )
+
+    const textarea = screen.getByLabelText<HTMLTextAreaElement>('Resource JSON')
+    expect(textarea.value).toContain('bytes]')
+    expect(textarea.value).not.toContain(longValue)
+
+    await userEvent.click(screen.getByRole('button', { name: 'Keep' }))
+
+    expect(onEdit).toHaveBeenCalledTimes(1)
+    const [firstCall] = onEdit.mock.calls
+    if (firstCall === undefined) throw new Error('unreachable: assertion above holds')
+    const [{ resource: kept }] = firstCall
+    expect(kept.resourceType).toBe('Patient')
+    expect(kept.id).toBe('pat-1')
   })
 
   it('should surface an id change as an ImmutableFieldChangedError', async () => {
