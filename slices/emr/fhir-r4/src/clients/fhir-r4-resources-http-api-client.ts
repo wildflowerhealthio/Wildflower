@@ -1,3 +1,5 @@
+import type { HttpApi, HttpApiClient, HttpApiError, HttpClient } from '@effect/platform'
+import { Context, type Layer } from 'effect'
 import { defineSliceHttpClient } from 'shared-structures-core/http-api-definition'
 
 import { FhirResourcesApi } from '../http-api-definition/index.ts'
@@ -6,6 +8,26 @@ const sliceClient = defineSliceHttpClient({
   name: 'FhirR4ResourcesHttpApiClient',
   api: FhirResourcesApi,
 })
+
+// ── DTS serialization workaround ──────────────────────────────────────
+//
+// `sliceClient.ClientTag<Self>()` infers its base-class shape from the
+// 11-group `FhirResourcesApi`. tsgo expands that shape inline when
+// emitting the `.d.ts`, exceeding its serialization limit (TS7056).
+//
+// Fix: give the shape a **named interface** that tsgo references by name
+// rather than expanding, then wire `Context.Tag` directly.
+//
+type _Groups =
+  typeof FhirResourcesApi extends HttpApi.HttpApi<infer _Id, infer G, infer _E, infer _R>
+    ? G
+    : never
+
+interface FhirR4ResourcesClientShape extends HttpApiClient.Client<
+  _Groups,
+  HttpApiError.HttpApiDecodeError,
+  never
+> {}
 
 /**
  * Effect Service providing the resolved `FhirResourcesApi` HttpApi
@@ -21,10 +43,18 @@ const sliceClient = defineSliceHttpClient({
  * )
  * ```
  */
-class FhirR4ResourcesHttpApiClient extends sliceClient.ClientTag<FhirR4ResourcesHttpApiClient>() {
-  static readonly layer = sliceClient.makeLayerFactory(FhirR4ResourcesHttpApiClient)()
+class FhirR4ResourcesHttpApiClient extends Context.Tag('FhirR4ResourcesHttpApiClient')<
+  FhirR4ResourcesHttpApiClient,
+  FhirR4ResourcesClientShape
+>() {
+  static readonly layer: Layer.Layer<FhirR4ResourcesHttpApiClient, never, HttpClient.HttpClient> =
+    sliceClient.makeLayerFactory(FhirR4ResourcesHttpApiClient)()
 }
 
 type FhirR4ResourcesHttpApiClientShape = typeof FhirR4ResourcesHttpApiClient.Service
 
-export { FhirR4ResourcesHttpApiClient, type FhirR4ResourcesHttpApiClientShape }
+export {
+  FhirR4ResourcesHttpApiClient,
+  type FhirR4ResourcesClientShape,
+  type FhirR4ResourcesHttpApiClientShape,
+}

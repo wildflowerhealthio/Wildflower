@@ -11845,6 +11845,3750 @@
         }
       }
     },
+    "/fhir-r4/ServiceRequest": {
+      "get": {
+        "tags": [
+          "ServiceRequest"
+        ],
+        "operationId": "ServiceRequest.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "active",
+                "on-hold",
+                "revoked",
+                "completed",
+                "entered-in-error",
+                "unknown"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "intent",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "proposal",
+                "plan",
+                "directive",
+                "order",
+                "original-order",
+                "reflex-order",
+                "filler-order",
+                "instance-order",
+                "option"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "code",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "authored",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ServiceRequest"
+        ],
+        "operationId": "ServiceRequest.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "ServiceRequest",
+                  "description": "A record of a request for service such as diagnostic investigations, treatments, or operations to be performed.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "ServiceRequest"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers assigned to this request by the orderer or by the receiver."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to a FHIR-defined protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to an externally maintained protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Plan/proposal/order fulfilled by this request."
+                    },
+                    "replaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The request takes the place of the referenced completed or terminated request(s)."
+                    },
+                    "requisition": {
+                      "type": "object",
+                      "description": "A shared identifier common to all service requests that were authorized at the same time."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "on-hold",
+                        "revoked",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the order."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "directive",
+                        "order",
+                        "original-order",
+                        "reflex-order",
+                        "filler-order",
+                        "instance-order",
+                        "option"
+                      ],
+                      "description": "Whether the request is a proposal, plan, or order."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the service for searching, sorting, and display purposes."
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "routine",
+                        "urgent",
+                        "asap",
+                        "stat"
+                      ],
+                      "description": "Indicates how quickly the ServiceRequest should be addressed."
+                    },
+                    "doNotPerform": {
+                      "type": "boolean",
+                      "description": "If true, indicates that the service should NOT be performed."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "A code that identifies a particular service that has been requested."
+                    },
+                    "orderDetail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional details and instructions about the requested service."
+                    },
+                    "quantityQuantity": {
+                      "type": "object"
+                    },
+                    "quantityRatio": {
+                      "type": "object"
+                    },
+                    "quantityRange": {
+                      "type": "object"
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "On whom or what the service is to be performed."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "An encounter that provides additional information about the healthcare context."
+                    },
+                    "occurrenceDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "occurrencePeriod": {
+                      "type": "object"
+                    },
+                    "occurrenceTiming": {
+                      "type": "object"
+                    },
+                    "asNeededBoolean": {
+                      "type": "boolean"
+                    },
+                    "asNeededCodeableConcept": {
+                      "type": "object"
+                    },
+                    "authoredOn": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the request transitioned to being actionable."
+                    },
+                    "requester": {
+                      "type": "object",
+                      "description": "The individual who initiated the request."
+                    },
+                    "performerType": {
+                      "type": "object",
+                      "description": "Desired type of performer for doing the requested service."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The desired performer for doing the requested service."
+                    },
+                    "locationCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The preferred location(s) where the procedure should actually happen."
+                    },
+                    "locationReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A reference to the preferred location(s)."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An explanation or justification for the service being requested in coded form."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates another resource that provides a justification for the service being requested."
+                    },
+                    "insurance": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Insurance plans, coverage extensions, and/or pre-authorizations."
+                    },
+                    "supportingInfo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional clinical information about the patient or specimen."
+                    },
+                    "bodySite": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Anatomic location where the procedure should be performed."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any other notes and comments made about the service request."
+                    },
+                    "patientInstruction": {
+                      "type": "string",
+                      "description": "Instructions in terms that are understood by the patient or consumer."
+                    },
+                    "relevantHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Key events in the history of the request."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "ServiceRequest",
+                "description": "A record of a request for service such as diagnostic investigations, treatments, or operations to be performed.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "intent",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "ServiceRequest"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifiers assigned to this request by the orderer or by the receiver."
+                  },
+                  "instantiatesCanonical": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "The URL pointing to a FHIR-defined protocol or definition."
+                  },
+                  "instantiatesUri": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "The URL pointing to an externally maintained protocol or definition."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Plan/proposal/order fulfilled by this request."
+                  },
+                  "replaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The request takes the place of the referenced completed or terminated request(s)."
+                  },
+                  "requisition": {
+                    "type": "object",
+                    "description": "A shared identifier common to all service requests that were authorized at the same time."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "on-hold",
+                      "revoked",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "The status of the order."
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "proposal",
+                      "plan",
+                      "directive",
+                      "order",
+                      "original-order",
+                      "reflex-order",
+                      "filler-order",
+                      "instance-order",
+                      "option"
+                    ],
+                    "description": "Whether the request is a proposal, plan, or order."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A code that classifies the service for searching, sorting, and display purposes."
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "routine",
+                      "urgent",
+                      "asap",
+                      "stat"
+                    ],
+                    "description": "Indicates how quickly the ServiceRequest should be addressed."
+                  },
+                  "doNotPerform": {
+                    "type": "boolean",
+                    "description": "If true, indicates that the service should NOT be performed."
+                  },
+                  "code": {
+                    "type": "object",
+                    "description": "A code that identifies a particular service that has been requested."
+                  },
+                  "orderDetail": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional details and instructions about the requested service."
+                  },
+                  "quantityQuantity": {
+                    "type": "object"
+                  },
+                  "quantityRatio": {
+                    "type": "object"
+                  },
+                  "quantityRange": {
+                    "type": "object"
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "On whom or what the service is to be performed."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "An encounter that provides additional information about the healthcare context."
+                  },
+                  "occurrenceDateTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "occurrencePeriod": {
+                    "type": "object"
+                  },
+                  "occurrenceTiming": {
+                    "type": "object"
+                  },
+                  "asNeededBoolean": {
+                    "type": "boolean"
+                  },
+                  "asNeededCodeableConcept": {
+                    "type": "object"
+                  },
+                  "authoredOn": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the request transitioned to being actionable."
+                  },
+                  "requester": {
+                    "type": "object",
+                    "description": "The individual who initiated the request."
+                  },
+                  "performerType": {
+                    "type": "object",
+                    "description": "Desired type of performer for doing the requested service."
+                  },
+                  "performer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The desired performer for doing the requested service."
+                  },
+                  "locationCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The preferred location(s) where the procedure should actually happen."
+                  },
+                  "locationReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A reference to the preferred location(s)."
+                  },
+                  "reasonCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "An explanation or justification for the service being requested in coded form."
+                  },
+                  "reasonReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Indicates another resource that provides a justification for the service being requested."
+                  },
+                  "insurance": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Insurance plans, coverage extensions, and/or pre-authorizations."
+                  },
+                  "supportingInfo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional clinical information about the patient or specimen."
+                  },
+                  "bodySite": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Anatomic location where the procedure should be performed."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Any other notes and comments made about the service request."
+                  },
+                  "patientInstruction": {
+                    "type": "string",
+                    "description": "Instructions in terms that are understood by the patient or consumer."
+                  },
+                  "relevantHistory": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Key events in the history of the request."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/ServiceRequest/{id}": {
+      "get": {
+        "tags": [
+          "ServiceRequest"
+        ],
+        "operationId": "ServiceRequest.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "ServiceRequest",
+                  "description": "A record of a request for service such as diagnostic investigations, treatments, or operations to be performed.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "ServiceRequest"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers assigned to this request by the orderer or by the receiver."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to a FHIR-defined protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to an externally maintained protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Plan/proposal/order fulfilled by this request."
+                    },
+                    "replaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The request takes the place of the referenced completed or terminated request(s)."
+                    },
+                    "requisition": {
+                      "type": "object",
+                      "description": "A shared identifier common to all service requests that were authorized at the same time."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "on-hold",
+                        "revoked",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the order."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "directive",
+                        "order",
+                        "original-order",
+                        "reflex-order",
+                        "filler-order",
+                        "instance-order",
+                        "option"
+                      ],
+                      "description": "Whether the request is a proposal, plan, or order."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the service for searching, sorting, and display purposes."
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "routine",
+                        "urgent",
+                        "asap",
+                        "stat"
+                      ],
+                      "description": "Indicates how quickly the ServiceRequest should be addressed."
+                    },
+                    "doNotPerform": {
+                      "type": "boolean",
+                      "description": "If true, indicates that the service should NOT be performed."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "A code that identifies a particular service that has been requested."
+                    },
+                    "orderDetail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional details and instructions about the requested service."
+                    },
+                    "quantityQuantity": {
+                      "type": "object"
+                    },
+                    "quantityRatio": {
+                      "type": "object"
+                    },
+                    "quantityRange": {
+                      "type": "object"
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "On whom or what the service is to be performed."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "An encounter that provides additional information about the healthcare context."
+                    },
+                    "occurrenceDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "occurrencePeriod": {
+                      "type": "object"
+                    },
+                    "occurrenceTiming": {
+                      "type": "object"
+                    },
+                    "asNeededBoolean": {
+                      "type": "boolean"
+                    },
+                    "asNeededCodeableConcept": {
+                      "type": "object"
+                    },
+                    "authoredOn": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the request transitioned to being actionable."
+                    },
+                    "requester": {
+                      "type": "object",
+                      "description": "The individual who initiated the request."
+                    },
+                    "performerType": {
+                      "type": "object",
+                      "description": "Desired type of performer for doing the requested service."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The desired performer for doing the requested service."
+                    },
+                    "locationCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The preferred location(s) where the procedure should actually happen."
+                    },
+                    "locationReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A reference to the preferred location(s)."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An explanation or justification for the service being requested in coded form."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates another resource that provides a justification for the service being requested."
+                    },
+                    "insurance": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Insurance plans, coverage extensions, and/or pre-authorizations."
+                    },
+                    "supportingInfo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional clinical information about the patient or specimen."
+                    },
+                    "bodySite": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Anatomic location where the procedure should be performed."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any other notes and comments made about the service request."
+                    },
+                    "patientInstruction": {
+                      "type": "string",
+                      "description": "Instructions in terms that are understood by the patient or consumer."
+                    },
+                    "relevantHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Key events in the history of the request."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "ServiceRequest"
+        ],
+        "operationId": "ServiceRequest.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "ServiceRequest",
+                  "description": "A record of a request for service such as diagnostic investigations, treatments, or operations to be performed.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "ServiceRequest"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers assigned to this request by the orderer or by the receiver."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to a FHIR-defined protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to an externally maintained protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Plan/proposal/order fulfilled by this request."
+                    },
+                    "replaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The request takes the place of the referenced completed or terminated request(s)."
+                    },
+                    "requisition": {
+                      "type": "object",
+                      "description": "A shared identifier common to all service requests that were authorized at the same time."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "on-hold",
+                        "revoked",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the order."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "directive",
+                        "order",
+                        "original-order",
+                        "reflex-order",
+                        "filler-order",
+                        "instance-order",
+                        "option"
+                      ],
+                      "description": "Whether the request is a proposal, plan, or order."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the service for searching, sorting, and display purposes."
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "routine",
+                        "urgent",
+                        "asap",
+                        "stat"
+                      ],
+                      "description": "Indicates how quickly the ServiceRequest should be addressed."
+                    },
+                    "doNotPerform": {
+                      "type": "boolean",
+                      "description": "If true, indicates that the service should NOT be performed."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "A code that identifies a particular service that has been requested."
+                    },
+                    "orderDetail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional details and instructions about the requested service."
+                    },
+                    "quantityQuantity": {
+                      "type": "object"
+                    },
+                    "quantityRatio": {
+                      "type": "object"
+                    },
+                    "quantityRange": {
+                      "type": "object"
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "On whom or what the service is to be performed."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "An encounter that provides additional information about the healthcare context."
+                    },
+                    "occurrenceDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "occurrencePeriod": {
+                      "type": "object"
+                    },
+                    "occurrenceTiming": {
+                      "type": "object"
+                    },
+                    "asNeededBoolean": {
+                      "type": "boolean"
+                    },
+                    "asNeededCodeableConcept": {
+                      "type": "object"
+                    },
+                    "authoredOn": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the request transitioned to being actionable."
+                    },
+                    "requester": {
+                      "type": "object",
+                      "description": "The individual who initiated the request."
+                    },
+                    "performerType": {
+                      "type": "object",
+                      "description": "Desired type of performer for doing the requested service."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The desired performer for doing the requested service."
+                    },
+                    "locationCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The preferred location(s) where the procedure should actually happen."
+                    },
+                    "locationReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A reference to the preferred location(s)."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An explanation or justification for the service being requested in coded form."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates another resource that provides a justification for the service being requested."
+                    },
+                    "insurance": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Insurance plans, coverage extensions, and/or pre-authorizations."
+                    },
+                    "supportingInfo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional clinical information about the patient or specimen."
+                    },
+                    "bodySite": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Anatomic location where the procedure should be performed."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any other notes and comments made about the service request."
+                    },
+                    "patientInstruction": {
+                      "type": "string",
+                      "description": "Instructions in terms that are understood by the patient or consumer."
+                    },
+                    "relevantHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Key events in the history of the request."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "ServiceRequest",
+                  "description": "A record of a request for service such as diagnostic investigations, treatments, or operations to be performed.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "intent",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "ServiceRequest"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers assigned to this request by the orderer or by the receiver."
+                    },
+                    "instantiatesCanonical": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to a FHIR-defined protocol or definition."
+                    },
+                    "instantiatesUri": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "format": "uri"
+                      },
+                      "description": "The URL pointing to an externally maintained protocol or definition."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Plan/proposal/order fulfilled by this request."
+                    },
+                    "replaces": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The request takes the place of the referenced completed or terminated request(s)."
+                    },
+                    "requisition": {
+                      "type": "object",
+                      "description": "A shared identifier common to all service requests that were authorized at the same time."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "draft",
+                        "active",
+                        "on-hold",
+                        "revoked",
+                        "completed",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The status of the order."
+                    },
+                    "intent": {
+                      "type": "string",
+                      "enum": [
+                        "proposal",
+                        "plan",
+                        "directive",
+                        "order",
+                        "original-order",
+                        "reflex-order",
+                        "filler-order",
+                        "instance-order",
+                        "option"
+                      ],
+                      "description": "Whether the request is a proposal, plan, or order."
+                    },
+                    "category": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A code that classifies the service for searching, sorting, and display purposes."
+                    },
+                    "priority": {
+                      "type": "string",
+                      "enum": [
+                        "routine",
+                        "urgent",
+                        "asap",
+                        "stat"
+                      ],
+                      "description": "Indicates how quickly the ServiceRequest should be addressed."
+                    },
+                    "doNotPerform": {
+                      "type": "boolean",
+                      "description": "If true, indicates that the service should NOT be performed."
+                    },
+                    "code": {
+                      "type": "object",
+                      "description": "A code that identifies a particular service that has been requested."
+                    },
+                    "orderDetail": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional details and instructions about the requested service."
+                    },
+                    "quantityQuantity": {
+                      "type": "object"
+                    },
+                    "quantityRatio": {
+                      "type": "object"
+                    },
+                    "quantityRange": {
+                      "type": "object"
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "On whom or what the service is to be performed."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "An encounter that provides additional information about the healthcare context."
+                    },
+                    "occurrenceDateTime": {
+                      "type": "string",
+                      "format": "date-time"
+                    },
+                    "occurrencePeriod": {
+                      "type": "object"
+                    },
+                    "occurrenceTiming": {
+                      "type": "object"
+                    },
+                    "asNeededBoolean": {
+                      "type": "boolean"
+                    },
+                    "asNeededCodeableConcept": {
+                      "type": "object"
+                    },
+                    "authoredOn": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "When the request transitioned to being actionable."
+                    },
+                    "requester": {
+                      "type": "object",
+                      "description": "The individual who initiated the request."
+                    },
+                    "performerType": {
+                      "type": "object",
+                      "description": "Desired type of performer for doing the requested service."
+                    },
+                    "performer": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The desired performer for doing the requested service."
+                    },
+                    "locationCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The preferred location(s) where the procedure should actually happen."
+                    },
+                    "locationReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A reference to the preferred location(s)."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "An explanation or justification for the service being requested in coded form."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates another resource that provides a justification for the service being requested."
+                    },
+                    "insurance": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Insurance plans, coverage extensions, and/or pre-authorizations."
+                    },
+                    "supportingInfo": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Additional clinical information about the patient or specimen."
+                    },
+                    "bodySite": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Anatomic location where the procedure should be performed."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Any other notes and comments made about the service request."
+                    },
+                    "patientInstruction": {
+                      "type": "string",
+                      "description": "Instructions in terms that are understood by the patient or consumer."
+                    },
+                    "relevantHistory": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Key events in the history of the request."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "ServiceRequest",
+                "description": "A record of a request for service such as diagnostic investigations, treatments, or operations to be performed.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "intent",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "ServiceRequest"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifiers assigned to this request by the orderer or by the receiver."
+                  },
+                  "instantiatesCanonical": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "The URL pointing to a FHIR-defined protocol or definition."
+                  },
+                  "instantiatesUri": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "description": "The URL pointing to an externally maintained protocol or definition."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Plan/proposal/order fulfilled by this request."
+                  },
+                  "replaces": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The request takes the place of the referenced completed or terminated request(s)."
+                  },
+                  "requisition": {
+                    "type": "object",
+                    "description": "A shared identifier common to all service requests that were authorized at the same time."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "on-hold",
+                      "revoked",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "The status of the order."
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "proposal",
+                      "plan",
+                      "directive",
+                      "order",
+                      "original-order",
+                      "reflex-order",
+                      "filler-order",
+                      "instance-order",
+                      "option"
+                    ],
+                    "description": "Whether the request is a proposal, plan, or order."
+                  },
+                  "category": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A code that classifies the service for searching, sorting, and display purposes."
+                  },
+                  "priority": {
+                    "type": "string",
+                    "enum": [
+                      "routine",
+                      "urgent",
+                      "asap",
+                      "stat"
+                    ],
+                    "description": "Indicates how quickly the ServiceRequest should be addressed."
+                  },
+                  "doNotPerform": {
+                    "type": "boolean",
+                    "description": "If true, indicates that the service should NOT be performed."
+                  },
+                  "code": {
+                    "type": "object",
+                    "description": "A code that identifies a particular service that has been requested."
+                  },
+                  "orderDetail": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional details and instructions about the requested service."
+                  },
+                  "quantityQuantity": {
+                    "type": "object"
+                  },
+                  "quantityRatio": {
+                    "type": "object"
+                  },
+                  "quantityRange": {
+                    "type": "object"
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "On whom or what the service is to be performed."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "An encounter that provides additional information about the healthcare context."
+                  },
+                  "occurrenceDateTime": {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  "occurrencePeriod": {
+                    "type": "object"
+                  },
+                  "occurrenceTiming": {
+                    "type": "object"
+                  },
+                  "asNeededBoolean": {
+                    "type": "boolean"
+                  },
+                  "asNeededCodeableConcept": {
+                    "type": "object"
+                  },
+                  "authoredOn": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "When the request transitioned to being actionable."
+                  },
+                  "requester": {
+                    "type": "object",
+                    "description": "The individual who initiated the request."
+                  },
+                  "performerType": {
+                    "type": "object",
+                    "description": "Desired type of performer for doing the requested service."
+                  },
+                  "performer": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The desired performer for doing the requested service."
+                  },
+                  "locationCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The preferred location(s) where the procedure should actually happen."
+                  },
+                  "locationReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A reference to the preferred location(s)."
+                  },
+                  "reasonCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "An explanation or justification for the service being requested in coded form."
+                  },
+                  "reasonReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Indicates another resource that provides a justification for the service being requested."
+                  },
+                  "insurance": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Insurance plans, coverage extensions, and/or pre-authorizations."
+                  },
+                  "supportingInfo": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Additional clinical information about the patient or specimen."
+                  },
+                  "bodySite": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Anatomic location where the procedure should be performed."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Any other notes and comments made about the service request."
+                  },
+                  "patientInstruction": {
+                    "type": "string",
+                    "description": "Instructions in terms that are understood by the patient or consumer."
+                  },
+                  "relevantHistory": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Key events in the history of the request."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/ServiceRequest/_search": {
+      "post": {
+        "tags": [
+          "ServiceRequest"
+        ],
+        "operationId": "ServiceRequest.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "draft",
+                      "active",
+                      "on-hold",
+                      "revoked",
+                      "completed",
+                      "entered-in-error",
+                      "unknown"
+                    ]
+                  },
+                  "intent": {
+                    "type": "string",
+                    "enum": [
+                      "proposal",
+                      "plan",
+                      "directive",
+                      "order",
+                      "original-order",
+                      "reflex-order",
+                      "filler-order",
+                      "instance-order",
+                      "option"
+                    ]
+                  },
+                  "code": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "authored": {
+                    "$ref": "#/components/schemas/FhirDateSearch"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/ImagingStudy": {
+      "get": {
+        "tags": [
+          "ImagingStudy"
+        ],
+        "operationId": "ImagingStudy.SearchByGet",
+        "parameters": [
+          {
+            "name": "_count",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "description": "a string to be decoded into a number"
+            },
+            "required": false,
+            "description": "a string to be decoded into a number"
+          },
+          {
+            "name": "_pageToken",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "_id",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "identifier",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "registered",
+                "available",
+                "cancelled",
+                "entered-in-error",
+                "unknown"
+              ]
+            },
+            "required": false
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "started",
+            "in": "query",
+            "schema": {
+              "$ref": "#/components/schemas/FhirDateSearch"
+            },
+            "required": false
+          },
+          {
+            "name": "modality",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          },
+          {
+            "name": "basedOn",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            },
+            "required": false
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "ImagingStudy"
+        ],
+        "operationId": "ImagingStudy.Create",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "ImagingStudy",
+                  "description": "Representation of the content produced in a DICOM imaging study. A study comprises a set of series, each of which includes a set of Service-Object Pair Instances (SOP Instances — images or other data) acquired or produced in a common context.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "ImagingStudy"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers for the whole study."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "available",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The current state of the ImagingStudy."
+                    },
+                    "modality": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of all the series.modality values that are actual acquisition modalities."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The subject, typically a patient, of the imaging study."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event during which this study was created."
+                    },
+                    "started": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Date and time the study started."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of the diagnostic requests that resulted in this imaging study being performed."
+                    },
+                    "referrer": {
+                      "type": "object",
+                      "description": "The requesting/referring physician."
+                    },
+                    "interpreter": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who read the study and interpreted the images or other content."
+                    },
+                    "endpoint": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The network service providing access to these images."
+                    },
+                    "numberOfSeries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Number of Series in the Study."
+                    },
+                    "numberOfInstances": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Number of SOP Instances in Study."
+                    },
+                    "procedureReference": {
+                      "type": "object",
+                      "description": "The procedure which this ImagingStudy was part of."
+                    },
+                    "procedureCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The code for the performed procedure type."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "The principal physical location where the study was performed."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Description of clinical condition indicating why the ImagingStudy was requested."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates another resource whose existence justifies this Study."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Per the recommended DICOM mapping, this element is derived from the Study Description attribute."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The Imaging Manager description of the study."
+                    },
+                    "series": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Each study has one or more series of images or other content."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "ImagingStudy",
+                "description": "Representation of the content produced in a DICOM imaging study. A study comprises a set of series, each of which includes a set of Service-Object Pair Instances (SOP Instances — images or other data) acquired or produced in a common context.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "ImagingStudy"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifiers for the whole study."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "available",
+                      "cancelled",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "The current state of the ImagingStudy."
+                  },
+                  "modality": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A list of all the series.modality values that are actual acquisition modalities."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "The subject, typically a patient, of the imaging study."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "The healthcare event during which this study was created."
+                  },
+                  "started": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Date and time the study started."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A list of the diagnostic requests that resulted in this imaging study being performed."
+                  },
+                  "referrer": {
+                    "type": "object",
+                    "description": "The requesting/referring physician."
+                  },
+                  "interpreter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who read the study and interpreted the images or other content."
+                  },
+                  "endpoint": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The network service providing access to these images."
+                  },
+                  "numberOfSeries": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Number of Series in the Study."
+                  },
+                  "numberOfInstances": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Number of SOP Instances in Study."
+                  },
+                  "procedureReference": {
+                    "type": "object",
+                    "description": "The procedure which this ImagingStudy was part of."
+                  },
+                  "procedureCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The code for the performed procedure type."
+                  },
+                  "location": {
+                    "type": "object",
+                    "description": "The principal physical location where the study was performed."
+                  },
+                  "reasonCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Description of clinical condition indicating why the ImagingStudy was requested."
+                  },
+                  "reasonReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Indicates another resource whose existence justifies this Study."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Per the recommended DICOM mapping, this element is derived from the Study Description attribute."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The Imaging Manager description of the study."
+                  },
+                  "series": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Each study has one or more series of images or other content."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/ImagingStudy/{id}": {
+      "get": {
+        "tags": [
+          "ImagingStudy"
+        ],
+        "operationId": "ImagingStudy.GetById",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "ImagingStudy",
+                  "description": "Representation of the content produced in a DICOM imaging study. A study comprises a set of series, each of which includes a set of Service-Object Pair Instances (SOP Instances — images or other data) acquired or produced in a common context.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "ImagingStudy"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers for the whole study."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "available",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The current state of the ImagingStudy."
+                    },
+                    "modality": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of all the series.modality values that are actual acquisition modalities."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The subject, typically a patient, of the imaging study."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event during which this study was created."
+                    },
+                    "started": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Date and time the study started."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of the diagnostic requests that resulted in this imaging study being performed."
+                    },
+                    "referrer": {
+                      "type": "object",
+                      "description": "The requesting/referring physician."
+                    },
+                    "interpreter": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who read the study and interpreted the images or other content."
+                    },
+                    "endpoint": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The network service providing access to these images."
+                    },
+                    "numberOfSeries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Number of Series in the Study."
+                    },
+                    "numberOfInstances": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Number of SOP Instances in Study."
+                    },
+                    "procedureReference": {
+                      "type": "object",
+                      "description": "The procedure which this ImagingStudy was part of."
+                    },
+                    "procedureCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The code for the performed procedure type."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "The principal physical location where the study was performed."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Description of clinical condition indicating why the ImagingStudy was requested."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates another resource whose existence justifies this Study."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Per the recommended DICOM mapping, this element is derived from the Study Description attribute."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The Imaging Manager description of the study."
+                    },
+                    "series": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Each study has one or more series of images or other content."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "NotFound"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "ImagingStudy"
+        ],
+        "operationId": "ImagingStudy.Update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "schema": {
+              "type": "string"
+            },
+            "required": true
+          }
+        ],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "ImagingStudy",
+                  "description": "Representation of the content produced in a DICOM imaging study. A study comprises a set of series, each of which includes a set of Service-Object Pair Instances (SOP Instances — images or other data) acquired or produced in a common context.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "ImagingStudy"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers for the whole study."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "available",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The current state of the ImagingStudy."
+                    },
+                    "modality": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of all the series.modality values that are actual acquisition modalities."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The subject, typically a patient, of the imaging study."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event during which this study was created."
+                    },
+                    "started": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Date and time the study started."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of the diagnostic requests that resulted in this imaging study being performed."
+                    },
+                    "referrer": {
+                      "type": "object",
+                      "description": "The requesting/referring physician."
+                    },
+                    "interpreter": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who read the study and interpreted the images or other content."
+                    },
+                    "endpoint": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The network service providing access to these images."
+                    },
+                    "numberOfSeries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Number of Series in the Study."
+                    },
+                    "numberOfInstances": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Number of SOP Instances in Study."
+                    },
+                    "procedureReference": {
+                      "type": "object",
+                      "description": "The procedure which this ImagingStudy was part of."
+                    },
+                    "procedureCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The code for the performed procedure type."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "The principal physical location where the study was performed."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Description of clinical condition indicating why the ImagingStudy was requested."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates another resource whose existence justifies this Study."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Per the recommended DICOM mapping, this element is derived from the Study Description attribute."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The Imaging Manager description of the study."
+                    },
+                    "series": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Each study has one or more series of images or other content."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "ImagingStudy",
+                  "description": "Representation of the content produced in a DICOM imaging study. A study comprises a set of series, each of which includes a set of Service-Object Pair Instances (SOP Instances — images or other data) acquired or produced in a common context.",
+                  "required": [
+                    "resourceType",
+                    "status",
+                    "subject"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "ImagingStudy"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri",
+                      "description": "A set of rules under which this content was created."
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "text": {
+                      "type": "object",
+                      "description": "Human-readable summary of the resource."
+                    },
+                    "contained": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "extension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "modifierExtension": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      }
+                    },
+                    "identifier": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Identifiers for the whole study."
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "registered",
+                        "available",
+                        "cancelled",
+                        "entered-in-error",
+                        "unknown"
+                      ],
+                      "description": "The current state of the ImagingStudy."
+                    },
+                    "modality": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of all the series.modality values that are actual acquisition modalities."
+                    },
+                    "subject": {
+                      "type": "object",
+                      "description": "The subject, typically a patient, of the imaging study."
+                    },
+                    "encounter": {
+                      "type": "object",
+                      "description": "The healthcare event during which this study was created."
+                    },
+                    "started": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "Date and time the study started."
+                    },
+                    "basedOn": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A list of the diagnostic requests that resulted in this imaging study being performed."
+                    },
+                    "referrer": {
+                      "type": "object",
+                      "description": "The requesting/referring physician."
+                    },
+                    "interpreter": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Who read the study and interpreted the images or other content."
+                    },
+                    "endpoint": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The network service providing access to these images."
+                    },
+                    "numberOfSeries": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Number of Series in the Study."
+                    },
+                    "numberOfInstances": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Number of SOP Instances in Study."
+                    },
+                    "procedureReference": {
+                      "type": "object",
+                      "description": "The procedure which this ImagingStudy was part of."
+                    },
+                    "procedureCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "The code for the performed procedure type."
+                    },
+                    "location": {
+                      "type": "object",
+                      "description": "The principal physical location where the study was performed."
+                    },
+                    "reasonCode": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Description of clinical condition indicating why the ImagingStudy was requested."
+                    },
+                    "reasonReference": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Indicates another resource whose existence justifies this Study."
+                    },
+                    "note": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Per the recommended DICOM mapping, this element is derived from the Study Description attribute."
+                    },
+                    "description": {
+                      "type": "string",
+                      "description": "The Imaging Manager description of the study."
+                    },
+                    "series": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "Each study has one or more series of images or other content."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "title": "ImagingStudy",
+                "description": "Representation of the content produced in a DICOM imaging study. A study comprises a set of series, each of which includes a set of Service-Object Pair Instances (SOP Instances — images or other data) acquired or produced in a common context.",
+                "required": [
+                  "resourceType",
+                  "status",
+                  "subject"
+                ],
+                "properties": {
+                  "resourceType": {
+                    "type": "string",
+                    "enum": [
+                      "ImagingStudy"
+                    ]
+                  },
+                  "id": {
+                    "type": "string",
+                    "description": "Logical id of this artifact."
+                  },
+                  "meta": {
+                    "type": "object",
+                    "description": "Metadata about the resource."
+                  },
+                  "implicitRules": {
+                    "type": "string",
+                    "format": "uri",
+                    "description": "A set of rules under which this content was created."
+                  },
+                  "language": {
+                    "type": "string",
+                    "description": "Language of the resource content."
+                  },
+                  "text": {
+                    "type": "object",
+                    "description": "Human-readable summary of the resource."
+                  },
+                  "contained": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "extension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "modifierExtension": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    }
+                  },
+                  "identifier": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Identifiers for the whole study."
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "available",
+                      "cancelled",
+                      "entered-in-error",
+                      "unknown"
+                    ],
+                    "description": "The current state of the ImagingStudy."
+                  },
+                  "modality": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A list of all the series.modality values that are actual acquisition modalities."
+                  },
+                  "subject": {
+                    "type": "object",
+                    "description": "The subject, typically a patient, of the imaging study."
+                  },
+                  "encounter": {
+                    "type": "object",
+                    "description": "The healthcare event during which this study was created."
+                  },
+                  "started": {
+                    "type": "string",
+                    "format": "date-time",
+                    "description": "Date and time the study started."
+                  },
+                  "basedOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "A list of the diagnostic requests that resulted in this imaging study being performed."
+                  },
+                  "referrer": {
+                    "type": "object",
+                    "description": "The requesting/referring physician."
+                  },
+                  "interpreter": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Who read the study and interpreted the images or other content."
+                  },
+                  "endpoint": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The network service providing access to these images."
+                  },
+                  "numberOfSeries": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Number of Series in the Study."
+                  },
+                  "numberOfInstances": {
+                    "type": "integer",
+                    "minimum": 0,
+                    "description": "Number of SOP Instances in Study."
+                  },
+                  "procedureReference": {
+                    "type": "object",
+                    "description": "The procedure which this ImagingStudy was part of."
+                  },
+                  "procedureCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "The code for the performed procedure type."
+                  },
+                  "location": {
+                    "type": "object",
+                    "description": "The principal physical location where the study was performed."
+                  },
+                  "reasonCode": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Description of clinical condition indicating why the ImagingStudy was requested."
+                  },
+                  "reasonReference": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Indicates another resource whose existence justifies this Study."
+                  },
+                  "note": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Per the recommended DICOM mapping, this element is derived from the Study Description attribute."
+                  },
+                  "description": {
+                    "type": "string",
+                    "description": "The Imaging Manager description of the study."
+                  },
+                  "series": {
+                    "type": "array",
+                    "items": {
+                      "type": "object"
+                    },
+                    "description": "Each study has one or more series of images or other content."
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
+    "/fhir-r4/ImagingStudy/_search": {
+      "post": {
+        "tags": [
+          "ImagingStudy"
+        ],
+        "operationId": "ImagingStudy.Search",
+        "parameters": [],
+        "security": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "title": "Bundle",
+                  "description": "A container for a collection of resources.",
+                  "required": [
+                    "resourceType",
+                    "type"
+                  ],
+                  "properties": {
+                    "resourceType": {
+                      "type": "string",
+                      "enum": [
+                        "Bundle"
+                      ]
+                    },
+                    "id": {
+                      "type": "string",
+                      "description": "Logical id of this artifact."
+                    },
+                    "meta": {
+                      "type": "object",
+                      "description": "Metadata about the resource."
+                    },
+                    "implicitRules": {
+                      "type": "string",
+                      "format": "uri"
+                    },
+                    "language": {
+                      "type": "string",
+                      "description": "Language of the resource content."
+                    },
+                    "identifier": {
+                      "type": "object",
+                      "description": "A persistent identifier for the bundle that will not change as a bundle is copied from server to server."
+                    },
+                    "type": {
+                      "type": "string",
+                      "enum": [
+                        "document",
+                        "message",
+                        "transaction",
+                        "transaction-response",
+                        "batch",
+                        "batch-response",
+                        "history",
+                        "searchset",
+                        "collection"
+                      ],
+                      "description": "Indicates the purpose of this bundle - how it is intended to be used."
+                    },
+                    "timestamp": {
+                      "type": "string",
+                      "format": "date-time",
+                      "description": "The date/time that the bundle was assembled."
+                    },
+                    "total": {
+                      "type": "integer",
+                      "description": "If a set of search matches, this is the (potentially estimated) total number of entries of type \"match\" across all pages in the search."
+                    },
+                    "link": {
+                      "type": "array",
+                      "items": {
+                        "type": "object"
+                      },
+                      "description": "A series of links that provide context to this bundle."
+                    },
+                    "entry": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "description": "An entry in a bundle resource - will either contain a resource or information about a resource (transactions and history only).",
+                        "properties": {
+                          "fullUrl": {
+                            "type": "string"
+                          },
+                          "link": {
+                            "type": "array",
+                            "items": {
+                              "type": "object"
+                            }
+                          },
+                          "request": {
+                            "type": "object"
+                          },
+                          "resource": {
+                            "type": "object"
+                          },
+                          "response": {
+                            "type": "object"
+                          },
+                          "search": {
+                            "type": "object"
+                          }
+                        }
+                      },
+                      "description": "An entry in a bundle resource."
+                    },
+                    "signature": {
+                      "type": "object",
+                      "description": "Digital Signature - base64 encoded. XML-DSig or a JWT."
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Forbidden"
+          },
+          "503": {
+            "description": "ServiceUnavailable"
+          }
+        },
+        "requestBody": {
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "required": [],
+                "properties": {
+                  "_count": {
+                    "type": "string",
+                    "description": "a string to be decoded into a number"
+                  },
+                  "_pageToken": {
+                    "type": "string"
+                  },
+                  "_id": {
+                    "type": "string"
+                  },
+                  "identifier": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "registered",
+                      "available",
+                      "cancelled",
+                      "entered-in-error",
+                      "unknown"
+                    ]
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "started": {
+                    "$ref": "#/components/schemas/FhirDateSearch"
+                  },
+                  "modality": {
+                    "type": "string"
+                  },
+                  "basedOn": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": true
+        }
+      }
+    },
     "/fhir-r4/": {
       "post": {
         "tags": [
@@ -12118,6 +15862,12 @@
     },
     {
       "name": "Practitioner"
+    },
+    {
+      "name": "ServiceRequest"
+    },
+    {
+      "name": "ImagingStudy"
     },
     {
       "name": "Bundle"
