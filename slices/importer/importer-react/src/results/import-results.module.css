@@ -14,17 +14,100 @@
   font-size: var(--font-size-3);
 }
 
-.provenance {
-  margin: 0;
-  color: var(--color-neutral-4);
-  font-size: var(--font-size-2);
-}
-
 .sourceRef {
   font-family: var(--font-mono);
 }
 
-/* One result per file, each its own block so a batch reads file by file. */
+/* The status groups, stacked so the batch reads code by code. */
+.groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* One response-status group — a foldable section (failures open, successes folded). */
+.statusSection {
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  padding: var(--space-3);
+}
+
+.statusSummary {
+  cursor: pointer;
+  font-weight: var(--font-weight-3);
+}
+
+.statusSummary[data-diff-status='failed'] {
+  color: var(--color-neutral-2);
+}
+
+.statusSummary[data-diff-status='ok'] {
+  color: var(--color-neutral-4);
+}
+
+.resultList {
+  list-style: none;
+  margin: var(--space-2) 0 0;
+  padding: 0 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.resultRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-2);
+}
+
+.target {
+  font-family: var(--font-mono);
+  font-weight: var(--font-weight-3);
+  word-break: break-all;
+}
+
+/* The server's own diagnostics for a resource — its OperationOutcome issues. */
+.issueList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.issue {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  font-size: var(--font-size-1);
+}
+
+.issueCode {
+  font-family: var(--font-mono);
+  color: var(--color-neutral-4);
+}
+
+.issueText {
+  color: var(--color-neutral-2);
+  word-break: break-word;
+}
+
+/* The upload-failed and skipped sections below the status groups. */
+.subsection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-divider);
+}
+
+.subheading {
+  margin: 0;
+  font-size: var(--font-size-3);
+}
+
 .fileList {
   list-style: none;
   margin: 0;
@@ -38,13 +121,6 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-divider);
-}
-
-.fileRow:first-child {
-  padding-top: 0;
-  border-top: none;
 }
 
 .fileName {
@@ -81,38 +157,6 @@
   font-size: var(--font-size-1);
   white-space: pre-wrap;
   word-break: break-word;
-}
-
-.failures {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-4);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-2);
-}
-
-.failuresHeading {
-  margin: 0;
-  color: var(--color-neutral-9);
-}
-
-.failureList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.failureRow {
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-1);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-2);
-  word-break: break-all;
 }
 
 .actions {

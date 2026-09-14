@@ -83,6 +83,9 @@ completion path serves both.
 launch openid fhirUser system/DocumentReference.cruds
 system/Patient.cruds system/Observation.cruds
 system/Practitioner.cruds system/DiagnosticReport.cruds
+system/Medication.cruds system/MedicationRequest.cruds
+system/MedicationDispense.cruds system/ServiceRequest.cruds
+system/ImagingStudy.cruds
 ```
 
 SMART v2 letter granularity: `.cruds` (create + read + update + delete + search)
@@ -95,11 +98,12 @@ accepts the writes and the set has room to grow.
 - **Why writes at all.** Importing means persisting what a captured session
   contained. The auto-extracted write set is the archive `DocumentReference` the
   confirm step uploads, plus the `Patient` and `Observation` resources the
-  registered `fhir-r4` source extracts out of a capture. `Practitioner` and
-  `DiagnosticReport` are also granted (`0009`): the `fhir-r4` source does not yet
-  recognize those two from HAR traffic, so today they reach the store only
-  through the preview's inline JSON editor — a resource the reviewer hand-authors
-  or edits into one of those types.
+  registered `fhir-r4` source extracts out of a capture. `Practitioner`,
+  `DiagnosticReport`, `Medication`, `MedicationRequest`, `MedicationDispense`,
+  `ServiceRequest`, and `ImagingStudy` are also granted (`0009`): the `fhir-r4`
+  source does not yet recognize those from HAR traffic, so today they reach the
+  store only through the preview's inline JSON editor — a resource the reviewer
+  hand-authors or edits into one of those types.
 - **Why `system/` and not `patient/`.** A HAR archive carries no `subject` — it
   records a browsing session, not a clinical fact about a person — so it is
   unreachable through patient context and a `patient/` scope would match
@@ -107,9 +111,10 @@ accepts the writes and the set has room to grow.
 - **The pin.** This string MUST equal the `allowed_scopes` JSON array the
   `gatekeeper-rust` migrations seed for `importer-app` — originally
   `0008_seed_wildflower_importer_client`, widened by
-  `0009_widen_importer_client_write_scopes` (which adds `Practitioner` and
-  `DiagnosticReport` and broadens every type to full `.cruds`) — element for
-  element: a scope the app requests but
+  `0009_widen_importer_client_write_scopes` (which broadens every type to full
+  `.cruds` and adds `Practitioner`, `DiagnosticReport`, `Medication`,
+  `MedicationRequest`, `MedicationDispense`, `ServiceRequest`, and
+  `ImagingStudy`) — element for element: a scope the app requests but
   the client is not allowed fails the authorize step. **There is no
   cross-language test that checks this** — the repo's derive-both-sides pattern
   needs one source, and a SQL seed and a TS constant have none in common. So the

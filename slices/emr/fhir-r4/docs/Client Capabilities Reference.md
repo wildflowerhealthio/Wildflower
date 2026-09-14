@@ -137,7 +137,7 @@ The `HttpApi` declares the FHIR `POST /` bundle-submit endpoint (`Bundle.Submit`
 
 Only **batch** semantics are exercised by this client's helpers today:
 
-- **`persistBatchBundle(resources)`** (in `fhir-r4/clients`) is the batch counterpart of `persistResources`: one `POST /` submission carrying N PUT entries, one round trip per batch. Per-entry non-2xx responses become `ResourceWriteFailure[]` (structurally identical to `persistResources`), and a whole-bundle failure attributes every resource to that one cause. Null-id resources are skipped defensively (a PUT needs an id). It is the importer's write sink; the collector slice still uses `persistResources` (real-time sync with per-resource retries).
+- **`persistBatchBundle(resources)`** (in `fhir-r4/clients`) is the batch counterpart of `persistResources`: one `POST /` submission carrying N PUT entries, one round trip per batch. It reports the **whole** per-entry result as `BatchEntryOutcome[]` — one per submitted resource, in submit order, carrying the echoed status, whether it succeeded (`ok`), and any diagnostics parsed from the entry's `response.outcome` OperationOutcome (`WriteIssue[]`: `severity`/`code`/`text`). A whole-bundle failure attributes every resource to that one cause under the `NO_RESPONSE_STATUS` sentinel; a truncated response yields the same sentinel with no issues. Null-id resources are skipped defensively (a PUT needs an id). It is the importer's write sink — the results view groups the outcomes by status code — while the collector slice still uses `persistResources` (real-time sync with per-resource retries), which reports only failures as `ResourceWriteFailure[]`.
 - **`classifyAgainstServer(resources)`** (same package) pre-fetches the FHIR store's current copy of each id in one `POST /` batch of GET entries and classifies each as `new` (absent), `unchanged` (server holds a wire-equal copy after dropping the server-managed `meta.versionId` / `meta.lastUpdated` / `meta.source`), or `changed` (present + differs). Never fails — a whole-bundle failure attributes every id to `new` so the caller's writes still attempt. The importer's shell runs it at preview mount and pre-excludes `unchanged` rows so a re-import writes nothing by default.
 
 Two shape narrowings on this client:
@@ -164,6 +164,8 @@ These are now serialized as "absent or non-empty array" matching every other `0.
 ## Bundle entry sub-elements (typed)
 
 `Bundle.entry.request`, `Bundle.entry.response`, `Bundle.entry.search`, `Bundle.entry.link`, and top-level `Bundle.link` are now typed as proper BackboneElement structs (`request.method` is the HTTP-verb enum, `search.mode` is `match|include|outcome`, etc.). `Bundle.signature` remains `Schema.Any`.
+
+`Bundle.entry.response.outcome` is typed as a **minimal `OperationOutcome`** — `resourceType` plus `issue[]` (`severity`/`code`/`diagnostics`/`details.text`), the fields a batch-response's per-entry diagnostics carry. It is modeled only as far as `persistBatchBundle` needs to render those messages; the spec's coded value sets for `severity`/`code` stay `Schema.String` (the server's exact token), and `OperationOutcome` is **not** a member of `FhirResourceSchema` — it exists only inside an entry response, never as a standalone resource. This matches FHIR R4, which types `Bundle.entry.response.outcome` as any `Resource`.
 
 ## Page tokens are opaque server state
 

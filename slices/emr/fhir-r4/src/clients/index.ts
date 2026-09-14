@@ -19,7 +19,14 @@ export {
   FhirR4ResourcesHttpApiClient,
   type FhirR4ResourcesHttpApiClientShape,
 } from './fhir-r4-resources-http-api-client.ts'
-export { entryUrl, persistBatchBundle, statusOk } from './persist-batch-bundle.ts'
+export {
+  type BatchEntryOutcome,
+  entryUrl,
+  NO_RESPONSE_STATUS,
+  persistBatchBundle,
+  statusOk,
+  type WriteIssue,
+} from './persist-batch-bundle.ts'
 export {
   describeResource,
   persistResources,

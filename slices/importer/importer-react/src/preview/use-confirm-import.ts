@@ -4,9 +4,9 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import {
+  type BatchEntryOutcome,
   type FhirR4ResourcesHttpApiClient,
   persistBatchBundle,
-  type ResourceWriteFailure,
 } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { Review, sectionResources } from 'importer-fundamentals'
@@ -118,14 +118,14 @@ const uploadSourceFor = (
  * place. The caller's identity on the reviewed objects is intentionally lost
  * here — the source stamp is what the write is *of* — so this is the one
  * place in the flow where the objects change shape after the review saw
- * them. `persistBatchBundle` returns `ResourceWriteFailure[]` on `never`;
- * that structural shape *is* `PersistFailure` from `importer-fundamentals`,
- * so downstream results reading (`import-outcome`) needs no change.
+ * them. `persistBatchBundle` returns one {@link BatchEntryOutcome} per
+ * submitted resource on `never` — every entry's status and diagnostics, so
+ * the results view can show what wrote alongside what did not.
  */
 const persistFile = (
   resources: readonly FhirResource[],
   sourceRef: string
-): Effect.Effect<readonly ResourceWriteFailure[], never, FhirR4ResourcesHttpApiClient> =>
+): Effect.Effect<readonly BatchEntryOutcome[], never, FhirR4ResourcesHttpApiClient> =>
   persistBatchBundle(resources.map((resource) => withMetaSource(resource, sourceRef)))
 
 /**
@@ -170,11 +170,11 @@ const importOneFile = (
       return secureSourceRef(registry, format, picked).pipe(
         Effect.flatMap((sourceRef) =>
           persistFile(resources, sourceRef).pipe(
-            Effect.map((failures): FileImportResult => ({
+            Effect.map((entries): FileImportResult => ({
               _tag: 'imported',
               id,
               fileName,
-              outcome: importOutcome(resources.length, sourceRef, failures, excluded),
+              outcome: importOutcome(resources.length, sourceRef, fileName, entries, excluded),
             }))
           )
         ),

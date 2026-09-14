@@ -194,7 +194,7 @@ describe('ImporterScreen', () => {
     }
   })
 
-  it('folds a failing write into a partial result that lists the failed resource', async () => {
+  it('folds a failing write into a partial result that groups the failed resources by code', async () => {
     // Arrange — the store rejects every Observation write
     currentRunAuthed = routingServer({
       failWrite: (request) => request.url.includes('/Observation/'),
@@ -208,16 +208,16 @@ describe('ImporterScreen', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
 
-    // Assert — a partial result: the Patient wrote, both Observations are listed
-    // as failures (retry backoff runs on the real clock, so allow for it)
+    // Assert — a partial result: the Patient wrote, both Observations are grouped
+    // under their failure status code (retry backoff runs on the real clock).
     await waitFor(
       () => {
         expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
       },
       { timeout: 6000 }
     )
-    const failures = screen.getByRole('alert')
-    expect(failures.textContent).toMatch(/Observation\//)
+    expect(screen.getByText(/503 Service Unavailable/)).toBeDefined()
+    expect(screen.getAllByText(/Observation\//).length).toBeGreaterThan(0)
     expect(screen.getByRole('status').textContent).toMatch(/Wrote 1 of 3/)
   })
 

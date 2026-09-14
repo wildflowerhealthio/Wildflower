@@ -1,7 +1,8 @@
--- Widen the Importer SMART app client's scope set: add `Practitioner` and
--- `DiagnosticReport`, and broaden every FHIR resource type to full `.cruds`
--- (create + read + update + delete + search), replacing the tightened
--- `.rs` / `.u` letters `0008_seed_wildflower_importer_client` shipped.
+-- Widen the Importer SMART app client's scope set: add `Practitioner`,
+-- `DiagnosticReport`, `Medication`, `MedicationRequest`, `MedicationDispense`,
+-- `ServiceRequest`, and `ImagingStudy`, and broaden every FHIR resource type to
+-- full `.cruds` (create + read + update + delete + search), replacing the
+-- tightened `.rs` / `.u` letters `0008_seed_wildflower_importer_client` shipped.
 --
 -- This is a NEW migration rather than an edit to `0008` because migrations are
 -- run-once and never re-applied: an install that already ran `0008` would never
@@ -25,5 +26,5 @@
 -- `importer-app-dev` client (`seeding.rs`'s `seed_dev_app_clients`) carries this
 -- same set — widen it in step too.
 UPDATE clients
-SET allowed_scopes = '["launch","openid","fhirUser","system/DocumentReference.cruds","system/Patient.cruds","system/Observation.cruds","system/Practitioner.cruds","system/DiagnosticReport.cruds"]'
+SET allowed_scopes = '["launch","openid","fhirUser","system/DocumentReference.cruds","system/Patient.cruds","system/Observation.cruds","system/Practitioner.cruds","system/DiagnosticReport.cruds","system/Medication.cruds","system/MedicationRequest.cruds","system/MedicationDispense.cruds","system/ServiceRequest.cruds","system/ImagingStudy.cruds"]'
 WHERE client_id = 'importer-app';

@@ -4,7 +4,7 @@ import type * as Bundle from '../data-types/resources/bundle.ts'
 import type { FhirResource } from '../resources/index.ts'
 import * as Telemetry from '../telemetry/index.ts'
 import { FhirR4ResourcesHttpApiClient } from './fhir-r4-resources-http-api-client.ts'
-import { describeResource, type ResourceWriteFailure } from './persist-resources.ts'
+import { describeResource, type ResourceWriteTarget } from './persist-resources.ts'
 
 /**
  * Writing a whole decoded batch back to the FHIR store as one `POST /` batch
@@ -31,8 +31,60 @@ import { describeResource, type ResourceWriteFailure } from './persist-resources
  * response cannot silently drop the batch. A null-id resource is skipped
  * defensively (a PUT needs an id, mirroring {@link upsertResource}).
  *
+ * Unlike {@link persistResources}, this reports the **whole** per-entry
+ * outcome — every submitted resource's echoed HTTP status and any
+ * OperationOutcome diagnostics, success or failure — not just the failures, so
+ * a caller (the importer's results view) can show what wrote alongside what
+ * did not, grouped by response code, with the server's own messages.
+ *
  * @packageDocumentation
  */
+
+/**
+ * One issue the server reported for an entry, from its `response.outcome`
+ * OperationOutcome — the human-readable reason behind a status.
+ */
+interface WriteIssue {
+  /** `fatal` | `error` | `warning` | `information`, verbatim. */
+  readonly severity: string
+  /** The `IssueType` code, verbatim (`not-found`, `invariant`, …). */
+  readonly code: string
+  /** The best available message: `details.text`, else `diagnostics`, else empty. */
+  readonly text: string
+}
+
+/**
+ * One submitted resource's outcome in a batch bundle: the resource it
+ * targeted, the echoed HTTP status, whether that status is a success, and any
+ * diagnostics the server attached.
+ *
+ * @remarks
+ * `status` is the server's echoed `"NNN Text"` verbatim when there was a
+ * response entry, and the sentinel {@link NO_RESPONSE_STATUS} when the whole
+ * bundle failed or the response was truncated — so a caller can always group
+ * by `status` without a special case.
+ */
+interface BatchEntryOutcome {
+  readonly target: ResourceWriteTarget
+  readonly status: string
+  readonly ok: boolean
+  readonly issues: readonly WriteIssue[]
+}
+
+/** The `status` a resource gets when the server returned no entry for it. */
+const NO_RESPONSE_STATUS = 'No response'
+
+/** A cause rendered for a diagnostic message — an `Error`'s message, else its string form. */
+const messageOf = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause)
+
+/** The issues an entry's `response.outcome` OperationOutcome carries, as {@link WriteIssue}s. */
+const issuesOf = (response: Bundle.EntryResponseType | null | undefined): readonly WriteIssue[] =>
+  (response?.outcome?.issue ?? []).map((issue) => ({
+    severity: issue.severity,
+    code: issue.code,
+    text: issue.details?.text ?? issue.diagnostics ?? '',
+  }))
 
 /**
  * Build the `entry.request.url` for a resource — `Type/id`, matching the
@@ -52,17 +104,19 @@ const statusOk = (status: string): boolean => {
 }
 
 /**
- * Submit a decoded batch as one FHIR `POST /` bundle, returning only what the
- * server did not accept.
+ * Submit a decoded batch as one FHIR `POST /` bundle, reporting every
+ * submitted resource's outcome — success or failure — as data.
  *
  * @param resources - The batch to write; null-id resources are skipped
- * @returns The resources the server reported as failed (or, if the whole
- *   round trip failed, every resource paired with the underlying cause) —
+ * @returns One {@link BatchEntryOutcome} per submitted resource, in submit
+ *   order: its echoed status, whether that status succeeded, and any server
+ *   diagnostics. If the whole round trip failed, every resource is reported
+ *   with {@link NO_RESPONSE_STATUS} and the underlying cause as an issue —
  *   never failing, so one bad batch cannot fail the caller's run
  */
 const persistBatchBundle = (
   resources: ReadonlyArray<FhirResource>
-): Effect.Effect<ReadonlyArray<ResourceWriteFailure>, never, FhirR4ResourcesHttpApiClient> =>
+): Effect.Effect<ReadonlyArray<BatchEntryOutcome>, never, FhirR4ResourcesHttpApiClient> =>
   Effect.gen(function* () {
     const writable = resources.filter((resource) => resource.id !== null)
     if (writable.length === 0) return []
@@ -119,28 +173,43 @@ const persistBatchBundle = (
     )
 
     if (result._tag === 'failed') {
-      return writable.map((resource): ResourceWriteFailure => ({
-        failed: describeResource(resource),
-        cause: result.cause,
+      // The whole submission failed: attribute the one cause to every entry as
+      // an error issue, under the no-response sentinel status.
+      const issue: WriteIssue = {
+        severity: 'error',
+        code: 'exception',
+        text: messageOf(result.cause),
+      }
+      return writable.map((resource): BatchEntryOutcome => ({
+        target: describeResource(resource),
+        status: NO_RESPONSE_STATUS,
+        ok: false,
+        issues: [issue],
       }))
     }
 
     // Zip each submitted entry with its response entry by position — FHIR §
     // 3.2.5.2 says a batch-response bundle contains one entry per request
     // entry, in the same order.
-    return Arr.zip(writable, result.response.entry ?? []).flatMap(([resource, entry]) => {
-      const status = entry.response?.status
-      if (status !== undefined && statusOk(status)) return []
-      return [
-        {
-          failed: describeResource(resource),
-          cause:
-            status === undefined
-              ? new Error(`no response entry for ${entryUrl(resource)}`)
-              : new Error(`bundle entry ${entryUrl(resource)}: ${status}`),
-        } satisfies ResourceWriteFailure,
-      ]
-    })
+    return Arr.zip(writable, result.response.entry ?? []).map(
+      ([resource, entry]): BatchEntryOutcome => {
+        const status = entry.response?.status
+        if (status === undefined) {
+          return {
+            target: describeResource(resource),
+            status: NO_RESPONSE_STATUS,
+            ok: false,
+            issues: [],
+          }
+        }
+        return {
+          target: describeResource(resource),
+          status,
+          ok: statusOk(status),
+          issues: issuesOf(entry.response),
+        }
+      }
+    )
   }).pipe(
     Effect.withSpan(Telemetry.Persist.Bundle.Span.Name, {
       attributes: {
@@ -149,4 +218,11 @@ const persistBatchBundle = (
     })
   )
 
-export { entryUrl, persistBatchBundle, statusOk }
+export {
+  type BatchEntryOutcome,
+  entryUrl,
+  NO_RESPONSE_STATUS,
+  persistBatchBundle,
+  statusOk,
+  type WriteIssue,
+}

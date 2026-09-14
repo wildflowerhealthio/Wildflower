@@ -205,6 +205,11 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
                 "system/Observation.cruds",
                 "system/Practitioner.cruds",
                 "system/DiagnosticReport.cruds",
+                "system/Medication.cruds",
+                "system/MedicationRequest.cruds",
+                "system/MedicationDispense.cruds",
+                "system/ServiceRequest.cruds",
+                "system/ImagingStudy.cruds",
             ]
             .as_slice(),
             ports.importer_app_dev,
