@@ -659,11 +659,12 @@ mod tests {
     /// the arm is that nothing reaches `BRIDGE_EVENT`.
     #[test]
     fn downloaded_classifies_as_log_only() {
-        let action = classify_event(&NativeWebviewEvent::Downloaded {
+        let event = NativeWebviewEvent::Downloaded {
             url: "https://emr.example.test/report.pdf".to_owned(),
             path: Some("/data/saved_data/report.pdf".to_owned()),
             success: true,
-        });
+        };
+        let action = classify_event(&event);
         assert!(
             !matches!(
                 &action,
@@ -688,11 +689,12 @@ mod tests {
     /// a success.
     #[test]
     fn failed_downloaded_logs_the_failure_and_emits_nothing() {
-        let action = classify_event(&NativeWebviewEvent::Downloaded {
+        let event = NativeWebviewEvent::Downloaded {
             url: "https://emr.example.test/report.pdf".to_owned(),
             path: None,
             success: false,
-        });
+        };
+        let action = classify_event(&event);
         let BridgeAction::LogOnly(line) = action else {
             panic!("expected LogOnly");
         };
