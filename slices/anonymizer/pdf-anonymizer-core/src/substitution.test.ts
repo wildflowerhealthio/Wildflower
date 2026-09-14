@@ -312,9 +312,9 @@ describe('applySubstitutions', () => {
  * are stated over the mask-disjoint class that excludes it.
  */
 const MASK_DISJOINT_CHARS: readonly string[] = [
-  ...'abcdefghijklmnopqrstuvwyz',
-  ...'ABCDEFGHIJKLMNOPQRSTUVWYZ',
-  ...'123456789',
+  ...'abcdefghijklmnopqrstuvwyz'.split(''),
+  ...'ABCDEFGHIJKLMNOPQRSTUVWYZ'.split(''),
+  ...'123456789'.split(''),
 ]
 
 /** A non-empty rule text over {@link MASK_DISJOINT_CHARS}. */
