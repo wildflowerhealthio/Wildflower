@@ -69,7 +69,12 @@ const withKey = (
   key: string,
   value: unknown
 ): Record<string, unknown> => {
-  Object.defineProperty(object, key, { value, writable: true, enumerable: true, configurable: true })
+  Object.defineProperty(object, key, {
+    value,
+    writable: true,
+    enumerable: true,
+    configurable: true,
+  })
   return object
 }
 
