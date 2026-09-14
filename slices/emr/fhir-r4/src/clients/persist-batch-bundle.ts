@@ -1,4 +1,5 @@
 import { Array as Arr, Effect } from 'effect'
+import { unknownErrorToString } from 'kitchen-sink'
 
 import type * as Bundle from '../data-types/resources/bundle.ts'
 import type { FhirResource } from '../resources/index.ts'
@@ -73,10 +74,6 @@ interface BatchEntryOutcome {
 
 /** The `status` a resource gets when the server returned no entry for it. */
 const NO_RESPONSE_STATUS = 'No response'
-
-/** A cause rendered for a diagnostic message — an `Error`'s message, else its string form. */
-const messageOf = (cause: unknown): string =>
-  cause instanceof Error ? cause.message : String(cause)
 
 /** The issues an entry's `response.outcome` OperationOutcome carries, as {@link WriteIssue}s. */
 const issuesOf = (response: Bundle.EntryResponseType | null | undefined): readonly WriteIssue[] =>
@@ -178,7 +175,7 @@ const persistBatchBundle = (
       const issue: WriteIssue = {
         severity: 'error',
         code: 'exception',
-        text: messageOf(result.cause),
+        text: unknownErrorToString(result.cause),
       }
       return writable.map((resource): BatchEntryOutcome => ({
         target: describeResource(resource),
@@ -191,7 +188,8 @@ const persistBatchBundle = (
     // Zip each submitted entry with its response entry by position — FHIR §
     // 3.2.5.2 says a batch-response bundle contains one entry per request
     // entry, in the same order.
-    return Arr.zip(writable, result.response.entry ?? []).map(
+    const entries = result.response.entry ?? []
+    const outcomes: BatchEntryOutcome[] = Arr.zip(writable, entries).map(
       ([resource, entry]): BatchEntryOutcome => {
         const status = entry.response?.status
         if (status === undefined) {
@@ -210,6 +208,16 @@ const persistBatchBundle = (
         }
       }
     )
+    // Backfill any resources the zip dropped (a truncated server response).
+    for (let i = outcomes.length; i < writable.length; i++) {
+      outcomes.push({
+        target: describeResource(writable[i]),
+        status: NO_RESPONSE_STATUS,
+        ok: false,
+        issues: [],
+      })
+    }
+    return outcomes
   }).pipe(
     Effect.withSpan(Telemetry.Persist.Bundle.Span.Name, {
       attributes: {

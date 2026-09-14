@@ -121,7 +121,12 @@ const ResultRow = ({ result }: { readonly result: ResourceResult }): JSX.Element
  * folded away when it succeeded.
  */
 const StatusSection = ({ group }: { readonly group: StatusGroup }): JSX.Element => (
-  <details className={styles.statusSection} open={!group.ok} data-status-ok={group.ok}>
+  <details
+    className={styles.statusSection}
+    open={!group.ok}
+    data-status-ok={group.ok}
+    role={group.ok ? undefined : 'alert'}
+  >
     <summary className={styles.statusSummary} data-diff-status={group.ok ? 'ok' : 'failed'}>
       {group.status} · {group.results.length} {plural(group.results.length, 'resource')}
     </summary>
