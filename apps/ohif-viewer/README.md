@@ -68,14 +68,32 @@ GitHub Pages serves real files only, so a fresh load of a mode URL such as
 `?iss=` without `launch` sets the FHIR server without an OAuth redirect, for
 standalone testing.
 
-### Client ID
+### Client, scopes and the Wildflower server
 
-The SMART client ID is unsettled and left empty in `app-config.js`. Until a
-registration is decided, the viewer takes it from `?client_id=` on the launch
-URL or from its SMART Preferences panel (saved in the browser); once decided,
-set `smartClientId` in the data source configuration. The FHIR server must
-allow `https://wildflowerhealth.io` in CORS and register
-`https://wildflowerhealth.io/ohif-viewer/` as the redirect URI.
+The Wildflower server seeds what the viewer needs:
+
+- apps migration `0007_seed_ohif_viewer_app` registers the `ohif-viewer` cloud
+  app row whose launch URL is the worklist launch above;
+- gatekeeper migration `0009_seed_ohif_viewer_client` registers the `ohif-viewer`
+  public PKCE client with `https://wildflowerhealth.io/ohif-viewer/` as its
+  redirect URI and the read-only scopes the viewer requests.
+
+`app-config.js` sends `smartClientId: 'ohif-viewer'` and a `smartScope` that
+must stay equal, element for element, to that client's `allowed_scopes` (and to
+the dev client's in `gatekeeper-rust/src/seeding.rs`). `?client_id=` on the
+launch URL or a value saved from the SMART Preferences panel still overrides
+the client ID, for launching from another FHIR server.
+
+### Dev row
+
+A debug build of the host also seeds an `ohif-viewer-dev` self-hosted row and
+client (`apps-rust/src/dev_seed.rs`, `gatekeeper-rust/src/seeding.rs`) on the
+port `slices/apps/dev-app-ports.json` names, launched at the root like the
+production row. `vp run -F ohif-viewer dev` previews `dist/` on that port, and
+`app-config.js` sends the `ohif-viewer-dev` client ID when served from a
+loopback origin. Unlike the other first-party apps nothing is vendored under
+`slices/apps/self-hosted-apps/` for it, so the tile serves nothing until the
+preview is running.
 
 ## Updating the viewer
 

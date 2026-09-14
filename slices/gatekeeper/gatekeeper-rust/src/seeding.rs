@@ -104,7 +104,7 @@ const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
     "/../../apps/dev-app-ports.json"
 ));
 
-/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the three first-party
+/// The subset of [`DEV_APP_PORTS_JSON`] this seed needs — the four first-party
 /// apps that register an OAuth client. The file also carries `web-server-docs-dev`,
 /// which is not a SMART app and so has no client here; serde ignores it.
 #[cfg(debug_assertions)]
@@ -116,6 +116,8 @@ struct DevAppPorts {
     web_trace_app_dev: u16,
     #[serde(rename = "importer-app-dev")]
     importer_app_dev: u16,
+    #[serde(rename = "ohif-viewer-dev")]
+    ohif_viewer_dev: u16,
 }
 
 /// The debug-only OAuth clients for the first-party apps' vite dev servers — the
@@ -206,6 +208,24 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ]
             .as_slice(),
             ports.importer_app_dev,
+        ),
+        (
+            "ohif-viewer-dev",
+            "Imaging (Dev)",
+            // Mirrors the production `ohif-viewer` client's read-only set (the
+            // `smartScope` in `apps/ohif-viewer/config/app-config.js`, seeded
+            // by migration `0009`): the launch Patient plus the ImagingStudy and
+            // DocumentReference searches the OHIF FHIR data source issues.
+            [
+                "launch",
+                "openid",
+                "fhirUser",
+                "system/Patient.rs",
+                "system/ImagingStudy.rs",
+                "system/DocumentReference.rs",
+            ]
+            .as_slice(),
+            ports.ohif_viewer_dev,
         ),
     ];
     for (client_id, name, scopes, port) in dev_clients {

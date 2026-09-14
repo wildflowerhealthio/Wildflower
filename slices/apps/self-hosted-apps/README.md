@@ -10,6 +10,11 @@ longer all play the same role:
 | `web-trace`       | Build output of `apps/web-trace`. Same arrangement for `/web-trace-app` and `web-trace-app-dev`.                                                                                                       |
 | `importer`        | Build output of `apps/importer-web`. Same arrangement for `/importer-app` and `importer-app-dev` — the one shipped app that **writes** to the FHIR base its SMART launch named.                        |
 
+The OHIF imaging viewer (`apps/ohif-viewer`, published at `/ohif-viewer`, apps
+migration `0007_seed_ohif_viewer_app`) has no directory here: it is a downloaded
+prebuilt bundle, and its debug-only `ohif-viewer-dev` row has no fallback content
+— `vp run -F ohif-viewer dev` serves it.
+
 [upstream]: https://github.com/smart-on-fhir/patient-browser
 
 ## Which mechanism still serves which directory

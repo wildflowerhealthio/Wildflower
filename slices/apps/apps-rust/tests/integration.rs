@@ -155,6 +155,7 @@ async fn fresh_install_lists_the_default_set() {
             "web-trace-app",
             "web-server-docs",
             "importer-app",
+            "ohif-viewer",
         ],
     );
 }
@@ -352,6 +353,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
         { "id": "web-trace-app", "onHomescreen": true },
         { "id": "web-server-docs", "onHomescreen": true },
         { "id": "importer-app", "onHomescreen": true },
+        { "id": "ohif-viewer", "onHomescreen": true },
     ]);
     let res = router
         .clone()
@@ -378,6 +380,7 @@ async fn home_screen_reorders_and_disables_a_system_app() {
             "web-trace-app",
             "web-server-docs",
             "importer-app",
+            "ohif-viewer",
         ],
     );
     let api_docs = arr.iter().find(|v| v["id"] == "api-docs").unwrap();

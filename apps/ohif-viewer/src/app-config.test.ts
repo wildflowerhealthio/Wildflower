@@ -50,7 +50,7 @@ describe('config/app-config.js', () => {
     expect(config.routerBasename).toBe('/')
   })
 
-  it('should launch into the FHIR data source from the worklist', () => {
+  it('should launch into the FHIR data source from the worklist as the published client', () => {
     const config = evaluateConfig({ src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' })
     expect(config).toMatchObject({
       routerBasename: '/ohif-viewer/',
@@ -60,8 +60,44 @@ describe('config/app-config.js', () => {
         {
           namespace: '@ohif/fhir-viewer.dataSourcesModule.fhir',
           sourceName: 'fhir',
+          configuration: {
+            smartClientId: 'ohif-viewer',
+            smartScope:
+              'launch openid fhirUser system/Patient.rs system/ImagingStudy.rs system/DocumentReference.rs',
+          },
         },
       ],
     })
+  })
+
+  it('should be the debug-only dev client when served from a loopback origin', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('localhost', '127.0.0.1'),
+        fc.integer({ min: 1, max: 65535 }),
+        (host, port) => {
+          const config = evaluateConfig({ src: `http://${host}:${port}/app-config.js` })
+          expect(config).toMatchObject({
+            routerBasename: '/',
+            dataSources: [{ configuration: { smartClientId: 'ohif-viewer-dev' } }],
+          })
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  it('should never be the dev client on any other host', () => {
+    fc.assert(
+      fc.property(fc.webUrl({ validSchemes: ['https'] }), (url) => {
+        const origin = new URL(url).origin
+        fc.pre(!/^https:\/\/(localhost|127\.0\.0\.1)(:|$)/.test(origin))
+        const config = evaluateConfig({ src: `${origin}/app-config.js` })
+        expect(config).toMatchObject({
+          dataSources: [{ configuration: { smartClientId: 'ohif-viewer' } }],
+        })
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
   })
 })

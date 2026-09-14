@@ -11,10 +11,24 @@
   // and a PR preview at .../staging/pr-N/ohif-viewer/ alike.
   var script = document.currentScript
   var basename = '/'
+  var loopback = false
   if (script && script.src) {
-    var pathname = new URL(script.src).pathname
-    basename = pathname.slice(0, pathname.lastIndexOf('/') + 1)
+    var scriptUrl = new URL(script.src)
+    basename = scriptUrl.pathname.slice(0, scriptUrl.pathname.lastIndexOf('/') + 1)
+    loopback = scriptUrl.hostname === 'localhost' || scriptUrl.hostname === '127.0.0.1'
   }
+
+  // Which SMART client this build is, decided by how it is served — the same
+  // rule the other first-party apps apply through `import.meta.env.DEV`
+  // (`apps/*/src/config.ts`), expressed at runtime here since nothing is
+  // compiled. Served from the published site it is the `ohif-viewer` client
+  // (gatekeeper migration `0009_seed_ohif_viewer_client`); served from a
+  // loopback origin (`vp run -F ohif-viewer dev`) it is the debug-only
+  // `ohif-viewer-dev` client (`gatekeeper-rust/src/seeding.rs`), whose id must
+  // equal the `ohif-viewer-dev` app row's id for the app-relative redirect to
+  // resolve. A `?client_id=` on the launch URL or a value saved from the SMART
+  // Preferences panel still overrides this.
+  var smartClientId = loopback ? 'ohif-viewer-dev' : 'ohif-viewer'
 
   window.config = {
     name: 'wildflower/app-config.js',
@@ -43,10 +57,18 @@
           friendlyName: 'FHIR R4 server (SMART on FHIR)',
           // No default server: a SMART launch supplies the FHIR base as `iss`,
           // and the viewer's FHIR panel accepts one by hand for standalone use.
-          // The SMART client ID is likewise unsettled; until it is, a launch
-          // passes `?client_id=` or the user enters one in the SMART
-          // Preferences panel (both override this field).
-          smartClientId: '',
+          smartClientId: smartClientId,
+          // The scopes the EHR launch requests, replacing the extension's
+          // built-in default (`patient/*.read` plus two `fhircast/` scopes the
+          // Wildflower server does not implement). Read-only: the launch
+          // Patient plus the ImagingStudy and DocumentReference searches the
+          // FHIR data source issues. MUST equal, element for element and in
+          // order, the `allowed_scopes` of the `ohif-viewer` client (gatekeeper
+          // migration `0009_seed_ohif_viewer_client`) and of the
+          // `ohif-viewer-dev` client (`gatekeeper-rust/src/seeding.rs`): a
+          // requested scope the client is not allowed fails `/authorize`.
+          smartScope:
+            'launch openid fhirUser system/Patient.rs system/ImagingStudy.rs system/DocumentReference.rs',
         },
       },
     ],
