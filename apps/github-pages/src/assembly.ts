@@ -80,6 +80,17 @@ const siteSections: readonly SiteSection[] = [
     // which also serves the standalone connect menu on a bare visit).
     requiredFiles: ['index.html', 'launch.html'],
   },
+  {
+    packageName: 'ohif-viewer',
+    // The prebuilt OHIF viewer pinned in apps/ohif-viewer/prebuilt.json (or
+    // the stub page while nothing is pinned), with Wildflower's runtime
+    // app-config.js laid over it by that package's build.
+    sourceDir: 'apps/ohif-viewer/dist',
+    destPath: SECTION_PATHS.ohifViewer,
+    // The worklist page doubles as the SMART launch entry point; the bundled
+    // assets hang off it.
+    requiredFiles: ['index.html'],
+  },
 ]
 
 /** A {@link SiteSection} resolved to absolute filesystem paths. */

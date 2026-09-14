@@ -17,7 +17,7 @@ type TitleComponent = ElementType<{
 
 /**
  * Static top bar shared by the marketing homepage and every app: the brand
- * lockup on the left, direct links into the four apps on the right, one
+ * lockup on the left, direct links into the five apps on the right, one
  * hairline against the page. No sticky positioning, no translucent backdrop,
  * no CTA pill — the app surfaces and the homepage read as one site.
  *

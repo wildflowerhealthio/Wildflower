@@ -195,7 +195,7 @@ mod tests {
     /// Every SMART client is seeded by a migration (not Rust) — the sample apps by
     /// `0003`, the two first-party apps by `0004` / `0005` (renamed and given
     /// their published-site redirect by `0006`), the server-docs API console by
-    /// `0007`, and the Importer by `0008` — so a
+    /// `0007`, the Importer by `0008`, and the OHIF imaging viewer by `0009` — so a
     /// freshly-migrated store has them all, and every hand-written row decodes
     /// back to a valid `Client`. This is the guard that the SQL seeds' JSON
     /// columns and `registered_at` text stay in the exact shape the store's read
@@ -212,6 +212,7 @@ mod tests {
             "web-trace-app",
             "wildflower-server-docs",
             "importer-app",
+            "ohif-viewer",
         ] {
             let client = store
                 .client_by_id(client_id)
@@ -399,6 +400,36 @@ mod tests {
                 "system/DocumentReference.u".to_string(),
                 "system/Patient.u".to_string(),
                 "system/Observation.u".to_string(),
+            ],
+        );
+        // `ohif-viewer` (the OHIF imaging viewer) is a cloud client like the three
+        // above, seeded by `0009`, and read-only. This vector must stay
+        // element-for-element equal to the `smartScope` string in
+        // `apps/ohif-viewer/config/app-config.js` — nothing spans the JS/Rust
+        // boundary to check it, so this assertion is the Rust-side mirror of that
+        // pin, and a scope added on one side alone fails `/authorize` on a real
+        // device.
+        let ohif = store.client_by_id("ohif-viewer").unwrap().unwrap();
+        assert_eq!(
+            ohif.redirect_uris,
+            vec![
+                RegisteredRedirectUri::AppRelative("/".to_owned()),
+                RegisteredRedirectUri::Absolute(
+                    "https://wildflowerhealth.io/ohif-viewer/"
+                        .parse()
+                        .expect("a valid absolute redirect"),
+                ),
+            ],
+        );
+        assert_eq!(
+            ohif.allowed_scopes,
+            vec![
+                "launch".to_string(),
+                "openid".to_string(),
+                "fhirUser".to_string(),
+                "system/Patient.rs".to_string(),
+                "system/ImagingStudy.rs".to_string(),
+                "system/DocumentReference.rs".to_string(),
             ],
         );
     }

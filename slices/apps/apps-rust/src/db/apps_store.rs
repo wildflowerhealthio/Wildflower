@@ -34,8 +34,9 @@ const MIGRATION_NAMESPACE: &str = "apps";
 /// apps ship versions independently of both the schema and the baseline set;
 /// `0005` renames those two to `medications-app` / `web-trace-app` and turns them
 /// into CLOUD rows served from the published GitHub Pages site (adding the
-/// server-docs console); and `0006` appends the Importer as a third first-party
-/// CLOUD app served from the same site. Because each migration runs only once per
+/// server-docs console); `0006` appends the Importer as a third first-party CLOUD
+/// app served from the same site; and `0007` appends the OHIF imaging viewer, a
+/// fourth CLOUD app from that site. Because each migration runs only once per
 /// database, a user-deleted seed stays deleted across upgrades. The debug-only
 /// `…-dev` self-hosted siblings are deliberately NOT migrations — see
 /// `apps-rust/src/dev_seed.rs`.
@@ -208,7 +209,7 @@ mod tests {
             .count()
             .get_result(&mut conn)
             .expect("app_registrations must exist after migrate");
-        assert_eq!(row_count, 10, "exactly the ten seeded default apps");
+        assert_eq!(row_count, 11, "exactly the eleven seeded default apps");
     }
 
     /// The `app_registrations` primary key gives global id uniqueness across kinds
@@ -258,6 +259,7 @@ mod tests {
                 "web-trace-app",
                 "web-server-docs",
                 "importer-app",
+                "ohif-viewer",
             ],
         );
     }
@@ -469,6 +471,47 @@ mod tests {
         assert_eq!(
             target.url,
             "https://wildflowerhealth.io/importer-app/launch.html?launch={launch}&iss={origin}/fhir-r4",
+        );
+    }
+
+    /// The OHIF imaging viewer ships as a first-party CLOUD row (apps migration
+    /// `0007`), launched from its published Pages copy. Its launch URL is the
+    /// viewer's root, not a `launch.html`: OHIF reads the SMART parameters off
+    /// whichever route it is opened on, and the root is the only route GitHub
+    /// Pages serves as a real file.
+    #[test]
+    fn ohif_viewer_is_a_cloud_row_launched_at_its_root() {
+        let store = SqliteAppsStore::open_in_memory().unwrap();
+        let mut conn = store.pool().get().unwrap();
+
+        let (registration, configuration) = store
+            .find_app("ohif-viewer")
+            .unwrap()
+            .expect("ohif-viewer must exist");
+        assert!(
+            matches!(configuration, AppConfiguration::Cloud(_)),
+            "ohif-viewer must be a cloud app",
+        );
+        // client_id tracks id, as every registration does.
+        assert_eq!(registration.client_id.as_deref(), Some("ohif-viewer"));
+        assert!(
+            !registration.local_only,
+            "the viewer's assets are served from wildflowerhealth.io",
+        );
+        assert!(
+            registration.requires_tunnel,
+            "the published page's `iss={{origin}}` fetch must resolve through the \
+             tunnel's verified HTTPS origin",
+        );
+
+        let target: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+                .bind::<Text, _>("ohif-viewer")
+                .get_result(&mut conn)
+                .expect("the cloud configuration row must exist");
+        assert_eq!(
+            target.url,
+            "https://wildflowerhealth.io/ohif-viewer/?launch={launch}&iss={origin}/fhir-r4",
         );
     }
 

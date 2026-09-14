@@ -1,7 +1,8 @@
 //! Debug-only seeding of the `…-dev` app rows that point at the first-party
 //! apps' local vite dev servers.
 //!
-//! The two first-party apps (Medications, Web Trace) ship as **cloud** rows
+//! The first-party apps (Medications, Web Trace, Importer, the OHIF imaging
+//! viewer) ship as **cloud** rows
 //! served from <https://wildflowerhealth.io> (apps migration
 //! `0005_first_party_apps_to_cloud`). That is the right production target and the
 //! wrong development one: a developer editing `apps/medications-app` wants the
@@ -63,11 +64,21 @@ struct DevApp {
     /// The vendored build directory under `<app-data>/self-hosted-apps/`, used
     /// only when vite is not holding the port.
     content_folder: &'static str,
+    /// The SMART EHR-launch entry, relative to the row's own origin —
+    /// [`DEV_LAUNCH_PATH`] for the apps that ship a `launch.html`, the root for
+    /// the OHIF viewer (see [`ROOT_LAUNCH_PATH`]).
+    launch_path: &'static str,
 }
 
 /// The SMART EHR-launch entry every first-party app ships, off its own origin —
 /// the same template the pre-cloud seeded rows carried.
 const DEV_LAUNCH_PATH: &str = "/launch.html?launch={launch}&iss={origin}/fhir-r4";
+
+/// The SMART EHR-launch entry for an app with no `launch.html`: OHIF reads
+/// `launch` + `iss` off whichever route it is opened on, so the launch targets
+/// its root — the same shape apps migration `0007_seed_ohif_viewer_app` gives
+/// the production cloud row, relative to the dev origin.
+const ROOT_LAUNCH_PATH: &str = "/?launch={launch}&iss={origin}/fhir-r4";
 
 /// The shared dev-port file, embedded at compile time. The single source of
 /// truth for these ports across the TS ⇄ Rust boundary: each app's
@@ -90,6 +101,8 @@ struct DevAppPorts {
     web_server_docs_dev: i32,
     #[serde(rename = "importer-app-dev")]
     importer_app_dev: i32,
+    #[serde(rename = "ohif-viewer-dev")]
+    ohif_viewer_dev: i32,
 }
 
 /// The debug-only rows, with their ports read from the shared JSON.
@@ -100,7 +113,7 @@ struct DevAppPorts {
 /// a compile-time-embedded, version-controlled file, so a failure here is a
 /// broken build, not a runtime condition, and only ever reachable in a debug
 /// build.
-fn dev_apps() -> [DevApp; 4] {
+fn dev_apps() -> [DevApp; 5] {
     let ports: DevAppPorts = serde_json::from_str(DEV_APP_PORTS_JSON)
         .expect("the embedded dev-app-ports.json must declare a port per dev app id");
     [
@@ -111,6 +124,7 @@ fn dev_apps() -> [DevApp; 4] {
             port: ports.medications_app_dev,
             subdomain: "medication-dev",
             content_folder: "medication",
+            launch_path: DEV_LAUNCH_PATH,
         },
         DevApp {
             id: "web-trace-app-dev",
@@ -119,6 +133,7 @@ fn dev_apps() -> [DevApp; 4] {
             port: ports.web_trace_app_dev,
             subdomain: "web-trace-dev",
             content_folder: "web-trace",
+            launch_path: DEV_LAUNCH_PATH,
         },
         DevApp {
             id: "web-server-docs-dev",
@@ -127,6 +142,7 @@ fn dev_apps() -> [DevApp; 4] {
             port: ports.web_server_docs_dev,
             subdomain: "web-server-docs",
             content_folder: "web-server-docs",
+            launch_path: DEV_LAUNCH_PATH,
         },
         DevApp {
             id: "importer-app-dev",
@@ -135,6 +151,20 @@ fn dev_apps() -> [DevApp; 4] {
             port: ports.importer_app_dev,
             subdomain: "importer-dev",
             content_folder: "importer",
+            launch_path: DEV_LAUNCH_PATH,
+        },
+        DevApp {
+            id: "ohif-viewer-dev",
+            name: "Imaging (Dev)",
+            // Not a vite dev server: `apps/ohif-viewer` is a downloaded prebuilt
+            // OHIF build, and `vp run -F ohif-viewer dev` previews it on this
+            // port. Nothing is vendored under `self-hosted-apps/ohif-viewer`, so
+            // there is no fallback content when the preview is not running.
+            subtitle: "Local preview server for apps/ohif-viewer",
+            port: ports.ohif_viewer_dev,
+            subdomain: "ohif-viewer-dev",
+            content_folder: "ohif-viewer",
+            launch_path: ROOT_LAUNCH_PATH,
         },
     ]
 }
@@ -301,7 +331,7 @@ fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     .bind::<Text, _>(app.subdomain)
     .bind::<Text, _>(app.id)
     .bind::<Text, _>(app.subdomain)
-    .bind::<Text, _>(DEV_LAUNCH_PATH)
+    .bind::<Text, _>(app.launch_path)
     .bind::<Text, _>(app.id)
     .bind::<Text, _>(app.id)
     .execute(conn)
@@ -339,7 +369,7 @@ fn reconcile(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
           WHERE id = ? AND seeded = 1",
     )
     .bind::<Text, _>(app.content_folder)
-    .bind::<Text, _>(DEV_LAUNCH_PATH)
+    .bind::<Text, _>(app.launch_path)
     .bind::<Text, _>(app.id)
     .execute(conn)
     .context("reconcile dev content folder")?;
@@ -410,7 +440,7 @@ mod tests {
             assert_eq!(i32::from(config.port), app.port);
             assert_eq!(config.subdomain, app.subdomain);
             assert_eq!(config.content_folder, app.content_folder);
-            assert_eq!(config.launch_path.as_deref(), Some(DEV_LAUNCH_PATH));
+            assert_eq!(config.launch_path.as_deref(), Some(app.launch_path));
         }
     }
 
@@ -420,7 +450,12 @@ mod tests {
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
-        for id in ["medications-app", "web-trace-app", "importer-app"] {
+        for id in [
+            "medications-app",
+            "web-trace-app",
+            "importer-app",
+            "ohif-viewer",
+        ] {
             let (registration, config) = store.find_app(id).unwrap().expect("migrated cloud row");
             assert!(
                 matches!(config, AppConfiguration::Cloud(_)),

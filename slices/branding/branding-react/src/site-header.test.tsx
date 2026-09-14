@@ -17,7 +17,7 @@ describe('SiteHeader', () => {
     expect(container.querySelector('#top')).not.toBeNull()
   })
 
-  it('should link directly into the four apps with current-URL-relative hrefs on the marketing site', () => {
+  it('should link directly into the five apps with current-URL-relative hrefs on the marketing site', () => {
     // Arrange / Act
     render(<SiteHeader nav={onMarketingSite} />)
 
@@ -33,10 +33,11 @@ describe('SiteHeader', () => {
       sectionHref(onMarketingSite, 'importer'),
       sectionHref(onMarketingSite, 'webTrace'),
       sectionHref(onMarketingSite, 'serverDocs'),
+      sectionHref(onMarketingSite, 'ohifViewer'),
     ])
   })
 
-  it('should link into the four apps with absolute hrefs from an app', () => {
+  it('should link into the five apps with absolute hrefs from an app', () => {
     // Arrange / Act
     render(<SiteHeader nav={fromApp} />)
 
@@ -50,6 +51,7 @@ describe('SiteHeader', () => {
       sectionUrl('importer'),
       sectionUrl('webTrace'),
       sectionUrl('serverDocs'),
+      sectionUrl('ohifViewer'),
     ])
   })
 
