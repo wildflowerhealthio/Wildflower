@@ -269,6 +269,29 @@ interface PreviewContentsProps {
 }
 
 /**
+ * The format-specific preview body, chosen by content type: PDF renders in an
+ * iframe, JSON/HAR pretty-prints, and anything else (DICOM, images) shows a
+ * binary notice with the file size.
+ */
+const PreviewContentBody = ({
+  contentType,
+  blobUrl,
+  fileName,
+  bytes,
+}: {
+  readonly contentType: string
+  readonly blobUrl: string
+  readonly fileName: string
+  readonly bytes: Uint8Array
+}): JSX.Element => {
+  if (contentType === 'application/pdf') return <PdfBody blobUrl={blobUrl} fileName={fileName} />
+  if (contentType === 'application/json' || contentType === 'application/har+json') {
+    return <JsonBody bytes={bytes} />
+  }
+  return <BinaryBody bytes={bytes} />
+}
+
+/**
  * The rendered preview body, chosen by content type: PDF as an
  * `<iframe>` from a `blob:` URL, JSON pretty-printed inside a `<pre>`
  * with a size cap and a "download raw" fallback.
@@ -285,11 +308,12 @@ const PreviewContents = ({
       <div className={styles.previewHeader}>
         <span className={styles.previewFileName}>{fileName}</span>
       </div>
-      {contentType === 'application/pdf' ? (
-        <PdfBody blobUrl={blobUrl} fileName={fileName} />
-      ) : (
-        <JsonBody bytes={bytes} />
-      )}
+      <PreviewContentBody
+        contentType={contentType}
+        blobUrl={blobUrl}
+        fileName={fileName}
+        bytes={bytes}
+      />
       <div className={styles.previewActions}>
         <a
           className={styles.downloadLink}
@@ -402,6 +426,17 @@ const JsonBody = ({ bytes }: { readonly bytes: Uint8Array }): JSX.Element => {
     Match.exhaustive
   )
 }
+
+/**
+ * Binary preview: a short notice with the file size. Non-text formats
+ * (DICOM, images) cannot render inline; the "Download raw" action outside
+ * this component is the inspection path.
+ */
+const BinaryBody = ({ bytes }: { readonly bytes: Uint8Array }): JSX.Element => (
+  <p className={styles.previewNote} data-testid="preview-binary">
+    Binary file ({formatBytesMib(bytes.length)}). Use "Download raw" to inspect its contents.
+  </p>
+)
 
 /** Result of {@link renderJsonPreview}. */
 type JsonRender =

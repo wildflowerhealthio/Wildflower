@@ -1,0 +1,50 @@
+{
+  "name": "dicom-importer-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The DICOM binding of the importer slice (core layer): byte-level .dcm detection, the archive codec that stores a DICOM file as a FHIR DocumentReference, and the importer descriptor. No DOM, no fs, no React.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/importer/dicom-importer-core"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./archive": {
+      "source": "./src/archive/index.ts",
+      "default": "./dist/archive.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "importer-fundamentals": "workspace:*",
+    "kitchen-sink": "workspace:*"
+  }
+}

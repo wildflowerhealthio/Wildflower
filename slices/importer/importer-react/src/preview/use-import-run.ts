@@ -191,6 +191,7 @@ const runDecode = (
   Match.type<FormatKind>().pipe(
     Match.when('har', (kind) => registry[kind].decode(bytes, settings[kind])),
     Match.when('lifelabs-pdf', (kind) => registry[kind].decode(bytes, settings[kind])),
+    Match.when('dicom', (kind) => registry[kind].decode(bytes, settings[kind])),
     Match.exhaustive
   )(format)
 
@@ -212,6 +213,7 @@ const buildSourceArchive = (
     .pipe(
       Match.when('har', (kind) => registry[kind].sourceArchive(picked)),
       Match.when('lifelabs-pdf', (kind) => registry[kind].sourceArchive(picked)),
+      Match.when('dicom', (kind) => registry[kind].sourceArchive(picked)),
       Match.exhaustive
     )(format)
     .pipe(

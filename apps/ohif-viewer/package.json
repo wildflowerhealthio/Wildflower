@@ -4,7 +4,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node ./src/build.ts",
     "check": "vp check",
     "dev": "vp preview",
     "test": "vp test"

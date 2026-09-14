@@ -2,6 +2,7 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { DICOM_ARCHIVE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/archive'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
@@ -156,7 +157,7 @@ describe('SourcePicker', () => {
     // covering every registered format, sized, and authed
     expect(paramsOf(0)['category']).toBe(ARCHIVES_CATEGORY_TOKEN)
     expect(ARCHIVES_CATEGORY_TOKEN).toBe(
-      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE}`
+      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE},${DICOM_SYSTEM}|${DICOM_ARCHIVE_CODE}`
     )
     expect(paramsOf(0)['_count']).toBe('50')
     expect(sentRequests[0]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)

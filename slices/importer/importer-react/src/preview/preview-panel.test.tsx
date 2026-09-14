@@ -451,6 +451,14 @@ const settingsRegistry: SettingsRegistry = {
       </button>
     ),
   },
+  dicom: {
+    display: { title: 'DICOM image', description: 'DICOM' },
+    SettingsPicker: ({ onChange }): JSX.Element => (
+      <button type="button" onClick={() => onChange(defaultFormatSettings.dicom)}>
+        change dicom settings
+      </button>
+    ),
+  },
 }
 
 /** Shared panel props wired to synthetic lookups. */

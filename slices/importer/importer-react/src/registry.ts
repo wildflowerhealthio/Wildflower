@@ -1,3 +1,5 @@
+import { type DicomSettings, dicomImporterDescriptor } from 'dicom-importer-core'
+import { DicomSettingsPicker } from 'dicom-importer-react'
 import type { Effect, ParseResult } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HarSettings, harImporterDescriptor } from 'har-importer-core'
@@ -42,6 +44,10 @@ interface FormatVariant {
   }
   'lifelabs-pdf': {
     settings: LifeLabsPdfSettings
+    parsed: FhirResource
+  }
+  dicom: {
+    settings: DicomSettings
     parsed: FhirResource
   }
 }
@@ -116,16 +122,31 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
     archiveContentType: lifeLabsPdfImporterDescriptor.archiveContentType,
     SettingsPicker: LifeLabsPdfSettingsPicker,
   },
+  dicom: {
+    format: 'dicom',
+    display: dicomImporterDescriptor.display,
+    accept: dicomImporterDescriptor.accept,
+    detect: dicomImporterDescriptor.detect,
+    defaultSettings: dicomImporterDescriptor.defaultSettings,
+    decode: dicomImporterDescriptor.decode,
+    sourceArchive: dicomImporterDescriptor.sourceArchive,
+    archiveCategoryToken: dicomImporterDescriptor.archiveCategoryToken,
+    isArchive: dicomImporterDescriptor.isArchive,
+    archiveFromDocumentReference: dicomImporterDescriptor.archiveFromDocumentReference,
+    archiveContentType: dicomImporterDescriptor.archiveContentType,
+    SettingsPicker: DicomSettingsPicker,
+  },
 }
 
 /** The default settings of every registered format — the state a fresh shell seeds. */
 const defaultFormatSettings: FormatSettings = {
   har: formatRegistry.har.defaultSettings,
   'lifelabs-pdf': formatRegistry['lifelabs-pdf'].defaultSettings,
+  dicom: formatRegistry.dicom.defaultSettings,
 }
 
 /** Every registered format tag, in registry (priority) order — the typed walk over the closed registry. */
-const formatKinds: readonly FormatKind[] = ['har', 'lifelabs-pdf']
+const formatKinds: readonly FormatKind[] = ['har', 'lifelabs-pdf', 'dicom']
 
 export { defaultFormatSettings, formatKinds, formatRegistry }
 export type { BoundFormat, FormatKind, FormatSettings, FormatVariant }

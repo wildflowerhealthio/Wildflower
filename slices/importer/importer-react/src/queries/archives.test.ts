@@ -1,5 +1,6 @@
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { QueryClient } from '@tanstack/react-query'
+import { DICOM_ARCHIVE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/archive'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
@@ -57,7 +58,7 @@ describe('archivesInfiniteQueryOptions', () => {
     // Assert — one search, one comma-joined `system|code` covering both formats
     expect(paramsOf(0)['category']).toBe(ARCHIVES_CATEGORY_TOKEN)
     expect(ARCHIVES_CATEGORY_TOKEN).toBe(
-      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE}`
+      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE},${LIFELABS_SYSTEM}|${LIFELABS_PDF_ARCHIVE_CODE},${DICOM_SYSTEM}|${DICOM_ARCHIVE_CODE}`
     )
     expect(paramsOf(0)['_count']).toBe(String(DEFAULT_PAGE_SIZE))
     // …and it went out authenticated with the granted token
