@@ -1,6 +1,6 @@
 # AGENTS.md — slices/emr
 
-FHIR R4 slice: pure wire schemas (Patient / Practitioner / Observation / DiagnosticReport / MedicationRequest / MedicationDispense / DocumentReference / Binary), the `HttpApi` description, and the HTTP client for the off-the-shelf HFS FHIR server embedded by `emr-rust`. Read the [Packages Explanation](./docs/Packages%20Explanation.md) before restructuring anything here.
+FHIR R4 slice: pure wire schemas (Patient / Practitioner / Observation / DiagnosticReport / MedicationRequest / MedicationDispense / DocumentReference / Binary / ServiceRequest / ImagingStudy), the `HttpApi` description, and the HTTP client for the off-the-shelf HFS FHIR server embedded by `emr-rust`. Read the [Packages Explanation](./docs/Packages%20Explanation.md) before restructuring anything here.
 
 ## Guardrails
 

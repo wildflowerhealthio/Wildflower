@@ -12,11 +12,13 @@ import {
   DiagnosticReport,
   DocumentReference,
   type FhirResource,
+  ImagingStudy,
   MedicationDispense,
   MedicationRequest,
   Observation,
   Patient,
   Practitioner,
+  ServiceRequest,
 } from '../resources/index.ts'
 import { adoptResource, originalIdOf, type SourceIdentity } from './adopt-resource.ts'
 import { localResourceId } from './local-resource-id.ts'
@@ -166,6 +168,35 @@ const ADOPTED_FIELDS = {
     'media',
   ],
   Practitioner: ['id', 'identifier', 'qualification'],
+  ServiceRequest: [
+    'id',
+    'identifier',
+    'subject',
+    'encounter',
+    'requester',
+    'basedOn',
+    'replaces',
+    'performer',
+    'locationReference',
+    'reasonReference',
+    'insurance',
+    'supportingInfo',
+    'relevantHistory',
+  ],
+  ImagingStudy: [
+    'id',
+    'identifier',
+    'subject',
+    'encounter',
+    'referrer',
+    'procedureReference',
+    'location',
+    'basedOn',
+    'interpreter',
+    'endpoint',
+    'reasonReference',
+    'series',
+  ],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
 // ---------------------------------------------------------------------------
@@ -348,6 +379,33 @@ const REWRITTEN_REFERENCE_PATHS = {
     'subject',
   ],
   Practitioner: ['qualification.issuer'],
+  ServiceRequest: [
+    'basedOn',
+    'encounter',
+    'insurance',
+    'locationReference',
+    'performer',
+    'reasonReference',
+    'relevantHistory',
+    'replaces',
+    'requester',
+    'subject',
+    'supportingInfo',
+  ],
+  ImagingStudy: [
+    'basedOn',
+    'encounter',
+    'endpoint',
+    'interpreter',
+    'location',
+    'procedureReference',
+    'reasonReference',
+    'referrer',
+    'series.endpoint',
+    'series.performer.actor',
+    'series.specimen',
+    'subject',
+  ],
 } as const satisfies Record<FhirResource['resourceType'], readonly string[]>
 
 const SCHEMA_FOR = {
@@ -359,6 +417,8 @@ const SCHEMA_FOR = {
   DocumentReference: DocumentReference.Schema,
   DiagnosticReport: DiagnosticReport.Schema,
   Practitioner: Practitioner.Schema,
+  ServiceRequest: ServiceRequest.Schema,
+  ImagingStudy: ImagingStudy.Schema,
 } as const satisfies Record<FhirResource['resourceType'], Schema.Schema.Any>
 
 describe('reference coverage is derived from the schemas, not asserted by hand', () => {
@@ -422,6 +482,8 @@ const resources: readonly FhirResource[] = [
   { ...sample(DocumentReference.Schema, 16), id: 'src-1' },
   { ...sample(DiagnosticReport.Schema, 17), id: 'src-1' },
   { ...sample(Practitioner.Schema, 18), id: 'src-1' },
+  { ...sample(ServiceRequest.Schema, 19), id: 'src-1' },
+  { ...sample(ImagingStudy.Schema, 20), id: 'src-1' },
 ]
 
 describe('adoptResource', () => {

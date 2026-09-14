@@ -8,11 +8,13 @@ import type * as Binary from '../resources/binary/binary.ts'
 import type * as DiagnosticReport from '../resources/diagnostic-report/diagnostic-report.ts'
 import type * as DocumentReference from '../resources/document-reference/document-reference.ts'
 import type { FhirResource } from '../resources/fhir-resource.ts'
+import type * as ImagingStudy from '../resources/imaging-study/imaging-study.ts'
 import type * as MedicationDispense from '../resources/medication-dispense/medication-dispense.ts'
 import type * as MedicationRequest from '../resources/medication-request/medication-request.ts'
 import type * as Observation from '../resources/observation/observation.ts'
 import type * as Patient from '../resources/patient/patient.ts'
 import type * as Practitioner from '../resources/practitioner/practitioner.ts'
+import type * as ServiceRequest from '../resources/service-request/service-request.ts'
 import { localResourceId } from './local-resource-id.ts'
 
 /**
@@ -364,6 +366,58 @@ const adoptPractitioner = (
   }
 }
 
+const adoptServiceRequest = (
+  prepared: PreparedSource,
+  originalId: string,
+  request: typeof ServiceRequest.Schema.Type
+): typeof ServiceRequest.Schema.Type => {
+  const rewrite = rewriteReference(prepared)
+  return {
+    ...request,
+    id: localResourceId(prepared.source.system, 'ServiceRequest', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...request.identifier],
+    subject: rewrite(request.subject),
+    encounter: rewriteNullable(rewrite, request.encounter),
+    requester: rewriteNullable(rewrite, request.requester),
+    basedOn: request.basedOn.map(rewrite),
+    replaces: request.replaces.map(rewrite),
+    performer: request.performer.map(rewrite),
+    locationReference: request.locationReference.map(rewrite),
+    reasonReference: request.reasonReference.map(rewrite),
+    insurance: request.insurance.map(rewrite),
+    supportingInfo: request.supportingInfo.map(rewrite),
+    relevantHistory: request.relevantHistory.map(rewrite),
+  }
+}
+
+const adoptImagingStudy = (
+  prepared: PreparedSource,
+  originalId: string,
+  study: typeof ImagingStudy.Schema.Type
+): typeof ImagingStudy.Schema.Type => {
+  const rewrite = rewriteReference(prepared)
+  return {
+    ...study,
+    id: localResourceId(prepared.source.system, 'ImagingStudy', originalId),
+    identifier: [sourceIdentifier(prepared, originalId), ...study.identifier],
+    subject: rewrite(study.subject),
+    encounter: rewriteNullable(rewrite, study.encounter),
+    referrer: rewriteNullable(rewrite, study.referrer),
+    procedureReference: rewriteNullable(rewrite, study.procedureReference),
+    location: rewriteNullable(rewrite, study.location),
+    basedOn: study.basedOn.map(rewrite),
+    interpreter: study.interpreter.map(rewrite),
+    endpoint: study.endpoint.map(rewrite),
+    reasonReference: study.reasonReference.map(rewrite),
+    series: study.series.map((s) => ({
+      ...s,
+      endpoint: s.endpoint.map(rewrite),
+      specimen: s.specimen.map(rewrite),
+      performer: s.performer.map((p) => ({ ...p, actor: rewrite(p.actor) })),
+    })),
+  }
+}
+
 /**
  * Re-key a resource under this source's namespace: derive its local id, record
  * the source's own id as `identifier[0]`, and rewrite its references so they
@@ -424,6 +478,12 @@ const adoptResource = (source: SourceIdentity) => {
       ),
       Match.discriminator('resourceType')('Practitioner', (practitioner) =>
         adoptPractitioner(prepared, originalId, practitioner)
+      ),
+      Match.discriminator('resourceType')('ServiceRequest', (request) =>
+        adoptServiceRequest(prepared, originalId, request)
+      ),
+      Match.discriminator('resourceType')('ImagingStudy', (study) =>
+        adoptImagingStudy(prepared, originalId, study)
       ),
       Match.exhaustive
     )

@@ -3,11 +3,13 @@ import * as Binary from './binary.ts'
 import * as Bundle from './bundle.ts'
 import * as DiagnosticReport from './diagnostic-report.ts'
 import * as DocumentReference from './document-reference.ts'
+import * as ImagingStudy from './imaging-study.ts'
 import * as MedicationDispense from './medication-dispense.ts'
 import * as MedicationRequest from './medication-request.ts'
 import * as Observation from './observation.ts'
 import * as Patient from './patient.ts'
 import * as Practitioner from './practitioner.ts'
+import * as ServiceRequest from './service-request.ts'
 
 /**
  * The path Wildflower's host mounts `emr-rust` at.
@@ -34,6 +36,8 @@ const FhirResourcesApi: HttpApi.HttpApi<
   | typeof DocumentReference.httpApiGroup
   | typeof DiagnosticReport.httpApiGroup
   | typeof Practitioner.httpApiGroup
+  | typeof ServiceRequest.httpApiGroup
+  | typeof ImagingStudy.httpApiGroup
   | typeof Bundle.httpApiGroup,
   HttpApiError.HttpApiDecodeError
 > = HttpApi.make('FhirResourcesApi')
@@ -45,6 +49,8 @@ const FhirResourcesApi: HttpApi.HttpApi<
   .add(DocumentReference.httpApiGroup)
   .add(DiagnosticReport.httpApiGroup)
   .add(Practitioner.httpApiGroup)
+  .add(ServiceRequest.httpApiGroup)
+  .add(ImagingStudy.httpApiGroup)
   .add(Bundle.httpApiGroup)
 
 export {
@@ -54,9 +60,11 @@ export {
   Bundle,
   DiagnosticReport,
   DocumentReference,
+  ImagingStudy,
   MedicationDispense,
   MedicationRequest,
   Observation,
   Patient,
   Practitioner,
+  ServiceRequest,
 }

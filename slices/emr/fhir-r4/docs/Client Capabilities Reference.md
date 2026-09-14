@@ -22,7 +22,7 @@ The `/fhir-r4` mount path itself is unchanged on the server side — only where 
 
 ## Choice element XOR not enforced
 
-FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Extension.value[x]`, `MedicationRequest.medication[x]`, `MedicationRequest.reported[x]`, `MedicationRequest.substitution.allowed[x]`, `MedicationDispense.medication[x]`, `MedicationDispense.statusReason[x]`, `Dosage.asNeeded[x]`, `Dosage.doseAndRate.dose[x]`, `Dosage.doseAndRate.rate[x]`) are mutex by spec — only one variant may be set at a time. Our schemas declare every variant as an independent optional field (via `choiceElementSetPassthroughFields(prefix, variants)`, or — for the `Dosage.doseAndRate` `dose[x]`/`rate[x]` slots whose `SimpleQuantity` type is named `…Quantity` on the wire — as explicit `doseRange`/`doseQuantity`/`rateRatio`/`rateRange`/`rateQuantity` fields). A payload setting both `deceasedBoolean` and `deceasedDateTime`, or both `medicationCodeableConcept` and `medicationReference`, will validate.
+FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Extension.value[x]`, `MedicationRequest.medication[x]`, `MedicationRequest.reported[x]`, `MedicationRequest.substitution.allowed[x]`, `MedicationDispense.medication[x]`, `MedicationDispense.statusReason[x]`, `Dosage.asNeeded[x]`, `Dosage.doseAndRate.dose[x]`, `Dosage.doseAndRate.rate[x]`, `ServiceRequest.quantity[x]`, `ServiceRequest.occurrence[x]`, `ServiceRequest.asNeeded[x]`) are mutex by spec — only one variant may be set at a time. Our schemas declare every variant as an independent optional field (via `choiceElementSetPassthroughFields(prefix, variants)`, or — for the `Dosage.doseAndRate` `dose[x]`/`rate[x]` slots whose `SimpleQuantity` type is named `…Quantity` on the wire — as explicit `doseRange`/`doseQuantity`/`rateRatio`/`rateRange`/`rateQuantity` fields). A payload setting both `deceasedBoolean` and `deceasedDateTime`, or both `medicationCodeableConcept` and `medicationReference`, will validate.
 
 FHIR also marks `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` as required (1..1); modeling every variant as an independent optional means neither is required at the schema level, so a payload with no medication slot set also validates.
 
@@ -212,6 +212,39 @@ three cases (positive round-trip, `0` decodes, non-integer still rejected).
 To register a new datatype: add an entry to `baseDatatypes` in `datatype-registry.ts` and a `registerDatatypeSchema('Name', NameSchema)` line at the bottom of its datatype module file.
 
 Note: a single collation block (e.g. inside `choice-element-passthrough-fields.ts` or `datatype-registry.ts` importing every `complex/*.ts` and calling `registerDatatypeSchema` for each) would be tidier, but is not viable today — it re-enters a partially-loaded `base/element.ts` through the Element ⇄ Extension cycle, spreading `undefined` for `Element.fields` into every complex datatype's struct at construction time. The per-module registration pattern avoids that hazard.
+
+## ServiceRequest search parameters (subset declared)
+
+Per FHIR R4 § ServiceRequest.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `intent`, `code`, `subject`, `patient`, `encounter`, `authored`, `requester`, `performer`, `category`, `priority`, `body-site`, `occurrence`, `based-on`, `replaces`, `instantiates-canonical`, `instantiates-uri`, `requisition`, `specimen`. The `HttpApi` description (and therefore the typed client) declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `intent`, `code`, `subject`, `authored`.
+
+`status` is narrowed to the `ServiceRequest.status` value set (`draft | active | on-hold | revoked | completed | entered-in-error | unknown`). `intent` is narrowed to the `ServiceRequest.intent` value set (`proposal | plan | directive | order | original-order | reflex-order | filler-order | instance-order | option`). `authored` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above).
+
+Notably absent: `patient` (same as `subject` but typed to Patient only), `encounter`, `requester`, `performer`, `category`, `priority`. Every parameter is single-valued (see the DocumentReference narrowings above).
+
+## ServiceRequest choice / required modeling
+
+`ServiceRequest.quantity[x]` (Quantity | Ratio | Range), `ServiceRequest.occurrence[x]` (dateTime | Period | Timing), and `ServiceRequest.asNeeded[x]` (boolean | CodeableConcept) are each modeled as independent optional fields via `choiceElementSetPassthroughFields` — XOR not enforced (see "Choice element XOR not enforced" above). Required `status`, `intent`, and `subject` are modeled as plain required fields; `authoredOn` is nullable-optional (FHIR R4 marks it 0..1). `note` is typed as `Schema.Array(Schema.Any)` — Annotation backbone elements are not individually typed. `specimen` is omitted from the schema entirely (ServiceRequest is modeled for radiology/DICOM order tracking, not lab orders). `ServiceRequest.medication[x]` does not exist on this resource (it is not MedicationRequest).
+
+## ImagingStudy search parameters (subset declared)
+
+Per FHIR R4 § ImagingStudy.search, the standard parameters include `_id`, `_lastUpdated`, `identifier`, `status`, `subject`, `patient`, `encounter`, `started`, `modality`, `bodysite`, `dicom-class`, `instance`, `performer`, `reason`, `series`, `endpoint`, `basedon`. The `HttpApi` description declares: `_count`, `_pageToken`, `_id`, `identifier`, `status`, `subject`, `started`, `modality`, `basedOn`.
+
+`status` is narrowed to the `ImagingStudy.status` value set (`registered | available | cancelled | entered-in-error | unknown`). `started` is the shared **`DateSearchParam`** value (see "Date search parameter modelling" above). `modality` and `basedOn` are plain strings — `modality` carries the DICOM modality code (e.g. `CT`, `MR`), and `basedOn` a literal reference string.
+
+Notably absent: `patient`, `encounter`, `bodysite`, `dicom-class`, `instance`, `performer`, `reason`, `series`, `endpoint`. Every parameter is single-valued.
+
+## ImagingStudy choice / required / backbone modeling
+
+`ImagingStudy` has no choice elements. Required `status` and `subject` are modeled as plain required fields. `modality` is typed as `Coding[]` (per R4: a summary of each series' modality, **not** CodeableConcept — the study-level `modality` is a Coding in R4, changed to CodeableConcept in R5). `numberOfSeries` and `numberOfInstances` are non-negative integers (nullable-optional).
+
+`ImagingStudy.series` is modeled as a full backbone element (`imaging-study-series.ts`) carrying:
+
+- Required: `uid` (String, the DICOM UID), `modality` (Coding, the series-level acquisition modality)
+- Optional: `number` (non-negative int), `description`, `numberOfInstances` (non-negative int), `endpoint` (Reference[]), `bodySite` (Coding), `laterality` (Coding), `specimen` (Reference[]), `started` (String), `performer` (array of `{ function?: CodeableConcept, actor: Reference }`), `instance` (array of series-instance backbone)
+
+`ImagingStudy.series.instance` is a nested backbone element (`imaging-study-series-instance.ts`) with required `uid` and `sopClass` (Coding) plus optional `number` and `title`.
+
+`note` is typed as `Schema.Array(Schema.Any)` — Annotation not individually typed. `procedureReference` is typed as a nullable Reference (no target-type enforcement — same gap as all References here). `ImagingStudy.procedureCode` is typed as CodeableConcept[]; the spec marks it 0..*.
 
 ## Post-merge audit (TODO)
 
