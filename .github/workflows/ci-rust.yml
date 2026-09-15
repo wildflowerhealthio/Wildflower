@@ -134,11 +134,11 @@ jobs:
         # compiles the full workspace incl. the Tauri dep tree, so it doesn't
         # share the excl-tauri cache the pre-merge Rust checks used before the
         # Tauri crates were folded in here.
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           cache-shared-key: rust-workspace-all
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.6
+        uses: taiki-e/install-action@v2.87.12
         with:
           tool: nextest
       # fmt / clippy / nextest go through scripts/checks/rust.sh — the single

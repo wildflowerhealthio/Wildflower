@@ -72,7 +72,7 @@ jobs:
 
       - name: Setup Vite+
         if: github.event.action != 'closed'
-        uses: voidzero-dev/setup-vp@v1.19.0
+        uses: voidzero-dev/setup-vp@v1.20.0
         with:
           cache: true
 

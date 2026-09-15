@@ -283,7 +283,7 @@ jobs:
             libayatana-appindicator3-dev librsvg2-dev libxdo-dev
 
       - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           # Extra macOS targets for the universal binary; empty on other OSes.
           target: ${{ matrix.rust-targets }}
@@ -293,7 +293,7 @@ jobs:
       # Vite+ owns the toolchain (Node + package manager + `vp`), same as
       # every other workflow here — no separate setup-node / corepack / pnpm.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.19.0
+        uses: voidzero-dev/setup-vp@v1.20.0
         with:
           cache: true
 
@@ -405,14 +405,14 @@ jobs:
             > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
 
       - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           target: aarch64-apple-ios
           rustflags: '-D warnings'
           cache-shared-key: tauri-release-ios
 
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.19.0
+        uses: voidzero-dev/setup-vp@v1.20.0
         with:
           cache: true
 
