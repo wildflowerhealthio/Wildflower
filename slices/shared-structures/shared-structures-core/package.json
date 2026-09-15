@@ -39,7 +39,7 @@
     "test": "vp test"
   },
   "devDependencies": {
-    "@apidevtools/json-schema-ref-parser": "^16.0.1",
+    "@apidevtools/json-schema-ref-parser": "^16.0.2",
     "@effect/platform": "catalog:",
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
