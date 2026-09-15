@@ -43,3 +43,22 @@
   color: white;
   border-color: transparent;
 }
+
+.warning {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--wf-warning-border, #e0a800);
+  border-radius: 0.5rem;
+  background: var(--wf-warning-bg, #fff8e1);
+  color: var(--wf-warning-text, #665500);
+}
+
+.warningMessage {
+  margin: 0 0 0.5rem;
+  font-size: 0.85rem;
+}
+
+.warningActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
