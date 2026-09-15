@@ -64,7 +64,12 @@ const truncateForDisplay = (
       return result
     })
   }
-  if (typeof value === 'object' && value !== null) {
+
+  if (
+    typeof value === 'object' &&
+    value !== null &&
+    !('toJSON' in value && typeof value['toJSON'] === 'function')
+  ) {
     const out: Record<string, unknown> = {}
     for (const key of Object.keys(value)) {
       path.push(key)

@@ -31,13 +31,11 @@ const fileOf = (name: string, bytes: Uint8Array): ReadableFile => ({
 
 /** A HAR descriptor stub — extension `.har` or JSON-object shape. */
 const harDescriptor: IdentifiableDescriptor = {
-  accept: ['.har', 'application/json'],
   detect: (bytes, name) => name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
 }
 
 /** A LifeLabs PDF descriptor stub — extension `.pdf` or `%PDF-` magic. */
 const pdfDescriptor: IdentifiableDescriptor = {
-  accept: ['.pdf', 'application/pdf'],
   detect: (bytes, name) =>
     name.toLowerCase().endsWith('.pdf') ||
     (bytes.length >= 5 &&
