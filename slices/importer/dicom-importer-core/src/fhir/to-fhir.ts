@@ -1,0 +1,280 @@
+import type { DicomHeader, PersonName } from 'dicom'
+/**
+ * Synthesize FHIR R4 resources from a parsed {@link DicomHeader}: a `Patient`,
+ * optionally a `ServiceRequest` (when `AccessionNumber` is present), and an
+ * `ImagingStudy` with one series carrying one instance.
+ *
+ * @remarks
+ * Ids are deterministic — the same tags produce the same ids — so re-importing
+ * the same DICOM file overwrites rather than duplicates. The derivation mirrors
+ * `lifelabs-pdf-importer-core`'s wire-builder pattern: a `sourceId` from
+ * `joinIdComponents` through `fnv1a64`, validated through the `fhir-r4`
+ * schemas' `Schema.decodeUnknown`.
+ *
+ * @packageDocumentation
+ */
+import { Effect, type ParseResult, Schema } from 'effect'
+import { joinIdComponents } from 'fhir-r4/identity'
+import type { FhirResource } from 'fhir-r4/resources'
+import { ImagingStudy, Patient, ServiceRequest } from 'fhir-r4/resources'
+import { fnv1a64 } from 'kitchen-sink'
+
+import { DICOM_SYSTEM } from '../source-system.ts'
+
+type Wire = Record<string, unknown>
+
+const sourceId = (components: readonly string[]): string =>
+  fnv1a64(joinIdComponents(components)).toString(16).padStart(16, '0')
+
+const DCM_CODING_SYSTEM = 'http://dicom.nema.org/resources/ontology/DCM'
+const DICOM_UID_SYSTEM = 'urn:dicom:uid'
+
+const genderOf = (sex: string | undefined): string | undefined => {
+  if (sex === undefined) return undefined
+  switch (sex.trim().toUpperCase()) {
+    case 'M':
+      return 'male'
+    case 'F':
+      return 'female'
+    case 'O':
+      return 'other'
+    default:
+      return undefined
+  }
+}
+
+/**
+ * Format a DICOM DA date (`YYYYMMDD`) as a FHIR date (`YYYY-MM-DD`).
+ * Returns `undefined` for malformed or missing dates.
+ */
+const fhirDate = (da: string | undefined): string | undefined => {
+  if (da === undefined || da.length < 8) return undefined
+  const y = da.slice(0, 4)
+  const m = da.slice(4, 6)
+  const d = da.slice(6, 8)
+  return `${y}-${m}-${d}`
+}
+
+/**
+ * Compose a FHIR `dateTime` from a DICOM DA date and optional TM time.
+ * No zone is attached — DICOM files carry local time with no offset.
+ */
+const fhirDateTime = (da: string | undefined, tm: string | undefined): string | undefined => {
+  const date = fhirDate(da)
+  if (date === undefined) return undefined
+  if (tm === undefined || tm.length < 4) return date
+  const h = tm.slice(0, 2)
+  const min = tm.slice(2, 4)
+  const s = tm.length >= 6 ? tm.slice(4, 6) : '00'
+  return `${date}T${h}:${min}:${s}`
+}
+
+const humanNameWire = (pn: PersonName): Wire => {
+  const wire: Wire = { text: pn.text }
+  if (pn.family !== '') wire['family'] = pn.family
+  if (pn.given !== '') wire['given'] = pn.given.split(/\s+/).filter((p) => p.length > 0)
+  return wire
+}
+
+// ---------------------------------------------------------------------------
+// Patient
+// ---------------------------------------------------------------------------
+
+const patientOriginalId = (header: DicomHeader): string | undefined => {
+  if (header.patientId !== undefined && header.patientId !== '') {
+    const issuer = header.issuerOfPatientId ?? DICOM_SYSTEM
+    return sourceId(['patient-id', issuer, header.patientId])
+  }
+  if (header.patientName !== undefined) {
+    return sourceId(['patient-name', header.patientName.text, header.patientBirthDate ?? ''])
+  }
+  return undefined
+}
+
+const patientWire = (header: DicomHeader): Wire | undefined => {
+  const id = patientOriginalId(header)
+  if (id === undefined) return undefined
+
+  const wire: Wire = { resourceType: 'Patient', id }
+
+  const identifier: Wire[] = []
+  if (header.patientId !== undefined && header.patientId !== '') {
+    const patIdentifier: Wire = {
+      system: DICOM_SYSTEM,
+      value: header.patientId,
+    }
+    if (header.issuerOfPatientId !== undefined && header.issuerOfPatientId !== '') {
+      patIdentifier['assigner'] = { display: header.issuerOfPatientId }
+    }
+    identifier.push(patIdentifier)
+  }
+  if (identifier.length > 0) wire['identifier'] = identifier
+
+  if (header.patientName !== undefined) wire['name'] = [humanNameWire(header.patientName)]
+
+  const gender = genderOf(header.patientSex)
+  if (gender !== undefined) wire['gender'] = gender
+
+  const birthDate = fhirDate(header.patientBirthDate)
+  if (birthDate !== undefined) wire['birthDate'] = birthDate
+
+  return wire
+}
+
+// ---------------------------------------------------------------------------
+// ServiceRequest — emitted only when AccessionNumber is present
+// ---------------------------------------------------------------------------
+
+const serviceRequestOriginalId = (header: DicomHeader): string =>
+  sourceId(['accession', header.accessionNumber!])
+
+const serviceRequestWire = (header: DicomHeader, patientId: string): Wire | undefined => {
+  if (header.accessionNumber === undefined || header.accessionNumber === '') return undefined
+
+  const id = serviceRequestOriginalId(header)
+  const wire: Wire = {
+    resourceType: 'ServiceRequest',
+    id,
+    status: 'completed',
+    intent: 'order',
+    subject: { reference: `Patient/${patientId}` },
+    identifier: [{ system: DICOM_SYSTEM, value: header.accessionNumber }],
+  }
+
+  const description = header.requestedProcedureDescription ?? header.studyDescription
+  if (description !== undefined && description !== '') {
+    wire['code'] = { text: description }
+  }
+
+  if (header.referringPhysicianName !== undefined) {
+    wire['requester'] = { display: header.referringPhysicianName.text }
+  }
+
+  return wire
+}
+
+// ---------------------------------------------------------------------------
+// ImagingStudy
+// ---------------------------------------------------------------------------
+
+const imagingStudyOriginalId = (header: DicomHeader): string =>
+  sourceId(['study', header.studyInstanceUid])
+
+const imagingStudyWire = (
+  header: DicomHeader,
+  patientId: string,
+  serviceRequestId: string | undefined
+): Wire => {
+  const id = imagingStudyOriginalId(header)
+
+  const wire: Wire = {
+    resourceType: 'ImagingStudy',
+    id,
+    status: 'available',
+    subject: { reference: `Patient/${patientId}` },
+    identifier: [
+      {
+        system: DICOM_UID_SYSTEM,
+        value: `urn:oid:${header.studyInstanceUid}`,
+      },
+    ],
+    numberOfSeries: 1,
+    numberOfInstances: 1,
+  }
+
+  const started = fhirDateTime(header.studyDate, header.studyTime)
+  if (started !== undefined) wire['started'] = started
+
+  if (header.modality !== undefined) {
+    wire['modality'] = [{ system: DCM_CODING_SYSTEM, code: header.modality }]
+  }
+
+  if (header.studyDescription !== undefined) wire['description'] = header.studyDescription
+
+  if (serviceRequestId !== undefined) {
+    wire['basedOn'] = [{ reference: `ServiceRequest/${serviceRequestId}` }]
+  }
+
+  // One series with one instance
+  const instance: Wire = {
+    uid: header.sopInstanceUid,
+    sopClass: {
+      system: DICOM_UID_SYSTEM,
+      code: header.sopClassUid ?? '1.2.840.10008.5.1.4.1.1.7',
+    },
+  }
+  if (header.instanceNumber !== undefined) instance['number'] = header.instanceNumber
+
+  const modalityCode = header.modality ?? 'OT'
+
+  const series: Wire = {
+    uid: header.seriesInstanceUid,
+    modality: { system: DCM_CODING_SYSTEM, code: modalityCode },
+    instance: [instance],
+  }
+  if (header.seriesNumber !== undefined) series['number'] = header.seriesNumber
+  if (header.seriesDescription !== undefined) series['description'] = header.seriesDescription
+  if (header.bodyPartExamined !== undefined) {
+    series['bodySite'] = { display: header.bodyPartExamined }
+  }
+
+  wire['series'] = [series]
+
+  return wire
+}
+
+// ---------------------------------------------------------------------------
+// Orchestration
+// ---------------------------------------------------------------------------
+
+const decodePatient = Schema.decodeUnknown(Patient.Schema)
+const decodeServiceRequest = Schema.decodeUnknown(ServiceRequest.Schema)
+const decodeImagingStudy = Schema.decodeUnknown(ImagingStudy.Schema)
+
+/**
+ * Synthesize FHIR resources from a parsed DICOM header.
+ *
+ * @param header - The parsed DICOM tags
+ * @returns The resources in write order: Patient first (when present), then
+ *   ServiceRequest (when AccessionNumber is present), then ImagingStudy.
+ *   Fails with a `ParseError` when a wire object does not satisfy its schema.
+ */
+const toFhirResources = (
+  header: DicomHeader
+): Effect.Effect<readonly FhirResource[], ParseResult.ParseError> =>
+  Effect.gen(function* () {
+    const resources: FhirResource[] = []
+
+    const patientWireObj = patientWire(header)
+    const patientId = patientOriginalId(header)
+
+    if (patientWireObj !== undefined && patientId !== undefined) {
+      resources.push(yield* decodePatient(patientWireObj))
+    }
+
+    let serviceRequestId: string | undefined
+    if (patientId !== undefined) {
+      const srWire = serviceRequestWire(header, patientId)
+      if (srWire !== undefined) {
+        serviceRequestId = serviceRequestOriginalId(header)
+        resources.push(yield* decodeServiceRequest(srWire))
+      }
+    }
+
+    if (patientId !== undefined) {
+      resources.push(
+        yield* decodeImagingStudy(imagingStudyWire(header, patientId, serviceRequestId))
+      )
+    }
+
+    return resources
+  })
+
+export {
+  fhirDate,
+  fhirDateTime,
+  imagingStudyOriginalId,
+  patientOriginalId,
+  serviceRequestOriginalId,
+  toFhirResources,
+}

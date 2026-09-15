@@ -26,6 +26,12 @@ consumer slices.
   (non-React) `extractPositionedText` seam that fills the schema from PDF bytes
   via `pdfjs-dist`. Moved out of `pdf-anonymizer-react`. The one place PDF
   extraction is integrated, shared by the anonymizer and a future PDF importer.
+- **`dicom`** — pure DICOM Part 10 tag reader: `parseDicomFile` wraps
+  `dicom-parser` into a typed `DicomHeader` of the tags the importer cares
+  about (patient, study, series, instance, equipment modules). `effect` +
+  `dicom-parser` only. The `test-helpers` subpath exports `writeDicom` (a
+  minimal explicit-VR little-endian writer) and fast-check arbitraries for
+  synthesizing DICOM fixtures in tests.
 
 The deferred positioned-text preview viewer (React `RunsView`) would join as a
 `positioned-text-react` when it is extracted from `pdf-anonymizer-react`.

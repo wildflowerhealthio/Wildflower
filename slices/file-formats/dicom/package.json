@@ -1,13 +1,13 @@
 {
-  "name": "dicom-importer-core",
+  "name": "dicom",
   "version": "0.0.0",
   "private": true,
-  "description": "The DICOM binding of the importer slice (core layer): byte-level .dcm detection, the source file codec that stores a DICOM file as a FHIR DocumentReference, and the importer descriptor. No DOM, no fs, no React.",
+  "description": "Pure DICOM Part 10 tag reader: parseDicomFile wraps dicom-parser into a typed DicomHeader of the tags the importer cares about. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/importer/dicom-importer-core"
+    "directory": "slices/file-formats/dicom"
   },
   "files": [
     "dist"
@@ -18,9 +18,9 @@
       "source": "./src/index.ts",
       "default": "./dist/index.js"
     },
-    "./source-file": {
-      "source": "./src/source-file/index.ts",
-      "default": "./dist/source-file.js"
+    "./test-helpers": {
+      "source": "./src/test-helpers.ts",
+      "default": "./dist/test-helpers.js"
     },
     "./package.json": "./package.json"
   },
@@ -30,23 +30,19 @@
     "dev": "vp pack --watch",
     "test": "vp test"
   },
+  "dependencies": {
+    "dicom-parser": "catalog:"
+  },
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
-    "dicom": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
-    "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "dicom": "workspace:*",
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "importer-fundamentals": "workspace:*",
-    "kitchen-sink": "workspace:*"
+    "effect": "catalog:"
   }
 }

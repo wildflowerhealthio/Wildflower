@@ -33,10 +33,12 @@ import { sha256Base64 } from './sha256.ts'
  * duplicated per binding) because the id needs the digest and the shared
  * derivation, both of which this package already owns.
  *
- * `subject` is deliberately absent, the same as a trace: a source file is an
+ * `subject` is absent by default, the same as a trace: a source file is an
  * engineering artifact that happens to contain PHI, and leaving `subject` unset
  * keeps it out of `Patient/$everything` and clinical exports. It stays
- * reachable by `category` search.
+ * reachable by `category` search. Formats that embed a patient identity
+ * (DICOM) may pass a `subject` to {@link SourceFileCodec.buildSourceFile} to
+ * link the archive to its patient.
  *
  * @packageDocumentation
  */
@@ -103,7 +105,11 @@ interface SourceFileCodec {
     resource: DocumentReferenceType
   ) => Effect.Effect<SourceFile, ParseResult.ParseError>
   /** The pure wire builder — a source file plus its precomputed hash to a `DocumentReference` object. */
-  readonly toWire: (sourceFile: SourceFile, hash: string) => FhirR4.DocumentReference
+  readonly toWire: (
+    sourceFile: SourceFile,
+    hash: string,
+    subject?: { readonly reference: string }
+  ) => FhirR4.DocumentReference
   /** Whether a decoded `DocumentReference` is a source file of this format, by `category`. */
   readonly isSourceFile: (resource: DocumentReferenceType) => boolean
   /** The `system|code` `category` search token every server-side read filters on. */
@@ -115,10 +121,13 @@ interface SourceFileCodec {
    * nothing. Fails only as a `ParseError` (a digest unavailable in an insecure
    * context).
    */
-  readonly buildSourceFile: (picked: {
-    readonly fileName: string
-    readonly bytes: Uint8Array
-  }) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
+  readonly buildSourceFile: (
+    picked: {
+      readonly fileName: string
+      readonly bytes: Uint8Array
+    },
+    options?: { readonly subject?: { readonly reference: string } }
+  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
 }
 
 /**
@@ -151,7 +160,11 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
   const encodeResource = ParseResult.encode(DocumentReference.Schema)
   const decodeSourceFile = ParseResult.decodeUnknown(SourceFileSchema)
 
-  const toWire = (sourceFile: SourceFile, hash: string): FhirR4.DocumentReference => {
+  const toWire = (
+    sourceFile: SourceFile,
+    hash: string,
+    subject?: { readonly reference: string }
+  ): FhirR4.DocumentReference => {
     const uploadedAt = DateTime.formatIso(sourceFile.uploadedAt)
     return {
       resourceType: 'DocumentReference',
@@ -161,6 +174,7 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
       category: [{ coding: [{ system: coding.system, code: coding.code }] }],
       date: uploadedAt,
       description: `${descriptionPrefix}${sourceFile.fileName}`,
+      ...(subject === undefined ? {} : { subject }),
       ...(securityLabel === undefined
         ? {}
         : { securityLabel: [{ coding: securityLabel.map((one) => ({ ...one })) }] }),
@@ -245,10 +259,13 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
       )
     )
 
-  const buildSourceFile = (picked: {
-    readonly fileName: string
-    readonly bytes: Uint8Array
-  }): Effect.Effect<DocumentReferenceType, ParseResult.ParseError> =>
+  const buildSourceFile = (
+    picked: {
+      readonly fileName: string
+      readonly bytes: Uint8Array
+    },
+    options?: { readonly subject?: { readonly reference: string } }
+  ): Effect.Effect<DocumentReferenceType, ParseResult.ParseError> =>
     Effect.gen(function* () {
       // A fresh `ArrayBuffer`-backed view: `crypto.subtle.digest` requires one,
       // and the same digest is the attachment `hash` `toWire` stamps below —
@@ -273,7 +290,7 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
       // `ParseIssue`; lift it to a `ParseError` so this seam matches the
       // descriptor's one error channel.
       return yield* decodeResource(
-        toWire({ id, fileName: picked.fileName, uploadedAt, bytes }, hash)
+        toWire({ id, fileName: picked.fileName, uploadedAt, bytes }, hash, options?.subject)
       ).pipe(Effect.mapError(ParseResult.parseError))
     })
 

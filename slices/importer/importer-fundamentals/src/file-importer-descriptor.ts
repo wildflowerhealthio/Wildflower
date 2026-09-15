@@ -179,10 +179,13 @@ interface FileImporterDescriptor<TSettings, TParsed> {
    * batch sink. Fails only as a `ParseError`, the way the source-file
    * codec's encode does (a digest unavailable in an insecure context).
    */
-  readonly buildSourceFile: (picked: {
-    readonly fileName: string
-    readonly bytes: Uint8Array
-  }) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
+  readonly buildSourceFile: (
+    picked: {
+      readonly fileName: string
+      readonly bytes: Uint8Array
+    },
+    options?: { readonly subject?: { readonly reference: string } }
+  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
   /**
    * FHIR `category` search token — `system|code` form — every server-side
    * source-file read filters on for this format's uploaded source files.
