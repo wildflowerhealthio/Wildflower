@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
+import { copyFileSync, cpSync, existsSync, mkdirSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -51,6 +51,11 @@ for (const section of sections) {
   cpSync(section.from, section.to, { recursive: true })
   log(`Copied ${section.packageName} -> ${section.to}`)
 }
+
+// Site-wide files that are not part of any section.
+const fourOhFour = join(packageRoot, '404.html')
+copyFileSync(fourOhFour, join(outDir, '404.html'))
+log(`Copied 404.html -> ${join(outDir, '404.html')}`)
 
 const missing = missingRequiredPaths(sections, (path) => existsSync(path))
 

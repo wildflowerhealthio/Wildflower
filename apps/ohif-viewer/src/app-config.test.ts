@@ -16,10 +16,30 @@ const configSource = readFileSync(
  * `window` and `document` in scope — and returns the `window.config` it sets.
  * `document.currentScript` is the only DOM the file touches.
  */
-const evaluateConfig = (currentScript: { src: string } | null): unknown => {
-  const window: { config?: unknown } = {}
-  runInNewContext(configSource, { window, document: { currentScript }, URL })
+const evaluateConfig = (
+  currentScript: { src: string } | null,
+  location?: { search: string; hash: string; pathname?: string }
+): unknown => {
+  const loc = {
+    search: location?.search ?? '',
+    hash: location?.hash ?? '',
+    pathname: location?.pathname ?? '/',
+  }
+  const window: {
+    config?: unknown
+    location: typeof loc
+    history: { replaceState: typeof replaceState }
+  } = {
+    location: loc,
+    history: { replaceState },
+  }
+  runInNewContext(configSource, { window, document: { currentScript }, URL, URLSearchParams })
   return window.config
+}
+
+let lastReplaceState: { url: string } | undefined
+const replaceState = (_data: unknown, _unused: string, url: string): void => {
+  lastReplaceState = { url }
 }
 
 const isConfig = (value: unknown): value is { routerBasename: string } =>
@@ -99,5 +119,43 @@ describe('config/app-config.js', () => {
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
+  })
+
+  it('should restore a redirect path from 404.html into the browser URL', () => {
+    lastReplaceState = undefined
+    evaluateConfig(
+      { src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' },
+      { search: '?redirect=/fhir-viewer&iss=https%3A%2F%2Fexample.com', hash: '' }
+    )
+    expect(lastReplaceState).toEqual({
+      url: '/ohif-viewer/fhir-viewer?iss=https%3A%2F%2Fexample.com',
+    })
+  })
+
+  it('should strip the basename prefix from the redirect path', () => {
+    lastReplaceState = undefined
+    evaluateConfig(
+      { src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' },
+      { search: '?redirect=/ohif-viewer/fhir-viewer', hash: '' }
+    )
+    expect(lastReplaceState).toEqual({ url: '/ohif-viewer/fhir-viewer' })
+  })
+
+  it('should preserve the hash fragment through the redirect', () => {
+    lastReplaceState = undefined
+    evaluateConfig(
+      { src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' },
+      { search: '?redirect=/fhir-viewer', hash: '#study=1' }
+    )
+    expect(lastReplaceState).toEqual({ url: '/ohif-viewer/fhir-viewer#study=1' })
+  })
+
+  it('should not call replaceState when there is no redirect param', () => {
+    lastReplaceState = undefined
+    evaluateConfig(
+      { src: 'https://wildflowerhealth.io/ohif-viewer/app-config.js' },
+      { search: '?iss=https%3A%2F%2Fexample.com', hash: '' }
+    )
+    expect(lastReplaceState).toBeUndefined()
   })
 })

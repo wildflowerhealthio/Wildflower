@@ -62,8 +62,12 @@ SMART configuration, redirects to authorize, and the server redirects back to
 `https://wildflowerhealth.io/ohif-viewer/` with the code. Picking a study on the
 worklist then navigates client-side into the `fhir-viewer` mode.
 
-GitHub Pages serves real files only, so a fresh load of a mode URL such as
-`/ohif-viewer/fhir-viewer?…` is a 404. Launch at the worklist, not the mode.
+GitHub Pages serves a site-wide `404.html` for unknown paths. That page probes
+ancestor directories for an `index.html`, finds `/ohif-viewer/index.html`, and
+redirects there with `?redirect=/fhir-viewer&…`. The redirect restoration block
+in `config/app-config.js` reads that parameter and rewrites the URL with
+`history.replaceState` before the OHIF router initialises, so deep links like
+`/ohif-viewer/fhir-viewer?iss=…` work on a fresh page load.
 
 `?iss=` without `launch` sets the FHIR server without an OAuth redirect, for
 standalone testing.
