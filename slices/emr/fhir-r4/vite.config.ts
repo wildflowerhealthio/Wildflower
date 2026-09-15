@@ -7,37 +7,37 @@ export default defineConfig({
   ...base,
   pack: [
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'clients/index': 'src/clients/index.ts' },
     },
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'http-api-definition/index': 'src/http-api-definition/index.ts' },
     },
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'identity/index': 'src/identity/index.ts' },
     },
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'resources/index': 'src/resources/index.ts' },
     },
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'data-types/index': 'src/data-types/index.ts' },
     },
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'telemetry/index': 'src/telemetry/index.ts' },

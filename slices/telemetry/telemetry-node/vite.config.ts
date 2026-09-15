@@ -5,7 +5,7 @@ export default defineConfig({
   ...base,
   pack: [
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'node',
       entry: { index: 'src/index.ts' },

@@ -4,7 +4,7 @@ import base from '../../vite.config.base.ts'
 export default defineConfig({
   ...base,
   pack: {
-    dts: { tsgo: true },
+    dts: { tsgo: {} },
     platform: 'neutral',
     // The package.json "exports" field is hand-maintained so that a "source"
     // condition can sit alongside the default dist entry. Letting tsdown

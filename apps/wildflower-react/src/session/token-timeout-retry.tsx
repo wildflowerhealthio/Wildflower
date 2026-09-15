@@ -1,4 +1,5 @@
 import { useRouter } from '@tanstack/react-router'
+import { Match } from 'effect'
 import { TokenTimeout } from 'gatekeeper-react'
 import { type JSX, useRef } from 'react'
 import { Sentry } from 'telemetry-web'
@@ -15,7 +16,7 @@ import { Sentry } from 'telemetry-web'
  */
 const TOKEN_TIMEOUT_RETRY_THRESHOLD = 3
 
-const TokenTimeoutRetry = ({ error }: { readonly error: Error }): JSX.Element => {
+const TokenTimeoutRetry = ({ error }: { readonly error: unknown }): JSX.Element => {
   const router = useRouter()
   const isTimeout = error instanceof TokenTimeout
   // Surface wedged-host conditions: count consecutive retries this
@@ -28,9 +29,22 @@ const TokenTimeoutRetry = ({ error }: { readonly error: Error }): JSX.Element =>
     <>
       <h1 className="text-heading-6">{isTimeout ? 'Still loading…' : 'Something went wrong'}</h1>
       <p className="text-body-2">
-        {isTimeout
-          ? "We didn't receive your session in time. Tap retry to keep waiting."
-          : error.message}
+        {Match.value(error).pipe(
+          Match.withReturnType<string>(),
+          Match.when(
+            Match.instanceOf(TokenTimeout),
+            () => "We didn't receive your session in time. Tap retry to keep waiting."
+          ),
+          Match.when(
+            (err: unknown): err is { message: string } =>
+              typeof err === 'object' &&
+              err !== null &&
+              'message' in err &&
+              typeof err.message === 'string',
+            (err) => err.message
+          ),
+          Match.orElse((err) => String(err))
+        )}
       </p>
       <button
         type="button"

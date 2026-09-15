@@ -17,7 +17,7 @@ export default defineConfig({
     }),
   ],
   pack: {
-    dts: { tsgo: true },
+    dts: { tsgo: {} },
     platform: 'neutral',
     exports: false,
     entry: {
