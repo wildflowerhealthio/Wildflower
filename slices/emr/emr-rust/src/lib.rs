@@ -129,6 +129,7 @@ pub fn setup_fhir_r4(
             .to_string(),
         log_level: config.log_level.clone(),
         max_body_size: MAX_FHIR_BODY_BYTES,
+        cors_origins: "*".to_string(),
         ..ServerConfig::default()
     };
 
