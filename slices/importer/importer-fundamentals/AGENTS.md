@@ -17,8 +17,11 @@ TParsed>`**, "a file-format importer" as one value a closed registry lists:
   tokens — a hint to the OS dialog, never the decision, joined across every
   registered format by **`acceptFor`**), `detect` (cheap syntactic
   identification; **`identify`** finds the first claiming descriptor),
-  `defaultSettings`, `decode(fileBytes, settings) → Effect<DecodedFile,
-ParseError>` (requires nothing — a preview can never reach a write client),
+  `defaultSettings`, `decode(fileBytes, fileName, settings) → Effect<DecodedFile,
+ParseError>` (requires nothing — a preview can never reach a write client;
+  `fileName` lets a format recompute another seam's deterministic id from the
+  same bytes+name, e.g. DICOM's `ImagingStudy` instance stamping the id of its
+  own source-file `DocumentReference`),
   `sourceArchive` (**pure** — builds a local pick's bytes into a source-archive
   `DocumentReference`, minted at read time and reviewed like any resource; it
   is written in the shell's one `persistBatchBundle`, not a private upload, so

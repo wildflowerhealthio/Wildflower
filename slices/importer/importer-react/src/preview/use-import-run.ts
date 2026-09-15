@@ -186,12 +186,13 @@ const runDecode = (
   registry: ImportRunRegistry,
   settings: FormatSettings,
   format: FormatKind,
-  bytes: Uint8Array
+  bytes: Uint8Array,
+  fileName: string
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Match.type<FormatKind>().pipe(
-    Match.when('har', (kind) => registry[kind].decode(bytes, settings[kind])),
-    Match.when('lifelabs-pdf', (kind) => registry[kind].decode(bytes, settings[kind])),
-    Match.when('dicom', (kind) => registry[kind].decode(bytes, settings[kind])),
+    Match.when('har', (kind) => registry[kind].decode(bytes, fileName, settings[kind])),
+    Match.when('lifelabs-pdf', (kind) => registry[kind].decode(bytes, fileName, settings[kind])),
+    Match.when('dicom', (kind) => registry[kind].decode(bytes, fileName, settings[kind])),
     Match.exhaustive
   )(format)
 
@@ -259,7 +260,7 @@ const decodeInto = (
   id: string,
   sourceFile: LabeledResource<FhirResource> | undefined
 ): Effect.Effect<FileReadOutcome> =>
-  runDecode(registry, settings, format, picked.bytes).pipe(
+  runDecode(registry, settings, format, picked.bytes, picked.fileName).pipe(
     Effect.map((decoded): FileReadOutcome => ({
       _tag: 'read',
       id,

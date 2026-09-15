@@ -142,6 +142,7 @@ const decodeLifeLabsPdfDocument = (
  */
 const decodeLifeLabsPdf = (
   pdfBytes: Uint8Array,
+  _fileName: string,
   settings: LifeLabsPdfSettings
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.tryPromise({

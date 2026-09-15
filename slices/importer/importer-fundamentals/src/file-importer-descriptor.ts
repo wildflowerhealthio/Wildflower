@@ -148,9 +148,15 @@ interface FileImporterDescriptor<TSettings, TParsed> {
    * Resource keys must be stable across settings changes where the
    * underlying resource is unchanged, so a re-decode under new settings
    * keeps the reviewer's per-resource exclusions and edits applying.
+   * `fileName` is passed alongside the bytes so a format whose synthesized
+   * resources need to reference the file's own source-file `DocumentReference`
+   * (DICOM's ImagingStudy instance does) can recompute that document's
+   * deterministic id, which is derived from the bytes' digest and this same
+   * name — see `buildSourceFile` in `source-file-codec.ts`.
    */
   readonly decode: (
     fileBytes: Uint8Array,
+    fileName: string,
     settings: TSettings
   ) => Effect.Effect<DecodedFile<TParsed>, ParseResult.ParseError>
   /**

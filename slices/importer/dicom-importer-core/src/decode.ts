@@ -15,9 +15,14 @@ import { parseDicomFile } from 'dicom'
  * @packageDocumentation
  */
 import { Effect, Either, ParseResult, Schema } from 'effect'
-import { adoptResource } from 'fhir-r4/identity'
+import { joinIdComponents, localResourceId, adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { DecodedFile, LabeledResource, LabeledSection } from 'importer-fundamentals'
+import {
+  sha256Base64,
+  type DecodedFile,
+  type LabeledResource,
+  type LabeledSection,
+} from 'importer-fundamentals'
 
 import { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
 import type { DicomSettings } from './settings.ts'
@@ -29,6 +34,23 @@ const dicomParseAsParseError = (reason: string): ParseResult.ParseError =>
   new ParseResult.ParseError({
     issue: new ParseResult.Forbidden(Schema.Unknown.ast, undefined, reason),
   })
+
+/**
+ * The id `buildSourceFile` (`source-file-codec.ts`) mints for this file's
+ * `DocumentReference` — same digest, same name, same derivation — so the
+ * `ImagingStudy` instance's `gridfsFileId` extension names the exact resource
+ * the shell will also store.
+ */
+const sourceFileId = (
+  fileBytes: Uint8Array,
+  fileName: string
+): Effect.Effect<string, ParseResult.ParseError> =>
+  sha256Base64(new Uint8Array(fileBytes)).pipe(
+    Effect.map((hash) =>
+      localResourceId(DICOM_SYSTEM, 'DocumentReference', joinIdComponents([hash, fileName]))
+    ),
+    Effect.mapError((error) => dicomParseAsParseError(error.reason))
+  )
 
 const labelAdopted = (
   resource: FhirResource,
@@ -62,6 +84,9 @@ const sectionTitle = (header: DicomHeader): string => {
  * resources.
  *
  * @param fileBytes - The raw bytes of a `.dcm` file
+ * @param fileName - The picked file's name, used to derive the same
+ *   deterministic `DocumentReference` id `buildSourceFile` mints, so the
+ *   `ImagingStudy` instance can carry it as a `gridfsFileId` extension
  * @param _settings - The import's settings (currently unused)
  * @returns One section when the file carries at least a patient, plus notes
  *   for anything that could not be extracted; fails with a `ParseError` when
@@ -69,6 +94,7 @@ const sectionTitle = (header: DicomHeader): string => {
  */
 const decodeDicom = (
   fileBytes: Uint8Array,
+  fileName: string,
   _settings: DicomSettings
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.gen(function* () {
@@ -89,7 +115,8 @@ const decodeDicom = (
       notes.push('No AccessionNumber — no ServiceRequest will be created.')
     }
 
-    const resources = yield* toFhirResources(header)
+    const documentReferenceId = yield* sourceFileId(fileBytes, fileName)
+    const resources = yield* toFhirResources(header, documentReferenceId)
     const labeled: LabeledResource<FhirResource>[] = []
 
     for (const resource of resources) {

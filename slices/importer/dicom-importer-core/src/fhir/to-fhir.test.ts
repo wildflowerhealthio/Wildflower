@@ -93,6 +93,26 @@ describe('toFhirResources', () => {
     expect(study.basedOn).toEqual([])
   })
 
+  it('ImagingStudy instance carries a gridfsFileId extension when a source file id is given', async () => {
+    const resources = await Effect.runPromise(toFhirResources(minimalHeader(), 'doc-ref-id-123'))
+    const study = resources.find((r) => r.resourceType === 'ImagingStudy')
+    expect(study).toBeDefined()
+    if (study?.resourceType !== 'ImagingStudy') return
+    const instance = study.series[0].instance[0]
+    expect(instance.extension).toEqual([
+      expect.objectContaining({ url: 'gridfsFileId', valueString: 'doc-ref-id-123' }),
+    ])
+  })
+
+  it('ImagingStudy instance has no extension when no source file id is given', async () => {
+    const resources = await Effect.runPromise(toFhirResources(minimalHeader()))
+    const study = resources.find((r) => r.resourceType === 'ImagingStudy')
+    expect(study).toBeDefined()
+    if (study?.resourceType !== 'ImagingStudy') return
+    const instance = study.series[0].instance[0]
+    expect(instance.extension).toEqual([])
+  })
+
   it('maps gender correctly', async () => {
     for (const [sex, expected] of [
       ['M', 'male'],

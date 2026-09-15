@@ -29,6 +29,13 @@ const sourceId = (components: readonly string[]): string =>
 const DCM_CODING_SYSTEM = 'http://dicom.nema.org/resources/ontology/DCM'
 const DICOM_UID_SYSTEM = 'urn:dicom:uid'
 
+/**
+ * The extension URL stamped on an `ImagingStudy` instance, carrying the id of
+ * the `DocumentReference` that stores this DICOM file's raw bytes — the link
+ * from the synthesized instance back to its source file.
+ */
+const GRIDFS_FILE_ID_EXTENSION_URL = 'gridfsFileId'
+
 const genderOf = (sex: string | undefined): string | undefined => {
   if (sex === undefined) return undefined
   switch (sex.trim().toUpperCase()) {
@@ -163,7 +170,8 @@ const imagingStudyOriginalId = (header: DicomHeader): string =>
 const imagingStudyWire = (
   header: DicomHeader,
   patientId: string,
-  serviceRequestId: string | undefined
+  serviceRequestId: string | undefined,
+  sourceFileId: string | undefined
 ): Wire => {
   const id = imagingStudyOriginalId(header)
 
@@ -204,6 +212,9 @@ const imagingStudyWire = (
     },
   }
   if (header.instanceNumber !== undefined) instance['number'] = header.instanceNumber
+  if (sourceFileId !== undefined) {
+    instance['extension'] = [{ url: GRIDFS_FILE_ID_EXTENSION_URL, valueString: sourceFileId }]
+  }
 
   const modalityCode = header.modality ?? 'OT'
 
@@ -235,12 +246,17 @@ const decodeImagingStudy = Schema.decodeUnknown(ImagingStudy.Schema)
  * Synthesize FHIR resources from a parsed DICOM header.
  *
  * @param header - The parsed DICOM tags
+ * @param sourceFileId - The id of the `DocumentReference` storing this DICOM
+ *   file's raw bytes, when known — stamped onto the `ImagingStudy` instance
+ *   as a `gridfsFileId` extension so the instance can be traced back to its
+ *   source file
  * @returns The resources in write order: Patient first (when present), then
  *   ServiceRequest (when AccessionNumber is present), then ImagingStudy.
  *   Fails with a `ParseError` when a wire object does not satisfy its schema.
  */
 const toFhirResources = (
-  header: DicomHeader
+  header: DicomHeader,
+  sourceFileId?: string
 ): Effect.Effect<readonly FhirResource[], ParseResult.ParseError> =>
   Effect.gen(function* () {
     const resources: FhirResource[] = []
@@ -263,7 +279,9 @@ const toFhirResources = (
 
     if (patientId !== undefined) {
       resources.push(
-        yield* decodeImagingStudy(imagingStudyWire(header, patientId, serviceRequestId))
+        yield* decodeImagingStudy(
+          imagingStudyWire(header, patientId, serviceRequestId, sourceFileId)
+        )
       )
     }
 

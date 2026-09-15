@@ -91,7 +91,7 @@ const RECOGNIZED_WITH_NOISE = harBytesOf([
 describe('harImporterDescriptor.decode', () => {
   it('should fold a recognized archive into one section per URL, in first-seen order', () => {
     const decoded = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, defaultHarSettings)
+      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
     )
 
     expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL, OBSERVATION_URL])
@@ -106,7 +106,7 @@ describe('harImporterDescriptor.decode', () => {
 
   it('should note the response no kind claimed instead of dropping it silently', () => {
     const decoded = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, defaultHarSettings)
+      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
     )
 
     expect(decoded.notes).toEqual([`Matched no importer: ${NOISE_URL}`])
@@ -119,7 +119,9 @@ describe('harImporterDescriptor.decode', () => {
       disabledKinds: ['ObservationListResponseKind', 'ObservationResponseKind'],
     }
 
-    const decoded = Effect.runSync(harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, settings))
+    const decoded = Effect.runSync(
+      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', settings)
+    )
 
     expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL])
     expect(decoded.notes).toContain(
@@ -131,10 +133,10 @@ describe('harImporterDescriptor.decode', () => {
     // The whole point of `responseId:index` keys: a reviewer's per-resource
     // exclusions and edits keep applying after a kind toggle re-decodes.
     const withAll = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, defaultHarSettings)
+      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
     )
     const withoutObservations = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, {
+      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', {
         disabledKinds: ['ObservationListResponseKind', 'ObservationResponseKind'],
       })
     )
@@ -147,7 +149,11 @@ describe('harImporterDescriptor.decode', () => {
   it('should fail with a ParseError for bytes that are not a well-formed HAR', () => {
     const result = Effect.runSync(
       Effect.either(
-        harImporterDescriptor.decode(new TextEncoder().encode('{ not a har }'), defaultHarSettings)
+        harImporterDescriptor.decode(
+          new TextEncoder().encode('{ not a har }'),
+          'archive.har',
+          defaultHarSettings
+        )
       )
     )
 

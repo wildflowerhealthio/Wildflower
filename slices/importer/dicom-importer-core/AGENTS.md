@@ -25,13 +25,23 @@ decode yields one section per file when the header carries a patient identity.
   `urn:oid:<StudyInstanceUID>`, started from StudyDate+StudyTime, modality
   coded under DCM, one series with one instance, basedOn when
   ServiceRequest exists). Ids are deterministic via `sourceId` (FNV-1a
-  64-bit of length-prefixed components).
+  64-bit of length-prefixed components). Takes an optional `sourceFileId`
+  (the DICOM file's own `DocumentReference` id); when given, it is stamped
+  onto the `ImagingStudy` instance as a `gridfsFileId` extension
+  (`{ url: 'gridfsFileId', valueString: sourceFileId }`), the link from the
+  synthesized instance back to the raw source file.
 - `src/decode.ts` — **`decodeDicom`**: parses the DICOM file via
   `parseDicomFile`, synthesizes FHIR resources via `toFhirResources`, adopts
-  them under `DICOM_SYSTEM`. One section titled
-  `<Modality> <StudyDescription> · <StudyDate>` with stable keys `patient`,
-  `service-request`, `imaging-study`. Notes for missing patient identity
-  or absent AccessionNumber. A `dicom-parser` failure is a `ParseError`.
+  them under `DICOM_SYSTEM`. Takes `(fileBytes, fileName, settings)` — the
+  `fileName` is not read for section content, only recombined with the
+  bytes' SHA-256 (via the shared `sha256Base64` + `localResourceId`
+  derivation `buildSourceFile` also uses) to recompute the exact id
+  `buildSourceFile` will mint for this file's `DocumentReference`, which
+  `toFhirResources` stamps onto the `ImagingStudy` instance. One section
+  titled `<Modality> <StudyDescription> · <StudyDate>` with stable keys
+  `patient`, `service-request`, `imaging-study`. Notes for missing patient
+  identity or absent AccessionNumber. A `dicom-parser` failure is a
+  `ParseError`.
 - `src/source-file/dicom-source-file-codec.ts` — thin config over
   `sourceFileCodec` with the DICOM coding
   (`DICOM_SYSTEM|dicom-source-file`), content type `application/dicom`.
