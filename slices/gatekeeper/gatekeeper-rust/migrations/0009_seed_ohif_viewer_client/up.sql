@@ -19,13 +19,12 @@
 --     resolver, so on a production install (where the app is a *cloud* row) it
 --     matches nothing. It is kept for the debug-only `ohif-viewer-dev`
 --     self-hosted row's sibling client and for a `down`-migrated install.
---   * the absolute Pages URL — `https://wildflowerhealth.io/ohif-viewer/`. A
---     cloud app's redirect can only be absolute: the app-relative form needs a
---     self-hosted row to resolve against. OHIF's FHIR data source computes its
---     redirect URI as `location.origin + location.pathname` of the page it was
---     launched on, and the launch targets the viewer's root, so the value it
---     sends is exactly this published directory URL (trailing slash included) —
---     matched here by exact URL equality.
+--   * the absolute Pages URL —
+--     `https://wildflowerhealth.io/ohif-viewer/fhir-viewer`. A cloud app's
+--     redirect can only be absolute: the app-relative form needs a self-hosted
+--     row to resolve against. The EHR launch targets the viewer's FHIR Viewer
+--     mode route, so the value OHIF's FHIR data source sends as
+--     `redirect_uri` is this path — matched here by exact URL equality.
 --
 -- `allowed_scopes` is exactly what the viewer requests — the `smartScope` the
 -- data-source configuration in `apps/ohif-viewer/config/app-config.js` sets,
@@ -60,7 +59,7 @@ VALUES
         'ohif-viewer',
         'Imaging',
         'public',
-        '["/","https://wildflowerhealth.io/ohif-viewer/"]',
+        '["/","https://wildflowerhealth.io/ohif-viewer/fhir-viewer"]',
         '["launch","openid","fhirUser","system/Patient.rs","system/ImagingStudy.rs","system/DocumentReference.rs"]',
         '["authorization_code","refresh_token"]',
         NULL,

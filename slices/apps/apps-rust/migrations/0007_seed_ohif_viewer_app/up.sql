@@ -26,12 +26,12 @@
 -- redirect URI) is gatekeeper migration `0009_seed_ohif_viewer_client`; the
 -- runtime side is `apps/ohif-viewer/config/app-config.js`.
 --
--- THE LAUNCH URL HAS NO `launch.html`. OHIF is a single-page app whose FHIR data
--- source reads `iss` + `launch` off the URL of whichever route it is opened on,
--- and GitHub Pages serves real files only, so the EHR launch targets the
--- viewer's root (its worklist) — the one route that is a real `index.html`. The
--- OAuth redirect lands back on that same root. `iss` is `{origin}/fhir-r4`, the
--- same FHIR base every other cloud row hands its app.
+-- THE LAUNCH URL targets the FHIR Viewer mode route (`/fhir-viewer`). OHIF is a
+-- single-page app whose FHIR data source reads `iss`, `launch`, and `clientId`
+-- off the URL of whichever route it is opened on. The EHR launch lands on the
+-- FHIR Viewer mode directly, with `clientId=ohif-viewer` so the data source
+-- knows which OAuth client to use. `iss` is `{origin}/fhir-r4`, the same FHIR
+-- base every other cloud row hands its app.
 --
 -- `local_only = 0` (its assets are fetched from wildflowerhealth.io) and
 -- `requires_tunnel = 1`, as for every cloud app: the HTTPS Pages document's
@@ -68,5 +68,5 @@ INSERT OR REPLACE INTO app_registrations (id, client_id, name, subtitle, on_home
 -- actually there and cloud.
 INSERT OR REPLACE INTO cloud_app_configurations (id, url)
 SELECT 'ohif-viewer',
-       'https://wildflowerhealth.io/ohif-viewer/?launch={launch}&iss={origin}/fhir-r4'
+       'https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer'
  WHERE EXISTS (SELECT 1 FROM app_registrations WHERE id = 'ohif-viewer' AND kind = 'cloud');

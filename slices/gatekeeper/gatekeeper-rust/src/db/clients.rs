@@ -426,7 +426,7 @@ mod tests {
             vec![
                 RegisteredRedirectUri::AppRelative("/".to_owned()),
                 RegisteredRedirectUri::Absolute(
-                    "https://wildflowerhealth.io/ohif-viewer/"
+                    "https://wildflowerhealth.io/ohif-viewer/fhir-viewer"
                         .parse()
                         .expect("a valid absolute redirect"),
                 ),

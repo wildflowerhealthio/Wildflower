@@ -511,7 +511,7 @@ mod tests {
                 .expect("the cloud configuration row must exist");
         assert_eq!(
             target.url,
-            "https://wildflowerhealth.io/ohif-viewer/?launch={launch}&iss={origin}/fhir-r4",
+            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer",
         );
     }
 
