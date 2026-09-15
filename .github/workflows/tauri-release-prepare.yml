@@ -88,12 +88,12 @@ jobs:
           mv "$tmp" "$conf"
 
       - name: Install cargo-edit (cargo set-version)
-        uses: taiki-e/install-action@v2.87.6
+        uses: taiki-e/install-action@v2.87.12
         with:
           tool: cargo-edit
 
       - name: Set up Rust toolchain
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
           # Tiny job; no compiled artifacts to reuse. Own cache key so we
           # don't churn the build jobs' shared cache.
@@ -207,7 +207,7 @@ jobs:
       # formatter rather than hand-sanitising subjects, so whatever oxfmt wants
       # is what lands.
       - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1.19.0
+        uses: voidzero-dev/setup-vp@v1.20.0
         with:
           cache: true
 
