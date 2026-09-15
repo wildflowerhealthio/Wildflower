@@ -4,7 +4,7 @@ import base from '../../../vite.config.base.ts'
 export default defineConfig({
   ...base,
   pack: {
-    dts: { tsgo: true },
+    dts: { tsgo: {} },
     exports: false,
     // Ships a React config form alongside the capture logic, so it packs for
     // the browser (like the other `*-client-collector`s).

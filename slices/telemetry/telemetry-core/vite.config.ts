@@ -5,25 +5,25 @@ export default defineConfig({
   ...base,
   pack: [
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { index: 'src/index.ts' },
     },
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'otel-guard': 'src/otel-guard.ts' },
     },
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'client-layer': 'src/client-layer.ts' },
     },
     {
-      dts: { tsgo: true },
+      dts: { tsgo: {} },
       exports: false,
       platform: 'neutral',
       entry: { 'merge-config': 'src/merge-config.ts' },

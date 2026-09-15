@@ -4,7 +4,7 @@ import base from '../../../vite.config.base.ts'
 export default defineConfig({
   ...base,
   pack: {
-    dts: { tsgo: true },
+    dts: { tsgo: {} },
     exports: false,
     // Ships a React config form alongside the pure entities, so it packs for
     // the browser (like fhir-r4-client-collector / rexall-be-well-collector).
