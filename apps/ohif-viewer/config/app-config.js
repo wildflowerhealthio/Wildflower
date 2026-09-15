@@ -18,6 +18,25 @@
     loopback = scriptUrl.hostname === 'localhost' || scriptUrl.hostname === '127.0.0.1'
   }
 
+  // SPA redirect: if we arrived via a 404.html redirect (the site's own or
+  // ohif-viewer-dist's), restore the original route so the router picks it up.
+  var params = new URLSearchParams(window.location.search)
+  var redirectPath = params.get('redirect')
+  if (redirectPath) {
+    params.delete('redirect')
+    if (redirectPath.indexOf(basename) === 0) {
+      redirectPath = redirectPath.slice(basename.length)
+    }
+    redirectPath = redirectPath.replace(/^\/+/, '/')
+    var remaining = params.toString()
+    var target = basename + redirectPath.replace(/^\//, '')
+    window.history.replaceState(
+      null,
+      '',
+      target + (remaining ? '?' + remaining : '') + window.location.hash
+    )
+  }
+
   // Which SMART client this build is, decided by how it is served — the same
   // rule the other first-party apps apply through `import.meta.env.DEV`
   // (`apps/*/src/config.ts`), expressed at runtime here since nothing is

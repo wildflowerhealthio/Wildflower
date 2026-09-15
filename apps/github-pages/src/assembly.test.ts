@@ -173,6 +173,16 @@ describe('site layout', () => {
   })
 })
 
+describe('site-wide files', () => {
+  it('provides a 404.html for GitHub Pages SPA redirect', () => {
+    const fourOhFour = join(repoRoot, 'apps', 'github-pages', '404.html')
+    expect(existsSync(fourOhFour)).toBe(true)
+    const content = readFileSync(fourOhFour, 'utf8')
+    expect(content).toContain('redirect')
+    expect(content).toContain('index.html')
+  })
+})
+
 describe('layout reconciliation with the packages it assembles', () => {
   it('reads the medications source dir from the medications app vite config', () => {
     // Deriving the expected path from the config (rather than pinning a second
