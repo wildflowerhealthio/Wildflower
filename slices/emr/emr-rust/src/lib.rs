@@ -28,7 +28,7 @@ pub use crate::config::EmrConfig;
 pub use crate::openapi::openapi_spec;
 
 const FHIR_R4_PATH: &str = "/fhir-r4";
-const MAX_FHIR_BODY_BYTES: usize = 1 * 1024 * 1024 * 1024; // 1 GiB
+const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
 /// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
 /// [`setup_fhir_r4`]'s router must let through without a bearer token: the FHIR
