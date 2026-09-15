@@ -12,6 +12,7 @@ mod patient_everything;
 mod smart_configuration;
 
 use anyhow::Context;
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, Router};
 use helios_persistence::backends::sqlite::{SqliteBackend, SqliteBackendConfig};
 use helios_rest::{create_app_with_auth, ServerConfig};
@@ -27,6 +28,7 @@ pub use crate::config::EmrConfig;
 pub use crate::openapi::openapi_spec;
 
 const FHIR_R4_PATH: &str = "/fhir-r4";
+const MAX_FHIR_BODY_BYTES: usize = 1 * 1024 * 1024 * 1024; // 1 GiB
 
 /// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
 /// [`setup_fhir_r4`]'s router must let through without a bearer token: the FHIR
@@ -126,6 +128,7 @@ pub fn setup_fhir_r4(
             .expect("loopback_base_url must have host")
             .to_string(),
         log_level: config.log_level.clone(),
+        max_body_size: MAX_FHIR_BODY_BYTES,
         ..ServerConfig::default()
     };
 
@@ -166,7 +169,8 @@ pub fn setup_fhir_r4(
 
     let fhir_with_override = smart_config_route
         .merge(patient_everything_route)
-        .fallback_service(hfs_router);
+        .fallback_service(hfs_router)
+        .layer(DefaultBodyLimit::max(MAX_FHIR_BODY_BYTES));
 
     // `nest_service`, not `nest`: the FHIR *base* is a real endpoint — a client
     // submits a batch/transaction Bundle as one `POST /`, which mounted here is
