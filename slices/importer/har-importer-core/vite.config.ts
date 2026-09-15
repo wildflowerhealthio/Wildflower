@@ -9,7 +9,7 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
-      'archive/index': 'src/archive/index.ts',
+      'source-file/index': 'src/source-file/index.ts',
     },
   },
   test: {

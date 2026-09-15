@@ -8,10 +8,6 @@ describe('lifeLabsPdfImporterDescriptor', () => {
     expect(lifeLabsPdfImporterDescriptor.format).toBe('lifelabs-pdf')
   })
 
-  it('surfaces only the source PDF in the picker accept tokens — the anonymizer JSON is a separate artifact', () => {
-    expect([...lifeLabsPdfImporterDescriptor.accept]).toEqual(['.pdf', 'application/pdf'])
-  })
-
   it('detects a PDF by `%PDF-` magic bytes and by the `.pdf` extension', () => {
     const pdfMagic = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37])
     expect(lifeLabsPdfImporterDescriptor.detect(pdfMagic, 'unknown')).toBe(true)

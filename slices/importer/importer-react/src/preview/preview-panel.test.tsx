@@ -99,7 +99,7 @@ describe('PreviewPanel', () => {
         picked: pickedFile('broken.har'),
         format: 'har',
         error: anyParseError(),
-        sourceArchive: undefined,
+        sourceFile: undefined,
       },
       { _tag: 'unrecognized', id: 'x', picked: pickedFile('notes.txt') },
       readFile(
@@ -410,7 +410,7 @@ const readFile = (
   picked: pickedFile(fileName),
   format,
   decoded: decodedFile,
-  sourceArchive: undefined,
+  sourceFile: undefined,
 })
 
 /** A decoded file from sections and optional notes. */
@@ -448,6 +448,14 @@ const settingsRegistry: SettingsRegistry = {
     SettingsPicker: ({ onChange }): JSX.Element => (
       <button type="button" onClick={() => onChange(defaultFormatSettings['lifelabs-pdf'])}>
         change lifelabs settings
+      </button>
+    ),
+  },
+  dicom: {
+    display: { title: 'DICOM image', description: 'DICOM' },
+    SettingsPicker: ({ onChange }): JSX.Element => (
+      <button type="button" onClick={() => onChange(defaultFormatSettings.dicom)}>
+        change dicom settings
       </button>
     ),
   },

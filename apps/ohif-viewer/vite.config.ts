@@ -36,6 +36,21 @@ const devPort = parsedDevPorts['ohif-viewer-dev']
  */
 export default defineConfig({
   ...base,
+  run: {
+    tasks: {
+      build: {
+        command: 'node ./src/build.ts',
+        untrackedEnv: [
+          'HTTPS_PROXY',
+          'HTTP_PROXY',
+          'NO_PROXY',
+          'NODE_EXTRA_CA_CERTS',
+          'NODE_USE_ENV_PROXY',
+          'SSL_CERT_FILE',
+        ],
+      },
+    },
+  },
   preview: {
     // Pinned to the shared dev-port file (above), and `strictPort` so vite fails
     // loudly rather than drifting onto the next free port: the homescreen's

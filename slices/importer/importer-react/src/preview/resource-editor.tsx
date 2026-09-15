@@ -1,9 +1,13 @@
 import { Either } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import { type JSX, useState } from 'react'
+import { type JSX, useRef, useState } from 'react'
 import { Dialog, ErrorBanner } from 'react-tundraish'
 
-import { prettyPrintResource, tryKeep } from './resource-editor-helpers.ts'
+import {
+  PlaceholderEditedWarning,
+  prettyPrintResource,
+  tryKeep,
+} from './resource-editor-helpers.ts'
 import styles from './resource-editor.module.css'
 
 /**
@@ -14,6 +18,11 @@ import styles from './resource-editor.module.css'
  * through `Schema.decodeUnknown(FhirResource)`, and `resourceType` / `id`
  * are read-only (changing an id would break every reference and the
  * provenance link the confirm stamps).
+ *
+ * Long string values (≥ 10 000 bytes) are replaced with `[N bytes]`
+ * placeholders in the display text; the substitutions are tracked so
+ * keep restores the originals. Editing a placeholder warns the reviewer
+ * that the original data will be lost.
  *
  * @packageDocumentation
  */
@@ -52,16 +61,28 @@ const EditorBody = ({
   readonly onEdit: (edit: KeptEdit) => void
   readonly onCancel: () => void
 }): JSX.Element => {
-  const [text, setText] = useState(() => prettyPrintResource(resource))
+  const [truncated] = useState(() => prettyPrintResource(resource))
+  const [text, setText] = useState(() => truncated.text)
   const [error, setError] = useState<unknown>(null)
+  const [warning, setWarning] = useState<PlaceholderEditedWarning | null>(null)
+  const modified = useRef(false)
 
-  const handleKeep = (): void => {
-    const result = tryKeep(text, resource)
+  const handleKeep = (force = false): void => {
+    const source = modified.current ? text : JSON.stringify(resource)
+    const subs = modified.current ? truncated.substitutions : []
+    const result = tryKeep(source, resource, subs, { force })
     if (Either.isLeft(result)) {
+      if (result.left instanceof PlaceholderEditedWarning) {
+        setWarning(result.left)
+        setError(null)
+        return
+      }
       setError(result.left)
+      setWarning(null)
       return
     }
     setError(null)
+    setWarning(null)
     onEdit({ resource: result.right })
   }
 
@@ -75,23 +96,40 @@ const EditorBody = ({
         aria-label="Resource JSON"
         className={styles.textarea}
         value={text}
-        onChange={(event) => setText(event.target.value)}
+        onChange={(event) => {
+          modified.current = true
+          setText(event.target.value)
+        }}
         spellCheck={false}
         rows={20}
       />
       <ErrorBanner error={error} />
+      {warning !== null && (
+        <div className={styles.warning} role="alert">
+          <p className={styles.warningMessage}>{warning.message}</p>
+          <div className={styles.warningActions}>
+            <button type="button" className={styles.cancelButton} onClick={() => setWarning(null)}>
+              Go back
+            </button>
+            <button type="button" className={styles.keepButton} onClick={() => handleKeep(true)}>
+              Keep anyway
+            </button>
+          </div>
+        </div>
+      )}
       <div className={styles.actions}>
         <button
           type="button"
           className={styles.cancelButton}
           onClick={() => {
             setError(null)
+            setWarning(null)
             onCancel()
           }}
         >
           Cancel
         </button>
-        <button type="button" className={styles.keepButton} onClick={handleKeep}>
+        <button type="button" className={styles.keepButton} onClick={() => handleKeep()}>
           Keep
         </button>
       </div>

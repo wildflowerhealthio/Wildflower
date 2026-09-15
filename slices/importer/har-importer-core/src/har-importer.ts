@@ -9,18 +9,18 @@ import type {
   LabeledSection,
 } from 'importer-fundamentals'
 
-import {
-  HAR_ARCHIVE_CATEGORY_TOKEN,
-  HAR_ARCHIVE_CONTENT_TYPE,
-  harArchiveFromDocumentReference,
-  isHarArchive,
-  sourceArchive,
-} from './archive/index.ts'
 import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { preview, type PreviewedResponse } from './review.ts'
+import {
+  HAR_SOURCE_FILE_CATEGORY_TOKEN,
+  HAR_SOURCE_FILE_CONTENT_TYPE,
+  harSourceFileFromDocumentReference,
+  isHarSourceFile,
+  buildSourceFile,
+} from './source-file/index.ts'
 
 /** One previewed response at the concrete FHIR binding. */
 type FhirPreview = PreviewedResponse<HttpResponseKind.HttpResponseKind<FhirResource>, FhirResource>
@@ -97,7 +97,6 @@ const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> =
     title: 'HAR archive',
     description: 'Import FHIR records from a captured browsing session.',
   },
-  accept: ['.har', 'application/json'],
   detect: detectHar,
   defaultSettings: defaultHarSettings,
   decode: (fileBytes, settings) =>
@@ -108,14 +107,14 @@ const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> =
         notes: notesFor(previews),
       }))
     ),
-  sourceArchive,
-  archiveCategoryToken: HAR_ARCHIVE_CATEGORY_TOKEN,
-  isArchive: isHarArchive,
-  archiveFromDocumentReference: (resource) =>
-    harArchiveFromDocumentReference(resource).pipe(
-      Effect.map((archive) => ({ fileName: archive.fileName, bytes: archive.bytes }))
+  buildSourceFile,
+  sourceFileCategoryToken: HAR_SOURCE_FILE_CATEGORY_TOKEN,
+  isSourceFile: isHarSourceFile,
+  sourceFileFromDocumentReference: (resource) =>
+    harSourceFileFromDocumentReference(resource).pipe(
+      Effect.map((sourceFile) => ({ fileName: sourceFile.fileName, bytes: sourceFile.bytes }))
     ),
-  archiveContentType: HAR_ARCHIVE_CONTENT_TYPE,
+  sourceFileContentType: HAR_SOURCE_FILE_CONTENT_TYPE,
 }
 
 export { harImporterDescriptor }

@@ -4,12 +4,12 @@ import type { DocumentReference } from 'fhir-r4/resources'
 /**
  * A decoded FHIR R4 `DocumentReference` — the concrete type of a resource the
  * shell reads back from the FHIR server before dispatching it to one
- * descriptor's {@link FileImporterDescriptor.isArchive} predicate and
- * {@link FileImporterDescriptor.archiveFromDocumentReference} reader.
+ * descriptor's {@link FileImporterDescriptor.isSourceFile} predicate and
+ * {@link FileImporterDescriptor.sourceFileFromDocumentReference} reader.
  *
  * @remarks
  * A local alias for `typeof DocumentReference.Schema.Type`, exported so
- * every consumer of the archive seam names it the same way. `web-trace-core`
+ * every consumer of the source-file seam names it the same way. `web-trace-core`
  * carries its own alias with the same shape for the trace codec; both point
  * at the same underlying `Schema.Type`, so a value satisfies either.
  */
@@ -115,9 +115,9 @@ interface SettingsPickerProps<TSettings> {
  * `importer-react`), so no format can bring its own persistence approach —
  * dropped after HAR and LifeLabs proved to share a verbatim identical
  * `withMetaSource → persistResources` sink. No field on the descriptor
- * requires a write client: {@link decode} and {@link sourceArchive} are both
+ * requires a write client: {@link decode} and {@link buildSourceFile} are both
  * pure, so a preview can never reach the write client by construction, and
- * the source-archive `DocumentReference` rides the same reviewed batch as the
+ * the source-file `DocumentReference` rides the same reviewed batch as the
  * extracted resources rather than a private upload of its own.
  */
 interface FileImporterDescriptor<TSettings, TParsed> {
@@ -125,12 +125,6 @@ interface FileImporterDescriptor<TSettings, TParsed> {
   readonly format: string
   /** User-facing strings the shell shows for this format. */
   readonly display: { readonly title: string; readonly description: string }
-  /**
-   * Tokens for the picker's `accept` attribute (`'.har'`, `'application/json'`,
-   * `'.pdf'`). A hint to the OS dialog only; the actual routing decision is
-   * {@link detect}, and the actual parse is {@link decode}.
-   */
-  readonly accept: readonly string[]
   /**
    * Cheap syntactic identification: whether these bytes plausibly hold this
    * format, by file extension or by magic bytes. Not a parse — the picker
@@ -160,7 +154,7 @@ interface FileImporterDescriptor<TSettings, TParsed> {
     settings: TSettings
   ) => Effect.Effect<DecodedFile<TParsed>, ParseResult.ParseError>
   /**
-   * Build a local pick's bytes into a source-archive `DocumentReference` —
+   * Build a local pick's bytes into a source-file `DocumentReference` —
    * the resource that carries the raw file whole, so a reader can trace an
    * imported resource back to the source it came from. Pure: it mints a
    * fresh id, hashes the bytes, and returns the resource, but writes
@@ -173,100 +167,90 @@ interface FileImporterDescriptor<TSettings, TParsed> {
    * resource. On confirm it rides the *same* `persistBatchBundle` as the
    * extracted resources — one bundle, not a private upload — and its logical
    * id is what those resources stamp onto `meta.source` (stripped when the
-   * archive is excluded). Each format builds with its own archive codec, so
-   * the resource always round-trips through the matching
-   * {@link archiveFromDocumentReference} reader.
+   * source file is excluded). Each format builds with its own source-file
+   * codec, so the resource always round-trips through the matching
+   * {@link sourceFileFromDocumentReference} reader.
    *
-   * A server pick is not this seam's concern — its archive already exists on
-   * the server and its reference is on the pick — so this only ever runs for
-   * a `local` pick and receives its bytes verbatim. The archive is always a
-   * FHIR `DocumentReference` regardless of `TParsed`; both formats decode to
-   * FHIR and persist through the FHIR batch sink. Fails only as a
-   * `ParseError`, the way the archive codec's encode does (a digest
-   * unavailable in an insecure context).
+   * A server pick is not this seam's concern — its source file already
+   * exists on the server and its reference is on the pick — so this only
+   * ever runs for a `local` pick and receives its bytes verbatim. The
+   * source file is always a FHIR `DocumentReference` regardless of
+   * `TParsed`; both formats decode to FHIR and persist through the FHIR
+   * batch sink. Fails only as a `ParseError`, the way the source-file
+   * codec's encode does (a digest unavailable in an insecure context).
    */
-  readonly sourceArchive: (picked: {
+  readonly buildSourceFile: (picked: {
     readonly fileName: string
     readonly bytes: Uint8Array
   }) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
   /**
    * FHIR `category` search token — `system|code` form — every server-side
-   * archive read filters on for this format's uploaded archives. The one
-   * spelling of the token, sourced from the format's `/archive` codec so a
-   * downstream reader cannot drift from what the codec writes.
+   * source-file read filters on for this format's uploaded source files.
+   * The one spelling of the token, sourced from the format's `/source-file`
+   * codec so a downstream reader cannot drift from what the codec writes.
    *
    * @remarks
    * The shell unions every registered format's token into one comma-joined
-   * `category=t1,t2,…` search, so listing "every uploaded archive on the
-   * FHIR server" needs no per-format query. Cannot be `undefined`: the
-   * format has a corresponding archive codec (the {@link uploadSource}
-   * writes with it, the {@link archiveFromDocumentReference} reads with
-   * it) — this is that same coding, promoted to a search token.
+   * `category=t1,t2,…` search, so listing "every uploaded source file on
+   * the FHIR server" needs no per-format query. Cannot be `undefined`: the
+   * format has a corresponding source-file codec (the
+   * {@link buildSourceFile} writes with it, the
+   * {@link sourceFileFromDocumentReference} reads with it) — this is that
+   * same coding, promoted to a search token.
    */
-  readonly archiveCategoryToken: string
+  readonly sourceFileCategoryToken: string
   /**
-   * Whether a decoded `DocumentReference` is an archive of *this* format,
-   * by `category`. The predicate every row is classified through: the
-   * comma-joined server search returns rows for every registered format,
-   * and each row is tagged with the descriptor whose `isArchive` claims it.
+   * Whether a decoded `DocumentReference` is a source file of *this*
+   * format, by `category`. The predicate every row is classified through:
+   * the comma-joined server search returns rows for every registered
+   * format, and each row is tagged with the descriptor whose
+   * `isSourceFile` claims it.
    *
    * @remarks
-   * Archive predicates are disjoint across formats by construction —
-   * `isHarArchive` tests `WEB_TRACE_CODE_SYSTEM|har-archive`,
-   * `isLifeLabsPdfArchive` tests `LIFELABS_SYSTEM|lifelabs-pdf-archive` —
-   * so exactly one predicate claims any given row. A row no predicate
-   * claims is dropped by the shell (the coding matched the token search
-   * but the resource is not from a registered format).
+   * Source-file predicates are disjoint across formats by construction —
+   * `isHarSourceFile` tests `WEB_TRACE_CODE_SYSTEM|har-archive`,
+   * `isLifeLabsPdfSourceFile` tests
+   * `LIFELABS_SYSTEM|lifelabs-pdf-archive` — so exactly one predicate
+   * claims any given row. A row no predicate claims is dropped by the
+   * shell (the coding matched the token search but the resource is not
+   * from a registered format).
    */
-  readonly isArchive: (resource: DocumentReferenceType) => boolean
+  readonly isSourceFile: (resource: DocumentReferenceType) => boolean
   /**
-   * Reads a decoded archive `DocumentReference` back as its bytes and file
-   * name. The seam a preview modal calls to render the raw archive, and
-   * the same reader `fetchArchive` uses to re-hydrate a picked archive
-   * into its `PickedFile` bytes.
+   * Reads a decoded source-file `DocumentReference` back as its bytes and
+   * file name. The seam a preview modal calls to render the raw source
+   * file, and the same reader `fetchSourceFile` uses to re-hydrate a
+   * picked source file into its `PickedFile` bytes.
    *
    * @remarks
-   * Returns bytes rather than text so a PDF archive round-trips verbatim
-   * (a UTF-8 round trip would mangle it) and a HAR archive keeps its
-   * original byte-level content for hashing. Requires nothing (a preview
-   * or a pick reads the resource the FHIR server already returned), and
-   * fails only as a `ParseError` when the resource does not match this
-   * format's archive shape — a caller dispatches on {@link isArchive}
-   * first, so the failure is the "coding matched but the resource is
-   * malformed" case, not the "wrong format" case.
+   * Returns bytes rather than text so a PDF source file round-trips
+   * verbatim (a UTF-8 round trip would mangle it) and a HAR source file
+   * keeps its original byte-level content for hashing. Requires nothing (a
+   * preview or a pick reads the resource the FHIR server already returned),
+   * and fails only as a `ParseError` when the resource does not match this
+   * format's source-file shape — a caller dispatches on
+   * {@link isSourceFile} first, so the failure is the "coding matched but
+   * the resource is malformed" case, not the "wrong format" case.
    */
-  readonly archiveFromDocumentReference: (
+  readonly sourceFileFromDocumentReference: (
     resource: DocumentReferenceType
   ) => Effect.Effect<
     { readonly fileName: string; readonly bytes: Uint8Array },
     ParseResult.ParseError
   >
   /**
-   * The MIME type of this format's archive attachment (`'application/json'`
-   * for HAR, `'application/pdf'` for LifeLabs PDF). Drives the preview
-   * modal's renderer choice — a PDF renders in an `<iframe>` from a
-   * `blob:` URL, JSON pretty-prints inside a `<pre>`.
+   * The MIME type of this format's source-file attachment
+   * (`'application/json'` for HAR, `'application/pdf'` for LifeLabs PDF).
+   * Drives the preview modal's renderer choice — a PDF renders in an
+   * `<iframe>` from a `blob:` URL, JSON pretty-prints inside a `<pre>`.
    *
    * @remarks
-   * The archive codec's own content-type constant, promoted to the
+   * The source-file codec's own content-type constant, promoted to the
    * descriptor so the shell needs no format-specific dispatch to pick a
    * renderer.
    */
-  readonly archiveContentType: string
+  readonly sourceFileContentType: string
 }
-
-/**
- * The comma-joined `accept` attribute for a picker offering every registered
- * format — duplicates removed in first-seen order. Mirrors
- * `anonymizer-fundamentals`' helper of the same name.
- *
- * @param descriptors - The registered file-format descriptors
- * @returns The joined attribute value (`'.har,application/json,.pdf'`), or the
- *   empty string when no descriptor lists any token
- */
-const acceptFor = (
-  descriptors: readonly Pick<FileImporterDescriptor<never, never>, 'accept'>[]
-): string => [...new Set(descriptors.flatMap((descriptor) => descriptor.accept))].join(',')
 
 /**
  * The first registered descriptor whose {@link FileImporterDescriptor.detect}
@@ -288,7 +272,7 @@ const identify = <D extends Pick<FileImporterDescriptor<never, never>, 'detect'>
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
 
-export { acceptFor, identify, sectionResources }
+export { identify, sectionResources }
 export type {
   DecodedFile,
   DocumentReferenceType,

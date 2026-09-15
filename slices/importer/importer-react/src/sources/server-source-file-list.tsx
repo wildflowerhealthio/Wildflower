@@ -4,24 +4,24 @@ import { useRunAuthed } from 'fhir-r4-react'
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { Dialog } from 'react-tundraish'
 
+import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {
-  type ArchiveRow,
-  fetchArchive,
-  fetchArchiveContents,
-  useArchivesQuery,
-} from '../queries/archives.ts'
-import { ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
+  type SourceFileRow,
+  fetchSourceFile,
+  fetchSourceFileContents,
+  useSourceFilesQuery,
+} from '../queries/source-files.ts'
 import { formatRegistry } from '../registry.ts'
 import type { PickedFile } from './picked-file.ts'
-import styles from './server-archive-list.module.css'
+import styles from './server-source-file-list.module.css'
 
 /**
- * Uploaded archives on the device's own FHIR server, as a pick source: one
- * row per archive across every registered format (HAR, LifeLabs PDF), paged
- * by the bundle's next link. Each row carries an explicit **Preview** action
- * that opens a raw-contents modal and a **Use as source** action that
- * fetches the archive back and picks it — the row itself is not clickable,
- * so the two actions are unambiguous.
+ * Uploaded source files on the device's own FHIR server, as a pick source:
+ * one row per source file across every registered format (HAR, LifeLabs PDF,
+ * DICOM), paged by the bundle's next link. Each row carries an explicit
+ * **Preview** action that opens a raw-contents modal and a **Use as source**
+ * action that fetches the source file back and picks it — the row itself is
+ * not clickable, so the two actions are unambiguous.
  *
  * @remarks
  * Extracted from {@link SourcePicker} so a host outside this slice — the
@@ -36,56 +36,56 @@ import styles from './server-archive-list.module.css'
 /** How a `null` upload instant reads in a row. */
 const UNDATED_LABEL = 'Upload date unknown'
 
-/** How an archive with no title reads in a row. */
-const UNTITLED_LABEL = 'Untitled archive'
+/** How a source file with no title reads in a row. */
+const UNTITLED_LABEL = 'Untitled source file'
 
-/** The error shown when a chosen server archive cannot be read back. */
-const SERVER_READ_ERROR = 'That archive could not be read from the server.'
+/** The error shown when a chosen server source file cannot be read back. */
+const SERVER_READ_ERROR = 'That source file could not be read from the server.'
 
 /**
- * The cap at which a JSON archive stops rendering inline in the preview
+ * The cap at which a JSON source file stops rendering inline in the preview
  * modal and falls back to a "download raw" link. Multi-megabyte HARs jank
- * the tab if they render whole; capped at 5 MiB, a giant archive still
+ * the tab if they render whole; capped at 5 MiB, a giant source file still
  * stays inspectable through the download.
  */
 const JSON_PREVIEW_SIZE_LIMIT = 5 * 1024 * 1024
 
-/** Props for {@link ServerArchiveList}. */
-interface ServerArchiveListProps {
-  /** Called with the fetched archive once a selected row resolves. */
+/** Props for {@link ServerSourceFileList}. */
+interface ServerSourceFileListProps {
+  /** Called with the fetched source file once a selected row resolves. */
   readonly onPick: (picked: PickedFile) => void
 }
 
-/** Props for {@link ArchiveListContent}. */
-interface ArchiveListContentProps {
+/** Props for {@link SourceFileListContent}. */
+interface SourceFileListContentProps {
   readonly isError: boolean
   readonly isPending: boolean
-  readonly rows: readonly ArchiveRow[]
-  readonly onPreview: (row: ArchiveRow) => void
-  readonly onUse: (row: ArchiveRow) => void
+  readonly rows: readonly SourceFileRow[]
+  readonly onPreview: (row: SourceFileRow) => void
+  readonly onUse: (row: SourceFileRow) => void
 }
 
 /** The inner list content, rendered via Match over the query state. */
-const ArchiveListContent = ({
+const SourceFileListContent = ({
   isError,
   isPending,
   rows,
   onPreview,
   onUse,
-}: ArchiveListContentProps): JSX.Element =>
+}: SourceFileListContentProps): JSX.Element =>
   Match.value({ isError, isPending, empty: rows.length === 0 }).pipe(
     Match.when({ isError: true }, () => (
       <p role="alert" className={styles.error}>
-        The uploaded archives could not be loaded.
+        The uploaded source files could not be loaded.
       </p>
     )),
     Match.when({ isPending: true }, () => (
       <p role="status" className={styles.empty}>
-        Loading uploaded archives…
+        Loading uploaded source files…
       </p>
     )),
     Match.when({ empty: true }, () => (
-      <p className={styles.empty}>No archives have been uploaded to the FHIR server.</p>
+      <p className={styles.empty}>No source files have been uploaded to the FHIR server.</p>
     )),
     Match.orElse(() => (
       <ul className={styles.archiveList}>
@@ -129,18 +129,18 @@ const ArchiveListContent = ({
   )
 
 /**
- * The uploaded-archives list, heading and paging included. Explicit
+ * The uploaded-source-files list, heading and paging included. Explicit
  * **Preview** / **Use as source** actions per row.
  */
-const ServerArchiveList = ({ onPick }: ServerArchiveListProps): JSX.Element => {
+const ServerSourceFileList = ({ onPick }: ServerSourceFileListProps): JSX.Element => {
   const runAuthed = useRunAuthed()
-  const archives = useArchivesQuery()
+  const sourceFiles = useSourceFilesQuery()
   const [error, setError] = useState<string | null>(null)
-  const [previewing, setPreviewing] = useState<ArchiveRow | null>(null)
+  const [previewing, setPreviewing] = useState<SourceFileRow | null>(null)
 
-  const pickAsSource = async (row: ArchiveRow): Promise<void> => {
+  const pickAsSource = async (row: SourceFileRow): Promise<void> => {
     try {
-      const picked = await fetchArchive(runAuthed, row)
+      const picked = await fetchSourceFile(runAuthed, row)
       setError(null)
       onPick(picked)
     } catch {
@@ -148,19 +148,19 @@ const ServerArchiveList = ({ onPick }: ServerArchiveListProps): JSX.Element => {
     }
   }
 
-  const rows = archives.data?.pages.flatMap((page) => page.archives) ?? []
+  const rows = sourceFiles.data?.pages.flatMap((page) => page.sourceFiles) ?? []
 
   return (
     <div className={styles.server}>
-      <h3 className={styles.serverHeading}>Uploaded archives on the FHIR server</h3>
+      <h3 className={styles.serverHeading}>Uploaded source files on the FHIR server</h3>
       {error !== null && (
         <p role="alert" className={styles.error}>
           {error}
         </p>
       )}
-      <ArchiveListContent
-        isError={archives.isError}
-        isPending={archives.isPending}
+      <SourceFileListContent
+        isError={sourceFiles.isError}
+        isPending={sourceFiles.isPending}
         rows={rows}
         onPreview={(row) => {
           setPreviewing(row)
@@ -169,19 +169,19 @@ const ServerArchiveList = ({ onPick }: ServerArchiveListProps): JSX.Element => {
           void pickAsSource(row)
         }}
       />
-      {archives.hasNextPage && (
+      {sourceFiles.hasNextPage && (
         <button
           type="button"
           className={styles.loadMore}
-          disabled={archives.isFetchingNextPage}
+          disabled={sourceFiles.isFetchingNextPage}
           onClick={() => {
-            void archives.fetchNextPage()
+            void sourceFiles.fetchNextPage()
           }}
         >
-          {archives.isFetchingNextPage ? 'Loading…' : 'Show more archives'}
+          {sourceFiles.isFetchingNextPage ? 'Loading…' : 'Show more source files'}
         </button>
       )}
-      <ArchivePreviewDialog
+      <SourceFilePreviewDialog
         row={previewing}
         onClose={() => {
           setPreviewing(null)
@@ -191,10 +191,10 @@ const ServerArchiveList = ({ onPick }: ServerArchiveListProps): JSX.Element => {
   )
 }
 
-/** Props for {@link ArchivePreviewDialog}. */
-interface ArchivePreviewDialogProps {
+/** Props for {@link SourceFilePreviewDialog}. */
+interface SourceFilePreviewDialogProps {
   /** The row being previewed, or `null` when the dialog is closed. */
-  readonly row: ArchiveRow | null
+  readonly row: SourceFileRow | null
   /** Called when the reviewer dismisses the dialog. */
   readonly onClose: () => void
 }
@@ -205,32 +205,29 @@ interface ArchivePreviewDialogProps {
  * animation, and the body only mounts while `row` is non-null — which is
  * what lets the body's fetch and blob URL creation be one-shot per open.
  */
-const ArchivePreviewDialog = ({ row, onClose }: ArchivePreviewDialogProps): JSX.Element => (
-  <Dialog open={row !== null} onClose={onClose} title="Preview archive">
+const SourceFilePreviewDialog = ({ row, onClose }: SourceFilePreviewDialogProps): JSX.Element => (
+  <Dialog open={row !== null} onClose={onClose} title="Preview source file">
     {row !== null ? <PreviewBody row={row} onClose={onClose} /> : null}
   </Dialog>
 )
 
 /**
- * The dialog body — fetches the archive through a keyed TanStack query
+ * The dialog body — fetches the source file through a keyed TanStack query
  * so `useQuery`'s own loading/error/data states drive the render (no
  * `setState`-in-effect), then renders the raw file itself, per the
- * format's `archiveContentType`.
+ * format's `sourceFileContentType`.
  */
 const PreviewBody = ({
   row,
   onClose,
 }: {
-  readonly row: ArchiveRow
+  readonly row: SourceFileRow
   readonly onClose: () => void
 }): JSX.Element => {
   const runAuthed = useRunAuthed()
   const query = useQuery({
-    queryKey: [...ARCHIVES_QUERY_KEY, 'preview', row.format, row.id] as const,
-    queryFn: () => fetchArchiveContents(runAuthed, row),
-    // The preview modal is short-lived; a stale cache from a previous open
-    // would show yesterday's bytes for the same id if the archive was
-    // replaced server-side. Refetch on every open, no long GC.
+    queryKey: [...SOURCE_FILES_QUERY_KEY, 'preview', row.format, row.id] as const,
+    queryFn: () => fetchSourceFileContents(runAuthed, row),
     staleTime: 0,
     gcTime: 0,
     retry: false,
@@ -239,7 +236,7 @@ const PreviewBody = ({
   if (query.isPending) {
     return (
       <p role="status" className={styles.previewNote}>
-        Loading archive…
+        Loading source file…
       </p>
     )
   }
@@ -254,7 +251,7 @@ const PreviewBody = ({
     <PreviewContents
       fileName={query.data.fileName}
       bytes={query.data.bytes}
-      contentType={formatRegistry[row.format].archiveContentType}
+      contentType={formatRegistry[row.format].sourceFileContentType}
       onClose={onClose}
     />
   )
@@ -266,6 +263,29 @@ interface PreviewContentsProps {
   readonly bytes: Uint8Array
   readonly contentType: string
   readonly onClose: () => void
+}
+
+/**
+ * The format-specific preview body, chosen by content type: PDF renders in an
+ * iframe, JSON/HAR pretty-prints, and anything else (DICOM, images) shows a
+ * binary notice with the file size.
+ */
+const PreviewContentBody = ({
+  contentType,
+  blobUrl,
+  fileName,
+  bytes,
+}: {
+  readonly contentType: string
+  readonly blobUrl: string
+  readonly fileName: string
+  readonly bytes: Uint8Array
+}): JSX.Element => {
+  if (contentType === 'application/pdf') return <PdfBody blobUrl={blobUrl} fileName={fileName} />
+  if (contentType === 'application/json' || contentType === 'application/har+json') {
+    return <JsonBody bytes={bytes} />
+  }
+  return <BinaryBody bytes={bytes} />
 }
 
 /**
@@ -285,11 +305,12 @@ const PreviewContents = ({
       <div className={styles.previewHeader}>
         <span className={styles.previewFileName}>{fileName}</span>
       </div>
-      {contentType === 'application/pdf' ? (
-        <PdfBody blobUrl={blobUrl} fileName={fileName} />
-      ) : (
-        <JsonBody bytes={bytes} />
-      )}
+      <PreviewContentBody
+        contentType={contentType}
+        blobUrl={blobUrl}
+        fileName={fileName}
+        bytes={bytes}
+      />
       <div className={styles.previewActions}>
         <a
           className={styles.downloadLink}
@@ -314,7 +335,7 @@ const PreviewContents = ({
 }
 
 /**
- * A `blob:` URL for the archive's raw bytes, revoked on unmount and
+ * A `blob:` URL for the source file's raw bytes, revoked on unmount and
  * re-minted when the bytes or content type change.
  *
  * @remarks
@@ -324,7 +345,7 @@ const PreviewContents = ({
  * copies into a fresh ArrayBuffer-backed view, which is what `BlobPart`
  * demands (the seam itself returns `Uint8Array<ArrayBufferLike>`, which
  * is not structurally a `BlobPart`); the copy is one-shot per open and
- * the archive size is size-capped by the preview above it.
+ * the source file size is size-capped by the preview above it.
  */
 const useBlobUrl = (bytes: Uint8Array, contentType: string): string => {
   const blobUrl = useMemo(
@@ -362,12 +383,6 @@ const PdfBody = ({
     className={styles.previewFrame}
     title={`Preview of ${fileName}`}
     src={blobUrl}
-    // Firefox's pdf.js needs scripts to render; Chrome's native viewer runs
-    // regardless. `allow-same-origin` is intentionally omitted — the pair
-    // (allow-scripts + allow-same-origin) is equivalent to no sandbox at
-    // all (the frame's scripts can reach back through the parent). If a
-    // browser's PDF viewer cannot render under this sandbox, the fallback
-    // "Download raw" action outside the frame still works.
     sandbox="allow-scripts"
     data-testid="preview-pdf-frame"
   >
@@ -390,7 +405,7 @@ const JsonBody = ({ bytes }: { readonly bytes: Uint8Array }): JSX.Element => {
   return Match.value(rendered).pipe(
     Match.tag('too-large', ({ sizeBytes }) => (
       <p className={styles.previewNote}>
-        This archive is {formatBytesMib(sizeBytes)} — too large to preview inline. Use "Download
+        This source file is {formatBytesMib(sizeBytes)} — too large to preview inline. Use "Download
         raw" to inspect its contents.
       </p>
     )),
@@ -403,13 +418,24 @@ const JsonBody = ({ bytes }: { readonly bytes: Uint8Array }): JSX.Element => {
   )
 }
 
+/**
+ * Binary preview: a short notice with the file size. Non-text formats
+ * (DICOM, images) cannot render inline; the "Download raw" action outside
+ * this component is the inspection path.
+ */
+const BinaryBody = ({ bytes }: { readonly bytes: Uint8Array }): JSX.Element => (
+  <p className={styles.previewNote} data-testid="preview-binary">
+    Binary file ({formatBytesMib(bytes.length)}). Use "Download raw" to inspect its contents.
+  </p>
+)
+
 /** Result of {@link renderJsonPreview}. */
 type JsonRender =
   | { readonly _tag: 'too-large'; readonly sizeBytes: number }
   | { readonly _tag: 'rendered'; readonly text: string }
 
 /**
- * Turn an archive's bytes into what the JSON preview body renders — the
+ * Turn a source file's bytes into what the JSON preview body renders — the
  * pretty-printed JSON, or the raw text if it does not parse, or the
  * "too large" signal above the size cap.
  */
@@ -432,8 +458,8 @@ const formatBytesMib = (bytes: number): string => `${(bytes / (1024 * 1024)).toF
 export {
   JSON_PREVIEW_SIZE_LIMIT,
   SERVER_READ_ERROR,
-  ServerArchiveList,
-  type ServerArchiveListProps,
+  ServerSourceFileList,
+  type ServerSourceFileListProps,
   UNDATED_LABEL,
   UNTITLED_LABEL,
 }

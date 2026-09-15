@@ -4,37 +4,37 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import type { DocumentReferenceType } from './file-importer-descriptor.ts'
-import { type SourceArchive, sourceArchiveCodec } from './source-archive-codec.ts'
+import { type SourceFile, sourceFileCodec } from './source-file-codec.ts'
 
 /**
- * The shared source-archive codec builder, tested once against synthetic
- * configs — the machinery every format's `/archive` shim inherits: the
+ * The shared source-file codec builder, tested once against synthetic
+ * configs — the machinery every format's `/source-file` shim inherits: the
  * encode ⇄ decode round trip, the attachment hash/size, `subject` staying
  * absent, bytes carried verbatim (never a UTF-8 round trip), the decode's
- * failure modes, and the deterministic id `sourceArchive` mints. A format's
+ * failure modes, and the deterministic id `buildSourceFile` mints. A format's
  * own test asserts only what is format-specific (its coding, content type,
  * `securityLabel`, and disjointness from a neighbour on the same axis).
  */
 
-const SYSTEM = 'https://example.test/fhir/CodeSystem/archive'
+const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 
 /** A representative config carrying a `securityLabel` (the HAR-shaped case). */
-const labelled = sourceArchiveCodec({
-  coding: { system: SYSTEM, code: 'example-archive' },
+const labelled = sourceFileCodec({
+  coding: { system: SYSTEM, code: 'example-source-file' },
   contentType: 'application/json',
-  descriptionPrefix: 'Example archive: ',
+  descriptionPrefix: 'Example source file: ',
   securityLabel: [{ system: 'https://example.test/fhir/CodeSystem/redaction', code: 'raw' }],
-  archiveName: 'ExampleArchive',
-  label: 'One uploaded example archive',
-  idDescription: 'FHIR resource id of an uploaded example archive.',
+  sourceFileName: 'ExampleSourceFile',
+  label: 'One uploaded example source file',
+  idDescription: 'FHIR resource id of an uploaded example source file.',
 })
 
 /** The same shape with no `securityLabel` (the PDF-shaped case). */
-const unlabelled = sourceArchiveCodec({
-  coding: { system: SYSTEM, code: 'example-archive' },
+const unlabelled = sourceFileCodec({
+  coding: { system: SYSTEM, code: 'example-source-file' },
   contentType: 'application/pdf',
   descriptionPrefix: 'Example doc: ',
-  archiveName: 'ExampleDoc',
+  sourceFileName: 'ExampleDoc',
   label: 'One uploaded example doc',
   idDescription: 'FHIR resource id of an uploaded example doc.',
 })
@@ -42,7 +42,7 @@ const unlabelled = sourceArchiveCodec({
 const UPLOAD_FLOOR = Date.UTC(2026, 0, 1)
 
 /** Uploads of arbitrary **binary** bytes — the codec must not become a UTF-8 round trip. */
-const archiveArbitrary: fc.Arbitrary<SourceArchive> = fc.record({
+const sourceFileArbitrary: fc.Arbitrary<SourceFile> = fc.record({
   id: fc.uuid().map(String),
   fileName: fc
     .stringMatching(/^[A-Za-z0-9 _.-]{1,40}$/u)
@@ -54,7 +54,7 @@ const archiveArbitrary: fc.Arbitrary<SourceArchive> = fc.record({
   bytes: fc.uint8Array({ maxLength: 512 }),
 })
 
-const example = (overrides: Partial<SourceArchive> = {}): SourceArchive => ({
+const example = (overrides: Partial<SourceFile> = {}): SourceFile => ({
   id: '0c0f6e5a-2b2f-4a55-9a1e-0a1b2c3d4e5f',
   fileName: 'upload.bin',
   uploadedAt: DateTime.unsafeMake(UPLOAD_FLOOR),
@@ -62,18 +62,18 @@ const example = (overrides: Partial<SourceArchive> = {}): SourceArchive => ({
   ...overrides,
 })
 
-const roundTrip = (archive: SourceArchive): Promise<SourceArchive> =>
+const roundTrip = (sourceFile: SourceFile): Promise<SourceFile> =>
   Effect.runPromise(
     labelled
-      .archiveToDocumentReference(archive)
-      .pipe(Effect.flatMap(labelled.archiveFromDocumentReference))
+      .sourceFileToDocumentReference(sourceFile)
+      .pipe(Effect.flatMap(labelled.sourceFileFromDocumentReference))
   )
 
 /** `DateTime.Utc` compares by identity under `toEqual`; compare the instants instead. */
 const comparable = (
-  archive: SourceArchive
-): Omit<SourceArchive, 'uploadedAt'> & { readonly uploadedAtMillis: number } => {
-  const { uploadedAt, ...rest } = archive
+  sourceFile: SourceFile
+): Omit<SourceFile, 'uploadedAt'> & { readonly uploadedAtMillis: number } => {
+  const { uploadedAt, ...rest } = sourceFile
   return { ...rest, uploadedAtMillis: DateTime.toEpochMillis(uploadedAt) }
 }
 
@@ -92,8 +92,8 @@ const digestOf = async (bytes: Uint8Array): Promise<string> => {
 describe('the codec as a schema', () => {
   test('property: an upload round-trips — id, filename, instant and bytes recovered exactly', async () => {
     await fc.assert(
-      fc.asyncProperty(archiveArbitrary, async (archive) => {
-        expect(comparable(await roundTrip(archive))).toEqual(comparable(archive))
+      fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
+        expect(comparable(await roundTrip(sourceFile))).toEqual(comparable(sourceFile))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
@@ -101,28 +101,29 @@ describe('the codec as a schema', () => {
 
   test('property: hash and size describe the attachment bytes, stored verbatim', async () => {
     await fc.assert(
-      fc.asyncProperty(archiveArbitrary, async (archive) => {
-        const attachment = (await Effect.runPromise(labelled.archiveToDocumentReference(archive)))
-          .content[0]?.attachment
-        expect(attachment?.size).toBe(archive.bytes.length)
-        expect(attachment?.hash).toBe(await digestOf(archive.bytes))
-        expect(attachment?.data).toBe(Encoding.encodeBase64(archive.bytes))
+      fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
+        const attachment = (
+          await Effect.runPromise(labelled.sourceFileToDocumentReference(sourceFile))
+        ).content[0]?.attachment
+        expect(attachment?.size).toBe(sourceFile.bytes.length)
+        expect(attachment?.hash).toBe(await digestOf(sourceFile.bytes))
+        expect(attachment?.data).toBe(Encoding.encodeBase64(sourceFile.bytes))
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 
   test('bytes that are not valid UTF-8 survive the round trip', async () => {
-    const archive = example({ bytes: new Uint8Array([0xff, 0xfe, 0x00, 0x80, 0x41]) })
-    expect((await roundTrip(archive)).bytes).toEqual(archive.bytes)
+    const sourceFile = example({ bytes: new Uint8Array([0xff, 0xfe, 0x00, 0x80, 0x41]) })
+    expect((await roundTrip(sourceFile)).bytes).toEqual(sourceFile.bytes)
   })
 
-  test('property: subject is absent, keeping archives out of Patient/$everything', async () => {
+  test('property: subject is absent, keeping source files out of Patient/$everything', async () => {
     await fc.assert(
-      fc.asyncProperty(archiveArbitrary, async (archive) => {
-        expect(labelled.toWire(archive, 'hash=').subject).toBeUndefined()
+      fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
+        expect(labelled.toWire(sourceFile, 'hash=').subject).toBeUndefined()
         expect(
-          (await Effect.runPromise(labelled.archiveToDocumentReference(archive))).subject
+          (await Effect.runPromise(labelled.sourceFileToDocumentReference(sourceFile))).subject
         ).toBeUndefined()
       }),
       { numRuns: numRunsFor({ base: 50 }) }
@@ -131,33 +132,35 @@ describe('the codec as a schema', () => {
 
   test('property: it round-trips straight from FHIR JSON', async () => {
     await fc.assert(
-      fc.asyncProperty(archiveArbitrary, async (archive) => {
+      fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
         const json: unknown = JSON.parse(
           JSON.stringify(
-            await Effect.runPromise(Schema.encode(labelled.ArchiveFromFhirJson)(archive))
+            await Effect.runPromise(Schema.encode(labelled.SourceFileFromFhirJson)(sourceFile))
           )
         )
         const back = await Effect.runPromise(
-          Schema.decodeUnknown(labelled.ArchiveFromFhirJson)(json)
+          Schema.decodeUnknown(labelled.SourceFileFromFhirJson)(json)
         )
-        expect(comparable(back)).toEqual(comparable(archive))
+        expect(comparable(back)).toEqual(comparable(sourceFile))
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
   })
 
   test('it composes like any other schema: a struct field decodes through it', async () => {
-    const Envelope = Schema.Struct({ archive: labelled.ArchiveFromDocumentReference })
-    const archive = example()
-    const resource = await Effect.runPromise(labelled.archiveToDocumentReference(archive))
-    const decoded = await Effect.runPromise(Schema.decode(Envelope)({ archive: resource }))
-    expect(comparable(decoded.archive)).toEqual(comparable(archive))
+    const Envelope = Schema.Struct({ sourceFile: labelled.SourceFileFromDocumentReference })
+    const sourceFile = example()
+    const resource = await Effect.runPromise(labelled.sourceFileToDocumentReference(sourceFile))
+    const decoded = await Effect.runPromise(Schema.decode(Envelope)({ sourceFile: resource }))
+    expect(comparable(decoded.sourceFile)).toEqual(comparable(sourceFile))
   })
 
   it('carries the coding on both type and category, and the security label when configured', () => {
     const withLabel = labelled.toWire(example(), 'DEADBEEF=')
-    expect(withLabel.type?.coding).toEqual([{ system: SYSTEM, code: 'example-archive' }])
-    expect(withLabel.category).toEqual([{ coding: [{ system: SYSTEM, code: 'example-archive' }] }])
+    expect(withLabel.type?.coding).toEqual([{ system: SYSTEM, code: 'example-source-file' }])
+    expect(withLabel.category).toEqual([
+      { coding: [{ system: SYSTEM, code: 'example-source-file' }] },
+    ])
     expect(withLabel.securityLabel).toEqual([
       { coding: [{ system: 'https://example.test/fhir/CodeSystem/redaction', code: 'raw' }] },
     ])
@@ -166,35 +169,35 @@ describe('the codec as a schema', () => {
   })
 
   it('exposes the category token in system|code form', () => {
-    expect(labelled.categoryToken).toBe(`${SYSTEM}|example-archive`)
+    expect(labelled.categoryToken).toBe(`${SYSTEM}|example-source-file`)
   })
 
   it('rejects a resource whose attachment carries no data', async () => {
-    const resource = await Effect.runPromise(labelled.archiveToDocumentReference(example()))
+    const resource = await Effect.runPromise(labelled.sourceFileToDocumentReference(example()))
     const dataless = resource.content.map((entry) => ({
       ...entry,
       attachment: { ...entry.attachment, data: null },
     }))
     const outcome = await Effect.runPromise(
-      Effect.either(labelled.archiveFromDocumentReference({ ...resource, content: dataless }))
+      Effect.either(labelled.sourceFileFromDocumentReference({ ...resource, content: dataless }))
     )
     expect(outcome._tag).toBe('Left')
     if (outcome._tag === 'Left') expect(outcome.left.message).toContain('no data')
   })
 
   it('a decode failure names the offending resource, so a failing list says which one', async () => {
-    const resource = await Effect.runPromise(labelled.archiveToDocumentReference(example()))
+    const resource = await Effect.runPromise(labelled.sourceFileToDocumentReference(example()))
     const outcome = await Effect.runPromise(
-      Effect.either(labelled.archiveFromDocumentReference({ ...resource, category: [] }))
+      Effect.either(labelled.sourceFileFromDocumentReference({ ...resource, category: [] }))
     )
     expect(outcome._tag).toBe('Left')
     if (outcome._tag === 'Left') expect(outcome.left.message).toContain(resource.id)
   })
 })
 
-describe('sourceArchive — the deterministic mint', () => {
+describe('buildSourceFile — the deterministic mint', () => {
   const mint = (picked: { fileName: string; bytes: Uint8Array }): Promise<DocumentReferenceType> =>
-    Effect.runPromise(labelled.sourceArchive(picked))
+    Effect.runPromise(labelled.buildSourceFile(picked))
 
   it('derives the id from the bytes and name — the same file mints the same id', async () => {
     const picked = { fileName: 'report.bin', bytes: new TextEncoder().encode('same bytes') }
@@ -221,24 +224,27 @@ describe('sourceArchive — the deterministic mint', () => {
 
   it('namespaces the id by coding system — two formats never collide on identical bytes and name', async () => {
     const picked = { fileName: 'report.bin', bytes: new TextEncoder().encode('shared') }
-    const other = sourceArchiveCodec({
-      coding: { system: 'https://other.test/fhir/CodeSystem/archive', code: 'example-archive' },
+    const other = sourceFileCodec({
+      coding: {
+        system: 'https://other.test/fhir/CodeSystem/source-file',
+        code: 'example-source-file',
+      },
       contentType: 'application/json',
-      descriptionPrefix: 'Other archive: ',
-      archiveName: 'OtherArchive',
-      label: 'One uploaded other archive',
-      idDescription: 'FHIR resource id of an uploaded other archive.',
+      descriptionPrefix: 'Other source file: ',
+      sourceFileName: 'OtherSourceFile',
+      label: 'One uploaded other source file',
+      idDescription: 'FHIR resource id of an uploaded other source file.',
     })
     const here = await mint(picked)
-    const there = await Effect.runPromise(other.sourceArchive(picked))
+    const there = await Effect.runPromise(other.buildSourceFile(picked))
     expect(here.id).not.toBe(there.id)
   })
 
-  it('mints a resource that reads back as its own archive, bytes and name recovered', async () => {
+  it('mints a resource that reads back as its own source file, bytes and name recovered', async () => {
     const bytes = new TextEncoder().encode('round-trip me')
     const resource = await mint({ fileName: 'doc.bin', bytes })
-    expect(labelled.isArchive(resource)).toBe(true)
-    const back = await Effect.runPromise(labelled.archiveFromDocumentReference(resource))
+    expect(labelled.isSourceFile(resource)).toBe(true)
+    const back = await Effect.runPromise(labelled.sourceFileFromDocumentReference(resource))
     expect(back.fileName).toBe('doc.bin')
     expect(back.bytes).toEqual(bytes)
     expect(back.id).toBe(resource.id)

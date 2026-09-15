@@ -51,7 +51,7 @@ import type { PickedFile } from '../sources/picked-file.ts'
 type ImportRunRegistry = {
   readonly [K in FormatKind]: Pick<
     BoundFormat<K>,
-    'format' | 'detect' | 'decode' | 'defaultSettings' | 'sourceArchive'
+    'format' | 'detect' | 'decode' | 'defaultSettings' | 'buildSourceFile'
   >
 }
 
@@ -61,7 +61,7 @@ type ImportRunRegistry = {
  * settings re-decode leaves the reviewer's edit or skip of it applying; the
  * title heads its own section in the preview, above the extracted resources.
  */
-const SOURCE_ARCHIVE_KEY = 'source-archive'
+const SOURCE_FILE_KEY = 'source-file'
 const SOURCE_SECTION_TITLE = 'Source file'
 
 /**
@@ -72,14 +72,14 @@ const SOURCE_SECTION_TITLE = 'Source file'
  * these, so there is no further per-format review state.
  *
  * @remarks
- * `sourceArchive` is the local pick's source-file `DocumentReference` as a
+ * `sourceFile` is the local pick's source-file `DocumentReference` as a
  * {@link LabeledResource}, minted once at read time so its id and upload
  * instant stay stable across settings re-decodes — `undefined` for a server
- * pick (its archive already exists) or when the archive could not be built.
+ * pick (its source file already exists) or when it could not be built.
  * It is prepended to `decoded.sections` as its own "Source file" section, so
  * the generalized review renders, edits, and skips it like any other
  * resource; the field is kept alongside so a re-decode can re-inject the same
- * archive rather than mint a fresh one.
+ * source file rather than mint a fresh one.
  */
 type ReadFile<K extends FormatKind> = {
   readonly [Kind in K]: {
@@ -88,7 +88,7 @@ type ReadFile<K extends FormatKind> = {
     readonly picked: PickedFile
     readonly format: Kind
     readonly decoded: DecodedFile<FhirResource>
-    readonly sourceArchive: LabeledResource<FhirResource> | undefined
+    readonly sourceFile: LabeledResource<FhirResource> | undefined
   }
 }[K]
 
@@ -99,9 +99,9 @@ type ReadFile<K extends FormatKind> = {
  * variant lines up cleanly.
  *
  * @remarks
- * Carries the same `sourceArchive` as {@link ReadFile} so that a settings
- * re-decode which turns this file readable re-injects the archive minted on
- * the first read rather than a fresh one.
+ * Carries the same `sourceFile` as {@link ReadFile} so that a settings
+ * re-decode which turns this file readable re-injects the source file minted
+ * on the first read rather than a fresh one.
  */
 type UnreadableFile<K extends FormatKind> = {
   readonly [Kind in K]: {
@@ -110,7 +110,7 @@ type UnreadableFile<K extends FormatKind> = {
     readonly picked: PickedFile
     readonly format: Kind
     readonly error: ParseResult.ParseError
-    readonly sourceArchive: LabeledResource<FhirResource> | undefined
+    readonly sourceFile: LabeledResource<FhirResource> | undefined
   }
 }[K]
 
@@ -191,18 +191,20 @@ const runDecode = (
   Match.type<FormatKind>().pipe(
     Match.when('har', (kind) => registry[kind].decode(bytes, settings[kind])),
     Match.when('lifelabs-pdf', (kind) => registry[kind].decode(bytes, settings[kind])),
+    Match.when('dicom', (kind) => registry[kind].decode(bytes, settings[kind])),
     Match.exhaustive
   )(format)
 
 /**
- * Build one local pick's source-file archive `DocumentReference` through its
- * format's `sourceArchive`, dispatched with `Match.type` so `kind` narrows to
- * a specific `K` per branch — no cast. A server pick has none (its archive is
- * already on the server), and a build failure (a near-impossible `ParseError`
- * — a digest unavailable in an insecure context) folds to `undefined` so the
- * file still imports, just with no source-file section to review.
+ * Build one local pick's source-file `DocumentReference` through its format's
+ * `buildSourceFile`, dispatched with `Match.type` so `kind` narrows to a
+ * specific `K` per branch — no cast. A server pick has none (its source file
+ * is already on the server), and a build failure (a near-impossible
+ * `ParseError` — a digest unavailable in an insecure context) folds to
+ * `undefined` so the file still imports, just with no source-file section to
+ * review.
  */
-const buildSourceArchive = (
+const buildSourceFileResource = (
   registry: ImportRunRegistry,
   format: FormatKind,
   picked: PickedFile
@@ -210,13 +212,14 @@ const buildSourceArchive = (
   if (picked.source._tag !== 'local') return Effect.succeed(undefined)
   return Match.type<FormatKind>()
     .pipe(
-      Match.when('har', (kind) => registry[kind].sourceArchive(picked)),
-      Match.when('lifelabs-pdf', (kind) => registry[kind].sourceArchive(picked)),
+      Match.when('har', (kind) => registry[kind].buildSourceFile(picked)),
+      Match.when('lifelabs-pdf', (kind) => registry[kind].buildSourceFile(picked)),
+      Match.when('dicom', (kind) => registry[kind].buildSourceFile(picked)),
       Match.exhaustive
     )(format)
     .pipe(
       Effect.map((resource): LabeledResource<FhirResource> => ({
-        key: SOURCE_ARCHIVE_KEY,
+        key: SOURCE_FILE_KEY,
         title: picked.fileName,
         resource,
       })),
@@ -225,31 +228,28 @@ const buildSourceArchive = (
 }
 
 /**
- * Prepend the source-file archive as its own titled section, above the
- * extracted resources, so the generalized review lists it like any other
- * resource. A decode with no archive (a server pick, or a build that failed)
- * is returned unchanged.
+ * Prepend the source file as its own titled section, above the extracted
+ * resources, so the generalized review lists it like any other resource. A
+ * decode with no source file (a server pick, or a build that failed) is
+ * returned unchanged.
  */
 const withSourceSection = (
   decoded: DecodedFile<FhirResource>,
-  sourceArchive: LabeledResource<FhirResource> | undefined
+  sourceFile: LabeledResource<FhirResource> | undefined
 ): DecodedFile<FhirResource> =>
-  sourceArchive === undefined
+  sourceFile === undefined
     ? decoded
     : {
         ...decoded,
-        sections: [
-          { title: SOURCE_SECTION_TITLE, resources: [sourceArchive] },
-          ...decoded.sections,
-        ],
+        sections: [{ title: SOURCE_SECTION_TITLE, resources: [sourceFile] }, ...decoded.sections],
       }
 
 /**
  * Decode one identified pick under `settings` and fold its outcome into a
  * {@link FileReadOutcome}, prepending the (already-minted) source-file section
- * on success. Both the `read` and `unreadable` outcomes carry `sourceArchive`,
- * so a settings re-decode re-injects the same archive rather than mint a fresh
- * one.
+ * on success. Both the `read` and `unreadable` outcomes carry `sourceFile`,
+ * so a settings re-decode re-injects the same source file rather than mint a
+ * fresh one.
  */
 const decodeInto = (
   registry: ImportRunRegistry,
@@ -257,7 +257,7 @@ const decodeInto = (
   format: FormatKind,
   picked: PickedFile,
   id: string,
-  sourceArchive: LabeledResource<FhirResource> | undefined
+  sourceFile: LabeledResource<FhirResource> | undefined
 ): Effect.Effect<FileReadOutcome> =>
   runDecode(registry, settings, format, picked.bytes).pipe(
     Effect.map((decoded): FileReadOutcome => ({
@@ -265,8 +265,8 @@ const decodeInto = (
       id,
       picked,
       format,
-      decoded: withSourceSection(decoded, sourceArchive),
-      sourceArchive,
+      decoded: withSourceSection(decoded, sourceFile),
+      sourceFile,
     })),
     Effect.catchAll((error) =>
       Effect.succeed<FileReadOutcome>({
@@ -275,16 +275,16 @@ const decodeInto = (
         picked,
         format,
         error,
-        sourceArchive,
+        sourceFile,
       })
     )
   )
 
 /**
- * Read one pick end-to-end: identify its format, mint its source-file archive
- * (local picks only, minted once here so a later re-decode reuses it), then
- * decode. The archive mint runs before the decode so it exists whether the
- * decode succeeds or fails.
+ * Read one pick end-to-end: identify its format, build its source-file
+ * resource (local picks only, minted once here so a later re-decode reuses
+ * it), then decode. The source-file mint runs before the decode so it exists
+ * whether the decode succeeds or fails.
  */
 const readOne = (
   registry: ImportRunRegistry,
@@ -296,10 +296,8 @@ const readOne = (
   if (kind === undefined) {
     return Effect.succeed<FileReadOutcome>({ _tag: 'unrecognized', id, picked })
   }
-  return buildSourceArchive(registry, kind, picked).pipe(
-    Effect.flatMap((sourceArchive) =>
-      decodeInto(registry, settings, kind, picked, id, sourceArchive)
-    )
+  return buildSourceFileResource(registry, kind, picked).pipe(
+    Effect.flatMap((sourceFile) => decodeInto(registry, settings, kind, picked, id, sourceFile))
   )
 }
 
@@ -361,10 +359,10 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
         state.files,
         (file) =>
           file._tag !== 'unrecognized' && file.format === format
-            ? // Reuse the archive minted on the first read — never mint a fresh
-              // one on a settings change, so its id (and the reviewer's edit or
-              // skip of it) stays stable across re-decodes.
-              decodeInto(registry, merged, file.format, file.picked, file.id, file.sourceArchive)
+            ? // Reuse the source file minted on the first read — never mint a
+              // fresh one on a settings change, so its id (and the reviewer's
+              // edit or skip of it) stays stable across re-decodes.
+              decodeInto(registry, merged, file.format, file.picked, file.id, file.sourceFile)
             : Effect.succeed(file),
         { concurrency: 'unbounded' }
       )

@@ -8,51 +8,52 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { Review, sectionResources } from 'importer-fundamentals'
 import { withMetaSource } from 'web-trace-core/provenance'
 
-import { ARCHIVES_QUERY_KEY } from '../queries/keys.ts'
+import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {
   type BatchOutcome,
   type FileImportResult,
   importOutcome,
   type SkipReason,
 } from '../results/import-outcome.ts'
-import { archiveReference, type PickedFile } from '../sources/picked-file.ts'
+import { sourceFileReference, type PickedFile } from '../sources/picked-file.ts'
 import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
  * The opt-in write half of the flow, as one imperative action over a batch:
  * for every file with reviewed resources the review kept included, submit
- * those resources — including the file's own source-file archive, when the
- * reviewer left it in — as one `persistBatchBundle`, each extracted resource
- * stamped with the archive it came from.
+ * those resources — including the file's own source file, when the reviewer
+ * left it in — as one `persistBatchBundle`, each extracted resource stamped
+ * with the source file it came from.
  *
  * @remarks
  * The seam the preview-then-confirm promise rests on — nothing here runs
- * until the user confirms a reviewed batch. The source-file archive is no
- * longer uploaded on its own: it is one of the reviewed resources (its own
- * "Source file" section, minted at read time), so a confirm writes it in the
- * *same* `POST /` batch bundle as the extracted resources — one round trip,
- * not an upload-then-persist. Per file:
+ * until the user confirms a reviewed batch. The source file is no longer
+ * uploaded on its own: it is one of the reviewed resources (its own "Source
+ * file" section, minted at read time), so a confirm writes it in the *same*
+ * `POST /` batch bundle as the extracted resources — one round trip, not an
+ * upload-then-persist. Per file:
  *
  * - Every extracted resource the review kept is stamped with `meta.source =
- *   sourceRef`, the archive's `DocumentReference/<id>`. The archive's own id
- *   is locked to the value it was minted with, so a reviewer's inline edit
- *   (a rename, say) can never drift the link, and the archive is not stamped
- *   onto itself.
+ *   sourceRef`, the source file's `DocumentReference/<id>`. The source
+ *   file's own id is locked to the value it was minted with, so a
+ *   reviewer's inline edit (a rename, say) can never drift the link, and
+ *   the source file is not stamped onto itself.
  * - `sourceRef` is the server pick's existing reference, or the local pick's
- *   archive reference when the archive is included. When the reviewer **skips**
- *   the archive (excludes it), there is nothing to point at, so the extracted
- *   resources are written **without** `meta.source`.
+ *   source-file reference when the source file is included. When the reviewer
+ *   **skips** the source file (excludes it), there is nothing to point at, so
+ *   the extracted resources are written **without** `meta.source`.
  *
  * Each file's write is one `persistBatchBundle`, whose error channel is
- * `never`, so a failed entry (the archive included) is a per-entry result in
- * the batch — one file never stops the rest, and a file with nothing included
- * is `skipped` and never touches the server. There is no separate upload to
- * fail: the archive's write shows up as an ordinary row in the results.
+ * `never`, so a failed entry (the source file included) is a per-entry
+ * result in the batch — one file never stops the rest, and a file with
+ * nothing included is `skipped` and never touches the server. There is no
+ * separate upload to fail: the source file's write shows up as an ordinary
+ * row in the results.
  *
- * After the batch resolves, the archive list query is invalidated once — so a
- * freshly written archive appears in the server list on the next pick — even
- * when the batch wrote none; the invalidation is cheap and the alternative
- * (tracking which files wrote an archive) buys nothing.
+ * After the batch resolves, the source-file list query is invalidated
+ * once — so a freshly written source file appears in the server list on the
+ * next pick — even when the batch wrote none; the invalidation is cheap and
+ * the alternative (tracking which files wrote a source file) buys nothing.
  *
  * @packageDocumentation
  */
@@ -81,7 +82,7 @@ interface ConfirmImport {
   /**
    * Run the per-file persist action for every read file in the batch. Each
    * read file's labeled resources come off its own decoded sections — the
-   * same objects the preview rendered, including its source-file archive.
+   * same objects the preview rendered, including its source file.
    */
   readonly confirm: (files: readonly FileReadOutcome[], selectionFor: SelectionFor) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
@@ -98,8 +99,8 @@ interface ChosenEntry {
  * Every labeled resource the reviewer left included, with any inline edit
  * substituted in, carried alongside its {@link Review.Selection} key — the
  * key form of {@link Review.chosenResources}, so the confirm can tell the
- * file's source-file archive apart from the extracted resources by its stable
- * key rather than by re-recognizing its coding.
+ * file's source file apart from the extracted resources by its stable key
+ * rather than by re-recognizing its coding.
  */
 const chosenEntries = (
   labeled: readonly { readonly key: string; readonly resource: FhirResource }[],
@@ -119,22 +120,23 @@ const withId = <TResource extends { readonly id: string | null }>(
 ): TResource => ({ ...resource, id })
 
 /**
- * The archive reference a file's extracted resources stamp onto `meta.source`,
- * or `undefined` when there is nothing to point at.
+ * The source-file reference a file's extracted resources stamp onto
+ * `meta.source`, or `undefined` when there is nothing to point at.
  *
  * @remarks
- * A `server` pick's archive is already on the server, so its own reference is
- * the stamp. A `local` pick's archive rides this batch, so its minted id
- * becomes the reference — but only when the reviewer kept it included; a
- * skipped archive leaves the extracted resources unstamped.
+ * A `server` pick's source file is already on the server, so its own
+ * reference is the stamp. A `local` pick's source file rides this batch,
+ * so its minted id becomes the reference — but only when the reviewer kept
+ * it included; a skipped source file leaves the extracted resources
+ * unstamped.
  */
 const provenanceRef = (
   picked: PickedFile,
   canonicalId: string | null,
-  archiveIncluded: boolean
+  sourceFileIncluded: boolean
 ): string | undefined => {
   if (picked.source._tag === 'server') return picked.source.reference
-  if (archiveIncluded && canonicalId !== null) return archiveReference(canonicalId)
+  if (sourceFileIncluded && canonicalId !== null) return sourceFileReference(canonicalId)
   return undefined
 }
 
@@ -155,25 +157,21 @@ const importOneFile = (
   return Match.value(file).pipe(
     Match.tag('unreadable', () => skip('unreadable')),
     Match.tag('unrecognized', () => skip('unreadable')),
-    Match.tag('read', ({ decoded, sourceArchive }) => {
+    Match.tag('read', ({ decoded, sourceFile }) => {
       const selection = selectionFor(id)
       const labeled = sectionResources(decoded.sections)
       const chosen = chosenEntries(labeled, selection)
       const excluded = Review.excludedCount(labeled, selection)
       if (chosen.length === 0) return skip('nothing')
 
-      // The archive is identified by its stable review key (not its coding),
-      // so a reviewer's inline edit to it cannot change how it is treated.
-      const archiveKey = sourceArchive?.key
-      const canonicalId = sourceArchive?.resource.id ?? null
-      const archiveIncluded =
-        sourceArchive !== undefined && Review.isResourceIncluded(selection, sourceArchive.key)
-      const sourceRef = provenanceRef(picked, canonicalId, archiveIncluded)
+      const sourceFileKey = sourceFile?.key
+      const canonicalId = sourceFile?.resource.id ?? null
+      const sourceFileIncluded =
+        sourceFile !== undefined && Review.isResourceIncluded(selection, sourceFile.key)
+      const sourceRef = provenanceRef(picked, canonicalId, sourceFileIncluded)
 
       const resources = chosen.map(({ key, resource }) => {
-        // The archive is the source: lock its id so the stamp stays valid, and
-        // never stamp it onto itself.
-        if (key === archiveKey)
+        if (key === sourceFileKey)
           return canonicalId === null ? resource : withId(resource, canonicalId)
         return sourceRef === undefined ? resource : withMetaSource(resource, sourceRef)
       })
@@ -193,8 +191,8 @@ const importOneFile = (
 
 /**
  * Drives a single confirmed batch — for each file, persist the review's
- * included resources (its source-file archive among them, when kept) — as one
- * Effect run through `runAuthed`, mapping its per-file lifecycle onto a
+ * included resources (its source file among them, when kept) — as one Effect
+ * run through `runAuthed`, mapping its per-file lifecycle onto a
  * {@link BatchOutcome}. The authed runner and the FHIR write client both come
  * from router context via `fhir-r4-react`, so mount this inside the host app's
  * router and `QueryClientProvider`.
@@ -219,7 +217,7 @@ const useConfirmImport = (): ConfirmImport => {
       void runAuthed(batch).then((results) => {
         if (latest.current !== ticket) return
         setState({ _tag: 'done', batch: results })
-        void queryClient.invalidateQueries({ queryKey: ARCHIVES_QUERY_KEY })
+        void queryClient.invalidateQueries({ queryKey: SOURCE_FILES_QUERY_KEY })
       })
     },
     [runAuthed, queryClient]
