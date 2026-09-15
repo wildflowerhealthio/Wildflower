@@ -1,6 +1,7 @@
 import type { JSX } from 'react'
 import { pageLayoutStyles } from 'react-tundraish'
 
+import type { ErrorRouteComponent } from '@tanstack/react-router'
 import { TokenTimeoutRetry } from './token-timeout-retry.tsx'
 
 /**
@@ -14,7 +15,11 @@ import { TokenTimeoutRetry } from './token-timeout-retry.tsx'
  * `TokenTimeoutRetry` stays a shell-less body, matching the
  * `<PageBodyError>` convention used elsewhere in the app.
  */
-const AuthGatedErrorComponent = ({ error }: { readonly error: Error }): JSX.Element => (
+const AuthGatedErrorComponent: ErrorRouteComponent = ({
+  error,
+}: {
+  readonly error: unknown
+}): JSX.Element => (
   <div className={pageLayoutStyles['page']}>
     <TokenTimeoutRetry error={error} />
   </div>

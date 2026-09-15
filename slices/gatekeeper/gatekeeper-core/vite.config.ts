@@ -5,7 +5,7 @@ export default defineConfig({
   ...base,
   pack: {
     dts: {
-      tsgo: true,
+      tsgo: {},
     },
     platform: 'neutral',
     exports: false,

@@ -6,7 +6,7 @@ import base from '../../../vite.config.base.ts'
 export default defineConfig({
   ...base,
   pack: {
-    dts: { tsgo: true },
+    dts: { tsgo: {} },
     exports: false,
     platform: 'neutral',
     entry: { 'schemas/index': 'src/schemas/index.ts' },

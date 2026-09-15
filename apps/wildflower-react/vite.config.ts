@@ -14,7 +14,7 @@ export default defineConfig({
     // walking into each slice's `src/`. Without that override, tsgo treats
     // every transitively-imported slice source file as a project input and
     // writes `.d.ts` siblings next to them across the monorepo.
-    dts: { tsgo: true, tsconfig: './tsconfig.pack.json' },
+    dts: { tsgo: {}, tsconfig: './tsconfig.pack.json' },
     platform: 'browser',
     exports: false,
     entry: {

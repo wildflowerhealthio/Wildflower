@@ -6,7 +6,7 @@ import base from '../../../vite.config.base.ts'
 export default defineConfig({
   ...base,
   pack: {
-    dts: { tsgo: true },
+    dts: { tsgo: {} },
     exports: false,
     // The package now ships a React config form alongside the pure dialect
     // schemas, so it packs for the browser (like fhir-r4-client-collector).
