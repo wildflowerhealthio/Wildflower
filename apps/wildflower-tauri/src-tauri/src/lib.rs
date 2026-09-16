@@ -315,8 +315,17 @@ async fn run_server(
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
 
-    let fhir_r4_router = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
+    let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
+    let fhir_r4_router = fhir_routers.fhir_r4;
+    // Ungated at this layer (unlike `gated_fhir_r4` below): auth still
+    // happens, just further down. The handler re-drives into HFS in-process
+    // (see `emr_rust::dicom_files::dicom_files_router`), and that delegated
+    // request runs through HFS's own bearer-JWT + SMART v2 scope enforcement
+    // for the underlying `DocumentReference` read. It's mounted at the app
+    // root (not under `/fhir-r4`) so an OHIF viewer running as its own origin
+    // can reach it without also carrying the host's Owner-scoped bearer gate.
+    let dicom_files_router = fhir_routers.dicom_files;
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
@@ -665,6 +674,7 @@ async fn run_server(
     let api_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
+        .merge(dicom_files_router)
         .merge(gated_collector)
         .merge(gated_tunnel)
         // The app-layer `/health`: an unauthenticated liveness endpoint the
@@ -695,8 +705,7 @@ async fn run_server(
                 token_rx: publishers.host_owner_token_sender.subscribe(),
             },
             inject_loopback_owner_token,
-        ))
-        .layer(CorsLayer::very_permissive());
+        ));
 
     // Defense-in-depth: gate the entire API surface on a loopback peer address.
     // Every endpoint here is meant to be reached only over the loopback socket —
@@ -708,7 +717,8 @@ async fn run_server(
     // non-loopback client. Applied outermost (after CORS) so it runs first. See
     // `layer_router_with_loopback_peer_gating` for how forwarded callers pass and
     // why re-gating the gatekeeper's already-gated routes is harmless.
-    let api_router = layer_router_with_loopback_peer_gating(api_router);
+    let api_router =
+        layer_router_with_loopback_peer_gating(api_router).layer(CorsLayer::very_permissive());
 
     // The reverse proxy wraps the API stack as the outermost layer: a forwarded
     // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`

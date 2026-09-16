@@ -120,6 +120,11 @@ struct DevAppPorts {
     ohif_viewer_dev: u16,
 }
 
+/// The loopback redirect route for a dev app served at its origin root — every
+/// first-party app but the OHIF viewer, whose launch targets a sub-route.
+#[cfg(debug_assertions)]
+const DEV_ROOT_REDIRECT_PATH: &str = "/";
+
 /// The debug-only OAuth clients for the first-party apps' vite dev servers — the
 /// gatekeeper half of `apps_rust::seed_dev_apps`.
 ///
@@ -135,6 +140,11 @@ struct DevAppPorts {
 /// production ones (adding a `http://127.0.0.1:<port>/` loopback redirect there
 /// would also mean registering a plaintext redirect on a client that a public
 /// website uses).
+///
+/// `ohif-viewer-dev` is the exception: its app row is a **cloud** row on the dev
+/// origin (`apps_rust::dev_seed`), so its app-relative entry resolves to nothing
+/// and the absolute loopback one is what carries its launch — on `/fhir-viewer`
+/// rather than the root, since redirect matching is exact-URL.
 ///
 /// Scopes mirror each app's production client exactly — a dev build of the app
 /// requests the same set (`apps/*/src/config.ts`).
@@ -174,6 +184,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ]
             .as_slice(),
             ports.medications_app_dev,
+            DEV_ROOT_REDIRECT_PATH,
         ),
         (
             "web-trace-app-dev",
@@ -186,6 +197,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ]
             .as_slice(),
             ports.web_trace_app_dev,
+            DEV_ROOT_REDIRECT_PATH,
         ),
         (
             "importer-app-dev",
@@ -213,6 +225,7 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ]
             .as_slice(),
             ports.importer_app_dev,
+            DEV_ROOT_REDIRECT_PATH,
         ),
         (
             "ohif-viewer-dev",
@@ -231,9 +244,17 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             ]
             .as_slice(),
             ports.ohif_viewer_dev,
+            // NOT the root: the OHIF dev app row is a CLOUD row (see
+            // `apps_rust::dev_seed`), so its app-relative `"/"` entry no longer
+            // resolves and the absolute entry is the only one that can match. It
+            // must therefore be the exact route the launch targets — the FHIR
+            // Viewer mode, as on the production client (migration
+            // `0009_seed_ohif_viewer_client`), which is where OHIF's data source
+            // sends the browser back to and what it passes as `redirect_uri`.
+            "/fhir-viewer",
         ),
     ];
-    for (client_id, name, scopes, port) in dev_clients {
+    for (client_id, name, scopes, port, redirect_path) in dev_clients {
         use url::Url;
 
         let client = Client {
@@ -241,14 +262,18 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
             name: name.to_string(),
             kind: ClientKind::Public,
             // App-relative: resolved against the dev app's own loopback origin at
-            // `/authorize` time. The absolute entry's port comes from the shared
-            // `dev-app-ports.json` (above), the same file the apps dev seed and
-            // each `vite.config.ts` read — so it is never a literal duplicated
-            // here.
+            // `/authorize` time — for the self-hosted dev rows. It resolves to
+            // nothing for the cloud `ohif-viewer-dev` row (the resolver requires
+            // a self-hosted app), which is why the absolute entry below carries
+            // that one on its own. The absolute entry's port comes from the
+            // shared `dev-app-ports.json` (above), the same file the apps dev
+            // seed and each `vite.config.ts` read — so it is never a literal
+            // duplicated here, and its path is the route that client's launch
+            // actually lands on (redirect matching is exact-URL).
             redirect_uris: vec![
                 RegisteredRedirectUri::AppRelative("/".to_string()),
                 RegisteredRedirectUri::Absolute(
-                    Url::parse(&format!("http://localhost:{}/", port)).unwrap(),
+                    Url::parse(&format!("http://localhost:{port}{redirect_path}")).unwrap(),
                 ),
             ],
             allowed_scopes: scopes.iter().map(|s| (*s).to_string()).collect(),

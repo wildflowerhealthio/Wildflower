@@ -17,8 +17,12 @@
 --
 --   * `"/"` — the app-relative entry. It resolves only through the self-hosted
 --     resolver, so on a production install (where the app is a *cloud* row) it
---     matches nothing. It is kept for the debug-only `ohif-viewer-dev`
---     self-hosted row's sibling client and for a `down`-migrated install.
+--     matches nothing. It is kept for a `down`-migrated install and for symmetry
+--     with the other first-party app clients, whose debug-only `-dev` siblings
+--     are self-hosted rows that do resolve it. (The `ohif-viewer-dev` sibling is
+--     not one of those: its app row is a cloud row on the preview origin, so it
+--     leans on its own absolute loopback redirect instead — see
+--     `seeding.rs`'s `seed_dev_app_clients`.)
 --   * the absolute Pages URL —
 --     `https://wildflowerhealth.io/ohif-viewer/fhir-viewer`. A cloud app's
 --     redirect can only be absolute: the app-relative form needs a self-hosted

@@ -12,10 +12,11 @@
 -- `wildflowerhealthio/ohif-viewer-dist` (see `apps/ohif-viewer/README.md`).
 -- Serving the deployed copy means the viewer updates when the site deploys, not
 -- when the user installs a new desktop build. Unlike the other first-party apps
--- nothing is vendored under `slices/apps/self-hosted-apps/` for it: the
--- debug-only `ohif-viewer-dev` row (`apps-rust/src/dev_seed.rs`) is served by
--- `vp run -F ohif-viewer dev` (a preview of the downloaded build) and has no
--- fallback content.
+-- nothing is vendored under `slices/apps/self-hosted-apps/` for it. Which is why
+-- the debug-only `ohif-viewer-dev` row (`apps-rust/src/dev_seed.rs`) is a cloud
+-- row too, unlike every other `-dev` row: with no fallback content a self-hosted
+-- row's host listener could only contend with `vp run -F ohif-viewer dev` (a
+-- preview of the downloaded build) for the port.
 --
 -- The id and the OAuth `client_id` are both the published path segment,
 -- `ohif-viewer`, matching the convention 0005 established. The two MUST stay

@@ -18,6 +18,10 @@ tower = { version = "0.5", features = ["util"] }
 # The loopback origin flows in as a typed `Url` (from `ServerRuntimeConfig`); the
 # discovery handler derives its bare origin string from it.
 url = { version = "2" }
+# The DICOM file server decodes a DocumentReference attachment's base64 `data`
+# back to raw bytes. Already in the tree transitively; pinned here as a direct
+# dep, matching the version gatekeeper-rust and apps-rust already pin.
+base64 = "0.23"
 # `$everything` logs (and swallows) a related-resource search that fails so a
 # partial-scope token still gets the resources it can read. Already in the tree
 # via helios/tower; pinned here as a direct dep for the `warn!` macro.

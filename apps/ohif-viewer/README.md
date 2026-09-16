@@ -90,14 +90,24 @@ the client ID, for launching from another FHIR server.
 
 ### Dev row
 
-A debug build of the host also seeds an `ohif-viewer-dev` self-hosted row and
-client (`apps-rust/src/dev_seed.rs`, `gatekeeper-rust/src/seeding.rs`) on the
-port `slices/apps/dev-app-ports.json` names, launched at the root like the
-production row. `vp run -F ohif-viewer dev` previews `dist/` on that port, and
-`app-config.js` sends the `ohif-viewer-dev` client ID when served from a
-loopback origin. Unlike the other first-party apps nothing is vendored under
-`slices/apps/self-hosted-apps/` for it, so the tile serves nothing until the
-preview is running.
+A debug build of the host also seeds an `ohif-viewer-dev` row and client
+(`apps-rust/src/dev_seed.rs`, `gatekeeper-rust/src/seeding.rs`) on the port
+`slices/apps/dev-app-ports.json` names. `vp run -F ohif-viewer dev` previews
+`dist/` on that port, and `app-config.js` sends the `ohif-viewer-dev` client ID
+when served from a loopback origin.
+
+Unlike the other first-party apps' dev rows, this one is a **cloud** row —
+`http://localhost:<port>/fhir-viewer?…`, the production launch template against
+the preview origin. Nothing is vendored under `slices/apps/self-hosted-apps/`
+for it, so a self-hosted row would give the host no fallback content to serve
+and its loopback listener would only contend with the preview server for the
+port; a cloud row leaves the preview server the sole origin, so the viewer's
+cross-origin behaviour in dev matches production. The cost is that the
+app-relative `"/"` redirect no longer resolves (the host's resolver only
+resolves those for self-hosted rows), so the dev client's **absolute**
+`http://localhost:<port>/fhir-viewer` entry is what matches the launch —
+exact-URL, hence the route rather than the root. The tile serves nothing until
+the preview is running.
 
 ## Updating the viewer
 

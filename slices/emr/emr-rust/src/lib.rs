@@ -7,6 +7,8 @@
 
 mod auth;
 mod config;
+mod delegate;
+mod dicom_files;
 mod openapi;
 mod patient_everything;
 mod smart_configuration;
@@ -21,6 +23,7 @@ use shared_structures_rust::ServerRuntimeConfig;
 use token_revocation_rust::RevocationStore;
 
 use crate::auth::build_auth;
+use crate::dicom_files::dicom_files_router;
 use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
@@ -29,6 +32,15 @@ pub use crate::openapi::openapi_spec;
 
 const FHIR_R4_PATH: &str = "/fhir-r4";
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
+
+/// Result of [`setup_fhir_r4`]: the FHIR R4 router (mounted at
+/// [`FHIR_R4_PATH`]) and the standalone DICOM file router (mounted at the app
+/// root — see [`crate::dicom_files::dicom_files_router`] for why it lives
+/// outside the `/fhir-r4` nest). The caller merges both into its root router.
+pub struct FhirR4Routers {
+    pub fhir_r4: Router,
+    pub dicom_files: Router,
+}
 
 /// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
 /// [`setup_fhir_r4`]'s router must let through without a bearer token: the FHIR
@@ -57,6 +69,12 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 ///   operation HFS doesn't ship, by delegating back into HFS's `read` + indexed
 ///   `subject=` searches in-process (see [`patient_everything`]).
 ///
+/// A third override, `/api/dicom/files/{id}`, serves a stored DICOM source
+/// file's raw bytes (decoded from a `DocumentReference` attachment's base64
+/// `data`) so a DICOM viewer can fetch it by id over plain HTTP (see
+/// [`dicom_files`]) — it is returned separately, in [`FhirR4Routers::dicom_files`],
+/// because it is mounted at the app root rather than under `/fhir-r4`.
+///
 /// When [`EmrConfig::jwks_url`] is `Some`, HFS auth is enabled: it validates the
 /// JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes,
 /// and gates each FHIR operation against them. The discovery override and
@@ -77,7 +95,7 @@ pub fn setup_fhir_r4(
     runtime: &ServerRuntimeConfig,
     config: &EmrConfig,
     revocation_store: RevocationStore,
-) -> anyhow::Result<Router> {
+) -> anyhow::Result<FhirR4Routers> {
     // Point HFS's backend at the on-disk FHIR R4 SearchParameter asset directory
     // the host provides (a bundled resource — never embedded in the binary), so
     // HFS registers every standard R4 search parameter and indexes it at write
@@ -146,10 +164,11 @@ pub fn setup_fhir_r4(
         None,
     );
 
-    // Specific routes win over fallback: our SMART App Launch discovery doc and
-    // the `$everything` operation intercept their paths; everything else under
-    // /fhir-r4 falls through to HFS. Each override sub-router carries its own
-    // state, so they're merged after `.with_state` erases the state type.
+    // Specific routes win over fallback: our SMART App Launch discovery doc, the
+    // `$everything` operation, and the DICOM file server intercept their paths;
+    // everything else under /fhir-r4 falls through to HFS. Each override
+    // sub-router carries its own state, so they're merged after `.with_state`
+    // erases the state type.
     let smart_config_route = Router::new()
         .route(
             "/.well-known/smart-configuration",
@@ -169,6 +188,11 @@ pub fn setup_fhir_r4(
             loopback_base_url,
         });
 
+    // Same in-process delegation shape as `$everything` (see [`dicom_files`]),
+    // but returned separately rather than merged in below — it is mounted at
+    // the app root, not under `/fhir-r4` (see [`dicom_files_router`]).
+    let dicom_files = dicom_files_router(hfs_router.clone());
+
     let fhir_with_override = smart_config_route
         .merge(patient_everything_route)
         .fallback_service(hfs_router)
@@ -183,7 +207,10 @@ pub fn setup_fhir_r4(
     // fallback (a 200 HTML page for any method). `nest_service` claims the whole
     // `/fhir-r4` subtree — bare root and trailing slash included — for the inner
     // router, so the base reaches HFS. Covered by `tests/batch_bundle_at_base.rs`.
-    Ok(Router::new().nest_service(FHIR_R4_PATH, fhir_with_override))
+    Ok(FhirR4Routers {
+        fhir_r4: Router::new().nest_service(FHIR_R4_PATH, fhir_with_override),
+        dicom_files,
+    })
 }
 
 /// Filename HFS's `SearchParameterLoader` expects for the R4 spec bundle inside
