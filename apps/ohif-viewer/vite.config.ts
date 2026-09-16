@@ -1,24 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
 
-import base from '../../vite.config.base.ts'
-
-// SINGLE SOURCE OF TRUTH: `slices/apps/dev-app-ports.json` pins the port.
-// `apps-rust/src/dev_seed.rs` embeds the same file — so they cannot drift.
-const devPortsPath = fileURLToPath(new URL('../../slices/apps/dev-app-ports.json', import.meta.url))
-
-const isDevPorts = (value: unknown): value is { 'ohif-viewer-dev': number } =>
-  typeof value === 'object' &&
-  value !== null &&
-  'ohif-viewer-dev' in value &&
-  typeof value['ohif-viewer-dev'] === 'number'
-
-const parsedDevPorts: unknown = JSON.parse(readFileSync(devPortsPath, 'utf8'))
-if (!isDevPorts(parsedDevPorts)) {
-  throw new Error(`dev-app-ports.json must declare a number "ohif-viewer-dev" (at ${devPortsPath})`)
-}
-const devPort = parsedDevPorts['ohif-viewer-dev']
+import base, { devAppServer } from '../../vite.config.base.ts'
 
 /**
  * This package bundles nothing itself: its build downloads the prebuilt OHIF
@@ -48,16 +30,10 @@ export default defineConfig({
       },
     },
   },
-  preview: {
-    // Pinned to the shared dev-port file (above), and `strictPort` so vite fails
-    // loudly rather than drifting onto the next free port: the homescreen's
-    // "Imaging (Dev)" tile launches this port, and there is no vendored fallback
-    // build for the host to serve in its place. Run with
-    // `vp run -F ohif-viewer dev`.
-    port: devPort,
-    strictPort: true,
-    host: '0.0.0.0',
-  },
+  // The homescreen's "Imaging (Dev)" tile launches this port and there is no
+  // vendored fallback build for the host to serve in its place, so the preview
+  // server must hold exactly it. Run with `vp run -F ohif-viewer dev`.
+  preview: devAppServer('ohif-viewer-dev'),
   test: {
     ...base.test,
     include: ['src/**/*.test.ts'],

@@ -7,6 +7,7 @@ This guide covers general development practices for all packages in the Wildflow
 - [Development Setup](#development-setup)
 - [Project Structure](#project-structure)
 - [Common Commands](#common-commands)
+- [Dev-Server Ports](#dev-server-ports)
 - [Code Style and Conventions](#code-style-and-conventions)
 - [Testing Guidelines](#testing-guidelines)
 - [Package-Specific Guidelines](#package-specific-guidelines)
@@ -66,6 +67,15 @@ vp lint              # Lint with Oxlint (add --type-aware for type-aware rules)
 All packages use Vitest via Vite+. Run `vp test` from the workspace root (Vitest projects mode honors per-package configs) or from any package directory; `vp run test:all` runs the full Vitest pass.
 
 For the full Vite+ command surface and pitfalls, see the Vite+ block at the bottom of [AGENTS.md](./AGENTS.md).
+
+## Dev-Server Ports
+
+The apps with a debug-only "(Dev)" homescreen tile pin their vite dev server to
+a port from `slices/apps/dev-app-ports.json`. `devAppServer(id)` in the root
+`vite.config.base.ts` is the **only** TypeScript reader of that file — an app
+config spreads it into `server` (or `preview`) rather than parsing the JSON
+itself. The Rust side embeds the same file in `apps-rust/src/dev_seed.rs`. See
+[apps/AGENTS.md](./apps/AGENTS.md#dev-server-ports).
 
 ## Code Style and Conventions
 

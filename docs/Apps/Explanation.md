@@ -63,8 +63,10 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
 
   In **debug builds only** each first-party app additionally gets an `<id>-dev`
   row bound to that app's vite dev-server port (pinned once in
-  `slices/apps/dev-app-ports.json`, which both the vite config and the Rust seed
-  read), so a developer's local build is what the tile launches. Those
+  `slices/apps/dev-app-ports.json`, which the Rust seed embeds and the vite
+  configs read through the shared `devAppServer` helper in the root
+  `vite.config.base.ts`), so a developer's local build is what the tile
+  launches. Those
   rows are a runtime seed (`apps-rust/src/dev_seed.rs`), never a migration —
   migrations run unconditionally, so a migration-seeded dev row would exist in
   release databases too.
