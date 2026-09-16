@@ -1,13 +1,3 @@
-export {
-  hasRefill,
-  medicationRequestsToMedications,
-  medicationRequestsToMedicationViews,
-  medicationRequestToMedication,
-  medicationRequestToMedicationView,
-  type MedicationRequestResource,
-  type MedicationView,
-} from './medication.ts'
-
 export { ProvincePicker, type ProvincePickerProps } from './province-picker.tsx'
 
 export { SponsorChip, type SponsorChipProps } from './sponsor-chip.tsx'

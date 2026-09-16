@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type { MedicationView } from 'medication-sponsorship-react'
+import type { MedicationView } from 'medication-core/fhir'
 
 import { CalendarView } from './calendar-view.tsx'
 

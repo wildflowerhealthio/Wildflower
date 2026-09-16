@@ -130,7 +130,7 @@ describe('MedicationListResponseKind', () => {
       expect(urls).toContain(
         'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable'
       )
-      // Read downstream by medication-sponsorship-react's store-locator link.
+      // Read downstream by medication-core's store-locator link.
       expect(urls).toContain(
         'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id'
       )

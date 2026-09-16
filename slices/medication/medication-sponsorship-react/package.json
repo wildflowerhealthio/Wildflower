@@ -2,7 +2,7 @@
   "name": "medication-sponsorship-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser UI for the medication-sponsorship slice: the province picker, the grouped medication view and sponsor cards, plus the FHIR `MedicationRequest` -> `medication-sponsorship-core` `Medication` adapter.",
+  "description": "Browser UI for the medication-sponsorship slice: the province picker, the grouped medication view and sponsor cards.",
   "type": "module",
   "exports": {
     ".": {
@@ -23,12 +23,9 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "effect": "catalog:",
     "fast-check": "catalog:",
-    "fhir-r4": "workspace:*",
     "jsdom": "catalog:",
-    "kitchen-sink": "workspace:*",
-    "medication-calendar-core": "workspace:*",
+    "medication-core": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
@@ -38,9 +35,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
-    "fhir-r4": "workspace:*",
-    "medication-calendar-core": "workspace:*",
+    "medication-core": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
     "react": "catalog:",
     "react-tundraish": "workspace:*"

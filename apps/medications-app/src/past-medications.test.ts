@@ -1,5 +1,5 @@
+import type { MedicationView } from 'medication-core/fhir'
 import type { Medication } from 'medication-sponsorship-core'
-import type { MedicationView } from 'medication-sponsorship-react'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { pastEligibleMedications } from './past-medications.ts'

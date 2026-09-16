@@ -16,7 +16,7 @@ export type { ReferenceType, IdentifierType } from './complex/identifier-and-ref
 export type { BundleValue } from './resources/bundle.ts'
 ```
 
-Keep these if you touch `fhir-r4` — removing one breaks every consumer's `vp pack`. When a consumer's inferred type names a new internal interface, re-export it flat from the producer rather than hand-rolling wire interfaces in the consumer (which is far more code, and forces exporting every `Encoded` interface too, or a wrapper referencing them fails with TS4023). Known consumers: `fhir-stu3-as-r4` and `rexall-be-well-collector`; the consumer-side view of this trap is pinned in [fhir-stu3-as-r4's AGENTS.md](../../fhir-stu3-as-r4/AGENTS.md).
+Keep these if you touch `fhir-r4` — removing one breaks every consumer's `vp pack`. When a consumer's inferred type names a new internal interface, re-export it flat from the producer rather than hand-rolling wire interfaces in the consumer (which is far more code, and forces exporting every `Encoded` interface too, or a wrapper referencing them fails with TS4023). Known consumers: `fhir-stu3-as-r4`, `rexall-be-well-collector` and `medication-core` (whose `medication-core/fhir` subpath is a separate `vp pack` entry, so pack that package, not just the root); the consumer-side view of this trap is pinned in [fhir-stu3-as-r4's AGENTS.md](../../fhir-stu3-as-r4/AGENTS.md).
 
 ## Re-decoding an already-decoded resource: `uri`/`url` fields are `URL`, not `string`
 
@@ -37,7 +37,7 @@ const nullableUri = Schema.transform(
 )
 ```
 
-Worked case: `medication-sponsorship-react`'s `medication.ts` `MedicationRequest → MedicationView` adapter uses exactly this `nullableUri` on `Coding.system`, after a string-typed `Coding.system` silently disabled its DIN-from-coding and display-name fallbacks. The same asymmetry hit `dateTime` fields, which decode to an Effect `DateTime.Utc` on the typed top level (see that file's `nullableIsoDateTime`).
+Worked case: `medication-core`'s `src/fhir/medication-request.ts` `MedicationRequest → MedicationView` adapter uses exactly this `nullableUri` on `Coding.system`, after a string-typed `Coding.system` silently disabled its DIN-from-coding and display-name fallbacks. The same asymmetry hit `dateTime` fields, which decode to an Effect `DateTime.Utc` on the typed top level (see that file's `nullableIsoDateTime`).
 
 ## See Also
 

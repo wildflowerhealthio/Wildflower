@@ -1,7 +1,8 @@
 import type { JSX } from 'react'
 import { useMemo } from 'react'
 
-import type { MedicationView } from './medication.ts'
+import type { MedicationView } from 'medication-core/fhir'
+
 import styles from './medications-view.module.css'
 
 interface MedicationsViewProps {

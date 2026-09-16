@@ -27,6 +27,7 @@
     "fhir-r4-react": "workspace:*",
     "medication-calendar-core": "workspace:*",
     "medication-calendar-react": "workspace:*",
+    "medication-core": "workspace:*",
     "medication-interaction-core": "workspace:*",
     "medication-interaction-react": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
