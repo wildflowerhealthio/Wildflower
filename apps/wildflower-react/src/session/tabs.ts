@@ -6,7 +6,7 @@
  * the active tab itself (exact-or-descendant prefix match) — no separate
  * lookup helper is needed.
  *
- * `har-recorder` is named here but absent from {@link TABS}: it is a platform
+ * `har-recorder` is named here but has no shared constant: it is a platform
  * tab the Tauri entry contributes through `platformTabs`, and one union should
  * still describe every tab a bar can render.
  */
@@ -24,15 +24,9 @@ interface TabSpec {
   readonly path: '/home' | '/collector' | '/settings' | '/har-recorder'
 }
 
-/**
- * The tabs every entry shows, in bar order. An entry's own
- * {@link TabSpec}s (see `platformTabs`) render after these.
- */
-const TABS: ReadonlyArray<TabSpec> = [
-  { key: 'home', label: 'Home', path: '/home' },
-  { key: 'collector', label: 'Collector', path: '/collector' },
-  { key: 'settings', label: 'Settings', path: '/settings' },
-]
+const HOME_TAB: TabSpec = { key: 'home', label: 'Home', path: '/home' }
+const COLLECTOR_TAB: TabSpec = { key: 'collector', label: 'Collector', path: '/collector' }
+const SETTINGS_TAB: TabSpec = { key: 'settings', label: 'Settings', path: '/settings' }
 
-export { TABS }
+export { COLLECTOR_TAB, HOME_TAB, SETTINGS_TAB }
 export type { TabKey, TabSpec }

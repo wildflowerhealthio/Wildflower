@@ -13,7 +13,7 @@ import { afterEach, describe, expect, test } from 'vite-plus/test'
 import { Route as OpenRoute } from '../routes/_open.tsx'
 import { PlatformTabsProvider } from './platform-tabs.tsx'
 import { AppTabShell, TabBar } from './tab-bar.tsx'
-import { TABS, type TabSpec } from './tabs.ts'
+import { COLLECTOR_TAB, HOME_TAB, SETTINGS_TAB, type TabSpec } from './tabs.ts'
 
 const Stub = (): JSX.Element => <div>stub</div>
 
@@ -81,8 +81,9 @@ describe('TabBar', () => {
   test('renders a link to every tab destination, labelled and ordered as configured', async () => {
     renderTabBarAt('/home')
     const links = await screen.findAllByRole('link')
-    expect(links.map((l) => l.textContent)).toEqual(TABS.map((t) => t.label))
-    for (const tab of TABS) {
+    const sharedTabs = [HOME_TAB, COLLECTOR_TAB, SETTINGS_TAB]
+    expect(links.map((l) => l.textContent)).toEqual(sharedTabs.map((t) => t.label))
+    for (const tab of sharedTabs) {
       expect(screen.getByRole('link', { name: tab.label }).getAttribute('href')).toBe(tab.path)
     }
   })
@@ -98,10 +99,15 @@ describe('TabBar', () => {
     expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('aria-current')).toBeNull()
   })
 
-  test('renders an entry-contributed platform tab after the shared ones', async () => {
+  test('renders an entry-contributed platform tab between collector and settings', async () => {
     renderTabBarAt('/home', [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }])
     const links = await screen.findAllByRole('link')
-    expect(links.map((l) => l.textContent)).toEqual([...TABS.map((t) => t.label), 'HAR Recorder'])
+    expect(links.map((l) => l.textContent)).toEqual([
+      'Home',
+      'Collector',
+      'HAR Recorder',
+      'Settings',
+    ])
     expect(screen.getByRole('link', { name: 'HAR Recorder' }).getAttribute('href')).toBe(
       '/har-recorder'
     )
@@ -110,7 +116,7 @@ describe('TabBar', () => {
   test('renders no platform tab when the entry contributes none', async () => {
     renderTabBarAt('/home')
     const links = await screen.findAllByRole('link')
-    expect(links.map((l) => l.textContent)).toEqual(TABS.map((t) => t.label))
+    expect(links.map((l) => l.textContent)).toEqual(['Home', 'Collector', 'Settings'])
     expect(screen.queryByRole('link', { name: 'HAR Recorder' })).toBeNull()
   })
 

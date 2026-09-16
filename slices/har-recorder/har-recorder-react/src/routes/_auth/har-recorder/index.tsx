@@ -1,7 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { WebViewSource } from 'collector-fundamentals/model'
-import { Schema } from 'effect'
-import { useState, type JSX } from 'react'
+import { Match, Schema } from 'effect'
+import { useId, useState, type JSX } from 'react'
 import { ErrorBanner, FieldDescription, PageHeader, TextField } from 'react-tundraish'
 
 import { useHarRecorder } from '../../../use-har-recorder.ts'
@@ -17,6 +17,13 @@ import styles from './har-recorder.module.css'
  */
 const isStartableUrl = Schema.is(WebViewSource.HttpUriString)
 
+const SUGGESTED_URLS: readonly string[] = [
+  'https://app.letsbewell.ca/health/prescriptions',
+  'https://mypharmacy.shoppersdrugmart.ca/en/prescription-dashboard/',
+  'https://www.on.mycarecompass.lifelabs.com/reports',
+  'https://virtualcare.telushealth.com/',
+]
+
 /**
  * The HAR Recorder page: type a URL, record the responses the sniffer webview
  * reports, and save them as a `.har` file in the app's `saved_data` directory.
@@ -30,6 +37,7 @@ const isStartableUrl = Schema.is(WebViewSource.HttpUriString)
 function HarRecorderPage(): JSX.Element {
   const [url, setUrl] = useState('')
   const { state, start, stop } = useHarRecorder()
+  const suggestionsId = useId()
 
   const isRecording = state._tag === 'Recording'
   // `Saving` blocks a new recording: starting again would re-point the file
@@ -54,10 +62,16 @@ function HarRecorderPage(): JSX.Element {
         autoComplete="off"
         autoCapitalize="none"
         placeholder="https://example.com"
+        list={suggestionsId}
         value={url}
         onChange={setUrl}
         disabled={isRecording || state._tag === 'Saving'}
       />
+      <datalist id={suggestionsId}>
+        {SUGGESTED_URLS.map((suggestion) => (
+          <option key={suggestion} value={suggestion} />
+        ))}
+      </datalist>
 
       <div className={styles['buttons']}>
         <button
@@ -77,23 +91,24 @@ function HarRecorderPage(): JSX.Element {
         ) : null}
       </div>
 
-      {state._tag === 'Recording' ? (
-        <p className={styles['status']} role="status">
-          {state.count} {state.count === 1 ? 'response' : 'responses'} recorded
-        </p>
-      ) : null}
-
-      {state._tag === 'Saving' ? (
-        <p className={styles['status']} role="status">
-          Saving {state.fileName}…
-        </p>
-      ) : null}
-
-      {state._tag === 'Saved' ? (
-        <p className={styles['path']} role="status">
-          Saved to {state.path}
-        </p>
-      ) : null}
+      {Match.value(state).pipe(
+        Match.when({ _tag: 'Recording' }, (s) => (
+          <p className={styles['status']} role="status">
+            {s.count} {s.count === 1 ? 'response' : 'responses'} recorded
+          </p>
+        )),
+        Match.when({ _tag: 'Saving' }, (s) => (
+          <p className={styles['status']} role="status">
+            Saving {s.fileName}…
+          </p>
+        )),
+        Match.when({ _tag: 'Saved' }, (s) => (
+          <p className={styles['path']} role="status">
+            Saved to {s.path}
+          </p>
+        )),
+        Match.orElse(() => null)
+      )}
     </>
   )
 }

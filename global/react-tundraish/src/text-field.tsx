@@ -37,6 +37,8 @@ interface TextFieldProps {
   readonly autoComplete?: string
   readonly autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters'
   readonly disabled?: boolean
+  /** Id of a `<datalist>` supplying completion suggestions. */
+  readonly list?: string
   /** Secondary helper rendered beneath the input via `<FieldDescription>`. */
   readonly description?: ReactNode
   /**
@@ -70,6 +72,7 @@ const TextField = ({
   autoComplete = 'off',
   autoCapitalize = 'none',
   disabled,
+  list,
   description,
   callout = false,
   className,
@@ -85,6 +88,7 @@ const TextField = ({
         autoComplete={autoComplete}
         autoCapitalize={autoCapitalize}
         className={cn('input-3', callout ? styles['text-field__input--callout'] : null, className)}
+        list={list}
         value={value}
         placeholder={placeholder}
         disabled={disabled}

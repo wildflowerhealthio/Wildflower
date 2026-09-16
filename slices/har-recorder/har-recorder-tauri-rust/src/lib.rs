@@ -49,6 +49,8 @@ pub fn attach_har_recorder(app: &AppHandle, app_data_dir: PathBuf) {
         };
         if tag == SAVE_HAR {
             handle_save_har(&handle, &directory, payload);
+        } else if TAGS.contains(&tag.as_str()) {
+            log::warn!("[har-recorder] unexpected inbound tag: {tag}");
         }
     });
 }
