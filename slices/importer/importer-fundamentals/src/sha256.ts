@@ -20,7 +20,7 @@ class DigestUnavailable extends Data.TaggedError('DigestUnavailable')<{
  * @remarks
  * A verbatim copy of `web-trace-core`'s `sha256Base64` — the standard digest,
  * no project-specific behaviour — kept here so `importer-fundamentals` (the
- * home of the shared {@link ./source-archive-codec.ts | source-archive codec})
+ * home of the shared {@link sourceFileCodec | source-file codec})
  * needs no dependency on `web-trace-core`. Web Crypto rather than
  * `node:crypto`: the importer runs in a WebView, and Web Crypto's digest is
  * `Promise`-returning, which is why the archive encode is `Effect`-shaped.
