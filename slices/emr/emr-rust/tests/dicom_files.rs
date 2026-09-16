@@ -53,8 +53,8 @@ fn build_router() -> (Router, TempDb) {
     let revocation_store = token_revocation_rust::RevocationStore::always_allow();
     let routers = setup_fhir_r4(&runtime, &config, revocation_store).expect("setup_fhir_r4");
     let router = Router::new()
-        .merge(routers.fhir_r4)
-        .merge(ohif_server_rust::setup_ohif_server(routers.hfs_router));
+        .merge(routers.augmented_fhir_r4_router)
+        .merge(ohif_server_rust::setup_ohif_server(routers.raw_hfs_router));
     (router, TempDb { dir })
 }
 

@@ -35,10 +35,10 @@ const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 /// [`FHIR_R4_PATH`]) and the bare HFS router for in-process delegation by
 /// other slices (e.g. `ohif-server-rust`).
 pub struct FhirR4Routers {
-    pub fhir_r4: Router,
+    pub augmented_fhir_r4_router: Router,
     /// The raw HFS Axum router, exposed for in-process delegation by slices
     /// that need to read FHIR resources directly (e.g. the OHIF DICOM server).
-    pub hfs_router: Router,
+    pub raw_hfs_router: Router,
 }
 
 /// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
@@ -197,8 +197,8 @@ pub fn setup_fhir_r4(
     // `/fhir-r4` subtree — bare root and trailing slash included — for the inner
     // router, so the base reaches HFS. Covered by `tests/batch_bundle_at_base.rs`.
     Ok(FhirR4Routers {
-        fhir_r4: Router::new().nest_service(FHIR_R4_PATH, fhir_with_override),
-        hfs_router: hfs_router_for_delegation,
+        augmented_fhir_r4_router: Router::new().nest_service(FHIR_R4_PATH, fhir_with_override),
+        raw_hfs_router: hfs_router_for_delegation,
     })
 }
 

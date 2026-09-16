@@ -57,7 +57,7 @@ fn build_router() -> (Router, TempDb) {
     let revocation_store = token_revocation_rust::RevocationStore::always_allow();
     let router = setup_fhir_r4(&runtime, &config, revocation_store)
         .expect("setup_fhir_r4")
-        .fhir_r4;
+        .augmented_fhir_r4_router;
     (router, TempDb { dir })
 }
 

@@ -317,7 +317,7 @@ async fn run_server(
 
     let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
-    let fhir_r4_router = fhir_routers.fhir_r4;
+    let fhir_r4_router = fhir_routers.augmented_fhir_r4_router;
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
@@ -395,7 +395,7 @@ async fn run_server(
     // through the HFS router), decodes the attachment's base64 data, and serves
     // the raw bytes for the OHIF viewer. Gated like the other slices.
     let gated_ohif_server = layer_router_with_gatekeeper_auth_gating(
-        ohif_server_rust::setup_ohif_server(fhir_routers.hfs_router),
+        ohif_server_rust::setup_ohif_server(fhir_routers.raw_hfs_router),
         gatekeeper.state.clone(),
         &[],
     );
