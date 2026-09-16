@@ -17,14 +17,21 @@ import type { FileReadOutcome } from './use-import-run.ts'
  * selection).
  *
  * @remarks
- * The classification is a TanStack Query, so the shell can **block on its
- * first load** (`firstLoad` gates the preview) rather than paint the panel
- * first and let badges pop in a second later. One `POST /` batch of GET entries
+ * The classification is a TanStack Query, so the shell can **block on it**
+ * (the `loading` state gates the preview) rather than paint the panel first
+ * and let badges pop in a second later. One `POST /` batch of GET entries
  * fetches every id at once, so a review across two dozen files is still one
- * round trip. The returned map is indexed by the reviewed
- * {@link LabeledResource.key}s — the same keys the shell already uses
- * everywhere — so a caller looks a status up by the key it already holds,
- * without knowing the classifier routes on `resourceType/id` underneath.
+ * round trip.
+ *
+ * `loading` means "nothing worth showing yet", which is narrower than "a
+ * request is in flight". A settings change re-decodes, which starts a *second*
+ * classification for the same batch, and reporting `loading` for that one
+ * would unmount the whole preview — taking the focus of whatever settings
+ * control the reviewer is using with it. So a re-classification keeps the
+ * previous one on screen (`placeholderData`, scoped to the batch it came
+ * from) and swaps in the new verdicts when they land. A *fresh pick* is a new
+ * batch and gets no such carry-over: its badges would be about the last
+ * batch's files.
  *
  * The hook never fails and never blocks *confirming*: the classifier's own
  * error channel is `never` (a whole-bundle transport error attributes every
@@ -42,32 +49,17 @@ interface DiffRow {
 }
 
 /**
- * The state of the pre-fetch.
- *
- * @remarks
- * `firstLoad` is the shell's paint gate, and it is deliberately narrower than
- * "a classification is in flight": a settings change re-decodes, which starts
- * a *second* classification, and gating the preview on that one would unmount
- * the whole panel — taking the focused settings input with it — on every change the
- * reviewer makes. So only the first classification of a batch blocks; a later
- * one resolves underneath the painted panel, with `comparisons` still holding
- * the previous classification meanwhile so badges refresh in place rather than
- * blinking out. Resource keys are stable across a re-decode, so the retained
- * map stays addressable by the same keys throughout.
+ * The state of the pre-fetch: `loading` while there is nothing worth showing
+ * for this batch (the shell paints a loader instead of the preview), `ready`
+ * once there is — the verdicts for this batch, or the ones carried over from
+ * the same batch's previous classification while a re-decode's is in flight.
  */
-interface ServerDiffState {
-  /**
-   * The classification in hand, keyed by {@link LabeledResource.key}. While a
-   * re-classification is in flight this is the previous one; it is empty only
-   * before anything has ever resolved, or when the batch had no resources.
-   */
-  readonly comparisons: ReadonlyMap<string, ServerComparison>
-  /** Whether no classification has resolved yet for this batch of files. */
-  readonly firstLoad: boolean
-}
+type ServerDiffState =
+  | { readonly _tag: 'loading' }
+  | { readonly _tag: 'ready'; readonly comparisons: ReadonlyMap<string, ServerComparison> }
 
-/** The empty map, held once so an unresolved state keeps a stable identity. */
-const EMPTY_COMPARISONS: ReadonlyMap<string, ServerComparison> = new Map()
+/** No comparisons, held once so an empty batch keeps a stable identity. */
+const NO_COMPARISONS: ReadonlyMap<string, ServerComparison> = new Map()
 
 /** The comparison a resource with no classifier entry falls back to. */
 const AS_NEW: ServerComparison = { status: 'new', fields: [] }
@@ -83,6 +75,16 @@ const byLabeledKey = (
 }
 
 /**
+ * The batch id carried second-from-last in this hook's query keys — read back
+ * off a *previous* query to decide whether its verdicts may carry over.
+ * Positional from the end so the key's prefix can grow without breaking it.
+ */
+const batchOf = (queryKey: readonly unknown[]): number | undefined => {
+  const value = queryKey.at(-2)
+  return typeof value === 'number' ? value : undefined
+}
+
+/**
  * Run the pre-fetch over every labeled resource across the batch's read
  * files and expose the classification as a `LabeledResource.key →
  * ServerComparison` lookup.
@@ -90,10 +92,16 @@ const byLabeledKey = (
  * @param files - The current batch's read outcomes (undefined while the
  *   import-run is still `idle` or `reading`); only `read` files contribute
  *   resources
- * @returns The classification state: the comparisons in hand, and whether none
- *   has resolved yet for this batch
+ * @param batchId - Identifies the picked batch: stable across a settings
+ *   re-decode of the same files, different for a fresh pick. It is what
+ *   decides whether a previous classification may stay on screen while the
+ *   next one loads.
+ * @returns `loading` until this batch has verdicts worth showing, then `ready`
  */
-const useServerDiff = (files: readonly FileReadOutcome[] | undefined): ServerDiffState => {
+const useServerDiff = (
+  files: readonly FileReadOutcome[] | undefined,
+  batchId: number
+): ServerDiffState => {
   const runAuthed = useRunAuthed()
 
   // Every resource across every read file, paired with its labeled key —
@@ -111,11 +119,11 @@ const useServerDiff = (files: readonly FileReadOutcome[] | undefined): ServerDif
   }, [files])
 
   // A token that advances whenever the decoded batch changes reference — a
-  // fresh pick or a settings re-decode. It is the query's identity: two
-  // renders with the same `rows` share one fetch, a re-decode starts a new
-  // one. Kept in state and adjusted during render off the changed input (the
-  // React-sanctioned "derive from a changed prop" pattern) rather than a ref,
-  // which must not be read during render.
+  // fresh pick or a settings re-decode. It stands in for `rows` in the query
+  // key: naming `rows` there would have TanStack hash every FHIR resource in
+  // the batch on every render. Kept in state and adjusted during render off
+  // the changed input (the React-sanctioned "derive from a changed prop"
+  // pattern) rather than a ref, which must not be read during render.
   const [tracked, setTracked] = useState<{
     readonly rows: readonly DiffRow[] | undefined
     readonly token: number
@@ -128,10 +136,16 @@ const useServerDiff = (files: readonly FileReadOutcome[] | undefined): ServerDif
 
   const enabled = rows !== undefined && rows.length > 0
   const query = useQuery({
-    queryKey: [...IMPORTER_QUERY_KEY, 'server-diff', token] as const,
+    queryKey: [...IMPORTER_QUERY_KEY, 'server-diff', batchId, token] as const,
     queryFn: (): Promise<ReadonlyMap<string, ServerComparison>> =>
       runAuthed(classifyAgainstServer((rows ?? []).map((row) => row.resource))),
     enabled,
+    // Keep the previous classification on screen while the next one loads, but
+    // only within one batch — another batch's verdicts are about other files.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery !== undefined && batchOf(previousQuery.queryKey) === batchId
+        ? previous
+        : undefined,
     // A batch's server comparison does not drift under the reviewer, and the
     // batch identity is ephemeral, so never restale and do not retain it.
     staleTime: Infinity,
@@ -139,45 +153,26 @@ const useServerDiff = (files: readonly FileReadOutcome[] | undefined): ServerDif
     retry: false,
   })
 
-  // The classification for the *current* rows, or undefined while it is in
-  // flight. An auth-path rejection folds to "every id is new" rather than
-  // stall the preview forever on a loader.
-  const resolved = useMemo((): ReadonlyMap<string, ServerComparison> | undefined => {
-    if (!enabled || rows === undefined) return new Map()
-    if (query.isSuccess) return byLabeledKey(rows, query.data)
-    if (query.isError) return byLabeledKey(rows, new Map())
-    return undefined
-  }, [enabled, rows, query.isSuccess, query.isError, query.data])
-
-  // Hold the latest resolved classification so a re-decode's in-flight query
-  // shows the previous badges instead of none, paired with whether a batch was
-  // present when it was taken. Crossing that boundary (the run goes idle or
-  // `reading` between picks) drops the map, so the *next* batch blocks on its
-  // own first classification instead of painting the last one's badges.
-  // Adjusted during render off the changed input, the same
-  // derive-from-a-changed-value pattern `tracked` uses.
-  const hasBatch = rows !== undefined
-  const [retained, setRetained] = useState<{
-    readonly hasBatch: boolean
-    readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
-  }>({ hasBatch, comparisons: undefined })
-  if (retained.hasBatch !== hasBatch) setRetained({ hasBatch, comparisons: undefined })
-  else if (resolved !== undefined && retained.comparisons !== resolved) {
-    setRetained({ hasBatch, comparisons: resolved })
-  }
-
   return useMemo((): ServerDiffState => {
-    const previous = retained.hasBatch === hasBatch ? retained.comparisons : undefined
-    return {
-      comparisons: resolved ?? previous ?? EMPTY_COMPARISONS,
-      firstLoad: resolved === undefined && previous === undefined,
+    if (!enabled || rows === undefined) return { _tag: 'ready', comparisons: NO_COMPARISONS }
+    // `query.data` is either this classification or the same batch's previous
+    // one; either way it is re-keyed against the *current* rows, so carried-over
+    // verdicts land on the resources actually on screen. Ids are derived from
+    // the source file's own facts, not from settings, so a re-decode does not
+    // move a resource out from under its verdict.
+    if (query.data !== undefined) {
+      return { _tag: 'ready', comparisons: byLabeledKey(rows, query.data) }
     }
-  }, [resolved, retained, hasBatch])
+    // An auth-path rejection: fold to "every id is new" rather than stall the
+    // preview forever on a loader.
+    if (query.isError) return { _tag: 'ready', comparisons: byLabeledKey(rows, new Map()) }
+    return { _tag: 'loading' }
+  }, [enabled, rows, query.data, query.isError])
 }
 
 /**
- * The `StagedImport.Selection.excludedResources` set for a file, seeded from the
- * server diff: every `unchanged` labeled resource is pre-excluded so a
+ * The `StagedImport.Selection.excludedResources` set for a file, seeded from
+ * the server diff: every `unchanged` labeled resource is pre-excluded so a
  * re-import of a file whose resources the server already holds writes
  * nothing by default. The reviewer can still tick any row back on.
  */

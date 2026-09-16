@@ -60,8 +60,9 @@ const ImporterScreen = (): JSX.Element => {
     ReadonlyMap<string, StagedImport.Selection<FhirResource>>
   >(new Map())
 
-  const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
-  const diff = useServerDiff(readFiles)
+  const runState = importRun.state
+  const readFiles = runState._tag === 'ready' ? runState.files : undefined
+  const diff = useServerDiff(readFiles, runState._tag === 'ready' ? runState.batchId : 0)
 
   const selectionFor = useCallback(
     (fileId: string): StagedImport.Selection<FhirResource> => {
@@ -71,7 +72,9 @@ const ImporterScreen = (): JSX.Element => {
       // `unchanged` resource is pre-excluded so a re-import writes nothing
       // by default. As soon as the reviewer toggles anything,
       // `selections.get(fileId)` wins and this seed is out of the picture.
-      if (diff.firstLoad || readFiles === undefined) return StagedImport.initial<FhirResource>()
+      if (diff._tag !== 'ready' || readFiles === undefined) {
+        return StagedImport.initial<FhirResource>()
+      }
       const file = readFiles.find(
         (candidate) => candidate.id === fileId && candidate._tag === 'read'
       )
@@ -110,7 +113,6 @@ const ImporterScreen = (): JSX.Element => {
   const confirming = confirm.state._tag === 'confirming'
 
   const body = ((): JSX.Element => {
-    const runState = importRun.state
     if (runState._tag === 'idle')
       return <SourcePicker descriptors={registeredDescriptors} onPick={importRun.run} />
     if (runState._tag === 'reading') {
@@ -120,12 +122,13 @@ const ImporterScreen = (): JSX.Element => {
         </p>
       )
     }
-    // Block the preview on the server diff's *first* load so every row paints
-    // with its badge already resolved — no mid-render pop-in a second after the
-    // panel shows. A settings change starts another classification, and
-    // blocking on that one too would unmount the panel — and the settings
-    // input the reviewer is typing into — on every keystroke it commits.
-    if (diff.firstLoad) {
+    // Block the preview while there is nothing worth showing, so every row
+    // paints with its badge already resolved — no mid-render pop-in a second
+    // after the panel shows. A settings change keeps the previous batch's
+    // verdicts on screen instead of coming back here: blocking on a re-decode
+    // would unmount the panel, and the settings input the reviewer is typing
+    // into with it.
+    if (diff._tag === 'loading') {
       return (
         <p role="status" className={styles.status}>
           {CHECKING_SERVER_MESSAGE}
