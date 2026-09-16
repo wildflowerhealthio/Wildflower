@@ -30,11 +30,11 @@
             }
           },
           "403": {
-            "description": "The caller's token doesn't cover `user/DocumentReference.r`",
+            "description": "Missing/invalid bearer token or insufficient scopes",
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                  "$ref": "#/components/schemas/DicomFileForbiddenBody"
                 }
               }
             }
@@ -55,7 +55,7 @@
   },
   "components": {
     "schemas": {
-      "DicomFileNotFoundBody": {
+      "DicomFileForbiddenBody": {
         "type": "object",
         "required": [
           "error",
@@ -74,24 +74,22 @@
           }
         }
       },
-      "InsufficientScopeBody": {
+      "DicomFileNotFoundBody": {
         "type": "object",
-        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
         "required": [
           "error",
-          "missingScopes"
+          "id",
+          "detail"
         ],
         "properties": {
           "error": {
-            "type": "string",
-            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+            "type": "string"
           },
-          "missingScopes": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            },
-            "description": "The rendered scopes the caller lacks."
+          "id": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
           }
         }
       }

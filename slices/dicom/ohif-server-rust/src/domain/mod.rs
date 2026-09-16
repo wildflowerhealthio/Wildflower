@@ -2,13 +2,13 @@ pub(crate) mod capabilities;
 
 use std::future::Future;
 
-use axum::http::HeaderMap;
+use bytes::Bytes;
 
 /// A decoded DICOM file — the raw bytes and their MIME type, extracted from a
 /// FHIR DocumentReference attachment.
 #[derive(Debug)]
 pub(crate) struct DicomFile {
-    pub bytes: Vec<u8>,
+    pub bytes: Bytes,
     pub content_type: String,
 }
 
@@ -17,6 +17,8 @@ pub(crate) struct DicomFile {
 pub(crate) enum DicomFileError {
     /// No DocumentReference with this id, or its attachment carries no data.
     NotFound { id: String, detail: String },
+    /// The caller's token lacks the scopes required by HFS.
+    Forbidden { id: String, detail: String },
     /// An infrastructure failure (HFS unreachable, JSON parse failure, base64
     /// decode failure, etc.).
     Infrastructure {
@@ -29,13 +31,13 @@ pub(crate) enum DicomFileError {
 /// delegates to HFS in-process (see [`crate::hfs::HfsDicomFileStore`]); the
 /// trait exists so the capability is testable against a fake.
 ///
-/// `caller_headers` carries the original request's headers — forwarded into HFS
-/// so its bearer-JWT + SMART v2 scope enforcement stays in the path.
+/// `auth_token` is the caller's bearer token, forwarded into HFS so its
+/// bearer-JWT + SMART v2 scope enforcement stays in the path.
 pub(crate) trait DicomFileStore: Clone + Send + Sync + 'static {
     fn get_file(
         &self,
         id: &str,
-        caller_headers: &HeaderMap,
+        auth_token: &str,
     ) -> impl Future<Output = Result<DicomFile, DicomFileError>> + Send;
 }
 
@@ -44,7 +46,7 @@ pub(crate) mod test_fake {
     use std::collections::HashMap;
     use std::sync::{Arc, Mutex};
 
-    use axum::http::HeaderMap;
+    use bytes::Bytes;
 
     use super::{DicomFile, DicomFileError, DicomFileStore};
 
@@ -54,11 +56,11 @@ pub(crate) mod test_fake {
     }
 
     impl FakeDicomFileStore {
-        pub(crate) fn seed(&self, id: &str, bytes: Vec<u8>, content_type: &str) {
+        pub(crate) fn seed(&self, id: &str, bytes: impl Into<Bytes>, content_type: &str) {
             self.files.lock().expect("lock").insert(
                 id.to_owned(),
                 DicomFile {
-                    bytes,
+                    bytes: bytes.into(),
                     content_type: content_type.to_owned(),
                 },
             );
@@ -69,7 +71,7 @@ pub(crate) mod test_fake {
         async fn get_file(
             &self,
             id: &str,
-            _caller_headers: &HeaderMap,
+            _auth_token: &str,
         ) -> Result<DicomFile, DicomFileError> {
             self.files
                 .lock()

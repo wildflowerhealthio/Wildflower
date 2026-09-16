@@ -87,7 +87,11 @@ mod tests {
     }
 
     fn get(uri: &str) -> Request<Body> {
-        Request::builder().uri(uri).body(Body::empty()).unwrap()
+        Request::builder()
+            .uri(uri)
+            .header("Authorization", "Bearer test-token")
+            .body(Body::empty())
+            .unwrap()
     }
 
     #[tokio::test]

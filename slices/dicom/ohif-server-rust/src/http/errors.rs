@@ -14,6 +14,13 @@ pub(crate) struct DicomFileNotFoundBody {
     pub(crate) detail: String,
 }
 
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct DicomFileForbiddenBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
+    pub(crate) detail: String,
+}
+
 impl IntoResponse for DicomFileError {
     fn into_response(self) -> Response {
         match self {
@@ -21,6 +28,15 @@ impl IntoResponse for DicomFileError {
                 StatusCode::NOT_FOUND,
                 Json(DicomFileNotFoundBody {
                     error: "DicomFileNotFound",
+                    id,
+                    detail,
+                }),
+            )
+                .into_response(),
+            DicomFileError::Forbidden { id, detail } => (
+                StatusCode::FORBIDDEN,
+                Json(DicomFileForbiddenBody {
+                    error: "DicomFileForbidden",
                     id,
                     detail,
                 }),

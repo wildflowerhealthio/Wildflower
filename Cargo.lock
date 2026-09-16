@@ -5136,6 +5136,7 @@ dependencies = [
  "anyhow",
  "axum",
  "base64 0.23.1",
+ "bytes",
  "http-body-util",
  "scope-capabilities-rust",
  "scopes-rust",

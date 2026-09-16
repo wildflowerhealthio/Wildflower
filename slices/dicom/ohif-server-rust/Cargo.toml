@@ -11,8 +11,8 @@ publish.workspace = true
 [dependencies]
 anyhow.workspace = true
 axum.workspace = true
-# Decodes the DocumentReference attachment's base64 `data` into raw file bytes.
 base64 = "0.23"
+bytes = "1"
 serde.workspace = true
 serde_json.workspace = true
 # In-process re-drive of HFS's router via `oneshot`.
