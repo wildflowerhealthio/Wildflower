@@ -92,7 +92,9 @@ describe('fnv1a64', () => {
           ((FNV_1A_64_OFFSET_BASIS ^ BigInt(byte)) * FNV_64_PRIME) & 0xffffffffffffffffn
         )
       }),
-      { numRuns: 256 }
+      // Every byte value, exhaustively: `minimum` matches `base` so risk
+      // scaling cannot shrink the sweep below full coverage of the domain.
+      { numRuns: numRunsFor({ base: 256, minimum: 256 }) }
     )
   })
 })

@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Scope } from '../../../index.ts'
@@ -36,7 +37,8 @@ describe('CrudsPermission — parse / serialize (v2 letter bags)', () => {
         const serialized = permission.serialize()
         if (serialized === null) throw new Error('serialize returned null')
         expect(Cruds.parse(serialized)).toEqual(permission)
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

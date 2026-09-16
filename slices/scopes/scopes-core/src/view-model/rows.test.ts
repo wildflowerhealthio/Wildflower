@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Cell, Grant, Rows, Scope, type ScopeRequest, type ResourceSection } from '../index.ts'
@@ -165,7 +166,8 @@ describe('Rows.build — cells agree with Cell.forItem', () => {
             }
           }
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

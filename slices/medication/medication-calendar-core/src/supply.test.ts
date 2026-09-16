@@ -1,5 +1,6 @@
 import * as fc from 'fast-check'
 import type { SupplyDuration } from 'fhir-utility'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { nextFillDate } from './supply.ts'
@@ -18,7 +19,8 @@ describe('nextFillDate', () => {
         const iso = nextFillDate('2026-06-01T00:00:00Z', supply({ code: 'd', value: days }))
         const expected = new Date(Date.UTC(2026, 5, 1 + days)).toISOString()
         expect(iso).toBe(expected)
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

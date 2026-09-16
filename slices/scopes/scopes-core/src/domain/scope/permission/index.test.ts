@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Permission from './index.ts'
@@ -54,7 +55,8 @@ describe('Permission — shared editing surface (cruds)', () => {
           const base = new Cruds(start)
           expect(base.toggle(id).toggle(id)).toEqual(base)
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

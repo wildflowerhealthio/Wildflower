@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Scope from './index.ts'
@@ -163,7 +164,8 @@ describe('ScopeConfiguration.toggleItem — interaction cells (v2)', () => {
           const twice = v2.toggleItem(once, patient, obs, id)
           expect(new Set(permAt(twice, obs)?.toArray() ?? [])).toEqual(new Set(start))
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

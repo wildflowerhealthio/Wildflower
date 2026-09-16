@@ -1,5 +1,6 @@
 import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { InsufficientScopeSchema, isInsufficientScopeBody } from './insufficient-scope.ts'
@@ -32,7 +33,8 @@ describe('isInsufficientScopeBody', () => {
     fc.assert(
       fc.property(fc.array(fc.string()), (missingScopes) => {
         expect(isInsufficientScopeBody({ error: 'InsufficientScope', missingScopes })).toBe(true)
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -58,7 +60,8 @@ describe('isInsufficientScopeBody', () => {
         (value) => {
           expect(isInsufficientScopeBody(value)).toBe(false)
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

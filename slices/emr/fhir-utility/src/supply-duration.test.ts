@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { type SupplyDuration, supplyDurationToParts } from './supply-duration.ts'
@@ -33,7 +34,8 @@ describe('supplyDurationToParts', () => {
         (value) => {
           expect(supplyDurationToParts(supply({ value }))).toBeNull()
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -47,7 +49,8 @@ describe('supplyDurationToParts', () => {
             [ucumParts[code]]: value,
           })
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -71,7 +74,8 @@ describe('supplyDurationToParts', () => {
         (unit, value) => {
           expect(supplyDurationToParts(supply({ unit, value }))).toEqual({ [cases[unit]]: value })
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -85,7 +89,8 @@ describe('supplyDurationToParts', () => {
             days: value,
           })
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
