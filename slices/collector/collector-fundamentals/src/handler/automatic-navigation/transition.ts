@@ -28,15 +28,15 @@ import * as State from './state.ts'
 /**
  * Part 5 of the automatic-navigation machine: the pure transition table.
  *
- * `transition(initialQueue, drainedGuardTimeoutMs)(state, message) → [state,
- * effects]` — no `Effect`, no fibers, no clock. It routes on the input `_tag`,
- * then each arm routes on the state `_tag`, and names the
- * {@link SideEffectMessage}s the runtime should discharge. The queue lives in
- * the *state* (grown breadth-first by `followUpSteps`), so the transition needs
- * no `ScrapingPlan`; `initialQueue` is closed over only to restore the queue on
- * `Stop`, and `drainedGuardTimeoutMs` only to arm the `Drained` guard. `g'` =
- * the next generation; arming a fresh timer always bumps it so a superseded
- * timer's `*Fired` is dropped as stale.
+ * `transition(initialQueue, drainedGuardTimeoutMs)(state, message) → [state, effects]`
+ * — no `Effect`, no fibers, no clock. It routes on the input `_tag`, then each
+ * arm routes on the state `_tag`, and names the {@link SideEffectMessage}s the
+ * runtime should discharge. The queue lives in the *state* (grown breadth-first
+ * by `followUpSteps`), so the transition needs no `ScrapingPlan`; `initialQueue`
+ * is closed over only to restore the queue on `Stop`, and
+ * `drainedGuardTimeoutMs` only to arm the `Drained` guard. `g'` = the next
+ * generation; arming a fresh timer always bumps it so a superseded timer's
+ * `*Fired` is dropped as stale.
  *
  * Every `Navigation` **dispatches and immediately advances** — no step waits for
  * a `PageLoaded` on its own account. Waiting is expressed only by the four hold

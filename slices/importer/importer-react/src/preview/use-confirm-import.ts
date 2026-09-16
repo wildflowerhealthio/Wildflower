@@ -33,9 +33,9 @@ import type { FileReadOutcome } from './use-import-run.ts'
  * `POST /` batch bundle as the extracted resources — one round trip, not an
  * upload-then-persist. Per file:
  *
- * - Every extracted resource the review kept is stamped with `meta.source =
- *   sourceRef`, the source file's `DocumentReference/<id>`. The source
- *   file's own id is locked to the value it was minted with, so a
+ * - Every extracted resource the review kept is stamped with
+ *   `meta.source = sourceRef`, the source file's `DocumentReference/<id>`. The
+ *   source file's own id is locked to the value it was minted with, so a
  *   reviewer's inline edit (a rename, say) can never drift the link, and
  *   the source file is not stamped onto itself.
  * - `sourceRef` is the server pick's existing reference, or the local pick's

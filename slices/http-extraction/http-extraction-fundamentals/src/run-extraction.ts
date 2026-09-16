@@ -63,9 +63,9 @@ interface Duplicate extends Extraction.ResponseRef {
  * @remarks
  * Nothing here is an error channel. A response no kind claimed (`unmatched`),
  * one whose decode failed (`parseFailures`), one the archive recorded without
- * a body (`bodyAbsent`), and one that repeated an earlier `(url, method,
- * body)` (`duplicates`) are all ordinary outcomes of extracting from traffic
- * that was never captured for this purpose.
+ * a body (`bodyAbsent`), and one that repeated an earlier
+ * `(url, method, body)` (`duplicates`) are all ordinary outcomes of extracting
+ * from traffic that was never captured for this purpose.
  */
 interface ExtractionResult<TParsed> {
   readonly batches: readonly Batch<TParsed>[]

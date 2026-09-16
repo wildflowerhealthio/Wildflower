@@ -93,9 +93,9 @@ const batchOf = (queryKey: readonly unknown[]): number | undefined => {
 }
 
 /**
- * Run the pre-fetch over every labeled resource across the batch's read
- * files and expose the classification as a `LabeledResource.key →
- * ServerComparison` lookup.
+ * Run the pre-fetch over every labeled resource across the batch's read files
+ * and expose the classification as a `LabeledResource.key → ServerComparison`
+ * lookup.
  *
  * @param files - The current batch's read outcomes (undefined while the
  *   import-run is still `idle` or `reading`); only `read` files contribute

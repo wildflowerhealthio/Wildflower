@@ -11,10 +11,11 @@ type HttpMethod = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' | 'HEAD' | 'OPTION
 
 /**
  * The wire value carried by a HAR entry's `request.method`: the seven real
- * verbs plus `'UNKNOWN'`, mirroring HAR's own `optionalWith(String, default:
- * 'UNKNOWN')` for a request whose method the archive dropped. Foreign
- * archives that carry an unrecognized verb are normalized to `'UNKNOWN'` at
- * the projection boundary rather than failing the file.
+ * verbs plus `'UNKNOWN'`, mirroring HAR's own
+ * `optionalWith(String, default: 'UNKNOWN')` for a request whose method the
+ * archive dropped. Foreign archives that carry an unrecognized verb are
+ * normalized to `'UNKNOWN'` at the projection boundary rather than failing the
+ * file.
  */
 type HarMethodValue = HttpMethod | 'UNKNOWN'
 

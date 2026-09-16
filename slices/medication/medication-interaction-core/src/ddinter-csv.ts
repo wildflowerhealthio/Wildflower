@@ -67,11 +67,12 @@ const parseCsv = (text: string): readonly (readonly string[])[] => {
 }
 
 /**
- * Parse one DDInter download CSV (`DDInterID_A, Drug_A, DDInterID_B, Drug_B,
- * Level`) into rows. Columns are located by header name, so extra or
- * reordered columns are tolerated; a missing column or an unrecognised `Level`
- * throws — the data is expected to be exactly DDInter's, and anything else
- * should stop the conversion rather than be silently dropped.
+ * Parse one DDInter download CSV
+ * (`DDInterID_A, Drug_A, DDInterID_B, Drug_B, Level`) into rows. Columns are
+ * located by header name, so extra or reordered columns are tolerated; a
+ * missing column or an unrecognised `Level` throws — the data is expected to be
+ * exactly DDInter's, and anything else should stop the conversion rather than
+ * be silently dropped.
  */
 const parseDdinterCsv = (text: string): readonly DdinterCsvRow[] => {
   const [header, ...lines] = parseCsv(text)
