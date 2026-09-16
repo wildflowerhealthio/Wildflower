@@ -55,6 +55,24 @@ interface InFlight {
   undecodable: boolean
 }
 
+/**
+ * The number of bytes a base64 string decodes to, without decoding it.
+ *
+ * @remarks
+ * Used to keep counting {@link InFlight.bytes} once the cap has been reached,
+ * without allocating the decoded buffer the recording is no longer keeping.
+ */
+const decodedBase64Length = (base64: string): number => {
+  let len = base64.length
+  // Strip whitespace that some encoders add (the sniffer's does not, but
+  // defensive is free here).
+  while (len > 0 && base64[len - 1] === '=') len -= 1
+  // Every 4 base64 chars encode 3 bytes; the remainder encodes 1 or 2.
+  const fullGroups = Math.floor(len / 4) * 3
+  const remainder = len % 4
+  return fullGroups + (remainder === 0 ? 0 : remainder - 1)
+}
+
 const concat = (chunks: readonly Uint8Array[]): Uint8Array<ArrayBuffer> => {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
   const combined = new Uint8Array(total)
@@ -177,6 +195,13 @@ class Recording {
   onResponseData(message: ResponseData): void {
     const record = this.#inFlight.get(message.id)
     if (record === undefined) return
+    // Already poisoned — count the bytes without decoding so a 200 MB download
+    // costs only a counter, not a transient decode allocation per chunk.
+    if (record.undecodable) return
+    if (record.overCap) {
+      record.bytes += decodedBase64Length(message.data)
+      return
+    }
     const decoded = Encoding.decodeBase64(message.data)
     if (Either.isLeft(decoded)) {
       record.undecodable = true
@@ -185,7 +210,6 @@ class Recording {
     }
     const chunk = decoded.right
     record.bytes += chunk.length
-    if (record.overCap || record.undecodable) return
     if (record.bytes > MAX_BODY_BYTES) {
       record.overCap = true
       record.chunks = []

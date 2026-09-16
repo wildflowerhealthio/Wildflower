@@ -34,7 +34,12 @@ const EXTENSION = '.har'
  * all reduce to something safe rather than to a name the host will reject.
  */
 const hostOf = (startUrl: string): string => {
-  const hostname = URL.canParse(startUrl) ? new URL(startUrl).hostname.toLowerCase() : ''
+  let hostname: string
+  try {
+    hostname = new URL(startUrl).hostname.toLowerCase()
+  } catch {
+    hostname = ''
+  }
   const reduced = hostname.replaceAll(/[^a-z0-9.-]/g, '')
   return reduced === '' ? FALLBACK_HOST : reduced
 }
