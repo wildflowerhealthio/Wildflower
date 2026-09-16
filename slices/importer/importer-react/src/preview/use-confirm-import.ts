@@ -153,29 +153,34 @@ const importOneFile = (
   file: FileReadOutcome,
   selectionFor: SelectionFor
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
-  const { id, picked } = file
-  const fileName = picked.fileName
+  const { id, files } = file
+  const primaryFile = files[0]
+  const fileName = primaryFile.fileName
   const skip = (reason: SkipReason): Effect.Effect<FileImportResult> =>
     Effect.succeed({ _tag: 'skipped', id, fileName, reason })
   return Match.value(file).pipe(
     Match.tag('unreadable', () => skip('unreadable')),
     Match.tag('unrecognized', () => skip('unreadable')),
-    Match.tag('read', ({ decoded, sourceFile }) => {
+    Match.tag('read', ({ decoded, sourceFiles }) => {
       const selection = selectionFor(id)
       const labeled = sectionResources(decoded.sections)
       const chosen = chosenEntries(labeled, selection)
       const excluded = StagedImport.excludedCount(labeled, selection)
       if (chosen.length === 0) return skip('nothing')
 
-      const sourceFileKey = sourceFile?.key
-      const canonicalId = sourceFile?.resource.id ?? null
+      const primarySf = sourceFiles.values().next().value
+      const canonicalId = primarySf?.resource.id ?? null
       const sourceFileIncluded =
-        sourceFile !== undefined && StagedImport.isResourceIncluded(selection, sourceFile.key)
-      const sourceRef = provenanceRef(picked, canonicalId, sourceFileIncluded)
+        primarySf !== undefined && StagedImport.isResourceIncluded(selection, primarySf.key)
+      const sourceRef = provenanceRef(primaryFile, canonicalId, sourceFileIncluded)
 
+      const sourceFileKeys = new Set(sourceFiles.keys())
       const resources = chosen.map(({ key, resource }) => {
-        if (key === sourceFileKey)
-          return canonicalId === null ? resource : withId(resource, canonicalId)
+        if (sourceFileKeys.has(key)) {
+          const sf = sourceFiles.get(key)
+          const sfId = sf?.resource.id ?? null
+          return sfId === null ? resource : withId(resource, sfId)
+        }
         return sourceRef === undefined ? resource : withMetaSource(resource, sourceRef)
       })
 

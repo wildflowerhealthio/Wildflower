@@ -569,8 +569,8 @@ const FileSection = ({
   readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
   readonly onEditResource: (fileId: string, key: string, resource: unknown) => void
 }): JSX.Element => (
-  <section className={styles.fileSection} aria-label={file.picked.fileName}>
-    <h3 className={styles.fileHeading}>{file.picked.fileName}</h3>
+  <section className={styles.fileSection} aria-label={file.files[0].fileName}>
+    <h3 className={styles.fileHeading}>{file.files[0].fileName}</h3>
     {file._tag === 'unreadable' && (
       <p role="alert" className={styles.emptyMessage}>
         {UNREADABLE_FILE_MESSAGE}

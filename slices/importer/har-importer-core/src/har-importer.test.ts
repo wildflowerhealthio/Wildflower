@@ -90,9 +90,9 @@ const RECOGNIZED_WITH_NOISE = harBytesOf([
 
 describe('harImporterDescriptor.decode', () => {
   it('should fold a recognized archive into one section per URL, in first-seen order', () => {
-    const decoded = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
-    )
+    const file = { fileName: 'archive.har', bytes: RECOGNIZED_WITH_NOISE }
+    const units = Effect.runSync(harImporterDescriptor.decode([file], defaultHarSettings))
+    const decoded = units[0].decoded
 
     expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL, OBSERVATION_URL])
     expect(decoded.sections[0]?.resources.map((entry) => entry.title)).toEqual([
@@ -105,23 +105,20 @@ describe('harImporterDescriptor.decode', () => {
   })
 
   it('should note the response no kind claimed instead of dropping it silently', () => {
-    const decoded = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
-    )
+    const file = { fileName: 'archive.har', bytes: RECOGNIZED_WITH_NOISE }
+    const units = Effect.runSync(harImporterDescriptor.decode([file], defaultHarSettings))
+    const decoded = units[0].decoded
 
     expect(decoded.notes).toEqual([`Matched no importer: ${NOISE_URL}`])
   })
 
-  it('should fold a disabled kind’s responses into notes instead of sections', () => {
-    // Disabling the two Observation kinds leaves the Patient section standing
-    // and turns the Observation response into an excluded-by-settings note.
+  it("should fold a disabled kind's responses into notes instead of sections", () => {
     const settings = {
       disabledKinds: ['ObservationListResponseKind', 'ObservationResponseKind'],
     }
-
-    const decoded = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', settings)
-    )
+    const file = { fileName: 'archive.har', bytes: RECOGNIZED_WITH_NOISE }
+    const units = Effect.runSync(harImporterDescriptor.decode([file], settings))
+    const decoded = units[0].decoded
 
     expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL])
     expect(decoded.notes).toContain(
@@ -130,31 +127,25 @@ describe('harImporterDescriptor.decode', () => {
   })
 
   it('should keep the surviving resource keys identical across a settings change', () => {
-    // The whole point of `responseId:index` keys: a reviewer's per-resource
-    // exclusions and edits keep applying after a kind toggle re-decodes.
-    const withAll = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
-    )
+    const file = { fileName: 'archive.har', bytes: RECOGNIZED_WITH_NOISE }
+    const withAll = Effect.runSync(harImporterDescriptor.decode([file], defaultHarSettings))
     const withoutObservations = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', {
+      harImporterDescriptor.decode([file], {
         disabledKinds: ['ObservationListResponseKind', 'ObservationResponseKind'],
       })
     )
 
-    const patientKeysBefore = withAll.sections[0]?.resources.map((entry) => entry.key)
-    const patientKeysAfter = withoutObservations.sections[0]?.resources.map((entry) => entry.key)
+    const patientKeysBefore = withAll[0].decoded.sections[0]?.resources.map((entry) => entry.key)
+    const patientKeysAfter = withoutObservations[0].decoded.sections[0]?.resources.map(
+      (entry) => entry.key
+    )
     expect(patientKeysAfter).toEqual(patientKeysBefore)
   })
 
   it('should fail with a ParseError for bytes that are not a well-formed HAR', () => {
+    const file = { fileName: 'archive.har', bytes: new TextEncoder().encode('{ not a har }') }
     const result = Effect.runSync(
-      Effect.either(
-        harImporterDescriptor.decode(
-          new TextEncoder().encode('{ not a har }'),
-          'archive.har',
-          defaultHarSettings
-        )
-      )
+      Effect.either(harImporterDescriptor.decode([file], defaultHarSettings))
     )
 
     expect(result._tag).toBe('Left')

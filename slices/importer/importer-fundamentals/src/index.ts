@@ -15,7 +15,7 @@
  *
  * @packageDocumentation
  */
-export * as Review from './review.ts'
+export * as StagedImport from './staged-import.ts'
 export {
   identify,
   perFileDecode,

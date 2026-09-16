@@ -4,7 +4,12 @@ import type { Effect, ParseResult } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HarSettings, harImporterDescriptor } from 'har-importer-core'
 import { HarSettingsPicker } from 'har-importer-react'
-import type { DecodedFile, DocumentReferenceType, SettingsPickerProps } from 'importer-fundamentals'
+import type {
+  DecodedUnit,
+  DocumentReferenceType,
+  PickedFileLike,
+  SettingsPickerProps,
+} from 'importer-fundamentals'
 import { type LifeLabsPdfSettings, lifeLabsPdfImporterDescriptor } from 'lifelabs-pdf-importer-core'
 import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
@@ -72,10 +77,9 @@ interface BoundFormat<K extends FormatKind> {
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: FormatVariant[K]['settings']
   readonly decode: (
-    fileBytes: Uint8Array,
-    fileName: string,
+    files: readonly PickedFileLike[],
     settings: FormatVariant[K]['settings']
-  ) => Effect.Effect<DecodedFile<FormatVariant[K]['parsed']>, ParseResult.ParseError>
+  ) => Effect.Effect<readonly DecodedUnit<FormatVariant[K]['parsed']>[], ParseResult.ParseError>
   readonly buildSourceFile: (picked: {
     readonly fileName: string
     readonly bytes: Uint8Array

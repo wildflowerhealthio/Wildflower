@@ -96,12 +96,12 @@ describe('PreviewPanel', () => {
       {
         _tag: 'unreadable',
         id: 'u',
-        picked: pickedFile('broken.har'),
+        files: [pickedFile('broken.har')],
         format: 'har',
         error: anyParseError(),
-        sourceFile: undefined,
+        sourceFiles: new Map(),
       },
-      { _tag: 'unrecognized', id: 'x', picked: pickedFile('notes.txt') },
+      { _tag: 'unrecognized', id: 'x', files: [pickedFile('notes.txt')] },
       readFile(
         'c.har',
         decoded([section('https://c', [labeledResource('obs-1', 'Observation/obs-1')])])
@@ -428,10 +428,10 @@ const readFile = (
 ): FileReadOutcome => ({
   _tag: 'read',
   id: fileName,
-  picked: pickedFile(fileName),
+  files: [pickedFile(fileName)],
   format,
   decoded: decodedFile,
-  sourceFile: undefined,
+  sourceFiles: new Map(),
 })
 
 /** A decoded file from sections and optional notes. */
