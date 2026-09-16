@@ -77,5 +77,5 @@ type Uri = Schema.Schema.Type<typeof UriSchema>
 type Html = Schema.Schema.Type<typeof HtmlSchema>
 type Any = Schema.Schema.Type<typeof AnySchema>
 
-export { UriSchema, HtmlSchema, AnySchema }
+export { AnySchema, HtmlSchema, HttpUriString, UriSchema }
 export type { Uri, Html, Any }

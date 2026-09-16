@@ -1,20 +1,23 @@
 import { Link } from '@tanstack/react-router'
 import type { JSX, ReactNode } from 'react'
 
-import { TABS } from './tabs.ts'
+import { usePlatformTabs } from './platform-tabs-context.ts'
+import { COLLECTOR_TAB, HOME_TAB, SETTINGS_TAB } from './tabs.ts'
 import styles from './tab-bar.module.css'
 
 /**
  * Primary navigation bar — the web counterpart of the Expo app's former
- * native tab bar. Renders one `<Link>` per {@link TABS} entry; TanStack
- * marks the link for the current route (exact or descendant) as active,
- * so the accent styling and the built-in `aria-current="page"` track the
- * location without any local state.
+ * native tab bar. Renders Home and Collector, then any entry-contributed
+ * platform tabs (see {@link usePlatformTabs}), then Settings; TanStack marks
+ * the link for the current route (exact or descendant) as active, so the
+ * accent styling and the built-in `aria-current="page"` track the location
+ * without any local state.
  */
 function TabBar(): JSX.Element {
+  const platformTabs = usePlatformTabs()
   return (
     <nav className={styles['tab-bar']} aria-label="Primary">
-      {TABS.map((tab) => (
+      {[HOME_TAB, COLLECTOR_TAB, ...platformTabs, SETTINGS_TAB].map((tab) => (
         <Link
           key={tab.key}
           to={tab.path}

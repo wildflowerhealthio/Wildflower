@@ -47,6 +47,7 @@
     "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

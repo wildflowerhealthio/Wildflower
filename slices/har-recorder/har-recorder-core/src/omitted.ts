@@ -5,10 +5,7 @@
  * @packageDocumentation
  */
 
-/**
- * The top-level media types dropped wholesale — the binary assets a page loads
- * to render itself.
- */
+/** Top-level media types dropped wholesale: the assets a page loads to render itself. */
 const OMITTED_TYPES: ReadonlySet<string> = new Set(['image', 'video', 'audio', 'font'])
 
 /**
@@ -49,10 +46,8 @@ const OMITTED_MEDIA_TYPES: ReadonlySet<string> = new Set([
  *   `application/octet-stream`)
  *
  * @remarks
- * A denylist rather than an allowlist, deliberately: a recording's job is to
- * capture what a page actually did, and the failure mode that matters is a
- * missing exchange, not an extra one. What is named here is what nobody reads a
- * recording for.
+ * A denylist, deliberately: the failure mode that matters for a recording is a
+ * missing exchange, not an extra one.
  *
  * **JavaScript is omitted.** The full HTML Standard "JavaScript MIME type" list
  * (plus legacy spellings browsers still honour) is dropped — bundles and inline

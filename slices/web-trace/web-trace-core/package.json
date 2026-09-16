@@ -51,6 +51,7 @@
     "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

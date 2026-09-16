@@ -8,7 +8,10 @@ import type { SettingsItem } from 'shared-structures-react'
 
 import { renderScopeError } from '../scope-error-renderer.tsx'
 import { PlatformSettingsItemsProvider } from '../session/platform-settings-items.tsx'
+import { PlatformTabsProvider } from '../session/platform-tabs.tsx'
+import type { TabSpec } from '../session/tabs.ts'
 import { CollectorSenderForwarder } from './collector-sender-forwarder.tsx'
+import { HarRecorderSenderForwarder } from './har-recorder-sender-forwarder.tsx'
 import { stubTransport, TransportContext, type ReactTransport } from './transport-context.ts'
 
 interface AppRootTreeProps {
@@ -17,6 +20,9 @@ interface AppRootTreeProps {
   /** The entry's platform-specific settings rows, provided to the tree so the
    * `/settings` route can append them. See {@link PlatformSettingsItemsProvider}. */
   readonly platformSettingsItems: readonly SettingsItem[]
+  /** The entry's platform-specific tabs, provided to the tree so the primary
+   * bar can render them after the shared ones. See {@link PlatformTabsProvider}. */
+  readonly platformTabs: readonly TabSpec[]
 }
 
 /**
@@ -36,6 +42,7 @@ const AppRootTree = ({
   router,
   transportPromise,
   platformSettingsItems,
+  platformTabs,
 }: AppRootTreeProps): JSX.Element => {
   const transport = usePromiseOrDefault(transportPromise, stubTransport, () => stubTransport)
 
@@ -49,7 +56,9 @@ const AppRootTree = ({
            * rather than buried inside it.
            */}
           <NavigationBridgeHandler sender={transport.sendMessage} />
-          <CollectorSenderForwarder>{children}</CollectorSenderForwarder>
+          <CollectorSenderForwarder>
+            <HarRecorderSenderForwarder>{children}</HarRecorderSenderForwarder>
+          </CollectorSenderForwarder>
         </Fragment>
       ),
     [transport.sendMessage]
@@ -58,11 +67,13 @@ const AppRootTree = ({
   return (
     <ErrorBodyRendererContext.Provider value={renderScopeError}>
       <PlatformSettingsItemsProvider items={platformSettingsItems}>
-        <TransportContext.Provider value={transport}>
-          <HandlerCoordinatorContext.Provider value={transport.coordinator}>
-            <RouterProvider router={router} InnerWrap={InnerWrap} />
-          </HandlerCoordinatorContext.Provider>
-        </TransportContext.Provider>
+        <PlatformTabsProvider tabs={platformTabs}>
+          <TransportContext.Provider value={transport}>
+            <HandlerCoordinatorContext.Provider value={transport.coordinator}>
+              <RouterProvider router={router} InnerWrap={InnerWrap} />
+            </HandlerCoordinatorContext.Provider>
+          </TransportContext.Provider>
+        </PlatformTabsProvider>
       </PlatformSettingsItemsProvider>
     </ErrorBodyRendererContext.Provider>
   )

@@ -31,7 +31,7 @@ import { reorderApps } from './-reorder.ts'
 import { SortableAppTile } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
 
-interface HomeSearch {
+export interface HomeSearch {
   /** The base64 launch-error body (see `-launch-error.ts`) — an opaque string the
    * banner decodes; both arms set it, so it's kept verbatim. */
   readonly launchError?: string

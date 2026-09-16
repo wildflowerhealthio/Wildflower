@@ -13,7 +13,8 @@ export default defineConfig({
     }),
   ],
   pack: {
-    dts: { tsgo: {} },
+    deps: { resolveDepSubpath: true },
+    dts: { generator: 'tsgo', tsgo: {} },
     platform: 'browser',
     exports: false,
     entry: { index: 'src/index.ts' },

@@ -32,6 +32,8 @@ import { stubTransport } from './bridges/transport-context.ts'
  * - `platformSettingsItems`: the web logout row — a same-origin
  *   `POST /access/logout` form. Web-only: on Tauri the session is
  *   connection-provenance, so a cookie logout is a no-op.
+ * - `platformTabs`: none. The HAR Recorder, the only platform tab, needs a
+ *   sniffer webview and a host filesystem, so the Tauri shell contributes it.
  * - `redirectToDeviceLoginOnUnauthorized`: standalone web HAS a device-login
  *   flow, so a 401 that outlives the boot-race retry redirects the user there.
  */
@@ -41,6 +43,7 @@ const makeWebEntryOptions = (): Pick<
   | 'awaitAuthReady'
   | 'makeTransport'
   | 'platformSettingsItems'
+  | 'platformTabs'
   | 'redirectToDeviceLoginOnUnauthorized'
 > => {
   const tokenStore = makeWebAuthStateStore()
@@ -49,6 +52,7 @@ const makeWebEntryOptions = (): Pick<
     awaitAuthReady: () => makeAwaitWebAuthReady(tokenStore.subscribable),
     makeTransport: () => Promise.resolve(stubTransport),
     platformSettingsItems: [gatekeeperLogoutSettingsItem],
+    platformTabs: [],
     redirectToDeviceLoginOnUnauthorized: true,
   }
 }

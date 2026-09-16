@@ -17,9 +17,8 @@ import { isOmittedFromRecording } from './omitted.ts'
  * the {@link HttpArchive.Log} the recorder saves.
  *
  * @remarks
- * Pure and synchronous — no Effect runtime, no DOM, no clock of its own. Every
- * instant the log carries is one the caller observed and passed in, so a test
- * drives a whole recording without stubbing time.
+ * Pure, synchronous and clock-free — every instant the log carries is one the
+ * caller observed and passed in.
  *
  * @packageDocumentation
  */
@@ -38,10 +37,9 @@ type Cancelled = Schema.Schema.Type<typeof CancelledMessage>
  * One response the sniffer has started reporting and not yet terminated.
  *
  * @remarks
- * `chunks` is empty once `overCap` is set — the bytes past the cap are not kept
- * and the ones before them are released, so a 200 MB download costs a recording
- * a counter rather than the heap. `bytes` keeps counting regardless, which is
- * what makes the omission honest: the entry states how much it did not keep.
+ * Once `overCap` is set `chunks` is emptied and stays empty, so a 200 MB
+ * download costs a counter rather than the heap; `bytes` keeps counting so the
+ * entry can state how much it did not keep.
  */
 interface InFlight {
   readonly url: string
@@ -88,16 +86,13 @@ const concat = (chunks: readonly Uint8Array[]): Uint8Array<ArrayBuffer> => {
  * A live recording: sniffer events in, archive entries out.
  *
  * @remarks
- * Mutable by design. A recording is one page session's worth of response
- * bodies — rebuilding the accumulated state per chunk would copy megabytes per
- * event — so the events mutate it in place and the caller holds one instance
- * for the run. Nothing it returns is a live view: {@link Recording.entries}
- * hands back a copy, and a settled entry's bytes are its own array.
+ * Mutable by design — rebuilding the accumulated state per chunk would copy
+ * megabytes per event — so the caller holds one instance for the run. Nothing
+ * it returns is a live view.
  *
- * An event for an id the recording does not know is ignored, in every method.
- * That covers the three cases that actually happen: a response that started
- * before the recording did, a second terminal for an id that already settled,
- * and any event for a response whose content type the recording declined.
+ * Every method ignores an event for an id it does not know: a response that
+ * started before the recording did, a repeated terminal, or an event for a
+ * content type it declined.
  */
 class Recording {
   /** Responses reported but not yet terminated. */
@@ -122,10 +117,8 @@ class Recording {
    * @returns A fresh array, so a caller cannot append to the recording through it
    *
    * @remarks
-   * Settle order, not start order: it is the order the recording actually
-   * observed completions in, and re-sorting by start would claim an ordering
-   * the capture did not establish for concurrent requests. `emitHarFromLog`
-   * preserves the order it is given.
+   * Settle order, not start order: re-sorting by start would claim an ordering
+   * the capture never established for concurrent requests.
    */
   entries(): readonly HttpArchive.Entry[] {
     return [...this.#entries]
@@ -140,10 +133,9 @@ class Recording {
    * Body bytes observed per settled entry, keyed by {@link HttpArchive.Entry.id}.
    *
    * @remarks
-   * For a kept body this is `entry.body.length`. For an over-cap body it is the
-   * count the projection cannot carry: {@link HttpArchive.Entry} has no size
-   * field, so an entry with `bodyAbsent` re-encodes with `content.size` of `0`
-   * and the true size is lost at that boundary. This is where it survives.
+   * {@link HttpArchive.Entry} has no size field, so a `bodyAbsent` entry
+   * re-encodes with `content.size` of `0`; this map is where the observed count
+   * survives.
    */
   get observedBodyBytes(): ReadonlyMap<string, number> {
     return this.#observedBodyBytes
@@ -158,9 +150,8 @@ class Recording {
    *   offers and the settle happens later
    *
    * @remarks
-   * The keep/drop decision is made here and never revisited: a response whose
-   * headers say `image/png` is declined before its first chunk arrives, so its
-   * bytes never enter the recording at all. See {@link isOmittedFromRecording}.
+   * The keep/drop decision is made here and never revisited, so a declined
+   * response's bytes never enter the recording. See {@link isOmittedFromRecording}.
    */
   onResponseStart(message: ResponseStart, observedAt: DateTime.Utc): void {
     if (isOmittedFromRecording(contentTypeOf(message.headers))) {
@@ -186,11 +177,10 @@ class Recording {
    * @param message - The sniffer's `ResponseData`, whose `data` is base64
    *
    * @remarks
-   * Past {@link MAX_BODY_BYTES} the recording stops retaining bytes and drops
-   * what it had, while still counting the size. A chunk whose base64 will not
-   * decode marks the body undecodable, and the entry settles with no body
-   * rather than with a hole in it — a truncated body archived as a whole one
-   * would be read as the response the server sent.
+   * Past {@link MAX_BODY_BYTES} the recording stops retaining bytes while still
+   * counting the size. A chunk whose base64 will not decode settles the entry
+   * with no body rather than with a hole in it — a truncated body archived as a
+   * whole one would be read as what the server sent.
    */
   onResponseData(message: ResponseData): void {
     const record = this.#inFlight.get(message.id)
@@ -224,12 +214,11 @@ class Recording {
    * @param message - The sniffer's `ResponseFinished`
    *
    * @remarks
-   * `method` is `'UNKNOWN'` and the entry carries no request headers or body:
-   * the recorder is response-side only, and states what it did not see rather
-   * than guessing it (request-side capture is #440). The entry's id is
-   * positional (`har-entry-<index>`), the convention `HttpArchive` synthesizes
-   * on the way in, so an id means the same thing whether an archive was read or
-   * recorded.
+   * `method` is `'UNKNOWN'` and no request headers or body are carried: the
+   * recorder is response-side only and states what it did not see rather than
+   * guessing (request-side capture is #440). The id is positional, from
+   * `HttpArchive.ENTRY_ID_PREFIX`, so it means the same thing whether an
+   * archive was read or recorded.
    */
   onResponseFinished(message: ResponseFinished): void {
     this.#omitted.delete(message.id)
@@ -258,9 +247,8 @@ class Recording {
    * @param message - The sniffer's `RequestError`
    *
    * @remarks
-   * A failed request has no complete body, and an entry carrying the prefix
-   * that did arrive would read as the whole response. The recording drops it —
-   * the absence is the honest record.
+   * An entry carrying only the prefix that arrived would read as the whole
+   * response, so the absence is the honest record.
    */
   onRequestError(message: RequestError): void {
     this.#drop(message.id)
@@ -273,8 +261,7 @@ class Recording {
    *   a `CancelSnifferRequest`
    *
    * @remarks
-   * Same reasoning as {@link Recording.onRequestError}: a partial body is not a
-   * response.
+   * Same reasoning as {@link Recording.onRequestError}.
    */
   onCancelled(message: Cancelled): void {
     this.#drop(message.id)

@@ -856,6 +856,11 @@ pub fn run() {
             // `native_webview_data_plane_emit` command) and re-broadcasts.
             browser_sniffer_tauri_rust::attach_browser_sniffer(app.handle());
 
+            // Wire the HarRecorderBridge.webToHost listener that writes a
+            // finished recording into `<app data dir>/saved_data`, taking the
+            // directory this `setup()` already resolved rather than its own.
+            har_recorder_tauri_rust::attach_har_recorder(app.handle(), app_data_dir.clone());
+
             let error_handle = app.handle().clone();
             // The server task installs the apps on-device webview handle once
             // the apps slice is built; the handle opens launched apps in a

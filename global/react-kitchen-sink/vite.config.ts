@@ -9,9 +9,8 @@ export default defineConfig({
     environment: 'jsdom',
   },
   pack: {
-    dts: {
-      tsgo: {},
-    },
+    deps: { resolveDepSubpath: true },
+    dts: { generator: 'tsgo', tsgo: {} },
     platform: 'neutral',
     exports: false,
     entry: {

@@ -34,6 +34,7 @@
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

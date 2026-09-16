@@ -53,6 +53,7 @@
     "shared-structures-core": "workspace:*",
     "shoppers-drugmart-collector": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-collector": "workspace:*"
   },

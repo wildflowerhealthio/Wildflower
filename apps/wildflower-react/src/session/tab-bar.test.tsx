@@ -11,8 +11,9 @@ import type { JSX, ReactNode } from 'react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { Route as OpenRoute } from '../routes/_open.tsx'
+import { PlatformTabsProvider } from './platform-tabs.tsx'
 import { AppTabShell, TabBar } from './tab-bar.tsx'
-import { TABS } from './tabs.ts'
+import { COLLECTOR_TAB, HOME_TAB, SETTINGS_TAB, type TabSpec } from './tabs.ts'
 
 const Stub = (): JSX.Element => <div>stub</div>
 
@@ -24,7 +25,7 @@ const Stub = (): JSX.Element => <div>stub</div>
  * active state is derived from the router location, not the rendered
  * leaf.
  */
-const renderTabBarAt = (initialPath: string): void => {
+const renderTabBarAt = (initialPath: string, platformTabs: readonly TabSpec[] = []): void => {
   const rootRoute = createRootRoute({
     component: (): JSX.Element => (
       <>
@@ -49,15 +50,25 @@ const renderTabBarAt = (initialPath: string): void => {
     path: '/settings',
     component: Stub,
   })
+  const harRecorderRoute = createRoute({
+    getParentRoute: () => rootRoute,
+    path: '/har-recorder',
+    component: Stub,
+  })
   const router = createRouter({
     routeTree: rootRoute.addChildren([
       homeRoute,
       collectorRoute.addChildren([collectorDetailRoute]),
       settingsRoute,
+      harRecorderRoute,
     ]),
     history: createMemoryHistory({ initialEntries: [initialPath] }),
   })
-  render(<RouterProvider router={router} />)
+  render(
+    <PlatformTabsProvider tabs={platformTabs}>
+      <RouterProvider router={router} />
+    </PlatformTabsProvider>
+  )
 }
 
 // Each test mounts its own router; clear the prior tree so `getByRole`
@@ -70,8 +81,9 @@ describe('TabBar', () => {
   test('renders a link to every tab destination, labelled and ordered as configured', async () => {
     renderTabBarAt('/home')
     const links = await screen.findAllByRole('link')
-    expect(links.map((l) => l.textContent)).toEqual(TABS.map((t) => t.label))
-    for (const tab of TABS) {
+    const sharedTabs = [HOME_TAB, COLLECTOR_TAB, SETTINGS_TAB]
+    expect(links.map((l) => l.textContent)).toEqual(sharedTabs.map((t) => t.label))
+    for (const tab of sharedTabs) {
       expect(screen.getByRole('link', { name: tab.label }).getAttribute('href')).toBe(tab.path)
     }
   })
@@ -85,6 +97,27 @@ describe('TabBar', () => {
     })
     expect(screen.getByRole('link', { name: 'Home' }).getAttribute('aria-current')).toBeNull()
     expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('aria-current')).toBeNull()
+  })
+
+  test('renders an entry-contributed platform tab between collector and settings', async () => {
+    renderTabBarAt('/home', [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }])
+    const links = await screen.findAllByRole('link')
+    expect(links.map((l) => l.textContent)).toEqual([
+      'Home',
+      'Collector',
+      'HAR Recorder',
+      'Settings',
+    ])
+    expect(screen.getByRole('link', { name: 'HAR Recorder' }).getAttribute('href')).toBe(
+      '/har-recorder'
+    )
+  })
+
+  test('renders no platform tab when the entry contributes none', async () => {
+    renderTabBarAt('/home')
+    const links = await screen.findAllByRole('link')
+    expect(links.map((l) => l.textContent)).toEqual(['Home', 'Collector', 'Settings'])
+    expect(screen.queryByRole('link', { name: 'HAR Recorder' })).toBeNull()
   })
 
   test('keeps the tab active on a descendant route (prefix match)', async () => {

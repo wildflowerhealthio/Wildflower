@@ -5,7 +5,8 @@ import base from '../../../vite.config.base.ts'
 export default defineConfig({
   ...base,
   pack: {
-    dts: { tsgo: {} },
+    deps: { resolveDepSubpath: true },
+    dts: { generator: 'tsgo', tsgo: {} },
     platform: 'neutral',
     exports: false,
     entry: {

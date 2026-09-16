@@ -40,6 +40,9 @@ renderApp({
   // clearing a cookie logs nothing out, and this origin doesn't serve
   // `/access/logout`). The entry, not the settings route, encodes that.
   platformSettingsItems: [],
+  // Desktop-only: the recorder drives the native sniffer webview and the host
+  // writes the `.har` into `saved_data`, neither of which a browser tab has.
+  platformTabs: [{ key: 'har-recorder', label: 'HAR Recorder', path: '/har-recorder' }],
   // A 401 here is anomalous (a boot-race before the host token is minted, or an
   // expired host token), NOT a prompt to sign in: the webview is
   // host-authenticated by the loopback-owner trust, there's no user login to

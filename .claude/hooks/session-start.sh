@@ -37,7 +37,7 @@ fi
 #    places a vite-plus version is recorded is in
 #    docs/Dependencies/Bumping vite-plus How-To.md.
 if ! command -v vp >/dev/null 2>&1; then
-  pnpm install -g vite-plus@0.3.0 @typescript/native-preview@7.0.0-dev.20260707.2 @tsdown/css@0.23.0
+  pnpm install -g vite-plus@0.3.2 @typescript/native-preview@7.0.0-dev.20260707.2 @tsdown/css@0.23.0
 fi
 
 # 3. Workspace dependencies (idempotent; fast when node_modules is current).

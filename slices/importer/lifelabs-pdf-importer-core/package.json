@@ -46,6 +46,7 @@
     "positioned-text": "workspace:*",
     "positioned-text-web": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"
   },

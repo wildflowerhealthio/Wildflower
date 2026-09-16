@@ -13,6 +13,8 @@ members = [
   "slices/emr/emr-rust",
   "slices/gatekeeper/gatekeeper-rust",
   "slices/gatekeeper/token-revocation-rust",
+  "slices/har-recorder/har-recorder-rust",
+  "slices/har-recorder/har-recorder-tauri-rust",
   "slices/persistence/persistence-rust",
   "slices/scopes/scope-capabilities-rust",
   "slices/scopes/scopes-rust",

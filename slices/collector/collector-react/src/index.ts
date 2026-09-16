@@ -25,6 +25,7 @@ export {
   CollectorSenderProvider,
   type CollectorSenderProviderProps,
 } from './runtime/collector-sender-provider.tsx'
+export { useCollectorRegister } from './runtime/use-collector-register.ts'
 export { useCollectorSender } from './runtime/use-collector-sender.ts'
 export type {
   CollectorOutboundMessage,

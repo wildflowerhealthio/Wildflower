@@ -31,6 +31,7 @@
     "react-tundraish": "workspace:*",
     "scopes-core": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

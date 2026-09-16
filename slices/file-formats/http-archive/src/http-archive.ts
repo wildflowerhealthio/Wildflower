@@ -28,10 +28,8 @@ import { Har, type HarBody, type HarEntry, NOT_MEASURED } from './har.ts'
  * Prefix of an {@link Entry}'s synthesized id.
  *
  * @remarks
- * Exported so a producer that builds a {@link Log} without reading an archive —
- * the HAR recorder accumulating live responses — synthesizes the same
- * `har-entry-<index>` ids from this one definition rather than a copy of the
- * literal.
+ * Exported so a producer that builds a {@link Log} without reading an archive
+ * synthesizes `har-entry-<index>` ids from this definition, not a copy.
  */
 const ENTRY_ID_PREFIX = 'har-entry-'
 

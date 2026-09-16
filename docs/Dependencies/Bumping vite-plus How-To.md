@@ -8,29 +8,28 @@ For _why_ the exact pins exist — the pnpm variant-split mechanism, the `vite`/
 
 A vite-plus bump moves three distinct version strings, each in more than one file:
 
-- **`vite-plus`** itself — the package that ships the `vp` binary (currently `0.3.0`).
+- **`vite-plus`** itself — the package that ships the `vp` binary (currently `0.3.2`).
 - **`@voidzero-dev/vite-plus-core`** — the `vite` alias vite-plus depends on. Must match the core that _this_ `vite-plus` depends on, **not** the newest core on npm (see the Explanation's "Re-pinning" section).
 - **`vitest`** — the real vitest vite-plus bundles (currently `4.1.11`). Read its target from `vp --version`, not by guessing.
 
 ## Every place to edit
 
-| #   | File                                                                             | Key                           | Current value                             | Holds     |
-| --- | -------------------------------------------------------------------------------- | ----------------------------- | ----------------------------------------- | --------- |
-| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite-plus:`          | `^0.3.0`                                  | vite-plus |
-| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite:`               | `npm:@voidzero-dev/vite-plus-core@^0.3.0` | core      |
-| 3   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vitest:`             | `4.1.11`                                  | vitest    |
-| 4   | [package.json](../../package.json)                                               | `pnpm.overrides.vite`         | `npm:@voidzero-dev/vite-plus-core@0.3.0`  | core      |
-| 5   | [package.json](../../package.json)                                               | `pnpm.overrides.vitest`       | `4.1.11`                                  | vitest    |
-| 6   | [.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh)           | `pnpm install -g vite-plus@…` | `0.3.0`                                   | vite-plus |
-| 7   | [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh)   | `pnpm install -g vite-plus@…` | `0.3.0`                                   | vite-plus |
-| 8   | [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh) | `pnpm install -g vite-plus@…` | `0.3.0`                                   | vite-plus |
+| #   | File                                                                             | Key                           | Current value                            | Holds     |
+| --- | -------------------------------------------------------------------------------- | ----------------------------- | ---------------------------------------- | --------- |
+| 1   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite-plus:`          | `0.3.2`                                  | vite-plus |
+| 2   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vite:`               | `npm:@voidzero-dev/vite-plus-core@0.3.2` | core      |
+| 3   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | catalog `vitest:`             | `4.1.11`                                 | vitest    |
+| 4   | [pnpm-workspace.yaml](../../pnpm-workspace.yaml)                                 | overrides `vite@*:`           | `catalog:`                               | core      |
+| 5   | [.claude/hooks/session-start.sh](../../.claude/hooks/session-start.sh)           | `pnpm install -g vite-plus@…` | `0.3.2`                                  | vite-plus |
+| 6   | [.devcontainer/postCreateCommand.sh](../../.devcontainer/postCreateCommand.sh)   | `pnpm install -g vite-plus@…` | `0.3.2`                                  | vite-plus |
+| 7   | [.devcontainer/cloud-setup-script.sh](../../.devcontainer/cloud-setup-script.sh) | `pnpm install -g vite-plus@…` | `0.3.2`                                  | vite-plus |
 
-Rows 1–3 are ranges (the catalog convention); rows 4–8 are exact pins. The catalog carries the range and the override + bootstrap scripts carry the exact resolved version — widening the catalog range alone does nothing, because an exact override outranks it. The three bootstrap-script pins (rows 6–8) are hand-kept in lockstep because there is no way to reference the catalog from a global `pnpm install -g`; they must equal the version the lockfile resolves.
+Rows 1–3 are the catalog values; row 4 is the pnpm override that forces all `vite` deps to the catalog alias; rows 5–7 are exact pins in global-install scripts. The three bootstrap-script pins (rows 5–7) are hand-kept in lockstep because there is no way to reference the catalog from a global `pnpm install -g`; they must equal the version the lockfile resolves.
 
 ## Steps
 
-1. Edit rows 1–5 to the new versions. Set the override `vite` core to the core that the new `vite-plus` depends on (not the newest on npm), and the `vitest` values to what `vp --version` reports for the new release.
-2. Edit the `vite-plus@…` pin in rows 6–8 to the new exact version.
+1. Edit rows 1–4 to the new versions. The catalog `vite:` alias must point at the core that the new `vite-plus` depends on (not the newest core on npm — see the Explanation's "Re-pinning" section), and `vitest:` to what `vp toolchain vitest` reports for the new release.
+2. Edit the `vite-plus@…` pin in rows 5–7 to the new exact version.
 3. Run `vp install`, then verify there is exactly one core:
 
    ```bash
