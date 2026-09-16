@@ -260,30 +260,25 @@ const toFhirResources = (
 ): Effect.Effect<readonly FhirResource[], ParseResult.ParseError> =>
   Effect.gen(function* () {
     const resources: FhirResource[] = []
+    const patientId = patientOriginalId(header)
+    if (patientId === undefined) return resources
 
     const patientWireObj = patientWire(header)
-    const patientId = patientOriginalId(header)
 
-    if (patientWireObj !== undefined && patientId !== undefined) {
+    if (patientWireObj !== undefined) {
       resources.push(yield* decodePatient(patientWireObj))
     }
 
     let serviceRequestId: string | undefined
-    if (patientId !== undefined) {
-      const srWire = serviceRequestWire(header, patientId)
-      if (srWire !== undefined) {
-        serviceRequestId = serviceRequestOriginalId(header)
-        resources.push(yield* decodeServiceRequest(srWire))
-      }
+    const srWire = serviceRequestWire(header, patientId)
+    if (srWire !== undefined) {
+      serviceRequestId = serviceRequestOriginalId(header)
+      resources.push(yield* decodeServiceRequest(srWire))
     }
 
-    if (patientId !== undefined) {
-      resources.push(
-        yield* decodeImagingStudy(
-          imagingStudyWire(header, patientId, serviceRequestId, sourceFileId)
-        )
-      )
-    }
+    resources.push(
+      yield* decodeImagingStudy(imagingStudyWire(header, patientId, serviceRequestId, sourceFileId))
+    )
 
     return resources
   })
