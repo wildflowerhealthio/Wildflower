@@ -15,14 +15,21 @@
  *
  * @packageDocumentation
  */
-export * as StagedImport from './staged-import.ts'
-export { identify, sectionResources } from './file-importer-descriptor.ts'
+export * as Review from './review.ts'
+export {
+  identify,
+  perFileDecode,
+  sourceFileKey,
+  sectionResources,
+} from './file-importer-descriptor.ts'
 export type {
   DecodedFile,
+  DecodedUnit,
   DocumentReferenceType,
   FileImporterDescriptor,
   LabeledResource,
   LabeledSection,
+  PickedFileLike,
   SettingsPickerProps,
 } from './file-importer-descriptor.ts'
 export type { PersistFailure } from './persist-failure.ts'

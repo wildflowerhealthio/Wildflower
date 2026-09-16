@@ -1,6 +1,6 @@
 import { Effect } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { FileImporterDescriptor } from 'importer-fundamentals'
+import { perFileDecode, type FileImporterDescriptor } from 'importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
@@ -33,7 +33,7 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<LifeLabsPdfSettings,
   },
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
-  decode: decodeLifeLabsPdf,
+  decode: perFileDecode(decodeLifeLabsPdf),
   buildSourceFile,
   sourceFileCategoryToken: LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
   isSourceFile: isLifeLabsPdfSourceFile,

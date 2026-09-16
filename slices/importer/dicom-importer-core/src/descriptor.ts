@@ -10,7 +10,7 @@ import { parseDicomFile } from 'dicom'
 import { Effect, Either } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { FileImporterDescriptor } from 'importer-fundamentals'
+import { perFileDecode, type FileImporterDescriptor } from 'importer-fundamentals'
 
 import { decodeDicom } from './decode.ts'
 import { detectDicom } from './detect.ts'
@@ -33,9 +33,7 @@ const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResourc
   },
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
-  decode: decodeDicom,
-  // A caller-supplied `subject` wins — it is context the caller has and this
-  // descriptor does not. The header-derived reference is the fallback.
+  decode: perFileDecode(decodeDicom),
   buildSourceFile: (picked, options) => {
     if (options?.subject !== undefined) return buildSourceFileRaw(picked, options)
     const parseResult = parseDicomFile(picked.bytes)
