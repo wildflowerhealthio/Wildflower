@@ -47,7 +47,7 @@ async-trait = "0.1"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 
 [dev-dependencies]
-base64 = "0.23"
+base64.workspace = true
 http-body-util.workspace = true
 ohif-server-rust = { path = "../../dicom/ohif-server-rust" }
 scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust" }
