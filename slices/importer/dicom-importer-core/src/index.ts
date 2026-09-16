@@ -1,20 +1,16 @@
 /**
- * The DICOM binding of the importer slice (core layer): the byte-level
- * detection that identifies a `.dcm` file, the source file codec that stores
- * it as a FHIR `DocumentReference`, and the importer descriptor. No DICOM
- * tag parsing — D3 fills that in.
- *
- * @remarks
- * No DOM, no `fs`, no React: a `.dcm` file's raw bytes in, stored as a
- * source file, zero extracted resources out (one note says the contents are not
- * read yet). The decode yields zero sections so the review screen is honest
- * about what confirm will do.
+ * The DICOM binding of the importer slice (core layer): DICOM tag parsing
+ * via the `dicom` file-formats package, FHIR R4 synthesis (Patient,
+ * ServiceRequest, ImagingStudy), byte-level `.dcm` detection, and the
+ * source file codec. No DOM, no `fs`, no React.
  *
  * @packageDocumentation
  */
 export { decodeDicom } from './decode.ts'
 export { detectDicom } from './detect.ts'
 export { dicomImporterDescriptor } from './descriptor.ts'
+export { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
+export { dicomCalendarDate, dicomInstant } from './fhir/dates.ts'
 export { buildSourceFile } from './source-file/index.ts'
-export { defaultDicomSettings, type DicomSettings } from './settings.ts'
+export { defaultDicomSettings, runtimeTimeZone, type DicomSettings } from './settings.ts'
 export { DICOM_SYSTEM } from './source-system.ts'

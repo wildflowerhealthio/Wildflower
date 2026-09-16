@@ -10,7 +10,7 @@
 //! [`AppsState`](state::AppsState) the bindings build from.
 //!
 //! The `Claims` type is the ready-made [`ScopeClaims`](scope_capabilities_rust::ScopeClaims)
-//! the host's bearer gate (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`)
+//! the host's bearer gate (`gatekeeper_rust::gatekeeper_auth_middleware`)
 //! inserts, so this slice scope-gates without depending on gatekeeper's domain
 //! claims type.
 

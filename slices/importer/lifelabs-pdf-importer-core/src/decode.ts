@@ -57,7 +57,7 @@ const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
  * only ever nulls out an id it started with; so after synthesis+adoption every
  * resource must have one. A null here is an unreachable invariant break — die
  * rather than paper over it with a shared `'?'` key that would collide across
- * resources and defeat `Review.Selection`.
+ * resources and defeat `StagedImport.Selection`.
  */
 const labelAdopted = (resource: FhirResource): LabeledResource<FhirResource> => {
   const adopted = adopt(resource)
@@ -142,6 +142,7 @@ const decodeLifeLabsPdfDocument = (
  */
 const decodeLifeLabsPdf = (
   pdfBytes: Uint8Array,
+  _fileName: string,
   settings: LifeLabsPdfSettings
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.tryPromise({

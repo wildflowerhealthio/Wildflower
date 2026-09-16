@@ -2295,11 +2295,15 @@ dependencies = [
  "anyhow",
  "async-trait",
  "axum",
+ "base64 0.23.1",
  "chrono",
  "helios-audit",
  "helios-auth",
  "helios-persistence",
  "helios-rest",
+ "http-body-util",
+ "ohif-server-rust",
+ "scope-capabilities-rust",
  "serde",
  "serde_json",
  "shared-structures-rust",
@@ -5123,6 +5127,26 @@ dependencies = [
  "serde_derive",
  "smallvec",
  "thiserror 2.0.20",
+]
+
+[[package]]
+name = "ohif-server-rust"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "base64 0.23.1",
+ "bytes",
+ "http-body-util",
+ "scope-capabilities-rust",
+ "scopes-rust",
+ "serde",
+ "serde_json",
+ "shared-structures-rust",
+ "tokio",
+ "tower",
+ "utoipa",
+ "utoipa-axum",
 ]
 
 [[package]]
@@ -9123,6 +9147,7 @@ dependencies = [
  "dotenvy",
  "emr-rust",
  "gatekeeper-rust",
+ "ohif-server-rust",
  "openssl",
  "persistence-rust",
  "reqwest 0.12.28",

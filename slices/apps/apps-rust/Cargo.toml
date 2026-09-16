@@ -14,8 +14,8 @@ anyhow.workspace = true
 axum.workspace = true
 # URL-safe base64 for the browser launch-error redirect: the failed response body
 # rides `/home?launchError=<base64>` so the SPA banner shows what the server
-# reported. Same version gatekeeper-rust uses, so cargo-deny has pre-vetted it.
-base64 = "0.23"
+# reported.
+base64.workspace = true
 bytes = "1"
 serde = { workspace = true }
 serde_json.workspace = true

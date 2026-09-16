@@ -1,8 +1,8 @@
 //! The gatekeeper's HTTP layer — everything axum-shaped lives under this
-//! module. The only crate-facing surface is [`router`],
-//! [`layer_router_with_gatekeeper_auth_gating`], and [`GatekeeperState`]; the
-//! handler and middleware files are private implementation detail behind the
-//! route table.
+//! module. The only crate-facing surface is [`router`], the two layerable gates
+//! ([`gatekeeper_auth_middleware`], [`require_loopback_peer_middleware`]), and
+//! [`GatekeeperState`]; the handler and middleware files are private
+//! implementation detail behind the route table.
 
 use std::sync::Arc;
 
@@ -21,6 +21,12 @@ pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
 // The shared "insert an `Authorization: Bearer` only when absent" helper — the
 // FHIR bearer gate and the Tauri loopback-owner-trust middleware both use it.
 pub use middleware::ensure_bearer_header;
+// The two layerable gates the host composes its routers from. Each lives beside
+// the handler it wraps, in `middleware/`.
+pub use middleware::{
+    gatekeeper_auth_middleware, require_loopback_peer_middleware, GatekeeperAuthMiddleware,
+    RequireLoopbackPeerMiddleware,
+};
 pub use state::GatekeeperState;
 
 use axum::middleware as axum_middleware;
@@ -47,7 +53,7 @@ fn documented_router() -> OpenApiRouter<Arc<GatekeeperState>> {
 /// bearer JWT + per-resource scope gates) — the module owns its mount paths so the caller just
 /// `.merge()`s. This router carries **no** loopback-peer gate of its own —
 /// the host applies that defense-in-depth to the whole merged surface via
-/// [`layer_router_with_loopback_peer_gating`]. Mounting `router()` directly
+/// [`require_loopback_peer_middleware`]. Mounting `router()` directly
 /// without that wrapper leaves `/oauth/*` and `/access/*` reachable from
 /// non-loopback peers.
 pub fn router(state: Arc<GatekeeperState>) -> Router {
@@ -68,46 +74,6 @@ pub fn router(state: Arc<GatekeeperState>) -> Router {
         .merge(documented)
         .nest("/access", access)
         .with_state(state)
-}
-
-/// Wrap a router (e.g. emr-rust's FHIR router) with JWT verification against the
-/// gatekeeper's signing keys. Any request missing or presenting an invalid
-/// bearer token gets 401 — **except** requests whose path is in `exempt_paths`,
-/// which pass through untouched: the FHIR/SMART discovery docs a client fetches
-/// before it holds a token (canonical list `UNAUTHENTICATED_FHIR_PATHS` in
-/// emr-rust; see `docs/Origins/Explanation.md`). Matching is exact on the full
-/// request path with a trailing slash ignored (see `is_exempt`). Pass `&[]` to
-/// gate every path.
-pub fn layer_router_with_gatekeeper_auth_gating(
-    router: Router,
-    state: Arc<GatekeeperState>,
-    exempt_paths: &[&str],
-) -> Router {
-    let gate = middleware::BearerGate {
-        state,
-        exempt: exempt_paths
-            .iter()
-            .map(|p| p.trim_end_matches('/').to_string())
-            .collect(),
-    };
-    router.layer(axum_middleware::from_fn_with_state(
-        gate,
-        middleware::require_valid_bearer_token,
-    ))
-}
-
-/// Wrap a router with the loopback-peer gate
-/// ([`require_loopback_peer`](middleware::require_loopback_peer)) so a
-/// non-loopback peer — and, failing closed, any request with no `ConnectInfo`
-/// (the service wasn't mounted with `into_make_service_with_connect_info`) —
-/// gets a `403` before any handler runs. Extends the same defense-in-depth the
-/// gatekeeper applies to its own [`router`] to other loopback-only routers, e.g.
-/// the host's merged `api_router`; stacking it on a router that already carries
-/// the gate is a harmless, idempotent second check. For why a forwarded remote
-/// caller still passes, see [`require_loopback_peer`](middleware::require_loopback_peer)
-/// and `docs/Origins/Explanation.md`.
-pub fn layer_router_with_loopback_peer_gating(router: Router) -> Router {
-    router.layer(axum_middleware::from_fn(middleware::require_loopback_peer))
 }
 
 /// Whether `path` is on the gatekeeper's **pre-auth public surface** — the

@@ -33,6 +33,7 @@
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "dicom": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
@@ -42,6 +43,7 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "dicom": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "importer-fundamentals": "workspace:*",

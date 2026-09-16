@@ -145,13 +145,27 @@ type FileReadOutcome = ReadFile<FormatKind> | UnreadableFile<FormatKind> | Unrec
 type ImportRunState =
   | { readonly _tag: 'idle' }
   | { readonly _tag: 'reading' }
-  | { readonly _tag: 'ready'; readonly files: readonly FileReadOutcome[] }
+  | {
+      readonly _tag: 'ready'
+      /**
+       * Identifies the picked batch. Advances on {@link ImportRun.run} and is
+       * preserved by {@link ImportRun.applySettings}, so a consumer can tell a
+       * *fresh pick* from a re-decode of the same files — which `files` alone
+       * cannot say, since a re-decode replaces that array too. The server-diff
+       * pre-fetch uses it to decide whether the previous classification may
+       * stay on screen while the next one loads.
+       */
+      readonly batchId: number
+      readonly files: readonly FileReadOutcome[]
+    }
 
 /** Imperative surface the screen drives the read through. */
 interface ImportRun {
   readonly state: ImportRunState
   /** The current per-format settings every decode runs under. */
   readonly settings: FormatSettings
+  /** Whether a settings re-decode is in flight — the shell blocks confirm while true. */
+  readonly redecoding: boolean
   /**
    * Read a freshly-picked batch of files into decoded sections, replacing
    * any previous one.
@@ -186,12 +200,13 @@ const runDecode = (
   registry: ImportRunRegistry,
   settings: FormatSettings,
   format: FormatKind,
-  bytes: Uint8Array
+  bytes: Uint8Array,
+  fileName: string
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Match.type<FormatKind>().pipe(
-    Match.when('har', (kind) => registry[kind].decode(bytes, settings[kind])),
-    Match.when('lifelabs-pdf', (kind) => registry[kind].decode(bytes, settings[kind])),
-    Match.when('dicom', (kind) => registry[kind].decode(bytes, settings[kind])),
+    Match.when('har', (kind) => registry[kind].decode(bytes, fileName, settings[kind])),
+    Match.when('lifelabs-pdf', (kind) => registry[kind].decode(bytes, fileName, settings[kind])),
+    Match.when('dicom', (kind) => registry[kind].decode(bytes, fileName, settings[kind])),
     Match.exhaustive
   )(format)
 
@@ -259,7 +274,7 @@ const decodeInto = (
   id: string,
   sourceFile: LabeledResource<FhirResource> | undefined
 ): Effect.Effect<FileReadOutcome> =>
-  runDecode(registry, settings, format, picked.bytes).pipe(
+  runDecode(registry, settings, format, picked.bytes, picked.fileName).pipe(
     Effect.map((decoded): FileReadOutcome => ({
       _tag: 'read',
       id,
@@ -316,7 +331,11 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
   const runAuthed = useRunAuthed()
   const [state, setState] = useState<ImportRunState>({ _tag: 'idle' })
   const [settings, setSettings] = useState<FormatSettings>(defaultFormatSettings)
+  const [redecoding, setRedecoding] = useState(false)
   const latest = useRef(0)
+  // Advanced only by `run`, so it names the picked batch rather than the
+  // decode pass — see `ImportRunState`'s `batchId`.
+  const batch = useRef(0)
   // The settings the in-flight (or latest) decode ran under — read by
   // applySettings so a re-decode composes with the freshest value even
   // before React commits the state update.
@@ -326,7 +345,9 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
     (picks: readonly PickedFile[]): void => {
       if (picks.length === 0) return
       latest.current += 1
+      batch.current += 1
       const ticket = latest.current
+      const batchId = batch.current
       setState({ _tag: 'reading' })
       const current = settingsRef.current
       const readAll = Effect.forEach(
@@ -340,7 +361,7 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
       )
       void runAuthed(readAll).then((files) => {
         if (latest.current !== ticket) return
-        setState({ _tag: 'ready', files })
+        setState({ _tag: 'ready', batchId, files })
       })
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary
@@ -355,6 +376,8 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
       if (state._tag !== 'ready') return
       latest.current += 1
       const ticket = latest.current
+      const { batchId } = state
+      setRedecoding(true)
       const redecodeAll = Effect.forEach(
         state.files,
         (file) =>
@@ -368,7 +391,8 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
       )
       void runAuthed(redecodeAll).then((nextFiles) => {
         if (latest.current !== ticket) return
-        setState({ _tag: 'ready', files: nextFiles })
+        setRedecoding(false)
+        setState({ _tag: 'ready', batchId, files: nextFiles })
       })
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary
@@ -377,10 +401,11 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
 
   const reset = useCallback((): void => {
     latest.current++
+    setRedecoding(false)
     setState({ _tag: 'idle' })
   }, [])
 
-  return { state, settings, run, applySettings, reset }
+  return { state, settings, redecoding, run, applySettings, reset }
 }
 
 export {

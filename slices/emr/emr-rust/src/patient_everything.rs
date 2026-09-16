@@ -15,19 +15,9 @@
 //! exactly as it would for a direct `GET /Patient/{id}` — a token that can't read
 //! the Patient gets the same `401`/`403` here, propagated verbatim.
 //!
-//! **In-process re-drive invariant:** HFS's router is wrapped by
-//! `helios-rest`'s `create_app_with_auth` in a `CompressionLayer` and content
-//! negotiation, but a delegated sub-response is consumed in-process (buffered
-//! and JSON-parsed, [`read_json`]), never sent over the wire. So the forwarded
-//! sub-request must drop the caller's content-negotiation headers — an
-//! `Accept-Encoding: gzip` would come back gzipped and a forwarded `Accept:
-//! application/fhir+xml` would come back XML, either of which fails the parse.
-//! [`delegate_get`] strips both and pins `Accept` to FHIR JSON so the body is
-//! always identity-encoded JSON. Generally: any in-process `oneshot` re-drive
-//! of a router carrying a compression/content-negotiation layer drops the
-//! hop-by-hop / negotiation headers (`Accept-Encoding` first) from the
-//! forwarded set; the real client's own headers are honored by the outer HTTP
-//! stack against our response.
+//! **In-process re-drive invariant:** see [`crate::delegate`] — this handler's
+//! delegated reads (the primary Patient, each related-type search) go through
+//! [`crate::delegate::delegate_get`] and [`crate::delegate::read_json`].
 //!
 //! A related-resource search that fails (non-200 or an unreadable body) is
 //! logged and treated as *no matches* rather than aborting: only the primary
@@ -64,16 +54,15 @@
 //! included on top). Adding a type is a one-row change to the table — record the
 //! divergence in this crate's `docs/Capability Statement.md` in the same change.
 
-use axum::body::{to_bytes, Body};
 use axum::extract::{Path, Query, State};
-use axum::http::{HeaderMap, Request, StatusCode};
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Json, Response};
 use axum::Router;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use shared_structures_rust::served_origin::served_base_url_for;
-use tower::ServiceExt;
 
+use crate::delegate::{delegate_get, internal_error, read_json};
 use crate::FHIR_R4_PATH;
 
 /// Upper bound on bytes buffered from a single delegated search *page* body.
@@ -163,7 +152,7 @@ pub(crate) async fn patient_everything_handler(
     if patient_resp.status() != StatusCode::OK {
         return patient_resp;
     }
-    let patient = match read_json(patient_resp).await {
+    let patient = match read_json(patient_resp, MAX_SUBRESPONSE_BYTES).await {
         Ok(value) => value,
         Err(resp) => return resp,
     };
@@ -264,7 +253,7 @@ async fn search_referencing_patient(
             );
             break;
         }
-        let bundle = match read_json(resp).await {
+        let bundle = match read_json(resp, MAX_SUBRESPONSE_BYTES).await {
             Ok(bundle) => bundle,
             Err(_) => {
                 tracing::warn!(
@@ -315,51 +304,6 @@ fn next_page_cursor(bundle: &Value) -> Option<String> {
         .map(|(_, value)| value.into_owned())
 }
 
-/// Re-drive HFS's router with an in-process `GET` sub-request, forwarding the
-/// caller's headers (except the content-negotiation pair, see below) so
-/// tenant/version resolution and auth behave exactly as they would for a direct
-/// request. `path_and_query` is relative to the FHIR base
-/// (the `/fhir-r4` nest prefix is already stripped by the time HFS sees it),
-/// e.g. `/Patient/p1` or `/Patient/p1/Observation?_count=5`.
-async fn delegate_get(router: &Router, path_and_query: &str, headers: &HeaderMap) -> Response {
-    let mut builder = Request::builder().method("GET").uri(path_and_query);
-    for (name, value) in headers {
-        // Drop the caller's content-negotiation headers on the sub-request: we
-        // consume the body in-process and [`read_json`] parses the raw bytes as
-        // JSON with no decode/negotiation step, so a forwarded `Accept-Encoding:
-        // gzip` (HFS's tower-http stack gzips the body) or `Accept:
-        // application/fhir+xml` (HFS emits XML) would turn every delegated read
-        // into a `500` parse failure. Strip both and pin `Accept` to FHIR JSON
-        // below so the sub-response is always identity-encoded JSON. The real
-        // client's own `Accept`/`Accept-Encoding` are honored by the outer HTTP
-        // stack against our own response.
-        if name == axum::http::header::ACCEPT_ENCODING || name == axum::http::header::ACCEPT {
-            continue;
-        }
-        builder = builder.header(name, value);
-    }
-    builder = builder.header(axum::http::header::ACCEPT, "application/fhir+json");
-    let request = match builder.body(Body::empty()) {
-        Ok(request) => request,
-        Err(err) => return internal_error(&format!("failed to build sub-request: {err}")),
-    };
-    // `Router`'s `Service` error is `Infallible`, so this never yields `Err`.
-    match router.clone().oneshot(request).await {
-        Ok(response) => response,
-        Err(infallible) => match infallible {},
-    }
-}
-
-/// Buffer and JSON-parse a delegated sub-response body, mapping I/O or parse
-/// failures to a `500` OperationOutcome.
-async fn read_json(response: Response) -> Result<Value, Response> {
-    let bytes = to_bytes(response.into_body(), MAX_SUBRESPONSE_BYTES)
-        .await
-        .map_err(|err| internal_error(&format!("failed to read sub-response body: {err}")))?;
-    serde_json::from_slice(&bytes)
-        .map_err(|err| internal_error(&format!("failed to parse sub-response JSON: {err}")))
-}
-
 /// Build the `searchset` Bundle. Each entry gets a `fullUrl` (when the resource
 /// carries a `resourceType`/`id`) and `search.mode: "match"`; `total` counts the
 /// entries (primary + related).
@@ -388,21 +332,4 @@ fn build_searchset_bundle(fhir_base: &str, self_url: &str, resources: &[&Value])
         "link": [{ "relation": "self", "url": self_url }],
         "entry": entries,
     })
-}
-
-/// A `500` OperationOutcome for the (unexpected) case that a delegated
-/// sub-response can't be read or parsed.
-fn internal_error(diagnostics: &str) -> Response {
-    (
-        StatusCode::INTERNAL_SERVER_ERROR,
-        Json(json!({
-            "resourceType": "OperationOutcome",
-            "issue": [{
-                "severity": "error",
-                "code": "exception",
-                "diagnostics": diagnostics,
-            }],
-        })),
-    )
-        .into_response()
 }

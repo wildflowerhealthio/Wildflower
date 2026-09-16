@@ -9,6 +9,7 @@ members = [
   "slices/browser-sniffer/browser-sniffer-tauri-rust",
   "slices/collector/collector-rust",
   "slices/databases/databases-rust",
+  "slices/dicom/ohif-server-rust",
   "slices/emr/emr-rust",
   "slices/gatekeeper/gatekeeper-rust",
   "slices/gatekeeper/token-revocation-rust",
@@ -28,6 +29,7 @@ publish = false
 [workspace.dependencies]
 anyhow = "1.0.102"
 axum = { version = "0.8", features = ["json", "query", "matched-path", "multipart", "ws"] }
+base64 = "0.23"
 # Request-time rendering of the committed self-hosted-app templates
 # (`templates/<app-id>/…​.hbs` in self-hosted-apps-rust).
 handlebars = "6"

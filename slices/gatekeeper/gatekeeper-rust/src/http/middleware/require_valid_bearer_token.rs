@@ -1,73 +1,73 @@
 use std::sync::Arc;
 
+use crate::http::state::GatekeeperState;
 use axum::body::Body;
 use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue};
-use axum::middleware::Next;
-use axum::response::Response;
-
-use crate::http::state::GatekeeperState;
+use axum::middleware::{FromFnLayer, Next};
 
 use crate::http::middleware::require_auth::{
     try_bearer_token_from_headers, verify_request_claims, AccessTokenSource,
 };
 
-/// State for [`require_valid_bearer_token`]: the gatekeeper [`GatekeeperState`]
-/// plus the full request paths that skip the token check entirely. Built by
-/// [`layer_router_with_gatekeeper_auth_gating`](crate::http::layer_router_with_gatekeeper_auth_gating).
+/// State for [`gatekeeper_auth_middleware`]'s gate handler.
 #[derive(Clone)]
 pub struct BearerGate {
-    pub state: Arc<GatekeeperState>,
-    pub exempt: Arc<[String]>,
+    state: Arc<GatekeeperState>,
+    exempt: Arc<[String]>,
 }
 
-/// The downstream-slice authN gate — the other half of the claims-inserting
-/// **pair** (see `docs/Authorization/Scope-Gated Endpoints How-To.md`, "Wiring
-/// the claims"): [`require_valid_session`](super::require_auth::require_valid_session)
-/// guards gatekeeper's own `/access` and inserts the domain `VerifiedClaims`;
-/// this gate wraps the host's other slice routers (emr/HFS, databases, …) and
-/// inserts the framework-neutral `ScopeClaims`. Both run the same
-/// [`verify_request_claims`] pipeline, so a token is verified exactly once and
-/// identically wherever it lands.
-pub async fn require_valid_bearer_token(
-    State(gate): State<BearerGate>,
-    headers: HeaderMap,
-    mut req: Request<Body>,
-    next: Next,
-) -> Response {
-    // Exempt paths (the discovery docs fetched before a client holds a token)
-    // bypass the bearer check, still behind the loopback-peer gate on the merged
-    // `api_router`. See `docs/Origins/Explanation.md`.
-    if is_exempt(req.uri().path(), &gate.exempt) {
-        return next.run(req).await;
-    }
-    let (claims, (token, source)) =
-        match verify_request_claims(&gate.state, &headers, "verify_auth_token_claims failed") {
-            Ok(verified) => verified,
-            Err(response) => return *response,
-        };
-    // Hand the caller's scope claim to any downstream slice router that
-    // scope-gates its endpoints via a `Scoped<…>` capability (databases, …).
-    // This is the seam that lets those slices authorize per-resource without
-    // depending on gatekeeper's domain `VerifiedClaims` type — they read the
-    // framework-neutral `ScopeClaims` from `scope-capabilities-rust`. Harmless
-    // for routers that don't read it (emr/HFS, tunnel, collector today).
-    req.extensions_mut()
-        .insert(scope_capabilities_rust::ScopeClaims::new(
-            claims.scope.clone(),
-        ));
-    // Normalize a cookie-sourced token into an `Authorization: Bearer` header so
-    // a downstream service that reads *only* that header still authenticates —
-    // notably emr's JWKS-backed HFS auth on the FHIR router. A bearer-sourced
-    // request already carries that header, so it's skipped entirely (no
-    // `format!` + parse, no second header scan) — the token source is carried
-    // from extraction rather than re-derived here.
-    if source == AccessTokenSource::Cookie {
-        if let Ok(bearer) = HeaderValue::from_str(&format!("Bearer {token}")) {
-            ensure_bearer_header(req.headers_mut(), &bearer);
-        }
-    }
-    next.run(req).await
+/// Fn-pointer form of the gate handler — nameable so the layer type is too.
+type BearerGateFn =
+    fn(State<BearerGate>, HeaderMap, Request<Body>, Next) -> super::MiddlewareFuture;
+
+/// The tower `Layer` [`gatekeeper_auth_middleware`] returns.
+pub type GatekeeperAuthMiddleware =
+    FromFnLayer<BearerGateFn, BearerGate, (State<BearerGate>, HeaderMap, Request<Body>)>;
+
+/// The downstream-slice authN middleware — `401` for a missing/invalid bearer
+/// token, except `exempt_paths` which pass through (pass `&[]` to gate every
+/// path). Inserts `ScopeClaims` for downstream `Scoped<…>` capabilities.
+/// `Clone` — build once, clone per router. See
+/// `docs/Authorization/Scope-Gated Endpoints How-To.md`.
+pub fn gatekeeper_auth_middleware(
+    state: Arc<GatekeeperState>,
+    exempt_paths: &[&str],
+) -> GatekeeperAuthMiddleware {
+    let gate = BearerGate {
+        state,
+        exempt: exempt_paths
+            .iter()
+            .map(|p| p.trim_end_matches('/').to_string())
+            .collect(),
+    };
+    let handler: BearerGateFn = |State(gate), headers, mut req, next| {
+        Box::pin(async move {
+            if is_exempt(req.uri().path(), &gate.exempt) {
+                return next.run(req).await;
+            }
+            let (claims, (token, source)) = match verify_request_claims(
+                &gate.state,
+                &headers,
+                "verify_auth_token_claims failed",
+            ) {
+                Ok(verified) => verified,
+                Err(response) => return *response,
+            };
+            req.extensions_mut()
+                .insert(scope_capabilities_rust::ScopeClaims::new(
+                    claims.scope.clone(),
+                ));
+            // Cookie-sourced: inject a Bearer header for downstream HFS auth.
+            if source == AccessTokenSource::Cookie {
+                if let Ok(bearer) = HeaderValue::from_str(&format!("Bearer {token}")) {
+                    ensure_bearer_header(req.headers_mut(), &bearer);
+                }
+            }
+            next.run(req).await
+        })
+    };
+    axum::middleware::from_fn_with_state(gate, handler)
 }
 
 /// If `headers` carries no `Authorization: Bearer`, insert `bearer`. Lets a

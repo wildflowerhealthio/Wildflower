@@ -38,7 +38,7 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   isolated origin is what lets a Self-Hosted app make data-residence guarantees.
   A Self-Hosted app is either **seeded** (a Wildflower-shipped vendored build,
   synced into app-data at host startup — Patient Browser, plus the debug-only
-  `…-dev` rows for the first-party apps) or **uploaded** (a
+  `…-dev` rows for the first-party apps that have one) or **uploaded** (a
   user-supplied `.zip` extracted at runtime by the `wildflower/Apps.c`-gated
   `POST /self-hosted-apps` upload endpoint). Both serve the same way; they
   differ only in origin and removability (see the data model).
@@ -61,13 +61,21 @@ cloud↔self-hosted re-point, but there is no switch UI yet.
   on-device, and Web Trace can no longer claim `local_only` (its data still never
   leaves the device; its assets are no longer local).
 
-  In **debug builds only** each first-party app additionally gets a self-hosted
-  `<id>-dev` row bound to that app's vite dev-server port (pinned once in
+  In **debug builds only** each first-party app additionally gets an `<id>-dev`
+  row bound to that app's vite dev-server port (pinned once in
   `slices/apps/dev-app-ports.json`, which both the vite config and the Rust seed
   read), so a developer's local build is what the tile launches. Those
   rows are a runtime seed (`apps-rust/src/dev_seed.rs`), never a migration —
   migrations run unconditionally, so a migration-seeded dev row would exist in
   release databases too.
+
+  Most are Self-Hosted, so the host also binds the port and serves a vendored
+  build whenever vite is not holding it. `ohif-viewer-dev` is Cloud instead: it
+  has no vendored build to fall back to, so a host listener could only contend
+  with the preview server for the port, and a Cloud row leaves that server the
+  only thing on the origin. It pays for this with its OAuth redirect — an
+  app-relative entry resolves only for a Self-Hosted row, so its dev client
+  registers the absolute loopback route instead.
 
 System vs Self-Hosted is about **origin isolation, not where the bytes shipped
 from**: Patient Browser ships inside the download yet is Self-Hosted (it gets its

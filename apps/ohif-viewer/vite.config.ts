@@ -4,11 +4,8 @@ import { defineConfig } from 'vite-plus'
 
 import base from '../../vite.config.base.ts'
 
-// SINGLE SOURCE OF TRUTH: `slices/apps/dev-app-ports.json` pins the port the
-// preview server binds to. `apps-rust` embeds the same file (`src/dev_seed.rs`)
-// to seed the debug-only `ohif-viewer-dev` self-hosted row whose loopback origin
-// the homescreen tile launches — so the row and this server cannot drift. Read
-// at config-eval time (Node), as `apps/wildflower-server-docs` does.
+// SINGLE SOURCE OF TRUTH: `slices/apps/dev-app-ports.json` pins the port.
+// `apps-rust/src/dev_seed.rs` embeds the same file — so they cannot drift.
 const devPortsPath = fileURLToPath(new URL('../../slices/apps/dev-app-ports.json', import.meta.url))
 
 const isDevPorts = (value: unknown): value is { 'ohif-viewer-dev': number } =>

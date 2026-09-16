@@ -1,8 +1,9 @@
 # AGENTS.md — slices/importer/importer-fundamentals
 
 The **resource-agnostic, format-agnostic upstream** of the importer slice: the
-contract every file-format binding implements, the pure per-resource review
-model, and the structural failure record the sinks report against. It is to the
+contract every file-format binding implements, the pure per-resource
+staged-import model (what a decoded-but-unwritten import consists of), and the
+structural failure record the sinks report against. It is to the
 importer slice what `collector-fundamentals` is to the collector slice — the
 layer a concrete binding (`har-importer-core`, `lifelabs-pdf-importer-core`)
 sits on top of.
@@ -17,8 +18,11 @@ TParsed>`**, "a file-format importer" as one value a closed registry lists:
   tokens — a hint to the OS dialog, never the decision, joined across every
   registered format by **`acceptFor`**), `detect` (cheap syntactic
   identification; **`identify`** finds the first claiming descriptor),
-  `defaultSettings`, `decode(fileBytes, settings) → Effect<DecodedFile,
-ParseError>` (requires nothing — a preview can never reach a write client),
+  `defaultSettings`, `decode(fileBytes, fileName, settings) → Effect<DecodedFile,
+ParseError>` (requires nothing — a preview can never reach a write client;
+  `fileName` lets a format recompute another seam's deterministic id from the
+  same bytes+name, e.g. DICOM's `ImagingStudy` instance stamping the id of its
+  own source-file `DocumentReference`),
   `sourceArchive` (**pure** — builds a local pick's bytes into a source-archive
   `DocumentReference`, minted at read time and reviewed like any resource; it
   is written in the shell's one `persistBatchBundle`, not a private upload, so
@@ -41,7 +45,7 @@ ParseError>` (requires nothing — a preview can never reach a write client),
   every format's React package. Settings are pre-decode input: a change
   re-decodes the file, so resource keys must be stable across settings
   changes where the underlying resource is unchanged.
-- `src/review.ts` — the **`Review`** namespace, the pure per-resource
+- `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection<TParsed>` is two axes: `excludedResources`
   (per-resource opt-outs, keyed by `LabeledResource.key`) and
   `resourceOverrides` (per-resource inline edits, same keying — the
@@ -110,7 +114,7 @@ or `slices/http-extraction`.
 ## Guardrails
 
 - **Decode-at-preview, write-what-you-reviewed.** `decode` yields the actual
-  resources the reviewer sees; the confirm writes `Review.chosenResources` —
+  resources the reviewer sees; the confirm writes `StagedImport.chosenResources` —
   the same objects, filtered by the exclusions, with edits substituted — with
   no re-parse. This split is the whole point; do not collapse it.
 - **Sections and notes are the whole review surface.** A format with routing
@@ -128,6 +132,6 @@ or `slices/http-extraction`.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR binding
   that implements this contract.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that lists
-  descriptors and drives the `Review` transitions.
+  descriptors and drives the `StagedImport` transitions.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.

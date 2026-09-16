@@ -2,13 +2,32 @@
  * The DICOM importer's per-import settings.
  *
  * @remarks
- * The format has no configurable knobs yet — the decode stores the raw bytes as
- * a source file and reads no headers. Future tickets (D3) will add settings as the
- * decode gains the ability to interpret DICOM tags.
+ * The one knob the format needs, because a DICOM file's clock carries no
+ * offset and FHIR's `dateTime` requires one — see `fhir/dates.ts`.
  */
-type DicomSettings = Record<string, never>
+import { DateTime, Option } from 'effect'
 
-const defaultDicomSettings: DicomSettings = {}
+interface DicomSettings {
+  /** The IANA time zone the acquiring equipment's clock was set to. */
+  readonly timeZone: string
+}
 
-export { defaultDicomSettings }
+/**
+ * The zone this runtime is in, which is the best guess available without
+ * asking: a study is usually imported near where it was acquired.
+ *
+ * @remarks
+ * `Intl` rather than anything DOM, so `-core` stays adapter-free. A runtime
+ * reporting a zone `effect/DateTime` cannot resolve falls back to `UTC`, so
+ * the default is always a value `decodeDicom` accepts.
+ */
+const runtimeTimeZone = (): string => {
+  const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone
+  return Option.isSome(DateTime.zoneMakeNamed(resolved)) ? resolved : 'UTC'
+}
+
+/** The default settings: the zone this runtime is in. */
+const defaultDicomSettings: DicomSettings = { timeZone: runtimeTimeZone() }
+
+export { defaultDicomSettings, runtimeTimeZone }
 export type { DicomSettings }

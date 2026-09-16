@@ -1,7 +1,7 @@
 /**
  * The resource-agnostic upstream of the importer slice: the
  * {@link FileImporterDescriptor} contract every file-format binding implements,
- * the per-resource {@link Review} model (selection state — exclude/edit per
+ * the per-resource {@link StagedImport} model (selection state — exclude/edit per
  * resource), and the structural {@link PersistFailure} the sinks report against.
  *
  * @remarks
@@ -15,7 +15,7 @@
  *
  * @packageDocumentation
  */
-export * as Review from './review.ts'
+export * as StagedImport from './staged-import.ts'
 export { identify, sectionResources } from './file-importer-descriptor.ts'
 export type {
   DecodedFile,

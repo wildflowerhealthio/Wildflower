@@ -26,7 +26,7 @@ use crate::db::SqliteGatekeeperStore;
 /// Shared state threaded through every gatekeeper handler and lifted into the
 /// scope-gated capabilities. Opaque to callers outside the crate — the host
 /// receives one (inside an [`Arc`]) from [`crate::setup_gatekeeper`] and passes
-/// it back into [`crate::layer_router_with_gatekeeper_auth_gating`] without
+/// it back into [`crate::gatekeeper_auth_middleware`] without
 /// looking inside.
 pub struct GatekeeperState {
     /// The **concrete** `SQLite` adapter (not `Arc<dyn GatekeeperStore>` or a

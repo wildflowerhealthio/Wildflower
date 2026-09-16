@@ -414,7 +414,8 @@ mod tests {
             ],
         );
         // `ohif-viewer` (the OHIF imaging viewer) is a cloud client like the three
-        // above, seeded by `0009`, and read-only. This vector must stay
+        // above, seeded by `0009` and repointed onto the `/fhir-viewer` route by
+        // `0010`, and read-only. This vector must stay
         // element-for-element equal to the `smartScope` string in
         // `apps/ohif-viewer/config/app-config.js` — nothing spans the JS/Rust
         // boundary to check it, so this assertion is the Rust-side mirror of that
@@ -426,7 +427,7 @@ mod tests {
             vec![
                 RegisteredRedirectUri::AppRelative("/".to_owned()),
                 RegisteredRedirectUri::Absolute(
-                    "https://wildflowerhealth.io/ohif-viewer/"
+                    "https://wildflowerhealth.io/ohif-viewer/fhir-viewer"
                         .parse()
                         .expect("a valid absolute redirect"),
                 ),

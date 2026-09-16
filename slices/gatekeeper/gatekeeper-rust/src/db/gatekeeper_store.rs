@@ -472,8 +472,9 @@ impl From<diesel::result::Error> for GatekeeperError {
 
 #[cfg(test)]
 mod tests {
+    use diesel::migration::{Migration, MigrationSource, MigrationVersion};
     use diesel::prelude::*;
-    use diesel::sqlite::SqliteConnection;
+    use diesel::sqlite::{Sqlite, SqliteConnection};
 
     use super::{MIGRATIONS, MIGRATION_NAMESPACE};
     use crate::db::SqliteGatekeeperStore;
@@ -483,6 +484,63 @@ mod tests {
     struct Name {
         #[diesel(sql_type = diesel::sql_types::Text)]
         name: String,
+    }
+
+    /// [`MIGRATIONS`] narrowed to the versions at or below `.0` — it drives a
+    /// database to the state an install was in *before* a later migration ran,
+    /// so a test can observe what that migration actually changes. Mirrors the
+    /// harness of the same name in `apps-rust`'s `db/apps_store.rs`.
+    struct MigrationsThrough(&'static str);
+
+    impl MigrationSource<Sqlite> for MigrationsThrough {
+        fn migrations(&self) -> diesel::migration::Result<Vec<Box<dyn Migration<Sqlite>>>> {
+            let mut migrations = MIGRATIONS.migrations()?;
+            let last = MigrationVersion::from(self.0);
+            migrations.retain(|m| m.name().version() <= last);
+            Ok(migrations)
+        }
+    }
+
+    /// The regression `0010_ohif_viewer_client_fhir_viewer_redirect` exists for:
+    /// migrations are run-once, so an install that already applied `0009` never
+    /// re-reads it. Editing `0009`'s `redirect_uris` in place would have left
+    /// every upgraded install on the published directory URL, and `/authorize`
+    /// matches `redirect_uri` by exact URL equality — so the `/fhir-viewer`
+    /// launch would fail there. A fresh open applies both migrations and cannot
+    /// tell the two apart; driving a database to `0009` first is the only way to
+    /// observe it.
+    #[test]
+    fn an_install_already_at_0009_is_upgraded_onto_the_fhir_viewer_redirect() {
+        let mut conn = SqliteConnection::establish(":memory:").expect("open in-memory");
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0009"),
+        )
+        .expect("migrate to 0009");
+
+        let seeded: Vec<Name> =
+            diesel::sql_query("SELECT redirect_uris AS name FROM clients WHERE client_id = ?")
+                .bind::<diesel::sql_types::Text, _>("ohif-viewer")
+                .load(&mut conn)
+                .expect("0009 must have seeded the ohif-viewer client");
+        assert_eq!(
+            seeded[0].name, r#"["/","https://wildflowerhealth.io/ohif-viewer/"]"#,
+            "0009 must stay exactly as it shipped — an install that ran it sees no edit",
+        );
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .expect("upgrade through 0010");
+
+        let upgraded: Vec<Name> =
+            diesel::sql_query("SELECT redirect_uris AS name FROM clients WHERE client_id = ?")
+                .bind::<diesel::sql_types::Text, _>("ohif-viewer")
+                .load(&mut conn)
+                .expect("the client row must survive the upgrade");
+        assert_eq!(
+            upgraded[0].name,
+            r#"["/","https://wildflowerhealth.io/ohif-viewer/fhir-viewer"]"#,
+        );
     }
 
     /// Running the migrations twice is a no-op the second time (the namespaced

@@ -73,6 +73,7 @@ interface BoundFormat<K extends FormatKind> {
   readonly defaultSettings: FormatVariant[K]['settings']
   readonly decode: (
     fileBytes: Uint8Array,
+    fileName: string,
     settings: FormatVariant[K]['settings']
   ) => Effect.Effect<DecodedFile<FormatVariant[K]['parsed']>, ParseResult.ParseError>
   readonly buildSourceFile: (picked: {

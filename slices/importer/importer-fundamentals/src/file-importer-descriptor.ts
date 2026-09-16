@@ -62,7 +62,7 @@ interface DecodedFile<TParsed> {
 
 /**
  * Every labeled resource across a decoded file's sections, in section order —
- * the flat list the per-resource `Review` transitions and the confirm's
+ * the flat list the per-resource `StagedImport` transitions and the confirm's
  * write set fold over.
  *
  * @param sections - A decoded file's sections
@@ -148,9 +148,15 @@ interface FileImporterDescriptor<TSettings, TParsed> {
    * Resource keys must be stable across settings changes where the
    * underlying resource is unchanged, so a re-decode under new settings
    * keeps the reviewer's per-resource exclusions and edits applying.
+   * `fileName` is passed alongside the bytes so a format whose synthesized
+   * resources need to reference the file's own source-file `DocumentReference`
+   * (DICOM's ImagingStudy instance does) can recompute that document's
+   * deterministic id, which is derived from the bytes' digest and this same
+   * name — see `buildSourceFile` in `source-file-codec.ts`.
    */
   readonly decode: (
     fileBytes: Uint8Array,
+    fileName: string,
     settings: TSettings
   ) => Effect.Effect<DecodedFile<TParsed>, ParseResult.ParseError>
   /**
@@ -179,10 +185,13 @@ interface FileImporterDescriptor<TSettings, TParsed> {
    * batch sink. Fails only as a `ParseError`, the way the source-file
    * codec's encode does (a digest unavailable in an insecure context).
    */
-  readonly buildSourceFile: (picked: {
-    readonly fileName: string
-    readonly bytes: Uint8Array
-  }) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
+  readonly buildSourceFile: (
+    picked: {
+      readonly fileName: string
+      readonly bytes: Uint8Array
+    },
+    options?: { readonly subject?: { readonly reference: string } }
+  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
   /**
    * FHIR `category` search token — `system|code` form — every server-side
    * source-file read filters on for this format's uploaded source files.

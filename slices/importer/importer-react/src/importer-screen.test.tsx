@@ -1,6 +1,6 @@
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import { FhirR4ResourcesRouterContext, type RunAuthed } from 'fhir-r4-react'
@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 import type { TraceBody } from 'web-trace-core'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
-import { ImporterScreen } from './importer-screen.tsx'
+import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
 
 /**
  * The whole preview-then-confirm flow, driven end-to-end over the real
@@ -421,6 +421,38 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('region', { name: 'File source' })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
+  })
+
+  it('keeps the preview painted and the settings control focused across a settings change', async () => {
+    // Arrange — reach a preview over a local HAR pick
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+    await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
+    })
+
+    // Act — change the format's settings, which re-decodes and re-classifies
+    const settingsForm = screen.getByRole('group', { name: 'Include' })
+    const kindToggle = within(settingsForm).getAllByRole('checkbox')[0]
+    expect(kindToggle).toBeDefined()
+    if (kindToggle === undefined) return
+    await userEvent.click(kindToggle)
+
+    // Assert — the re-classification resolves *underneath* the panel. Blocking
+    // the preview on it would unmount the whole panel, dropping the focus of
+    // whatever settings control the reviewer was using — which is what made
+    // the time-zone text field eject the cursor on every keystroke.
+    expect(screen.queryByText(CHECKING_SERVER_MESSAGE)).toBeNull()
+    expect(screen.getByRole('heading', { name: /import/i })).toBeDefined()
+    expect(document.activeElement).toBe(kindToggle)
+
+    await waitFor(() => {
+      expect(
+        within(screen.getByRole('group', { name: 'Include' })).getAllByRole('checkbox')[0]
+      ).toBe(kindToggle)
+    })
+    expect(document.activeElement).toBe(kindToggle)
   })
 })
 

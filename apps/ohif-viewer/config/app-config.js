@@ -37,22 +37,14 @@
     )
   }
 
-  // Which SMART client this build is, decided by how it is served — the same
-  // rule the other first-party apps apply through `import.meta.env.DEV`
-  // (`apps/*/src/config.ts`), expressed at runtime here since nothing is
-  // compiled. Served from the published site it is the `ohif-viewer` client
-  // (gatekeeper migration `0009_seed_ohif_viewer_client`); served from a
-  // loopback origin (`vp run -F ohif-viewer dev`) it is the debug-only
-  // `ohif-viewer-dev` client (`gatekeeper-rust/src/seeding.rs`), whose id must
-  // equal the `ohif-viewer-dev` app row's id for the app-relative redirect to
-  // resolve. A `?client_id=` on the launch URL or a value saved from the SMART
-  // Preferences panel still overrides this.
+  // Loopback = dev client, published site = production client. A `?client_id=`
+  // on the launch URL or the SMART Preferences panel still overrides this.
   var smartClientId = loopback ? 'ohif-viewer-dev' : 'ohif-viewer'
 
   window.config = {
     name: 'wildflower/app-config.js',
     routerBasename: basename,
-    extensions: [],
+    extensions: ['@ohif/extension-dicom-pdf', '@ohif/fhir-viewer'],
     modes: [],
     customizationService: {},
     // The worklist at the basename is the SMART launch entry point: an EHR

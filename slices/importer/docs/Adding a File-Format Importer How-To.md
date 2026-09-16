@@ -202,7 +202,7 @@ is a no-op here.
 - [slices/importer AGENTS.md](../AGENTS.md) — package roles, guardrails, and the
   pick-review-confirm pipeline.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
-  `FileImporterDescriptor` contract and the `Review` model.
+  `FileImporterDescriptor` contract and the `StagedImport` model.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the worked HAR
   binding this recipe generalizes.
 - [lifelabs-pdf-importer-core AGENTS.md](../lifelabs-pdf-importer-core/AGENTS.md)

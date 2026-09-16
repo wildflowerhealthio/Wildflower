@@ -2,7 +2,7 @@
   "name": "dicom-importer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The DICOM format's UI for the importer slice: a no-op DicomSettingsPicker (no user-facing knobs yet) — the same empty settings the descriptor carries. Presentation and interaction only.",
+  "description": "The DICOM format's UI for the importer slice: the debounced time-zone DicomSettingsPicker and its North American zone suggestions — the IANA zone the acquiring equipment's clock was set to, which turns DICOM's offset-less StudyDate/StudyTime into the instant FHIR's dateTime requires. Presentation and interaction only.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -27,18 +27,26 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "dicom-importer-core": "workspace:*",
+    "effect": "catalog:",
     "importer-fundamentals": "workspace:*",
+    "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
+    "react-kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "dicom-importer-core": "workspace:*",
+    "effect": "catalog:",
     "importer-fundamentals": "workspace:*",
-    "react": "catalog:"
+    "react": "catalog:",
+    "react-kitchen-sink": "workspace:*"
   }
 }

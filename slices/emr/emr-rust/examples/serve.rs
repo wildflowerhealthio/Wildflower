@@ -4,6 +4,7 @@
 //! booting the Tauri shell. Delete once HFS integration is validated end-to-end.
 
 use anyhow::Context;
+use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use shared_structures_rust::ServerRuntimeConfig;
 use std::net::SocketAddr;
@@ -33,7 +34,10 @@ async fn main() -> anyhow::Result<()> {
     // Dev binary: HFS auth is off (jwks_url is None), so the revocation store is
     // never consulted — the always-allow double satisfies the signature.
     let revocation_store = token_revocation_rust::RevocationStore::always_allow();
-    let router = setup_fhir_r4(&runtime, &config, revocation_store)?;
+    let routers = setup_fhir_r4(&runtime, &config, revocation_store)?;
+    let router = Router::new()
+        .merge(routers.augmented_fhir_r4_router)
+        .merge(ohif_server_rust::setup_ohif_server(routers.raw_hfs_router));
     let addr: SocketAddr = runtime
         .loopback_base_url_ref()
         .authority()

@@ -2,52 +2,39 @@
 //! apps' local vite dev servers.
 //!
 //! The first-party apps (Medications, Web Trace, Importer, the OHIF imaging
-//! viewer) ship as **cloud** rows
-//! served from <https://wildflowerhealth.io> (apps migration
-//! `0005_first_party_apps_to_cloud`). That is the right production target and the
-//! wrong development one: a developer editing `apps/medications-app` wants the
-//! homescreen tile to open the vite dev server they are running, not the last
-//! deploy of the public site.
+//! viewer, Server Docs) ship as **cloud** rows served from
+//! <https://wildflowerhealth.io> (apps migration
+//! `0005_first_party_apps_to_cloud`). That is the right production target and
+//! the wrong development one: a developer editing `apps/medications-app` wants
+//! the homescreen tile to open the vite dev server they are running, not the
+//! last deploy of the public site.
 //!
-//! So a **debug build** additionally gets one self-hosted row per app, id
-//! `<app>-dev`, bound to that app's fixed vite dev-server port. These rows cannot
-//! be a migration: migrations are embedded, run unconditionally, and are tracked
-//! by version, so a row created by one would also exist in every release
-//! database. This runtime path is compiled out entirely in release: the whole
-//! module is behind `#[cfg(debug_assertions)]` in `lib.rs`, as is its single call
-//! site in `apps/wildflower-tauri/src-tauri/src/lib.rs`, so a release build
-//! contains no code that could write these ids.
+//! So a **debug build** additionally gets one cloud row per app, id
+//! `<app>-dev`, whose launch URL names `localhost` and the app's fixed vite
+//! dev-server port. These rows cannot be a migration: migrations are embedded,
+//! run unconditionally, and are tracked by version, so a row created by one
+//! would also exist in every release database. This runtime path is compiled
+//! out entirely in release: the whole module is behind
+//! `#[cfg(debug_assertions)]` in `lib.rs`, as is its single call site in
+//! `apps/wildflower-tauri/src-tauri/src/lib.rs`, so a release build contains
+//! no code that could write these ids.
 //!
-//! The rows are self-hosted, so the host binds a loopback listener on the dev
-//! port at startup. When vite already holds the port that bind fails — which is
-//! the normal, intended case and is tolerated by design:
-//! [`SelfHostedAppsService::start`](crate::SelfHostedAppsService::start) logs a
-//! `ServerError::Bind` and carries on (only a poisoned lock propagates). Whoever
-//! holds the port serves the app: vite when it is running, otherwise the host,
-//! from the vendored build in `content_folder` (see the fallback caveat in
-//! `slices/apps/self-hosted-apps/README.md`).
-//!
-//! Being self-hosted also restores app-relative OAuth redirects in dev: the
-//! host's redirect resolver keys on `client_id` and requires the row to be
-//! self-hosted, so `client_id == id == "<app>-dev"` is what lets the matching
-//! dev gatekeeper client (seeded by `gatekeeper_rust::seed_dev_app_clients`)
-//! register the app-relative `"/"` redirect. Each app's `src/config.ts` sends the
-//! `-dev` client id when `import.meta.env.DEV` is set, which is exactly when it is
-//! served by vite.
+//! Each app's dev gatekeeper client (`seed_dev_app_clients` in
+//! gatekeeper-rust) registers an absolute `http://localhost:{port}` redirect
+//! URI that the OAuth authorize flow matches directly — the cloud row is a
+//! launch URL and nothing else.
 
 use anyhow::Context;
-use diesel::sql_types::{BigInt, Integer, Text};
+use diesel::sql_types::{BigInt, Text};
 use diesel::{QueryableByName, RunQueryDsl, SqliteConnection};
 use persistence_rust::DieselPool;
 
 use crate::db::SqliteAppsStore;
 
-/// One debug-only self-hosted row: an app id, its display fields, the vite
-/// dev-server port it targets, and the vendored directory that serves as fallback
-/// content when vite is not running.
+/// One debug-only row: an app id, its display fields, and the cloud launch URL
+/// pointing at the local dev server.
 struct DevApp {
-    /// The row id — also its `client_id` and its dev gatekeeper client id (the
-    /// redirect resolver requires all three to be equal).
+    /// The row id — also its `client_id` and its dev gatekeeper client id.
     id: &'static str,
     /// Homescreen title, suffixed "(Dev)" so it can't be confused with the
     /// production cloud tile sitting next to it.
@@ -56,35 +43,36 @@ struct DevApp {
     /// The app's vite dev-server port, read from the shared
     /// `slices/apps/dev-app-ports.json` — the same file the app's
     /// `vite.config.ts` reads for `server.port`, so the row and the dev server
-    /// cannot drift.
+    /// cannot drift. Read in tests to assert the URL embeds the right port.
+    #[allow(dead_code)]
     port: i32,
-    /// Serving subdomain — unique across the registry, `-dev` suffixed so it can
-    /// never collide with the production subdomains.
-    subdomain: &'static str,
-    /// The vendored build directory under `<app-data>/self-hosted-apps/`, used
-    /// only when vite is not holding the port.
-    content_folder: &'static str,
-    /// The SMART EHR-launch entry, relative to the row's own origin —
-    /// [`DEV_LAUNCH_PATH`] for the apps that ship a `launch.html`, the root for
-    /// the OHIF viewer (see [`ROOT_LAUNCH_PATH`]).
-    launch_path: &'static str,
+    /// The cloud launch URL, built from the port.
+    url: String,
 }
 
-/// The SMART EHR-launch entry every first-party app ships, off its own origin —
-/// the same template the pre-cloud seeded rows carried.
-const DEV_LAUNCH_PATH: &str = "/launch.html?launch={launch}&iss={origin}/fhir-r4";
+/// The SMART EHR-launch URL template for a standard first-party dev app,
+/// pointed at its loopback dev server.
+fn dev_launch_url(port: i32) -> String {
+    format!(
+        "http://localhost:{port}/launch.html\
+         ?launch={{launch}}&iss={{origin}}/fhir-r4"
+    )
+}
 
-/// The SMART EHR-launch entry for an app with no `launch.html`: OHIF reads
-/// `launch` + `iss` off whichever route it is opened on, so the launch targets
-/// its root — the same shape apps migration `0007_seed_ohif_viewer_app` gives
-/// the production cloud row, relative to the dev origin.
-const ROOT_LAUNCH_PATH: &str = "/?launch={launch}&iss={origin}/fhir-r4";
+/// The OHIF viewer's dev launch URL — `/fhir-viewer` route with the **dev**
+/// client id. See `docs/Apps/Explanation.md` for why this dev row is cloud.
+fn ohif_viewer_dev_url(port: i32) -> String {
+    format!(
+        "http://localhost:{port}/fhir-viewer\
+         ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId=ohif-viewer-dev"
+    )
+}
 
 /// The shared dev-port file, embedded at compile time. The single source of
 /// truth for these ports across the TS ⇄ Rust boundary: each app's
-/// `vite.config.ts` reads the same file for `server.port` + `strictPort`, so vite
-/// binds exactly the port the row below points at (and fails loudly rather than
-/// silently drifting onto another one).
+/// `vite.config.ts` reads the same file for `server.port` + `strictPort`, so
+/// vite binds exactly the port the row below points at (and fails loudly rather
+/// than silently drifting onto another one).
 const DEV_APP_PORTS_JSON: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../dev-app-ports.json"
@@ -122,49 +110,35 @@ fn dev_apps() -> [DevApp; 5] {
             name: "Medications (Dev)",
             subtitle: "Local vite dev server for apps/medications-app",
             port: ports.medications_app_dev,
-            subdomain: "medication-dev",
-            content_folder: "medication",
-            launch_path: DEV_LAUNCH_PATH,
+            url: dev_launch_url(ports.medications_app_dev),
         },
         DevApp {
             id: "web-trace-app-dev",
             name: "Web Trace (Dev)",
             subtitle: "Local vite dev server for apps/web-trace",
             port: ports.web_trace_app_dev,
-            subdomain: "web-trace-dev",
-            content_folder: "web-trace",
-            launch_path: DEV_LAUNCH_PATH,
+            url: dev_launch_url(ports.web_trace_app_dev),
         },
         DevApp {
             id: "web-server-docs-dev",
             name: "Server Docs (Dev)",
             subtitle: "Local vite dev server for apps/wildflower-server-docs",
             port: ports.web_server_docs_dev,
-            subdomain: "web-server-docs",
-            content_folder: "web-server-docs",
-            launch_path: DEV_LAUNCH_PATH,
+            url: dev_launch_url(ports.web_server_docs_dev),
         },
         DevApp {
             id: "importer-app-dev",
             name: "Importer (Dev)",
             subtitle: "Local vite dev server for apps/importer-web",
             port: ports.importer_app_dev,
-            subdomain: "importer-dev",
-            content_folder: "importer",
-            launch_path: DEV_LAUNCH_PATH,
+            url: dev_launch_url(ports.importer_app_dev),
         },
         DevApp {
             id: "ohif-viewer-dev",
             name: "Imaging (Dev)",
-            // Not a vite dev server: `apps/ohif-viewer` is a downloaded prebuilt
-            // OHIF build, and `vp run -F ohif-viewer dev` previews it on this
-            // port. Nothing is vendored under `self-hosted-apps/ohif-viewer`, so
-            // there is no fallback content when the preview is not running.
             subtitle: "Local preview server for apps/ohif-viewer",
             port: ports.ohif_viewer_dev,
-            subdomain: "ohif-viewer-dev",
-            content_folder: "ohif-viewer",
-            launch_path: ROOT_LAUNCH_PATH,
+            url: ohif_viewer_dev_url(ports.ohif_viewer_dev),
         },
     ]
 }
@@ -174,10 +148,8 @@ fn dev_apps() -> [DevApp; 5] {
 /// Idempotent across restarts: a missing row is inserted at the tail of the
 /// registry, an existing one keeps its user-chosen placement (`position` /
 /// `on_homescreen` are never rewritten — those belong to `PUT /home-screen`)
-/// while its display fields and serving topology are reconciled back to the
-/// values above. A port or subdomain currently held by *another* app is tolerated
-/// rather than fatal: the insert falls back to `MAX(port) + 1` (as the seed
-/// migrations do), and the reconcile skips a value it cannot take.
+/// while its display fields and launch URL are reconciled back to the values
+/// above.
 ///
 /// **Only rows this seed owns are ever written.** A debug build can be opened
 /// against a real user's database, so an id already held by something else — a
@@ -194,7 +166,6 @@ fn dev_apps() -> [DevApp; 5] {
 /// Returns an error if the store cannot be opened/migrated, a connection cannot
 /// be checked out, or a statement fails.
 pub fn seed_dev_apps(pool: DieselPool) -> anyhow::Result<()> {
-    // Applies the embedded apps migrations if `setup_apps` has not run yet.
     let _store = SqliteAppsStore::new(pool.clone()).context("failed to open apps store")?;
     let mut conn = pool
         .get()
@@ -208,22 +179,25 @@ pub fn seed_dev_apps(pool: DieselPool) -> anyhow::Result<()> {
 /// What the database currently holds under a dev app's id — the ownership check
 /// every write below is gated on.
 ///
-/// A debug build can be pointed at a real user's database, so "the id is free, or
-/// the row under it is one I wrote" has to be established before anything is
-/// rewritten. The marker is the payload's `seeded` flag: this seed writes
-/// `seeded = 1`, and the upload path writes `seeded = 0` unconditionally
-/// (`db::self_hosted_apps::insert_self_hosted_app`), so a `seeded = 1`
-/// self-hosted payload under a dev id can only have come from here.
+/// A debug build can be pointed at a real user's database, so "the id is free,
+/// or the row under it is one I wrote" has to be established before anything is
+/// rewritten.
+///
+/// The marker is exact equality with the launch URL this seed would write. That
+/// URL names a loopback dev port and the `-dev` OAuth client, so a user's own
+/// cloud app matching it byte for byte is not a case worth distinguishing from
+/// ours. A `seeded = 1` *self-hosted* payload also counts as ours: that is this
+/// seed's own older shape, and recognising it is what lets an existing dev
+/// database be converted in place rather than stranded as `Foreign` forever.
 #[derive(Debug, PartialEq, Eq)]
 enum DevRowOwnership {
     /// No registration holds this id — free to seed.
     Absent,
-    /// A registration holds it AND its payload is a `seeded = 1` self-hosted row:
-    /// a row this seed wrote on an earlier boot, safe to reconcile.
+    /// A registration holds it AND its payload carries this seed's marker: a row
+    /// this seed wrote on an earlier boot, safe to reconcile.
     Ours,
-    /// Something else holds the id — a user upload (`seeded = 0`), an app of
-    /// another kind, or a registration whose payload is missing. Left strictly
-    /// alone.
+    /// Something else holds the id — a user upload, an app of another kind, or a
+    /// registration whose payload is missing. Left strictly alone.
     Foreign,
 }
 
@@ -233,37 +207,39 @@ enum DevRowOwnership {
 struct OwnershipCounts {
     #[diesel(sql_type = BigInt)]
     registrations: i64,
+    /// Payload rows under this id that carry this seed's ownership marker.
     #[diesel(sql_type = BigInt)]
-    seeded_configurations: i64,
+    owned_configurations: i64,
 }
 
-/// Classify what is stored under `id` (see [`DevRowOwnership`]).
-fn ownership(conn: &mut SqliteConnection, id: &str) -> anyhow::Result<DevRowOwnership> {
+/// Classify what is stored under `app`'s id (see [`DevRowOwnership`]).
+fn ownership(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<DevRowOwnership> {
+    // The cloud payload this seed writes, or the self-hosted payload an older
+    // build of this seed wrote under the same id (converted by `reconcile`).
     let counts: OwnershipCounts = diesel::sql_query(
         "SELECT (SELECT COUNT(*) FROM app_registrations WHERE id = ?) AS registrations, \
-                (SELECT COUNT(*) FROM self_hosted_app_configurations WHERE id = ? AND seeded = 1) \
-                    AS seeded_configurations",
+                ((SELECT COUNT(*) FROM cloud_app_configurations WHERE id = ? AND url = ?) \
+                 + (SELECT COUNT(*) FROM self_hosted_app_configurations \
+                     WHERE id = ? AND seeded = 1)) AS owned_configurations",
     )
-    .bind::<Text, _>(id)
-    .bind::<Text, _>(id)
+    .bind::<Text, _>(app.id)
+    .bind::<Text, _>(app.id)
+    .bind::<Text, _>(app.url.as_str())
+    .bind::<Text, _>(app.id)
     .get_result(conn)
     .context("read dev app ownership")?;
-    Ok(match (counts.registrations, counts.seeded_configurations) {
+    Ok(match (counts.registrations, counts.owned_configurations) {
         (0, _) => DevRowOwnership::Absent,
         (_, 0) => DevRowOwnership::Foreign,
         _ => DevRowOwnership::Ours,
     })
 }
 
-/// Insert-if-missing then reconcile a single [`DevApp`] — but only when this seed
-/// owns the id (see [`DevRowOwnership`]). Split out so each row is its own unit of
-/// work: a collision on one dev app never blocks the other.
+/// Insert-if-missing then reconcile a single [`DevApp`] — but only when this
+/// seed owns the id (see [`DevRowOwnership`]). Split out so each row is its own
+/// unit of work: a collision on one dev app never blocks the others.
 fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
-    match ownership(conn, app.id)? {
-        // Someone else's row. Adopting it would silently rewrite a user's app —
-        // its kind, its `client_id`, its name, and its serving origin — so skip
-        // loudly instead. The developer either renames their app or lives without
-        // that dev tile.
+    match ownership(conn, app)? {
         DevRowOwnership::Foreign => {
             tracing::warn!(
                 app = %app.id,
@@ -275,21 +251,17 @@ fn seed_one(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
         DevRowOwnership::Absent => insert(conn, app)?,
         DevRowOwnership::Ours => {}
     }
-
-    // Every statement below is additionally scoped to a `seeded = 1` payload, so
-    // it stays a no-op against a foreign row even if it is ever reached without
-    // the check above.
     reconcile(conn, app)
 }
 
-/// Write both halves of a fresh dev app: the registration, then its payload.
+/// Write the registration for a fresh dev app. The cloud payload is written by
+/// [`reconcile`], which runs immediately after — the same statement serves a
+/// fresh insert and the in-place conversion of a legacy self-hosted dev row.
 fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
-    // `position` appends at the tail (`MAX + 1`) exactly like the seed
-    // migrations, so it can't collide with the UNIQUE column.
     diesel::sql_query(
         "INSERT INTO app_registrations \
              (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) \
-         SELECT ?, 'self-hosted', (SELECT COALESCE(MAX(position), -1) + 1 FROM app_registrations), \
+         SELECT ?, 'cloud', (SELECT COALESCE(MAX(position), -1) + 1 FROM app_registrations), \
                 1, ?, ?, 0, ?, 0 \
           WHERE NOT EXISTS (SELECT 1 FROM app_registrations WHERE id = ?)",
     )
@@ -300,106 +272,55 @@ fn insert(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     .bind::<Text, _>(app.id)
     .execute(conn)
     .context("insert dev registration")?;
-
-    // The self-hosted payload, marked `seeded = 1` — the ownership marker every
-    // later write keys on. Both `port` and `subdomain` are UNIQUE, and an
-    // uploaded app can already hold either, so the insert falls back the way the
-    // seed migrations do: `MAX(port) + 1` (free by construction) and the app id
-    // (free by construction — an upload's subdomain is its id, and the id is
-    // taken by this very row). A fallback moves the dev app's origin, so the vite
-    // server would no longer be the thing serving it; the reconcile pulls it back
-    // onto the pinned port as soon as the port frees up.
-    diesel::sql_query(
-        "INSERT INTO self_hosted_app_configurations \
-             (id, port, content_folder, subdomain, seeded, launch_path) \
-         SELECT ?, \
-                CASE WHEN EXISTS (SELECT 1 FROM self_hosted_app_configurations WHERE port = ?) \
-                     THEN (SELECT MAX(port) + 1 FROM self_hosted_app_configurations) \
-                     ELSE ? END, \
-                ?, \
-                CASE WHEN EXISTS (SELECT 1 FROM self_hosted_app_configurations WHERE subdomain = ?) \
-                     THEN ? \
-                     ELSE ? END, \
-                1, ? \
-          WHERE NOT EXISTS (SELECT 1 FROM self_hosted_app_configurations WHERE id = ?) \
-            AND EXISTS (SELECT 1 FROM app_registrations WHERE id = ?)",
-    )
-    .bind::<Text, _>(app.id)
-    .bind::<Integer, _>(app.port)
-    .bind::<Integer, _>(app.port)
-    .bind::<Text, _>(app.content_folder)
-    .bind::<Text, _>(app.subdomain)
-    .bind::<Text, _>(app.id)
-    .bind::<Text, _>(app.subdomain)
-    .bind::<Text, _>(app.launch_path)
-    .bind::<Text, _>(app.id)
-    .bind::<Text, _>(app.id)
-    .execute(conn)
-    .context("insert dev self-hosted configuration")?;
     Ok(())
 }
 
-/// Pull an already-owned dev row back onto the values [`dev_apps`] declares.
+/// Pull an already-owned dev row onto its launch URL, converting a legacy
+/// self-hosted payload this seed wrote under an older shape if one is still
+/// there.
 ///
 /// Placement (`position` / `on_homescreen`) is deliberately never rewritten —
 /// that belongs to `PUT /home-screen`, so a developer's reorder survives a
-/// restart. Every statement carries the `seeded = 1` ownership predicate, and the
-/// topology writes additionally skip (rather than fail on) a port or subdomain
-/// another app holds; the reclaim happens on a later boot once it frees up.
+/// restart.
 fn reconcile(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
+    // Drop any self-hosted payload this seed wrote under an older shape.
+    diesel::sql_query("DELETE FROM self_hosted_app_configurations WHERE id = ? AND seeded = 1")
+        .bind::<Text, _>(app.id)
+        .execute(conn)
+        .context("drop a superseded self-hosted payload")?;
+
+    // `INSERT OR REPLACE` so a fresh insert and a reconcile are one statement.
+    diesel::sql_query(
+        "INSERT OR REPLACE INTO cloud_app_configurations (id, url) \
+         SELECT ?, ? WHERE EXISTS (SELECT 1 FROM app_registrations WHERE id = ?)",
+    )
+    .bind::<Text, _>(app.id)
+    .bind::<Text, _>(app.url.as_str())
+    .bind::<Text, _>(app.id)
+    .execute(conn)
+    .context("reconcile dev cloud configuration")?;
+
+    reconcile_registration(conn, app)
+}
+
+/// Reconcile the shared registration columns. Scoped to a cloud payload
+/// carrying this seed's URL, so it stays inert against a foreign row.
+fn reconcile_registration(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
     diesel::sql_query(
         "UPDATE app_registrations \
-            SET kind = 'self-hosted', name = ?, subtitle = ?, local_only = 0, \
+            SET kind = 'cloud', name = ?, subtitle = ?, local_only = 0, \
                 client_id = ?, requires_tunnel = 0 \
           WHERE id = ? \
-            AND EXISTS (SELECT 1 FROM self_hosted_app_configurations \
-                         WHERE id = ? AND seeded = 1)",
+            AND EXISTS (SELECT 1 FROM cloud_app_configurations WHERE id = ? AND url = ?)",
     )
     .bind::<Text, _>(app.name)
     .bind::<Text, _>(app.subtitle)
     .bind::<Text, _>(app.id)
     .bind::<Text, _>(app.id)
     .bind::<Text, _>(app.id)
+    .bind::<Text, _>(app.url.as_str())
     .execute(conn)
     .context("reconcile dev registration")?;
-
-    diesel::sql_query(
-        "UPDATE self_hosted_app_configurations \
-            SET content_folder = ?, launch_path = ? \
-          WHERE id = ? AND seeded = 1",
-    )
-    .bind::<Text, _>(app.content_folder)
-    .bind::<Text, _>(app.launch_path)
-    .bind::<Text, _>(app.id)
-    .execute(conn)
-    .context("reconcile dev content folder")?;
-
-    diesel::sql_query(
-        "UPDATE self_hosted_app_configurations \
-            SET port = ? \
-          WHERE id = ? AND seeded = 1 \
-            AND NOT EXISTS (SELECT 1 FROM self_hosted_app_configurations WHERE port = ? AND id <> ?)",
-    )
-    .bind::<Integer, _>(app.port)
-    .bind::<Text, _>(app.id)
-    .bind::<Integer, _>(app.port)
-    .bind::<Text, _>(app.id)
-    .execute(conn)
-    .context("reconcile dev port")?;
-
-    diesel::sql_query(
-        "UPDATE self_hosted_app_configurations \
-            SET subdomain = ? \
-          WHERE id = ? AND seeded = 1 \
-            AND NOT EXISTS (SELECT 1 FROM self_hosted_app_configurations WHERE subdomain = ? AND id <> ?)",
-    )
-    .bind::<Text, _>(app.subdomain)
-    .bind::<Text, _>(app.id)
-    .bind::<Text, _>(app.subdomain)
-    .bind::<Text, _>(app.id)
-    .execute(conn)
-    .context("reconcile dev subdomain")?;
-
     Ok(())
 }
 
@@ -407,41 +328,109 @@ fn reconcile(conn: &mut SqliteConnection, app: &DevApp) -> anyhow::Result<()> {
 mod tests {
     use super::*;
     use crate::domain::{AppConfiguration, AppsStore as _};
+    use diesel::sql_types::Integer;
 
-    /// The `(registration, configuration)` pair for a dev id, failing the test if
-    /// the row is absent or of another kind.
-    fn dev_self_hosted(
+    /// The `(registration, configuration)` pair for a cloud dev id, failing the
+    /// test if the row is absent or of another kind.
+    fn dev_cloud(
         store: &SqliteAppsStore,
         id: &str,
     ) -> (
         crate::domain::AppRegistration,
-        crate::domain::SelfHostedAppConfiguration,
+        crate::domain::CloudAppConfiguration,
     ) {
         match store.find_app(id).unwrap() {
-            Some((registration, AppConfiguration::SelfHosted(config))) => (registration, config),
-            other => panic!("expected a self-hosted dev row for {id}, got {other:?}"),
+            Some((registration, AppConfiguration::Cloud(config))) => (registration, config),
+            other => panic!("expected a cloud dev row for {id}, got {other:?}"),
         }
     }
 
     #[test]
-    fn seeds_all_dev_rows_on_their_pinned_topology() {
+    fn seeds_all_dev_rows_as_cloud_on_their_pinned_topology() {
         let pool = persistence_rust::open_in_memory_pool().unwrap();
         seed_dev_apps(pool.clone()).unwrap();
         let store = SqliteAppsStore::new(pool).unwrap();
 
         for app in &dev_apps() {
-            let (registration, config) = dev_self_hosted(&store, app.id);
+            let (registration, config) = dev_cloud(&store, app.id);
+            assert_eq!(config.url.to_string(), app.url);
             assert_eq!(registration.name, app.name);
-            // The redirect resolver requires `client_id == id`, and the app's dev
-            // build sends exactly this id.
             assert_eq!(registration.client_id.as_deref(), Some(app.id));
             assert!(registration.on_homescreen);
             assert!(!registration.requires_tunnel);
-            assert_eq!(i32::from(config.port), app.port);
-            assert_eq!(config.subdomain, app.subdomain);
-            assert_eq!(config.content_folder, app.content_folder);
-            assert_eq!(config.launch_path.as_deref(), Some(app.launch_path));
         }
+    }
+
+    #[test]
+    fn the_ohif_dev_row_uses_its_own_launch_url_shape() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        seed_dev_apps(pool.clone()).unwrap();
+        let store = SqliteAppsStore::new(pool).unwrap();
+
+        let port = dev_apps()
+            .iter()
+            .find(|app| app.id == "ohif-viewer-dev")
+            .expect("the OHIF dev row")
+            .port;
+        let (_, config) = dev_cloud(&store, "ohif-viewer-dev");
+        assert_eq!(
+            config.url.to_string(),
+            format!(
+                "http://localhost:{port}/fhir-viewer\
+                 ?launch={{launch}}&iss={{origin}}/fhir-r4&clientId=ohif-viewer-dev"
+            ),
+        );
+    }
+
+    /// A dev database seeded by an older build holds dev apps as `seeded = 1`
+    /// SELF-HOSTED rows. Those are still this seed's own rows, so the next boot
+    /// must convert them in place to cloud.
+    #[test]
+    fn converts_a_previously_self_hosted_dev_row_to_cloud() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let store = SqliteAppsStore::new(pool.clone()).unwrap();
+        let mut conn = pool.get().unwrap();
+
+        let app = &dev_apps()[0]; // medications-app-dev
+        diesel::sql_query(
+            "INSERT INTO app_registrations \
+                 (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) \
+             VALUES (?, 'self-hosted', 100, 1, ?, NULL, 0, ?, 0)",
+        )
+        .bind::<Text, _>(app.id)
+        .bind::<Text, _>(app.name)
+        .bind::<Text, _>(app.id)
+        .execute(&mut conn)
+        .unwrap();
+        diesel::sql_query(
+            "INSERT INTO self_hosted_app_configurations \
+                 (id, port, content_folder, subdomain, seeded, launch_path) \
+             VALUES (?, ?, 'medication', 'medication-dev', 1, \
+                     '/launch.html?launch={launch}&iss={origin}/fhir-r4')",
+        )
+        .bind::<Text, _>(app.id)
+        .bind::<Integer, _>(app.port)
+        .execute(&mut conn)
+        .unwrap();
+        drop(conn);
+
+        seed_dev_apps(pool.clone()).unwrap();
+
+        let (registration, config) = dev_cloud(&store, app.id);
+        assert_eq!(config.url.to_string(), app.url);
+        assert_eq!(registration.position, 100, "placement must survive");
+        assert_eq!(registration.client_id.as_deref(), Some(app.id));
+        // The superseded self-hosted payload must be gone.
+        let mut conn = pool.get().unwrap();
+        let counts: OwnershipCounts = diesel::sql_query(
+            "SELECT 0 AS registrations, \
+                    (SELECT COUNT(*) FROM self_hosted_app_configurations \
+                      WHERE id = ?) AS owned_configurations",
+        )
+        .bind::<Text, _>(app.id)
+        .get_result(&mut conn)
+        .unwrap();
+        assert_eq!(counts.owned_configurations, 0);
     }
 
     #[test]
@@ -472,8 +461,6 @@ mod tests {
         let store = SqliteAppsStore::new(pool.clone()).unwrap();
         let before = store.list_registrations().unwrap();
 
-        // Three more "boots" must change nothing — not the row count, not the
-        // ports, not the display order.
         for _ in 0..3 {
             seed_dev_apps(pool.clone()).unwrap();
         }
@@ -483,45 +470,9 @@ mod tests {
             after.iter().map(|r| r.id.clone()).collect::<Vec<_>>(),
         );
         for app in &dev_apps() {
-            let (_, config) = dev_self_hosted(&store, app.id);
-            assert_eq!(i32::from(config.port), app.port);
-            assert_eq!(config.subdomain, app.subdomain);
+            let (_, config) = dev_cloud(&store, app.id);
+            assert_eq!(config.url.to_string(), app.url);
         }
-    }
-
-    #[test]
-    fn tolerates_an_uploaded_app_holding_the_pinned_port_and_subdomain() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
-        let store = SqliteAppsStore::new(pool.clone()).unwrap();
-        let mut conn = pool.get().unwrap();
-        // An upload that grabbed the Medications dev port and subdomain first.
-        diesel::sql_query(
-            "INSERT INTO app_registrations \
-                 (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) \
-             VALUES ('squatter', 'self-hosted', 100, 1, 'Squatter', NULL, 0, NULL, 0)",
-        )
-        .execute(&mut conn)
-        .unwrap();
-        diesel::sql_query(
-            "INSERT INTO self_hosted_app_configurations \
-                 (id, port, content_folder, subdomain, seeded, launch_path) \
-             VALUES ('squatter', ?, 'squatter', 'medication-dev', 0, NULL)",
-        )
-        .bind::<Integer, _>(dev_apps()[0].port)
-        .execute(&mut conn)
-        .unwrap();
-        drop(conn);
-
-        // A collision must not abort the seed: the dev row lands on a fallback
-        // origin rather than failing the boot.
-        seed_dev_apps(pool.clone()).unwrap();
-        let (_, config) = dev_self_hosted(&store, "medications-app-dev");
-        assert_ne!(i32::from(config.port), dev_apps()[0].port);
-        assert_eq!(config.subdomain, "medications-app-dev");
-        // The other dev app is unaffected by its sibling's collision.
-        let (_, other) = dev_self_hosted(&store, "web-trace-app-dev");
-        assert_eq!(i32::from(other.port), dev_apps()[1].port);
-        assert_eq!(other.subdomain, "web-trace-dev");
     }
 
     /// A debug build can be opened against a real user's database. An app the
@@ -534,7 +485,6 @@ mod tests {
         let pool = persistence_rust::open_in_memory_pool().unwrap();
         let store = SqliteAppsStore::new(pool.clone()).unwrap();
         let mut conn = pool.get().unwrap();
-        // An upload that slugged to exactly the dev id (`seeded = 0`).
         diesel::sql_query(
             "INSERT INTO app_registrations \
                  (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) \
@@ -553,7 +503,11 @@ mod tests {
 
         seed_dev_apps(pool.clone()).unwrap();
 
-        let (registration, config) = dev_self_hosted(&store, "medications-app-dev");
+        let (registration, config) = store.find_app("medications-app-dev").unwrap().unwrap();
+        assert!(
+            matches!(config, AppConfiguration::SelfHosted(_)),
+            "the seed must not convert a user's self-hosted app to cloud",
+        );
         assert_eq!(registration.name, "My Meds", "the user's name must survive");
         assert_eq!(registration.subtitle.as_deref(), Some("Mine"));
         assert!(registration.local_only, "the user's flags must survive");
@@ -562,26 +516,18 @@ mod tests {
             registration.client_id, None,
             "the seed must not attach its client_id to a user's app",
         );
-        assert_eq!(
-            (i32::from(config.port), config.content_folder.as_str()),
-            (9001, "my-meds"),
-            "the user's serving origin and content must survive",
-        );
-        assert!(!config.seeded, "a user row stays user-owned");
-        assert_eq!(config.launch_path, None);
 
         // A second boot must be just as inert, and the sibling dev app is
         // unaffected by its neighbour's collision.
         seed_dev_apps(pool).unwrap();
-        let (again, _) = dev_self_hosted(&store, "medications-app-dev");
+        let (again, _) = store.find_app("medications-app-dev").unwrap().unwrap();
         assert_eq!(again.name, "My Meds");
-        let (_, sibling) = dev_self_hosted(&store, "web-trace-app-dev");
-        assert_eq!(i32::from(sibling.port), dev_apps()[1].port);
+        let (_, sibling) = dev_cloud(&store, "web-trace-app-dev");
+        assert_eq!(sibling.url.to_string(), dev_apps()[1].url);
     }
 
-    /// The same protection for a *cloud* app squatting a dev id: the payload the
-    /// ownership check looks for isn't there, so the seed writes nothing at all —
-    /// in particular it does not staple a self-hosted payload onto a cloud row.
+    /// The same protection for a *cloud* app squatting a dev id: the URL the
+    /// ownership check looks for isn't there, so the seed writes nothing at all.
     #[test]
     fn never_adopts_an_app_of_another_kind_under_a_dev_id() {
         let pool = persistence_rust::open_in_memory_pool().unwrap();
@@ -608,49 +554,8 @@ mod tests {
         assert_eq!(registration.name, "Someone Elses");
         assert!(
             matches!(configuration, AppConfiguration::Cloud(_)),
-            "the seed must not turn a cloud app into a self-hosted one",
+            "the seed must not overwrite a foreign cloud app",
         );
         assert!(registration.requires_tunnel, "its flags must survive");
-    }
-
-    #[test]
-    fn reclaims_the_pinned_port_once_the_squatter_is_gone() {
-        let pool = persistence_rust::open_in_memory_pool().unwrap();
-        let store = SqliteAppsStore::new(pool.clone()).unwrap();
-        let mut conn = pool.get().unwrap();
-        diesel::sql_query(
-            "INSERT INTO app_registrations \
-                 (id, kind, position, on_homescreen, name, subtitle, local_only, client_id, requires_tunnel) \
-             VALUES ('squatter', 'self-hosted', 100, 1, 'Squatter', NULL, 0, NULL, 0)",
-        )
-        .execute(&mut conn)
-        .unwrap();
-        diesel::sql_query(
-            "INSERT INTO self_hosted_app_configurations \
-                 (id, port, content_folder, subdomain, seeded, launch_path) \
-             VALUES ('squatter', ?, 'squatter', 'squatter', 0, NULL)",
-        )
-        .bind::<Integer, _>(dev_apps()[0].port)
-        .execute(&mut conn)
-        .unwrap();
-        drop(conn);
-        seed_dev_apps(pool.clone()).unwrap();
-
-        let mut conn = pool.get().unwrap();
-        diesel::sql_query("DELETE FROM self_hosted_app_configurations WHERE id = 'squatter'")
-            .execute(&mut conn)
-            .unwrap();
-        diesel::sql_query("DELETE FROM app_registrations WHERE id = 'squatter'")
-            .execute(&mut conn)
-            .unwrap();
-        drop(conn);
-
-        seed_dev_apps(pool).unwrap();
-        let (_, config) = dev_self_hosted(&store, "medications-app-dev");
-        assert_eq!(
-            i32::from(config.port),
-            dev_apps()[0].port,
-            "the reconcile must pull the dev row back onto its pinned port",
-        );
     }
 }

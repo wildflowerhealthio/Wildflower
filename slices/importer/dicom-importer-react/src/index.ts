@@ -1,10 +1,13 @@
 /**
  * The DICOM format's UI for the importer slice: the
- * {@link DicomSettingsPicker} (renders nothing — no user-facing knobs yet).
- * The DICOM format needs no interactive review body — the decode yields zero
- * sections and one note, so the shell renders only the source-file archive.
+ * {@link DicomSettingsPicker} (the equipment time zone — the one knob the
+ * format has): the IANA zone the acquiring equipment's clock was set to.
+ *
+ * The DICOM format needs no interactive review body — the shell's generalized
+ * per-resource review covers everything the decode yields.
  *
  * @packageDocumentation
  */
 export { type SettingsPickerProps } from 'importer-fundamentals'
-export { DicomSettingsPicker } from './settings-picker.tsx'
+export { COMMIT_DELAY_MS, DicomSettingsPicker, UNKNOWN_ZONE_MESSAGE } from './settings-picker.tsx'
+export { NORTH_AMERICAN_TIME_ZONES, suggestedTimeZones } from './time-zones.ts'

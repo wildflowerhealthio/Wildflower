@@ -12,8 +12,10 @@ longer all play the same role:
 
 The OHIF imaging viewer (`apps/ohif-viewer`, published at `/ohif-viewer`, apps
 migration `0007_seed_ohif_viewer_app`) has no directory here: it is a downloaded
-prebuilt bundle, and its debug-only `ohif-viewer-dev` row has no fallback content
-— `vp run -F ohif-viewer dev` serves it.
+prebuilt bundle. Having no fallback content is exactly why its debug-only
+`ohif-viewer-dev` row is a **cloud** row on the preview origin rather than a
+self-hosted one (`apps-rust/src/dev_seed.rs`) — `vp run -F ohif-viewer dev`
+serves it, and the host binds no listener for it.
 
 [upstream]: https://github.com/smart-on-fhir/patient-browser
 

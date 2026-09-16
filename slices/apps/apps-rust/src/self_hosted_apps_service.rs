@@ -101,6 +101,11 @@ impl SelfHostedAppsService {
         id: &str,
         config: &SelfHostedAppConfiguration,
     ) -> Result<(), ServerError> {
+        // Each self-hosted app is served from its own loopback origin, so a
+        // fetch the app makes to anything else — the host API on its own
+        // origin, or another app's — is cross-origin. The permissive CORS layer
+        // is what keeps those preflights passing; without it every self-hosted
+        // app's cross-origin fetch fails in the webview.
         let service = self_hosted_apps_rust::setup_self_hosted_app(
             id,
             self.apps_dir.join(&config.content_folder),

@@ -1,30 +1,30 @@
-import { Effect } from 'effect'
+/**
+ * The concrete {@link FileImporterDescriptor} for the `dicom` format.
+ * `buildSourceFile` derives a Patient reference from the DICOM header and
+ * sets `subject` on the archive `DocumentReference` when `PatientID` is
+ * present.
+ *
+ * @packageDocumentation
+ */
+import { parseDicomFile } from 'dicom'
+import { Effect, Either } from 'effect'
+import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { FileImporterDescriptor } from 'importer-fundamentals'
 
 import { decodeDicom } from './decode.ts'
 import { detectDicom } from './detect.ts'
+import { patientOriginalId } from './fhir/to-fhir.ts'
 import { defaultDicomSettings, type DicomSettings } from './settings.ts'
 import {
-  buildSourceFile,
+  buildSourceFile as buildSourceFileRaw,
   DICOM_SOURCE_FILE_CATEGORY_TOKEN,
   DICOM_SOURCE_FILE_CONTENT_TYPE,
   dicomSourceFileFromDocumentReference,
   isDicomSourceFile,
 } from './source-file/index.ts'
+import { DICOM_SYSTEM } from './source-system.ts'
 
-/**
- * The concrete {@link FileImporterDescriptor} for the `dicom` format: a `.dcm`
- * file's raw bytes in, zero extracted resources out (D3 fills the sections
- * in). Persistence is shell-owned — every FHIR-targeting importer writes
- * through one shared `POST /` batch bundle (`persistBatchBundle` in
- * `fhir-r4/clients`), so no format brings its own `persist`.
- *
- * @remarks
- * `decode` yields zero sections and one note — this format reads no DICOM tags
- * yet — so a confirm writes only the source file `DocumentReference`
- * and nothing else.
- */
 const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResource> = {
   format: 'dicom',
   display: {
@@ -34,7 +34,22 @@ const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResourc
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
   decode: decodeDicom,
-  buildSourceFile,
+  // A caller-supplied `subject` wins — it is context the caller has and this
+  // descriptor does not. The header-derived reference is the fallback.
+  buildSourceFile: (picked, options) => {
+    if (options?.subject !== undefined) return buildSourceFileRaw(picked, options)
+    const parseResult = parseDicomFile(picked.bytes)
+    let subject: { reference: string } | undefined
+    if (Either.isRight(parseResult)) {
+      const header = parseResult.right
+      const patId = patientOriginalId(header)
+      if (patId !== undefined) {
+        const localId = localResourceId(DICOM_SYSTEM, 'Patient', patId)
+        subject = { reference: `Patient/${localId}` }
+      }
+    }
+    return buildSourceFileRaw(picked, { subject })
+  },
   sourceFileCategoryToken: DICOM_SOURCE_FILE_CATEGORY_TOKEN,
   isSourceFile: isDicomSourceFile,
   sourceFileFromDocumentReference: (resource) =>

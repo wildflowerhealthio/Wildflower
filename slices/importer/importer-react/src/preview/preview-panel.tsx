@@ -1,4 +1,4 @@
-import { Data, Option } from 'effect'
+import { Data, Match, Option } from 'effect'
 import {
   diffJson,
   type DiffStatus,
@@ -11,7 +11,7 @@ import {
 } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { LabeledSection } from 'importer-fundamentals'
-import { Review, sectionResources } from 'importer-fundamentals'
+import { StagedImport, sectionResources } from 'importer-fundamentals'
 import { type JSX, useEffect, useMemo, useRef, useState } from 'react'
 import { Chip } from 'react-tundraish'
 
@@ -58,8 +58,8 @@ interface PreviewPanelProps {
   readonly settings: FormatSettings
   /** The registered formats' display + settings pickers, indexed by kind. */
   readonly settingsRegistry: SettingsRegistry
-  /** The reviewed selection for a file (defaults to `Review.initial()` before any edit). */
-  readonly selectionFor: (fileId: string) => Review.Selection<FhirResource>
+  /** The reviewed selection for a file (defaults to `StagedImport.initial()` before any edit). */
+  readonly selectionFor: (fileId: string) => StagedImport.Selection<FhirResource>
   /**
    * Each labeled resource's server comparison (`new` / `unchanged` /
    * `changed`, and for `changed` the leaf-level field diffs), keyed by
@@ -71,7 +71,10 @@ interface PreviewPanelProps {
    */
   readonly comparisons: ReadonlyMap<string, ServerComparison>
   /** Called when a file's review changes its selection. */
-  readonly onSelectionChange: (fileId: string, selection: Review.Selection<FhirResource>) => void
+  readonly onSelectionChange: (
+    fileId: string,
+    selection: StagedImport.Selection<FhirResource>
+  ) => void
   /** Called when the user changes one format's settings; the caller re-decodes. */
   readonly onSettingsChange: <K extends FormatKind>(format: K, settings: FormatSettings[K]) => void
   /**
@@ -82,8 +85,10 @@ interface PreviewPanelProps {
   readonly onConfirm: () => void
   /** Called when the user discards the preview without writing. */
   readonly onCancel: () => void
-  /** Whether a confirmed import is currently running, to disable the action. */
+  /** Whether a confirmed import is currently running, to show the importing label. */
   readonly confirming: boolean
+  /** Whether the confirm button should be disabled (confirming or re-decoding). */
+  readonly confirmDisabled?: boolean
 }
 
 /** Heading for a batch with nothing chosen — no resource is included. */
@@ -121,13 +126,13 @@ interface TypeTally {
 /** The per-type tallies of one file's decoded resources, in first-seen order. */
 const perTypeTallies = (
   sections: readonly LabeledSection<FhirResource>[],
-  selection: Review.Selection<FhirResource>
+  selection: StagedImport.Selection<FhirResource>
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
   for (const resource of sectionResources(sections)) {
     const type = resourceTypeOf(resource.resource)
-    const excluded = Review.isResourceIncluded(selection, resource.key) ? 0 : 1
+    const excluded = StagedImport.isResourceIncluded(selection, resource.key) ? 0 : 1
     const bucket = totals.get(type)
     if (bucket === undefined) {
       order.push(type)
@@ -152,6 +157,14 @@ const tallyLabel = (tally: TypeTally): string => {
 /**
  * One format's settings form, dispatched on the format tag so the picker
  * component and the settings value line up per branch — no cast.
+ *
+ * @remarks
+ * `Match.exhaustive` rather than an `if`/fallthrough: every branch is
+ * identical but for `kind`, and a fallthrough silently binds one format's
+ * group to another format's picker — which is what happened when `dicom`
+ * joined the registry and kept editing the LifeLabs settings, leaving DICOM
+ * decoding under its defaults forever. Registering a format without a branch
+ * here must fail to compile, and with `Match.exhaustive` it does.
  */
 const FormatSettingsForm = ({
   format,
@@ -164,17 +177,25 @@ const FormatSettingsForm = ({
   readonly settingsRegistry: SettingsRegistry
   readonly onSettingsChange: PreviewPanelProps['onSettingsChange']
 }): JSX.Element => {
-  if (format === 'har') {
-    const Picker = settingsRegistry.har.SettingsPicker
-    return <Picker settings={settings.har} onChange={(next) => onSettingsChange('har', next)} />
-  }
-  const Picker = settingsRegistry['lifelabs-pdf'].SettingsPicker
-  return (
-    <Picker
-      settings={settings['lifelabs-pdf']}
-      onChange={(next) => onSettingsChange('lifelabs-pdf', next)}
-    />
-  )
+  // Each branch re-indexes on its own literal `kind`, the way `runDecode`
+  // does: a shared generic helper loses the correlation between
+  // `FormatVariant[K]['settings']` and `FormatSettings[K]` and stops
+  // type-checking.
+  return Match.type<FormatKind>().pipe(
+    Match.when('har', (kind) => {
+      const Picker = settingsRegistry[kind].SettingsPicker
+      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
+    }),
+    Match.when('lifelabs-pdf', (kind) => {
+      const Picker = settingsRegistry[kind].SettingsPicker
+      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
+    }),
+    Match.when('dicom', (kind) => {
+      const Picker = settingsRegistry[kind].SettingsPicker
+      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
+    }),
+    Match.exhaustive
+  )(format)
 }
 
 /**
@@ -347,17 +368,20 @@ const ResourceRow = ({
 }: {
   readonly resourceKey: string
   readonly resource: unknown
-  readonly selection: Review.Selection<FhirResource>
+  readonly selection: StagedImport.Selection<FhirResource>
   readonly comparison: ServerComparison | undefined
   readonly onToggle: (key: string) => void
   readonly onEdit: (key: string, resource: unknown) => void
   readonly onRevert: (key: string) => void
   readonly onKeepServerValue: (key: string, resource: FhirResource) => void
 }): JSX.Element => {
-  const edited = Option.getOrElse(Review.editedResource(selection, resourceKey), () => resource)
+  const edited = Option.getOrElse(
+    StagedImport.editedResource(selection, resourceKey),
+    () => resource
+  )
   const description = describeResource(edited)
-  const included = Review.isResourceIncluded(selection, resourceKey)
-  const isEdited = Review.isResourceEdited(selection, resourceKey)
+  const included = StagedImport.isResourceIncluded(selection, resourceKey)
+  const isEdited = StagedImport.isResourceEdited(selection, resourceKey)
   return (
     <li className={styles.resourceRow}>
       <label className={styles.resourceLabel}>
@@ -406,7 +430,7 @@ const ResourceRow = ({
  * A section's heading with a tri-state include toggle: checked when every
  * resource in the section is included, unchecked when none are, indeterminate
  * in between. Clicking it opts the whole section in or out in one go — out when
- * everything was included, in otherwise — through {@link Review.setResourcesIncluded}.
+ * everything was included, in otherwise — through {@link StagedImport.setResourcesIncluded}.
  *
  * @remarks
  * `indeterminate` is not a React-settable attribute, so it is written onto the
@@ -420,11 +444,11 @@ const SectionToggle = ({
 }: {
   readonly title: string
   readonly resourceKeys: readonly string[]
-  readonly selection: Review.Selection<FhirResource>
-  readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
+  readonly selection: StagedImport.Selection<FhirResource>
+  readonly onSelectionChange: (selection: StagedImport.Selection<FhirResource>) => void
 }): JSX.Element => {
   const includedCount = resourceKeys.filter((key) =>
-    Review.isResourceIncluded(selection, key)
+    StagedImport.isResourceIncluded(selection, key)
   ).length
   const allIncluded = resourceKeys.length > 0 && includedCount === resourceKeys.length
   const noneIncluded = includedCount === 0
@@ -440,7 +464,9 @@ const SectionToggle = ({
         checked={allIncluded}
         aria-label={`Include all in ${title}`}
         onChange={() => {
-          onSelectionChange(Review.setResourcesIncluded(selection, resourceKeys, !allIncluded))
+          onSelectionChange(
+            StagedImport.setResourcesIncluded(selection, resourceKeys, !allIncluded)
+          )
         }}
       />
       <h4 className={styles.sectionHeading}>{title}</h4>
@@ -462,9 +488,9 @@ const ReadFileBody = ({
   onEditResource,
 }: {
   readonly file: ReadFile<FormatKind>
-  readonly selection: Review.Selection<FhirResource>
+  readonly selection: StagedImport.Selection<FhirResource>
   readonly comparisons: ReadonlyMap<string, ServerComparison>
-  readonly onSelectionChange: (selection: Review.Selection<FhirResource>) => void
+  readonly onSelectionChange: (selection: StagedImport.Selection<FhirResource>) => void
   readonly onEditResource: (key: string, resource: unknown) => void
 }): JSX.Element => {
   const { sections, notes } = file.decoded
@@ -499,11 +525,11 @@ const ReadFileBody = ({
                 resource={resource.resource}
                 selection={selection}
                 comparison={comparisons.get(resource.key)}
-                onToggle={(key) => onSelectionChange(Review.toggleResource(selection, key))}
+                onToggle={(key) => onSelectionChange(StagedImport.toggleResource(selection, key))}
                 onEdit={onEditResource}
-                onRevert={(key) => onSelectionChange(Review.revert(selection, key))}
+                onRevert={(key) => onSelectionChange(StagedImport.revert(selection, key))}
                 onKeepServerValue={(key, next) =>
-                  onSelectionChange(Review.edit(selection, key, next))
+                  onSelectionChange(StagedImport.edit(selection, key, next))
                 }
               />
             ))}
@@ -573,19 +599,21 @@ const PreviewActions = ({
   onConfirm,
   onCancel,
   confirming,
+  disabled,
 }: {
   readonly writableCount: number
   readonly excludedCount: number
   readonly onConfirm: () => void
   readonly onCancel: () => void
   readonly confirming: boolean
+  readonly disabled: boolean
 }): JSX.Element => (
   <div className={styles.actions}>
-    <button type="button" className={styles.cancel} onClick={onCancel} disabled={confirming}>
+    <button type="button" className={styles.cancel} onClick={onCancel} disabled={disabled}>
       Cancel
     </button>
     {writableCount > 0 && (
-      <button type="button" className={styles.confirm} onClick={onConfirm} disabled={confirming}>
+      <button type="button" className={styles.confirm} onClick={onConfirm} disabled={disabled}>
         {confirmLabel(writableCount, excludedCount, confirming)}
       </button>
     )}
@@ -617,6 +645,7 @@ const PreviewPanel = ({
   onConfirm,
   onCancel,
   confirming,
+  confirmDisabled = confirming,
 }: PreviewPanelProps): JSX.Element => {
   const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
@@ -627,8 +656,8 @@ const PreviewPanel = ({
       if (file._tag !== 'read') continue
       const labeled = sectionResources(file.decoded.sections)
       const selection = selectionFor(file.id)
-      included += Review.includedCount(labeled, selection)
-      excluded += Review.excludedCount(labeled, selection)
+      included += StagedImport.includedCount(labeled, selection)
+      excluded += StagedImport.excludedCount(labeled, selection)
     }
     return { writableCount: included, excludedCount: excluded }
   }, [files, selectionFor])
@@ -641,7 +670,7 @@ const PreviewPanel = ({
     if (editing._tag !== 'Open') return
     onSelectionChange(
       editing.fileId,
-      Review.edit(selectionFor(editing.fileId), editing.key, resource)
+      StagedImport.edit(selectionFor(editing.fileId), editing.key, resource)
     )
     setEditing(makeClosedEditor())
   }
@@ -714,6 +743,7 @@ const PreviewPanel = ({
         onConfirm={onConfirm}
         onCancel={onCancel}
         confirming={confirming}
+        disabled={confirmDisabled}
       />
       <ResourceEditor
         open={editing._tag === 'Open'}

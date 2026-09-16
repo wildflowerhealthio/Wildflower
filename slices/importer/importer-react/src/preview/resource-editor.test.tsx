@@ -139,7 +139,7 @@ describe('tryKeep', () => {
     // Act — a valid variant edit that keeps the identity
     const result = tryKeep(validPatientJson('pat-1'), original)
 
-    // Assert — the decoded resource comes back, ready for Review.edit
+    // Assert — the decoded resource comes back, ready for StagedImport.edit
     expect(Either.isRight(result)).toBe(true)
     if (Either.isRight(result)) {
       expect(result.right.resourceType).toBe('Patient')

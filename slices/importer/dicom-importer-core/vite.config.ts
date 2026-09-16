@@ -9,6 +9,7 @@ export default defineConfig({
     platform: 'neutral',
     entry: {
       index: 'src/index.ts',
+      'source-file': 'src/source-file/index.ts',
     },
   },
   test: {

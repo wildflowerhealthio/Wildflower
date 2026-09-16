@@ -34,7 +34,7 @@ async fn jwks_endpoint_returns_seeded_key() {
 async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
     use axum::routing::get;
     use axum::Router;
-    use gatekeeper_rust::layer_router_with_gatekeeper_auth_gating;
+    use gatekeeper_rust::gatekeeper_auth_middleware;
 
     let (g, _host_owner_token, _db) = spin_up();
     // A trivial downstream router wrapped in the bearer gate with only the
@@ -44,8 +44,10 @@ async fn bearer_gate_exempts_listed_paths_but_gates_the_rest() {
         .route("/fhir-r4/metadata", get(|| async { "ok" }))
         .route("/fhir-r4/metadata-x", get(|| async { "ok" }))
         .route("/fhir-r4/Patient", get(|| async { "ok" }));
-    let gated =
-        layer_router_with_gatekeeper_auth_gating(inner, g.state.clone(), &["/fhir-r4/metadata"]);
+    let gated = inner.layer(gatekeeper_auth_middleware(
+        g.state.clone(),
+        &["/fhir-r4/metadata"],
+    ));
 
     let status = |path: &'static str| {
         let gated = gated.clone();
@@ -78,7 +80,7 @@ async fn bearer_gate_inserts_scope_claims_a_downstream_capability_reads() {
     // stopped inserting `ScopeClaims`, every gated `/databases` request would 500
     // instead of 200/403, and only this test would catch it (the slice's own
     // tests fabricate the extension).
-    use gatekeeper_rust::layer_router_with_gatekeeper_auth_gating;
+    use gatekeeper_rust::gatekeeper_auth_middleware;
 
     let (g, host_owner_token, db) = spin_up();
 
@@ -102,11 +104,8 @@ async fn bearer_gate_inserts_scope_claims_a_downstream_capability_reads() {
             delete_scope: scopes_rust::Scope::wildflower_all(scopes_rust::Permission::DELETE),
         }],
     };
-    let gated = layer_router_with_gatekeeper_auth_gating(
-        databases_rust::setup_databases(&config),
-        g.state.clone(),
-        &[],
-    );
+    let gated = databases_rust::setup_databases(&config)
+        .layer(gatekeeper_auth_middleware(g.state.clone(), &[]));
 
     let get = |path: String, token: Option<String>| {
         let gated = gated.clone();

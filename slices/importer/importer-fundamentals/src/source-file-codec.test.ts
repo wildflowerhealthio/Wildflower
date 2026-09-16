@@ -121,7 +121,9 @@ describe('the codec as a schema', () => {
   test('property: subject is absent, keeping source files out of Patient/$everything', async () => {
     await fc.assert(
       fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
-        expect(labelled.toWire(sourceFile, 'hash=').subject).toBeUndefined()
+        expect(
+          labelled.toWire({ sourceFile, hash: 'hash=', subject: undefined }).subject
+        ).toBeUndefined()
         expect(
           (await Effect.runPromise(labelled.sourceFileToDocumentReference(sourceFile))).subject
         ).toBeUndefined()
@@ -156,7 +158,11 @@ describe('the codec as a schema', () => {
   })
 
   it('carries the coding on both type and category, and the security label when configured', () => {
-    const withLabel = labelled.toWire(example(), 'DEADBEEF=')
+    const withLabel = labelled.toWire({
+      sourceFile: example(),
+      hash: 'DEADBEEF=',
+      subject: undefined,
+    })
     expect(withLabel.type?.coding).toEqual([{ system: SYSTEM, code: 'example-source-file' }])
     expect(withLabel.category).toEqual([
       { coding: [{ system: SYSTEM, code: 'example-source-file' }] },
@@ -165,7 +171,10 @@ describe('the codec as a schema', () => {
       { coding: [{ system: 'https://example.test/fhir/CodeSystem/redaction', code: 'raw' }] },
     ])
     // With no securityLabel in the config, the field is omitted entirely.
-    expect(unlabelled.toWire(example(), 'DEADBEEF=').securityLabel).toBeUndefined()
+    expect(
+      unlabelled.toWire({ sourceFile: example(), hash: 'DEADBEEF=', subject: undefined })
+        .securityLabel
+    ).toBeUndefined()
   })
 
   it('exposes the category token in system|code form', () => {

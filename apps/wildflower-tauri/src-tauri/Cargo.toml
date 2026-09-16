@@ -46,6 +46,7 @@ tauri-plugin-native-webview = { path = "../../../plugins/tauri-plugin-native-web
 collector-rust = { path = "../../../slices/collector/collector-rust" }
 databases-rust = { path = "../../../slices/databases/databases-rust" }
 emr-rust = { path = "../../../slices/emr/emr-rust" }
+ohif-server-rust = { path = "../../../slices/dicom/ohif-server-rust" }
 gatekeeper-rust = { path = "../../../slices/gatekeeper/gatekeeper-rust" }
 # Names the per-database export/delete `Scope`s the databases catalogue declares.
 scopes-rust = { path = "../../../slices/scopes/scopes-rust" }

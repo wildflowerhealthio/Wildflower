@@ -99,7 +99,7 @@ const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> =
   },
   detect: detectHar,
   defaultSettings: defaultHarSettings,
-  decode: (fileBytes, settings) =>
+  decode: (fileBytes, _fileName, settings) =>
     decodeHar(fileBytes, settings).pipe(
       Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
       Effect.map((previews): DecodedFile<FhirResource> => ({

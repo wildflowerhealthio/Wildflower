@@ -26,7 +26,7 @@ slot.
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-fundamentals` (the `FileImporterDescriptor` contract and
-the pure `Review` model), `har-importer-core` (the `harImporterDescriptor`,
+the pure `StagedImport` model), `har-importer-core` (the `harImporterDescriptor`,
 `HarSettings`, and `HttpArchive.LogFromHarJson`), `har-importer-react`
 (`ReviewBody`, `HarSettingsPicker`), `http-archive` (the `HttpArchive`
 projection), `web-trace-core` (the HAR archive codec under `/codec` and the HAR
@@ -34,11 +34,11 @@ parser under `/har`), `fhir-r4` (the typed client and `ResourceWriteFailure`),
 and `fhir-r4-react` (the authed runner and the slice runtime layer).
 
 The seam between this package and a format binding is the **descriptor** and the
-`Review` model: the read half runs the descriptor's `decode` (no services, no
-writes) into sections + notes, the review drives `Review`'s pure per-resource
+`StagedImport` model: the read half runs the descriptor's `decode` (no services, no
+writes) into sections + notes, the review drives `StagedImport`'s pure per-resource
 transitions over the flattened sections, and the write half runs
-`Review.chosenResources` through the shell's shared `persistBatchBundle`. If a component needs
-more than the descriptor and `Review` expose, widen those rather than reaching
+`StagedImport.chosenResources` through the shell's shared `persistBatchBundle`. If a component needs
+more than the descriptor and `StagedImport` expose, widen those rather than reaching
 around them.
 
 **Presentation and interaction only.** Nothing here parses HAR, encodes a
@@ -67,7 +67,7 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
   `useConfirmImport` → `ImportResults`. It holds each read file's
-  `Review.Selection`, keyed by the file's stable id (absent = the default,
+  `StagedImport.Selection`, keyed by the file's stable id (absent = the default,
   every resource included, so an untouched file still imports everything its
   decode yielded). A cancel or "import another" discards the read, every
   review edit, and any confirm outcome, and returns to the picker; the
@@ -80,14 +80,23 @@ The importer has no HTTP wire union to derive, so there is no separate
   an `unreadable`, or an `unrecognized` file), owns the `FormatSettings`
   record, and re-decodes a format's files from their retained bytes when
   `applySettings` changes that format's settings (file ids survive, so keyed
-  selections keep applying); `preview-panel.tsx` renders the batch grouped by
-  format — the format's settings form over each of its files' sectioned,
+  selections keep applying); `use-server-diff.ts` pre-classifies every
+  previewed resource against the server (`new` / `unchanged` / `changed`) for
+  the row badges and the "already there, so pre-excluded" seed — the screen
+  blocks the first paint on it (`firstLoad`) but **not** on the
+  re-classification a settings change triggers, since unmounting the panel
+  mid-review would drop the focus of whatever settings control the reviewer is
+  using; `preview-panel.tsx` renders the batch grouped by
+  format — the format's settings form (dispatched `Match.exhaustive` on the
+  format tag, so registering a format without a branch fails to compile rather
+  than silently binding its group to a sibling's picker) over each of its
+  files' sectioned,
   per-resource reviews (include checkbox, one-line `describeResource`
   summary, Edit/Revert with the `ResourceEditor` dialog, per-type tallies,
   and the file's notes folded into a collapsed details block) — under one
   shared confirm, gated on the batch having at least one **included**
   resource; `use-confirm-import.ts` is the opt-in write action, per file,
-  best-effort — one `persistBatchBundle` of each file's `Review.chosenResources`
+  best-effort — one `persistBatchBundle` of each file's `StagedImport.chosenResources`
   (its source file among them, when the reviewer kept it), each
   extracted resource stamped with the source file's reference and the source file's own
   id locked so an edit can't drift the link; a skipped source file leaves the
@@ -152,7 +161,7 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **The read half writes nothing, and the split is the whole product.** Reaching
   a review issues no writes — `decode` requires no services and is run for its
   data only, and the confirm writes exactly the reviewed objects
-  (`Review.chosenResources` over the file's decoded sections) with no
+  (`StagedImport.chosenResources` over the file's decoded sections) with no
   re-parse. A test pins this on the wire (zero writes to reach a review); do
   not add a write to the read path (e.g. an "auto-upload on pick") that would
   collapse the opt-in seam. A settings change re-runs `decode` — still the
@@ -166,7 +175,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   controlled — the screen passes `selectionFor` in and receives every change
   via `onSelectionChange`, holding the canonical `Map<fileId, Selection>` so
   it can hand the confirm the exact selection each file was reviewed with
-  (`Review.chosenResources` over the file's own decoded sections). Same for
+  (`StagedImport.chosenResources` over the file's own decoded sections). Same for
   settings: the panel renders `settings` and reports `onSettingsChange`;
   `useImportRun` owns the record and the re-decode. Don't move either down
   into the panel, or the shell and the view can disagree.
@@ -200,7 +209,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   bundle. The failed source file row makes this visible rather than silent.
 - **The confirm affordance is gated on the batch having an included resource to
   write.** `PreviewPanel` shows the single confirm button only when
-  `Review.includedCount` summed across the read files is positive; unreadable
+  `StagedImport.includedCount` summed across the read files is positive; unreadable
   files and read files whose decode yielded nothing render their own section
   but add nothing to write. `useConfirmImport` re-checks each file (skipping
   the ones with nothing included) — the gate is the affordance, the per-file
@@ -331,7 +340,7 @@ TextEncoder().encode(text)`).
   guardrails, and the per-URL pick-review-confirm pipeline this package's flow
   drives.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
-  `FileImporterDescriptor` contract and the `Review` model this shell drives.
+  `FileImporterDescriptor` contract and the `StagedImport` model this shell drives.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR
   descriptor (`decode`, `sources`, `persist`) the registry lists.
 - [har-importer-react AGENTS.md](../har-importer-react/AGENTS.md) — the

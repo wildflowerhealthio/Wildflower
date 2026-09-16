@@ -9,8 +9,8 @@
 //! operation — its handler reaches the store only through a `Scoped<…>`
 //! capability (see [`crate::domain::capabilities`]), gated by
 //! `wildflower/Accounts.<perm>` and answering a `403 InsufficientScope` when the
-//! caller's token doesn't cover it. The host still wraps the built router with
-//! its bearer gate (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`),
+//! caller's token doesn't cover it. The host still layers the built router with
+//! its bearer gate (`gatekeeper_rust::gatekeeper_auth_middleware`),
 //! which inserts the `ScopeClaims` those capabilities read, mirroring the tunnel
 //! and databases surfaces.
 

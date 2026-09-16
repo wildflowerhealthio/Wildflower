@@ -17,8 +17,12 @@
 --
 --   * `"/"` — the app-relative entry. It resolves only through the self-hosted
 --     resolver, so on a production install (where the app is a *cloud* row) it
---     matches nothing. It is kept for the debug-only `ohif-viewer-dev`
---     self-hosted row's sibling client and for a `down`-migrated install.
+--     matches nothing. It is kept for a `down`-migrated install and for symmetry
+--     with the other first-party app clients, whose debug-only `-dev` siblings
+--     are self-hosted rows that do resolve it. (The `ohif-viewer-dev` sibling is
+--     not one of those: its app row is a cloud row on the preview origin, so it
+--     leans on its own absolute loopback redirect instead — see
+--     `seeding.rs`'s `seed_dev_app_clients`.)
 --   * the absolute Pages URL — `https://wildflowerhealth.io/ohif-viewer/`. A
 --     cloud app's redirect can only be absolute: the app-relative form needs a
 --     self-hosted row to resolve against. OHIF's FHIR data source computes its
@@ -26,6 +30,13 @@
 --     launched on, and the launch targets the viewer's root, so the value it
 --     sends is exactly this published directory URL (trailing slash included) —
 --     matched here by exact URL equality.
+--
+-- SUPERSEDED IN PART by `0010_ohif_viewer_client_fhir_viewer_redirect`, which
+-- repoints that absolute entry at the FHIR Viewer mode route
+-- (`https://wildflowerhealth.io/ohif-viewer/fhir-viewer`) once the launch moved
+-- there. The seed below is left exactly as it shipped — a migration is run-once
+-- and never re-applied, so editing this file would change nothing for an
+-- install that already ran it.
 --
 -- `allowed_scopes` is exactly what the viewer requests — the `smartScope` the
 -- data-source configuration in `apps/ohif-viewer/config/app-config.js` sets,

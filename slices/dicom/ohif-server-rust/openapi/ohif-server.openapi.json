@@ -1,0 +1,98 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OHIF Server API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/api/dicom/files/{id}": {
+      "get": {
+        "tags": [
+          "DICOM Files"
+        ],
+        "operationId": "handle_get_dicom_file",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "DocumentReference id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw DICOM file bytes",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "403": {
+            "description": "Missing/invalid bearer token or insufficient scopes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DicomFileForbiddenBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No DocumentReference with this id or no attachment data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DicomFileNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DicomFileForbiddenBody": {
+        "type": "object",
+        "required": [
+          "error",
+          "id",
+          "detail"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "DicomFileNotFoundBody": {
+        "type": "object",
+        "required": [
+          "error",
+          "id",
+          "detail"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  }
+}

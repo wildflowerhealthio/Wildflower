@@ -12,10 +12,11 @@
 -- `wildflowerhealthio/ohif-viewer-dist` (see `apps/ohif-viewer/README.md`).
 -- Serving the deployed copy means the viewer updates when the site deploys, not
 -- when the user installs a new desktop build. Unlike the other first-party apps
--- nothing is vendored under `slices/apps/self-hosted-apps/` for it: the
--- debug-only `ohif-viewer-dev` row (`apps-rust/src/dev_seed.rs`) is served by
--- `vp run -F ohif-viewer dev` (a preview of the downloaded build) and has no
--- fallback content.
+-- nothing is vendored under `slices/apps/self-hosted-apps/` for it. Which is why
+-- the debug-only `ohif-viewer-dev` row (`apps-rust/src/dev_seed.rs`) is a cloud
+-- row too, unlike every other `-dev` row: with no fallback content a self-hosted
+-- row's host listener could only contend with `vp run -F ohif-viewer dev` (a
+-- preview of the downloaded build) for the port.
 --
 -- The id and the OAuth `client_id` are both the published path segment,
 -- `ohif-viewer`, matching the convention 0005 established. The two MUST stay
@@ -32,6 +33,12 @@
 -- viewer's root (its worklist) — the one route that is a real `index.html`. The
 -- OAuth redirect lands back on that same root. `iss` is `{origin}/fhir-r4`, the
 -- same FHIR base every other cloud row hands its app.
+--
+-- SUPERSEDED IN PART by `0008_ohif_viewer_fhir_viewer_launch`, which repoints
+-- the launch template at the FHIR Viewer mode route (`/fhir-viewer`) and adds
+-- the `clientId` parameter. The seed below is left exactly as it shipped — a
+-- migration is run-once and never re-applied, so editing this file would change
+-- nothing for an install that already ran it.
 --
 -- `local_only = 0` (its assets are fetched from wildflowerhealth.io) and
 -- `requires_tunnel = 1`, as for every cloud app: the HTTPS Pages document's

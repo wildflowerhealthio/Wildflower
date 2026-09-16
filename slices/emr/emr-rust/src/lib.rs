@@ -7,6 +7,7 @@
 
 mod auth;
 mod config;
+mod delegate;
 mod openapi;
 mod patient_everything;
 mod smart_configuration;
@@ -29,6 +30,13 @@ pub use crate::openapi::openapi_spec;
 
 const FHIR_R4_PATH: &str = "/fhir-r4";
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
+
+/// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router and the bare HFS
+/// router for in-process delegation by other slices.
+pub struct FhirR4Routers {
+    pub augmented_fhir_r4_router: Router,
+    pub raw_hfs_router: Router,
+}
 
 /// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
 /// [`setup_fhir_r4`]'s router must let through without a bearer token: the FHIR
@@ -77,7 +85,7 @@ pub fn setup_fhir_r4(
     runtime: &ServerRuntimeConfig,
     config: &EmrConfig,
     revocation_store: RevocationStore,
-) -> anyhow::Result<Router> {
+) -> anyhow::Result<FhirR4Routers> {
     // Point HFS's backend at the on-disk FHIR R4 SearchParameter asset directory
     // the host provides (a bundled resource — never embedded in the binary), so
     // HFS registers every standard R4 search parameter and indexes it at write
@@ -129,6 +137,8 @@ pub fn setup_fhir_r4(
             .to_string(),
         log_level: config.log_level.clone(),
         max_body_size: MAX_FHIR_BODY_BYTES,
+        cors_origins: "*".to_string(),
+        cors_headers: "*".to_string(),
         ..ServerConfig::default()
     };
 
@@ -146,8 +156,7 @@ pub fn setup_fhir_r4(
 
     // Specific routes win over fallback: our SMART App Launch discovery doc and
     // the `$everything` operation intercept their paths; everything else under
-    // /fhir-r4 falls through to HFS. Each override sub-router carries its own
-    // state, so they're merged after `.with_state` erases the state type.
+    // /fhir-r4 falls through to HFS.
     let smart_config_route = Router::new()
         .route(
             "/.well-known/smart-configuration",
@@ -167,6 +176,7 @@ pub fn setup_fhir_r4(
             loopback_base_url,
         });
 
+    let hfs_router_for_delegation = hfs_router.clone();
     let fhir_with_override = smart_config_route
         .merge(patient_everything_route)
         .fallback_service(hfs_router)
@@ -181,7 +191,10 @@ pub fn setup_fhir_r4(
     // fallback (a 200 HTML page for any method). `nest_service` claims the whole
     // `/fhir-r4` subtree — bare root and trailing slash included — for the inner
     // router, so the base reaches HFS. Covered by `tests/batch_bundle_at_base.rs`.
-    Ok(Router::new().nest_service(FHIR_R4_PATH, fhir_with_override))
+    Ok(FhirR4Routers {
+        augmented_fhir_r4_router: Router::new().nest_service(FHIR_R4_PATH, fhir_with_override),
+        raw_hfs_router: hfs_router_for_delegation,
+    })
 }
 
 /// Filename HFS's `SearchParameterLoader` expects for the R4 spec bundle inside

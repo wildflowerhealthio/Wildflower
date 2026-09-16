@@ -44,8 +44,8 @@
 //!    [`purge_pending_deletions`] at startup (before opening any connection) to
 //!    remove it. The settings UI tells the Owner to restart to finish.
 //!
-//! The router carries no middleware of its own. The host wraps it with the
-//! gatekeeper bearer gate (`gatekeeper_rust::layer_router_with_gatekeeper_auth_gating`)
+//! The router carries no middleware of its own. The host layers it with the
+//! gatekeeper bearer gate (`gatekeeper_rust::gatekeeper_auth_middleware`)
 //! for authN; authZ is per-database: download/delete require the descriptor's
 //! declared `read_scope`/`delete_scope` (see [`domain::capabilities`]), while the
 //! metadata list is authenticated-only.
