@@ -8,9 +8,9 @@ import { parseDicomFile } from 'dicom'
  * Parses the DICOM tags via the `dicom` file-formats package, synthesizes
  * Patient / ServiceRequest / ImagingStudy via `to-fhir.ts`, and adopts them
  * under `DICOM_SYSTEM`. A `dicom-parser` failure is a `ParseError`, not a
- * throw. One section per file, titled `<Modality> <StudyDescription> ·
- * <StudyDate>`, with stable keys `patient`, `service-request`,
- * `imaging-study`.
+ * throw. One section per file, titled
+ * `<Modality> <StudyDescription> · <StudyDate>`, with stable keys
+ * `patient`, `service-request`, `imaging-study`.
  *
  * @packageDocumentation
  */
@@ -62,8 +62,9 @@ const labelAdopted = (
 }
 
 /**
- * Build the section title from the header: `<Modality> <StudyDescription> ·
- * <StudyDate>`, falling back to `DICOM study` when nothing is available.
+ * Build the section title from the header:
+ * `<Modality> <StudyDescription> ·<StudyDate>`, falling back to
+ * `DICOM study` when nothing is available.
  */
 const sectionTitle = (header: DicomHeader): string => {
   const parts: string[] = []

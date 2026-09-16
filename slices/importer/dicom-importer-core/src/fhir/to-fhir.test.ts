@@ -113,17 +113,15 @@ describe('toFhirResources', () => {
     expect(instance.extension).toEqual([])
   })
 
-  it('maps gender correctly', async () => {
-    for (const [sex, expected] of [
-      ['M', 'male'],
-      ['F', 'female'],
-      ['O', 'other'],
-    ] as const) {
-      const resources = await Effect.runPromise(toFhirResources(minimalHeader({ patientSex: sex })))
-      const patient = resources.find((r) => r.resourceType === 'Patient')
-      if (patient?.resourceType === 'Patient') {
-        expect(patient.gender).toBe(expected)
-      }
+  it.each([
+    ['M', 'male'],
+    ['F', 'female'],
+    ['O', 'other'],
+  ] as const)('maps gender correctly for %s', async (sex, expected) => {
+    const resources = await Effect.runPromise(toFhirResources(minimalHeader({ patientSex: sex })))
+    const patient = resources.find((r) => r.resourceType === 'Patient')
+    if (patient?.resourceType === 'Patient') {
+      expect(patient.gender).toBe(expected)
     }
   })
 

@@ -86,6 +86,24 @@ interface SourceFileEncoded {
   readonly bytes: string
 }
 
+/**
+ * The arguments {@link SourceFileCodec.toWire} takes: one source file, the
+ * digest of its bytes, and the `subject` to link it to.
+ *
+ * @remarks
+ * `subject` is required-but-nullable rather than optional so every call site
+ * states, in the literal it passes, whether the resource gets a subject —
+ * leaving it off is a decision (see this module's docs on why a source file
+ * carries no subject by default), not a default to fall into silently.
+ */
+interface SourceFileWireParams {
+  readonly sourceFile: SourceFile
+  /** The bytes' SHA-256, precomputed — `toWire` stamps it on the attachment rather than hashing again. */
+  readonly hash: string
+  /** The `subject` reference, or `undefined` to leave the resource without one. */
+  readonly subject: { readonly reference: string } | undefined
+}
+
 /** The codec {@link sourceFileCodec} returns for one format. */
 interface SourceFileCodec {
   /** The decoded-side schema: `{ id, fileName, uploadedAt, bytes }`. */
@@ -105,11 +123,7 @@ interface SourceFileCodec {
     resource: DocumentReferenceType
   ) => Effect.Effect<SourceFile, ParseResult.ParseError>
   /** The pure wire builder — a source file plus its precomputed hash to a `DocumentReference` object. */
-  readonly toWire: (
-    sourceFile: SourceFile,
-    hash: string,
-    subject?: { readonly reference: string }
-  ) => FhirR4.DocumentReference
+  readonly toWire: (wire: SourceFileWireParams) => FhirR4.DocumentReference
   /** Whether a decoded `DocumentReference` is a source file of this format, by `category`. */
   readonly isSourceFile: (resource: DocumentReferenceType) => boolean
   /** The `system|code` `category` search token every server-side read filters on. */
@@ -160,11 +174,11 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
   const encodeResource = ParseResult.encode(DocumentReference.Schema)
   const decodeSourceFile = ParseResult.decodeUnknown(SourceFileSchema)
 
-  const toWire = (
-    sourceFile: SourceFile,
-    hash: string,
-    subject?: { readonly reference: string }
-  ): FhirR4.DocumentReference => {
+  const toWire = ({
+    sourceFile,
+    hash,
+    subject,
+  }: SourceFileWireParams): FhirR4.DocumentReference => {
     const uploadedAt = DateTime.formatIso(sourceFile.uploadedAt)
     return {
       resourceType: 'DocumentReference',
@@ -238,7 +252,9 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
         encode: (sourceFile, _options, ast) =>
           sha256Base64(new Uint8Array(sourceFile.bytes)).pipe(
             Effect.mapError((error) => new ParseResult.Type(ast, sourceFile, error.reason)),
-            Effect.flatMap((hash) => decodeResource(toWire(sourceFile, hash)))
+            Effect.flatMap((hash) =>
+              decodeResource(toWire({ sourceFile, hash, subject: undefined }))
+            )
           ),
       }
     ).annotations({
@@ -290,7 +306,11 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
       // `ParseIssue`; lift it to a `ParseError` so this seam matches the
       // descriptor's one error channel.
       return yield* decodeResource(
-        toWire({ id, fileName: picked.fileName, uploadedAt, bytes }, hash, options?.subject)
+        toWire({
+          sourceFile: { id, fileName: picked.fileName, uploadedAt, bytes },
+          hash,
+          subject: options?.subject,
+        })
       ).pipe(Effect.mapError(ParseResult.parseError))
     })
 
@@ -308,4 +328,10 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
   }
 }
 
-export { type SourceFile, type SourceFileCodec, type SourceFileConfig, sourceFileCodec }
+export {
+  type SourceFile,
+  type SourceFileCodec,
+  type SourceFileConfig,
+  type SourceFileWireParams,
+  sourceFileCodec,
+}

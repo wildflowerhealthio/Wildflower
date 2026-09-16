@@ -15,7 +15,6 @@ import type { DicomHeader, PersonName } from 'dicom'
  */
 import { Effect, type ParseResult, Schema } from 'effect'
 import { joinIdComponents } from 'fhir-r4/identity'
-import type { FhirResource } from 'fhir-r4/resources'
 import { ImagingStudy, Patient, ServiceRequest } from 'fhir-r4/resources'
 import { fnv1a64 } from 'kitchen-sink'
 
@@ -242,6 +241,10 @@ const decodePatient = Schema.decodeUnknown(Patient.Schema)
 const decodeServiceRequest = Schema.decodeUnknown(ServiceRequest.Schema)
 const decodeImagingStudy = Schema.decodeUnknown(ImagingStudy.Schema)
 
+type DicomFhirResources =
+  | typeof Patient.Schema.Type
+  | typeof ServiceRequest.Schema.Type
+  | typeof ImagingStudy.Schema.Type
 /**
  * Synthesize FHIR resources from a parsed DICOM header.
  *
@@ -257,9 +260,9 @@ const decodeImagingStudy = Schema.decodeUnknown(ImagingStudy.Schema)
 const toFhirResources = (
   header: DicomHeader,
   sourceFileId?: string
-): Effect.Effect<readonly FhirResource[], ParseResult.ParseError> =>
+): Effect.Effect<readonly DicomFhirResources[], ParseResult.ParseError> =>
   Effect.gen(function* () {
-    const resources: FhirResource[] = []
+    const resources: DicomFhirResources[] = []
     const patientId = patientOriginalId(header)
     if (patientId === undefined) return resources
 
