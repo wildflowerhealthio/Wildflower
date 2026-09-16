@@ -1,7 +1,29 @@
+import { Effect, ParseResult } from 'effect'
+import * as fc from 'fast-check'
+import type { FhirResource } from 'fhir-r4/resources'
+import {
+  type DecodedUnit,
+  type DecodeOutcome,
+  type FileImporterDescriptor,
+  LOCAL_SOURCE,
+  perFileDecode,
+  type PickedFile,
+  sectionResources,
+  serverSource,
+  SOURCE_SECTION_TITLE,
+  sourceFileKey,
+  sourceFileReference,
+} from 'importer-fundamentals'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { decodeLifeLabsPdfDocument } from './decode.ts'
 import { lifeLabsPdfImporterDescriptor } from './descriptor.ts'
-import { defaultLifeLabsPdfSettings } from './settings.ts'
+import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
+import type * as Report from './entities/report.ts'
+import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
+import { lifeLabsPdfSourceFileCodec } from './source-file/index.ts'
+import { layoutDocument } from './test-helpers.ts'
 
 describe('lifeLabsPdfImporterDescriptor', () => {
   it('has the lifelabs-pdf format tag', () => {
@@ -24,5 +46,122 @@ describe('lifeLabsPdfImporterDescriptor', () => {
   it('defaultSettings has a timeZone', () => {
     expect(lifeLabsPdfImporterDescriptor.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
     expect(lifeLabsPdfImporterDescriptor.defaultSettings.timeZone).toBe('America/Toronto')
+  })
+})
+
+/**
+ * The decode the descriptor exposes is {@link decodeLifeLabsPdfDocument}
+ * lifted through `perFileDecode`. The pdfjs extraction seam in between is
+ * untested-by-design (no PDF writer in this package, and the anonymizer's
+ * descriptor makes the same call), so the source-file behaviour `perFileDecode`
+ * adds is driven over the same lift with the extraction replaced by
+ * `layoutDocument`'s printed inverse — everything below the seam is the real
+ * decode. The descriptor's own `decode` covers the failure side, where the
+ * bytes never reach a report.
+ */
+
+const SETTINGS = { timeZone: 'America/Vancouver' }
+
+/** The lift the descriptor uses, with the printed document standing in for the PDF. */
+const decodeReports = (
+  reports: readonly Report.Type[]
+): FileImporterDescriptor<LifeLabsPdfSettings, FhirResource>['decode'] =>
+  perFileDecode<LifeLabsPdfSettings, FhirResource>(lifeLabsPdfSourceFileCodec, (_file, settings) =>
+    decodeLifeLabsPdfDocument(layoutDocument(reports), settings)
+  )
+
+/** The one `read` unit a single-file decode yields, or a failure naming what came back. */
+const readUnit = <TParsed>(
+  outcomes: readonly DecodeOutcome<TParsed>[]
+): DecodedUnit<TParsed>['decoded'] => {
+  expect(outcomes).toHaveLength(1)
+  const [outcome] = outcomes
+  if (outcome === undefined || outcome._tag !== 'read') {
+    throw new Error(`expected one read unit, got ${JSON.stringify(outcomes.map((o) => o._tag))}`)
+  }
+  return outcome.decoded
+}
+
+describe('lifeLabsPdfImporterDescriptor decode', () => {
+  it('property: a local pick is reviewed with its minted source file, and every resource points at it', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
+        async (reports) => {
+          const file: PickedFile = {
+            fileName: 'Reports.pdf',
+            bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
+            source: LOCAL_SOURCE,
+          }
+
+          const decoded = readUnit(
+            await Effect.runPromise(decodeReports(reports)([file], SETTINGS))
+          )
+
+          const [sourceSection, ...reportSections] = decoded.sections
+          expect(sourceSection?.title).toBe(SOURCE_SECTION_TITLE)
+          const sourceRow = sourceSection?.resources[0]
+          expect(sourceSection?.resources).toHaveLength(1)
+          expect(sourceRow?.key).toBe(sourceFileKey(file.fileName))
+          expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
+          const sourceId = sourceRow?.resource.id
+          expect(sourceId).toEqual(expect.any(String))
+          for (const item of sectionResources(reportSections)) {
+            expect(item.resource.meta?.source).toBe(`DocumentReference/${String(sourceId)}`)
+          }
+        }
+      ),
+      { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it('property: a server pick mints no source file and points its resources at the one it came with', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
+        async (reports) => {
+          const file: PickedFile = {
+            fileName: 'Reports.pdf',
+            bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
+            source: serverSource('wf-already-uploaded'),
+          }
+
+          const decoded = readUnit(
+            await Effect.runPromise(decodeReports(reports)([file], SETTINGS))
+          )
+
+          expect(decoded.sections.map((section) => section.title)).not.toContain(
+            SOURCE_SECTION_TITLE
+          )
+          const labeled = sectionResources(decoded.sections)
+          expect(labeled.length).toBeGreaterThan(0)
+          for (const item of labeled) {
+            expect(item.resource.meta?.source).toBe(sourceFileReference('wf-already-uploaded'))
+          }
+        }
+      ),
+      { numRuns: numRunsFor({ base: 10 }) }
+    )
+  })
+
+  it('yields one unreadable unit for bytes that are not a PDF', async () => {
+    const file: PickedFile = {
+      fileName: 'not-a-report.pdf',
+      bytes: new TextEncoder().encode('this is not a PDF at all'),
+      source: LOCAL_SOURCE,
+    }
+
+    const outcomes = await Effect.runPromise(
+      lifeLabsPdfImporterDescriptor.decode([file], defaultLifeLabsPdfSettings)
+    )
+
+    expect(outcomes).toHaveLength(1)
+    const [outcome] = outcomes
+    expect(outcome?._tag).toBe('unreadable')
+    expect(outcome?.title).toBe(file.fileName)
+    expect(outcome?.files).toEqual([file])
+    if (outcome?._tag === 'unreadable') {
+      expect(ParseResult.isParseError(outcome.error)).toBe(true)
+    }
   })
 })

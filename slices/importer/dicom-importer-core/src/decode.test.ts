@@ -1,10 +1,10 @@
 import { writeDicom } from 'dicom/test-helpers'
 import { Effect, Either } from 'effect'
+import { LOCAL_SOURCE, type PickedFile, type SourceFileRef } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeDicom } from './decode.ts'
 import { type DicomSettings } from './settings.ts'
-import { buildSourceFile } from './source-file/index.ts'
 
 /**
  * A fixed zone rather than the default, whose `timeZone` is the runtime's own:
@@ -12,6 +12,19 @@ import { buildSourceFile } from './source-file/index.ts'
  * against or it passes only on the machine that wrote it.
  */
 const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
+
+/** A local pick of the given bytes — what the picker hands every decode. */
+const pick = (bytes: Uint8Array): PickedFile => ({
+  fileName: 'sample.dcm',
+  bytes,
+  source: LOCAL_SOURCE,
+})
+
+/**
+ * The source file `perFileDecode` resolves before calling the decode; the
+ * decode reads its `id` and recomputes nothing, so a stand-in id is enough.
+ */
+const source: SourceFileRef = { id: 'doc-1', reference: 'DocumentReference/doc-1' }
 
 const sampleDicomBytes = (): Uint8Array =>
   writeDicom({
@@ -30,7 +43,7 @@ const sampleDicomBytes = (): Uint8Array =>
 describe('decodeDicom', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
     const result = await Effect.runPromise(
-      decodeDicom(sampleDicomBytes(), 'sample.dcm', defaultDicomSettings)
+      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
     )
     const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
     expect(study?.resourceType).toBe('ImagingStudy')
@@ -42,7 +55,7 @@ describe('decodeDicom', () => {
   it('reads the same file as a different instant under a different zone', async () => {
     const startedIn = async (timeZone: string): Promise<string | null | undefined> => {
       const result = await Effect.runPromise(
-        decodeDicom(sampleDicomBytes(), 'sample.dcm', { timeZone })
+        decodeDicom(pick(sampleDicomBytes()), { timeZone }, source)
       )
       const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
       return study?.resourceType === 'ImagingStudy' ? study.started : undefined
@@ -52,37 +65,37 @@ describe('decodeDicom', () => {
 
   it('fails rather than guessing when the settings time zone is not a zone', async () => {
     const result = await Effect.runPromise(
-      Effect.either(decodeDicom(sampleDicomBytes(), 'sample.dcm', { timeZone: 'Mars/Olympus' }))
+      Effect.either(decodeDicom(pick(sampleDicomBytes()), { timeZone: 'Mars/Olympus' }, source))
     )
     expect(Either.isLeft(result)).toBe(true)
   })
 
   it('yields one section with Patient, ServiceRequest, ImagingStudy', async () => {
     const result = await Effect.runPromise(
-      decodeDicom(sampleDicomBytes(), 'sample.dcm', defaultDicomSettings)
+      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
     )
     expect(result.sections).toHaveLength(1)
     const keys = result.sections[0].resources.map((r) => r.key)
     expect(keys).toEqual(['patient', 'service-request', 'imaging-study'])
   })
 
-  it('ImagingStudy instance carries the gridfsFileId extension matching the source file id', async () => {
-    const bytes = sampleDicomBytes()
-    const result = await Effect.runPromise(decodeDicom(bytes, 'sample.dcm', defaultDicomSettings))
-    const sourceFile = await Effect.runPromise(buildSourceFile({ fileName: 'sample.dcm', bytes }))
+  it('ImagingStudy instance carries the resolved source file id as its gridfsFileId', async () => {
+    const result = await Effect.runPromise(
+      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
+    )
 
     const studyEntry = result.sections[0].resources.find((r) => r.key === 'imaging-study')
     const study = studyEntry?.resource
     if (study?.resourceType !== 'ImagingStudy') throw new Error('expected ImagingStudy')
     const instance = study.series[0].instance[0]
     expect(instance.extension).toEqual([
-      expect.objectContaining({ url: 'gridfsFileId', valueString: sourceFile.id }),
+      expect.objectContaining({ url: 'gridfsFileId', valueString: 'doc-1' }),
     ])
   })
 
   it('section title includes modality, description, and date', async () => {
     const result = await Effect.runPromise(
-      decodeDicom(sampleDicomBytes(), 'sample.dcm', defaultDicomSettings)
+      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
     )
     expect(result.sections[0].title).toBe('CT Chest CT · 2024-03-15')
   })
@@ -96,7 +109,7 @@ describe('decodeDicom', () => {
       PatientID: 'P001',
       Modality: 'CT',
     })
-    const result = await Effect.runPromise(decodeDicom(bytes, 'sample.dcm', defaultDicomSettings))
+    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
     expect(result.notes.some((n) => n.includes('AccessionNumber'))).toBe(true)
     const keys = result.sections[0].resources.map((r) => r.key)
     expect(keys).not.toContain('service-request')
@@ -109,7 +122,7 @@ describe('decodeDicom', () => {
       SOPInstanceUID: '1.2.3.4.5.1.1',
       Modality: 'CT',
     })
-    const result = await Effect.runPromise(decodeDicom(bytes, 'sample.dcm', defaultDicomSettings))
+    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
     expect(result.sections).toEqual([])
     expect(result.notes.some((n) => n.includes('patient identity'))).toBe(true)
   })
@@ -126,7 +139,7 @@ describe('decodeDicom', () => {
       PatientName: { family: '', given: '', text: '^^^' },
       Modality: 'CT',
     })
-    const result = await Effect.runPromise(decodeDicom(bytes, 'sample.dcm', defaultDicomSettings))
+    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
     expect(result.sections).toEqual([])
     expect(result.notes.some((n) => n.includes('patient identity'))).toBe(true)
   })
@@ -134,7 +147,7 @@ describe('decodeDicom', () => {
   it('fails with ParseError on truncated bytes', async () => {
     const result = Effect.runSync(
       Effect.either(
-        decodeDicom(new Uint8Array([0x00, 0x01, 0x02]), 'sample.dcm', defaultDicomSettings)
+        decodeDicom(pick(new Uint8Array([0x00, 0x01, 0x02])), defaultDicomSettings, source)
       )
     )
     expect(result._tag).toBe('Left')
@@ -142,10 +155,10 @@ describe('decodeDicom', () => {
 
   it('resource keys are stable across the empty settings', async () => {
     const result1 = await Effect.runPromise(
-      decodeDicom(sampleDicomBytes(), 'sample.dcm', defaultDicomSettings)
+      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
     )
     const result2 = await Effect.runPromise(
-      decodeDicom(sampleDicomBytes(), 'sample.dcm', defaultDicomSettings)
+      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
     )
     const keys1 = result1.sections.flatMap((s) => s.resources.map((r) => r.key))
     const keys2 = result2.sections.flatMap((s) => s.resources.map((r) => r.key))
@@ -161,7 +174,7 @@ describe('sectionTitle', () => {
       SOPInstanceUID: '1.2.3.4.5.1.1',
       PatientID: 'P001',
     })
-    const result = await Effect.runPromise(decodeDicom(bytes, 'sample.dcm', defaultDicomSettings))
+    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
     expect(result.sections[0].title).toBe('DICOM study')
   })
 
@@ -174,7 +187,7 @@ describe('sectionTitle', () => {
       Modality: 'MR',
       StudyDate: '20240101',
     })
-    const result = await Effect.runPromise(decodeDicom(bytes, 'sample.dcm', defaultDicomSettings))
+    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
     expect(result.sections[0].title).toBe('MR · 2024-01-01')
   })
 })

@@ -30,7 +30,12 @@ const LIFELABS_PDF_SOURCE_FILE_CODE = 'lifelabs-pdf-archive'
 /** The attachment's media type — the actual PDF content type. */
 const LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE = 'application/pdf'
 
-const codec = sourceFileCodec({
+/**
+ * The LifeLabs binding of the shared source-file codec — the whole codec
+ * object, whose `buildSourceFile` the descriptor's `decode` mints this
+ * format's source file with (through `perFileDecode`).
+ */
+const lifeLabsPdfSourceFileCodec = sourceFileCodec({
   coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
   contentType: LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
   descriptionPrefix: 'LifeLabs report PDF: ',
@@ -45,16 +50,17 @@ const codec = sourceFileCodec({
  * FHIR's `system|code` form so a bare `lifelabs-pdf-archive` code in some other
  * system cannot match.
  */
-const LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN = codec.categoryToken
+const LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN = lifeLabsPdfSourceFileCodec.categoryToken
 
 /** Reads a decoded `DocumentReference` back as the LifeLabs PDF source file it carries. */
-const lifeLabsPdfSourceFileFromDocumentReference = codec.sourceFileFromDocumentReference
+const lifeLabsPdfSourceFileFromDocumentReference =
+  lifeLabsPdfSourceFileCodec.sourceFileFromDocumentReference
 
 /** Whether a decoded `DocumentReference` is an uploaded LifeLabs PDF source file, by `category`. */
-const isLifeLabsPdfSourceFile = codec.isSourceFile
+const isLifeLabsPdfSourceFile = lifeLabsPdfSourceFileCodec.isSourceFile
 
-/** Mints a picked PDF's source file `DocumentReference` — the descriptor's `buildSourceFile`. */
-const buildSourceFile = codec.buildSourceFile
+/** Mints a picked PDF's source file `DocumentReference` — what `perFileDecode` mints with. */
+const buildSourceFile = lifeLabsPdfSourceFileCodec.buildSourceFile
 
 export {
   buildSourceFile,
@@ -62,5 +68,6 @@ export {
   LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
+  lifeLabsPdfSourceFileCodec,
   lifeLabsPdfSourceFileFromDocumentReference,
 }

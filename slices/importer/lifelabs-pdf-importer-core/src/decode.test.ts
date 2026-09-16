@@ -12,7 +12,7 @@ import { layoutDocument } from './test-helpers.ts'
 /**
  * `decodeLifeLabsPdfDocument` is the pure "positioned-text document ↦
  * per-report sections of labeled FHIR resources" leg of the LifeLabs
- * importer's `decode`. The outer `decodeLifeLabsPdf(pdfBytes, ...)` wraps
+ * importer's `decode`. The outer `decodeLifeLabsPdf(file, ...)` wraps
  * this with pdfjs extraction; that seam is untested-by-design (see the
  * anonymizer's PDF descriptor), so the property tests here drive
  * `decodeLifeLabsPdfDocument` directly against `layoutDocument`'s printed

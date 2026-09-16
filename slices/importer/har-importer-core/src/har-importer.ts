@@ -18,9 +18,9 @@ import { preview, type PreviewedResponse } from './review.ts'
 import {
   HAR_SOURCE_FILE_CATEGORY_TOKEN,
   HAR_SOURCE_FILE_CONTENT_TYPE,
+  harSourceFileCodec,
   harSourceFileFromDocumentReference,
   isHarSourceFile,
-  buildSourceFile,
 } from './source-file/index.ts'
 
 /** One previewed response at the concrete FHIR binding. */
@@ -88,9 +88,13 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
  * `decode` runs the whole read half: the HAR parse, per-URL recognition
  * against the pool (filtered by the settings' kind toggles), and the parse of
  * every chosen response — folded into per-URL {@link LabeledSection}s plus a
- * note per response that yielded nothing. Resource keys are
- * `responseId:index`, independent of the kind toggles, so a settings change
- * re-decodes to the same keys for the resources that survive it.
+ * note per response that yielded nothing. It owns the source file too: through
+ * `perFileDecode` it mints a `local` pick's source-file `DocumentReference`,
+ * lists it as its own "Source file" section, and stamps every extracted
+ * resource's `meta.source` with it (a `server` pick mints nothing and stamps
+ * the reference it was picked by). Resource keys are `responseId:index`,
+ * independent of the kind toggles, so a settings change re-decodes to the same
+ * keys for the resources that survive it.
  */
 const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> = {
   format: 'har',
@@ -100,8 +104,8 @@ const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> =
   },
   detect: detectHar,
   defaultSettings: defaultHarSettings,
-  decode: perFileDecode((fileBytes, settings) =>
-    decodeHar(fileBytes, settings).pipe(
+  decode: perFileDecode(harSourceFileCodec, (file, settings) =>
+    decodeHar(file.bytes, settings).pipe(
       Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
       Effect.map((previews): DecodedFile<FhirResource> => ({
         sections: sectionsByUrl(previews),
@@ -109,7 +113,6 @@ const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> =
       }))
     )
   ),
-  buildSourceFile,
   sourceFileCategoryToken: HAR_SOURCE_FILE_CATEGORY_TOKEN,
   isSourceFile: isHarSourceFile,
   sourceFileFromDocumentReference: (resource) =>

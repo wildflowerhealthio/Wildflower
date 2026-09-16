@@ -15,40 +15,46 @@ shell's shared `persistBatchBundle`.
   subpath of this package until it was hoisted into the `file-formats` slice so
   the anonymizer could consume it without reaching into the importer. This
   binding consumes it from `decode-har.ts`.
-- `src/archive/` — **the FHIR encoding of an uploaded `.har` file** as a
+- `src/source-file/` — **the FHIR encoding of an uploaded `.har` file** as a
   `DocumentReference`. A thin config + re-export shim over
-  `importer-fundamentals`' shared **`sourceArchiveCodec`**: it passes HAR's
+  `importer-fundamentals`' shared **`sourceFileCodec`**: it passes HAR's
   coding, `application/json` content type, and the web-trace raw `securityLabel`
   in as data and re-exports only what the binding consumes —
-  `HAR_ARCHIVE_CATEGORY_TOKEN` (`codec.categoryToken`),
-  `harArchiveFromDocumentReference`, `isHarArchive`, and `sourceArchive`. (The
-  codec logic itself moved from `web-trace-core/codec/har-archive-codec.ts` here
-  in M1 of #578, then to the shared builder in fundamentals; the encode
-  direction, the wire builder, and the schema aliases are no longer re-exported
-  per format — the shared builder's own test covers that machinery.) A whole
-  archive lives as one attachment under the `har-archive` category, disjoint
-  from a trace on the same axis (`isHarArchive` / `isWebTrace` never both hold).
-  Exported as the `/archive` subpath. Re-exports `HAR_ARCHIVE_CODE` and
+  `HAR_SOURCE_FILE_CATEGORY_TOKEN` (`codec.categoryToken`),
+  `harSourceFileFromDocumentReference`, `isHarSourceFile`, `buildSourceFile`,
+  and `harSourceFileCodec` (the whole codec, which the descriptor's `decode`
+  hands to `perFileDecode`). The encode direction, the wire builder, and the
+  schema aliases are not re-exported per format — the shared builder's own test
+  covers that machinery. A whole source file lives as one attachment under the
+  `har-archive` category, disjoint from a trace on the same axis
+  (`isHarSourceFile` / `isWebTrace` never both hold). Exported as the
+  `/source-file` subpath. Re-exports `HAR_ARCHIVE_CODE` and
   `WEB_TRACE_CODE_SYSTEM` so a downstream reader can build the search token from
   one import.
-- **`sourceArchive`** — the descriptor's `sourceArchive`, now the shared
-  `sourceArchiveCodec.sourceArchive` re-exported through `src/archive/` (the
-  standalone `src/source-archive.ts` was folded into the builder). It derives a
-  deterministic id from the file's SHA-256 and name, mints the upload instant,
-  and encodes to a `DocumentReference` — **no PUT**. The shell shows it in the
-  review as a "Source file" section and writes it in the same
+- **The source file is minted inside `decode`.** `perFileDecode`
+  (`importer-fundamentals`) mints a `local` pick's source-file
+  `DocumentReference` through `harSourceFileCodec.buildSourceFile` — a
+  deterministic id from the file's SHA-256 and name, the upload instant
+  stamped, **no PUT** — prepends it as its own "Source file" section, and
+  stamps every extracted resource's `meta.source` with
+  `DocumentReference/<id>`. A `server` pick mints nothing, gets no "Source
+  file" section, and its resources carry the reference it was picked by. The
+  shell reviews the minted resource like any other and writes it in the same
   `persistBatchBundle` as the extracted resources; re-importing the same file
   upserts rather than duplicating.
 - `src/har-importer.ts` — **`harImporterDescriptor`**, the one value the shell's
-  registry lists. Binds `TParsed = FhirResource`. Its `decode` runs the whole read half:
+  registry lists. Binds `TParsed = FhirResource`. Its `decode` is
+  `perFileDecode` over the HAR pipeline and runs the whole read half:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
   settings' enabled kinds, folded into the `DecodedFile` the shell reviews —
   one `LabeledSection` per URL (first-seen order, only responses that parsed
   to at least one resource) plus one diagnostic note per response that
   yielded nothing (no kind matched, every matching kind disabled, parse
-  failure, body absent, duplicate). Resource keys are `responseId:index` —
-  independent of the kind toggles, so a settings change re-decodes to the
-  same keys for the resources that survive it.
+  failure, body absent, duplicate) — under the source-file section described
+  above. Never fails: a malformed archive comes back as that file's
+  `unreadable` unit, leaving the batch's other files reviewable. Resource keys
+  are `responseId:index` — independent of the kind toggles, so a settings
+  change re-decodes to the same keys for the resources that survive it.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses,
 enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
   top-specificity enabled candidate (`pickFor` — there are no per-response
@@ -99,7 +105,7 @@ through), `importer-fundamentals` (the contract), `http-extraction-fundamentals`
 (`Extraction.Input`), `fhir-r4-source` (the pre-adopted pool), `web-trace-core`
 (`sha256Base64` from `capture`, and the trace-side codec constants the archive
 codec still shares — transitional until #578 dissolves that slice), `fhir-r4`
-(resources + `persistResources`), and `effect`. Never imports `importer-react`,
+(resources), and `effect`. Never imports `importer-react`,
 `har-importer-react`, or `slices/collector`.
 
 ## Guardrails

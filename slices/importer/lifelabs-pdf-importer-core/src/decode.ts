@@ -1,7 +1,13 @@
 import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { DecodedFile, LabeledResource, LabeledSection } from 'importer-fundamentals'
+import type {
+  DecodedFile,
+  LabeledResource,
+  LabeledSection,
+  PickedFile,
+  SourceFileRef,
+} from 'importer-fundamentals'
 import type { Document } from 'positioned-text'
 import { extractPositionedText } from 'positioned-text-web'
 
@@ -121,12 +127,16 @@ const decodeLifeLabsPdfDocument = (
   })
 
 /**
- * Decode a LifeLabs report PDF's raw bytes into per-report sections of
- * adopted, labeled FHIR resources — the descriptor's `decode`.
+ * Decode one picked LifeLabs report PDF into per-report sections of adopted,
+ * labeled FHIR resources — the per-file decode the descriptor's `decode`
+ * lifts through `perFileDecode`.
  *
- * @param pdfBytes - The raw bytes of a LifeLabs "Reports" PDF, exactly as the
- *   picker read them from disk
+ * @param file - The picked file, whose `bytes` are a LifeLabs "Reports" PDF
+ *   exactly as the picker read them
  * @param settings - The import's settings (time zone for date interpretation)
+ * @param _source - The file's source-file reference, unused: this format's
+ *   resources carry no id derived from their source file, and `perFileDecode`
+ *   stamps `meta.source` itself
  * @returns One section of `LabeledResource`s per report, no notes; fails only
  *   with a `ParseError` when the bytes are not a PDF the extractor can open or
  *   the extracted text is not a recognized LifeLabs report; requires nothing
@@ -141,12 +151,12 @@ const decodeLifeLabsPdfDocument = (
  * JSON download.
  */
 const decodeLifeLabsPdf = (
-  pdfBytes: Uint8Array,
-  _fileName: string,
-  settings: LifeLabsPdfSettings
+  file: PickedFile,
+  settings: LifeLabsPdfSettings,
+  _source: SourceFileRef
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.tryPromise({
-    try: () => extractPositionedText(pdfBytes),
+    try: () => extractPositionedText(file.bytes),
     catch: extractionAsParseError,
   }).pipe(Effect.flatMap((document) => decodeLifeLabsPdfDocument(document, settings)))
 

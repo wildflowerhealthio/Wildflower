@@ -47,8 +47,7 @@
     "positioned-text-web": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
-    "vite-plus": "catalog:",
-    "web-trace-core": "workspace:*"
+    "vite-plus": "catalog:"
   },
   "peerDependencies": {
     "effect": "catalog:",
@@ -56,7 +55,6 @@
     "importer-fundamentals": "workspace:*",
     "kitchen-sink": "workspace:*",
     "positioned-text": "workspace:*",
-    "positioned-text-web": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "positioned-text-web": "workspace:*"
   }
 }

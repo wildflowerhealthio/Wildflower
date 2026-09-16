@@ -68,44 +68,51 @@ seam in the repo; the anonymizer's PDF descriptor calls the same function.
   systems the synthesis writes beside the report's own numbers. A leaf module
   so the descriptor, the response kind, and the FHIR synthesis import it
   without a cycle.
-- `src/decode.ts` — **`decodeLifeLabsPdf`** (the descriptor's `decode`) and
-  **`decodeLifeLabsPdfDocument`** (the pure "document ↦ sections" leg tests
-  drive directly). `decodeLifeLabsPdf(pdfBytes, settings)` calls
-  `positioned-text-web`'s `extractPositionedText` on the raw bytes and hands
-  the extracted `Document.Type` to `decodeLifeLabsPdfDocument`, which runs the
+- `src/decode.ts` — **`decodeLifeLabsPdf`** (the per-file decode the
+  descriptor's `decode` lifts) and **`decodeLifeLabsPdfDocument`** (the pure
+  "document ↦ sections" leg tests drive directly).
+  `decodeLifeLabsPdf(file, settings, source)` calls
+  `positioned-text-web`'s `extractPositionedText` on the picked file's bytes
+  and hands the extracted `Document.Type` to `decodeLifeLabsPdfDocument`,
+  which runs the
   dialect, the FHIR synthesis, and adoption, yielding a `DecodedFile`: one
   `LabeledSection` per report, titled by **`reportSectionTitle`** (the
   report's `Lab No` and date of service, `'LifeLabs report'` when both are
   masked), and no notes. Both extraction failure and an unrecognized
-  LifeLabs document surface as `ParseError` — the descriptor contract's one
-  error channel.
+  LifeLabs document surface as `ParseError` — the one error channel
+  `perFileDecode` folds into an `unreadable` unit. The `source` argument (the
+  file's source-file reference) is unused here: this format derives no id from
+  its source file, and `perFileDecode` does the `meta.source` stamping.
 - `src/detect.ts` — **`detectLifeLabsPdf`**, the descriptor's `detect`:
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition
   is `decode`.
-- `src/archive/` — **the FHIR encoding of an uploaded LifeLabs report PDF**
-  as a `DocumentReference`, exported as the `/archive` subpath. A thin config +
-  re-export shim over `importer-fundamentals`' shared **`sourceArchiveCodec`**:
-  it supplies the differences as data (PDF content type, LifeLabs coding under
-  `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no web-trace security label) and
-  re-exports only what the binding consumes (`isLifeLabsPdfArchive`,
-  `LIFELABS_PDF_ARCHIVE_CATEGORY_TOKEN`, `LIFELABS_PDF_ARCHIVE_CODE`,
-  `LIFELABS_PDF_ARCHIVE_CONTENT_TYPE`, `lifeLabsPdfArchiveFromDocumentReference`,
-  and `sourceArchive`). Nothing here parses the PDF; the bytes are carried,
-  hashed, and handed back exactly as they arrived. Every imported resource
-  stamps this archive's reference onto `meta.source` — the provenance link that
-  ties a `Patient`/`DiagnosticReport`/`Observation` back to the raw source PDF.
-- **`sourceArchive`** — the descriptor's `sourceArchive`, now the shared
-  `sourceArchiveCodec.sourceArchive` re-exported through `src/archive/` (the
-  standalone `src/source-archive.ts` was folded into the builder). It derives a
-  deterministic id from the file's SHA-256 and name, mints the upload instant,
-  and encodes to a `DocumentReference` — **no PUT**. The shell shows it in the
-  review as a "Source file" section and writes it in the same
-  `persistBatchBundle` as the synthesized resources. Same shape as HAR's.
+- `src/source-file/` — **the FHIR encoding of an uploaded LifeLabs report
+  PDF** as a `DocumentReference`, exported as the `/source-file` subpath. A
+  thin config + re-export shim over `importer-fundamentals`' shared
+  **`sourceFileCodec`**: it supplies the differences as data (PDF content
+  type, LifeLabs coding under `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no
+  web-trace security label) and re-exports what the binding consumes
+  (`lifeLabsPdfSourceFileCodec` — the whole codec, which is what the
+  descriptor hands `perFileDecode` — plus `buildSourceFile`,
+  `isLifeLabsPdfSourceFile`, `LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN`,
+  `LIFELABS_PDF_SOURCE_FILE_CODE`, `LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE`,
+  and `lifeLabsPdfSourceFileFromDocumentReference`). Nothing here parses the
+  PDF; the bytes are carried, hashed, and handed back exactly as they arrived.
+  `buildSourceFile` derives a deterministic id from the file's SHA-256 and
+  name, stamps the upload instant, and encodes to a `DocumentReference` —
+  **no PUT**; the shell writes it in the same `persistBatchBundle` as the
+  synthesized resources. Same shape as HAR's.
 - `src/descriptor.ts` — **`lifeLabsPdfImporterDescriptor`**, the concrete
-  `FileImporterDescriptor` for format `'lifelabs-pdf'`. `accept` is only the
-  PDF tokens (`.pdf`, `application/pdf`); what `decode` returns is what the
-  user reviews — this format has no routing decisions to interpose.
+  `FileImporterDescriptor` for format `'lifelabs-pdf'`. Its `decode` is
+  `perFileDecode(lifeLabsPdfSourceFileCodec, decodeLifeLabsPdf)`: one unit per
+  picked file, a `local` pick's source-file `DocumentReference` minted inside
+  the decode and reviewed as its own "Source file" section, every synthesized
+  resource's `meta.source` stamped with it (a `server` pick mints nothing and
+  stamps the reference it came with), and a file whose bytes yield no report
+  folded to an `unreadable` unit. What `decode` returns is what the user
+  reviews — this format has no routing decisions to interpose, and the write
+  is the shell's one `persistBatchBundle`, not a descriptor field.
 - `src/settings.ts` — **`LifeLabsPdfSettings`** `{ timeZone }`, default
   `America/Toronto`: the report prints local clock times with no zone, and
   FHIR's `dateTime`-with-time / `instant` need one. The zone is passed to
@@ -121,9 +128,9 @@ seam in the repo; the anonymizer's PDF descriptor calls the same function.
 Depends on `positioned-text` (the positioned-text schema — the neutral seam
 between extraction and the dialect), `positioned-text-web`
 (`extractPositionedText`, the shared pdfjs seam the anonymizer also drives),
-`fhir-r4` (resource schemas, `persistResources`, `joinIdComponents`,
-`adoptResource`), `importer-fundamentals` (`FileImporterDescriptor`,
-`LabeledResource`), `web-trace-core` (`withMetaSource`), `kitchen-sink`
+`fhir-r4` (resource schemas, `joinIdComponents`, `adoptResource`),
+`importer-fundamentals` (`FileImporterDescriptor`, `LabeledResource`,
+`PickedFile`, `perFileDecode`, `sourceFileCodec`), `kitchen-sink`
 (`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a
 test-only `devDependency`, reached only from the `*-arbitrary.ts` modules,

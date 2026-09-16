@@ -17,6 +17,7 @@ export {
   LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
+  lifeLabsPdfSourceFileCodec,
   lifeLabsPdfSourceFileFromDocumentReference,
 } from './lifelabs-pdf-source-file-codec.ts'
 export { LIFELABS_SYSTEM } from '../source-system.ts'

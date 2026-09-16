@@ -1,8 +1,15 @@
 /**
- * The concrete {@link FileImporterDescriptor} for the `dicom` format.
- * `buildSourceFile` derives a Patient reference from the DICOM header and
- * sets `subject` on the archive `DocumentReference` when `PatientID` is
- * present.
+ * The concrete {@link FileImporterDescriptor} for the `dicom` format: a
+ * picked `.dcm` file in, Patient / ServiceRequest / ImagingStudy out.
+ *
+ * @remarks
+ * `decode` is `perFileDecode` over {@link decodeDicom}, so the shared helper
+ * mints each local pick's source-file `DocumentReference`, lists it as its
+ * own "Source file" section, and hands its id to the decode — which is what
+ * the `ImagingStudy` instance names as its `gridfsFileId`. The one
+ * format-specific knob is {@link patientSubjectOf}: the minted source file
+ * links to the Patient the DICOM header identifies, so the raw file rides
+ * along in that patient's record.
  *
  * @packageDocumentation
  */
@@ -10,20 +17,42 @@ import { parseDicomFile } from 'dicom'
 import { Effect, Either } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import { perFileDecode, type FileImporterDescriptor } from 'importer-fundamentals'
+import { perFileDecode, type FileImporterDescriptor, type PickedFile } from 'importer-fundamentals'
 
 import { decodeDicom } from './decode.ts'
 import { detectDicom } from './detect.ts'
 import { patientOriginalId } from './fhir/to-fhir.ts'
 import { defaultDicomSettings, type DicomSettings } from './settings.ts'
 import {
-  buildSourceFile as buildSourceFileRaw,
   DICOM_SOURCE_FILE_CATEGORY_TOKEN,
   DICOM_SOURCE_FILE_CONTENT_TYPE,
+  dicomSourceFileCodec,
   dicomSourceFileFromDocumentReference,
   isDicomSourceFile,
 } from './source-file/index.ts'
 import { DICOM_SYSTEM } from './source-system.ts'
+
+/**
+ * The `subject` a picked DICOM file's minted source file links to: the
+ * Patient its header identifies, under the same deterministic id the decode's
+ * synthesized `Patient` carries.
+ *
+ * @param file - The picked `.dcm` file
+ * @returns The `Patient/<id>` reference, or `undefined` when the bytes are
+ *   not DICOM or the header carries no patient identity
+ *
+ * @remarks
+ * Unreadable bytes yield `undefined` rather than a failure: the decode
+ * reports the malformed file as an `unreadable` unit, and a missing subject
+ * on a source file nobody mints is not a second error to report.
+ */
+const patientSubjectOf = (file: PickedFile): { readonly reference: string } | undefined => {
+  const parseResult = parseDicomFile(file.bytes)
+  if (Either.isLeft(parseResult)) return undefined
+  const originalId = patientOriginalId(parseResult.right)
+  if (originalId === undefined) return undefined
+  return { reference: `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}` }
+}
 
 const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResource> = {
   format: 'dicom',
@@ -33,21 +62,7 @@ const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResourc
   },
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
-  decode: perFileDecode(decodeDicom),
-  buildSourceFile: (picked, options) => {
-    if (options?.subject !== undefined) return buildSourceFileRaw(picked, options)
-    const parseResult = parseDicomFile(picked.bytes)
-    let subject: { reference: string } | undefined
-    if (Either.isRight(parseResult)) {
-      const header = parseResult.right
-      const patId = patientOriginalId(header)
-      if (patId !== undefined) {
-        const localId = localResourceId(DICOM_SYSTEM, 'Patient', patId)
-        subject = { reference: `Patient/${localId}` }
-      }
-    }
-    return buildSourceFileRaw(picked, { subject })
-  },
+  decode: perFileDecode(dicomSourceFileCodec, decodeDicom, { subjectFor: patientSubjectOf }),
   sourceFileCategoryToken: DICOM_SOURCE_FILE_CATEGORY_TOKEN,
   isSourceFile: isDicomSourceFile,
   sourceFileFromDocumentReference: (resource) =>
@@ -57,4 +72,4 @@ const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResourc
   sourceFileContentType: DICOM_SOURCE_FILE_CONTENT_TYPE,
 }
 
-export { dicomImporterDescriptor }
+export { dicomImporterDescriptor, patientSubjectOf }

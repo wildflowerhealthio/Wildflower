@@ -22,7 +22,7 @@ const DICOM_SOURCE_FILE_CODE = 'dicom-source-file'
 
 const DICOM_SOURCE_FILE_CONTENT_TYPE = 'application/dicom'
 
-const codec = sourceFileCodec({
+const dicomSourceFileCodec = sourceFileCodec({
   coding: { system: DICOM_SYSTEM, code: DICOM_SOURCE_FILE_CODE },
   contentType: DICOM_SOURCE_FILE_CONTENT_TYPE,
   descriptionPrefix: 'DICOM file: ',
@@ -32,19 +32,20 @@ const codec = sourceFileCodec({
     'FHIR resource id of an uploaded DICOM source file; deterministic in the file hash and name.',
 })
 
-const DICOM_SOURCE_FILE_CATEGORY_TOKEN = codec.categoryToken
+const DICOM_SOURCE_FILE_CATEGORY_TOKEN = dicomSourceFileCodec.categoryToken
 
-const dicomSourceFileFromDocumentReference = codec.sourceFileFromDocumentReference
+const dicomSourceFileFromDocumentReference = dicomSourceFileCodec.sourceFileFromDocumentReference
 
-const isDicomSourceFile = codec.isSourceFile
+const isDicomSourceFile = dicomSourceFileCodec.isSourceFile
 
-const buildSourceFile = codec.buildSourceFile
+const buildSourceFile = dicomSourceFileCodec.buildSourceFile
 
 export {
   buildSourceFile,
   DICOM_SOURCE_FILE_CATEGORY_TOKEN,
   DICOM_SOURCE_FILE_CODE,
   DICOM_SOURCE_FILE_CONTENT_TYPE,
+  dicomSourceFileCodec,
   dicomSourceFileFromDocumentReference,
   isDicomSourceFile,
 }

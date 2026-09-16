@@ -15,6 +15,7 @@ export {
   DICOM_SOURCE_FILE_CATEGORY_TOKEN,
   DICOM_SOURCE_FILE_CODE,
   DICOM_SOURCE_FILE_CONTENT_TYPE,
+  dicomSourceFileCodec,
   dicomSourceFileFromDocumentReference,
   isDicomSourceFile,
 } from './dicom-source-file-codec.ts'

@@ -1,13 +1,13 @@
 /**
  * The LifeLabs PDF binding of the importer slice (core layer): the
  * positioned-text dialect that reads a LifeLabs "Reports" PDF's pages into
- * structured lab reports, the FHIR R4 synthesis, the importer descriptor, and
- * the decode/persist integration.
+ * structured lab reports, the FHIR R4 synthesis, and the importer descriptor.
  *
  * @remarks
  * No DOM, no `fs`, no React: a `wildflower-positioned-text` document in,
- * typed `LifeLabsReport` records out, FHIR resources synthesized, and an
- * opt-in write behind the descriptor's `persist`.
+ * typed `LifeLabsReport` records out, and FHIR resources synthesized for the
+ * shell's review — the opt-in write is the shell's own `persistBatchBundle`,
+ * not a field on this format's descriptor.
  *
  * @packageDocumentation
  */

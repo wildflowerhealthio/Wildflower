@@ -2,9 +2,18 @@ import { parseDicomFile } from 'dicom'
 import { writeDicom } from 'dicom/test-helpers'
 import { DateTime, Effect, Either, Option } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
+import type { FhirResource } from 'fhir-r4/resources'
+import {
+  LOCAL_SOURCE,
+  serverSource,
+  SOURCE_SECTION_TITLE,
+  sourceFileKey,
+  type DecodedUnit,
+  type PickedFile,
+} from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { dicomImporterDescriptor } from './descriptor.ts'
+import { dicomImporterDescriptor, patientSubjectOf } from './descriptor.ts'
 import { patientOriginalId } from './fhir/to-fhir.ts'
 import { defaultDicomSettings } from './settings.ts'
 import { DICOM_SYSTEM } from './source-system.ts'
@@ -46,29 +55,121 @@ describe('dicomImporterDescriptor', () => {
     expect(Option.isSome(DateTime.zoneMakeNamed(defaultDicomSettings.timeZone))).toBe(true)
   })
 
-  describe('buildSourceFile', () => {
-    it('derives the archive subject from the DICOM header when the caller passes none', async () => {
-      const bytes = sampleDicomBytes()
-      const sourceFile = await Effect.runPromise(
-        dicomImporterDescriptor.buildSourceFile({ fileName: 'sample.dcm', bytes })
-      )
+  describe('decode', () => {
+    /** The `Patient/<id>` reference the header's patient identity derives. */
+    const headerPatientReference = (bytes: Uint8Array): string => {
       const parsed = parseDicomFile(bytes)
       if (Either.isLeft(parsed)) throw new Error(parsed.left.reason)
-      const patientId = patientOriginalId(parsed.right)
-      expect(patientId).toBeDefined()
-      expect(sourceFile.subject?.reference).toBe(
-        `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', patientId ?? '')}`
+      const originalId = patientOriginalId(parsed.right)
+      if (originalId === undefined) throw new Error('expected a patient identity in the header')
+      return `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}`
+    }
+
+    const readUnit = async (file: PickedFile): Promise<DecodedUnit<FhirResource>> => {
+      const outcomes = await Effect.runPromise(
+        dicomImporterDescriptor.decode([file], defaultDicomSettings)
       )
+      expect(outcomes).toHaveLength(1)
+      const outcome = outcomes[0]
+      if (outcome._tag !== 'read') throw new Error('expected a read unit')
+      return outcome
+    }
+
+    /** The one id every resource of a unit must agree on: its source file's. */
+    const sourceFileIdOfUnit = (unit: DecodedUnit<FhirResource>): string => {
+      const [section] = unit.decoded.sections
+      expect(section.title).toBe(SOURCE_SECTION_TITLE)
+      expect(section.resources).toHaveLength(1)
+      const [row] = section.resources
+      expect(row.key).toBe(sourceFileKey('sample.dcm'))
+      expect(row.resource.resourceType).toBe('DocumentReference')
+      const { id } = row.resource
+      if (id === null) throw new Error('expected a minted source file id')
+      return id
+    }
+
+    const imagingStudyInstanceId = (unit: DecodedUnit<FhirResource>): string | undefined => {
+      for (const section of unit.decoded.sections) {
+        for (const { resource } of section.resources) {
+          if (resource.resourceType !== 'ImagingStudy') continue
+          const [extension] = resource.series[0].instance[0].extension
+          expect(extension.url).toBe('gridfsFileId')
+          return extension.valueString ?? undefined
+        }
+      }
+      return undefined
+    }
+
+    it('mints a source file subject to the header-derived Patient for a local pick', async () => {
+      const bytes = sampleDicomBytes()
+      const unit = await readUnit({ fileName: 'sample.dcm', bytes, source: LOCAL_SOURCE })
+      const [section] = unit.decoded.sections
+      expect(section.title).toBe(SOURCE_SECTION_TITLE)
+      const [row] = section.resources
+      expect(row.key).toBe(sourceFileKey('sample.dcm'))
+      if (row.resource.resourceType !== 'DocumentReference')
+        throw new Error('expected a source file')
+      expect(row.resource.subject?.reference).toBe(headerPatientReference(bytes))
     })
 
-    it('forwards a caller-supplied subject instead of discarding it', async () => {
-      const sourceFile = await Effect.runPromise(
-        dicomImporterDescriptor.buildSourceFile(
-          { fileName: 'sample.dcm', bytes: sampleDicomBytes() },
-          { subject: { reference: 'Patient/caller-supplied' } }
+    it('stamps every extracted resource, and the ImagingStudy instance, with that one id', async () => {
+      const unit = await readUnit({
+        fileName: 'sample.dcm',
+        bytes: sampleDicomBytes(),
+        source: LOCAL_SOURCE,
+      })
+      const id = sourceFileIdOfUnit(unit)
+      const extracted = unit.decoded.sections.slice(1).flatMap((section) => section.resources)
+      expect(extracted.length).toBeGreaterThan(0)
+      for (const { resource } of extracted) {
+        expect(resource.meta?.source).toBe(`DocumentReference/${id}`)
+      }
+      expect(imagingStudyInstanceId(unit)).toBe(id)
+    })
+
+    it('reviews no source file for a server pick and links its existing one', async () => {
+      const unit = await readUnit({
+        fileName: 'sample.dcm',
+        bytes: sampleDicomBytes(),
+        source: serverSource('doc-9'),
+      })
+      for (const section of unit.decoded.sections) {
+        expect(section.title).not.toBe(SOURCE_SECTION_TITLE)
+        for (const { resource } of section.resources) {
+          expect(resource.meta?.source).toBe('DocumentReference/doc-9')
+        }
+      }
+      expect(imagingStudyInstanceId(unit)).toBe('doc-9')
+    })
+
+    it('yields one unreadable unit for bytes that are not DICOM', async () => {
+      const outcomes = await Effect.runPromise(
+        dicomImporterDescriptor.decode(
+          [
+            {
+              fileName: 'sample.dcm',
+              bytes: new TextEncoder().encode('not a dicom file'),
+              source: LOCAL_SOURCE,
+            },
+          ],
+          defaultDicomSettings
         )
       )
-      expect(sourceFile.subject?.reference).toBe('Patient/caller-supplied')
+      expect(outcomes.map((outcome) => outcome._tag)).toEqual(['unreadable'])
+    })
+  })
+
+  describe('patientSubjectOf', () => {
+    it('has no subject for a header with no patient identity', () => {
+      const bytes = writeDicom({
+        StudyInstanceUID: '1.2.3.4.5',
+        SeriesInstanceUID: '1.2.3.4.5.1',
+        SOPInstanceUID: '1.2.3.4.5.1.1',
+        Modality: 'CT',
+      })
+      expect(
+        patientSubjectOf({ fileName: 'sample.dcm', bytes, source: LOCAL_SOURCE })
+      ).toBeUndefined()
     })
   })
 })

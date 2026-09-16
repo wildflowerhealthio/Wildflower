@@ -11,6 +11,7 @@
 export {
   HAR_SOURCE_FILE_CATEGORY_TOKEN,
   HAR_SOURCE_FILE_CONTENT_TYPE,
+  harSourceFileCodec,
   harSourceFileFromDocumentReference,
   isHarSourceFile,
   buildSourceFile,

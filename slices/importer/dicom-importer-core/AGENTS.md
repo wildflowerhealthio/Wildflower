@@ -51,29 +51,36 @@ decode yields one section per file when the header carries a patient identity.
   synthesized instance back to the raw source file.
 - `src/decode.ts` — **`decodeDicom`**: parses the DICOM file via
   `parseDicomFile`, synthesizes FHIR resources via `toFhirResources`, adopts
-  them under `DICOM_SYSTEM`. Takes `(fileBytes, fileName, settings)`. It
-  rejects a `settings.timeZone` the runtime cannot resolve up front
-  (`checkTimeZone`, a `ParseError`) rather than substituting one — every
-  `started` it emits is resolved against that zone, so a guess would write
-  instants hours away from what the equipment recorded. The `fileName` is not
-  read for section content, only recombined with the
-  bytes' SHA-256 (via the shared `sha256Base64` + `localResourceId`
-  derivation `buildSourceFile` also uses) to recompute the exact id
-  `buildSourceFile` will mint for this file's `DocumentReference`, which
-  `toFhirResources` stamps onto the `ImagingStudy` instance. One section
-  titled `<Modality> <StudyDescription> · <StudyDate>` with stable keys
-  `patient`, `service-request`, `imaging-study`. Notes for missing patient
-  identity or absent AccessionNumber. A `dicom-parser` failure is a
-  `ParseError`.
+  them under `DICOM_SYSTEM`. Takes `(file, settings, source)` — the picked
+  file, the import's settings, and the source-file `DocumentReference`
+  `perFileDecode` resolved for it (minted for a local pick, the existing one
+  for a server pick). It rejects a `settings.timeZone` the runtime cannot
+  resolve up front (`checkTimeZone`, a `ParseError`) rather than substituting
+  one — every `started` it emits is resolved against that zone, so a guess
+  would write instants hours away from what the equipment recorded. The
+  `source.id` is what `toFhirResources` stamps onto the `ImagingStudy`
+  instance as its `gridfsFileId` extension: the decode reads the id off the
+  resolved source file and derives nothing from the bytes, so the link and the
+  stored resource name the same thing by construction. One section titled
+  `<Modality> <StudyDescription> · <StudyDate>` with stable keys `patient`,
+  `service-request`, `imaging-study`. Notes for missing patient identity or
+  absent AccessionNumber. A `dicom-parser` failure is a `ParseError`.
 - `src/source-file/dicom-source-file-codec.ts` — thin config over
   `sourceFileCodec` with the DICOM coding
-  (`DICOM_SYSTEM|dicom-source-file`), content type `application/dicom`.
+  (`DICOM_SYSTEM|dicom-source-file`), content type `application/dicom`. It
+  exports the whole `dicomSourceFileCodec` beside the pieces, since
+  `perFileDecode` mints through the codec itself.
 - `src/source-file/index.ts` — barrel re-exporting codec + `DICOM_SYSTEM`.
 - `src/descriptor.ts` — the `FileImporterDescriptor` for format `'dicom'`.
-  `buildSourceFile` parses the DICOM header to derive a Patient reference
-  and sets `subject` on the archive `DocumentReference` when `PatientID`
-  is present. That derivation is the _fallback_: a `subject` the caller
-  passes through `options` wins and is forwarded unchanged.
+  Its `decode` is `perFileDecode(dicomSourceFileCodec, decodeDicom, {
+subjectFor: patientSubjectOf })`: the shared helper mints each local pick's
+  source file, lists it as its own "Source file" section, stamps every
+  extracted resource's `meta.source` with it, and hands its reference to
+  `decodeDicom`. **`patientSubjectOf`** (exported) is the one format-specific
+  knob — it parses the header and returns the `Patient/<localResourceId>`
+  reference the minted source file links to, or `undefined` for bytes that are
+  not DICOM or a header with no patient identity. The descriptor carries no
+  `buildSourceFile` of its own.
 - `src/index.ts` — public API barrel.
 
 ## Layering

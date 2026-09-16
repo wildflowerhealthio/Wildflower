@@ -1,20 +1,21 @@
 /**
- * Decode a DICOM file's raw bytes into one section of FHIR resources and
- * diagnostic notes — the descriptor's `decode`. A `dicom-parser` failure
- * is a `ParseError`.
+ * Decode a DICOM file into one section of FHIR resources and diagnostic
+ * notes — the per-file decode `perFileDecode` lifts into the descriptor's
+ * `decode`. A `dicom-parser` failure is a `ParseError`.
  *
  * @packageDocumentation
  */
 import type { DicomHeader } from 'dicom'
 import { parseDicomFile } from 'dicom'
 import { DateTime, Effect, Either, Option, ParseResult, Schema } from 'effect'
-import { joinIdComponents, localResourceId, adoptResource } from 'fhir-r4/identity'
+import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import {
-  sha256Base64,
-  type DecodedFile,
-  type LabeledResource,
-  type LabeledSection,
+import type {
+  DecodedFile,
+  LabeledResource,
+  LabeledSection,
+  PickedFile,
+  SourceFileRef,
 } from 'importer-fundamentals'
 
 import { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
@@ -47,23 +48,6 @@ const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.Pars
   )
 }
 
-/**
- * The id `buildSourceFile` (`source-file-codec.ts`) mints for this file's
- * `DocumentReference` — same digest, same name, same derivation — so the
- * `ImagingStudy` instance's `gridfsFileId` extension names the exact resource
- * the shell will also store.
- */
-const sourceFileId = (
-  fileBytes: Uint8Array,
-  fileName: string
-): Effect.Effect<string, ParseResult.ParseError> =>
-  sha256Base64(new Uint8Array(fileBytes)).pipe(
-    Effect.map((hash) =>
-      localResourceId(DICOM_SYSTEM, 'DocumentReference', joinIdComponents([hash, fileName]))
-    ),
-    Effect.mapError((error) => dicomParseAsParseError(error.reason))
-  )
-
 const labelAdopted = (
   resource: FhirResource,
   key: string,
@@ -93,29 +77,29 @@ const sectionTitle = (header: DicomHeader): string => {
 }
 
 /**
- * Decode a DICOM file's raw bytes into sections of adopted, labeled FHIR
+ * Decode a picked DICOM file into sections of adopted, labeled FHIR
  * resources.
  *
- * @param fileBytes - The raw bytes of a `.dcm` file
- * @param fileName - The picked file's name, used to derive the same
- *   deterministic `DocumentReference` id `buildSourceFile` mints, so the
- *   `ImagingStudy` instance can carry it as a `gridfsFileId` extension
+ * @param file - The picked `.dcm` file, name and raw bytes
  * @param settings - The import's settings; its `timeZone` is what every
  *   `ImagingStudy.started` is resolved against
+ * @param source - The file's resolved source-file `DocumentReference`; its
+ *   `id` is what the `ImagingStudy` instance carries as its `gridfsFileId`
+ *   extension, so the link names the resource the shell writes
  * @returns One section when the file carries at least a patient, plus notes
  *   for anything that could not be extracted; fails with a `ParseError` when
  *   the bytes cannot be parsed as DICOM, or when `settings.timeZone` is not an
  *   IANA time zone name
  */
 const decodeDicom = (
-  fileBytes: Uint8Array,
-  fileName: string,
-  settings: DicomSettings
+  file: PickedFile,
+  settings: DicomSettings,
+  source: SourceFileRef
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
-    const parseResult = parseDicomFile(fileBytes)
+    const parseResult = parseDicomFile(file.bytes)
     if (Either.isLeft(parseResult)) {
       return yield* Effect.fail(dicomParseAsParseError(parseResult.left.reason))
     }
@@ -132,8 +116,7 @@ const decodeDicom = (
       notes.push('No AccessionNumber — no ServiceRequest will be created.')
     }
 
-    const documentReferenceId = yield* sourceFileId(fileBytes, fileName)
-    const resources = yield* toFhirResources(header, settings, documentReferenceId)
+    const resources = yield* toFhirResources(header, settings, source.id)
     const labeled: LabeledResource<FhirResource>[] = []
 
     for (const resource of resources) {

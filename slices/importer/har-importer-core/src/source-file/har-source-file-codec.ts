@@ -69,12 +69,24 @@ const harSourceFileFromDocumentReference = codec.sourceFileFromDocumentReference
 /** Whether a decoded `DocumentReference` is an uploaded HAR source file, by `category`. */
 const isHarSourceFile = codec.isSourceFile
 
-/** Mints a picked `.har` file's source file `DocumentReference` — the descriptor's `buildSourceFile`. */
+/** Mints a picked `.har` file's source file `DocumentReference`. */
 const buildSourceFile = codec.buildSourceFile
+
+/**
+ * The whole HAR source-file codec, as one value.
+ *
+ * @remarks
+ * The descriptor's `decode` hands this to `perFileDecode`, which mints each
+ * local pick's source file through the codec's `buildSourceFile` — so the
+ * mint the review lists and the reader above it come from the same
+ * configuration.
+ */
+const harSourceFileCodec = codec
 
 export {
   HAR_SOURCE_FILE_CATEGORY_TOKEN,
   HAR_SOURCE_FILE_CONTENT_TYPE,
+  harSourceFileCodec,
   harSourceFileFromDocumentReference,
   isHarSourceFile,
   buildSourceFile,
