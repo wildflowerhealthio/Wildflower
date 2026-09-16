@@ -1,6 +1,6 @@
 import { Array as EArray, Option } from 'effect'
+import type { MedicationView } from 'medication-core/fhir'
 import { dedupeMedicationsByName, type Medication } from 'medication-sponsorship-core'
-import type { MedicationView } from 'medication-sponsorship-react'
 
 /**
  * The completed prescriptions worth showing on the savings page: every

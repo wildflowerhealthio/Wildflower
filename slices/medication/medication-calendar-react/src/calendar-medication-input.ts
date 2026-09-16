@@ -1,5 +1,5 @@
 import type { CalendarMedicationInput as Core } from 'medication-calendar-core'
-import { hasRefill, type MedicationView } from 'medication-sponsorship-react'
+import { hasRefill, type MedicationView } from 'medication-core/fhir'
 
 import { localCalendarDay } from './local-day.ts'
 

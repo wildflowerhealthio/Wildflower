@@ -4,6 +4,10 @@
  * {@link Medication} value type they all match on, name normalization, and
  * the containment-based confidence scoring.
  *
+ * The FHIR R4 `MedicationRequest` adapters that build those values live behind
+ * the `medication-core/fhir` subpath, so importing the matcher from here does
+ * not pull in `fhir-r4`'s schemas.
+ *
  * @packageDocumentation
  */
 export type { Medication } from './medication.ts'

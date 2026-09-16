@@ -106,12 +106,12 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
 - **The promoted narrative is XHTML, not the bare description.** R4 types
   `Narrative.div` as `xhtml` and requires a single `<div>` in the XHTML
   namespace; a conformant server rejects anything else on write. `promote.ts`
-  wraps and escapes, and `medication-sponsorship-react` extracts the text
+  wraps and escapes, and `medication-core` extracts the text
   content back out — the two are a pair.
 - **`external-store-id` stays an extension on purpose.** `Reference.identifier`
   is 0..1 and the dialect already fills it on the processor reference with
   carebook's own pharmacy id; giving the store number that slot would discard a
-  vendor identifier. `medication-sponsorship-react` reads it where it is to
+  vendor identifier. `medication-core` reads it where it is to
   build the store-locator link.
 - **The redundant extensions are kept, deliberately.** `when-requested` (equals
   `whenPrepared`), both `estimated-pick-up`s (equal `whenHandedOver`),
@@ -126,7 +126,7 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   so a pick-up at 20:09 local can render on the wrong day and there is nowhere
   for the offset to survive. Fixing it means changing the `dateTime` handling in
   `fhir-r4`, not this package.
-- **`medication-sponsorship-react` reads this dialect too**, off the same
+- **`medication-core` reads this dialect too**, off the same
   decoded resources. It reads the description (**the extension first**, the
   narrative as the post-promotion fallback), the DIN, the `v2` repeats
   modifierExtension, and `external-system-source` + `external-store-id` for the
@@ -136,7 +136,7 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   been promoted (already in the store, or from the Medications app's own FHIR
   server) carries both, and its narrative is the dialect's byte-copy of
   `code.text` — i.e. the drug name the card already shows as its title.
-  `medication-sponsorship-react` also keeps its own hand-maintained copy of five
+  `medication-core` also keeps its own hand-maintained copy of five
   of these URLs plus `REXALL_SYSTEM_SOURCE`; the two catalogues are not shared
   because that slice does not depend on this one. Change one side, check the
   other.

@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { useNowDay } from 'react-kitchen-sink'
 
 import { deriveCalendarEvents, type CalendarEvent } from 'medication-calendar-core'
-import type { MedicationView } from 'medication-sponsorship-react'
+import type { MedicationView } from 'medication-core/fhir'
 
 import { AgendaPane } from './agenda-pane.tsx'
 import * as CalendarMedicationInput from './calendar-medication-input.ts'

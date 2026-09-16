@@ -8,13 +8,18 @@ catalog onto it.
 
 ## Packages
 
-- `medication-core` — the pure matching layer, shared by the rest of the slice.
-  The minimal `Medication` value type adapters map their resources onto,
-  `normalizeName` / `tokenize` (markup, marks, diacritics and dosage tokens
-  stripped), `scoreName` — the exact / strong / partial containment scoring
-  every consumer's matcher is built from — and `dedupeMedicationsByName`, which
-  collapses exact-name duplicates to the most recent (`authoredOn`) instance. No
-  DOM, no FHIR, no platform imports.
+- `medication-core` — the pure matching layer **plus the FHIR R4 adapters**,
+  shared by the rest of the slice. The root export is the matcher: the minimal
+  `Medication` value type adapters map their resources onto, `normalizeName` /
+  `tokenize` (markup, marks, diacritics and dosage tokens stripped), `scoreName`
+  — the exact / strong / partial containment scoring every consumer's matcher is
+  built from — and `dedupeMedicationsByName`, which collapses exact-name
+  duplicates to the most recent (`authoredOn`) instance. The `medication-core/fhir`
+  subpath is the `MedicationRequest → Medication` / `MedicationView` adapter (the
+  core `Medication` for matching, plus the carebook display fields — DIN,
+  description, prescriber, notes, repeat counts, store-locator links, estimated
+  next-fill date) and the `hasRefill` rule the calendar shares. No DOM, no
+  platform imports.
 - `medication-interaction-core` — the pure interaction layer. The compact
   bundled-file schema (`DdinterFile`: a drug table plus
   `[indexA, indexB, severityCode]` triples) and its decoder to an
@@ -34,8 +39,8 @@ catalog onto it.
   `prescriberOf` lookup it shows a `PrescriberAvatar` per medication in the
   "Between your medications" section and rings any cross-prescriber interaction.
   It takes the core `Medication` values; the FHIR `MedicationRequest` adapter is
-  `medication-sponsorship-react`'s, which the app already runs for the
-  medications list.
+  `medication-core/fhir`'s, which the app already runs for the medications
+  list.
 - `medication-sponsorship-core` — the pure sponsorship layer. Province model,
   the normalized `SponsoredDrug` shape, decoders for each program's raw JSON
   list, brand+generic matching (best single drug per medication, brand preferred
@@ -51,10 +56,9 @@ catalog onto it.
   `program-descriptions.ts`, eligible medications chipped per the selected
   province — with completed-but-still-eligible prescriptions dimmed at the
   bottom of each program's list (`pastMedications`; program lists only, never
-  the uncovered section) — then a "No known savings program" section), plus the
-  `MedicationRequest → MedicationView` adapter (the core `Medication` for
-  matching, plus carebook display fields — DIN, description, prescriber,
-  notes, repeat counts) and the `hasRefill` rule shared with the calendar.
+  the uncovered section) — then a "No known savings program" section). It renders
+  the `MedicationView`s `medication-core/fhir` builds; it owns no FHIR adapter of
+  its own.
 - `medication-calendar-core` — the pure calendar layer: the next-fill /
   exhaustion date math (`nextFillDate`, which reads a `SupplyDuration` from
   `slices/emr/fhir-utility` — a supply duration is a FHIR concept, not a
@@ -68,7 +72,7 @@ catalog onto it.
   previous/next navigation rendering the derived events into day cells; below
   640px the grid gives way to a day-grouped schedule stack scrollable both
   ways from a red "Now" line. Maps `MedicationView`s (from
-  `medication-sponsorship-react`) onto `medication-calendar-core`'s inputs.
+  `medication-core/fhir`) onto `medication-calendar-core`'s inputs.
 
 ## Data
 
@@ -102,6 +106,26 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
 - `normalizeName` is idempotent by construction (token filtering, not regex
   substitution) and the property tests pin it — keep new noise rules as token
   predicates.
+- **The FHIR R4 adapters live behind the `medication-core/fhir` subpath, never
+  the root export.** The root entry stays pure — `import { scoreName } from
+'medication-core'` must not pull `fhir-r4`'s schemas into a consumer's bundle.
+  Adding an entry means a new `pack` config in `vite.config.ts` and a matching
+  `exports` key; the root and the subpath are separate `vp pack` entries.
+- The two feature cores (`medication-sponsorship-core`,
+  `medication-interaction-core`) stay FHIR-agnostic. `fhir-r4` is this package's
+  dependency alone; a feature core that wants a resource takes the
+  `medication-core/fhir` output, it does not decode one itself.
+- This package is a `fhir-r4` consumer, so both
+  [consumer gotchas](../emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md) apply.
+  The adapter re-decodes an **already-decoded** resource, so `uri`/`url` fields
+  (`Coding.system`) arrive as `URL`s, not strings — a `system: Schema.String`
+  slot silently fails the whole concept; the adapter already coerces via
+  `nullableUri` (and `dateTime` via `nullableIsoDateTime`). And `vp pack` is the
+  gate for the TS2883 dts trap, not `vp check` — run `vp run -F medication-core
+build` when the adapter's inferred types change.
+- The adapter depends on `medication-calendar-core` for `nextFillDate`, so the
+  matching base imports one feature core. Keep it that way round: nothing in
+  `medication-calendar-core` may import `medication-core`.
 
 ### Interactions (`medication-interaction-*`)
 
@@ -137,8 +161,8 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
 ### Sponsorship (`medication-sponsorship-*`)
 
 - Keep `medication-sponsorship-core` FHIR-agnostic. The FHIR `MedicationRequest`
-  mapping lives in `medication-sponsorship-react` (it already depends on
-  `fhir-r4`).
+  mapping lives in `medication-core/fhir`; `medication-sponsorship-react` renders
+  what it returns.
 - **"Empty province coverage means everywhere."** A raw entry with no province
   restriction (innoviCares empty string, RxHelp empty array) is expanded to
   every province at decode time so downstream coverage is a membership check.
@@ -147,12 +171,6 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
   about _how confidently a name matches_ belong in `medication-core`;
   heuristics about _which sponsored drug wins_ belong in this package's
   `match.ts`. Both with property tests.
-- The `MedicationRequest → MedicationView` adapter re-decodes an
-  **already-decoded** `fhir-r4` resource, so `uri`/`url` fields
-  (`Coding.system`) arrive as `URL`s, not strings — a `system: Schema.String`
-  slot silently fails the whole concept. See the
-  [fhir-r4 Consumer Gotchas Reference](../emr/fhir-r4/docs/Consumer%20Gotchas%20Reference.md);
-  the adapter already coerces via `nullableUri`.
 
 ## References
 

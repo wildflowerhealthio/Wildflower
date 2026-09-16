@@ -472,6 +472,9 @@ importers:
       medication-calendar-react:
         specifier: workspace:*
         version: link:../../slices/medication/medication-calendar-react
+      medication-core:
+        specifier: workspace:*
+        version: link:../../slices/medication/medication-core
       medication-interaction-core:
         specifier: workspace:*
         version: link:../../slices/medication/medication-interaction-core
@@ -3441,9 +3444,9 @@ importers:
       medication-calendar-core:
         specifier: workspace:*
         version: link:../medication-calendar-core
-      medication-sponsorship-react:
+      medication-core:
         specifier: workspace:*
-        version: link:../medication-sponsorship-react
+        version: link:../medication-core
       react:
         specifier: 'catalog:'
         version: 19.3.0
@@ -3481,9 +3484,15 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
       kitchen-sink:
         specifier: workspace:*
         version: link:../../../global/kitchen-sink
+      medication-calendar-core:
+        specifier: workspace:*
+        version: link:../medication-calendar-core
       typescript:
         specifier: 5.9.3
         version: 5.9.3
@@ -3634,18 +3643,12 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 3.23.2
-      fhir-r4:
-        specifier: workspace:*
-        version: link:../../emr/fhir-r4
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
-      kitchen-sink:
+      medication-core:
         specifier: workspace:*
-        version: link:../../../global/kitchen-sink
-      medication-calendar-core:
-        specifier: workspace:*
-        version: link:../medication-calendar-core
+        version: link:../medication-core
       medication-sponsorship-core:
         specifier: workspace:*
         version: link:../medication-sponsorship-core

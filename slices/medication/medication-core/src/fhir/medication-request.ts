@@ -2,7 +2,8 @@ import { DateTime, Option, Schema } from 'effect'
 import type { MedicationRequest } from 'fhir-r4/resources'
 import { nonEmpty } from 'kitchen-sink'
 import { nextFillDate } from 'medication-calendar-core'
-import type { Medication } from 'medication-sponsorship-core'
+
+import type { Medication } from '../medication.ts'
 
 /** The decoded FHIR R4 `MedicationRequest` resource. */
 type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Schema>
@@ -15,8 +16,8 @@ type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Sch
 // These are *the same* dialect `rexall-be-well-collector` decodes, not a
 // distinct one — a real capture of the Rexall tunnel emits these exact URLs,
 // including the `v2` spelling of the repeats extension below. That package
-// exports the catalogue as `Carebook.*`, but importing it would make this UI
-// slice depend on a collector slice for six string constants, so the two are
+// exports the catalogue as `Carebook.*`, but importing it would make this
+// package depend on a collector slice for six string constants, so the two are
 // kept in step by hand. Change one side and check the other.
 const DIN_CODING_SYSTEM = 'http://schema.carebook.com/v1/fhir/coding/medication-din-code'
 const DESCRIPTION_EXTENSION_URL =
@@ -422,8 +423,8 @@ const nextFillDateOf = (
 }
 
 /**
- * Map a decoded FHIR `MedicationRequest` onto the `medication-sponsorship-core`
- * {@link Medication} value the matcher and grouping consume. `fallbackId`
+ * Map a decoded FHIR `MedicationRequest` onto this package's
+ * {@link Medication} value the matchers consume. `fallbackId`
  * supplies a stable React key when the resource carries no `id`.
  */
 const medicationRequestToMedication = (
@@ -441,8 +442,8 @@ const medicationRequestToMedication = (
 
 /**
  * The display-oriented view of a `MedicationRequest`: the core {@link Medication}
- * (used for sponsorship matching) plus the extra carebook fields the medication
- * card renders. Any field the resource does not carry is `null`.
+ * (used for sponsorship and interaction matching) plus the extra carebook fields
+ * the medication card renders. Any field the resource does not carry is `null`.
  */
 interface MedicationView {
   readonly medication: Medication

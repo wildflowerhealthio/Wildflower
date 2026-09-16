@@ -7,7 +7,7 @@ import {
   medicationRequestsToMedications,
   medicationRequestToMedication,
   medicationRequestToMedicationView,
-} from './medication.ts'
+} from './medication-request.ts'
 
 const decode = Schema.decodeUnknownSync(MedicationRequest.Schema)
 

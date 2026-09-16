@@ -6,17 +6,14 @@ import {
   useSmartHandshake,
 } from 'fhir-r4-react/smart'
 import { CalendarView } from 'medication-calendar-react'
+import { medicationRequestsToMedicationViews } from 'medication-core/fhir'
 import { InteractionsView } from 'medication-interaction-react'
 import {
   dedupeMedicationsByName,
   type Medication,
   type Province,
 } from 'medication-sponsorship-core'
-import {
-  MedicationsView,
-  medicationRequestsToMedicationViews,
-  SavingsView,
-} from 'medication-sponsorship-react'
+import { MedicationsView, SavingsView } from 'medication-sponsorship-react'
 import type { JSX } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {

@@ -2,13 +2,17 @@
   "name": "medication-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Fuzzy medication-name matching shared by the medication slices: the minimal `Medication` value type, name normalization / tokenization, and the exact / strong / partial containment scoring. No DOM, no FHIR, no platform imports.",
+  "description": "Fuzzy medication-name matching shared by the medication slices: the minimal `Medication` value type, name normalization / tokenization, and the exact / strong / partial containment scoring — plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values. No DOM, no platform imports.",
   "license": "MIT",
   "type": "module",
   "exports": {
     ".": {
       "source": "./src/index.ts",
       "default": "./dist/index.js"
+    },
+    "./fhir": {
+      "source": "./src/fhir/index.ts",
+      "default": "./dist/fhir/index.js"
     },
     "./package.json": "./package.json"
   },
@@ -25,9 +29,17 @@
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
     "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",
+    "medication-calendar-core": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "medication-calendar-core": "workspace:*"
   }
 }

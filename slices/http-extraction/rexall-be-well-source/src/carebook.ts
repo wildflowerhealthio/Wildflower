@@ -9,7 +9,7 @@
  *
  * @remarks
  * Reproduced verbatim from a real (anonymized) capture, and cross-checked
- * against `medication-sponsorship-react`, which independently reads five of
+ * against `medication-core`, which independently reads five of
  * these off the same dialect. The inconsistencies below are the vendor's and
  * must not be "tidied":
  *
@@ -62,7 +62,7 @@ const CarebookExtension = {
    * Rexall store number. **Kept as an extension on purpose** — see AGENTS.md:
    * the obvious home, `Reference.identifier` on the promoted
    * `dispenseRequest.performer`, is 0..1 and the dialect already fills it with
-   * carebook's own pharmacy id. `medication-sponsorship-react` reads it here.
+   * carebook's own pharmacy id. `medication-core` reads it here.
    */
   RequestExternalStoreId: `${EXTENSION_BASE}/medicationrequest/extension/external-store-id`,
   /** Presentation rank for the prescriptions list. Non-contiguous; not clinical. */

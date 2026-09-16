@@ -1,9 +1,9 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
+import type { MedicationView } from 'medication-core/fhir'
 import type { Medication } from 'medication-sponsorship-core'
 
-import type { MedicationView } from './medication.ts'
 import { MedicationsView } from './medications-view.tsx'
 
 afterEach(cleanup)
