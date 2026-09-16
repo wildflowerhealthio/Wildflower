@@ -21,6 +21,9 @@ on:
     # api-sync.yml keeps only the TS drift half.
     paths:
       - '**/*.rs'
+      # `**/` is not guaranteed to match a root-level file, and the root
+      # manifest's lints/feature lists change what compiles on their own.
+      - 'Cargo.toml'
       - '**/Cargo.toml'
       - 'Cargo.lock'
       - 'rust-toolchain.toml'
@@ -37,7 +40,8 @@ on:
       - 'slices/browser-sniffer/browser-sniffer-tauri/**'
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
-      # The stub placeholders this job compiles against.
+      # What this job runs, and the stub placeholders it compiles against.
+      - 'scripts/checks/rust.sh'
       - 'scripts/ci/stub-embedded-bundles.sh'
       - '.github/workflows/ci-rust.yml'
 
@@ -80,12 +84,9 @@ jobs:
               - 'pnpm-workspace.yaml'
 
       - name: Stub the embedded SPA bundle
-        # `spa.rs` `include_str!`s the single-file web bundle
-        # (`dist-single-web/index-single-web.html`), produced by the
-        # `build:single-web` step and gitignored — so it's absent in a fresh
-        # checkout and wildflower-tauri won't compile. CI only builds the Rust,
-        # not the served HTML, so a placeholder satisfies the `include_str!`.
-        # The script is shared with rust-cache-warm.yml so the two can't drift.
+        # Placeholder for the gitignored bundle `spa.rs` embeds. The script is
+        # shared with rust-cache-warm.yml (so the two can't drift) and documents
+        # which bundles need a stand-in and why.
         run: ./scripts/ci/stub-embedded-bundles.sh spa
 
       - name: Install Tauri system dependencies
@@ -95,13 +96,8 @@ jobs:
             libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libxdo-dev
 
-      # browser-sniffer-tauri-rust `include_str!`s a JS bundle generated from
-      # the browser-sniffer-tauri TS package. Regenerate it via pnpm when the
-      # bootstrap source changed; otherwise drop a non-empty stub long enough to
-      # satisfy the crate's `bootstrap_is_non_empty` test. Only the desktop
-      # bundle (`tauri-bootstrap.js`) is needed: `native-bootstrap.js` is
-      # `include_str!`ed under a `cfg(ios|android)` gate, compiled out on this
-      # ubuntu (desktop) target.
+      # Regenerate the sniffer bootstrap bundle via pnpm when its source
+      # changed; otherwise stub it, same as the SPA bundle above.
       - name: Setup Node
         if: steps.filter.outputs.bootstrap == 'true'
         uses: actions/setup-node@v7
@@ -115,19 +111,14 @@ jobs:
           pnpm install --frozen-lockfile --filter browser-sniffer-tauri...
           pnpm --filter browser-sniffer-tauri run generate-tauri-bootstrap
       - name: Stub Sniffer bootstrap
-        # Same script as the SPA stub; reached only when the PR leaves the
-        # bootstrap source untouched, so the real IIFE isn't needed.
         if: steps.filter.outputs.bootstrap != 'true'
         run: ./scripts/ci/stub-embedded-bundles.sh sniffer
 
       - name: Set up Rust toolchain
-        # Reads rust-toolchain.toml (channel + rustfmt/clippy), caches the
-        # cargo registry + `target/`, and registers the clippy/rustfmt problem
-        # matchers. `workspace-linux-dev` is the shared key for this build
-        # environment — full workspace, ubuntu-latest, dev profile, default
-        # rustflags — which rust-cache-warm.yml warms on `main`, the only ref
-        # whose caches a `pull_request` run can restore. Key scheme and why
-        # other cargo jobs keep their own:
+        # Reads rust-toolchain.toml, caches the cargo registry + `target/`, and
+        # registers the clippy/rustfmt problem matchers. `workspace-linux-dev`
+        # names this build environment; rust-cache-warm.yml warms that entry on
+        # `main`, the only ref a `pull_request` run can restore from. Key scheme:
         # docs/Rust/CI Build Cache Explanation.md.
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
@@ -151,8 +142,8 @@ jobs:
 
   # Supply-chain gate. Kept as its own job because cargo-deny doesn't reuse the
   # compiled-workspace artifacts above, so merging it in would only serialize
-  # unrelated work. It compiles nothing (cargo-deny-action runs in its own
-  # container), so it configures no Rust cache.
+  # unrelated work. cargo-deny-action runs in its own container and compiles
+  # nothing, so this job configures no Rust cache.
   deny:
     name: Dependency Check
     if: github.event.pull_request.draft != true

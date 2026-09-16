@@ -1,24 +1,22 @@
 name: Rust Cache Warm
 
 # Fills the default branch's Rust cache so pre-merge runs of ci-rust.yml start
-# warm. GitHub scopes Actions caches per ref: a PR run can restore its base
-# branch's cache but never another PR's, and ci-rust.yml is `pull_request`-only,
-# so without this nothing ever writes to main's scope and every PR pays a cold
-# dependency compile. This job saves under ci-rust.yml's
-# `workspace-linux-dev` key, reproducing its build environment exactly — any
-# difference in runner image, `CARGO*`/`RUST*` env or rustflags would fork the
-# key and defeat the sharing.
-#
-# It is not a gate: no fmt, clippy or tests, only the compile whose artifacts
-# ci-rust.yml reuses. Full scheme, including why the release builds in
-# tauri-release-publish.yml are deliberately not warmed:
-# docs/Rust/CI Build Cache Explanation.md.
+# warm: ci-rust.yml is `pull_request`-only, so without this nothing ever writes
+# to main's scope — the only scope a PR run can restore from — and every PR pays
+# a cold dependency compile. This job saves under ci-rust.yml's
+# `workspace-linux-dev` key and reproduces its build environment exactly. It is
+# not a gate: no fmt, clippy or tests, only the compile whose artifacts
+# ci-rust.yml reuses. Why that reproduction has to be exact, and why the release
+# builds are not warmed: docs/Rust/CI Build Cache Explanation.md.
 
 on:
   push:
     branches: [main]
     paths:
+      # The files rust-cache folds into its lock hash. Root `Cargo.toml` is
+      # listed bare as well — `**/` is not guaranteed to match a root-level file.
       - 'Cargo.lock'
+      - 'Cargo.toml'
       - '**/Cargo.toml'
       - 'rust-toolchain.toml'
       # What this job compiles, and against which placeholders.
@@ -67,7 +65,6 @@ jobs:
           cache-on-failure: true
 
       - name: Build workspace (dependencies + all targets)
-        # Compile-only sibling of ci-rust.yml's `clippy-all` / `test-all`,
-        # sharing their flag list so the cached artifacts match what those
-        # steps look for.
+        # Compile-only sibling of ci-rust.yml's `clippy-all`, with its exact
+        # selection so the cached artifacts match what that step looks for.
         run: ./scripts/checks/rust.sh build-all

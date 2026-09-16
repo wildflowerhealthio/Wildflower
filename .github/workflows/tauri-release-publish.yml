@@ -210,7 +210,9 @@ jobs:
         # failed runner shouldn't redo the ~50 min builds that succeeded. PR
         # events and `all` keep every platform.
         #
-        # `rustflags` feeds setup-rust-toolchain (default `-D warnings`).
+        # `rustflags` feeds setup-rust-toolchain, whose own default is empty, so
+        # each entry sets `-D warnings`. The value lands in `RUSTFLAGS`, which
+        # forks the per-platform cache keys below.
         # Windows adds `advapi32.lib` to every link: `rathole`'s build script
         # (via libgit2-sys 0.14) needs it and doesn't link it itself — see
         # "Windows Tauri release links need advapi32.lib" in
@@ -289,9 +291,7 @@ jobs:
           target: ${{ matrix.rust-targets }}
           rustflags: ${{ matrix.rustflags }}
           # One key per platform: release profile, per-platform rustflags and
-          # target triples, and ubuntu-22.04 rather than CI's ubuntu-latest —
-          # a distinction rust-cache's own key does not make. Nothing warms
-          # these from `main`. Both points:
+          # target triples, and an Ubuntu image CI does not share — see
           # docs/Rust/CI Build Cache Explanation.md.
           cache-shared-key: release-${{ matrix.key }}
           cache-on-failure: true
@@ -415,10 +415,10 @@ jobs:
         with:
           target: aarch64-apple-ios
           rustflags: '-D warnings'
-          # Own key despite sharing macos-latest with the desktop build: the
-          # `aarch64-apple-ios` artifacts are disjoint from that job's
-          # `*-apple-darwin` ones, and the two run concurrently, so one key
-          # would make them race to save incomplete target dirs.
+          # Own key despite sharing macos-latest with the desktop build: these
+          # `aarch64-apple-ios` artifacts are disjoint from that job's, and the
+          # two run concurrently, so one key would make them race to save
+          # incomplete target dirs.
           cache-shared-key: release-ios
           cache-on-failure: true
 

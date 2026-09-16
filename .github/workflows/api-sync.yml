@@ -14,9 +14,6 @@ name: API Sync
 # the TS definition or a snapshot changes closes that gap. It is project-agnostic:
 # a new slice is picked up with no edit here — its TS test matches the
 # `openapi-drift` filter.
-#
-# No cargo runs in this workflow, so it configures no Rust cache; the Rust
-# snapshot half rides ci-rust.yml's workspace build and cache.
 
 on:
   pull_request:

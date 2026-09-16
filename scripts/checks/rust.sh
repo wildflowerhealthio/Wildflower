@@ -129,10 +129,10 @@ do_test_all() {
   fi
 }
 
-# Compile-only pass over the same set, with the same selection clippy-all /
-# test-all use: feature unification and target selection are part of an
-# artifact's fingerprint, so a warm-up build differing on either would cache
-# artifacts CI then rebuilds (docs/Rust/CI Build Cache Explanation.md).
+# Compile-only pass with clippy-all's exact selection: feature unification and
+# target selection are part of an artifact's fingerprint, so a warm-up build
+# differing on either caches artifacts CI then rebuilds
+# (docs/Rust/CI Build Cache Explanation.md).
 do_build_all() {
   if tauri_capable; then
     cargo build --workspace --all-targets --all-features
