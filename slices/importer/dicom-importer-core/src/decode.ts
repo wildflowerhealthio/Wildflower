@@ -7,7 +7,7 @@
  */
 import type { DicomHeader } from 'dicom'
 import { parseDicomFile } from 'dicom'
-import { Effect, Either, ParseResult, Schema } from 'effect'
+import { DateTime, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { joinIdComponents, localResourceId, adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import {
@@ -27,6 +27,25 @@ const dicomParseAsParseError = (reason: string): ParseResult.ParseError =>
   new ParseResult.ParseError({
     issue: new ParseResult.Forbidden(Schema.Unknown.ast, undefined, reason),
   })
+
+/**
+ * A zone name the runtime does not know is a parse failure, not a defect: the
+ * setting is user-typed, and every `ImagingStudy.started` this decode emits is
+ * resolved against it, so guessing a substitute would write instants hours
+ * away from the ones the equipment recorded.
+ */
+const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.ParseError> => {
+  if (Option.isSome(DateTime.zoneMakeNamed(timeZone))) return Effect.succeed(timeZone)
+  return Effect.fail(
+    new ParseResult.ParseError({
+      issue: new ParseResult.Type(
+        Schema.String.ast,
+        timeZone,
+        `"${timeZone}" is not an IANA time zone name`
+      ),
+    })
+  )
+}
 
 /**
  * The id `buildSourceFile` (`source-file-codec.ts`) mints for this file's
@@ -81,17 +100,21 @@ const sectionTitle = (header: DicomHeader): string => {
  * @param fileName - The picked file's name, used to derive the same
  *   deterministic `DocumentReference` id `buildSourceFile` mints, so the
  *   `ImagingStudy` instance can carry it as a `gridfsFileId` extension
- * @param _settings - The import's settings (currently unused)
+ * @param settings - The import's settings; its `timeZone` is what every
+ *   `ImagingStudy.started` is resolved against
  * @returns One section when the file carries at least a patient, plus notes
  *   for anything that could not be extracted; fails with a `ParseError` when
- *   the bytes cannot be parsed as DICOM
+ *   the bytes cannot be parsed as DICOM, or when `settings.timeZone` is not an
+ *   IANA time zone name
  */
 const decodeDicom = (
   fileBytes: Uint8Array,
   fileName: string,
-  _settings: DicomSettings
+  settings: DicomSettings
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.gen(function* () {
+    yield* checkTimeZone(settings.timeZone)
+
     const parseResult = parseDicomFile(fileBytes)
     if (Either.isLeft(parseResult)) {
       return yield* Effect.fail(dicomParseAsParseError(parseResult.left.reason))
@@ -110,7 +133,7 @@ const decodeDicom = (
     }
 
     const documentReferenceId = yield* sourceFileId(fileBytes, fileName)
-    const resources = yield* toFhirResources(header, documentReferenceId)
+    const resources = yield* toFhirResources(header, settings, documentReferenceId)
     const labeled: LabeledResource<FhirResource>[] = []
 
     for (const resource of resources) {

@@ -49,10 +49,10 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`dicom-importer-core`](./dicom-importer-core/AGENTS.md)** (the DICOM
   binding) — `dicomImporterDescriptor` for format `'dicom'`: byte-level `.dcm`
   detection (DICM magic at offset 128 or `.dcm` extension), the archive codec
-  that stores a DICOM file as a FHIR `DocumentReference`, and a zero-section
-  decode (D3 fills in tag parsing). No DICOM tag parsing yet.
+  that stores a DICOM file as a FHIR `DocumentReference`, header tag parsing,
+  and FHIR R4 synthesis (Patient / ServiceRequest / ImagingStudy).
 - **[`dicom-importer-react`](./dicom-importer-react/AGENTS.md)** (the DICOM
-  UI) — `DicomSettingsPicker` (renders nothing — no user-facing knobs yet).
+  UI) — `DicomSettingsPicker` (the acquiring equipment's time zone).
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the closed `format → { descriptor, SettingsPicker }` registry and the
@@ -153,7 +153,7 @@ sits above `http-extraction` and below every binding, exactly as
 - [dicom-importer-core AGENTS.md](./dicom-importer-core/AGENTS.md) — the DICOM
   binding's detect/archive/decode.
 - [dicom-importer-react AGENTS.md](./dicom-importer-react/AGENTS.md) — the DICOM
-  settings picker (no-op).
+  settings picker (the equipment time zone).
 - [importer-react AGENTS.md](./importer-react/AGENTS.md) — the shell + registry
   and the pick-review-confirm flow.
 - [slices/http-extraction/AGENTS.md](../http-extraction/AGENTS.md) — the

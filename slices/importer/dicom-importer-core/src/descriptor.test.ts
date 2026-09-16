@@ -1,3 +1,4 @@
+import { DateTime, Option } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporterDescriptor } from './descriptor.ts'
@@ -24,8 +25,9 @@ describe('dicomImporterDescriptor', () => {
     expect(dicomImporterDescriptor.detect(json, 'capture.har')).toBe(false)
   })
 
-  it('defaultSettings is the empty record', () => {
+  it('defaultSettings carries a time zone the runtime can resolve', () => {
     expect(dicomImporterDescriptor.defaultSettings).toEqual(defaultDicomSettings)
-    expect(Object.keys(dicomImporterDescriptor.defaultSettings)).toEqual([])
+    expect(Object.keys(dicomImporterDescriptor.defaultSettings)).toEqual(['timeZone'])
+    expect(Option.isSome(DateTime.zoneMakeNamed(defaultDicomSettings.timeZone))).toBe(true)
   })
 })

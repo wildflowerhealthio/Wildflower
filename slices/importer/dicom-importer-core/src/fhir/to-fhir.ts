@@ -13,12 +13,14 @@ import type { DicomHeader, PersonName } from 'dicom'
  *
  * @packageDocumentation
  */
-import { Effect, type ParseResult, Schema } from 'effect'
+import { DateTime, Effect, Option, type ParseResult, Schema } from 'effect'
 import { joinIdComponents } from 'fhir-r4/identity'
 import { ImagingStudy, Patient, ServiceRequest } from 'fhir-r4/resources'
 import { fnv1a64 } from 'kitchen-sink'
 
+import type { DicomSettings } from '../settings.ts'
 import { DICOM_SYSTEM } from '../source-system.ts'
+import { dicomCalendarDate, dicomInstant } from './dates.ts'
 
 type Wire = Record<string, unknown>
 
@@ -50,29 +52,35 @@ const genderOf = (sex: string | undefined): string | undefined => {
 }
 
 /**
- * Format a DICOM DA date (`YYYYMMDD`) as a FHIR date (`YYYY-MM-DD`).
- * Returns `undefined` for malformed or missing dates.
+ * Format a DICOM `DA` date (`YYYYMMDD`) as a FHIR `date` (`YYYY-MM-DD`).
+ * Returns `undefined` for a missing, malformed, or impossible date.
  */
-const fhirDate = (da: string | undefined): string | undefined => {
-  if (da === undefined || da.length < 8) return undefined
-  const y = da.slice(0, 4)
-  const m = da.slice(4, 6)
-  const d = da.slice(6, 8)
-  return `${y}-${m}-${d}`
-}
+const fhirDate = (da: string | undefined): string | undefined =>
+  Option.getOrUndefined(dicomCalendarDate(da))
 
 /**
- * Compose a FHIR `dateTime` from a DICOM DA date and optional TM time.
- * No zone is attached — DICOM files carry local time with no offset.
+ * Compose a FHIR `dateTime` from a DICOM `DA` date and optional `TM` time.
+ *
+ * @param da - The `DA` value (`20240315`)
+ * @param tm - The `TM` value (`143022`), when the header carries one
+ * @param timeZone - The IANA zone the equipment's clock was set to
+ * @returns The instant as an offset-bearing `dateTime` when a time is present
+ *   (`2024-03-15T18:30:22.000Z`), the bare calendar date when it is not, or
+ *   `undefined` when there is no usable date
+ *
+ * @remarks
+ * A `DA` with no usable `TM` stays a bare date, which `dateTime` permits with
+ * no offset; a midnight would invent a time of day the file never stated. See
+ * `dates.ts` for why the zone is needed at all.
  */
-const fhirDateTime = (da: string | undefined, tm: string | undefined): string | undefined => {
-  const date = fhirDate(da)
-  if (date === undefined) return undefined
-  if (tm === undefined || tm.length < 4) return date
-  const h = tm.slice(0, 2)
-  const min = tm.slice(2, 4)
-  const s = tm.length >= 6 ? tm.slice(4, 6) : '00'
-  return `${date}T${h}:${min}:${s}`
+const fhirDateTime = (
+  da: string | undefined,
+  tm: string | undefined,
+  timeZone: string
+): string | undefined => {
+  const instant = dicomInstant(da, tm, timeZone)
+  if (Option.isSome(instant)) return DateTime.formatIso(instant.value)
+  return fhirDate(da)
 }
 
 const humanNameWire = (pn: PersonName): Wire => {
@@ -170,7 +178,8 @@ const imagingStudyWire = (
   header: DicomHeader,
   patientId: string,
   serviceRequestId: string | undefined,
-  sourceFileId: string | undefined
+  sourceFileId: string | undefined,
+  timeZone: string
 ): Wire => {
   const id = imagingStudyOriginalId(header)
 
@@ -189,7 +198,7 @@ const imagingStudyWire = (
     numberOfInstances: 1,
   }
 
-  const started = fhirDateTime(header.studyDate, header.studyTime)
+  const started = fhirDateTime(header.studyDate, header.studyTime, timeZone)
   if (started !== undefined) wire['started'] = started
 
   if (header.modality !== undefined) {
@@ -249,6 +258,8 @@ type DicomFhirResources =
  * Synthesize FHIR resources from a parsed DICOM header.
  *
  * @param header - The parsed DICOM tags
+ * @param settings - The import's settings; its `timeZone` is what
+ *   `ImagingStudy.started` is resolved against (see `dates.ts`)
  * @param sourceFileId - The id of the `DocumentReference` storing this DICOM
  *   file's raw bytes, when known — stamped onto the `ImagingStudy` instance
  *   as a `gridfsFileId` extension so the instance can be traced back to its
@@ -259,6 +270,7 @@ type DicomFhirResources =
  */
 const toFhirResources = (
   header: DicomHeader,
+  settings: DicomSettings,
   sourceFileId?: string
 ): Effect.Effect<readonly DicomFhirResources[], ParseResult.ParseError> =>
   Effect.gen(function* () {
@@ -280,7 +292,9 @@ const toFhirResources = (
     }
 
     resources.push(
-      yield* decodeImagingStudy(imagingStudyWire(header, patientId, serviceRequestId, sourceFileId))
+      yield* decodeImagingStudy(
+        imagingStudyWire(header, patientId, serviceRequestId, sourceFileId, settings.timeZone)
+      )
     )
 
     return resources

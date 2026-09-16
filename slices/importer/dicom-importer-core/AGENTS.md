@@ -15,25 +15,48 @@ decode yields one section per file when the header carries a patient identity.
   (`https://wildflowerhealth.io/fhir/sid/dicom`).
 - `src/detect.ts` — DICM magic bytes at offset 128 (PS3.10 preamble + magic)
   or a `.dcm` extension fallback.
-- `src/settings.ts` — empty `DicomSettings`; no user-facing knobs yet.
+- `src/settings.ts` — `DicomSettings`: the one knob, `timeZone`, the IANA zone
+  the acquiring equipment's clock was set to. `defaultDicomSettings` seeds it
+  from `runtimeTimeZone()` — this runtime's own zone via `Intl` (`UTC` if the
+  runtime reports one `effect/DateTime` cannot resolve), since a study is
+  usually imported near where it was acquired.
+- `src/fhir/dates.ts` — **`dicomCalendarDate`** (`DA` → the `YYYY-MM-DD` FHIR
+  `date` carries) and **`dicomInstant`** (`DA` + `TM` + zone → a
+  `DateTime.Utc`). The header's strings become `effect/DateTime` values here
+  and nowhere later, and its module comment is the one place the reasoning
+  about DICOM time lives — a `DA`/`TM` pair is wall-clock text with no offset
+  (PS3.3 C.7.6.1) and FHIR's `dateTime` demands one once a time-of-day is
+  present, which is why the zone is a setting. Both reject an impossible date
+  (`20240230`, which `DateTime.make` would otherwise roll forward to `Mar 1`);
+  `dicomInstant` is `None` for an absent or hour-only `TM`, and for a zone the
+  runtime cannot resolve. `TM`'s `FFFFFF` fraction is scaled by its own width,
+  so `.5` is 500ms.
 - `src/fhir/to-fhir.ts` — **`toFhirResources`**: synthesizes `Patient`
   (name, identifier, birthDate, gender from M/F/O), `ServiceRequest` (emitted
   only when `AccessionNumber` is present: status completed, intent order,
   identifier = accession, code from RequestedProcedureDescription or
   StudyDescription, requester display from ReferringPhysicianName), and
   `ImagingStudy` (status available, identifier `urn:dicom:uid` /
-  `urn:oid:<StudyInstanceUID>`, started from StudyDate+StudyTime, modality
-  coded under DCM, one series with one instance, basedOn when
-  ServiceRequest exists). Ids are deterministic via `sourceId` (FNV-1a
-  64-bit of length-prefixed components). Takes an optional `sourceFileId`
+  `urn:oid:<StudyInstanceUID>`, `started` from StudyDate+StudyTime resolved
+  against `settings.timeZone` and written as an instant in UTC
+  (`2024-03-15T18:30:22.000Z`) — a bare `YYYY-MM-DD` when StudyTime is absent,
+  which `dateTime` permits with no offset rather than inventing a midnight —
+  modality coded under DCM, one series with one instance, basedOn when
+  ServiceRequest exists). Ids are deterministic via `sourceId` (FNV-1a 64-bit
+  of length-prefixed components). Takes the import's `settings` and an optional
+  `sourceFileId`
   (the DICOM file's own `DocumentReference` id); when given, it is stamped
   onto the `ImagingStudy` instance as a `gridfsFileId` extension
   (`{ url: 'gridfsFileId', valueString: sourceFileId }`), the link from the
   synthesized instance back to the raw source file.
 - `src/decode.ts` — **`decodeDicom`**: parses the DICOM file via
   `parseDicomFile`, synthesizes FHIR resources via `toFhirResources`, adopts
-  them under `DICOM_SYSTEM`. Takes `(fileBytes, fileName, settings)` — the
-  `fileName` is not read for section content, only recombined with the
+  them under `DICOM_SYSTEM`. Takes `(fileBytes, fileName, settings)`. It
+  rejects a `settings.timeZone` the runtime cannot resolve up front
+  (`checkTimeZone`, a `ParseError`) rather than substituting one — every
+  `started` it emits is resolved against that zone, so a guess would write
+  instants hours away from what the equipment recorded. The `fileName` is not
+  read for section content, only recombined with the
   bytes' SHA-256 (via the shared `sha256Base64` + `localResourceId`
   derivation `buildSourceFile` also uses) to recompute the exact id
   `buildSourceFile` will mint for this file's `DocumentReference`, which

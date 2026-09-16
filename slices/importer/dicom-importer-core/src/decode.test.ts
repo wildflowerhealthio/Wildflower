@@ -1,10 +1,17 @@
 import { writeDicom } from 'dicom/test-helpers'
-import { Effect } from 'effect'
+import { Effect, Either } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeDicom } from './decode.ts'
-import { defaultDicomSettings } from './settings.ts'
+import { type DicomSettings } from './settings.ts'
 import { buildSourceFile } from './source-file/index.ts'
+
+/**
+ * A fixed zone rather than the default, whose `timeZone` is the runtime's own:
+ * an assertion on a resolved `started` has to name the zone it was resolved
+ * against or it passes only on the machine that wrote it.
+ */
+const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
 
 const sampleDicomBytes = (): Uint8Array =>
   writeDicom({
@@ -21,6 +28,35 @@ const sampleDicomBytes = (): Uint8Array =>
   })
 
 describe('decodeDicom', () => {
+  it('resolves ImagingStudy.started against the settings time zone', async () => {
+    const result = await Effect.runPromise(
+      decodeDicom(sampleDicomBytes(), 'sample.dcm', defaultDicomSettings)
+    )
+    const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
+    expect(study?.resourceType).toBe('ImagingStudy')
+    if (study?.resourceType !== 'ImagingStudy') return
+    // StudyTime 14:30:22 in Toronto on Mar 15 is EDT (UTC-4).
+    expect(study.started).toBe('2024-03-15T18:30:22.000Z')
+  })
+
+  it('reads the same file as a different instant under a different zone', async () => {
+    const startedIn = async (timeZone: string): Promise<string | null | undefined> => {
+      const result = await Effect.runPromise(
+        decodeDicom(sampleDicomBytes(), 'sample.dcm', { timeZone })
+      )
+      const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
+      return study?.resourceType === 'ImagingStudy' ? study.started : undefined
+    }
+    expect(await startedIn('America/Toronto')).not.toBe(await startedIn('America/Vancouver'))
+  })
+
+  it('fails rather than guessing when the settings time zone is not a zone', async () => {
+    const result = await Effect.runPromise(
+      Effect.either(decodeDicom(sampleDicomBytes(), 'sample.dcm', { timeZone: 'Mars/Olympus' }))
+    )
+    expect(Either.isLeft(result)).toBe(true)
+  })
+
   it('yields one section with Patient, ServiceRequest, ImagingStudy', async () => {
     const result = await Effect.runPromise(
       decodeDicom(sampleDicomBytes(), 'sample.dcm', defaultDicomSettings)
