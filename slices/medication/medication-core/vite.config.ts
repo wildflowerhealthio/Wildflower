@@ -4,26 +4,16 @@ import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
   ...base,
-  pack: [
-    {
-      deps: { resolveDepSubpath: true },
-      dts: { generator: 'tsgo', tsgo: {} },
-      exports: false,
-      platform: 'neutral',
-      entry: {
-        index: 'src/index.ts',
-      },
+  pack: {
+    deps: { resolveDepSubpath: true },
+    dts: { generator: 'tsgo', tsgo: {} },
+    exports: false,
+    platform: 'neutral',
+    entry: {
+      index: 'src/index.ts',
+      'fhir/index': 'src/fhir/index.ts',
     },
-    {
-      deps: { resolveDepSubpath: true },
-      dts: { generator: 'tsgo', tsgo: {} },
-      exports: false,
-      platform: 'neutral',
-      entry: {
-        'fhir/index': 'src/fhir/index.ts',
-      },
-    },
-  ],
+  },
   test: {
     include: ['src/**/*.test.ts'],
     exclude: ['**/node_modules/**', '**/dist/**'],

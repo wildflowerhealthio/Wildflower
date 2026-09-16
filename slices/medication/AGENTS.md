@@ -109,8 +109,8 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
 - **The FHIR R4 adapters live behind the `medication-core/fhir` subpath, never
   the root export.** The root entry stays pure — importing `scoreName` from
   `medication-core` must not pull `fhir-r4`'s schemas into a consumer's bundle.
-  Adding an entry means a new `pack` config in `vite.config.ts` and a matching
-  `exports` key; the root and the subpath are separate `vp pack` entries.
+  Adding an entry means a new key in `vite.config.ts`'s single `pack.entry`
+  and a matching `exports` key.
 - The two feature cores (`medication-sponsorship-core`,
   `medication-interaction-core`) stay FHIR-agnostic. `fhir-r4` is this package's
   dependency alone; a feature core that wants a resource takes the
