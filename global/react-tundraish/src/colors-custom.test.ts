@@ -1,3 +1,8 @@
+/// <reference types="node" />
+// `types: []` in this package's tsconfig keeps Node's globals out of the
+// browser-shipped sources; this one test reads the stylesheet off disk, so it
+// opts into `@types/node` explicitly rather than widening the whole package.
+
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -90,7 +95,24 @@ describe('colors-custom.css series tokens', () => {
     }
   })
 
-  it('should never repeat a hue across the slots of one mode', () => {
+  it('should keep slot 1 on the navy accent step it documents', () => {
+    for (const selector of [LIGHT_SELECTOR, DARK_SELECTOR]) {
+      // Arrange
+      const palette = customPropertiesOf(selector)
+
+      // Act
+      const accent = palette.get('--color-accent-5')
+
+      // Assert — slot 1 spells the accent's base step out as a literal (the
+      // validator is run over hexes, not `var()` chains), so the copy needs a
+      // guard: re-stepping the accent ramp without re-validating slot 1 fails
+      // here instead of drifting the chart off-brand.
+      expect(accent).toMatch(/^#[0-9a-f]{6}$/)
+      expect(palette.get('--color-series-1')).toBe(accent)
+    }
+  })
+
+  it('should give every slot its own value within a mode', () => {
     for (const selector of [LIGHT_SELECTOR, DARK_SELECTOR]) {
       // Arrange
       const palette = customPropertiesOf(selector)
@@ -98,7 +120,9 @@ describe('colors-custom.css series tokens', () => {
       // Act
       const values = SERIES_SLOTS.map((slot) => palette.get(`--color-series-${slot}`))
 
-      // Assert
+      // Assert — hue separation itself is the palette validator's job (CVD and
+      // normal-vision ΔE); what the stylesheet can be held to is that no slot
+      // was copy-pasted onto another.
       expect(new Set(values).size).toBe(SERIES_SLOTS.length)
     }
   })
@@ -111,6 +135,7 @@ describe('colors-custom.css series tokens', () => {
         selector === DARK_SELECTOR
           ? new Map([...customPropertiesOf(LIGHT_SELECTOR), ...customPropertiesOf(DARK_SELECTOR)])
           : customPropertiesOf(LIGHT_SELECTOR)
+      const unresolved = STATUS_TOKENS.filter((token) => palette.get(token) === undefined)
       const statusValues = new Set(STATUS_TOKENS.map((token) => palette.get(token)))
 
       // Act
@@ -118,7 +143,10 @@ describe('colors-custom.css series tokens', () => {
         statusValues.has(palette.get(token))
       )
 
-      // Assert
+      // Assert — a renamed or deleted status token would otherwise put
+      // `undefined` in the set and quietly reduce this to a no-op, so the names
+      // are checked before the values they stand for.
+      expect(unresolved).toEqual([])
       expect(collisions).toEqual([])
     }
   })

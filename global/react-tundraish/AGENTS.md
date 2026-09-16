@@ -1,17 +1,21 @@
 # AGENTS.md — global/react-tundraish
 
 Tundra-CSS-styled React DOM primitives plus the palette every Wildflower surface
-paints itself from. The palette lives in `src/colors-custom.css` — one `:root`
-block for light, one `:root[data-color-scheme='dark']` block for dark, and no
-`prefers-color-scheme` rule anywhere (both runtimes resolve the scheme in JS and
-write the attribute; see `src/color-scheme.ts`).
+paints itself from. The palette lives in `src/colors-custom.css`, keyed on two
+selectors: `:root` for light and `:root[data-color-scheme='dark']` for dark.
+Each is written across more than one rule (the light tokens follow an `:root`
+block of `--app-accent` aliases; the dark ones follow a `color-scheme` rule and
+precede the dark button overrides), and every rule on a selector cascades onto
+the same target — so a token can be read from any of them. There is no
+`prefers-color-scheme` rule anywhere: both runtimes resolve the scheme in JS and
+write the attribute (see `src/color-scheme.ts`).
 
 ## Categorical series tokens
 
 `--color-series-1` … `--color-series-4` are the chart-identity slots, with
 `--color-series-N-soft` as each slot's low-alpha band fill (`color-mix()` off
 the same slot, so a re-stepped slot carries its band with it). Both sets are
-defined in **both** palette blocks.
+defined under **both** selectors.
 
 - **Fixed order, never cycled.** A chart takes slot 1, then 2, then 3, then 4.
   A fifth series folds into an "Other" series or takes a facet — it never comes
@@ -28,8 +32,10 @@ defined in **both** palette blocks.
 - **`-soft` is a backdrop.** It is the fill behind a reference range — never a
   mark, never a text colour.
 - **Light mode owes the reader a second channel.** Slots 2-4 sit below 3:1 on
-  the light canvas, so a light-mode chart ships visible direct labels or a table
-  view; colour alone is not enough. Dark clears 3:1 on all four.
+  the light canvas _and_ on the lighter card surface a chart usually sits on
+  (`--color-background`, `#f2f2f2`), so a light-mode chart ships visible direct
+  labels or a table view; colour alone is not enough. Dark clears 3:1 on both of
+  its surfaces, so the obligation is light-mode only.
 - **Four slots hold for stacks, bars, and lines only.** Those forms compare
   _adjacent_ slots. A scatter, bubble, choropleth, or small-multiples chart puts
   every pair on screen at once, and slot 4 (yellow) beside slot 2 (orange) fails
@@ -37,9 +43,12 @@ defined in **both** palette blocks.
 
 The four are validated as a **set** per mode against the page canvas
 (`--color-canvas`: `#dedede` light, `#161616` dark) — lightness band, chroma
-floor, protan/deutan ΔE, normal-vision ΔE, contrast. Changing one value means
-re-running the validator over all four in both modes and snapping to a passing
-step, not eyeballing the one slot:
+floor, protan/deutan ΔE, normal-vision ΔE, contrast. Only the contrast check
+moves with the surface, so the card surface (`--color-background`: `#f2f2f2`
+light, `#1c1c1c` dark) is worth a second run when a chart lands on a card; it
+does not change either mode's verdict. Changing one value means re-running the
+validator over all four in both modes and snapping to a passing step, not
+eyeballing the one slot:
 
 ```bash
 node <dataviz-skill>/scripts/validate_palette.js \
@@ -49,10 +58,12 @@ node <dataviz-skill>/scripts/validate_palette.js \
 ```
 
 `src/colors-custom.test.ts` parses the stylesheet and holds the structural half
-of the above: both blocks define every slot and companion, slots are literal
-hexes (never a `var()` alias that could drift when a ramp is re-stepped), no
-hue repeats within a mode, no slot equals a status value, and each `-soft`
-mixes from its own slot.
+of the above: both selectors define every slot and companion, slots are literal
+hexes (never a `var()` alias that could drift when a ramp is re-stepped), slot 1
+still equals `--color-accent-5` in both modes, no two slots share a value within
+a mode, no slot equals a status value, and each `-soft` mixes from its own slot.
+Hue _separation_ is not something the stylesheet can assert — that is the
+validator's job, which is why re-stepping any slot means re-running it.
 
 ## References
 
