@@ -1,4 +1,3 @@
-import type { ServerComparison } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { Review, sectionResources } from 'importer-fundamentals'
 import { type JSX, useCallback, useState } from 'react'
@@ -52,13 +51,6 @@ const CHECKING_SERVER_MESSAGE = 'Checking the server for existing copies…'
 /** The bound descriptors, one per registered format, in registry order. */
 const registeredDescriptors = Object.values(formatRegistry)
 
-/**
- * The empty comparison map, held once so `PreviewPanel`'s `comparisons`
- * prop keeps its reference identity while the pre-fetch is in flight — the
- * panel re-renders on the transition to `ready`, not on every mount.
- */
-const EMPTY_COMPARISONS: ReadonlyMap<string, ServerComparison> = new Map()
-
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(formatRegistry)
@@ -70,8 +62,6 @@ const ImporterScreen = (): JSX.Element => {
 
   const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
   const diff = useServerDiff(readFiles)
-  const comparisons: ReadonlyMap<string, ServerComparison> =
-    diff._tag === 'ready' ? diff.comparisons : EMPTY_COMPARISONS
 
   const selectionFor = useCallback(
     (fileId: string): Review.Selection<FhirResource> => {
@@ -81,7 +71,7 @@ const ImporterScreen = (): JSX.Element => {
       // `unchanged` resource is pre-excluded so a re-import writes nothing
       // by default. As soon as the reviewer toggles anything,
       // `selections.get(fileId)` wins and this seed is out of the picture.
-      if (diff._tag !== 'ready' || readFiles === undefined) return Review.initial<FhirResource>()
+      if (diff.firstLoad || readFiles === undefined) return Review.initial<FhirResource>()
       const file = readFiles.find(
         (candidate) => candidate.id === fileId && candidate._tag === 'read'
       )
@@ -130,9 +120,12 @@ const ImporterScreen = (): JSX.Element => {
         </p>
       )
     }
-    // Block the preview on the server diff so every row paints with its badge
-    // already resolved — no mid-render pop-in a second after the panel shows.
-    if (diff._tag === 'pending') {
+    // Block the preview on the server diff's *first* load so every row paints
+    // with its badge already resolved — no mid-render pop-in a second after the
+    // panel shows. A settings change starts another classification, and
+    // blocking on that one too would unmount the panel — and the settings
+    // input the reviewer is typing into — on every keystroke it commits.
+    if (diff.firstLoad) {
       return (
         <p role="status" className={styles.status}>
           {CHECKING_SERVER_MESSAGE}
@@ -145,7 +138,7 @@ const ImporterScreen = (): JSX.Element => {
         settings={importRun.settings}
         settingsRegistry={formatRegistry}
         selectionFor={selectionFor}
-        comparisons={comparisons}
+        comparisons={diff.comparisons}
         onSelectionChange={onSelectionChange}
         onSettingsChange={importRun.applySettings}
         confirming={confirming}

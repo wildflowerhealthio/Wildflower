@@ -17,9 +17,9 @@ import type { FileReadOutcome } from './use-import-run.ts'
  * selection).
  *
  * @remarks
- * The classification is a TanStack Query, so the shell can **block on it**
- * (its `pending` state gates the preview) rather than paint the panel first
- * and let badges pop in a second later. One `POST /` batch of GET entries
+ * The classification is a TanStack Query, so the shell can **block on its
+ * first load** (`firstLoad` gates the preview) rather than paint the panel
+ * first and let badges pop in a second later. One `POST /` batch of GET entries
  * fetches every id at once, so a review across two dozen files is still one
  * round trip. The returned map is indexed by the reviewed
  * {@link LabeledResource.key}s — the same keys the shell already uses
@@ -42,14 +42,32 @@ interface DiffRow {
 }
 
 /**
- * The state of the pre-fetch: `pending` (in flight — the shell shows a loader
- * and does not paint the preview yet), `ready` (the classification is complete
- * for this batch of read files — the map may still be empty when the batch had
- * no readable resources at all).
+ * The state of the pre-fetch.
+ *
+ * @remarks
+ * `firstLoad` is the shell's paint gate, and it is deliberately narrower than
+ * "a classification is in flight": a settings change re-decodes, which starts
+ * a *second* classification, and gating the preview on that one would unmount
+ * the whole panel — taking the focused settings input with it — on every change the
+ * reviewer makes. So only the first classification of a batch blocks; a later
+ * one resolves underneath the painted panel, with `comparisons` still holding
+ * the previous classification meanwhile so badges refresh in place rather than
+ * blinking out. Resource keys are stable across a re-decode, so the retained
+ * map stays addressable by the same keys throughout.
  */
-type ServerDiffState =
-  | { readonly _tag: 'pending' }
-  | { readonly _tag: 'ready'; readonly comparisons: ReadonlyMap<string, ServerComparison> }
+interface ServerDiffState {
+  /**
+   * The classification in hand, keyed by {@link LabeledResource.key}. While a
+   * re-classification is in flight this is the previous one; it is empty only
+   * before anything has ever resolved, or when the batch had no resources.
+   */
+  readonly comparisons: ReadonlyMap<string, ServerComparison>
+  /** Whether no classification has resolved yet for this batch of files. */
+  readonly firstLoad: boolean
+}
+
+/** The empty map, held once so an unresolved state keeps a stable identity. */
+const EMPTY_COMPARISONS: ReadonlyMap<string, ServerComparison> = new Map()
 
 /** The comparison a resource with no classifier entry falls back to. */
 const AS_NEW: ServerComparison = { status: 'new', fields: [] }
@@ -72,8 +90,8 @@ const byLabeledKey = (
  * @param files - The current batch's read outcomes (undefined while the
  *   import-run is still `idle` or `reading`); only `read` files contribute
  *   resources
- * @returns The classification state (`pending` while in flight, `ready`
- *   with the map after)
+ * @returns The classification state: the comparisons in hand, and whether none
+ *   has resolved yet for this batch
  */
 const useServerDiff = (files: readonly FileReadOutcome[] | undefined): ServerDiffState => {
   const runAuthed = useRunAuthed()
@@ -121,14 +139,40 @@ const useServerDiff = (files: readonly FileReadOutcome[] | undefined): ServerDif
     retry: false,
   })
 
-  return useMemo((): ServerDiffState => {
-    if (!enabled || rows === undefined) return { _tag: 'ready', comparisons: new Map() }
-    if (query.isSuccess) return { _tag: 'ready', comparisons: byLabeledKey(rows, query.data) }
-    // An auth-path rejection: fold to "every id is new" rather than stall the
-    // preview forever on a loader.
-    if (query.isError) return { _tag: 'ready', comparisons: byLabeledKey(rows, new Map()) }
-    return { _tag: 'pending' }
+  // The classification for the *current* rows, or undefined while it is in
+  // flight. An auth-path rejection folds to "every id is new" rather than
+  // stall the preview forever on a loader.
+  const resolved = useMemo((): ReadonlyMap<string, ServerComparison> | undefined => {
+    if (!enabled || rows === undefined) return new Map()
+    if (query.isSuccess) return byLabeledKey(rows, query.data)
+    if (query.isError) return byLabeledKey(rows, new Map())
+    return undefined
   }, [enabled, rows, query.isSuccess, query.isError, query.data])
+
+  // Hold the latest resolved classification so a re-decode's in-flight query
+  // shows the previous badges instead of none, paired with whether a batch was
+  // present when it was taken. Crossing that boundary (the run goes idle or
+  // `reading` between picks) drops the map, so the *next* batch blocks on its
+  // own first classification instead of painting the last one's badges.
+  // Adjusted during render off the changed input, the same
+  // derive-from-a-changed-value pattern `tracked` uses.
+  const hasBatch = rows !== undefined
+  const [retained, setRetained] = useState<{
+    readonly hasBatch: boolean
+    readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
+  }>({ hasBatch, comparisons: undefined })
+  if (retained.hasBatch !== hasBatch) setRetained({ hasBatch, comparisons: undefined })
+  else if (resolved !== undefined && retained.comparisons !== resolved) {
+    setRetained({ hasBatch, comparisons: resolved })
+  }
+
+  return useMemo((): ServerDiffState => {
+    const previous = retained.hasBatch === hasBatch ? retained.comparisons : undefined
+    return {
+      comparisons: resolved ?? previous ?? EMPTY_COMPARISONS,
+      firstLoad: resolved === undefined && previous === undefined,
+    }
+  }, [resolved, retained, hasBatch])
 }
 
 /**

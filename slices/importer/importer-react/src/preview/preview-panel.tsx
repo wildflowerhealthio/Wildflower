@@ -1,4 +1,4 @@
-import { Data, Option } from 'effect'
+import { Data, Match, Option } from 'effect'
 import {
   diffJson,
   type DiffStatus,
@@ -152,6 +152,14 @@ const tallyLabel = (tally: TypeTally): string => {
 /**
  * One format's settings form, dispatched on the format tag so the picker
  * component and the settings value line up per branch — no cast.
+ *
+ * @remarks
+ * `Match.exhaustive` rather than an `if`/fallthrough: every branch is
+ * identical but for `kind`, and a fallthrough silently binds one format's
+ * group to another format's picker — which is what happened when `dicom`
+ * joined the registry and kept editing the LifeLabs settings, leaving DICOM
+ * decoding under its defaults forever. Registering a format without a branch
+ * here must fail to compile, and with `Match.exhaustive` it does.
  */
 const FormatSettingsForm = ({
   format,
@@ -164,17 +172,25 @@ const FormatSettingsForm = ({
   readonly settingsRegistry: SettingsRegistry
   readonly onSettingsChange: PreviewPanelProps['onSettingsChange']
 }): JSX.Element => {
-  if (format === 'har') {
-    const Picker = settingsRegistry.har.SettingsPicker
-    return <Picker settings={settings.har} onChange={(next) => onSettingsChange('har', next)} />
-  }
-  const Picker = settingsRegistry['lifelabs-pdf'].SettingsPicker
-  return (
-    <Picker
-      settings={settings['lifelabs-pdf']}
-      onChange={(next) => onSettingsChange('lifelabs-pdf', next)}
-    />
-  )
+  // Each branch re-indexes on its own literal `kind`, the way `runDecode`
+  // does: a shared generic helper loses the correlation between
+  // `FormatVariant[K]['settings']` and `FormatSettings[K]` and stops
+  // type-checking.
+  return Match.type<FormatKind>().pipe(
+    Match.when('har', (kind) => {
+      const Picker = settingsRegistry[kind].SettingsPicker
+      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
+    }),
+    Match.when('lifelabs-pdf', (kind) => {
+      const Picker = settingsRegistry[kind].SettingsPicker
+      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
+    }),
+    Match.when('dicom', (kind) => {
+      const Picker = settingsRegistry[kind].SettingsPicker
+      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
+    }),
+    Match.exhaustive
+  )(format)
 }
 
 /**

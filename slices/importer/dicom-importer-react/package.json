@@ -2,7 +2,7 @@
   "name": "dicom-importer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The DICOM format's UI for the importer slice: the time-zone DicomSettingsPicker, the IANA zone the acquiring equipment's clock was set to — what turns DICOM's offset-less StudyDate/StudyTime into the instant FHIR's dateTime requires. Presentation and interaction only.",
+  "description": "The DICOM format's UI for the importer slice: the debounced time-zone DicomSettingsPicker and its North American zone suggestions — the IANA zone the acquiring equipment's clock was set to, which turns DICOM's offset-less StudyDate/StudyTime into the instant FHIR's dateTime requires. Presentation and interaction only.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

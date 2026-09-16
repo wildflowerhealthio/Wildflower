@@ -80,8 +80,17 @@ The importer has no HTTP wire union to derive, so there is no separate
   an `unreadable`, or an `unrecognized` file), owns the `FormatSettings`
   record, and re-decodes a format's files from their retained bytes when
   `applySettings` changes that format's settings (file ids survive, so keyed
-  selections keep applying); `preview-panel.tsx` renders the batch grouped by
-  format — the format's settings form over each of its files' sectioned,
+  selections keep applying); `use-server-diff.ts` pre-classifies every
+  previewed resource against the server (`new` / `unchanged` / `changed`) for
+  the row badges and the "already there, so pre-excluded" seed — the screen
+  blocks the first paint on it (`firstLoad`) but **not** on the
+  re-classification a settings change triggers, since unmounting the panel
+  mid-review would drop the focus of whatever settings control the reviewer is
+  using; `preview-panel.tsx` renders the batch grouped by
+  format — the format's settings form (dispatched `Match.exhaustive` on the
+  format tag, so registering a format without a branch fails to compile rather
+  than silently binding its group to a sibling's picker) over each of its
+  files' sectioned,
   per-resource reviews (include checkbox, one-line `describeResource`
   summary, Edit/Revert with the `ResourceEditor` dialog, per-type tallies,
   and the file's notes folded into a collapsed details block) — under one

@@ -159,6 +159,27 @@ describe('PreviewPanel', () => {
     expect(onSettingsChange).toHaveBeenCalledWith('har', defaultFormatSettings.har)
   })
 
+  it('mounts each format’s own settings picker, DICOM included', async () => {
+    const onSettingsChange = vi.fn()
+    const files = [
+      readFile(
+        'scan.dcm',
+        decoded([section('CT Chest', [labeledResource('s', 'Patient/s')])]),
+        'dicom'
+      ),
+    ]
+    render(<PreviewPanel {...panelProps(files, { onSettingsChange })} />)
+
+    // The DICOM group must mount the DICOM picker — not a sibling format's,
+    // which would edit the wrong format's settings and leave the DICOM decode
+    // running under the defaults forever.
+    expect(screen.getByRole('region', { name: 'DICOM image' })).toBeDefined()
+    expect(screen.queryByRole('button', { name: 'change lifelabs settings' })).toBeNull()
+
+    await userEvent.click(screen.getByRole('button', { name: 'change dicom settings' }))
+    expect(onSettingsChange).toHaveBeenCalledWith('dicom', defaultFormatSettings.dicom)
+  })
+
   it('disables the confirm while a confirmed import is running', () => {
     const files = [
       readFile(
