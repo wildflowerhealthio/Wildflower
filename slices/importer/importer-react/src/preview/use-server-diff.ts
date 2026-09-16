@@ -6,8 +6,8 @@ import { classifyAgainstServer, diffKey, type ServerComparison } from 'fhir-r4/c
 import type { FhirResource } from 'fhir-r4/resources'
 import { type LabeledResource, sectionResources } from 'importer-fundamentals'
 
+import type { UnitReadOutcome } from 'importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
-import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
  * Pre-fetch the server's copy for every previewed resource in a batch and
@@ -43,11 +43,26 @@ import type { FileReadOutcome } from './use-import-run.ts'
  * @packageDocumentation
  */
 
-/** One labeled resource paired with the value the classifier probes for it. */
+/** One labeled resource, the unit it belongs to, and the value the classifier probes for it. */
 interface DiffRow {
+  readonly unitId: string
   readonly key: string
   readonly resource: FhirResource
 }
+
+/**
+ * Every previewed resource's server comparison, keyed by unit id and then by
+ * {@link LabeledResource.key} within the unit.
+ *
+ * @remarks
+ * Two units can carry the same resource key — a format whose keys name the
+ * resource's role (DICOM's `patient`, `imaging-study`) repeats them per file,
+ * and every format's source-file row is keyed by file name — so a flat map
+ * keyed by resource key alone would let one unit's verdict overwrite
+ * another's. Scoping by unit keeps each unit's badges and pre-exclusions its
+ * own.
+ */
+type UnitComparisons = ReadonlyMap<string, ReadonlyMap<string, ServerComparison>>
 
 /**
  * The state of the pre-fetch: `loading` while there is nothing worth showing
@@ -59,28 +74,55 @@ interface DiffRow {
  */
 type ServerDiffState =
   | { readonly _tag: 'loading' }
-  | { readonly _tag: 'ready'; readonly comparisons: ReadonlyMap<string, ServerComparison> }
+  | { readonly _tag: 'ready'; readonly comparisons: UnitComparisons }
   | {
       readonly _tag: 'error'
-      readonly comparisons: ReadonlyMap<string, ServerComparison>
+      readonly comparisons: UnitComparisons
       readonly error: Error
     }
 
 /** No comparisons, held once so an empty batch keeps a stable identity. */
-const NO_COMPARISONS: ReadonlyMap<string, ServerComparison> = new Map()
+const NO_COMPARISONS: UnitComparisons = new Map()
 
 /** The comparison a resource with no classifier entry falls back to. */
 const AS_NEW: ServerComparison = { status: 'new', fields: [] }
 
-/** Re-key a `Type/id → comparison` map onto the batch's `LabeledResource.key`s. */
-const byLabeledKey = (
+/**
+ * Re-key a `Type/id → comparison` map onto the batch's units and their
+ * `LabeledResource.key`s.
+ *
+ * @param rows - Every previewed resource with its unit
+ * @param byDiffKey - The classifier's verdicts by `Type/id`
+ * @returns The verdicts by unit id, then by resource key; a row the
+ *   classifier did not cover reads as `new`
+ */
+const byUnitAndKey = (
   rows: readonly DiffRow[],
   byDiffKey: ReadonlyMap<string, ServerComparison>
-): ReadonlyMap<string, ServerComparison> => {
-  const comparisons = new Map<string, ServerComparison>()
-  for (const row of rows) comparisons.set(row.key, byDiffKey.get(diffKey(row.resource)) ?? AS_NEW)
+): UnitComparisons => {
+  const comparisons = new Map<string, Map<string, ServerComparison>>()
+  for (const row of rows) {
+    const unit = comparisons.get(row.unitId) ?? new Map<string, ServerComparison>()
+    unit.set(row.key, byDiffKey.get(diffKey(row.resource)) ?? AS_NEW)
+    comparisons.set(row.unitId, unit)
+  }
   return comparisons
 }
+
+/**
+ * Every previewed resource across a batch's read units, paired with its unit
+ * and labeled key — the flat list one classifier round trip probes.
+ */
+const diffRowsOf = (units: readonly UnitReadOutcome[]): readonly DiffRow[] =>
+  units.flatMap((unit) =>
+    unit._tag === 'read'
+      ? sectionResources(unit.decoded.sections).map((entry): DiffRow => ({
+          unitId: unit.id,
+          key: entry.key,
+          resource: entry.resource,
+        }))
+      : []
+  )
 
 /**
  * The batch id carried second-from-last in this hook's query keys — read back
@@ -97,8 +139,8 @@ const batchOf = (queryKey: readonly unknown[]): number | undefined => {
  * and expose the classification as a `LabeledResource.key → ServerComparison`
  * lookup.
  *
- * @param files - The current batch's read outcomes (undefined while the
- *   import-run is still `idle` or `reading`); only `read` files contribute
+ * @param units - The current batch's read outcomes (undefined while the
+ *   import-run is still `idle` or `reading`); only `read` units contribute
  *   resources
  * @param batchId - Identifies the picked batch: stable across a settings
  *   re-decode of the same files, different for a fresh pick. It is what
@@ -107,24 +149,17 @@ const batchOf = (queryKey: readonly unknown[]): number | undefined => {
  * @returns `loading` until this batch has verdicts worth showing, then `ready`
  */
 const useServerDiff = (
-  files: readonly FileReadOutcome[] | undefined,
+  units: readonly UnitReadOutcome[] | undefined,
   batchId: number
 ): ServerDiffState => {
   const runAuthed = useRunAuthed()
 
-  // Every resource across every read file, paired with its labeled key —
-  // one flat list drives one bundle round trip.
-  const rows = useMemo((): readonly DiffRow[] | undefined => {
-    if (files === undefined) return undefined
-    const collected: DiffRow[] = []
-    for (const file of files) {
-      if (file._tag !== 'read') continue
-      for (const entry of sectionResources(file.decoded.sections)) {
-        collected.push({ key: entry.key, resource: entry.resource })
-      }
-    }
-    return collected
-  }, [files])
+  // Every resource across every read unit, paired with its unit and labeled
+  // key — one flat list drives one bundle round trip.
+  const rows = useMemo(
+    (): readonly DiffRow[] | undefined => (units === undefined ? undefined : diffRowsOf(units)),
+    [units]
+  )
 
   // A token that advances whenever the decoded batch changes reference — a
   // fresh pick or a settings re-decode. It stands in for `rows` in the query
@@ -164,12 +199,12 @@ const useServerDiff = (
   return useMemo((): ServerDiffState => {
     if (!enabled || rows === undefined) return { _tag: 'ready', comparisons: NO_COMPARISONS }
     if (query.data !== undefined) {
-      return { _tag: 'ready', comparisons: byLabeledKey(rows, query.data) }
+      return { _tag: 'ready', comparisons: byUnitAndKey(rows, query.data) }
     }
     if (query.isError)
       return {
         _tag: 'error',
-        comparisons: byLabeledKey(rows, new Map()),
+        comparisons: byUnitAndKey(rows, new Map()),
         error:
           query.error instanceof Error
             ? query.error
@@ -180,20 +215,33 @@ const useServerDiff = (
 }
 
 /**
- * The `StagedImport.Selection.excludedResources` set for a file, seeded from
- * the server diff: every `unchanged` labeled resource is pre-excluded so a
- * re-import of a file whose resources the server already holds writes
+ * The `StagedImport.Selection.excludedResources` set for a unit, seeded from
+ * its server diff: every `unchanged` labeled resource is pre-excluded so a
+ * re-import of a unit whose resources the server already holds writes
  * nothing by default. The reviewer can still tick any row back on.
+ *
+ * @param labeled - The unit's labeled resources
+ * @param comparisons - The unit's own verdicts by resource key (`undefined`
+ *   when the diff has none for it, which excludes nothing)
+ * @returns The keys to pre-exclude
  */
 const initialExclusionsFor = (
   labeled: readonly LabeledResource<FhirResource>[],
-  comparisons: ReadonlyMap<string, ServerComparison>
+  comparisons: ReadonlyMap<string, ServerComparison> | undefined
 ): ReadonlySet<string> => {
   const excluded = new Set<string>()
   for (const entry of labeled) {
-    if (comparisons.get(entry.key)?.status === 'unchanged') excluded.add(entry.key)
+    if (comparisons?.get(entry.key)?.status === 'unchanged') excluded.add(entry.key)
   }
   return excluded
 }
 
-export { initialExclusionsFor, useServerDiff, type ServerDiffState }
+export {
+  byUnitAndKey,
+  type DiffRow,
+  diffRowsOf,
+  initialExclusionsFor,
+  type ServerDiffState,
+  type UnitComparisons,
+  useServerDiff,
+}

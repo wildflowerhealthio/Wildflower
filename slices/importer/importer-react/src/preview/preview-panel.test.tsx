@@ -3,6 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { Either, type ParseResult, Schema } from 'effect'
 import type { DiffSlot, FieldDiff, ServerComparison } from 'fhir-r4/clients'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
+import type { UnitReadOutcome } from 'importer-core'
 import type { DecodedFile, LabeledResource, LabeledSection } from 'importer-fundamentals'
 import { StagedImport } from 'importer-fundamentals'
 import type { JSX } from 'react'
@@ -20,7 +21,6 @@ import {
   UNREADABLE_FILE_MESSAGE,
   UNRECOGNIZED_FILE_MESSAGE,
 } from './preview-panel.tsx'
-import type { FileReadOutcome } from './use-import-run.ts'
 
 /**
  * The preview panel renders every picked file's review under one confirm.
@@ -88,7 +88,7 @@ describe('PreviewPanel', () => {
   })
 
   it('sums a mixed batch with an unreadable and an unrecognized file, each file rendered under its name', () => {
-    const files: readonly FileReadOutcome[] = [
+    const files: readonly UnitReadOutcome[] = [
       readFile(
         'a.har',
         decoded([section('https://a', [labeledResource('pat-1', 'Patient/pat-1')])])
@@ -96,12 +96,12 @@ describe('PreviewPanel', () => {
       {
         _tag: 'unreadable',
         id: 'u',
+        title: 'broken.har',
         files: [pickedFile('broken.har')],
         format: 'har',
         error: anyParseError(),
-        sourceFiles: new Map(),
       },
-      { _tag: 'unrecognized', id: 'x', files: [pickedFile('notes.txt')] },
+      { _tag: 'unrecognized', id: 'x', title: 'notes.txt', files: [pickedFile('notes.txt')] },
       readFile(
         'c.har',
         decoded([section('https://c', [labeledResource('obs-1', 'Observation/obs-1')])])
@@ -278,9 +278,7 @@ describe('PreviewPanel', () => {
     const files = [
       readFile('a.har', decoded([section('s', [labeledResource('pat-1', 'Patient/pat-1')])])),
     ]
-    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
-      ['pat-1', { status: 'new', fields: [] }],
-    ])
+    const comparisons = comparisonsFor('a.har', [['pat-1', { status: 'new', fields: [] }]])
 
     // Act
     render(<PreviewPanel {...panelProps(files, { comparisons })} />)
@@ -300,7 +298,7 @@ describe('PreviewPanel', () => {
       server: valueSlot('male'),
       incoming: valueSlot('female'),
     }
-    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+    const comparisons = comparisonsFor('a.har', [
       ['pat-1', { status: 'changed', fields: [field], server: {} }],
     ])
     render(<PreviewPanel {...panelProps(files, { comparisons })} />)
@@ -324,7 +322,7 @@ describe('PreviewPanel', () => {
       server: valueSlot('male'),
       incoming: valueSlot('female'),
     }
-    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+    const comparisons = comparisonsFor('a.har', [
       ['pat-1', { status: 'changed', fields: [field], server: {} }],
     ])
     render(<PreviewPanel {...panelProps(files, { comparisons })} />)
@@ -347,7 +345,7 @@ describe('PreviewPanel', () => {
       resource: patient,
     }
     const files = [readFile('a.har', decoded([section('s', [labeled])]))]
-    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+    const comparisons = comparisonsFor('a.har', [
       ['pat-1', { status: 'unchanged', fields: [], server: patientWire(onServer) }],
     ])
     const selectionFor = (): StagedImport.Selection<FhirResource> =>
@@ -374,7 +372,7 @@ describe('PreviewPanel', () => {
       resource: patient,
     }
     const files = [readFile('a.har', decoded([section('s', [labeled])]))]
-    const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
+    const comparisons = comparisonsFor('a.har', [
       [
         'pat-1',
         { status: 'changed', fields: [], server: patientWire({ id: 'pat-1', gender: 'male' }) },
@@ -420,19 +418,25 @@ const pickedFile = (fileName: string): PickedFile => ({
   source: LOCAL_SOURCE,
 })
 
-/** A `read` {@link FileReadOutcome} carrying the given decoded sections. */
+/** A `read` {@link UnitReadOutcome} carrying the given decoded sections, titled by its file name. */
 const readFile = (
   fileName: string,
   decodedFile: DecodedFile<FhirResource>,
   format: FormatKind = 'har'
-): FileReadOutcome => ({
+): UnitReadOutcome => ({
   _tag: 'read',
   id: fileName,
+  title: fileName,
   files: [pickedFile(fileName)],
   format,
   decoded: decodedFile,
-  sourceFiles: new Map(),
 })
+
+/** Verdicts for the one unit `readFile('a.har', …)` builds, keyed by its id. */
+const comparisonsFor = (
+  unitId: string,
+  entries: readonly (readonly [string, ServerComparison])[]
+): PreviewPanelProps['comparisons'] => new Map([[unitId, new Map(entries)]])
 
 /** A decoded file from sections and optional notes. */
 const decoded = (
@@ -484,7 +488,7 @@ const settingsRegistry: SettingsRegistry = {
 
 /** Shared panel props wired to synthetic lookups. */
 const panelProps = (
-  files: readonly FileReadOutcome[],
+  files: readonly UnitReadOutcome[],
   overrides: {
     readonly onConfirm?: () => void
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']

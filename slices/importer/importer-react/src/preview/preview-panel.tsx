@@ -15,11 +15,13 @@ import { StagedImport, sectionResources } from 'importer-fundamentals'
 import { type JSX, useEffect, useMemo, useRef, useState } from 'react'
 import { Chip } from 'react-tundraish'
 
+import type { ReadUnit, UnitReadOutcome, UnreadableUnit } from 'importer-core'
+
 import type { BoundFormat, FormatKind, FormatSettings } from '../registry.ts'
 import { formatKinds } from '../registry.ts'
 import { describeResource, resourceTypeOf } from './describe-resource.ts'
 import { ResourceEditor } from './resource-editor.tsx'
-import type { FileReadOutcome, ReadFile, UnreadableFile } from './use-import-run.ts'
+import type { UnitComparisons } from './use-server-diff.ts'
 import styles from './preview-panel.module.css'
 
 /**
@@ -28,14 +30,15 @@ import styles from './preview-panel.module.css'
  * confirming is an informed, opt-in act.
  *
  * @remarks
- * A pick is a *batch* of one or more files, each read independently and
- * rendered together under one confirm. The display is fully general — the
- * same for every format: files grouped by format under that format's
- * settings form, each read file showing its decoded sections (title +
- * per-resource rows with include/edit/revert) and its diagnostic notes,
- * an unreadable file reported against its own name rather than sinking
- * the batch. A settings change calls `onSettingsChange`; the shell
- * re-decodes that format's files. The confirm appears only when at least
+ * A pick is a *batch* of one or more files, read into units (one per file
+ * for a single-file format) and rendered together under one confirm. The
+ * display is fully general — the same for every format: units grouped by
+ * format under that format's settings form, each read unit showing its
+ * decoded sections (title + per-resource rows with include/edit/revert)
+ * and its diagnostic notes under the title its format gave it, an
+ * unreadable unit reported against that title rather than sinking the
+ * batch. A settings change calls `onSettingsChange`; the shell re-decodes
+ * that format's units. The confirm appears only when at least
  * one resource is included, and it does not write — it calls `onConfirm`;
  * the confirm step writes exactly the reviewed objects.
  *
@@ -52,27 +55,27 @@ type SettingsRegistry = {
 
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
-  /** Every picked file's read outcome, rendered together under one confirm. */
-  readonly files: readonly FileReadOutcome[]
+  /** Every unit's read outcome, rendered together under one confirm. */
+  readonly files: readonly UnitReadOutcome[]
   /** The current per-format settings the decodes ran under. */
   readonly settings: FormatSettings
   /** The registered formats' display + settings pickers, indexed by kind. */
   readonly settingsRegistry: SettingsRegistry
-  /** The reviewed selection for a file (defaults to `StagedImport.initial()` before any edit). */
-  readonly selectionFor: (fileId: string) => StagedImport.Selection<FhirResource>
+  /** The reviewed selection for a unit (defaults to `StagedImport.initial()` before any edit). */
+  readonly selectionFor: (unitId: string) => StagedImport.Selection<FhirResource>
   /**
    * Each labeled resource's server comparison (`new` / `unchanged` /
-   * `changed`, and for `changed` the leaf-level field diffs), keyed by
-   * {@link LabeledResource.key}. Rendered as a badge on each row — the
-   * `changed` badge opens to show `field "server" -> "import"` with a
-   * per-field reset. A key absent from the map (the pre-fetch is still in
-   * flight, or the resource is not covered by the classifier) renders no
-   * badge.
+   * `changed`, and for `changed` the leaf-level field diffs), keyed by unit
+   * id and then by {@link LabeledResource.key}. Rendered as a badge on each
+   * row — the `changed` badge opens to show `field "server" -> "import"`
+   * with a per-field reset. A key absent from the map (the pre-fetch is
+   * still in flight, or the resource is not covered by the classifier)
+   * renders no badge.
    */
-  readonly comparisons: ReadonlyMap<string, ServerComparison>
-  /** Called when a file's review changes its selection. */
+  readonly comparisons: UnitComparisons
+  /** Called when a unit's review changes its selection. */
   readonly onSelectionChange: (
-    fileId: string,
+    unitId: string,
     selection: StagedImport.Selection<FhirResource>
   ) => void
   /** Called when the user changes one format's settings; the caller re-decodes. */
@@ -97,7 +100,7 @@ const NOTHING_TO_IMPORT_HEADING = 'Nothing to import'
 /** Heading for a batch that has resources to write. */
 const PREVIEW_HEADING = 'Ready to import'
 
-/** Message for a file that did not parse at all. */
+/** Message for a unit that did not parse at all. */
 const UNREADABLE_FILE_MESSAGE = 'This file could not be read.'
 
 /** Message for a file no registered format recognized. */
@@ -476,9 +479,9 @@ const SectionToggle = ({
 }
 
 /**
- * One read file's decoded sections and notes — the generalized review body
+ * One read unit's decoded sections and notes — the generalized review body
  * every format shares: a per-type tally, one titled section per decode
- * section with per-resource rows, and the file's diagnostic notes folded
+ * section with per-resource rows, and the unit's diagnostic notes folded
  * into a collapsed details block.
  */
 const ReadFileBody = ({
@@ -488,9 +491,10 @@ const ReadFileBody = ({
   onSelectionChange,
   onEditResource,
 }: {
-  readonly file: ReadFile<FormatKind>
+  readonly file: ReadUnit<FormatKind>
   readonly selection: StagedImport.Selection<FhirResource>
-  readonly comparisons: ReadonlyMap<string, ServerComparison>
+  /** This unit's own verdicts by resource key; `undefined` renders no badges. */
+  readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
   readonly onSelectionChange: (selection: StagedImport.Selection<FhirResource>) => void
   readonly onEditResource: (key: string, resource: unknown) => void
 }): JSX.Element => {
@@ -506,7 +510,7 @@ const ReadFileBody = ({
       {sections.length === 0 && <p className={styles.emptyMessage}>{NO_RESOURCES_MESSAGE}</p>}
       {sections.map((section) => (
         <section
-          // Resource keys are unique per file, so a section's first resource
+          // Resource keys are unique per unit, so a section's first resource
           // identifies it even when two sections share a title.
           key={section.resources[0]?.key ?? section.title}
           className={styles.decodeSection}
@@ -525,7 +529,7 @@ const ReadFileBody = ({
                 resourceKey={resource.key}
                 resource={resource.resource}
                 selection={selection}
-                comparison={comparisons.get(resource.key)}
+                comparison={comparisons?.get(resource.key)}
                 onToggle={(key) => onSelectionChange(StagedImport.toggleResource(selection, key))}
                 onEdit={onEditResource}
                 onRevert={(key) => onSelectionChange(StagedImport.revert(selection, key))}
@@ -555,7 +559,7 @@ const ReadFileBody = ({
   )
 }
 
-/** One file's whole outcome, under its own name — the unit a format group is built from. */
+/** One unit's whole outcome, under the title its format gave it — what a format group is built from. */
 const FileSection = ({
   file,
   selectionFor,
@@ -563,14 +567,14 @@ const FileSection = ({
   onSelectionChange,
   onEditResource,
 }: {
-  readonly file: ReadFile<FormatKind> | UnreadableFile<FormatKind> | FileReadOutcome
+  readonly file: UnitReadOutcome
   readonly selectionFor: PreviewPanelProps['selectionFor']
-  readonly comparisons: ReadonlyMap<string, ServerComparison>
+  readonly comparisons: UnitComparisons
   readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
-  readonly onEditResource: (fileId: string, key: string, resource: unknown) => void
+  readonly onEditResource: (unitId: string, key: string, resource: unknown) => void
 }): JSX.Element => (
-  <section className={styles.fileSection} aria-label={file.files[0].fileName}>
-    <h3 className={styles.fileHeading}>{file.files[0].fileName}</h3>
+  <section className={styles.fileSection} aria-label={file.title}>
+    <h3 className={styles.fileHeading}>{file.title}</h3>
     {file._tag === 'unreadable' && (
       <p role="alert" className={styles.emptyMessage}>
         {UNREADABLE_FILE_MESSAGE}
@@ -585,7 +589,7 @@ const FileSection = ({
       <ReadFileBody
         file={file}
         selection={selectionFor(file.id)}
-        comparisons={comparisons}
+        comparisons={comparisons.get(file.id)}
         onSelectionChange={(selection) => onSelectionChange(file.id, selection)}
         onEditResource={(key, resource) => onEditResource(file.id, key, resource)}
       />
@@ -621,7 +625,7 @@ const PreviewActions = ({
   </div>
 )
 
-/** The resource-editor dialog's state: closed, or open on one file's resource. */
+/** The resource-editor dialog's state: closed, or open on one unit's resource. */
 type EditorState = Data.TaggedEnum<{
   readonly Closed: Record<never, never>
   readonly Open: { readonly fileId: string; readonly key: string; readonly resource: unknown }
@@ -631,7 +635,7 @@ const { Closed: makeClosedEditor, Open: makeOpenEditor } = editorState
 
 /**
  * The preview surface. Renders the batch grouped by format — each format's
- * settings form over its files' sectioned, per-resource reviews — and, when
+ * settings form over its units' sectioned, per-resource reviews — and, when
  * at least one resource is included, the single confirm action that opts
  * into writing the whole batch.
  */
@@ -680,7 +684,7 @@ const PreviewPanel = ({
     .map((format) => ({
       format,
       files: files.filter(
-        (file): file is ReadFile<FormatKind> | UnreadableFile<FormatKind> =>
+        (file): file is ReadUnit<FormatKind> | UnreadableUnit<FormatKind> =>
           file._tag !== 'unrecognized' && file.format === format
       ),
     }))

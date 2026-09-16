@@ -1,123 +1,37 @@
-import { Effect, Match, type ParseResult } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
-import type { FhirResource } from 'fhir-r4/resources'
 import {
-  type DecodedFile,
-  type DecodedUnit,
-  identify,
-  type LabeledResource,
-  type PickedFileLike,
-  sourceFileKey,
-} from 'importer-fundamentals'
-
-import {
-  type BoundFormat,
   defaultFormatSettings,
   type FormatKind,
   type FormatSettings,
-} from '../registry.ts'
-import type { PickedFile } from '../sources/picked-file.ts'
+  readBatch,
+  type ReadRegistry,
+  redecodeFormat,
+  type UnitReadOutcome,
+} from 'importer-core'
+import type { PickedFile } from 'importer-fundamentals'
 
 /**
- * Running the read half of the import — each picked file's format-specific
- * `decode` — over a batch of {@link PickedFile}s, and holding each one's
- * decoded sections for the screen to review, alongside the per-format
- * settings the decodes ran under.
+ * Running the read half of the import over a batch of {@link PickedFile}s —
+ * `importer-core`'s `readBatch` — and holding each unit's outcome for the
+ * screen to review, alongside the per-format settings the decodes ran under.
  *
  * @remarks
- * The pure, non-writing side of the flow: each pick is identified against
- * the registered descriptors, then grouped by format and decoded through
- * that format's batch `decode` under the format's current settings. A
- * format whose batch decode fails becomes `unreadable` outcomes for all
- * its files, and a file no descriptor claims becomes an `unrecognized`
- * row. Settings are pre-decode input, so {@link ImportRun.applySettings}
- * re-decodes every file of the changed format from its retained bytes.
- * Run through `useRunAuthed` (the slice's one runner) even though a decode
- * needs no auth; the write client stays unreachable by `decode`'s own
+ * The React state around a pure core: this hook owns the batch lifecycle
+ * (`idle` → `reading` → `ready`), the `FormatSettings` record, the
+ * in-flight ticket that drops a stale result, and nothing else. Grouping
+ * picks by format, decoding, folding outcomes, and re-decoding one format
+ * under new settings all live in `importer-core`, which knows nothing of
+ * React. Run through `useRunAuthed` (the slice's one runner) even though a
+ * decode needs no auth; the write client stays unreachable by `decode`'s own
  * construction, not by anything this hook does.
  *
  * @packageDocumentation
  */
 
 /**
- * The registry-shaped structure {@link useImportRun} reads to route each
- * pick: for every registered {@link FormatKind}, its `detect` (identifies
- * the pick) and its `decode` + `defaultSettings` (opens the pick's decoded
- * sections).
- *
- * @remarks
- * Not the whole `BoundFormat<K>` — this hook needs no `persist` or
- * `SettingsPicker` — so a test can stand up a fake registry with just
- * these fields.
- */
-type ImportRunRegistry = {
-  readonly [K in FormatKind]: Pick<
-    BoundFormat<K>,
-    'format' | 'detect' | 'decode' | 'defaultSettings' | 'buildSourceFile'
-  >
-}
-
-const SOURCE_SECTION_TITLE = 'Source file'
-
-/**
- * A read outcome for one specific `K`. Default `K = FormatKind` gives the
- * discriminated union across every registered format. Carries the decoded
- * sections + notes — the review is a pure per-resource selection over
- * these, so there is no further per-format review state.
- *
- * @remarks
- * `files` is the picked files that form this unit — a single-file format
- * produces one-element arrays; a group format may merge several files.
- * `sourceFiles` is the per-file source-file archives, minted once at read
- * time so their ids and upload instants stay stable across settings
- * re-decodes — `undefined` entries for server picks or failed builds.
- * They are prepended to `decoded.sections` as titled sections, one per
- * file, so the generalized review renders, edits, and skips them like any
- * other resource.
- */
-type ReadFile<K extends FormatKind> = {
-  readonly [Kind in K]: {
-    readonly _tag: 'read'
-    readonly id: string
-    readonly files: readonly PickedFile[]
-    readonly format: Kind
-    readonly decoded: DecodedFile<FhirResource>
-    readonly sourceFiles: ReadonlyMap<string, LabeledResource<FhirResource>>
-  }
-}[K]
-
-/**
- * A batch of files whose format was identified but whose
- * {@link BoundFormat.decode} rejected the bytes — the batch's `ParseError`.
- */
-type UnreadableFile<K extends FormatKind> = {
-  readonly [Kind in K]: {
-    readonly _tag: 'unreadable'
-    readonly id: string
-    readonly files: readonly PickedFile[]
-    readonly format: Kind
-    readonly error: ParseResult.ParseError
-    readonly sourceFiles: ReadonlyMap<string, LabeledResource<FhirResource>>
-  }
-}[K]
-
-/** A picked file no registered descriptor's `detect` claimed. */
-interface UnrecognizedFile {
-  readonly _tag: 'unrecognized'
-  readonly id: string
-  readonly files: readonly PickedFile[]
-}
-
-/**
- * One unit's read outcome, tagged with the format that claimed it so the
- * settings form, the confirm, and the preview all dispatch on it.
- */
-type FileReadOutcome = ReadFile<FormatKind> | UnreadableFile<FormatKind> | UnrecognizedFile
-
-/**
- * The lifecycle of one batch read, holding every pick's outcome so the
+ * The lifecycle of one batch read, holding every unit's outcome so the
  * screen can render one combined review.
  */
 type ImportRunState =
@@ -125,246 +39,62 @@ type ImportRunState =
   | { readonly _tag: 'reading' }
   | {
       readonly _tag: 'ready'
+      /**
+       * Identifies the picked batch. Advances on {@link ImportRun.run} and is
+       * preserved by {@link ImportRun.applySettings}, so a consumer can tell a
+       * *fresh pick* from a re-decode of the same files — which `units` alone
+       * cannot say, since a re-decode replaces that array too. The server-diff
+       * pre-fetch uses it to decide whether the previous classification may
+       * stay on screen while the next one loads.
+       */
       readonly batchId: number
-      readonly files: readonly FileReadOutcome[]
+      readonly units: readonly UnitReadOutcome[]
     }
 
 /** Imperative surface the screen drives the read through. */
 interface ImportRun {
   readonly state: ImportRunState
+  /** The current per-format settings every decode runs under. */
   readonly settings: FormatSettings
+  /** Whether a settings re-decode is in flight — the shell blocks confirm while true. */
   readonly redecoding: boolean
+  /** Read a freshly-picked batch of files into review units, replacing any previous one. */
   readonly run: (picks: readonly PickedFile[]) => void
+  /**
+   * Change one format's settings and re-decode that format's units from
+   * their retained files. Other formats' units and every unit's id are
+   * untouched.
+   */
   readonly applySettings: <K extends FormatKind>(format: K, settings: FormatSettings[K]) => void
+  /** Discard the current read and return to `idle` (settings persist). */
   readonly reset: () => void
 }
 
-const identifyForRun = (registry: ImportRunRegistry, picked: PickedFile): FormatKind | undefined =>
-  identify(Object.values(registry), picked)?.format
+/** Where a unit's identity comes from: the platform's UUID, minted per unit at read time. */
+const newUnitId = (): string => crypto.randomUUID()
 
 /**
- * Run the batch decode for one format, dispatching through `Match.type` so
- * the settings type lines up per branch.
+ * Drives a batch read as an imperative action and re-decodes a format's
+ * units when its settings change. The authed runner comes from router
+ * context via `fhir-r4-react`, so mount this inside the host app's router.
+ *
+ * @param registry - The registered formats' `detect` / `decode` surface,
+ *   indexed by format kind
+ * @returns The read surface: its `state`, the current per-format `settings`,
+ *   the `run` trigger, `applySettings`, and a `reset` back to `idle`
  */
-const runBatchDecode = (
-  registry: ImportRunRegistry,
-  settings: FormatSettings,
-  format: FormatKind,
-  files: readonly PickedFileLike[]
-): Effect.Effect<readonly DecodedUnit<FhirResource>[], ParseResult.ParseError> =>
-  Match.type<FormatKind>().pipe(
-    Match.when('har', (kind) => registry[kind].decode(files, settings[kind])),
-    Match.when('lifelabs-pdf', (kind) => registry[kind].decode(files, settings[kind])),
-    Match.when('dicom', (kind) => registry[kind].decode(files, settings[kind])),
-    Match.exhaustive
-  )(format)
-
-/**
- * Build source-file archives for every local pick in a unit, returning a
- * map from the per-file scoped key to its labeled resource. Server picks
- * and failed builds produce no entry.
- */
-const buildSourceFiles = (
-  registry: ImportRunRegistry,
-  format: FormatKind,
-  files: readonly PickedFile[]
-): Effect.Effect<ReadonlyMap<string, LabeledResource<FhirResource>>> =>
-  Effect.forEach(
-    files,
-    (file) => {
-      if (file.source._tag !== 'local') return Effect.succeed(undefined)
-      return Match.type<FormatKind>()
-        .pipe(
-          Match.when('har', (kind) => registry[kind].buildSourceFile(file)),
-          Match.when('lifelabs-pdf', (kind) => registry[kind].buildSourceFile(file)),
-          Match.when('dicom', (kind) => registry[kind].buildSourceFile(file)),
-          Match.exhaustive
-        )(format)
-        .pipe(
-          Effect.map((resource): LabeledResource<FhirResource> => ({
-            key: sourceFileKey(file.fileName),
-            title: file.fileName,
-            resource,
-          })),
-          Effect.catchAll(() => Effect.succeed(undefined))
-        )
-    },
-    { concurrency: 'unbounded' }
-  ).pipe(
-    Effect.map((results) => {
-      const map = new Map<string, LabeledResource<FhirResource>>()
-      for (const entry of results) {
-        if (entry !== undefined) map.set(entry.key, entry)
-      }
-      return map
-    })
-  )
-
-/**
- * Prepend source-file sections (one per file) above the extracted
- * resources, so the generalized review lists them like any other resource.
- */
-const withSourceSections = (
-  decoded: DecodedFile<FhirResource>,
-  sourceFiles: ReadonlyMap<string, LabeledResource<FhirResource>>
-): DecodedFile<FhirResource> => {
-  if (sourceFiles.size === 0) return decoded
-  const sections = [...sourceFiles.values()].map((sf) => ({
-    title: SOURCE_SECTION_TITLE,
-    resources: [sf],
-  }))
-  return { ...decoded, sections: [...sections, ...decoded.sections] }
-}
-
-/**
- * Look up the original PickedFile for a PickedFileLike returned by a
- * decode unit. The decode receives PickedFile objects (which satisfy
- * PickedFileLike structurally) and passes them through by reference.
- */
-const lookupPicks = (
-  unitFiles: readonly PickedFileLike[],
-  pickMap: ReadonlyMap<PickedFileLike, PickedFile>
-): readonly PickedFile[] =>
-  unitFiles.map((f) => {
-    const found = pickMap.get(f)
-    if (found !== undefined) return found
-    return { fileName: f.fileName, bytes: f.bytes, source: { _tag: 'local' as const } }
-  })
-
-/**
- * Group picks by format, batch-decode each format, build source files,
- * and produce one FileReadOutcome per decoded unit.
- */
-const readBatch = (
-  registry: ImportRunRegistry,
-  settings: FormatSettings,
-  picks: readonly PickedFile[]
-): Effect.Effect<readonly FileReadOutcome[]> => {
-  const groups = new Map<FormatKind, PickedFile[]>()
-  const unrecognized: PickedFile[] = []
-  const pickMap = new Map<PickedFileLike, PickedFile>()
-
-  for (const pick of picks) {
-    pickMap.set(pick, pick)
-    const kind = identifyForRun(registry, pick)
-    if (kind === undefined) {
-      unrecognized.push(pick)
-    } else {
-      const list = groups.get(kind)
-      if (list !== undefined) list.push(pick)
-      else groups.set(kind, [pick])
-    }
-  }
-
-  const unrecognizedOutcomes: FileReadOutcome[] = unrecognized.map((pick) => ({
-    _tag: 'unrecognized',
-    id: crypto.randomUUID(),
-    files: [pick],
-  }))
-
-  const formatEffects = [...groups.entries()].map(([format, formatPicks]) =>
-    Effect.gen(function* () {
-      const sfMap = yield* buildSourceFiles(registry, format, formatPicks)
-      const units = yield* runBatchDecode(registry, settings, format, formatPicks).pipe(
-        Effect.map((decodedUnits): readonly FileReadOutcome[] =>
-          decodedUnits.map((unit): FileReadOutcome => {
-            const files = lookupPicks(unit.files, pickMap)
-            const unitSfMap = new Map<string, LabeledResource<FhirResource>>()
-            for (const file of files) {
-              const sf = sfMap.get(sourceFileKey(file.fileName))
-              if (sf !== undefined) unitSfMap.set(sf.key, sf)
-            }
-            return {
-              _tag: 'read',
-              id: crypto.randomUUID(),
-              files,
-              format,
-              decoded: withSourceSections(unit.decoded, unitSfMap),
-              sourceFiles: unitSfMap,
-            }
-          })
-        ),
-        Effect.catchAll((error): Effect.Effect<readonly FileReadOutcome[]> =>
-          Effect.succeed([
-            {
-              _tag: 'unreadable',
-              id: crypto.randomUUID(),
-              files: formatPicks,
-              format,
-              error,
-              sourceFiles: sfMap,
-            },
-          ])
-        )
-      )
-      return units
-    })
-  )
-
-  return Effect.forEach(formatEffects, (eff) => eff, { concurrency: 'unbounded' }).pipe(
-    Effect.map((results) => [...results.flat(), ...unrecognizedOutcomes])
-  )
-}
-
-/**
- * Re-decode the files of one format from retained bytes under new settings,
- * keeping source files stable.
- */
-const redecodeFormat = (
-  registry: ImportRunRegistry,
-  settings: FormatSettings,
-  format: FormatKind,
-  files: readonly FileReadOutcome[]
-): Effect.Effect<readonly FileReadOutcome[]> =>
-  Effect.forEach(
-    files,
-    (file): Effect.Effect<readonly FileReadOutcome[]> => {
-      if (file._tag === 'unrecognized' || file.format !== format) return Effect.succeed([file])
-      const picks = file.files
-      const existingSfMap = file.sourceFiles
-      return runBatchDecode(registry, settings, format, picks).pipe(
-        Effect.map((units): readonly FileReadOutcome[] =>
-          units.map((unit): FileReadOutcome => {
-            const unitSfMap = new Map<string, LabeledResource<FhirResource>>()
-            for (const f of unit.files) {
-              const key = sourceFileKey(f.fileName)
-              const sf = existingSfMap.get(key)
-              if (sf !== undefined) unitSfMap.set(key, sf)
-            }
-            return {
-              _tag: 'read',
-              id: file.id,
-              files: file.files,
-              format,
-              decoded: withSourceSections(unit.decoded, unitSfMap),
-              sourceFiles: unitSfMap,
-            }
-          })
-        ),
-        Effect.catchAll((error): Effect.Effect<readonly FileReadOutcome[]> =>
-          Effect.succeed([
-            {
-              _tag: 'unreadable',
-              id: file.id,
-              files: file.files,
-              format,
-              error,
-              sourceFiles: existingSfMap,
-            },
-          ])
-        )
-      )
-    },
-    { concurrency: 'unbounded' }
-  ).pipe(Effect.map((results) => results.flat()))
-
-const useImportRun = (registry: ImportRunRegistry): ImportRun => {
+const useImportRun = (registry: ReadRegistry): ImportRun => {
   const runAuthed = useRunAuthed()
   const [state, setState] = useState<ImportRunState>({ _tag: 'idle' })
   const [settings, setSettings] = useState<FormatSettings>(defaultFormatSettings)
   const [redecoding, setRedecoding] = useState(false)
   const latest = useRef(0)
+  // Advanced only by `run`, so it names the picked batch rather than the
+  // decode pass — see `ImportRunState`'s `batchId`.
   const batch = useRef(0)
+  // The settings the in-flight (or latest) decode ran under — read by
+  // applySettings so a re-decode composes with the freshest value even
+  // before React commits the state update.
   const settingsRef = useRef(settings)
 
   const run = useCallback(
@@ -375,10 +105,9 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
       const ticket = latest.current
       const batchId = batch.current
       setState({ _tag: 'reading' })
-      const current = settingsRef.current
-      void runAuthed(readBatch(registry, current, picks)).then((files) => {
+      void runAuthed(readBatch(registry, settingsRef.current, picks, newUnitId)).then((units) => {
         if (latest.current !== ticket) return
-        setState({ _tag: 'ready', batchId, files })
+        setState({ _tag: 'ready', batchId, units })
       })
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary
@@ -395,11 +124,13 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
       const ticket = latest.current
       const { batchId } = state
       setRedecoding(true)
-      void runAuthed(redecodeFormat(registry, merged, format, state.files)).then((nextFiles) => {
-        if (latest.current !== ticket) return
-        setRedecoding(false)
-        setState({ _tag: 'ready', batchId, files: nextFiles })
-      })
+      void runAuthed(redecodeFormat(registry, merged, format, state.units, newUnitId)).then(
+        (units) => {
+          if (latest.current !== ticket) return
+          setRedecoding(false)
+          setState({ _tag: 'ready', batchId, units })
+        }
+      )
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary
     [runAuthed, state]
@@ -414,13 +145,4 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
   return { state, settings, redecoding, run, applySettings, reset }
 }
 
-export {
-  type FileReadOutcome,
-  type ImportRun,
-  type ImportRunRegistry,
-  type ImportRunState,
-  type ReadFile,
-  type UnreadableFile,
-  type UnrecognizedFile,
-  useImportRun,
-}
+export { type ImportRun, type ImportRunState, useImportRun }

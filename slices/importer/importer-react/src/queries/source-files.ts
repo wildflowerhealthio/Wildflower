@@ -11,12 +11,11 @@ import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import type { DocumentReferenceType } from 'importer-fundamentals'
+import { type DocumentReferenceType, type PickedFile, serverSource } from 'importer-fundamentals'
 
 type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
 import { formatKinds, formatRegistry, type FormatKind } from '../registry.ts'
-import { type PickedFile, serverSource } from '../sources/picked-file.ts'
 import { SOURCE_FILES_QUERY_KEY } from './keys.ts'
 import { nextPageToken } from './page-token.ts'
 

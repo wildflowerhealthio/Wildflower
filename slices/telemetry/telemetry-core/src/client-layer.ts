@@ -45,9 +45,9 @@ let contextManagerInstalled = false
  * `@effect/opentelemetry`'s per-fiber-step `otel.context.with(ctx, fn)`
  * bridge depends on a real ContextManager to round-trip context around
  * `fn()`. Without one (i.e. the default `NoopContextManager`) the bridge
- * interaction with Effect's runtime breaks (historically `Not a valid
- * effect: {}` on Hermes/React Native). Idempotent — safe to call
- * repeatedly.
+ * interaction with Effect's runtime breaks (historically
+ * `Not a valid effect: {}` on Hermes/React Native). Idempotent —
+ * safe to call repeatedly.
  */
 const installContextManager = (createContextManager: ContextManagerFactory): void => {
   if (contextManagerInstalled) return

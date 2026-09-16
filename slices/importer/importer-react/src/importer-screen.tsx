@@ -19,16 +19,16 @@ import styles from './importer-screen.module.css'
  * @remarks
  * The screen is the opt-in seam made visible: the read half
  * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing — each
- * file decodes to sections of labeled resources the reviewer can exclude or
- * edit — and only the explicit confirm reaches the write half
- * (`useConfirmImport` — upload-then-persist, per file, verbatim from the
- * preview, best-effort). A batch may span formats: the picker identifies
- * each file against the registered descriptors, every downstream step
- * dispatches on the file's `format` tag, and the preview mounts one
+ * file decodes to units of labeled resources, its own source file among
+ * them, that the reviewer can exclude or edit — and only the explicit
+ * confirm reaches the write half (`useConfirmImport` — one batch bundle per
+ * unit, verbatim from the preview, best-effort). A batch may span formats:
+ * the picker identifies each file against the registered descriptors,
+ * `importer-core` groups and decodes by format, and the preview mounts one
  * settings form per format present — a settings change re-decodes that
- * format's files through `useImportRun.applySettings`. Per-resource
- * selections are keyed by stable resource keys, so they survive a
- * re-decode where the resource does.
+ * format's units through `useImportRun.applySettings`. Per-resource
+ * selections are keyed by unit id and stable resource key, so they survive
+ * a re-decode where the resource does.
  *
  * The slice owns every level of this flow rather than the host app: an app
  * mounts only this screen. Mount it inside the host's router and
@@ -64,7 +64,7 @@ const ImporterScreen = (): JSX.Element => {
   >(new Map())
 
   const runState = importRun.state
-  const readFiles = runState._tag === 'ready' ? runState.files : undefined
+  const readFiles = runState._tag === 'ready' ? runState.units : undefined
   const diff = useServerDiff(readFiles, runState._tag === 'ready' ? runState.batchId : 0)
 
   const selectionFor = useCallback(
@@ -78,14 +78,14 @@ const ImporterScreen = (): JSX.Element => {
       if (diff._tag === 'loading' || readFiles === undefined) {
         return StagedImport.initial<FhirResource>()
       }
-      const file = readFiles.find(
+      const unit = readFiles.find(
         (candidate) => candidate.id === fileId && candidate._tag === 'read'
       )
-      if (file === undefined || file._tag !== 'read') return StagedImport.initial<FhirResource>()
-      const labeled = sectionResources(file.decoded.sections)
+      if (unit === undefined || unit._tag !== 'read') return StagedImport.initial<FhirResource>()
+      const labeled = sectionResources(unit.decoded.sections)
       if (labeled.length === 0) return StagedImport.initial<FhirResource>()
       return {
-        excludedResources: initialExclusionsFor(labeled, diff.comparisons),
+        excludedResources: initialExclusionsFor(labeled, diff.comparisons.get(fileId)),
         resourceOverrides: new Map(),
       }
     },
@@ -147,7 +147,7 @@ const ImporterScreen = (): JSX.Element => {
           </p>
         )}
         <PreviewPanel
-          files={runState.files}
+          files={runState.units}
           settings={importRun.settings}
           settingsRegistry={formatRegistry}
           selectionFor={selectionFor}
@@ -157,7 +157,7 @@ const ImporterScreen = (): JSX.Element => {
           confirming={confirming}
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
-          onConfirm={() => confirm.confirm(runState.files, selectionFor)}
+          onConfirm={() => confirm.confirm(runState.units, selectionFor)}
         />
       </>
     )
