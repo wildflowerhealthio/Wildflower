@@ -1,6 +1,6 @@
 import * as Resource from '@effect/opentelemetry/Resource'
 import * as OtelEffectTracer from '@effect/opentelemetry/Tracer'
-import { context, propagation, trace, type Tracer } from '@opentelemetry/api'
+import { context, type ContextManager, propagation, trace, type Tracer } from '@opentelemetry/api'
 import { OTLPTraceExporter } from '@opentelemetry/exporter-trace-otlp-http'
 import {
   BasicTracerProvider,
@@ -8,7 +8,6 @@ import {
   type Sampler,
   type SpanProcessor,
 } from '@opentelemetry/sdk-trace-base'
-import { StackContextManager } from '@opentelemetry/sdk-trace-web'
 import { SentryPropagator, SentrySampler, SentrySpanProcessor } from '@sentry/opentelemetry'
 import { Layer } from 'effect'
 import { isOtlpEnabled, isTelemetryEnabled, type TelemetryConfig } from './config.ts'
@@ -21,21 +20,38 @@ interface SentryAdapter {
   readonly getClient: () => SentryClient | undefined
 }
 
+/**
+ * Builds the platform's synchronous OTel `ContextManager`.
+ *
+ * @remarks
+ * Supplied by the platform adapter (`telemetry-web` passes
+ * `() => new StackContextManager()` from `@opentelemetry/sdk-trace-web`)
+ * so this package stays free of platform-specific OTel SDKs. Called at
+ * most once: the first manager built is installed globally and every
+ * later {@link initClientTelemetry} call reuses it.
+ */
+type ContextManagerFactory = () => ContextManager
+
 let registered: BasicTracerProvider | undefined
 let contextManagerInstalled = false
 
 /**
- * Install a synchronous OTel `ContextManager` globally. Required even when
- * no exporters are configured: `@effect/opentelemetry`'s per-fiber-step
- * `otel.context.with(ctx, fn)` bridge depends on a real ContextManager to
- * round-trip context around `fn()`. Without one (i.e. the default
- * `NoopContextManager`) the bridge interaction with Effect's runtime
- * breaks (historically `Not a valid effect: {}` on Hermes/React
- * Native). Idempotent — safe to call repeatedly.
+ * Install the platform's synchronous OTel `ContextManager` globally.
+ *
+ * @param createContextManager - Builds the manager; not called once one is installed
+ *
+ * @remarks
+ * Required even when no exporters are configured:
+ * `@effect/opentelemetry`'s per-fiber-step `otel.context.with(ctx, fn)`
+ * bridge depends on a real ContextManager to round-trip context around
+ * `fn()`. Without one (i.e. the default `NoopContextManager`) the bridge
+ * interaction with Effect's runtime breaks (historically `Not a valid
+ * effect: {}` on Hermes/React Native). Idempotent — safe to call
+ * repeatedly.
  */
-const installContextManager = (): void => {
+const installContextManager = (createContextManager: ContextManagerFactory): void => {
   if (contextManagerInstalled) return
-  const contextManager = new StackContextManager()
+  const contextManager = createContextManager()
   contextManager.enable()
   context.setGlobalContextManager(contextManager)
   contextManagerInstalled = true
@@ -70,12 +86,15 @@ const resolveSampler = (
 /**
  * Eagerly initialize Sentry (via the provided adapter) and register a global
  * OpenTelemetry tracer provider. Safe to call before any other consumers of
- * `@opentelemetry/api` so they pick up the provider immediately. Returns
- * `undefined` when no telemetry sinks are configured.
+ * `@opentelemetry/api` so they pick up the provider immediately.
+ *
+ * @param createContextManager - Builds the platform's synchronous `ContextManager`
+ * @returns The registered provider, or `undefined` when no telemetry sinks are configured
  */
 const initClientTelemetry = (
   config: TelemetryConfig,
-  sentry: SentryAdapter
+  sentry: SentryAdapter,
+  createContextManager: ContextManagerFactory
 ): BasicTracerProvider | undefined => {
   if (registered !== undefined) return registered
 
@@ -83,7 +102,7 @@ const initClientTelemetry = (
   // `@effect/opentelemetry` bridge has a real context to bind into even
   // when no exporters are configured. See `installContextManager` for
   // the load-bearing reason.
-  installContextManager()
+  installContextManager(createContextManager)
 
   // Always invoke the Sentry adapter so unconditional `Sentry.wrap`
   // calls in app entry points don't trigger "wrap before init" warnings.
@@ -117,16 +136,19 @@ const initClientTelemetry = (
 
 /**
  * Effect Layer that binds Effect's tracing to whatever tracer provider is
- * registered globally (see `initClientTelemetry`). The layer is a no-op when
- * telemetry is disabled so callers can provide it unconditionally.
+ * registered globally (see {@link initClientTelemetry}). The layer is a no-op
+ * when telemetry is disabled so callers can provide it unconditionally.
+ *
+ * @param createContextManager - Builds the platform's synchronous `ContextManager`
  */
 const makeClientTelemetryLayer = (
   config: TelemetryConfig,
-  sentry: SentryAdapter
+  sentry: SentryAdapter,
+  createContextManager: ContextManagerFactory
 ):
   | Layer.Layer<OtelEffectTracer.OtelTracer | Resource.Resource, never, never>
   | Layer.Layer<never, never, never> => {
-  const provider = initClientTelemetry(config, sentry)
+  const provider = initClientTelemetry(config, sentry, createContextManager)
   if (provider === undefined) return Layer.empty
   const ResourceLive = Resource.layer({
     serviceName: config.otel.serviceName,
@@ -138,5 +160,5 @@ const makeClientTelemetryLayer = (
 /** Returns the globally registered tracer, or a no-op tracer if unset. */
 const getGlobalTracer = (name: string): Tracer => trace.getTracer(name)
 
-export type { SentryAdapter, SentryClient }
+export type { ContextManagerFactory, SentryAdapter, SentryClient }
 export { getGlobalTracer, initClientTelemetry, makeClientTelemetryLayer }
