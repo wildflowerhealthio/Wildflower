@@ -534,17 +534,19 @@ mod tests {
         )
         .unwrap();
 
-        let seeded: CloudTarget = sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
-            .bind::<Text, _>("ohif-viewer")
-            .get_result(&mut conn)
-            .expect("0007 must have seeded the cloud configuration row");
+        let seeded: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+                .bind::<Text, _>("ohif-viewer")
+                .get_result(&mut conn)
+                .expect("0007 must have seeded the cloud configuration row");
         assert_eq!(
             seeded.url,
             "https://wildflowerhealth.io/ohif-viewer/?launch={launch}&iss={origin}/fhir-r4",
             "0007 must stay exactly as it shipped — an install that ran it sees no edit",
         );
 
-        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS).unwrap();
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS)
+            .unwrap();
 
         let upgraded: CloudTarget =
             sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
