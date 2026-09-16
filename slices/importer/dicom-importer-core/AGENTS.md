@@ -72,7 +72,8 @@ decode yields one section per file when the header carries a patient identity.
 - `src/descriptor.ts` — the `FileImporterDescriptor` for format `'dicom'`.
   `buildSourceFile` parses the DICOM header to derive a Patient reference
   and sets `subject` on the archive `DocumentReference` when `PatientID`
-  is present.
+  is present. That derivation is the _fallback_: a `subject` the caller
+  passes through `options` wins and is forwarded unchanged.
 - `src/index.ts` — public API barrel.
 
 ## Layering

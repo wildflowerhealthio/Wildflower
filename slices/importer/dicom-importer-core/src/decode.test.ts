@@ -114,6 +114,23 @@ describe('decodeDicom', () => {
     expect(result.notes.some((n) => n.includes('patient identity'))).toBe(true)
   })
 
+  it('treats a delimiters-only PatientName as no patient identity', async () => {
+    // What a writer emits for an anonymized name. It is not a name with empty
+    // parts: synthesizing one would write `name: [{ text: '' }]` (FHIR `string`
+    // forbids an empty value) and derive the same Patient id for every such
+    // file, collapsing unrelated studies onto one patient.
+    const bytes = writeDicom({
+      StudyInstanceUID: '1.2.3.4.5',
+      SeriesInstanceUID: '1.2.3.4.5.1',
+      SOPInstanceUID: '1.2.3.4.5.1.1',
+      PatientName: { family: '', given: '', text: '^^^' },
+      Modality: 'CT',
+    })
+    const result = await Effect.runPromise(decodeDicom(bytes, 'sample.dcm', defaultDicomSettings))
+    expect(result.sections).toEqual([])
+    expect(result.notes.some((n) => n.includes('patient identity'))).toBe(true)
+  })
+
   it('fails with ParseError on truncated bytes', async () => {
     const result = Effect.runSync(
       Effect.either(

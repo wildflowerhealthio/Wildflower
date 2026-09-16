@@ -83,6 +83,11 @@ const fhirDateTime = (
   return fhirDate(da)
 }
 
+/**
+ * A DICOM `PersonName` as a FHIR `HumanName`. `text` is always non-empty — the
+ * `dicom` parser returns `undefined` rather than an empty name — so this never
+ * emits the `text: ''` FHIR `string` forbids.
+ */
 const humanNameWire = (pn: PersonName): Wire => {
   const wire: Wire = { text: pn.text }
   if (pn.family !== '') wire['family'] = pn.family

@@ -34,7 +34,10 @@ const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResourc
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
   decode: decodeDicom,
-  buildSourceFile: (picked, _options) => {
+  // A caller-supplied `subject` wins — it is context the caller has and this
+  // descriptor does not. The header-derived reference is the fallback.
+  buildSourceFile: (picked, options) => {
+    if (options?.subject !== undefined) return buildSourceFileRaw(picked, options)
     const parseResult = parseDicomFile(picked.bytes)
     let subject: { reference: string } | undefined
     if (Either.isRight(parseResult)) {

@@ -140,6 +140,37 @@ describe('parsePersonName', () => {
     expect(parsePersonName('   ')).toBeUndefined()
   })
 
+  it('returns undefined for a delimiters-only value', () => {
+    // What a writer emits for an anonymized or absent name. The trimmed value
+    // is not empty, so the empty-string guard alone lets it through — and a
+    // `{ family: '', given: '', text: '' }` name would reach FHIR synthesis as
+    // `name: [{ text: '' }]`, which FHIR `string` forbids, and would derive the
+    // same patient id for every such file.
+    expect(parsePersonName('^^^')).toBeUndefined()
+    expect(parsePersonName('^')).toBeUndefined()
+    expect(parsePersonName(' ^ ^ ')).toBeUndefined()
+  })
+
+  it('never returns a name whose text is empty', () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.string({
+            maxLength: 8,
+            unit: fc.constantFrom(...'abc '.split('')),
+          }),
+          { maxLength: 6 }
+        ),
+        (components) => {
+          const parsed = parsePersonName(components.join('^'))
+          if (parsed === undefined) return
+          expect(parsed.text.length).toBeGreaterThan(0)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
   it('trims leading/trailing whitespace from components', () => {
     const result = parsePersonName(' Smith ^ John ')
     expect(result).toEqual({ family: 'Smith', given: 'John', text: 'Smith John' })

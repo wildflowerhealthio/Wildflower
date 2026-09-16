@@ -1,6 +1,12 @@
 /** @packageDocumentation */
 
-/** DICOM Person Name: `family^given` from the PN grammar. */
+/**
+ * DICOM Person Name: `family^given` from the PN grammar.
+ *
+ * `text` is always non-empty — `parsePersonName` returns `undefined` rather
+ * than a name with nothing in it, so a delimiters-only PN (`"^^^"`) reads as an
+ * absent name. `family` and `given` may each still be empty.
+ */
 interface PersonName {
   readonly family: string
   readonly given: string

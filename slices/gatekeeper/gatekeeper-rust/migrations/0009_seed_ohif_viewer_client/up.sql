@@ -23,12 +23,20 @@
 --     not one of those: its app row is a cloud row on the preview origin, so it
 --     leans on its own absolute loopback redirect instead — see
 --     `seeding.rs`'s `seed_dev_app_clients`.)
---   * the absolute Pages URL —
---     `https://wildflowerhealth.io/ohif-viewer/fhir-viewer`. A cloud app's
---     redirect can only be absolute: the app-relative form needs a self-hosted
---     row to resolve against. The EHR launch targets the viewer's FHIR Viewer
---     mode route, so the value OHIF's FHIR data source sends as
---     `redirect_uri` is this path — matched here by exact URL equality.
+--   * the absolute Pages URL — `https://wildflowerhealth.io/ohif-viewer/`. A
+--     cloud app's redirect can only be absolute: the app-relative form needs a
+--     self-hosted row to resolve against. OHIF's FHIR data source computes its
+--     redirect URI as `location.origin + location.pathname` of the page it was
+--     launched on, and the launch targets the viewer's root, so the value it
+--     sends is exactly this published directory URL (trailing slash included) —
+--     matched here by exact URL equality.
+--
+-- SUPERSEDED IN PART by `0010_ohif_viewer_client_fhir_viewer_redirect`, which
+-- repoints that absolute entry at the FHIR Viewer mode route
+-- (`https://wildflowerhealth.io/ohif-viewer/fhir-viewer`) once the launch moved
+-- there. The seed below is left exactly as it shipped — a migration is run-once
+-- and never re-applied, so editing this file would change nothing for an
+-- install that already ran it.
 --
 -- `allowed_scopes` is exactly what the viewer requests — the `smartScope` the
 -- data-source configuration in `apps/ohif-viewer/config/app-config.js` sets,
@@ -63,7 +71,7 @@ VALUES
         'ohif-viewer',
         'Imaging',
         'public',
-        '["/","https://wildflowerhealth.io/ohif-viewer/fhir-viewer"]',
+        '["/","https://wildflowerhealth.io/ohif-viewer/"]',
         '["launch","openid","fhirUser","system/Patient.rs","system/ImagingStudy.rs","system/DocumentReference.rs"]',
         '["authorization_code","refresh_token"]',
         NULL,

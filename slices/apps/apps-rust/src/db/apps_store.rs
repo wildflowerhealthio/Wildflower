@@ -475,12 +475,13 @@ mod tests {
     }
 
     /// The OHIF imaging viewer ships as a first-party CLOUD row (apps migration
-    /// `0007`), launched from its published Pages copy. Its launch URL is the
-    /// viewer's root, not a `launch.html`: OHIF reads the SMART parameters off
-    /// whichever route it is opened on, and the root is the only route GitHub
-    /// Pages serves as a real file.
+    /// `0007`), launched from its published Pages copy. Its launch URL is a
+    /// route, not a `launch.html`: OHIF reads the SMART parameters off whichever
+    /// route it is opened on. `0008` moved that route from the viewer's root to
+    /// the FHIR Viewer mode (`/fhir-viewer`) and added `clientId`, so the
+    /// template asserted here is the composed end state of `0007` + `0008`.
     #[test]
-    fn ohif_viewer_is_a_cloud_row_launched_at_its_root() {
+    fn ohif_viewer_is_a_cloud_row_launched_at_the_fhir_viewer_route() {
         let store = SqliteAppsStore::open_in_memory().unwrap();
         let mut conn = store.pool().get().unwrap();
 
@@ -511,6 +512,47 @@ mod tests {
                 .expect("the cloud configuration row must exist");
         assert_eq!(
             target.url,
+            "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer",
+        );
+    }
+
+    /// The regression `0008` exists for: migrations are run-once, so an install
+    /// that already applied `0007` never re-reads it. Editing `0007`'s launch
+    /// template in place would have left every upgraded install on the viewer's
+    /// root with no `clientId` — a launch that lands on the worklist and
+    /// authorizes with no client hint. Driving a database to `0007` first, then
+    /// letting the rest run, is the only way to observe that: a fresh open
+    /// applies both migrations and cannot tell the two apart.
+    #[test]
+    fn an_install_already_at_0007_is_upgraded_onto_the_fhir_viewer_launch() {
+        let pool = persistence_rust::open_in_memory_pool().unwrap();
+        let mut conn = pool.get().unwrap();
+        persistence_rust::run_diesel_migrations(
+            &mut conn,
+            MIGRATION_NAMESPACE,
+            MigrationsThrough("0007"),
+        )
+        .unwrap();
+
+        let seeded: CloudTarget = sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+            .bind::<Text, _>("ohif-viewer")
+            .get_result(&mut conn)
+            .expect("0007 must have seeded the cloud configuration row");
+        assert_eq!(
+            seeded.url,
+            "https://wildflowerhealth.io/ohif-viewer/?launch={launch}&iss={origin}/fhir-r4",
+            "0007 must stay exactly as it shipped — an install that ran it sees no edit",
+        );
+
+        persistence_rust::run_diesel_migrations(&mut conn, MIGRATION_NAMESPACE, MIGRATIONS).unwrap();
+
+        let upgraded: CloudTarget =
+            sql_query("SELECT url FROM cloud_app_configurations WHERE id = ?")
+                .bind::<Text, _>("ohif-viewer")
+                .get_result(&mut conn)
+                .expect("the cloud configuration row must survive the upgrade");
+        assert_eq!(
+            upgraded.url,
             "https://wildflowerhealth.io/ohif-viewer/fhir-viewer?launch={launch}&iss={origin}/fhir-r4&clientId=ohif-viewer",
         );
     }

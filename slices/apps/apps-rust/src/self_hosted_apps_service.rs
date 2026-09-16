@@ -27,6 +27,7 @@ use std::sync::Arc;
 use axum::body::Bytes;
 use shared_structures_rust::tunnel_service::TunnelService;
 use shared_structures_server_rust::{ProxyTable, ServerError, StaticHostJob, StaticHostsService};
+use tower_http::cors::CorsLayer;
 use url::Url;
 
 use crate::domain::{AppsError, SelfHostedAppConfiguration, SelfHostedInstaller, StagedBundle};
@@ -100,11 +101,17 @@ impl SelfHostedAppsService {
         id: &str,
         config: &SelfHostedAppConfiguration,
     ) -> Result<(), ServerError> {
+        // Each self-hosted app is served from its own loopback origin, so a
+        // fetch the app makes to anything else — the host API on its own
+        // origin, or another app's — is cross-origin. The permissive CORS layer
+        // is what keeps those preflights passing; without it every self-hosted
+        // app's cross-origin fetch fails in the webview.
         let service = self_hosted_apps_rust::setup_self_hosted_app(
             id,
             self.apps_dir.join(&config.content_folder),
             self.template_context.clone(),
-        );
+        )
+        .layer(CorsLayer::very_permissive());
         if let Err(error) = self
             .static_hosts
             .start(StaticHostJob {
