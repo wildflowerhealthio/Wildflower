@@ -1,4 +1,128 @@
+/*
+ * Two things every app's `vite.config.ts` pulls from the repo root: the shared
+ * `base` config it spreads (below), and `devAppServer(id)` — the single
+ * TypeScript reader of `slices/apps/dev-app-ports.json`.
+ */
+
+import { fileURLToPath } from 'node:url'
+
 import { defineConfig } from 'vite-plus'
+
+import devAppPortsFile from './slices/apps/dev-app-ports.json' with { type: 'json' }
+
+/**
+ * The one non-port key in `dev-app-ports.json`: prose explaining the file.
+ * Every other key is a dev app id.
+ */
+const COMMENT_KEY = '_comment'
+
+/** The loopback host every first-party app's dev server binds to. */
+const DEV_APP_HOST = '0.0.0.0'
+
+/**
+ * A dev app id declared in `slices/apps/dev-app-ports.json`.
+ *
+ * @remarks
+ * Derived from the file itself, so adding a row there is all it takes for
+ * {@link devAppServer} to accept the new id — and removing one turns every
+ * config still naming it into a type error rather than a dev-server crash.
+ */
+type DevAppId = Exclude<keyof typeof devAppPortsFile, typeof COMMENT_KEY>
+
+/**
+ * Absolute path of the dev-port file, quoted in the error {@link devAppPort}
+ * throws so a reader knows which file to edit.
+ */
+const devAppPortsPath = fileURLToPath(new URL('./slices/apps/dev-app-ports.json', import.meta.url))
+
+/**
+ * Id → port, minus the `_comment` prose.
+ *
+ * @remarks
+ * The annotation is what enforces "every value is a port number": a string or
+ * `null` against one of these keys in the file fails `vp check` here rather
+ * than at dev-server start.
+ */
+const devAppPorts: Readonly<Record<DevAppId, number>> = devAppPortsFile
+
+/**
+ * Whether `id` names a port in the file.
+ *
+ * @remarks
+ * Sound as a type guard because {@link DevAppId} and `devAppPorts` are the
+ * same import: the keys checked here are exactly the keys the type is built
+ * from.
+ */
+const isDevAppId = (id: string): id is DevAppId =>
+  id !== COMMENT_KEY && Object.hasOwn(devAppPorts, id)
+
+/** Every dev app id the file declares, in declaration order. */
+const devAppIds: readonly DevAppId[] = Object.keys(devAppPorts).filter(isDevAppId)
+
+/**
+ * The pinned dev-server port for `id`.
+ *
+ * @param id - A dev app id; unknown ids throw rather than resolving to a
+ *   default, so a typo can't silently drift the server off the row's port
+ * @returns The port `slices/apps/dev-app-ports.json` assigns to `id`
+ *
+ * @remarks
+ * {@link devAppServer} is the entry point a vite config wants — it narrows
+ * `id` at compile time. This one accepts any string so callers outside that
+ * narrowing (and the tests covering the unknown-id branch) can reach the
+ * check.
+ */
+const devAppPort = (id: string): number => {
+  if (!isDevAppId(id)) {
+    throw new Error(
+      `Unknown dev app id "${id}" — ${devAppPortsPath} declares ${devAppIds.join(', ')}`
+    )
+  }
+  return devAppPorts[id]
+}
+
+/**
+ * Vite server options pinning a first-party app's dev server to its shared
+ * port.
+ */
+interface DevAppServerOptions {
+  /** The port from `slices/apps/dev-app-ports.json`. */
+  readonly port: number
+  /** Always `true` — a taken port fails loudly instead of drifting. */
+  readonly strictPort: true
+  /** The loopback host the dev server binds to. */
+  readonly host: string
+}
+
+/**
+ * The `server` (or `preview`) block that pins a first-party app's dev server
+ * to the port `slices/apps/dev-app-ports.json` assigns it.
+ *
+ * @param id - The app's dev id, narrowed to the file's own keys
+ * @returns A {@link DevAppServerOptions} block to spread into `server` — or
+ *   into `preview`, for an app whose dev tile launches `vp preview`
+ *
+ * @remarks
+ * `slices/apps/dev-app-ports.json` is the single source of truth for these
+ * ports: `apps-rust` embeds the same file (`src/dev_seed.rs`) to seed the
+ * debug-only `<id>` self-hosted/cloud rows whose launch URLs name them, and
+ * this helper is the **only** TypeScript reader. `strictPort` is non-optional
+ * because a vite server that drifted onto the next free port would leave the
+ * homescreen's "(Dev)" tile launching whatever else holds the pinned one.
+ *
+ * @example
+ * ```ts
+ * export default defineConfig({
+ *   ...base,
+ *   server: devAppServer('medications-app-dev'),
+ * })
+ * ```
+ */
+const devAppServer = (id: DevAppId): DevAppServerOptions => ({
+  port: devAppPort(id),
+  strictPort: true,
+  host: DEV_APP_HOST,
+})
 
 /**
  * Shared defaults every per-package `vite.config.ts` in this monorepo
@@ -71,4 +195,6 @@ const base = defineConfig({
   },
 })
 
+export type { DevAppId, DevAppServerOptions }
+export { devAppIds, devAppPort, devAppPortsPath, devAppServer }
 export default base
