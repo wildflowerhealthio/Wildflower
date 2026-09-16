@@ -1,4 +1,4 @@
-export type { SentryAdapter, SentryClient } from './client-layer.ts'
+export type { ContextManagerFactory, SentryAdapter, SentryClient } from './client-layer.ts'
 export { getGlobalTracer, initClientTelemetry, makeClientTelemetryLayer } from './client-layer.ts'
 export type {
   OtelRuntimeConfig,

@@ -3938,9 +3938,6 @@ importers:
       '@opentelemetry/sdk-trace-base':
         specifier: 'catalog:'
         version: 2.11.0(@opentelemetry/api@1.9.0)
-      '@opentelemetry/sdk-trace-web':
-        specifier: 'catalog:'
-        version: 2.11.0(@opentelemetry/api@1.9.0)
       '@sentry/opentelemetry':
         specifier: 'catalog:'
         version: 10.74.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.0))
@@ -4058,6 +4055,9 @@ importers:
       '@opentelemetry/api':
         specifier: 1.9.0
         version: 1.9.0
+      '@opentelemetry/sdk-trace-web':
+        specifier: 'catalog:'
+        version: 2.11.0(@opentelemetry/api@1.9.0)
       '@sentry/opentelemetry':
         specifier: 'catalog:'
         version: 10.74.0(@opentelemetry/api@1.9.0)(@opentelemetry/core@2.11.0(@opentelemetry/api@1.9.0))(@opentelemetry/sdk-trace-base@2.11.0(@opentelemetry/api@1.9.0))
