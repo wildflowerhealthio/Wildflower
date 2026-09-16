@@ -20,11 +20,9 @@ const IGNORED_DIRECTORIES = new Set([
 ])
 
 /**
- * Gitignored roots that hold a whole second checkout of this repo — the
- * parallel worktrees `.devcontainer/wf-worktree.sh` and Claude's worktree
- * isolation create. Sweeping them would judge the branch checked out over
- * there, so a bare `fc.assert(` on an unrelated branch would fail this guard
- * with an offender path the current branch cannot fix.
+ * Gitignored roots holding a second checkout of this repo — the parallel
+ * worktrees `.devcontainer/wf-worktree.sh` and Claude's worktree isolation
+ * create. Sweeping them would judge another branch's source.
  */
 const IGNORED_PATH_PREFIXES = ['.worktrees', join('.claude', 'worktrees')]
 
@@ -59,10 +57,9 @@ const skipsRiskScaling = (source: string): boolean =>
   source.includes('fc.assert(') && !source.includes('numRunsFor')
 
 /**
- * This file, relative to the repo root. Excluded from the sweep below: the
- * fixtures feeding {@link skipsRiskScaling} quote `fc.assert(` as data rather
- * than running properties, so judging this file by its own rule would report
- * an offender that no `numRunsFor` call could fix.
+ * This file, relative to the repo root. Exempt from the sweep: its fixtures
+ * quote `fc.assert(` as data rather than running properties, so its own rule
+ * would report an offender no `numRunsFor` call could fix.
  */
 const SELF = join('scripts', 'property-test-num-runs.test.ts')
 
