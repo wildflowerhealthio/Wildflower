@@ -62,11 +62,15 @@ Per FHIR R4 § Patient.search, the standard parameters include `_id`, `_lastUpda
 
 Implication: SMART apps that search by name or MRN through the typed client will not work. Add `_id`, `name`, `family`, `given`, and `identifier` for a baseline US Core / SMART experience (`birthdate` already carries date prefixes via `DateSearchParam`).
 
+The SMART apps do not hit this gap, because they do not use the typed client: `fhir-r4-react/smart`'s `fetchPatientPage` / `fetchPatient` issue raw fhirclient requests (`Patient?_sort=family&_count=200`, `Patient/{id}`) and decode the answer with `Patient.Schema`. Anything they need beyond what the `HttpApi` declares — here `_sort` — is expressible there without touching this description. The gap above is still real for every consumer that does go through the typed client.
+
 ## Observation search parameters (only paging declared)
 
 Per FHIR R4 § Observation.search, the standard parameters include `_id`, `_lastUpdated`, `code`, `subject`, `patient`, `encounter`, `date` (with prefixes), `status`, `category`, `identifier`, `performer`, `value-quantity`, `value-string`, `value-concept`, `code-value-quantity`, `component-code`, `component-value-quantity`, etc. The `HttpApi` description declares `_count` and `_pageToken` only.
 
 Implication: the typed client cannot ask "latest blood pressure for this patient" — the primary reason to query Observation. Adding `subject`/`patient`/`code`/`category`/`date` would unlock the canonical workflows.
+
+The SMART viewer reads Observations around this, not through it: `fhir-r4-react/smart`'s `fetchObservationPage` issues a raw fhirclient `Observation?patient=<id>&_sort=date&_count=200` and decodes each entry with `Observation.Schema`. That is why `patient`/`date` being undeclared here has not blocked the viewer — and why closing this gap is still worth doing for the typed client's own consumers.
 
 ## DocumentReference search parameters (subset declared)
 
