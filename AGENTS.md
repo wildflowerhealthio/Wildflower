@@ -43,11 +43,6 @@ While completing tasks may be inclined to
 You MUST consult with the user before doing these or similar actions.
 They may have an answer or they may not want you to engage in that behaviour.
 
-### Agents SHOULD NOT silently resolve judgment calls or spiral into obscure problem
-
-The user brings domain knowledge, intent, and taste. They also often have a months long context window, and may recall things only past agents knew.
-Don't silently resolve judgment calls or spiral into obscure problems — surface them so the human can contribute what they're best at.
-
 ### Agents SHOULD NOT guess at user intent or code state
 
 If you've taken 3+ investigative actions on a sub-problem without converging, or you're about to work around something that smells like an accidental inconsistency, **stop and present the issue to the user**. Also surface: ambiguous naming, conflicting patterns across files, anything where you're choosing between two plausible interpretations. The trigger is: _"Am I guessing?"_ — if yes, ask.
