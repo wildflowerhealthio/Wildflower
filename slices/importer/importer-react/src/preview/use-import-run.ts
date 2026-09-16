@@ -164,6 +164,8 @@ interface ImportRun {
   readonly state: ImportRunState
   /** The current per-format settings every decode runs under. */
   readonly settings: FormatSettings
+  /** Whether a settings re-decode is in flight — the shell blocks confirm while true. */
+  readonly redecoding: boolean
   /**
    * Read a freshly-picked batch of files into decoded sections, replacing
    * any previous one.
@@ -329,6 +331,7 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
   const runAuthed = useRunAuthed()
   const [state, setState] = useState<ImportRunState>({ _tag: 'idle' })
   const [settings, setSettings] = useState<FormatSettings>(defaultFormatSettings)
+  const [redecoding, setRedecoding] = useState(false)
   const latest = useRef(0)
   // Advanced only by `run`, so it names the picked batch rather than the
   // decode pass — see `ImportRunState`'s `batchId`.
@@ -374,6 +377,7 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
       latest.current += 1
       const ticket = latest.current
       const { batchId } = state
+      setRedecoding(true)
       const redecodeAll = Effect.forEach(
         state.files,
         (file) =>
@@ -387,7 +391,7 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
       )
       void runAuthed(redecodeAll).then((nextFiles) => {
         if (latest.current !== ticket) return
-        // Same batch: only the decode changed, so `batchId` is carried over.
+        setRedecoding(false)
         setState({ _tag: 'ready', batchId, files: nextFiles })
       })
     },
@@ -397,10 +401,11 @@ const useImportRun = (registry: ImportRunRegistry): ImportRun => {
 
   const reset = useCallback((): void => {
     latest.current++
+    setRedecoding(false)
     setState({ _tag: 'idle' })
   }, [])
 
-  return { state, settings, run, applySettings, reset }
+  return { state, settings, redecoding, run, applySettings, reset }
 }
 
 export {

@@ -48,6 +48,9 @@ const READING_MESSAGE = 'Reading the files…'
  */
 const CHECKING_SERVER_MESSAGE = 'Checking the server for existing copies…'
 
+const SERVER_DIFF_ERROR_MESSAGE =
+  'Could not check the server for existing copies. Duplicate detection is unavailable — all resources will appear as new.'
+
 /** The bound descriptors, one per registered format, in registry order. */
 const registeredDescriptors = Object.values(formatRegistry)
 
@@ -72,7 +75,7 @@ const ImporterScreen = (): JSX.Element => {
       // `unchanged` resource is pre-excluded so a re-import writes nothing
       // by default. As soon as the reviewer toggles anything,
       // `selections.get(fileId)` wins and this seed is out of the picture.
-      if (diff._tag !== 'ready' || readFiles === undefined) {
+      if (diff._tag === 'loading' || readFiles === undefined) {
         return StagedImport.initial<FhirResource>()
       }
       const file = readFiles.find(
@@ -111,6 +114,7 @@ const ImporterScreen = (): JSX.Element => {
   }
 
   const confirming = confirm.state._tag === 'confirming'
+  const confirmBlocked = confirming || importRun.redecoding
 
   const body = ((): JSX.Element => {
     if (runState._tag === 'idle')
@@ -136,22 +140,30 @@ const ImporterScreen = (): JSX.Element => {
       )
     }
     return (
-      <PreviewPanel
-        files={runState.files}
-        settings={importRun.settings}
-        settingsRegistry={formatRegistry}
-        selectionFor={selectionFor}
-        comparisons={diff.comparisons}
-        onSelectionChange={onSelectionChange}
-        onSettingsChange={importRun.applySettings}
-        confirming={confirming}
-        onCancel={startOver}
-        onConfirm={() => confirm.confirm(runState.files, selectionFor)}
-      />
+      <>
+        {diff._tag === 'error' && (
+          <p role="alert" className={styles.error}>
+            {SERVER_DIFF_ERROR_MESSAGE}
+          </p>
+        )}
+        <PreviewPanel
+          files={runState.files}
+          settings={importRun.settings}
+          settingsRegistry={formatRegistry}
+          selectionFor={selectionFor}
+          comparisons={diff.comparisons}
+          onSelectionChange={onSelectionChange}
+          onSettingsChange={importRun.applySettings}
+          confirming={confirming}
+          confirmDisabled={confirmBlocked}
+          onCancel={startOver}
+          onConfirm={() => confirm.confirm(runState.files, selectionFor)}
+        />
+      </>
     )
   })()
 
   return <div className={styles.screen}>{body}</div>
 }
 
-export { CHECKING_SERVER_MESSAGE, ImporterScreen, READING_MESSAGE }
+export { CHECKING_SERVER_MESSAGE, ImporterScreen, READING_MESSAGE, SERVER_DIFF_ERROR_MESSAGE }

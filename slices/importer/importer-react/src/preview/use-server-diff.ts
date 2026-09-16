@@ -33,11 +33,12 @@ import type { FileReadOutcome } from './use-import-run.ts'
  * batch and gets no such carry-over: its badges would be about the last
  * batch's files.
  *
- * The hook never fails and never blocks *confirming*: the classifier's own
- * error channel is `never` (a whole-bundle transport error attributes every
- * id to `new` inside `classifyAgainstServer`), and if `runAuthed` itself
- * rejects on an auth defect the query error is folded to "every id is new" so
- * the shell still resolves to a writable batch instead of stalling.
+ * The hook never blocks *confirming*: the classifier's own error channel is
+ * `never` (a whole-bundle transport error attributes every id to `new` inside
+ * `classifyAgainstServer`), and if `runAuthed` itself rejects on an auth
+ * defect the query error surfaces as an `error` state whose `comparisons`
+ * fall back to "every id is new" so the shell still resolves to a writable
+ * batch rather than stalling — but the error is visible in the UI.
  *
  * @packageDocumentation
  */
@@ -52,11 +53,18 @@ interface DiffRow {
  * The state of the pre-fetch: `loading` while there is nothing worth showing
  * for this batch (the shell paints a loader instead of the preview), `ready`
  * once there is — the verdicts for this batch, or the ones carried over from
- * the same batch's previous classification while a re-decode's is in flight.
+ * the same batch's previous classification while a re-decode's is in flight,
+ * `error` when the auth-path or network request failed — the shell shows an
+ * error and falls back to "every id is new" so the user can still confirm.
  */
 type ServerDiffState =
   | { readonly _tag: 'loading' }
   | { readonly _tag: 'ready'; readonly comparisons: ReadonlyMap<string, ServerComparison> }
+  | {
+      readonly _tag: 'error'
+      readonly comparisons: ReadonlyMap<string, ServerComparison>
+      readonly error: Error
+    }
 
 /** No comparisons, held once so an empty batch keeps a stable identity. */
 const NO_COMPARISONS: ReadonlyMap<string, ServerComparison> = new Map()
@@ -155,19 +163,20 @@ const useServerDiff = (
 
   return useMemo((): ServerDiffState => {
     if (!enabled || rows === undefined) return { _tag: 'ready', comparisons: NO_COMPARISONS }
-    // `query.data` is either this classification or the same batch's previous
-    // one; either way it is re-keyed against the *current* rows, so carried-over
-    // verdicts land on the resources actually on screen. Ids are derived from
-    // the source file's own facts, not from settings, so a re-decode does not
-    // move a resource out from under its verdict.
     if (query.data !== undefined) {
       return { _tag: 'ready', comparisons: byLabeledKey(rows, query.data) }
     }
-    // An auth-path rejection: fold to "every id is new" rather than stall the
-    // preview forever on a loader.
-    if (query.isError) return { _tag: 'ready', comparisons: byLabeledKey(rows, new Map()) }
+    if (query.isError)
+      return {
+        _tag: 'error',
+        comparisons: byLabeledKey(rows, new Map()),
+        error:
+          query.error instanceof Error
+            ? query.error
+            : new Error('Failed to check the server for existing copies'),
+      }
     return { _tag: 'loading' }
-  }, [enabled, rows, query.data, query.isError])
+  }, [enabled, rows, query.data, query.isError, query.error])
 }
 
 /**

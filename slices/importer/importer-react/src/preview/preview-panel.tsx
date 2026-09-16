@@ -85,8 +85,10 @@ interface PreviewPanelProps {
   readonly onConfirm: () => void
   /** Called when the user discards the preview without writing. */
   readonly onCancel: () => void
-  /** Whether a confirmed import is currently running, to disable the action. */
+  /** Whether a confirmed import is currently running, to show the importing label. */
   readonly confirming: boolean
+  /** Whether the confirm button should be disabled (confirming or re-decoding). */
+  readonly confirmDisabled?: boolean
 }
 
 /** Heading for a batch with nothing chosen — no resource is included. */
@@ -597,19 +599,21 @@ const PreviewActions = ({
   onConfirm,
   onCancel,
   confirming,
+  disabled,
 }: {
   readonly writableCount: number
   readonly excludedCount: number
   readonly onConfirm: () => void
   readonly onCancel: () => void
   readonly confirming: boolean
+  readonly disabled: boolean
 }): JSX.Element => (
   <div className={styles.actions}>
-    <button type="button" className={styles.cancel} onClick={onCancel} disabled={confirming}>
+    <button type="button" className={styles.cancel} onClick={onCancel} disabled={disabled}>
       Cancel
     </button>
     {writableCount > 0 && (
-      <button type="button" className={styles.confirm} onClick={onConfirm} disabled={confirming}>
+      <button type="button" className={styles.confirm} onClick={onConfirm} disabled={disabled}>
         {confirmLabel(writableCount, excludedCount, confirming)}
       </button>
     )}
@@ -641,6 +645,7 @@ const PreviewPanel = ({
   onConfirm,
   onCancel,
   confirming,
+  confirmDisabled = confirming,
 }: PreviewPanelProps): JSX.Element => {
   const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
@@ -738,6 +743,7 @@ const PreviewPanel = ({
         onConfirm={onConfirm}
         onCancel={onCancel}
         confirming={confirming}
+        disabled={confirmDisabled}
       />
       <ResourceEditor
         open={editing._tag === 'Open'}
