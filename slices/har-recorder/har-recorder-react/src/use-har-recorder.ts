@@ -184,6 +184,7 @@ const useHarRecorder = (): HarRecorder => {
   const start = useCallback(
     (url: string): void => {
       if (activeRef.current !== null) return
+      if (phase._tag === 'Saving') return
       const startedAt = DateTime.unsafeNow()
       activeRef.current = { recording: Recording.empty(), startUrl: url, startedAt }
       pendingFileNameRef.current = null
@@ -198,13 +199,23 @@ const useHarRecorder = (): HarRecorder => {
             )
           )
       ).catch((error: unknown) => {
-        // Nothing is capturing and no webview opened — say so, rather than
-        // leaving a "Recording" that counts to zero forever.
         activeRef.current = null
         setPhase({ _tag: 'Failed', message: messageOf(error) })
+        Effect.runFork(
+          collectorRegister
+            .unregister(handlers.collector)
+            .pipe(
+              Effect.catchAll((unregisterError) =>
+                Effect.logError(
+                  'useHarRecorder: unregister after start failure failed',
+                  unregisterError
+                )
+              )
+            )
+        )
       })
     },
-    [collectorRegister, handlers, sendCollectorMessage]
+    [collectorRegister, handlers, phase, sendCollectorMessage]
   )
 
   const stop = useCallback((): void => {
@@ -235,7 +246,9 @@ const useHarRecorder = (): HarRecorder => {
         Effect.andThen(collectorRegister.unregister(handlers.collector))
       )
     ).catch((error: unknown) => {
-      setPhase({ _tag: 'Failed', message: messageOf(error) })
+      setPhase((current) =>
+        current._tag === 'Failed' ? current : { _tag: 'Failed', message: messageOf(error) }
+      )
     })
   }, [collectorRegister, handlers, sendCollectorMessage, sendHarRecorderMessage])
 

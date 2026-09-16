@@ -9,12 +9,13 @@ import baseConfig from './vite.config.base.ts'
 export default defineConfig({
   ...baseConfig,
   pack: {
+    deps: { resolveDepSubpath: true },
     // `tsconfig.pack.json` drops `customConditions: ['source']` so tsgo
     // resolves workspace deps through their built `dist/*.d.ts` instead of
     // walking into each slice's `src/`. Without that override, tsgo treats
     // every transitively-imported slice source file as a project input and
     // writes `.d.ts` siblings next to them across the monorepo.
-    dts: { tsgo: {}, tsconfig: './tsconfig.pack.json' },
+    dts: { generator: 'tsgo', tsgo: {}, tsconfig: './tsconfig.pack.json' },
     platform: 'browser',
     exports: false,
     entry: {

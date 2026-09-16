@@ -35,6 +35,7 @@
     "fast-check": "catalog:",
     "kitchen-sink": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

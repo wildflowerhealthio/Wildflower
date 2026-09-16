@@ -59,6 +59,7 @@
     "react-kitchen-sink": "workspace:*",
     "tundra-css": "catalog:",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

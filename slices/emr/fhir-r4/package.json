@@ -54,6 +54,7 @@
     "navigation-core": "workspace:*",
     "shared-structures-core": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

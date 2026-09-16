@@ -80,6 +80,41 @@ describe('HarRecorderPage', () => {
     expect(screen.getByRole('status').textContent).toBe('0 responses recorded')
   })
 
+  it('should disable the URL field while recording', async () => {
+    // Arrange
+    const harness = renderPage()
+    await harness.user.type(screen.getByLabelText('URL'), 'https://example.com')
+
+    // Act
+    await harness.user.click(startButton())
+
+    // Assert
+    expect(screen.getByLabelText('URL').hasAttribute('disabled')).toBe(true)
+  })
+
+  it('should show the error banner when the host refuses to write', async () => {
+    // Arrange
+    const harness = renderPage()
+    await harness.user.type(screen.getByLabelText('URL'), 'https://example.com')
+    await harness.user.click(startButton())
+    await harness.user.click(screen.getByRole('button', { name: 'Stop & Save' }))
+    const fileName = harness.savedFileNames[0] ?? ''
+
+    // Act
+    await act(async () => {
+      await Effect.runPromise(
+        harness.deliver('HarRecorder', {
+          _tag: 'HarSaveFailed',
+          fileName,
+          message: 'saved_data is not writable',
+        })
+      )
+    })
+
+    // Assert
+    expect(screen.getByRole('alert').textContent).toContain('saved_data is not writable')
+  })
+
   it('should show where the host wrote the recording', async () => {
     // Arrange
     const harness = renderPage()

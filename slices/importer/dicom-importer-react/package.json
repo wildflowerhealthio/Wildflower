@@ -40,6 +40,7 @@
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {

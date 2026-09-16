@@ -48,6 +48,7 @@
     "react-tundraish": "workspace:*",
     "shoppers-drugmart-source": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:",
     "web-trace-core": "workspace:*"
   },

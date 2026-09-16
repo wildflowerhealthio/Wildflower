@@ -254,6 +254,82 @@ describe('useHarRecorder', () => {
     })
   })
 
+  it('should ignore a second start while already recording', async () => {
+    // Arrange
+    const harness = makeHarness()
+    const { result } = renderHarRecorder(harness)
+    await act(async () => {
+      result.current.start(START_URL)
+    })
+    const logAfterFirstStart = [...harness.log]
+
+    // Act
+    await act(async () => {
+      result.current.start('https://other.example.com')
+    })
+
+    // Assert
+    expect(harness.log).toEqual(logAfterFirstStart)
+    expect(harness.sentCollectorMessages).toHaveLength(1)
+  })
+
+  it('should transition to Failed and unregister handlers when start fails', async () => {
+    // Arrange — a sender that rejects Open
+    const harness = makeHarness()
+    const failingSender: CollectorSender = (message) =>
+      message._tag === 'Open'
+        ? Effect.die(new Error('bridge down'))
+        : harness.collectorSender(message)
+    const { result } = renderHook(() => useHarRecorder(), {
+      wrapper: ({ children }: { readonly children: ReactNode }): JSX.Element => (
+        <HandlerCoordinatorContext.Provider value={harness.coordinator}>
+          <CollectorSenderProvider send={failingSender}>
+            <HarRecorderSenderProvider send={harness.harRecorderSender}>
+              {children}
+            </HarRecorderSenderProvider>
+          </CollectorSenderProvider>
+        </HandlerCoordinatorContext.Provider>
+      ),
+    })
+
+    // Act
+    await act(async () => {
+      result.current.start(START_URL)
+    })
+
+    // Assert
+    expect(result.current.state._tag).toBe('Failed')
+    expect(harness.registered.has('Collector')).toBe(false)
+  })
+
+  it('should allow a new recording after the previous one saved', async () => {
+    // Arrange
+    const harness = makeHarness()
+    const { result } = renderHarRecorder(harness)
+    await act(async () => {
+      result.current.start(START_URL)
+    })
+    await act(async () => {
+      result.current.stop()
+    })
+    const { fileName } = harness.sentHarRecorderMessages[0] ?? { fileName: '' }
+    await deliverHarRecorder(harness, {
+      _tag: 'HarSaved',
+      fileName,
+      path: `/home/user/saved_data/${fileName}`,
+    })
+    expect(result.current.state._tag).toBe('Saved')
+
+    // Act
+    await act(async () => {
+      result.current.start('https://second.example.com')
+    })
+
+    // Assert
+    expect(result.current.state._tag).toBe('Recording')
+    expect(harness.sentCollectorMessages).toHaveLength(3)
+  })
+
   it('should close the sniffer window when unmounted mid-recording', async () => {
     // Arrange
     const harness = makeHarness()

@@ -11,9 +11,7 @@ export default defineConfig({
     alias: [{ find: /^@\/(.*)$/, replacement: './src/$1' }],
   },
   pack: {
-    dts: {
-      tsgo: {},
-    },
+    dts: { generator: 'tsgo', tsgo: {} },
     // The package.json "exports" field is hand-maintained so that a "source"
     // condition can sit alongside the default dist entry. Letting tsdown
     // regenerate it would overwrite that.
@@ -24,9 +22,7 @@ export default defineConfig({
     // listed in `deps.neverBundle` — otherwise rolldown's resolver warns
     // about each `node:fs` / `node:path` import.
     platform: 'neutral',
-    deps: {
-      neverBundle: [/^node:/],
-    },
+    deps: { resolveDepSubpath: true, neverBundle: [/^node:/] },
     entry: {
       index: 'src/index.ts',
       'crypto-random': 'src/crypto-random/index.ts',

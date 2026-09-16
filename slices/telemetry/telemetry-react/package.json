@@ -33,6 +33,7 @@
     "effect": "catalog:",
     "telemetry-web": "workspace:*",
     "typescript": "catalog:",
+    "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
