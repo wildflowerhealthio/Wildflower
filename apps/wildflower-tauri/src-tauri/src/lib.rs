@@ -388,15 +388,8 @@ async fn run_server(
         emr_rust::UNAUTHENTICATED_FHIR_PATHS,
     ));
 
-    // Every other slice router below gates every path on the same state, so they
-    // share one middleware value — it's `Clone`, and cloning it clones an `Arc`
-    // plus the (empty) exempt set.
     let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);
 
-    // The OHIF DICOM file server — scope-gated on `user/DocumentReference.r`.
-    // It reads DocumentReferences from HFS in-process (the handler re-drives
-    // through the HFS router), decodes the attachment's base64 data, and serves
-    // the raw bytes for the OHIF viewer. Gated like the other slices.
     let gated_ohif_server = ohif_server_rust::setup_ohif_server(fhir_routers.raw_hfs_router)
         .layer(gatekeeper_auth_layer.clone());
 

@@ -26,12 +26,6 @@ Narrowings relative to spec FHIR `$everything`:
 - **Partial scope degrades gracefully.** A related-type search that fails (non-200 or an unreadable body) is logged and treated as _no matches_ rather than aborting; only the primary Patient read is fatal (its `401`/`403` propagates verbatim). A token that can read Patient + Observation but not MedicationRequest still gets a Bundle with the Patient and its Observations.
 - **`_count` and `Bundle.total`.** `_count` truncates the combined matched related set (the primary Patient is always included on top); `Bundle.total` reflects the returned (post-truncation) entry count, not the grand match total.
 
-## `GET /fhir-r4/api/dicom/files/{id}` (added; not a FHIR operation)
-
-Implemented locally (`src/dicom_files.rs`), mounted ahead of HFS with the same in-process delegation shape as `$everything`: it delegates a `GET /DocumentReference/{id}` to HFS (so HFS's SMART v2 scope enforcement applies to the read exactly as for a direct request), then decodes the first `content[0].attachment.data` from base64 and returns it as the response body, with `Content-Type` taken from `attachment.contentType` (falling back to `application/octet-stream` when absent or not a valid header value).
-
-This is not a FHIR resource or operation — it exists so a DICOM viewer (OHIF) can fetch a `dicom-importer-core`-stored source file's raw bytes by id over plain HTTP, rather than parsing base64 out of FHIR JSON itself. A non-`200` from the delegated `DocumentReference` read propagates verbatim (e.g. `404` for a missing document, `401`/`403` for a lacking scope); a `200` `DocumentReference` with no content entry or no attachment `data` yields a `404` OperationOutcome of its own.
-
 ## `SearchParameter` index (full R4 set, indexed at write time)
 
 `emr-rust` loads the **complete HL7 FHIR R4 `SearchParameter` bundle** into HFS. HFS's SQLite backend registers SearchParameters from a filesystem `data_dir`; the R4 `search-parameters.json` ships as a **deployed asset** (see `assets/README.md`) — a bundled resource, not embedded in the binary — and the host points `EmrConfig::search_parameter_data_dir` at the directory holding it, which `setup_fhir_r4` passes to the backend via `SqliteBackendConfig { data_dir: Some(...) }` (`src/lib.rs`). HFS reads it read-only and extracts and indexes every standard R4 search parameter for a resource **at write time**. `setup_fhir_r4` fails fast if the bundle is missing from that directory, rather than silently falling back to the minimal index.

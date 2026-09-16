@@ -7,9 +7,6 @@ pub use require_valid_bearer_token::{
     ensure_bearer_header, gatekeeper_auth_middleware, GatekeeperAuthMiddleware,
 };
 
-/// The boxed future the `from_fn` handlers in this module return. Boxing is what
-/// makes their layer types *nameable*: an `async fn`'s future is opaque and its
-/// fn-item type unutterable, so neither can appear in the public type aliases
-/// the layer constructors return.
+/// Boxed so the `from_fn` handlers' layer types are nameable.
 type MiddlewareFuture =
     std::pin::Pin<Box<dyn std::future::Future<Output = axum::response::Response> + Send>>;

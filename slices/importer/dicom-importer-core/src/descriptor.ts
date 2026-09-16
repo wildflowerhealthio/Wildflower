@@ -1,17 +1,12 @@
-import { parseDicomFile } from 'dicom'
 /**
- * The concrete {@link FileImporterDescriptor} for the `dicom` format: a
- * `.dcm` file's raw bytes in, Patient / ServiceRequest / ImagingStudy out.
- * Persistence is shell-owned — every FHIR-targeting importer writes through
- * one shared `POST /` batch bundle.
- *
- * @remarks
- * `buildSourceFile` parses the DICOM header to derive a Patient reference
- * and sets `subject` on the archive `DocumentReference` when `PatientID` is
- * present, linking the stored file to its patient.
+ * The concrete {@link FileImporterDescriptor} for the `dicom` format.
+ * `buildSourceFile` derives a Patient reference from the DICOM header and
+ * sets `subject` on the archive `DocumentReference` when `PatientID` is
+ * present.
  *
  * @packageDocumentation
  */
+import { parseDicomFile } from 'dicom'
 import { Effect, Either } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'

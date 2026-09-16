@@ -31,13 +31,10 @@ pub use crate::openapi::openapi_spec;
 const FHIR_R4_PATH: &str = "/fhir-r4";
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
-/// Result of [`setup_fhir_r4`]: the FHIR R4 router (mounted at
-/// [`FHIR_R4_PATH`]) and the bare HFS router for in-process delegation by
-/// other slices (e.g. `ohif-server-rust`).
+/// Result of [`setup_fhir_r4`]: the augmented FHIR R4 router and the bare HFS
+/// router for in-process delegation by other slices.
 pub struct FhirR4Routers {
     pub augmented_fhir_r4_router: Router,
-    /// The raw HFS Axum router, exposed for in-process delegation by slices
-    /// that need to read FHIR resources directly (e.g. the OHIF DICOM server).
     pub raw_hfs_router: Router,
 }
 
@@ -157,11 +154,9 @@ pub fn setup_fhir_r4(
         None,
     );
 
-    // Specific routes win over fallback: our SMART App Launch discovery doc, the
-    // `$everything` operation, and the DICOM file server intercept their paths;
-    // everything else under /fhir-r4 falls through to HFS. Each override
-    // sub-router carries its own state, so they're merged after `.with_state`
-    // erases the state type.
+    // Specific routes win over fallback: our SMART App Launch discovery doc and
+    // the `$everything` operation intercept their paths; everything else under
+    // /fhir-r4 falls through to HFS.
     let smart_config_route = Router::new()
         .route(
             "/.well-known/smart-configuration",

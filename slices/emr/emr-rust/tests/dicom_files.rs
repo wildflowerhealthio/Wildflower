@@ -1,10 +1,5 @@
-//! End-to-end tests for the `/api/dicom/files/{id}` endpoint, exercised
-//! through the real routers `setup_fhir_r4` builds (HFS create/read) plus the
-//! `ohif-server-rust` slice's scope-gated handler, with HFS auth off
-//! (`jwks_url: None`). Covers the happy path (base64 decode + `Content-Type`
-//! from the attachment), the octet-stream fallback for a missing/invalid
-//! `contentType`, a `DocumentReference` with no content attachment, a missing
-//! `DocumentReference`, and the 403 for a request carrying no bearer token.
+//! End-to-end tests for `/api/dicom/files/{id}` — real HFS routers + the
+//! `ohif-server-rust` handler, HFS auth off.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};

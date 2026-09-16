@@ -1,19 +1,12 @@
-import type { DicomHeader } from 'dicom'
-import { parseDicomFile } from 'dicom'
 /**
  * Decode a DICOM file's raw bytes into one section of FHIR resources and
- * diagnostic notes — the descriptor's `decode`.
- *
- * @remarks
- * Parses the DICOM tags via the `dicom` file-formats package, synthesizes
- * Patient / ServiceRequest / ImagingStudy via `to-fhir.ts`, and adopts them
- * under `DICOM_SYSTEM`. A `dicom-parser` failure is a `ParseError`, not a
- * throw. One section per file, titled
- * `<Modality> <StudyDescription> · <StudyDate>`, with stable keys
- * `patient`, `service-request`, `imaging-study`.
+ * diagnostic notes — the descriptor's `decode`. A `dicom-parser` failure
+ * is a `ParseError`.
  *
  * @packageDocumentation
  */
+import type { DicomHeader } from 'dicom'
+import { parseDicomFile } from 'dicom'
 import { Effect, Either, ParseResult, Schema } from 'effect'
 import { joinIdComponents, localResourceId, adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'

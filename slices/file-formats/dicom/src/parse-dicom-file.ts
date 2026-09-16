@@ -1,15 +1,14 @@
-import { parseDicom, type DataSet } from 'dicom-parser'
 /**
  * Parse a DICOM Part 10 file's bytes into a typed {@link DicomHeader},
  * wrapping `dicom-parser` into an `Either`.
  *
  * @packageDocumentation
  */
+import { parseDicom, type DataSet } from 'dicom-parser'
 import { Either } from 'effect'
 
 import type { DicomHeader, PersonName } from './dicom-header.ts'
 
-/** The tag addresses used below, named for readability. */
 const Tag = {
   // Patient
   PatientName: 'x00100010',
@@ -69,10 +68,7 @@ const parsePersonName = (raw: string): PersonName | undefined => {
   return { family, given, text }
 }
 
-/**
- * Read a DICOM DA (Date) string. DA is `YYYYMMDD` — we keep it as-is for
- * the header; the FHIR synthesis interprets it.
- */
+/** Read a DICOM DA (Date) string, trimmed. */
 const readDa = (dataSet: DataSet, tag: string): string | undefined => {
   const value = dataSet.string(tag)
   return value === undefined ? undefined : value.trim() || undefined

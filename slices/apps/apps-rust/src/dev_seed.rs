@@ -59,12 +59,8 @@ fn dev_launch_url(port: i32) -> String {
     )
 }
 
-/// The launch URL for the OHIF viewer's dev cloud row. OHIF is a single-page
-/// app whose FHIR data source reads `launch`, `iss` and `clientId` off the URL
-/// of whichever route it is opened on, and the EHR launch lands on the FHIR
-/// Viewer mode directly. `clientId` is the **dev** client (`ohif-viewer-dev`),
-/// not the production one: a cloud row's redirect can only match an absolute
-/// registered URI, and it is the dev client that registers this loopback route.
+/// The OHIF viewer's dev launch URL — `/fhir-viewer` route with the **dev**
+/// client id. See `docs/Apps/Explanation.md` for why this dev row is cloud.
 fn ohif_viewer_dev_url(port: i32) -> String {
     format!(
         "http://localhost:{port}/fhir-viewer\

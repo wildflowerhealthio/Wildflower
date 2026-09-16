@@ -1,13 +1,6 @@
-/**
- * A typed view of the DICOM tags the importer cares about, decoded from
- * `dicom-parser`'s `DataSet`. Every field is optional except the three UIDs
- * (`StudyInstanceUID`, `SeriesInstanceUID`, `SOPInstanceUID`) — a file
- * missing any of those is a parse error, not a header with blanks.
- *
- * @packageDocumentation
- */
+/** @packageDocumentation */
 
-/** A parsed DICOM Person Name: family and given parts split from the `^` PN grammar. */
+/** DICOM Person Name: `family^given` from the PN grammar. */
 interface PersonName {
   readonly family: string
   readonly given: string

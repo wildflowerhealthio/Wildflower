@@ -11,10 +11,7 @@ use crate::domain::{DicomFile, DicomFileError, DicomFileStore};
 
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
-/// [`DicomFileStore`] adapter that reads DICOM file bytes by delegating a
-/// `GET /DocumentReference/{id}` to HFS in-process. Constructs an
-/// `Authorization: Bearer <token>` header from the caller's auth token so
-/// HFS's bearer-JWT + SMART v2 scope enforcement stays in the path.
+/// [`DicomFileStore`] backed by in-process HFS delegation.
 #[derive(Clone)]
 pub(crate) struct HfsDicomFileStore {
     hfs_router: Router,
@@ -100,9 +97,7 @@ impl DicomFileStore for HfsDicomFileStore {
     }
 }
 
-/// Re-drive HFS's router with an in-process `GET`, setting an Authorization
-/// bearer header from the caller's token so auth behaves as for a direct
-/// request.
+/// Re-drive HFS's router with an in-process `GET`, forwarding the bearer token.
 async fn delegate_get(
     router: &Router,
     path_and_query: &str,

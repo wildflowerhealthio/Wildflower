@@ -4,8 +4,7 @@ use std::future::Future;
 
 use bytes::Bytes;
 
-/// A decoded DICOM file — the raw bytes and their MIME type, extracted from a
-/// FHIR DocumentReference attachment.
+/// A decoded DICOM file — raw bytes and their MIME type.
 #[derive(Debug)]
 pub(crate) struct DicomFile {
     pub bytes: Bytes,
@@ -27,12 +26,8 @@ pub(crate) enum DicomFileError {
     },
 }
 
-/// The store port for reading DICOM file bytes. The single implementation
-/// delegates to HFS in-process (see [`crate::hfs::HfsDicomFileStore`]); the
-/// trait exists so the capability is testable against a fake.
-///
-/// `auth_token` is the caller's bearer token, forwarded into HFS so its
-/// bearer-JWT + SMART v2 scope enforcement stays in the path.
+/// The store port for reading DICOM file bytes. The trait exists so the
+/// capability is testable against a fake.
 pub(crate) trait DicomFileStore: Clone + Send + Sync + 'static {
     fn get_file(
         &self,
