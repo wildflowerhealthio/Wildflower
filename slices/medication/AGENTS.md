@@ -107,8 +107,8 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
   substitution) and the property tests pin it — keep new noise rules as token
   predicates.
 - **The FHIR R4 adapters live behind the `medication-core/fhir` subpath, never
-  the root export.** The root entry stays pure — `import { scoreName } from
-'medication-core'` must not pull `fhir-r4`'s schemas into a consumer's bundle.
+  the root export.** The root entry stays pure — importing `scoreName` from
+  `medication-core` must not pull `fhir-r4`'s schemas into a consumer's bundle.
   Adding an entry means a new `pack` config in `vite.config.ts` and a matching
   `exports` key; the root and the subpath are separate `vp pack` entries.
 - The two feature cores (`medication-sponsorship-core`,
@@ -121,8 +121,8 @@ against the live site (<https://ddinter.scbdd.com/>): DDInter's licence / terms
   (`Coding.system`) arrive as `URL`s, not strings — a `system: Schema.String`
   slot silently fails the whole concept; the adapter already coerces via
   `nullableUri` (and `dateTime` via `nullableIsoDateTime`). And `vp pack` is the
-  gate for the TS2883 dts trap, not `vp check` — run `vp run -F medication-core
-build` when the adapter's inferred types change.
+  gate for the TS2883 dts trap, not `vp check` — when the adapter's inferred
+  types change, run `vp run -F medication-core build`.
 - The adapter depends on `medication-calendar-core` for `nextFillDate`, so the
   matching base imports one feature core. Keep it that way round: nothing in
   `medication-calendar-core` may import `medication-core`.

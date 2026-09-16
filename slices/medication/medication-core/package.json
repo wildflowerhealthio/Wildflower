@@ -22,12 +22,10 @@
     "dev": "vp pack --watch",
     "test": "vp test"
   },
-  "dependencies": {
-    "effect": "catalog:"
-  },
   "devDependencies": {
     "@types/node": "catalog:",
     "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
     "kitchen-sink": "workspace:*",

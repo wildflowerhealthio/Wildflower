@@ -23,7 +23,6 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "effect": "catalog:",
     "fast-check": "catalog:",
     "jsdom": "catalog:",
     "medication-core": "workspace:*",
@@ -36,7 +35,6 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "effect": "catalog:",
     "medication-core": "workspace:*",
     "medication-sponsorship-core": "workspace:*",
     "react": "catalog:",
