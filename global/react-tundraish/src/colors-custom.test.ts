@@ -1,7 +1,6 @@
+// The package's `types: []` keeps Node's globals out of the browser sources;
+// this test reads the stylesheet off disk, so it opts in for itself alone.
 /// <reference types="node" />
-// `types: []` in this package's tsconfig keeps Node's globals out of the
-// browser-shipped sources; this one test reads the stylesheet off disk, so it
-// opts into `@types/node` explicitly rather than widening the whole package.
 
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
