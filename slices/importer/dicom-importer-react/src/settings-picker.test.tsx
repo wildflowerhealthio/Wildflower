@@ -93,7 +93,25 @@ describe('DicomSettingsPicker', () => {
     expect(input.selectionStart).toBe('America/Denver'.length)
   })
 
-  it('re-seeds from a settings change that did not come from this field', async () => {
+  it('keeps the draft the field’s own, so a commit echoing back cannot clobber it', async () => {
+    // The parent re-renders the picker with the committed zone; the field must
+    // go on showing what has been typed since, not rewind to the echo.
+    render(<Harness initial={{ timeZone: 'UTC' }} onChange={() => {}} />)
+    const input = screen.getByLabelText<HTMLInputElement>(ZONE_FIELD)
+
+    await userEvent.clear(input)
+    await userEvent.type(input, 'America/Denver')
+    await waitFor(() => {
+      expect(input.value).toBe('America/Denver')
+    })
+    await userEvent.type(input, 'X')
+
+    expect(input.value).toBe('America/DenverX')
+  })
+
+  it('resets to a caller-supplied zone when remounted under a new key', async () => {
+    // The documented way to reset the field: the draft is seeded on mount, so
+    // a caller that must force a zone in remounts rather than fighting it.
     const Outer = (): JSX.Element => {
       const [settings, setSettings] = useState<DicomSettings>({ timeZone: 'UTC' })
       return (
@@ -101,7 +119,7 @@ describe('DicomSettingsPicker', () => {
           <button type="button" onClick={() => setSettings({ timeZone: 'America/Regina' })}>
             reset
           </button>
-          <DicomSettingsPicker settings={settings} onChange={setSettings} />
+          <DicomSettingsPicker key={settings.timeZone} settings={settings} onChange={setSettings} />
         </>
       )
     }

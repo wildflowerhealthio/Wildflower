@@ -1,4 +1,5 @@
 export { NoContextException, useContextOrThrow } from './use-context-or-throw.ts'
+export { useDebouncedCallback, type DebouncedCallback } from './use-debounced-callback.ts'
 export { useEffectAction, type EffectAction } from './use-effect-action.ts'
 export { useEffectTs } from './use-effect-ts.ts'
 export { useFunctionSafeState } from './use-function-safe-state.ts'

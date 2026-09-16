@@ -1,7 +1,8 @@
 import type { DicomSettings } from 'dicom-importer-core'
 import { DateTime, Option } from 'effect'
 import type { SettingsPickerProps } from 'importer-fundamentals'
-import { type JSX, useEffect, useId, useRef, useState } from 'react'
+import { type JSX, useId, useState } from 'react'
+import { useDebouncedCallback } from 'react-kitchen-sink'
 
 import { suggestedTimeZones } from './time-zones.ts'
 
@@ -32,14 +33,22 @@ const ZONE_OPTIONS = suggestedTimeZones()
  * A free-text field with the likely zones offered through a `datalist`, so the
  * common ones need no typing and any other IANA name can still be typed.
  *
- * The field holds the reviewer's keystrokes locally and reports up on a
- * {@link COMMIT_DELAY_MS} debounce (flushed immediately on blur or Enter),
- * because each report re-decodes the whole batch. It reports only a zone the
- * runtime can resolve: every half-typed prefix of `America/Toronto` is itself
- * a name the runtime rejects, and committing those would flip each file to
- * "could not be read" and back on the way through. An unresolvable name is
- * flagged inline (`aria-invalid`, a message) instead, and the decode carries
- * on under the last zone that did resolve.
+ * Two things the field does beyond mirroring `settings.timeZone`:
+ *
+ * - It reports up on a {@link COMMIT_DELAY_MS} debounce, flushed on blur or
+ *   Enter, because each report re-decodes the whole batch.
+ * - It reports only a zone the runtime can resolve. Every half-typed prefix of
+ *   `America/Toronto` is itself a name the runtime rejects, and committing
+ *   those would flip each file to "could not be read" and back on the way
+ *   through. An unresolvable name is flagged inline (`aria-invalid`, a
+ *   message) instead, and the decode carries on under the last zone that did
+ *   resolve.
+ *
+ * Between commits the draft is the field's own: it seeds from
+ * `settings.timeZone` on mount and is not re-seeded, so a commit echoing back
+ * as a prop cannot clobber keystrokes typed since it went out. A caller that
+ * needs to reset the field to a new zone remounts it with a React `key` — the
+ * idiom for exactly this, and the one place the behaviour is visible.
  */
 const DicomSettingsPicker = ({
   settings,
@@ -50,43 +59,16 @@ const DicomSettingsPicker = ({
   const messageId = useId()
 
   const [draft, setDraft] = useState(settings.timeZone)
+  const commit = useDebouncedCallback((timeZone: string) => {
+    onChange({ ...settings, timeZone })
+  }, COMMIT_DELAY_MS)
 
-  // Mirror the committed setting alongside the last zone this field sent up, so
-  // an externally-changed setting (a reset) re-seeds the draft while this
-  // field's own commit echoing back does not clobber keystrokes typed since it
-  // went out. Adjusted during render off the changed prop — state rather than a
-  // ref, since the decision is read while rendering.
-  const [mirror, setMirror] = useState<{
-    readonly committed: string
-    readonly emitted: string | undefined
-  }>({ committed: settings.timeZone, emitted: undefined })
-  if (settings.timeZone !== mirror.committed) {
-    const ownEcho = settings.timeZone === mirror.emitted
-    setMirror({ committed: settings.timeZone, emitted: mirror.emitted })
-    if (!ownEcho) setDraft(settings.timeZone)
-  }
-
-  // The commit, behind a ref: `onChange` is a fresh closure on every parent
-  // render, and depending on it directly would restart the debounce timer each
-  // time the parent re-renders rather than each time the reviewer types.
-  const commit = useRef<(zone: string) => void>(() => undefined)
-  useEffect(() => {
-    commit.current = (zone: string): void => {
-      setMirror((previous) => ({ ...previous, emitted: zone }))
-      onChange({ ...settings, timeZone: zone })
-    }
-  })
-
-  const ready = draft !== mirror.committed && isKnownTimeZone(draft)
-  useEffect(() => {
-    const timer = ready ? setTimeout(() => commit.current(draft), COMMIT_DELAY_MS) : undefined
-    return (): void => {
-      if (timer !== undefined) clearTimeout(timer)
-    }
-  }, [ready, draft])
-
-  const flush = (): void => {
-    if (ready) commit.current(draft)
+  const edit = (timeZone: string): void => {
+    setDraft(timeZone)
+    // Cancel rather than leave an earlier valid prefix scheduled: typing on
+    // past `UTC` into `UTC-nonsense` must not commit `UTC` a beat later.
+    if (isKnownTimeZone(timeZone)) commit.call(timeZone)
+    else commit.cancel()
   }
 
   const known = isKnownTimeZone(draft)
@@ -100,12 +82,12 @@ const DicomSettingsPicker = ({
         value={draft}
         aria-invalid={!known}
         aria-describedby={known ? undefined : messageId}
-        onChange={(event) => setDraft(event.target.value)}
-        onBlur={flush}
+        onChange={(event) => edit(event.target.value)}
+        onBlur={commit.flush}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
             event.preventDefault()
-            flush()
+            commit.flush()
           }
         }}
       />
