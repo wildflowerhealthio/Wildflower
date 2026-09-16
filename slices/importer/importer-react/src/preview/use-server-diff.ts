@@ -176,7 +176,7 @@ const useServerDiff = (files: readonly FileReadOutcome[] | undefined): ServerDif
 }
 
 /**
- * The `Review.Selection.excludedResources` set for a file, seeded from the
+ * The `StagedImport.Selection.excludedResources` set for a file, seeded from the
  * server diff: every `unchanged` labeled resource is pre-excluded so a
  * re-import of a file whose resources the server already holds writes
  * nothing by default. The reviewer can still tick any row back on.

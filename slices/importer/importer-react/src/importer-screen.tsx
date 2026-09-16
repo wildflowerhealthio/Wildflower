@@ -1,5 +1,5 @@
 import type { FhirResource } from 'fhir-r4/resources'
-import { Review, sectionResources } from 'importer-fundamentals'
+import { StagedImport, sectionResources } from 'importer-fundamentals'
 import { type JSX, useCallback, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
@@ -56,28 +56,28 @@ const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(formatRegistry)
   const confirm = useConfirmImport()
 
-  const [selections, setSelections] = useState<ReadonlyMap<string, Review.Selection<FhirResource>>>(
-    new Map()
-  )
+  const [selections, setSelections] = useState<
+    ReadonlyMap<string, StagedImport.Selection<FhirResource>>
+  >(new Map())
 
   const readFiles = importRun.state._tag === 'ready' ? importRun.state.files : undefined
   const diff = useServerDiff(readFiles)
 
   const selectionFor = useCallback(
-    (fileId: string): Review.Selection<FhirResource> => {
+    (fileId: string): StagedImport.Selection<FhirResource> => {
       const user = selections.get(fileId)
       if (user !== undefined) return user
       // Seed the initial selection from the server-diff status: an
       // `unchanged` resource is pre-excluded so a re-import writes nothing
       // by default. As soon as the reviewer toggles anything,
       // `selections.get(fileId)` wins and this seed is out of the picture.
-      if (diff.firstLoad || readFiles === undefined) return Review.initial<FhirResource>()
+      if (diff.firstLoad || readFiles === undefined) return StagedImport.initial<FhirResource>()
       const file = readFiles.find(
         (candidate) => candidate.id === fileId && candidate._tag === 'read'
       )
-      if (file === undefined || file._tag !== 'read') return Review.initial<FhirResource>()
+      if (file === undefined || file._tag !== 'read') return StagedImport.initial<FhirResource>()
       const labeled = sectionResources(file.decoded.sections)
-      if (labeled.length === 0) return Review.initial<FhirResource>()
+      if (labeled.length === 0) return StagedImport.initial<FhirResource>()
       return {
         excludedResources: initialExclusionsFor(labeled, diff.comparisons),
         resourceOverrides: new Map(),
@@ -87,7 +87,7 @@ const ImporterScreen = (): JSX.Element => {
   )
 
   const onSelectionChange = useCallback(
-    (fileId: string, selection: Review.Selection<FhirResource>): void => {
+    (fileId: string, selection: StagedImport.Selection<FhirResource>): void => {
       setSelections((previous) => new Map(previous).set(fileId, selection))
     },
     []

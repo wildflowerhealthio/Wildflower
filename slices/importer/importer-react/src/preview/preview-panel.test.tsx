@@ -4,7 +4,7 @@ import { Either, type ParseResult, Schema } from 'effect'
 import type { DiffSlot, FieldDiff, ServerComparison } from 'fhir-r4/clients'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import type { DecodedFile, LabeledResource, LabeledSection } from 'importer-fundamentals'
-import { Review } from 'importer-fundamentals'
+import { StagedImport } from 'importer-fundamentals'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -212,7 +212,7 @@ describe('PreviewPanel', () => {
 
     expect(onSelectionChange).toHaveBeenCalledWith(
       'session.har',
-      Review.toggleResource(Review.initial<FhirResource>(), 'pat-1')
+      StagedImport.toggleResource(StagedImport.initial<FhirResource>(), 'pat-1')
     )
   })
 
@@ -236,7 +236,7 @@ describe('PreviewPanel', () => {
 
     expect(onSelectionChange).toHaveBeenCalledWith(
       'reports.pdf',
-      Review.setResourcesIncluded(Review.initial<FhirResource>(), ['p1', 'o1'], false)
+      StagedImport.setResourcesIncluded(StagedImport.initial<FhirResource>(), ['p1', 'o1'], false)
     )
   })
 
@@ -244,7 +244,7 @@ describe('PreviewPanel', () => {
     const onSelectionChange = vi.fn()
     // One of the two resources is already excluded — the section toggle reads
     // indeterminate, and clicking it includes the whole section.
-    const partial = Review.toggleResource(Review.initial<FhirResource>(), 'o1')
+    const partial = StagedImport.toggleResource(StagedImport.initial<FhirResource>(), 'o1')
     const files = [
       readFile(
         'reports.pdf',
@@ -269,7 +269,7 @@ describe('PreviewPanel', () => {
 
     expect(onSelectionChange).toHaveBeenCalledWith(
       'reports.pdf',
-      Review.setResourcesIncluded(partial, ['p1', 'o1'], true)
+      StagedImport.setResourcesIncluded(partial, ['p1', 'o1'], true)
     )
   })
 
@@ -350,8 +350,8 @@ describe('PreviewPanel', () => {
     const comparisons: ReadonlyMap<string, ServerComparison> = new Map([
       ['pat-1', { status: 'unchanged', fields: [], server: patientWire(onServer) }],
     ])
-    const selectionFor = (): Review.Selection<FhirResource> =>
-      Review.edit(Review.initial<FhirResource>(), 'pat-1', edited)
+    const selectionFor = (): StagedImport.Selection<FhirResource> =>
+      StagedImport.edit(StagedImport.initial<FhirResource>(), 'pat-1', edited)
     render(<PreviewPanel {...panelProps(files, { comparisons, selectionFor })} />)
 
     // Act: the once-unchanged badge is now the interactive "differs" disclosure.
@@ -499,7 +499,7 @@ const panelProps = (
     files,
     settings,
     settingsRegistry,
-    selectionFor: overrides.selectionFor ?? (() => Review.initial<FhirResource>()),
+    selectionFor: overrides.selectionFor ?? (() => StagedImport.initial<FhirResource>()),
     comparisons: overrides.comparisons ?? new Map(),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),
     onSettingsChange: overrides.onSettingsChange ?? (() => undefined),

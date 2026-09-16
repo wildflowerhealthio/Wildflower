@@ -55,7 +55,7 @@ enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
   overrides), and parses the chosen ones (`Extraction.parseWith`), folding
   every non-resource outcome to data so one bad response cannot abort the
   batch. Consumed by the descriptor's decode; the per-resource selection
-  (exclude/edit) lives in `importer-fundamentals`' `Review`.
+  (exclude/edit) lives in `importer-fundamentals`' `StagedImport`.
 - `src/decode-har.ts` — **`decodeHar`** (the byte-level parse step) and
   `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the
   archive into an `HttpArchive.Log`; each `HttpArchive.Entry` is restated

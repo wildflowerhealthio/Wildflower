@@ -23,7 +23,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
   (resource-agnostic, format-agnostic) — the `FileImporterDescriptor` contract
   (a sectioned `decode` — `DecodedFile` of titled `LabeledSection`s plus
-  diagnostic notes — and a `persist` sink), the pure per-resource `Review`
+  diagnostic notes — and a `persist` sink), the pure per-resource `StagedImport`
   model, and the structural `PersistFailure`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
   `harImporterDescriptor` for format `'har'`: HAR decode through the
@@ -103,7 +103,7 @@ sits above `http-extraction` and below every binding, exactly as
   **preview** — `decode` yields the actual resources, sectioned, so the
   reviewer sees them and can opt any of them out or edit them inline;
   **writes** still only run at confirm, and confirm writes exactly those
-  reviewed objects (`Review.chosenResources`) with no re-parse — the same
+  reviewed objects (`StagedImport.chosenResources`) with no re-parse — the same
   "is the same object" argument the anonymizer's preview makes. This split
   is the whole point; do not collapse it. A settings change (a HAR kind
   toggle, the LifeLabs time zone) re-runs `decode` from the retained bytes —
@@ -145,7 +145,7 @@ sits above `http-extraction` and below every binding, exactly as
 - [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
   — the checklist for a new format binding.
 - [importer-fundamentals AGENTS.md](./importer-fundamentals/AGENTS.md) — the
-  descriptor contract, the `Review` model, and `PersistFailure`.
+  descriptor contract, the `StagedImport` model, and `PersistFailure`.
 - [har-importer-core AGENTS.md](./har-importer-core/AGENTS.md) — the HAR binding's
   decode/pool/sink.
 - [har-importer-react AGENTS.md](./har-importer-react/AGENTS.md) — the interactive

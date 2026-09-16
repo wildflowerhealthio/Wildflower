@@ -5,7 +5,7 @@ import { useCallback, useRef, useState } from 'react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { type FhirR4ResourcesHttpApiClient, persistBatchBundle } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import { Review, sectionResources } from 'importer-fundamentals'
+import { StagedImport, sectionResources } from 'importer-fundamentals'
 import { withMetaSource } from 'web-trace-core/provenance'
 
 import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
@@ -74,7 +74,7 @@ type ConfirmState =
   | { readonly _tag: 'done'; readonly batch: BatchOutcome }
 
 /** How the confirm reads each file's reviewed selection. */
-type SelectionFor = (fileId: string) => Review.Selection<FhirResource>
+type SelectionFor = (fileId: string) => StagedImport.Selection<FhirResource>
 
 /** Imperative surface the screen drives the confirm through. */
 interface ConfirmImport {
@@ -97,20 +97,23 @@ interface ChosenEntry {
 
 /**
  * Every labeled resource the reviewer left included, with any inline edit
- * substituted in, carried alongside its {@link Review.Selection} key — the
- * key form of {@link Review.chosenResources}, so the confirm can tell the
+ * substituted in, carried alongside its {@link StagedImport.Selection} key — the
+ * key form of {@link StagedImport.chosenResources}, so the confirm can tell the
  * file's source file apart from the extracted resources by its stable key
  * rather than by re-recognizing its coding.
  */
 const chosenEntries = (
   labeled: readonly { readonly key: string; readonly resource: FhirResource }[],
-  selection: Review.Selection<FhirResource>
+  selection: StagedImport.Selection<FhirResource>
 ): readonly ChosenEntry[] =>
   labeled
-    .filter((entry) => Review.isResourceIncluded(selection, entry.key))
+    .filter((entry) => StagedImport.isResourceIncluded(selection, entry.key))
     .map((entry) => ({
       key: entry.key,
-      resource: Option.getOrElse(Review.editedResource(selection, entry.key), () => entry.resource),
+      resource: Option.getOrElse(
+        StagedImport.editedResource(selection, entry.key),
+        () => entry.resource
+      ),
     }))
 
 /** Replace a resource's `id`, preserving its concrete type — mirrors {@link withMetaSource}. */
@@ -161,13 +164,13 @@ const importOneFile = (
       const selection = selectionFor(id)
       const labeled = sectionResources(decoded.sections)
       const chosen = chosenEntries(labeled, selection)
-      const excluded = Review.excludedCount(labeled, selection)
+      const excluded = StagedImport.excludedCount(labeled, selection)
       if (chosen.length === 0) return skip('nothing')
 
       const sourceFileKey = sourceFile?.key
       const canonicalId = sourceFile?.resource.id ?? null
       const sourceFileIncluded =
-        sourceFile !== undefined && Review.isResourceIncluded(selection, sourceFile.key)
+        sourceFile !== undefined && StagedImport.isResourceIncluded(selection, sourceFile.key)
       const sourceRef = provenanceRef(picked, canonicalId, sourceFileIncluded)
 
       const resources = chosen.map(({ key, resource }) => {

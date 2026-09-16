@@ -3,11 +3,19 @@ import { Option } from 'effect'
 import type { LabeledResource } from './file-importer-descriptor.ts'
 
 /**
- * The pure per-resource review model: per-resource include toggles and
- * per-resource edit overrides, resolved against a flat list of labeled
- * resources the format's `resolve` produced. The interactive body a format's
- * React package renders is a view over these transitions — the format pair
- * owns everything above (HTTP routing for HAR, nothing for LifeLabs PDF).
+ * The pure model of an import that has been decoded but not yet written: which
+ * of its resources are opted out, and which carry an inline edit, against the
+ * flat list of labeled resources the format's decode produced.
+ *
+ * @remarks
+ * "Staged" in the sense the name carries elsewhere — resources sitting between
+ * decode and confirm, where the reviewer can still change what goes. What the
+ * UI renders over this is *a* review; the model is the staged import itself,
+ * and outlives any particular way of reviewing it.
+ *
+ * Both axes key by {@link LabeledResource.key} so the state stays serializable
+ * and survives a settings re-decode: a key the new decode no longer produces
+ * simply stops applying, rather than dangling.
  *
  * @packageDocumentation
  */

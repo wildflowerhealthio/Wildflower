@@ -62,7 +62,7 @@ interface DecodedFile<TParsed> {
 
 /**
  * Every labeled resource across a decoded file's sections, in section order —
- * the flat list the per-resource `Review` transitions and the confirm's
+ * the flat list the per-resource `StagedImport` transitions and the confirm's
  * write set fold over.
  *
  * @param sections - A decoded file's sections
