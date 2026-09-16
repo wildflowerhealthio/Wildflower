@@ -1,8 +1,9 @@
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
-import { describe, expect, it } from 'vite-plus/test'
+import { describe, expect, expectTypeOf, it } from 'vite-plus/test'
 
 import devAppPortsFile from '../slices/apps/dev-app-ports.json' with { type: 'json' }
+import type { DevAppId } from '../vite.config.base.ts'
 import { devAppIds, devAppPort, devAppPortsPath, devAppServer } from '../vite.config.base.ts'
 
 // Both sides of every assertion below derive from `dev-app-ports.json` — the
@@ -61,5 +62,23 @@ describe('devAppServer', () => {
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
+  })
+})
+
+// `vp check`'s typecheck over this file is what asserts the block below — the
+// same gate that makes the helper's `Record<DevAppId, number>` annotation
+// reject a non-number port.
+describe('the types devAppServer narrows with', () => {
+  it('admits exactly the ids the file declares, never a bare string', () => {
+    // Widening the parameter back to `string` would move a typo'd id from
+    // `vp check` to a dev-server crash, so pin that it is not `string`.
+    expectTypeOf<DevAppId>().toEqualTypeOf<keyof typeof declaredPorts>()
+    expectTypeOf<Parameters<typeof devAppServer>[0]>().toEqualTypeOf<DevAppId>()
+    expectTypeOf<Parameters<typeof devAppServer>[0]>().not.toEqualTypeOf<string>()
+  })
+
+  it('reports `strictPort` as the literal `true`, so no config can spread a `false` in', () => {
+    expectTypeOf<ReturnType<typeof devAppServer>['strictPort']>().toEqualTypeOf<true>()
+    expectTypeOf<ReturnType<typeof devAppServer>['port']>().toEqualTypeOf<number>()
   })
 })
