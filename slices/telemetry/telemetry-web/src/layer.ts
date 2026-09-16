@@ -19,10 +19,10 @@ const sentryAdapter: SentryAdapter = {
  *
  * @remarks
  * `StackContextManager` keeps the active context on a plain stack rather
- * than an async-local store, which is what the `@effect/opentelemetry`
- * bridge needs to round-trip context around each fiber step. It lives
- * here because `@opentelemetry/sdk-trace-web` is browser-targeted and the
- * pure core layer takes no platform SDKs.
+ * than an async-local store — the synchronous shape
+ * {@link initClientTelemetry} documents as load-bearing. It lives here
+ * because `@opentelemetry/sdk-trace-web` is browser-targeted and the pure
+ * core layer takes no platform SDKs.
  */
 const createWebContextManager = (): StackContextManager => new StackContextManager()
 
