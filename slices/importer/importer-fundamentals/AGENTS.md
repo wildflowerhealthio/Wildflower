@@ -14,36 +14,34 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 - `src/file-importer-descriptor.ts` — **`FileImporterDescriptor<TSettings,
 TParsed>`**, "a file-format importer" as one value a closed registry lists:
-  `format` (the registry key), `display`, `accept` (the picker `accept`
-  tokens — a hint to the OS dialog, never the decision, joined across every
-  registered format by **`acceptFor`**), `detect` (cheap syntactic
+  `format` (the registry key), `display`, `detect` (cheap syntactic
   identification; **`identify`** finds the first claiming descriptor),
-  `defaultSettings`, `decode(fileBytes, fileName, settings) → Effect<DecodedFile,
-ParseError>` (requires nothing — a preview can never reach a write client;
-  `fileName` lets a format recompute another seam's deterministic id from the
-  same bytes+name, e.g. DICOM's `ImagingStudy` instance stamping the id of its
-  own source-file `DocumentReference`),
-  `sourceArchive` (**pure** — builds a local pick's bytes into a source-archive
-  `DocumentReference`, minted at read time and reviewed like any resource; it
-  is written in the shell's one `persistBatchBundle`, not a private upload, so
-  no descriptor field takes a write client and the `R` parameter is gone), and
-  — the **archive-read seam** the shell reads uploaded archives back through —
-  `archiveCategoryToken` (the
-  `system|code` search token, promoted from the format's `/archive` codec),
-  `isArchive` (whether a decoded `DocumentReference` is an archive of _this_
-  format, disjoint across formats), `archiveFromDocumentReference` (the
-  bytes-and-name reader a preview or a pick calls to re-hydrate one), and
-  `archiveContentType` (drives the preview modal's renderer choice: PDF via
-  `<iframe>`, JSON via `<pre>`).
-  The decode's result is a **`DecodedFile<TParsed>`**: titled
-  **`LabeledSection`**s of **`LabeledResource`**s (stable `key`, one-line
-  `title`, the parsed `resource`) plus file-level diagnostic note strings for
-  what did not become a resource. **`sectionResources`** flattens the sections
-  in order — the list the review transitions and the confirm fold over.
-  **`SettingsPickerProps<TSettings>`** (the `{ settings, onChange }` contract
-  every format's settings picker renders against) also lives here, below
-  every format's React package. Settings are pre-decode input: a change
-  re-decodes the file, so resource keys must be stable across settings
+  `defaultSettings`, `decode(files: readonly PickedFile[], settings) →
+Effect<readonly DecodeOutcome<TParsed>[]>` (requires nothing and **never
+  fails** — a preview can never reach a write client, and one malformed file
+  never sinks a batch), and — the **server-read seam** the shell reads
+  uploaded source files back through — `sourceFileCategoryToken` (the
+  `system|code` search token, promoted from the format's `/source-file`
+  codec), `isSourceFile` (whether a decoded `DocumentReference` is a source
+  file of _this_ format, disjoint across formats),
+  `sourceFileFromDocumentReference` (the bytes-and-name reader a preview or a
+  pick calls to re-hydrate one), and `sourceFileContentType` (drives the
+  preview modal's renderer choice: PDF via `<iframe>`, JSON via `<pre>`).
+  There is **no** `buildSourceFile` field: the format mints its own source
+  file inside `decode`.
+  One **`DecodeOutcome<TParsed>`** comes back per _unit_ the format decides
+  on — a **`DecodedUnit`** (`_tag: 'read'`, a format-chosen `title`, the
+  `files` it was decoded from, and a `DecodedFile`) or an
+  **`UnreadableUnit`** (`_tag: 'unreadable'`, the same `title` and `files`,
+  plus the malformed-input `ParseError`). A **`DecodedFile<TParsed>`** is
+  titled **`LabeledSection`**s of **`LabeledResource`**s (stable `key`,
+  one-line `title`, the parsed `resource`) plus file-level diagnostic note
+  strings for what did not become a resource. **`sectionResources`** flattens
+  the sections in order — the list the review transitions and the confirm
+  fold over. **`SettingsPickerProps<TSettings>`** (the `{ settings, onChange }`
+  contract every format's settings picker renders against) also lives here,
+  below every format's React package. Settings are pre-decode input: a change
+  re-decodes the unit, so resource keys must be stable across settings
   changes where the underlying resource is unchanged.
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection<TParsed>` is two axes: `excludedResources`
@@ -66,29 +64,54 @@ ParseError>` (requires nothing — a preview can never reach a write client;
   checked **structurally** at each binding's seam, mirroring how
   `collector-fundamentals` declares its `PersistFailure` against `fhir-r4`'s
   `ResourceWriteFailure`.
-- `src/source-archive-codec.ts` — **`sourceArchiveCodec(config)`**, the one
+- `src/source-file-codec.ts` — **`sourceFileCodec(config)`**, the one
   definition of how any uploaded source file is stored as a FHIR R4
   `DocumentReference` (one attachment carrying the bytes verbatim, `subject`
-  deliberately absent). The HAR and LifeLabs codecs were identical bar their
-  coding, content type, description text, and (HAR only) a `securityLabel`, so
-  the shape lives here and each binding passes those in as **data** —
-  `har-importer-core/archive` and `lifelabs-pdf-importer-core/archive` are now
-  thin config + re-export shims. Returns the `Archive` schema (+ `ArchiveId`),
-  both directions (`ArchiveFromDocumentReference` / `ArchiveFromFhirJson` and
-  their `encode`/`decode`), the pure `toWire` builder, `isArchive`, the
-  `categoryToken`, and **`sourceArchive`** — the descriptor's mint for a picked
-  file: it derives a **deterministic** id from the bytes' SHA-256 and the file
-  name via `fhir-r4/identity`'s `localResourceId` (so re-importing the same
-  file upserts rather than duplicating), stamps the upload instant, and encodes.
-  The mint lives here, not per binding, because the id needs the digest and the
-  shared derivation, both of which this package owns (the per-binding
-  `source-archive.ts` files that used to mint a uuid were folded in). A binding
-  still owns its own coding constants (a HAR binding passes `web-trace-core`'s),
-  so this module names no format and imports no format slice. The shared builder
-  is pinned by `source-archive-codec.test.ts`, so a format's `/archive` test
-  asserts only its own config.
+  deliberately absent unless a format passes one). The HAR and LifeLabs codecs
+  were identical bar their coding, content type, description text, and (HAR
+  only) a `securityLabel`, so the shape lives here and each binding passes
+  those in as **data** — `har-importer-core/source-file`,
+  `lifelabs-pdf-importer-core/source-file`, and
+  `dicom-importer-core/source-file` are thin config + re-export shims. The
+  returned **`SourceFileCodec`** carries the `SourceFile` schema (+
+  `SourceFileId`), both directions (`SourceFileFromDocumentReference` /
+  `SourceFileFromFhirJson` and their `encode`/`decode`), the pure `toWire`
+  builder, `isSourceFile`, the `categoryToken`, and **`buildSourceFile`** —
+  the mint a format's `decode` calls per `local` pick: it derives a
+  **deterministic** id from the bytes' SHA-256 and the file name via
+  `fhir-r4/identity`'s `localResourceId` (so re-importing the same file
+  upserts rather than duplicating), reads the clock for the upload instant,
+  and encodes. The mint lives here, not per binding, because the id needs the
+  digest and the shared derivation, both of which this package owns. A
+  binding still owns its own coding constants (a HAR binding passes
+  `web-trace-core`'s), so this module names no format and imports no format
+  slice. The shared builder is pinned by `source-file-codec.test.ts`, so a
+  format's `/source-file` test asserts only its own config.
+- `src/source-file-review.ts` — the generic pieces a format composes **inside
+  its own `decode`** to own its source file: **`sourceFileFor`** (mint through
+  the codec for a `local` pick, resolve the existing `DocumentReference/<id>`
+  for a `server` one), **`withSourceSections`** (prepend each minted resource
+  as its own `SOURCE_SECTION_TITLE` — "Source file" — section),
+  **`withMetaSource`** / **`stampMetaSource`** (write `meta.source` onto one
+  resource, or onto every resource in every section), **`sourceFileKey`** (the
+  stable review key, `source-file/<fileName>`), and **`perFileDecode(codec,
+decodeOne, { subjectFor? })`** — which strings them together into the
+  descriptor's batch `decode` for a single-file format, one unit per file,
+  folding a `ParseError` into that file's own `unreadable` unit. A group
+  format calls the pieces itself. `decodeOne(file, settings, source)` receives
+  the resolved **`SourceFileRef`**, so a format whose resources name the
+  stored file (DICOM's `ImagingStudy` `gridfsFileId`) reads the id there
+  rather than recomputing it.
+- `src/picked-file.ts` — **`PickedFile`** (`{ fileName, bytes, source }`), the
+  one value every picker source converges on and every `decode` receives, plus
+  its **`PickedFileSource`** (`local` / `server` with a `reference`),
+  `LOCAL_SOURCE`, `serverSource`, and the one spelling of a source file's
+  reference in both directions — **`sourceFileReference`** and
+  **`sourceFileIdOf`**. Bytes rather than text so the picker stays
+  format-blind; the provenance rides along because minting or not minting a
+  source file is the decode's decision.
 - `src/sha256.ts` — **`sha256Base64`** (+ `DigestUnavailable`), the base64
-  SHA-256 the archive attachment's `hash` carries, over Web Crypto. A verbatim
+  SHA-256 the source file attachment's `hash` carries, over Web Crypto. A verbatim
   copy of `web-trace-core`'s helper (the standard digest, no project-specific
   behaviour), kept here so the codec above needs no `web-trace-core` dependency
   — a copy, because moving it would invert the importer → web-trace direction.
@@ -96,20 +119,23 @@ ParseError>` (requires nothing — a preview can never reach a write client;
 ## Layering
 
 Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
-`DocumentReference` schema and `DocumentReferenceType`, and `fhir`'s wire
-types. It used to name `fhir-r4` for `DocumentReferenceType` alone; hosting the
-shared `sourceArchiveCodec` widened that to the `DocumentReference` runtime
-schema (the codec builds and decodes the resource) — but still no client, no
-other resource schemas, and no `persistResources`: the write sink stays at the
-shell (`fhir-r4/clients`' `persistBatchBundle`) and the per-format extracted
-resource type is still `TParsed`. It deliberately does **not** depend on
-`web-trace-core` — the digest helper the codec needs is copied into `sha256.ts`
-rather than imported, and a HAR binding passes web-trace's coding constants in
-as data. Names no archive _format_ (each binding supplies `decode` and its
-coding), no HTTP vocabulary (the HAR binding's
-recognition machinery lives in `har-importer-core`), and no UI framework.
-Never imports a `*-importer-core`, a `*-importer-react`, `slices/collector`,
-or `slices/http-extraction`.
+`DocumentReference` schema and `DocumentReferenceType`, `fhir-r4/data-types`
+for `Meta` (the slot `withMetaSource` writes into), `fhir-r4/identity` for the
+shared id derivation, and `fhir`'s wire types. Hosting the shared
+`sourceFileCodec` is what widened `fhir-r4` from a type-only import to the
+`DocumentReference` runtime schema (the codec builds and decodes the resource)
+— but still no client, no other resource schemas, and no `persistResources`:
+the write sink stays at the shell (`fhir-r4/clients`' `persistBatchBundle`) and
+the per-format extracted resource type is still `TParsed`. It deliberately does
+**not** depend on `web-trace-core`: the digest helper (`sha256.ts`) and
+`withMetaSource` are both verbatim copies of web-trace's, for the same reason —
+standard, project-neutral helpers, and moving them would invert the
+importer → web-trace direction. A HAR binding passes web-trace's coding
+constants in as data. Names no source-file _format_ (each binding supplies
+`decode` and its coding), no HTTP vocabulary (the HAR binding's recognition
+machinery lives in `har-importer-core`), and no UI framework. Never imports a
+`*-importer-core`, an `importer-core`, a `*-importer-react`,
+`slices/collector`, or `slices/http-extraction`.
 
 ## Guardrails
 
@@ -121,6 +147,16 @@ or `slices/http-extraction`.
   decisions (HAR's kind toggles) expresses them as _settings_, and its decode
   folds everything that yielded no resources into notes — there is no
   per-format review state and no format review UI. Don't reintroduce either.
+- **`decode` never fails.** Malformed input is an `unreadable` unit, not an
+  error channel: a format folds the `ParseError` into the unit it belongs to,
+  so one bad file in a batch leaves the rest reviewable and nothing above this
+  package needs a `catchAll`.
+- **The source file is the format's, minted inside `decode`.** What a source
+  file is, which resources point at it, and what happens to those links are
+  each format's decisions, expressed through `source-file-review.ts`'s
+  helpers. The shell has no source-file knowledge at all — it reviews the
+  minted row like any other resource. Do not put a `buildSourceFile` back on
+  the descriptor or a mint back in the shell.
 - **Selection keys by `LabeledResource.key`.** Selection state must be
   serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.
@@ -131,7 +167,9 @@ or `slices/http-extraction`.
   layering.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR binding
   that implements this contract.
-- [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that lists
-  descriptors and drives the `StagedImport` transitions.
+- [importer-core AGENTS.md](../importer-core/AGENTS.md) — the closed registry
+  and the batch machinery built on this contract.
+- [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
+  drives the `StagedImport` transitions over those units.
 - [Doc Comments Reference](../../../docs/Documentation/Doc%20Comments%20Reference.md)
   — TSDoc conventions the modules here follow.
