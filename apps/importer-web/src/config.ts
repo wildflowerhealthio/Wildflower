@@ -40,7 +40,7 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * is served are two different registrations:
  *
  * - A **production** build is published to
- *   <https://wildflowerhealth.io/importer-app/> and launched through the
+ *   `https://wildflowerhealth.io/importer-app/` and launched through the
  *   `importer-app` *cloud* app row (apps migration
  *   `0006_seed_wildflower_importer_app`), whose client
  *   (`0008_seed_wildflower_importer_client`) registers that absolute Pages URL as

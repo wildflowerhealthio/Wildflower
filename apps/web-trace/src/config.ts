@@ -15,7 +15,7 @@ import type { SmartLaunchConfig } from 'fhir-r4-react/smart'
  * is served are two different registrations:
  *
  * - A **production** build is published to
- *   <https://wildflowerhealth.io/web-trace-app/> and launched through the
+ *   `https://wildflowerhealth.io/web-trace-app/` and launched through the
  *   `web-trace-app` *cloud* app row (apps migration
  *   `0005_first_party_apps_to_cloud`), whose client
  *   (`0006_rename_first_party_app_clients`) registers that absolute Pages URL as

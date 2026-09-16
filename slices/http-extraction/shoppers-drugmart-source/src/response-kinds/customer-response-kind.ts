@@ -166,7 +166,7 @@ const customerUrl =
  * Entity for the Shoppers customers XHR: one bespoke JSON object carrying the
  * account and the people it manages, synthesized into a demographic `Patient`
  * per `customer.patients[]` entry plus an account `Patient` (`link.seealso`-ing
- * each). This entity — not {@link !PrescriptionResponseKind} — owns the subject
+ * each). This entity — not {@link PrescriptionResponseKind} — owns the subject
  * Patient records, so a run where this XHR fails leaves those `subject`
  * references dangling (tolerated; not FK-enforced). A patient entry with no `id`
  * drops-and-counts via `Effect.logInfo`.

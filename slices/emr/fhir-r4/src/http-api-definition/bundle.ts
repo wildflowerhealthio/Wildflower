@@ -5,9 +5,9 @@ import * as Bundle from '../data-types/resources/bundle.ts'
 
 /**
  * The FHIR `POST /` endpoint: submit a `Bundle{ type: 'batch' | 'transaction' }`
- * against the FHIR base and get back a `Bundle{ type: 'batch-response' |
- * 'transaction-response' }` with a per-entry `response.status` (and, for reads,
- * a `resource`).
+ * against the FHIR base and get back a
+ * `Bundle{ type: 'batch-response' | 'transaction-response' }` with a per-entry
+ * `response.status` (and, for reads, a `resource`).
  *
  * @remarks
  * A *group of its own*, at the FHIR root — not another per-resource endpoint.

@@ -284,13 +284,13 @@ const containedMedicationLink = (
  * `expectedSupplyDuration`.
  *
  * @remarks
- * Also links the orphaned `contained` Medication by `medicationReference:
- * '#id'`. Nothing points at it today, so its form, manufacturer, strength and
- * description are unreachable. `medication[x]` is a choice, so the inline
- * `medicationCodeableConcept` gives way — but its label does not: whatever
- * name the concept (or the contained `code`) carried is copied onto the
- * reference's `display`, so a reader that only knows how to render
- * `medication[x]` still has a name to show.
+ * Also links the orphaned `contained` Medication by
+ * `medicationReference: '#id'`. Nothing points at it today, so its form,
+ * manufacturer, strength and description are unreachable. `medication[x]` is a
+ * choice, so the inline `medicationCodeableConcept` gives way — but its label
+ * does not: whatever name the concept (or the contained `code`) carried is
+ * copied onto the reference's `display`, so a reader that only knows how to
+ * render `medication[x]` still has a name to show.
  *
  * The link is skipped when `medicationReference` already points somewhere that
  * is not a `#fragment`: that is an external Medication nobody here may retarget.

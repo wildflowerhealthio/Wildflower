@@ -232,9 +232,9 @@ const liveFields = (
 }
 
 /**
- * The interactive detail for a `changed` badge: one `path "server" ->
- * "import"` line per differing leaf, each with a "keep server value" button
- * that resets that one leaf on the incoming resource back to the server's.
+ * The interactive detail for a `changed` badge: one `path "server" -> "import"`
+ * line per differing leaf, each with a "keep server value" button that resets
+ * that one leaf on the incoming resource back to the server's.
  */
 const DiffFieldList = ({
   fields,
@@ -283,9 +283,10 @@ const DiffFieldList = ({
  * - a server copy the current resource matches — a static "Already on server"
  *   chip (whether it always matched, or an edit/reset just brought it back).
  * - a server copy the current resource differs from — an interactive
- *   disclosure: hover *or* click the badge to reveal each `field "server" ->
- *   "import"` line and its per-field reset. This is what surfaces an edit to
- *   an otherwise-unchanged resource, and updates live as the reviewer edits.
+ *   disclosure: hover *or* click the badge to reveal each
+ *   `field "server" -> "import"` line and its per-field reset. This is what
+ *   surfaces an edit to an otherwise-unchanged resource, and updates live as
+ *   the reviewer edits.
  *
  * Absent when the status is unknown (the pre-fetch is still in flight, or the
  * row's key is not in the map).

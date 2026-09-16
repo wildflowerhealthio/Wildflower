@@ -273,7 +273,7 @@ const prescriptionStatusUrl =
  * dashboard fires once **per prescription**. Each is one bespoke JSON object
  * synthesized into one **`MedicationRequest`** plus one **`MedicationDispense`**
  * per `dispenses` entry (one with no `dispenseId` drops-and-logs). **No
- * `Patient`** — the subject records come from {@link !CustomerResponseKind}, so a
+ * `Patient`** — the subject records come from {@link CustomerResponseKind}, so a
  * run where that XHR fails leaves these `subject` references dangling (tolerated;
  * not FK-enforced). No `followUpSteps`.
  */

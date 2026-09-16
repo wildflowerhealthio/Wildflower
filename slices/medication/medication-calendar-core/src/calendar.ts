@@ -60,9 +60,10 @@ const compareEvents = (a: CalendarEvent, b: CalendarEvent): number => {
  *   renew the prescription) and an `exhausted` marker on the day itself.
  *
  * Occurrences of the same kind on the same day merge into a single event whose
- * title lists every subject fluently — `"Pickup next refill of Amoxicillin and
- * Ramipril"`, `"Book appointment with Dr. Rao and your prescriber"` — with
- * repeated subjects (two renewals under one prescriber) collapsed.
+ * title lists every subject fluently —
+ * `"Pickup next refill of Amoxicillin and Ramipril"`,
+ * `"Book appointment with Dr. Rao and your prescriber"` — with repeated
+ * subjects (two renewals under one prescriber) collapsed.
  *
  * The next-fill day is taken as the leading `YYYY-MM-DD` of the input, which
  * the caller has already reduced to the viewer's local calendar day; the

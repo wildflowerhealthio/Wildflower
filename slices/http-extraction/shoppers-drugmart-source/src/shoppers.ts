@@ -20,7 +20,7 @@
  *   the relationship is now **known and joinable**: the customers payload carries
  *   both — `customer.pcid` alongside each `customer.patients[].id` — so the
  *   account `Patient` links to each demographic `Patient` via `link.seealso`
- *   (see {@link !CustomerResponseKind}). The two systems stay distinct because they
+ *   (see {@link CustomerResponseKind}). The two systems stay distinct because they
  *   identify different things (an account vs a person), not because the join is
  *   unknown.
  * - `DIN_CODE_SYSTEM` names Health Canada's Drug Identification Number. The
