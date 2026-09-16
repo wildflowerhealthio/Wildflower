@@ -19,7 +19,10 @@ pub(crate) enum DicomFileError {
     NotFound { id: String, detail: String },
     /// An infrastructure failure (HFS unreachable, JSON parse failure, base64
     /// decode failure, etc.).
-    Infrastructure { context: &'static str, source: String },
+    Infrastructure {
+        context: &'static str,
+        source: String,
+    },
 }
 
 /// The store port for reading DICOM file bytes. The single implementation

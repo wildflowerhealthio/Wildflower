@@ -70,9 +70,9 @@ pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 /// tests pin the set until then. See [`domain::capabilities`].
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
-    client_allowed_scopes, ensure_bearer_header, is_pre_auth_public_path,
-    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating, openapi_spec,
-    verify_owner_bearer, GatekeeperState,
+    client_allowed_scopes, ensure_bearer_header, gatekeeper_auth_middleware,
+    is_pre_auth_public_path, openapi_spec, require_loopback_peer_middleware, verify_owner_bearer,
+    GatekeeperAuthMiddleware, GatekeeperState, RequireLoopbackPeerMiddleware,
 };
 // The self-hosted redirect seam: the host implements it (backed by the apps
 // store) and passes it into `setup_gatekeeper`, so its trait + types are public.
@@ -218,7 +218,7 @@ pub struct Gatekeeper {
 ///    scope gates via the `Scoped<…>` extractors) — the
 ///    slice owns its mount paths so the caller just `.merge()`s;
 ///  - returns the `Arc<GatekeeperState>` the caller passes to
-///    [`layer_router_with_gatekeeper_auth_gating`] to wrap emr-rust.
+///    [`gatekeeper_auth_middleware`] to gate emr-rust.
 ///
 /// Token claims follow the canonical model — `iss` is the fixed
 /// [`shared_structures_rust::CANONICAL_ISSUER`] and `aud` is the per-request

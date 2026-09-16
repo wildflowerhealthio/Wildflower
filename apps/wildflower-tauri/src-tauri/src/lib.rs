@@ -12,9 +12,8 @@ use apps_rust::{
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
-    client_allowed_scopes, ensure_bearer_header, is_pre_auth_public_path,
-    layer_router_with_gatekeeper_auth_gating, layer_router_with_loopback_peer_gating,
-    setup_gatekeeper, GatekeeperConfig,
+    client_allowed_scopes, ensure_bearer_header, gatekeeper_auth_middleware,
+    is_pre_auth_public_path, require_loopback_peer_middleware, setup_gatekeeper, GatekeeperConfig,
 };
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{ProxyTable, TunnelSubdomainReverseProxy};
@@ -384,21 +383,22 @@ async fn run_server(
     // The FHIR router carries discovery docs (metadata, SMART well-known) that a
     // client fetches before it holds a token, so those paths are exempted from
     // the bearer gate; every other `/fhir-r4/*` path still requires a token.
-    let gated_fhir_r4 = layer_router_with_gatekeeper_auth_gating(
-        fhir_r4_router,
+    let gated_fhir_r4 = fhir_r4_router.layer(gatekeeper_auth_middleware(
         gatekeeper.state.clone(),
         emr_rust::UNAUTHENTICATED_FHIR_PATHS,
-    );
+    ));
+
+    // Every other slice router below gates every path on the same state, so they
+    // share one middleware value — it's `Clone`, and cloning it clones an `Arc`
+    // plus the (empty) exempt set.
+    let gatekeeper_auth_layer = gatekeeper_auth_middleware(gatekeeper.state.clone(), &[]);
 
     // The OHIF DICOM file server — scope-gated on `user/DocumentReference.r`.
     // It reads DocumentReferences from HFS in-process (the handler re-drives
     // through the HFS router), decodes the attachment's base64 data, and serves
     // the raw bytes for the OHIF viewer. Gated like the other slices.
-    let gated_ohif_server = layer_router_with_gatekeeper_auth_gating(
-        ohif_server_rust::setup_ohif_server(fhir_routers.raw_hfs_router),
-        gatekeeper.state.clone(),
-        &[],
-    );
+    let gated_ohif_server = ohif_server_rust::setup_ohif_server(fhir_routers.raw_hfs_router)
+        .layer(gatekeeper_auth_layer.clone());
 
     // The real `/collector/remotes` surface (replacing the former api_stubs
     // stub — the demo FHIR remote it hardcoded is now seeded by migration).
@@ -406,12 +406,9 @@ async fn run_server(
     // `diesel_pool` above). User-created remotes persist there; a remote's config
     // JSON may carry pharmacy credentials, so the whole surface is Owner-gated
     // like the rest of the admin API.
-    let gated_collector = layer_router_with_gatekeeper_auth_gating(
-        collector_rust::setup_collector(diesel_pool.clone())
-            .context("failed to set up collector")?,
-        gatekeeper.state.clone(),
-        &[],
-    );
+    let gated_collector = collector_rust::setup_collector(diesel_pool.clone())
+        .context("failed to set up collector")?
+        .layer(gatekeeper_auth_layer.clone());
 
     // The real `/tunnel` surface (replacing the former api_stubs stub). It's
     // Owner-gated like the rest of the admin API. Settings (incl. the relay
@@ -468,8 +465,7 @@ async fn run_server(
         Arc::new(tunnel_adapters::ReqwestHealthProbe::new());
     let tunnel = tunnel_rust::setup_tunnel(diesel_pool.clone(), &tunnel_config, health_probe)
         .context("failed to set up tunnel")?;
-    let gated_tunnel =
-        layer_router_with_gatekeeper_auth_gating(tunnel.router, gatekeeper.state.clone(), &[]);
+    let gated_tunnel = tunnel.router.layer(gatekeeper_auth_layer.clone());
 
     // The apps catalogue surface. `GET /apps` (list), the cloud-admin write
     // surface (POST/PUT/DELETE /apps), and `PUT /home-screen` are scope-gated on
@@ -574,15 +570,13 @@ async fn run_server(
         launch_scopes,
     )
     .context("failed to set up apps")?;
-    let gated_apps =
-        layer_router_with_gatekeeper_auth_gating(apps.gated_router, gatekeeper.state.clone(), &[]);
+    let gated_apps = apps.gated_router.layer(gatekeeper_auth_layer.clone());
     // The launch surface, scope-gated on the `wildflower/launch` umbrella: wrapped
     // by the SAME bearer gate as the admin surface so the `Scoped<AppLauncher>`
     // extractor has the caller's scope claims (the per-app SMART check then runs
     // in-handler). This replaced the former ungated mount whose loopback popup was
     // owner-gated in-handler — the scope gate subsumes that gate.
-    let gated_launch =
-        layer_router_with_gatekeeper_auth_gating(apps.launch_router, gatekeeper.state.clone(), &[]);
+    let gated_launch = apps.launch_router.layer(gatekeeper_auth_layer.clone());
 
     // The data-management surface (`/databases`): export + delete the host's
     // SQLite databases. It owns no store — it works at the file level on the
@@ -621,11 +615,8 @@ async fn run_server(
             },
         ],
     };
-    let gated_databases = layer_router_with_gatekeeper_auth_gating(
-        databases_rust::setup_databases(&databases_config),
-        gatekeeper.state.clone(),
-        &[],
-    );
+    let gated_databases =
+        databases_rust::setup_databases(&databases_config).layer(gatekeeper_auth_layer.clone());
 
     // The unified API docs (`/docs`): merge every documented slice's spec —
     // collected from the very routes that serve traffic — into one document and
@@ -641,24 +632,21 @@ async fn run_server(
     // snapshot generated from the TS `fhir-r4` `HttpApi` rather than collected
     // from routes — it documents the FHIR surface as the Wildflower client
     // uses it, not the whole of HFS. See `emr_rust::openapi_spec`.
-    let gated_docs = layer_router_with_gatekeeper_auth_gating(
-        shared_structures_rust::openapi_docs::merged_scalar_router(
-            "/docs",
-            "Wildflower API",
-            env!("CARGO_PKG_VERSION"),
-            [
-                ("Gatekeeper", gatekeeper_rust::openapi_spec()),
-                ("Apps", apps_rust::openapi_spec()),
-                ("Databases", databases_rust::openapi_spec()),
-                ("Collector", collector_rust::openapi_spec()),
-                ("OHIF Server", ohif_server_rust::openapi_spec()),
-                ("Tunnel", tunnel_rust::openapi_spec()),
-                ("FHIR R4", emr_rust::openapi_spec()),
-            ],
-        ),
-        gatekeeper.state.clone(),
-        &[],
-    );
+    let gated_docs = shared_structures_rust::openapi_docs::merged_scalar_router(
+        "/docs",
+        "Wildflower API",
+        env!("CARGO_PKG_VERSION"),
+        [
+            ("Gatekeeper", gatekeeper_rust::openapi_spec()),
+            ("Apps", apps_rust::openapi_spec()),
+            ("Databases", databases_rust::openapi_spec()),
+            ("Collector", collector_rust::openapi_spec()),
+            ("OHIF Server", ohif_server_rust::openapi_spec()),
+            ("Tunnel", tunnel_rust::openapi_spec()),
+            ("FHIR R4", emr_rust::openapi_spec()),
+        ],
+    )
+    .layer(gatekeeper_auth_layer);
     // The webview page is NOT served from this origin — it loads from
     // the Vite dev server (`http://localhost:1420`) in dev and Tauri's
     // asset protocol (`tauri://localhost`) in builds, while API fetches
@@ -718,10 +706,11 @@ async fn run_server(
     // runs, so even an ungated, CORS-permissive endpoint like `POST /apps/{id}`
     // (which can open a native popup on the owner's device) can't be driven by a
     // non-loopback client. Applied outermost (after CORS) so it runs first. See
-    // `layer_router_with_loopback_peer_gating` for how forwarded callers pass and
-    // why re-gating the gatekeeper's already-gated routes is harmless.
-    let api_router =
-        layer_router_with_loopback_peer_gating(api_router).layer(CorsLayer::very_permissive());
+    // `require_loopback_peer_middleware` for how forwarded callers pass and why
+    // re-gating the gatekeeper's already-gated routes is harmless.
+    let api_router = api_router
+        .layer(require_loopback_peer_middleware())
+        .layer(CorsLayer::very_permissive());
 
     // The reverse proxy wraps the API stack as the outermost layer: a forwarded
     // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`

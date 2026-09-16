@@ -50,8 +50,8 @@ scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust" }
 must run first and insert them. This is one half of a **pair** of claims-inserting
 middlewares (see the Explanation):
 
-- A router the host composes behind
-  `gatekeeper_rust::layer_router_with_gatekeeper_auth_gating` is already covered —
+- A router the host layers with
+  `gatekeeper_rust::gatekeeper_auth_middleware` is already covered —
   `require_valid_bearer_token` inserts a `ScopeClaims` after verifying the token,
   so downstream slices read scopes **without depending on gatekeeper's domain
   claims type**.

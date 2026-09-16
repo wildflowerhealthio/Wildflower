@@ -80,9 +80,9 @@ pub use domain::capabilities::grantable_collector_scopes;
 ///
 /// The returned router carries no middleware, but every endpoint is scope-gated
 /// per operation (the handlers take a `Scoped<…>` capability). The consumer MUST
-/// still wrap it with its auth gate (the Tauri host applies
-/// `layer_router_with_gatekeeper_auth_gating`) — that gate inserts the
-/// `ScopeClaims` the capabilities read, so an unwrapped router fails closed with
+/// still layer it with its auth gate (the Tauri host applies
+/// `gatekeeper_rust::gatekeeper_auth_middleware`) — that gate inserts the
+/// `ScopeClaims` the capabilities read, so an ungated router fails closed with
 /// a 500 rather than admitting an unauthenticated caller.
 ///
 /// # Errors

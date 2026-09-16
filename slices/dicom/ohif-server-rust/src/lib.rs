@@ -19,7 +19,7 @@ pub use domain::capabilities::grantable_ohif_server_scopes;
 ///
 /// The returned router carries no middleware, but every endpoint is scope-gated
 /// (`user/DocumentReference.r` via `Scoped<LiveDicomFileReader>`). The consumer
-/// MUST wrap it with `layer_router_with_gatekeeper_auth_gating` — that gate
+/// MUST layer it with `gatekeeper_rust::gatekeeper_auth_middleware` — that gate
 /// inserts the `ScopeClaims` the capability reads.
 pub fn setup_ohif_server(hfs_router: Router) -> Router {
     let store = HfsDicomFileStore::new(hfs_router);

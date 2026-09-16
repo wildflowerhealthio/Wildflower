@@ -8,9 +8,7 @@ use utoipa_axum::routes;
 use crate::live_bindings::state::OhifServerState;
 
 pub(crate) fn openapi_router() -> OpenApiRouter<Arc<OhifServerState>> {
-    OpenApiRouter::new().routes(routes!(
-        dicom_files::get_by_id::handle_get_dicom_file
-    ))
+    OpenApiRouter::new().routes(routes!(dicom_files::get_by_id::handle_get_dicom_file))
 }
 
 #[cfg(test)]
@@ -84,10 +82,7 @@ mod tests {
         (status, bytes.to_vec())
     }
 
-    async fn send(
-        state: &Arc<OhifServerState>,
-        req: Request<Body>,
-    ) -> (StatusCode, Vec<u8>) {
+    async fn send(state: &Arc<OhifServerState>, req: Request<Body>) -> (StatusCode, Vec<u8>) {
         send_scoped(state, req, "user/DocumentReference.cruds").await
     }
 
@@ -113,12 +108,8 @@ mod tests {
     #[tokio::test]
     async fn read_403_without_the_document_reference_read_scope() {
         let st = state();
-        let (status, body) = send_scoped(
-            &st,
-            get("/api/dicom/files/doc-1"),
-            "wildflower/Accounts.r",
-        )
-        .await;
+        let (status, body) =
+            send_scoped(&st, get("/api/dicom/files/doc-1"), "wildflower/Accounts.r").await;
         assert_eq!(status, StatusCode::FORBIDDEN);
         let json: serde_json::Value = serde_json::from_slice(&body).expect("json");
         assert_eq!(json["error"], "InsufficientScope");

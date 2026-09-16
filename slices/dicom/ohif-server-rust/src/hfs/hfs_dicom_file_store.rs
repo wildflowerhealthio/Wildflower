@@ -68,14 +68,14 @@ impl DicomFileStore for HfsDicomFileStore {
                 detail: format!("DocumentReference/{id}'s attachment carries no inline data"),
             })?;
 
-        let bytes = STANDARD.decode(data).map_err(|err| {
-            DicomFileError::Infrastructure {
+        let bytes = STANDARD
+            .decode(data)
+            .map_err(|err| DicomFileError::Infrastructure {
                 context: "base64 decode",
                 source: format!(
                     "DocumentReference/{id}'s attachment data is not valid base64: {err}"
                 ),
-            }
-        })?;
+            })?;
 
         let content_type = attachment
             .get("contentType")
@@ -120,9 +120,7 @@ async fn delegate_get(
     }
 }
 
-async fn read_json(
-    response: axum::response::Response,
-) -> Result<Value, DicomFileError> {
+async fn read_json(response: axum::response::Response) -> Result<Value, DicomFileError> {
     let bytes = to_bytes(response.into_body(), MAX_FHIR_BODY_BYTES)
         .await
         .map_err(|err| DicomFileError::Infrastructure {
