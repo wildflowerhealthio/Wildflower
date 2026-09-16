@@ -5,7 +5,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
 import { fetchResourcePage, type PagedResourceRead } from './resource-page.ts'
-import { stubSmartClient } from './stub-smart-client.test-support.ts'
+import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 type ObservationType = Schema.Schema.Type<typeof Observation.Schema>
 type ObservationEncoded = Schema.Schema.Encoded<typeof Observation.Schema>

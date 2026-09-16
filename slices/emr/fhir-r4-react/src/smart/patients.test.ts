@@ -4,7 +4,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { fetchPatient, fetchPatientPage } from './patients.ts'
-import { stubSmartClient } from './stub-smart-client.test-support.ts'
+import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 /** A searchset bundle wrapping `resources`, with no `next` link. */
 const bundle = (resources: readonly unknown[]): unknown => ({

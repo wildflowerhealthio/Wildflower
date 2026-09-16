@@ -2,10 +2,14 @@ import { Option, Schema } from 'effect'
 import type Client from 'fhirclient/lib/Client'
 
 /**
- * The page size every reader built on {@link fetchResourcePage} pins with
- * `_count`, so a page is one screenful-plus rather than a server's default
- * (commonly 10–50, which turns a year of observations into dozens of round
- * trips).
+ * The page size a reader pins with `_count`, instead of a server's default
+ * (commonly 10–50, which turns a year of observations into dozens of round trips).
+ *
+ * @remarks
+ * {@link fetchResourcePage} never applies it — `_count` belongs to the read's own
+ * `firstPageQuery`, because pinning one is a per-read decision.
+ * `fetchObservationPage` and `fetchPatientPage` pin it;
+ * `fetchMedicationRequestPage` deliberately does not.
  */
 const RESOURCE_PAGE_SIZE = 200
 

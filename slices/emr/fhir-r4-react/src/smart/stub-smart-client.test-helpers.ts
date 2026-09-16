@@ -26,7 +26,7 @@ interface StubSmartClient {
  */
 const stubSmartClient = (response: unknown): StubSmartClient => {
   const queries: string[] = []
-  // oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test-only stub, only `request` is exercised
   const client = {
     request: (query: string): Promise<unknown> => {
       queries.push(query)

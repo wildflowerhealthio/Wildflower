@@ -27,10 +27,12 @@ type ObservationPage = ResourcePage<ObservationResource>
  */
 type ObservationPageCursor = ResourcePageCursor<string | null>
 
-// Oldest-observed first, server-side, so scroll paging can append each page
-// without reordering rows already on screen. `date` is the FHIR R4 `Observation`
-// search parameter backing `effective[x]`.
-const SORT_PARAM = `_sort=date&_count=${RESOURCE_PAGE_SIZE}`
+// The first page's non-scope search parameters: oldest-observed first,
+// server-side, so scroll paging can append each page without reordering rows
+// already on screen (`date` is the FHIR R4 `Observation` search parameter
+// backing `effective[x]`), and a page size pinned rather than left to whatever
+// default the server picks.
+const SEARCH_PARAMS = `_sort=date&_count=${RESOURCE_PAGE_SIZE}`
 
 /** The `Observation` read: patient-scoped when a patient is in context. */
 const observationRead: PagedResourceRead<
@@ -41,7 +43,9 @@ const observationRead: PagedResourceRead<
   resourceType: 'Observation',
   schema: Observation.Schema,
   firstPageQuery: (patientId: string | null): string =>
-    patientId === null ? SORT_PARAM : `patient=${encodeURIComponent(patientId)}&${SORT_PARAM}`,
+    patientId === null
+      ? SEARCH_PARAMS
+      : `patient=${encodeURIComponent(patientId)}&${SEARCH_PARAMS}`,
 }
 
 /**
