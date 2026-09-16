@@ -63,11 +63,7 @@ pub(crate) mod test_fake {
     }
 
     impl DicomFileStore for FakeDicomFileStore {
-        async fn get_file(
-            &self,
-            id: &str,
-            _auth_token: &str,
-        ) -> Result<DicomFile, DicomFileError> {
+        async fn get_file(&self, id: &str, _auth_token: &str) -> Result<DicomFile, DicomFileError> {
             self.files
                 .lock()
                 .expect("lock")
