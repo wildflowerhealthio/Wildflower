@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import * as Scope from './index.ts'
@@ -133,7 +134,8 @@ describe('Scope.scopeParse — total parse (mirrors Rust Scope)', () => {
     fc.assert(
       fc.property(fc.oneof(fhirArb, wfArb), (scope) => {
         expect(Scope.parse(scope.serialize() ?? '')).toEqual(scope)
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

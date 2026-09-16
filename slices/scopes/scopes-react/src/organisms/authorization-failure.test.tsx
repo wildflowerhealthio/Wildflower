@@ -1,6 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { AuthorizationFailure } from './authorization-failure.tsx'
@@ -63,7 +64,8 @@ describe('AuthorizationFailure', () => {
           expect(screen.getByText(scope)).toBeTruthy()
         }
         cleanup()
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

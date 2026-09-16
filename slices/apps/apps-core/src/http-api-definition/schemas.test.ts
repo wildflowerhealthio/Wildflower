@@ -1,6 +1,6 @@
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
-import { utilityExpectations } from 'kitchen-sink/test'
+import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import {
@@ -119,7 +119,8 @@ describe('KindSchema', () => {
         (s) => {
           expect(Schema.decodeUnknownEither(KindSchema)(s)._tag).toBe('Left')
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })
@@ -146,7 +147,8 @@ describe('AppRegistrationSchema', () => {
     fc.assert(
       fc.property(registrationArb, (entry) => {
         expectRightToEqual(Schema.decodeUnknownEither(AppRegistrationSchema)(entry), entry)
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 

@@ -1,6 +1,7 @@
 import { Headers, HttpServerRequest } from '@effect/platform'
 import { Effect, Layer } from 'effect'
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { Origin } from './origin.ts'
@@ -104,7 +105,8 @@ describe('requestOriginFromConnection', () => {
               : 'http://127.0.0.1:3000'
           expect(requestOriginFromConnection(headers, FALLBACK)).toBe(expected)
         }
-      )
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

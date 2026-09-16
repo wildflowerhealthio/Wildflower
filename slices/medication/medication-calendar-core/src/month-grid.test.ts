@@ -1,4 +1,5 @@
 import * as fc from 'fast-check'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { monthGrid } from './month-grid.ts'
@@ -16,7 +17,8 @@ describe('monthGrid', () => {
     fc.assert(
       fc.property(yearMonth, ({ year, month0 }) => {
         expect(monthGrid(year, month0)).toHaveLength(42)
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -25,7 +27,8 @@ describe('monthGrid', () => {
       fc.property(yearMonth, ({ year, month0 }) => {
         const first = monthGrid(year, month0)[0]
         expect(new Date(parseDay(first.date)).getUTCDay()).toBe(0)
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -36,7 +39,8 @@ describe('monthGrid', () => {
         for (let index = 1; index < grid.length; index += 1) {
           expect(parseDay(grid[index].date) - parseDay(grid[index - 1].date)).toBe(dayMillis)
         }
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -51,7 +55,8 @@ describe('monthGrid', () => {
             return date.toISOString().slice(0, 10)
           })
         )
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
@@ -62,7 +67,8 @@ describe('monthGrid', () => {
           const cellMonth = new Date(parseDay(cell.date)).getUTCMonth()
           expect(cell.inMonth).toBe(cellMonth === month0)
         }
-      })
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 })

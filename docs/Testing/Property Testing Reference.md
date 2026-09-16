@@ -144,6 +144,8 @@ How the scaling resolves:
 - `test:changed` sets `FC_RISK_MAP` from `scripts/risk-map.ts` — a `{ <pkgName>: <multiplier> }` map. Packages reachable from a change get ×1.0; everything else gets ×0.2 (floored at 10). Plain `vp test` leaves `FC_RISK_MAP` unset, so `base` is used as-is.
 - `numRunsFor` identifies the calling package from the **test file's own path** (via Vitest's `expect.getState().testPath`, with a call-stack fallback), resolved per call. It does **not** use `process.cwd()`: under Vitest projects mode every worker's `cwd` is the monorepo root, so a `cwd`-based lookup silently never matched the risk map and the scaling was a no-op. Don't reintroduce a `cwd`-based package resolution.
 
+Opting out of the rule is invisible — nothing fails, the suite is just un-scalable — so a repo-tooling test enforces it: [`scripts/property-test-num-runs.test.ts`](../../scripts/property-test-num-runs.test.ts) sweeps every `*.test.{ts,tsx,mts,cts}` in the working tree and fails, listing the offending paths, when a file calls `fc.assert(` without mentioning `numRunsFor`. The check is file-scoped, so a `const RUNS = numRunsFor({ base: 25 })` hoisted above several asserts satisfies it. A package whose test imports `numRunsFor` for the first time needs the `kitchen-sink` workspace dev-dependency and a `vp install`.
+
 ## Keep property tests fast
 
 `Arbitrary.make(WholeSchema)` walks the entire schema graph every iteration. For richly-linked schemas (FHIR resources: Reference→Identifier cycles, `CodeableConcept` with `Coding[]`, Element/Extension fan-out, JSON column encode/decode) the fan-out is untenable. Three levers, in order of impact:
