@@ -46,7 +46,7 @@ const meta = {
 
 /** A response body and the content type it was served as. */
 const responseArbitrary = fc.tuple(
-  fc.constantFrom('application/json', 'text/html', 'text/javascript', 'application/octet-stream'),
+  fc.constantFrom('application/json', 'text/html', 'text/xml', 'application/octet-stream'),
   fc.uint8Array()
 )
 

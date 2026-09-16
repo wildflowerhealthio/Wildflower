@@ -11,10 +11,11 @@ it. No DOM, no `fs`, no React, no Effect runtime.
   `HttpArchive.Entry[]` out in settle order. Mutable by design (a session is
   megabytes of body chunks), and clock-free: every instant it records is one the
   caller observed and passed in. `MAX_BODY_BYTES` (5 MB) lives here.
-- `src/omitted.ts` — **`isOmittedFromRecording`**: `text/css` and any
-  `image/*` / `video/*` / `audio/*` / `font/*`. **JavaScript is kept**, which is
-  a permanent, deliberate divergence from `http-extraction-fundamentals`'
-  `isOmittedContentType` — do not collapse the two.
+- `src/omitted.ts` — **`isOmittedFromRecording`**: `text/css`, every standard
+  and legacy JavaScript MIME type, and any `image/*` / `video/*` / `audio/*` /
+  `font/*`. Aligns with `http-extraction-fundamentals`' `isOmittedContentType`
+  on which types to drop — but the two predicates stay separate; do not collapse
+  them.
 - `src/file-name.ts` — **`recordingFileName`**: `<YYYY-MM-DDTHH-mm-ssZ>-<host>.har`,
   one path segment a Windows filesystem accepts, ≤ 200 characters.
 - `src/to-har.ts` — **`toHar`**: the recording through `http-archive`'s

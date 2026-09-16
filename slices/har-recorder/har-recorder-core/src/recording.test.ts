@@ -31,7 +31,6 @@ const KEPT_CONTENT_TYPES = [
   'application/json',
   'application/fhir+json',
   'text/html',
-  'text/javascript',
   'application/octet-stream',
 ] as const
 
@@ -41,6 +40,8 @@ const OMITTED_CONTENT_TYPES = [
   'video/mp4',
   'audio/mpeg',
   'font/woff2',
+  'text/javascript',
+  'application/javascript',
 ] as const
 
 const exchangeArbitrary: fc.Arbitrary<Omit<Exchange, 'id'>> = fc.record({
@@ -294,10 +295,10 @@ describe('Recording', () => {
     const recording = Recording.empty()
     const exchange: Exchange = {
       id: 'req-0',
-      url: 'https://portal.example.org/bundle.js',
+      url: 'https://portal.example.org/large-payload',
       status: 200,
       statusText: 'OK',
-      contentType: 'text/javascript',
+      contentType: 'application/json',
       chunks: [],
       terminal: 'finish',
     }
@@ -332,10 +333,10 @@ describe('Recording', () => {
     const recording = Recording.empty()
     const exchange: Exchange = {
       id: 'req-0',
-      url: 'https://portal.example.org/bundle.js',
+      url: 'https://portal.example.org/large-payload',
       status: 200,
       statusText: 'OK',
-      contentType: 'text/javascript',
+      contentType: 'application/json',
       chunks: [],
       terminal: 'finish',
     }

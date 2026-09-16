@@ -17,17 +17,22 @@ const examples: readonly (readonly [contentType: string, omitted: boolean])[] = 
   ['video/mp4', true],
   ['audio/mpeg', true],
   ['font/woff2', true],
+  // JavaScript — omitted alongside CSS and binary assets.
+  ['application/javascript', true],
+  ['text/javascript', true],
+  ['application/x-javascript', true],
+  ['application/ecmascript', true],
+  ['text/ecmascript', true],
+  ['text/javascript1.0', true],
+  ['text/jscript', true],
+  ['text/livescript', true],
+  ['text/x-javascript', true],
   // Kept: the exchanges a reader is after.
   ['application/json', false],
   ['application/fhir+json', false],
   ['text/html', false],
   ['text/xml', false],
   ['application/octet-stream', false],
-  // JavaScript is kept on purpose — the divergence from
-  // `http-extraction-fundamentals`' `isOmittedContentType`, which drops it.
-  ['application/javascript', false],
-  ['text/javascript', false],
-  ['application/x-javascript', false],
   // `text/css` is named, not reached through `text` — other text is kept.
   ['text/plain', false],
   // Not an image: the recorder matches the top-level type, not a substring.
@@ -56,11 +61,28 @@ describe('isOmittedFromRecording', () => {
     )
   })
 
-  it('should never omit a JavaScript or JSON media type, whatever its subtype spelling', () => {
+  it('should omit every standard JavaScript MIME type spelling', () => {
     fc.assert(
       fc.property(
         fc.constantFrom('application', 'text'),
-        fc.constantFrom('javascript', 'x-javascript', 'ecmascript', 'json', 'fhir+json'),
+        fc.constantFrom('javascript', 'x-javascript', 'ecmascript'),
+        (type, subtype) => {
+          // Arrange / Act
+          const omitted = isOmittedFromRecording(`${type}/${subtype}`)
+
+          // Assert
+          expect(omitted).toBe(true)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should never omit a JSON media type, whatever its subtype spelling', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('application', 'text'),
+        fc.constantFrom('json', 'fhir+json'),
         (type, subtype) => {
           // Arrange / Act
           const omitted = isOmittedFromRecording(`${type}/${subtype}`)
