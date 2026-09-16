@@ -87,8 +87,6 @@ const resolveSampler = (
  * OpenTelemetry tracer provider. Safe to call before any other consumers of
  * `@opentelemetry/api` so they pick up the provider immediately.
  *
- * @param config - Resolved telemetry configuration
- * @param sentry - The platform's Sentry SDK, wrapped as an adapter
  * @param createContextManager - Builds the platform's synchronous `ContextManager`
  * @returns The registered provider, or `undefined` when no telemetry sinks are configured
  */
@@ -140,8 +138,6 @@ const initClientTelemetry = (
  * registered globally (see {@link initClientTelemetry}). The layer is a no-op
  * when telemetry is disabled so callers can provide it unconditionally.
  *
- * @param config - Resolved telemetry configuration
- * @param sentry - The platform's Sentry SDK, wrapped as an adapter
  * @param createContextManager - Builds the platform's synchronous `ContextManager`
  */
 const makeClientTelemetryLayer = (
