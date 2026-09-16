@@ -288,7 +288,13 @@ jobs:
           # Extra macOS targets for the universal binary; empty on other OSes.
           target: ${{ matrix.rust-targets }}
           rustflags: ${{ matrix.rustflags }}
-          cache-shared-key: tauri-release-${{ matrix.os }}
+          # One key per platform: release profile, per-platform rustflags and
+          # target triples, and ubuntu-22.04 rather than CI's ubuntu-latest —
+          # a distinction rust-cache's own key does not make. Nothing warms
+          # these from `main`. Both points:
+          # docs/Rust/CI Build Cache Explanation.md.
+          cache-shared-key: release-${{ matrix.key }}
+          cache-on-failure: true
 
       # Vite+ owns the toolchain (Node + package manager + `vp`), same as
       # every other workflow here — no separate setup-node / corepack / pnpm.
@@ -409,7 +415,12 @@ jobs:
         with:
           target: aarch64-apple-ios
           rustflags: '-D warnings'
-          cache-shared-key: tauri-release-ios
+          # Own key despite sharing macos-latest with the desktop build: the
+          # `aarch64-apple-ios` artifacts are disjoint from that job's
+          # `*-apple-darwin` ones, and the two run concurrently, so one key
+          # would make them race to save incomplete target dirs.
+          cache-shared-key: release-ios
+          cache-on-failure: true
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1.20.0

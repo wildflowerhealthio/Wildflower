@@ -21,11 +21,14 @@
 #   clippy-all | test-all          the FULL workspace incl. Tauri, in one pass
 #                                  (the merged ci-rust.yml job, where the
 #                                  GTK/webkit libs are installed)
+#   build-all                      compile that same full workspace without
+#                                  linting or running anything — the CI cache
+#                                  warmer (.github/workflows/rust-cache-warm.yml)
 #   pre-commit                     fmt + clippy + tauri-clippy   (lint/format)
 #   pre-push                       test + tauri-test             (tests)
 set -euo pipefail
 
-step="${1:?usage: rust.sh <fmt|clippy|test|tauri-clippy|tauri-test|clippy-all|test-all|pre-commit|pre-push>}"
+step="${1:?usage: rust.sh <fmt|clippy|test|tauri-clippy|tauri-test|clippy-all|test-all|build-all|pre-commit|pre-push>}"
 
 have() { command -v "$1" >/dev/null 2>&1; }
 
@@ -126,6 +129,18 @@ do_test_all() {
   fi
 }
 
+# Compile-only pass over the same set, with the same selection clippy-all /
+# test-all use: feature unification and target selection are part of an
+# artifact's fingerprint, so a warm-up build differing on either would cache
+# artifacts CI then rebuilds (docs/Rust/CI Build Cache Explanation.md).
+do_build_all() {
+  if tauri_capable; then
+    cargo build --workspace --all-targets --all-features
+  else
+    cargo build "${non_tauri[@]}" --all-targets --all-features
+  fi
+}
+
 # Lightweight "changed crates vs origin/main" scoping, used only by the hook
 # composites (pre-commit / pre-push) — CI keeps the full --workspace runs above.
 # rust-affected.ts prints the affected crate names (changed + their dependents),
@@ -196,6 +211,7 @@ case "$step" in
   tauri-test) do_tauri_test ;;
   clippy-all) do_clippy_all ;;
   test-all) do_test_all ;;
+  build-all) do_build_all ;;
   pre-commit)
     # fmt is compile-free and fast, so keep it whole-workspace; scope the
     # compile-heavy clippy to the crates changed vs origin/main (+ dependents).

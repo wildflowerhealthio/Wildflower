@@ -95,9 +95,12 @@ jobs:
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
-          # Tiny job; no compiled artifacts to reuse. Own cache key so we
-          # don't churn the build jobs' shared cache.
-          cache-shared-key: tauri-release-prepare
+          # `cargo set-version` rewrites manifests and re-resolves Cargo.lock:
+          # it needs the registry index, not build artifacts. Hence the
+          # registry-only key — see docs/Rust/CI Build Cache Explanation.md.
+          cache-shared-key: registry-linux
+          cache-targets: false
+          cache-on-failure: true
 
       - name: Bump Cargo.toml + Cargo.lock version
         run: |
