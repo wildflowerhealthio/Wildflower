@@ -449,7 +449,7 @@ interface MedicationView {
   /**
    * Drug Identification Number, from the contained Medication's DIN coding,
    * falling back to a `medicationCodeableConcept.coding` under a known DIN
-   * system ({@link !DIN_CODING_SYSTEMS}).
+   * system ({@link DIN_CODING_SYSTEMS}).
    */
   readonly din: string | null
   /**
