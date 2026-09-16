@@ -1,5 +1,7 @@
-import { Effect, type ParseResult } from 'effect'
+import type { Effect, ParseResult } from 'effect'
 import type { DocumentReference } from 'fhir-r4/resources'
+
+import type { PickedFile } from './picked-file.ts'
 
 /**
  * A decoded FHIR R4 `DocumentReference` — the concrete type of a resource the
@@ -92,27 +94,44 @@ interface SettingsPickerProps<TSettings> {
 }
 
 /**
- * The minimal file shape the descriptor's batch decode receives — file name
- * plus raw bytes. The shell's `PickedFile` satisfies this structurally, so
- * the descriptor never names the shell's type.
+ * One reviewable unit a format's `decode` read successfully: the picked
+ * files the format grouped into it, a format-chosen title, and the decoded
+ * sections + notes for them — the source-file `DocumentReference`(s) the
+ * format minted for its `local` files already among the sections, so the
+ * shell reviews them like any other resource.
+ *
+ * @typeParam TParsed - The concrete resource type the format decodes to
+ *
+ * @remarks
+ * A single-file format returns one unit per input file, titled by the file
+ * name; a group format (a DICOM study spanning several `.dcm` files) may
+ * merge several files into fewer units and title them by what the group is.
  */
-interface PickedFileLike {
-  readonly fileName: string
-  readonly bytes: Uint8Array
+interface DecodedUnit<TParsed> {
+  readonly _tag: 'read'
+  /** What the review heads this unit with — the file name for a single-file format. */
+  readonly title: string
+  /** The picked files this unit was decoded from, in pick order. */
+  readonly files: readonly PickedFile[]
+  readonly decoded: DecodedFile<TParsed>
 }
 
 /**
- * One decoded unit a batch decode produces: the input files the format
- * grouped into this unit, and the decoded sections + notes for them. A
- * single-file format returns one unit per input file; a group format
- * (e.g. DICOM study) may merge several files into fewer units.
- *
- * @typeParam TParsed - The concrete resource type the format decodes to
+ * A unit whose files the format claimed (by `detect`) but could not read —
+ * the malformed-input case, folded to data so a batch decode never fails as
+ * a whole: one bad file in a batch of five leaves the other four reviewable.
  */
-interface DecodedUnit<TParsed> {
-  readonly files: readonly PickedFileLike[]
-  readonly decoded: DecodedFile<TParsed>
+interface UnreadableUnit {
+  readonly _tag: 'unreadable'
+  /** What the review heads this unit with — the file name for a single-file format. */
+  readonly title: string
+  /** The picked files the format grouped into this unit, in pick order. */
+  readonly files: readonly PickedFile[]
+  readonly error: ParseResult.ParseError
 }
+
+/** What a format's `decode` yields per unit: read into sections, or unreadable. */
+type DecodeOutcome<TParsed> = DecodedUnit<TParsed> | UnreadableUnit
 
 /**
  * "A file-format importer" as one first-class value: everything the shell needs
@@ -138,10 +157,13 @@ interface DecodedUnit<TParsed> {
  * `importer-react`), so no format can bring its own persistence approach —
  * dropped after HAR and LifeLabs proved to share a verbatim identical
  * `withMetaSource → persistResources` sink. No field on the descriptor
- * requires a write client: {@link decode} and {@link buildSourceFile} are both
- * pure, so a preview can never reach the write client by construction, and
- * the source-file `DocumentReference` rides the same reviewed batch as the
- * extracted resources rather than a private upload of its own.
+ * requires a write client: {@link decode} is pure, so a preview can never
+ * reach the write client by construction. The format's decode also owns the
+ * source-file `DocumentReference`: it mints one per `local` file (through
+ * `perFileDecode` / `sourceFileFor` in `source-file-review.ts`), lists it
+ * among the decoded sections, and stamps every extracted resource's
+ * `meta.source` with it — so the source file rides the same reviewed batch as
+ * the extracted resources, and the shell has no source-file knowledge at all.
  */
 interface FileImporterDescriptor<TSettings, TParsed> {
   /** The format tag this descriptor binds (`'har'`, `'lifelabs-pdf'`); the registry's key. */
@@ -160,63 +182,29 @@ interface FileImporterDescriptor<TSettings, TParsed> {
   /** A valid settings value to seed a fresh import's settings form. */
   readonly defaultSettings: TSettings
   /**
-   * Decode a batch of picked files into one {@link DecodedUnit} per group
-   * the format decides on. Single-file formats use {@link perFileDecode} to
-   * wrap their existing per-file decode; a group format (e.g. a DICOM study
-   * that merges several `.dcm` files) may merge several files into fewer
-   * units. The only failure is a malformed file (a `ParseError`); it
-   * requires no services and writes nothing.
+   * Decode a batch of picked files into one {@link DecodeOutcome} per unit
+   * the format decides on — every unit `read` into sections and notes, or
+   * `unreadable` with the malformed-input `ParseError`. Never fails, requires
+   * no services, and writes nothing.
    *
    * @remarks
-   * Bytes rather than text so the seam stays format-blind: a HAR decodes
-   * UTF-8 JSON, a PDF decodes binary. A format that reads text decodes
-   * (`new TextDecoder().decode(bytes)`) at the top of its own `decode`.
-   * Resource keys must be stable across settings changes where the
-   * underlying resource is unchanged, so a re-decode under new settings
-   * keeps the reviewer's per-resource exclusions and edits applying.
-   * `fileName` is passed alongside the bytes so a format whose synthesized
-   * resources need to reference the file's own source-file `DocumentReference`
-   * (DICOM's ImagingStudy instance does) can recompute that document's
-   * deterministic id, which is derived from the bytes' digest and this same
-   * name — see `buildSourceFile` in `source-file-codec.ts`.
+   * Single-file formats wrap a per-file decode with `perFileDecode`
+   * (`source-file-review.ts`), which mints the file's source-file
+   * `DocumentReference`, prepends it as its own "Source file" section, and
+   * stamps every extracted resource's `meta.source` with it; a group format
+   * (a DICOM study merging several `.dcm` files) does the same with
+   * `sourceFileFor` per file and decides for itself which source file each
+   * of its resources names. Bytes rather than text so the seam stays
+   * format-blind: a HAR decodes UTF-8 JSON, a PDF decodes binary. Resource
+   * keys must be stable across settings changes where the underlying
+   * resource is unchanged, so a re-decode under new settings keeps the
+   * reviewer's per-resource exclusions and edits applying. Every file in
+   * the batch is one this descriptor's {@link detect} claimed.
    */
   readonly decode: (
-    files: readonly PickedFileLike[],
+    files: readonly PickedFile[],
     settings: TSettings
-  ) => Effect.Effect<readonly DecodedUnit<TParsed>[], ParseResult.ParseError>
-  /**
-   * Build a local pick's bytes into a source-file `DocumentReference` —
-   * the resource that carries the raw file whole, so a reader can trace an
-   * imported resource back to the source it came from. Pure: it mints a
-   * fresh id, hashes the bytes, and returns the resource, but writes
-   * nothing.
-   *
-   * @remarks
-   * The shell mints this once per local pick at read time and shows it in
-   * the review as its own "Source file" section, so the reviewer can rename
-   * it (edit the JSON) or skip uploading it (exclude it) like any other
-   * resource. On confirm it rides the *same* `persistBatchBundle` as the
-   * extracted resources — one bundle, not a private upload — and its logical
-   * id is what those resources stamp onto `meta.source` (stripped when the
-   * source file is excluded). Each format builds with its own source-file
-   * codec, so the resource always round-trips through the matching
-   * {@link sourceFileFromDocumentReference} reader.
-   *
-   * A server pick is not this seam's concern — its source file already
-   * exists on the server and its reference is on the pick — so this only
-   * ever runs for a `local` pick and receives its bytes verbatim. The
-   * source file is always a FHIR `DocumentReference` regardless of
-   * `TParsed`; both formats decode to FHIR and persist through the FHIR
-   * batch sink. Fails only as a `ParseError`, the way the source-file
-   * codec's encode does (a digest unavailable in an insecure context).
-   */
-  readonly buildSourceFile: (
-    picked: {
-      readonly fileName: string
-      readonly bytes: Uint8Array
-    },
-    options?: { readonly subject?: { readonly reference: string } }
-  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
+  ) => Effect.Effect<readonly DecodeOutcome<TParsed>[]>
   /**
    * FHIR `category` search token — `system|code` form — every server-side
    * source-file read filters on for this format's uploaded source files.
@@ -228,7 +216,7 @@ interface FileImporterDescriptor<TSettings, TParsed> {
    * `category=t1,t2,...` search, so listing "every uploaded source file on
    * the FHIR server" needs no per-format query. Cannot be `undefined`: the
    * format has a corresponding source-file codec (the
-   * {@link buildSourceFile} writes with it, the
+   * format's decode mints with it, the
    * {@link sourceFileFromDocumentReference} reads with it) — this is that
    * same coding, promoted to a search token.
    */
@@ -306,47 +294,15 @@ const identify = <D extends Pick<FileImporterDescriptor<never, never>, 'detect'>
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
 
-/**
- * Wrap a single-file decode function into the batch {@link FileImporterDescriptor.decode}
- * shape: each input file is decoded independently, producing one
- * {@link DecodedUnit} per file. The helper that single-file formats
- * (`har`, `lifelabs-pdf`, `dicom`) use so their existing per-file decode
- * needs no structural change.
- */
-const perFileDecode =
-  <TSettings, TParsed>(
-    decodeFn: (
-      fileBytes: Uint8Array,
-      settings: TSettings
-    ) => Effect.Effect<DecodedFile<TParsed>, ParseResult.ParseError>
-  ): ((
-    files: readonly PickedFileLike[],
-    settings: TSettings
-  ) => Effect.Effect<readonly DecodedUnit<TParsed>[], ParseResult.ParseError>) =>
-  (files, settings) =>
-    Effect.forEach(
-      files,
-      (file) =>
-        decodeFn(file.bytes, settings).pipe(
-          Effect.map((decoded): DecodedUnit<TParsed> => ({ files: [file], decoded }))
-        ),
-      { concurrency: 'unbounded' }
-    )
-
-/**
- * The stable review key for a file's source-file archive, scoped by file
- * name so two files in one batch never collide on their source-file keys.
- */
-const sourceFileKey = (fileName: string): string => `source-file/${fileName}`
-
-export { identify, perFileDecode, sourceFileKey, sectionResources }
+export { identify, sectionResources }
 export type {
   DecodedFile,
   DecodedUnit,
+  DecodeOutcome,
   DocumentReferenceType,
   FileImporterDescriptor,
   LabeledResource,
   LabeledSection,
-  PickedFileLike,
   SettingsPickerProps,
+  UnreadableUnit,
 }

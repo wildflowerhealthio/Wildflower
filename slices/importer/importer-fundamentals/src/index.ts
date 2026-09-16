@@ -10,28 +10,51 @@
  * shared definition of how any uploaded source file is stored as a FHIR
  * `DocumentReference` ({@link sourceFileCodec}): the HAR and LifeLabs codecs
  * were identical bar their coding, so the shape lives here and each binding
- * passes its coding in as data. No DOM, no `fs`, no React: this package is pure
- * data + transitions the shell and a format's React package drive.
+ * passes its coding in as data — and the generic review-side pieces
+ * ({@link perFileDecode}, {@link sourceFileFor}, {@link withSourceSections},
+ * {@link withMetaSource}) every format's `decode` composes to mint, list, and
+ * link its own source file. The {@link PickedFile} every decode receives
+ * lives here too. No DOM, no `fs`, no React: this package is pure data +
+ * transitions the shell and a format's React package drive.
  *
  * @packageDocumentation
  */
 export * as StagedImport from './staged-import.ts'
-export {
-  identify,
-  perFileDecode,
-  sourceFileKey,
-  sectionResources,
-} from './file-importer-descriptor.ts'
+export { identify, sectionResources } from './file-importer-descriptor.ts'
 export type {
   DecodedFile,
   DecodedUnit,
+  DecodeOutcome,
   DocumentReferenceType,
   FileImporterDescriptor,
   LabeledResource,
   LabeledSection,
-  PickedFileLike,
   SettingsPickerProps,
+  UnreadableUnit,
 } from './file-importer-descriptor.ts'
+export {
+  LOCAL_SOURCE,
+  type PickedFile,
+  type PickedFileSource,
+  serverSource,
+  sourceFileIdOf,
+  sourceFileReference,
+} from './picked-file.ts'
+export {
+  type DecodeOne,
+  type MetaSourceable,
+  type PerFileDecodeOptions,
+  perFileDecode,
+  type ResolvedSourceFile,
+  SOURCE_SECTION_TITLE,
+  type SourceFileOptions,
+  type SourceFileRef,
+  sourceFileFor,
+  sourceFileKey,
+  stampMetaSource,
+  withMetaSource,
+  withSourceSections,
+} from './source-file-review.ts'
 export type { PersistFailure } from './persist-failure.ts'
 export { DigestUnavailable, sha256Base64 } from './sha256.ts'
 export {
