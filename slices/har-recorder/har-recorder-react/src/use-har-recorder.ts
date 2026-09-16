@@ -231,7 +231,7 @@ const useHarRecorder = (): HarRecorder => {
     setPhase({ _tag: 'Saving', fileName })
 
     const har = toHar(recording, { startUrl, startedAt, stoppedAt: DateTime.unsafeNow() })
-    Effect.runPromise(
+    Effect.runFork(
       harToJson(har).pipe(
         Effect.flatMap((text) => sendHarRecorderMessage({ _tag: 'SaveHar', fileName, text })),
         // Caught rather than thrown so the `SniffingComplete` below still
@@ -242,14 +242,16 @@ const useHarRecorder = (): HarRecorder => {
             setPhase({ _tag: 'Failed', message: messageOf(error) })
           })
         ),
-        Effect.andThen(sendCollectorMessage({ _tag: 'SniffingComplete' })),
-        Effect.andThen(collectorRegister.unregister(handlers.collector))
+        Effect.andThen(
+          sendCollectorMessage({ _tag: 'SniffingComplete' }).pipe(
+            Effect.andThen(collectorRegister.unregister(handlers.collector)),
+            Effect.catchAll((error) =>
+              Effect.logError('useHarRecorder: stop teardown failed', error)
+            )
+          )
+        )
       )
-    ).catch((error: unknown) => {
-      setPhase((current) =>
-        current._tag === 'Failed' ? current : { _tag: 'Failed', message: messageOf(error) }
-      )
-    })
+    )
   }, [collectorRegister, handlers, sendCollectorMessage, sendHarRecorderMessage])
 
   // Mirror-written after every render (no deps) so the unmount teardown below

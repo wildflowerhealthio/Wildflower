@@ -273,6 +273,30 @@ describe('useHarRecorder', () => {
     expect(harness.sentCollectorMessages).toHaveLength(1)
   })
 
+  it('should preserve the SaveHar error when the sniffer teardown also fails', async () => {
+    // Both SaveHar and SniffingComplete fail — the page must show the first,
+    // more informative error rather than the teardown's.
+    const harness = makeHarness({
+      senderFailures: new Map([
+        ['HarRecorder:SaveHar', 'encode boom'],
+        ['Collector:SniffingComplete', 'teardown boom'],
+      ]),
+    })
+    const { result } = renderHarRecorder(harness)
+    await act(async () => {
+      result.current.start(START_URL)
+    })
+
+    await act(async () => {
+      result.current.stop()
+    })
+
+    expect(result.current.state).toEqual({
+      _tag: 'Failed',
+      message: 'encode boom',
+    })
+  })
+
   it('should transition to Failed and unregister handlers when start fails', async () => {
     // Arrange — a sender that rejects Open
     const harness = makeHarness()
@@ -373,6 +397,10 @@ type LogEntry =
   | { readonly kind: 'register' | 'unregister'; readonly bridge: string }
   | { readonly kind: 'send'; readonly bridge: string; readonly tag: string }
 
+interface HarnessOptions {
+  readonly senderFailures?: ReadonlyMap<string, string>
+}
+
 interface Harness {
   readonly log: LogEntry[]
   readonly registered: Map<string, MessageHandler.AnyHandlers>
@@ -388,11 +416,21 @@ interface Harness {
  * host→web messages can be delivered back into it) and two senders that record
  * what they were asked to send, all onto one ordered log.
  */
-const makeHarness = (): Harness => {
+const makeHarness = (options?: HarnessOptions): Harness => {
   const log: LogEntry[] = []
   const registered = new Map<string, MessageHandler.AnyHandlers>()
   const sentCollectorMessages: unknown[] = []
   const sentHarRecorderMessages: { readonly fileName: string; readonly text: string }[] = []
+  const failures = options?.senderFailures ? new Map(options.senderFailures) : undefined
+
+  const maybeFail = (key: string): Effect.Effect<void> | undefined => {
+    const message = failures?.get(key)
+    if (message === undefined) return undefined
+    failures?.delete(key)
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion
+    return Effect.fail(new Error(message)) as unknown as Effect.Effect<void>
+  }
+
   return {
     log,
     registered,
@@ -413,11 +451,13 @@ const makeHarness = (): Harness => {
         }),
     },
     collectorSender: (message) =>
+      maybeFail(`Collector:${message._tag}`) ??
       Effect.sync(() => {
         sentCollectorMessages.push(message)
         log.push({ kind: 'send', bridge: 'Collector', tag: message._tag })
       }),
     harRecorderSender: (message) =>
+      maybeFail(`HarRecorder:${message._tag}`) ??
       Effect.sync(() => {
         sentHarRecorderMessages.push({ fileName: message.fileName, text: message.text })
         log.push({ kind: 'send', bridge: 'HarRecorder', tag: message._tag })

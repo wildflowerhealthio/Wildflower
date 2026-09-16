@@ -63,14 +63,23 @@ fn sanitize_segment(suggested: &str) -> String {
             }
         })
         .collect();
-    // Every surviving character is ASCII, so a byte truncation can never split
-    // a character and the byte cap is also a character cap.
+    // Every surviving character is ASCII, so byte indexing can never split a
+    // multi-byte character.
     let trimmed = mapped.trim_start_matches('.');
-    let capped = &trimmed[..trimmed.len().min(MAX_NAME_BYTES)];
-    if capped.is_empty() {
-        FALLBACK_NAME.to_owned()
+    if trimmed.is_empty() {
+        return FALLBACK_NAME.to_owned();
+    }
+    if trimmed.len() <= MAX_NAME_BYTES {
+        return trimmed.to_owned();
+    }
+    // Shorten the stem rather than the whole name so the extension survives
+    // truncation and the OS still associates the file correctly.
+    let (stem, ext) = split_extension(trimmed);
+    if ext.is_empty() || ext.len() >= MAX_NAME_BYTES {
+        trimmed[..MAX_NAME_BYTES].to_owned()
     } else {
-        capped.to_owned()
+        let stem_budget = MAX_NAME_BYTES - ext.len();
+        format!("{}{ext}", &stem[..stem_budget])
     }
 }
 
@@ -176,6 +185,16 @@ mod tests {
     fn over_long_names_are_capped() {
         let dir = tempdir().expect("tempdir");
         let name = unique_name(dir.path(), &"a".repeat(5_000)).expect("a name");
+        assert_eq!(name.len(), MAX_NAME_BYTES);
+    }
+
+    /// Truncation must not split a file extension — `.pdf` stays `.pdf`, not
+    /// `.pd` — so the OS still associates the download with its handler.
+    #[test]
+    fn over_long_names_preserve_their_extension() {
+        let dir = tempdir().expect("tempdir");
+        let name = unique_name(dir.path(), &format!("{}.pdf", "a".repeat(5_000))).expect("a name");
+        assert!(name.ends_with(".pdf"), "extension was truncated: `{name}`");
         assert_eq!(name.len(), MAX_NAME_BYTES);
     }
 
