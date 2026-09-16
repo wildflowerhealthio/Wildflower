@@ -3,8 +3,8 @@
 //! `ohif-server-rust` slice's scope-gated handler, with HFS auth off
 //! (`jwks_url: None`). Covers the happy path (base64 decode + `Content-Type`
 //! from the attachment), the octet-stream fallback for a missing/invalid
-//! `contentType`, a `DocumentReference` with no content attachment, and a
-//! missing `DocumentReference`.
+//! `contentType`, a `DocumentReference` with no content attachment, a missing
+//! `DocumentReference`, and the 403 for a request carrying no bearer token.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -84,6 +84,10 @@ async fn get_file(router: &Router, id: &str) -> (StatusCode, Vec<u8>, Option<Str
     let mut request = Request::builder()
         .method("GET")
         .uri(format!("/api/dicom/files/{id}"))
+        // The handler requires a bearer token, which it forwards onto its
+        // in-process HFS sub-request. HFS auth is off here (`jwks_url: None`),
+        // so the value is inert — only its presence matters.
+        .header("authorization", "Bearer test-token")
         .body(Body::empty())
         .expect("build request");
     // The OHIF server slice is scope-gated: inject ScopeClaims covering the
@@ -192,4 +196,28 @@ async fn missing_document_reference_yields_404() {
     let (status, _body, _content_type) = get_file(&router, "does-not-exist").await;
 
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn request_without_a_bearer_token_yields_403() {
+    let (router, _db) = build_router();
+
+    // Scopes alone are not enough: the handler needs a token to forward onto
+    // its HFS sub-request, so it rejects before ever reaching the store — even
+    // though this id does not exist, the answer is 403 rather than 404.
+    let mut request = Request::builder()
+        .method("GET")
+        .uri("/api/dicom/files/does-not-exist")
+        .body(Body::empty())
+        .expect("build request");
+    request
+        .extensions_mut()
+        .insert(ScopeClaims::new(Some("system/*.cruds".to_owned())));
+    let response = router
+        .clone()
+        .oneshot(request)
+        .await
+        .expect("router is infallible");
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
 }
