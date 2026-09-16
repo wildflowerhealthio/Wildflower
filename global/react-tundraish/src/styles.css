@@ -22,8 +22,9 @@
  *                              family stacks
  *   4. colors-custom.css     — the Wildflower-specific palette (surface,
  *                              neutral, accent, red, card, divider, chip,
- *                              success, path-connector) for both schemes,
- *                              plus button filled/outline colour overrides
+ *                              success, path-connector, categorical series)
+ *                              for both schemes, plus button filled/outline
+ *                              colour overrides
  *   5. colors-dark-tundra.css — dark-mode mirrors of tundra-css's
  *                              orange/yellow/green/cyan/blue/purple/pink
  *                              ramps; Wildflower doesn't actively use

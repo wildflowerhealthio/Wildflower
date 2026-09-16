@@ -4,7 +4,8 @@
  * 265°), and status green/red re-harmonized as siblings of the navy. Re-points
  * tundra-css's surface and accent tokens for both schemes and defines the
  * project-specific semantic role tokens (card / divider / chip / success /
- * path-connector / on-accent) the components paint themselves with.
+ * path-connector / on-accent / categorical series) the components paint
+ * themselves with.
  *
  * tundra-css ships a light-only, chroma-0 (grey) `:root` palette. Because every
  * Tundraish component, every app `*.module.css`, and tundra-css's own utility
@@ -195,6 +196,28 @@
   --color-warning-background: #f6ecc7;
   --color-warning-foreground: #755610; /* banner / badge text */
   --color-warning-border: #e0c46b;
+
+  /*
+   * Categorical series slots — chart identity, assigned 1 → 4 in fixed order and
+   * never cycled. Slot 1 is the navy accent's base step (`--color-accent-5`) so
+   * a chart opens on-brand; 2-4 are the dataviz reference palette's orange /
+   * aqua / yellow. The four are validated as a *set* per mode against the page
+   * canvas (`--color-canvas`), so re-picking one slot means re-validating all
+   * four in both modes. The rules that go with them — never a status colour,
+   * text stays in the text tokens, what `-soft` is for, and why four slots hold
+   * for stacks/bars/lines but not for a scatter — are in ../AGENTS.md.
+   */
+  --color-series-1: #3d66d0; /* navy accent — the `--color-accent-5` step */
+  --color-series-2: #eb6834; /* orange */
+  --color-series-3: #1baf7a; /* aqua */
+  --color-series-4: #eda100; /* yellow */
+
+  /* Band fills — the backdrop behind a reference range, mixed off the slot they
+   * belong to so a re-stepped slot carries its band with it. */
+  --color-series-1-soft: color-mix(in oklab, var(--color-series-1) 18%, transparent);
+  --color-series-2-soft: color-mix(in oklab, var(--color-series-2) 18%, transparent);
+  --color-series-3-soft: color-mix(in oklab, var(--color-series-3) 18%, transparent);
+  --color-series-4-soft: color-mix(in oklab, var(--color-series-4) 18%, transparent);
 }
 
 /* Narrow the `:root` `color-scheme: light dark` default down to the resolved
@@ -297,6 +320,21 @@
   --color-warning-background: #33290e;
   --color-warning-foreground: #d9b661; /* banner / badge text */
   --color-warning-border: #55471e;
+
+  /* Categorical series slots, dark: the same four hues stepped for the dark
+   * canvas and re-validated there — a designed set, not a flipped one. All four
+   * clear 3:1 here, so the light mode's labels-or-table relief is a light-mode
+   * obligation only. */
+  --color-series-1: #426dd7; /* navy accent — the `--color-accent-5` step */
+  --color-series-2: #d95926; /* orange */
+  --color-series-3: #199e70; /* aqua */
+  --color-series-4: #c98500; /* yellow */
+
+  /* Band fills lift to 22% — the same alpha reads fainter over near-black. */
+  --color-series-1-soft: color-mix(in oklab, var(--color-series-1) 22%, transparent);
+  --color-series-2-soft: color-mix(in oklab, var(--color-series-2) 22%, transparent);
+  --color-series-3-soft: color-mix(in oklab, var(--color-series-3) 22%, transparent);
+  --color-series-4-soft: color-mix(in oklab, var(--color-series-4) 22%, transparent);
 }
 
 /*

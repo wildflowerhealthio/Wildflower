@@ -246,3 +246,9 @@ the literal and fakes only the data part.
 **Discovered during**: claude/nifty-knuth-8ywi8f (HAR Recorder, `har-recorder-tauri-rust`)
 **Learning**: `rust.sh` splits the workspace into a non-Tauri partition (`--workspace --exclude …`) and a Tauri partition by crate _name_. A new crate that depends on `tauri` is not excluded automatically, so the GTK-less `pre-commit` step tries to compile it, dies in `gdk-sys`'s build script, and the commit is refused with a wall of pkg-config output. Add the crate to all three lists (`non_tauri` excludes, `tauri`, `tauri_names`) in the same PR that creates it; CI's `clippy-all` / `test-all` compile it regardless. Put anything with testable logic in a tauri-free sibling crate (`har-recorder-rust` next to `har-recorder-tauri-rust`) so its tests run in the container.
 **Suggested destination**: Rust docs / Strategies (Environment & toolchain)
+
+## `*.css?raw` imports resolve to an empty string under Vitest
+
+**Discovered during**: claude/issue-575-series-tokens (parsing `colors-custom.css` in a test)
+**Learning**: Vite's CSS plugin answers a `./some.css?raw` (and `?inline`) import with `''` in the SSR pipeline Vitest runs test modules through — the import succeeds, the module is a string, and it is empty, so a test that parses the stylesheet finds nothing and quietly asserts over an empty set. `?raw` works normally on non-CSS files (`./index.ts?raw` returns the source). A test that needs a stylesheet's text reads it with `readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'x.css'), 'utf8')` instead — which in a browser-facing package (`react-tundraish`) means adding `@types/node` (catalog) and `"types": ["node"]` to its `tsconfig.json`, since react packages here otherwise carry `"types": []` or none at all.
+**Suggested destination**: Testing docs / Strategies
