@@ -27,7 +27,8 @@ interface SentryAdapter {
  * Supplied by the platform adapter (`telemetry-web` passes
  * `() => new StackContextManager()` from `@opentelemetry/sdk-trace-web`)
  * so this package stays free of platform-specific OTel SDKs. Called at
- * most once per process — see {@link installContextManager}.
+ * most once: the first manager built is installed globally and every
+ * later {@link initClientTelemetry} call reuses it.
  */
 type ContextManagerFactory = () => ContextManager
 
