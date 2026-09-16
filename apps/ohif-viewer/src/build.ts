@@ -44,9 +44,17 @@ if (pin === null) {
 }
 
 log(`Downloading ${pin.url}`)
-const response = await fetch(pin.url, { redirect: 'follow' })
-if (!response.ok) fail(`Download failed: HTTP ${response.status} for ${pin.url}`)
-const archive = new Uint8Array(await response.arrayBuffer())
+let archive: Uint8Array
+try {
+  const response = await fetch(pin.url, { redirect: 'follow' })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  archive = new Uint8Array(await response.arrayBuffer())
+} catch (error: unknown) {
+  const reason = error instanceof Error ? error.message : String(error)
+  log(`Download failed (${reason}); writing the stub page instead`)
+  writeFileSync(join(distDir, 'index.html'), renderStubPage('apps/ohif-viewer/prebuilt.json'))
+  process.exit(0)
+}
 
 if (!matchesPin(pin, archive)) {
   fail(
