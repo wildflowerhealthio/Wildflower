@@ -9,6 +9,7 @@ members = [
   "slices/browser-sniffer/browser-sniffer-tauri-rust",
   "slices/collector/collector-rust",
   "slices/databases/databases-rust",
+  "slices/dicom/ohif-server-rust",
   "slices/emr/emr-rust",
   "slices/gatekeeper/gatekeeper-rust",
   "slices/gatekeeper/token-revocation-rust",

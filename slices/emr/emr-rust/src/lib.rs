@@ -8,7 +8,6 @@
 mod auth;
 mod config;
 mod delegate;
-mod dicom_files;
 mod openapi;
 mod patient_everything;
 mod smart_configuration;
@@ -23,7 +22,6 @@ use shared_structures_rust::ServerRuntimeConfig;
 use token_revocation_rust::RevocationStore;
 
 use crate::auth::build_auth;
-use crate::dicom_files::dicom_files_router;
 use crate::patient_everything::{patient_everything_handler, EverythingState};
 use crate::smart_configuration::{smart_configuration_handler, SmartConfigState};
 
@@ -34,12 +32,13 @@ const FHIR_R4_PATH: &str = "/fhir-r4";
 const MAX_FHIR_BODY_BYTES: usize = 1024 * 1024 * 1024; // 1 GiB
 
 /// Result of [`setup_fhir_r4`]: the FHIR R4 router (mounted at
-/// [`FHIR_R4_PATH`]) and the standalone DICOM file router (mounted at the app
-/// root — see [`crate::dicom_files::dicom_files_router`] for why it lives
-/// outside the `/fhir-r4` nest). The caller merges both into its root router.
+/// [`FHIR_R4_PATH`]) and the bare HFS router for in-process delegation by
+/// other slices (e.g. `ohif-server-rust`).
 pub struct FhirR4Routers {
     pub fhir_r4: Router,
-    pub dicom_files: Router,
+    /// The raw HFS Axum router, exposed for in-process delegation by slices
+    /// that need to read FHIR resources directly (e.g. the OHIF DICOM server).
+    pub hfs_router: Router,
 }
 
 /// Paths under [`FHIR_R4_PATH`] that a gating layer mounted above
@@ -68,12 +67,6 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 /// - `/fhir-r4/Patient/{id}/$everything` implements the FHIR `$everything`
 ///   operation HFS doesn't ship, by delegating back into HFS's `read` + indexed
 ///   `subject=` searches in-process (see [`patient_everything`]).
-///
-/// A third override, `/api/dicom/files/{id}`, serves a stored DICOM source
-/// file's raw bytes (decoded from a `DocumentReference` attachment's base64
-/// `data`) so a DICOM viewer can fetch it by id over plain HTTP (see
-/// [`dicom_files`]) — it is returned separately, in [`FhirR4Routers::dicom_files`],
-/// because it is mounted at the app root rather than under `/fhir-r4`.
 ///
 /// When [`EmrConfig::jwks_url`] is `Some`, HFS auth is enabled: it validates the
 /// JWT against the configured JWKS, enforces `iss`, parses SMART v2 scopes,
@@ -188,11 +181,7 @@ pub fn setup_fhir_r4(
             loopback_base_url,
         });
 
-    // Same in-process delegation shape as `$everything` (see [`dicom_files`]),
-    // but returned separately rather than merged in below — it is mounted at
-    // the app root, not under `/fhir-r4` (see [`dicom_files_router`]).
-    let dicom_files = dicom_files_router(hfs_router.clone());
-
+    let hfs_router_for_delegation = hfs_router.clone();
     let fhir_with_override = smart_config_route
         .merge(patient_everything_route)
         .fallback_service(hfs_router)
@@ -209,7 +198,7 @@ pub fn setup_fhir_r4(
     // router, so the base reaches HFS. Covered by `tests/batch_bundle_at_base.rs`.
     Ok(FhirR4Routers {
         fhir_r4: Router::new().nest_service(FHIR_R4_PATH, fhir_with_override),
-        dicom_files,
+        hfs_router: hfs_router_for_delegation,
     })
 }
 

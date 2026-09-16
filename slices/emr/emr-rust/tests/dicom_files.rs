@@ -1,11 +1,8 @@
-//! End-to-end tests for the `/api/dicom/files/{id}` override, exercised
-//! through the real routers `setup_fhir_r4` builds (HFS create/read +
-//! in-process delegation, see `dicom_files` in `src/`), with HFS auth off
-//! (`jwks_url: None`). The FHIR router and the standalone DICOM files router
-//! are merged together here the same way the host merges them, since the
-//! DICOM route is mounted at the app root rather than under `/fhir-r4`.
-//! Covers the happy path (base64 decode + `Content-Type` from the
-//! attachment), the octet-stream fallback for a missing/invalid
+//! End-to-end tests for the `/api/dicom/files/{id}` endpoint, exercised
+//! through the real routers `setup_fhir_r4` builds (HFS create/read) plus the
+//! `ohif-server-rust` slice's scope-gated handler, with HFS auth off
+//! (`jwks_url: None`). Covers the happy path (base64 decode + `Content-Type`
+//! from the attachment), the octet-stream fallback for a missing/invalid
 //! `contentType`, a `DocumentReference` with no content attachment, and a
 //! missing `DocumentReference`.
 
@@ -18,14 +15,13 @@ use axum::Router;
 use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use emr_rust::{setup_fhir_r4, EmrConfig};
+use scope_capabilities_rust::ScopeClaims;
 use serde_json::{json, Value};
 use shared_structures_rust::ServerRuntimeConfig;
 use tower::ServiceExt;
 
-/// Unique temp dir per test so parallel tests don't share a sqlite file.
 static COUNTER: AtomicU32 = AtomicU32::new(0);
 
-/// Owns a temp dir for the lifetime of a test, removing it on drop.
 struct TempDb {
     dir: PathBuf,
 }
@@ -36,7 +32,8 @@ impl Drop for TempDb {
     }
 }
 
-/// Build a fresh FHIR router backed by a throwaway sqlite db. HFS auth is off.
+/// Build a fresh FHIR router backed by a throwaway sqlite db, with the
+/// OHIF server slice merged in. HFS auth is off.
 fn build_router() -> (Router, TempDb) {
     let n = COUNTER.fetch_add(1, Ordering::Relaxed);
     let dir = std::env::temp_dir().join(format!("emr-rust-dicom-files-{}-{n}", std::process::id()));
@@ -57,11 +54,10 @@ fn build_router() -> (Router, TempDb) {
     let routers = setup_fhir_r4(&runtime, &config, revocation_store).expect("setup_fhir_r4");
     let router = Router::new()
         .merge(routers.fhir_r4)
-        .merge(routers.dicom_files);
+        .merge(ohif_server_rust::setup_ohif_server(routers.hfs_router));
     (router, TempDb { dir })
 }
 
-/// PUT (create-with-id) a `DocumentReference` carrying one content entry.
 async fn put_document_reference(router: &Router, id: &str, resource: Value) {
     let request = Request::builder()
         .method("PUT")
@@ -84,14 +80,17 @@ async fn put_document_reference(router: &Router, id: &str, resource: Value) {
     );
 }
 
-/// GET the DICOM file endpoint, returning the status, the raw response body
-/// bytes, and the `Content-Type` header value (if any).
 async fn get_file(router: &Router, id: &str) -> (StatusCode, Vec<u8>, Option<String>) {
-    let request = Request::builder()
+    let mut request = Request::builder()
         .method("GET")
         .uri(format!("/api/dicom/files/{id}"))
         .body(Body::empty())
         .expect("build request");
+    // The OHIF server slice is scope-gated: inject ScopeClaims covering the
+    // required `user/DocumentReference.r` scope.
+    request
+        .extensions_mut()
+        .insert(ScopeClaims::new(Some("system/*.cruds".to_owned())));
     let response = router
         .clone()
         .oneshot(request)

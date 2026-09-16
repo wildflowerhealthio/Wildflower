@@ -1,8 +1,7 @@
-//! In-process re-drive of HFS's router, shared by every override handler that
-//! needs to read (rather than write) FHIR data — [`crate::patient_everything`]
-//! and [`crate::dicom_files`] both delegate a `GET` back into HFS's own
-//! handlers instead of reading the store directly, so HFS's SMART v2 scope
-//! enforcement stays in the path exactly as it would for a direct request.
+//! In-process re-drive of HFS's router, used by [`crate::patient_everything`]
+//! to delegate a `GET` back into HFS's own handlers instead of reading the
+//! store directly, so HFS's SMART v2 scope enforcement stays in the path
+//! exactly as it would for a direct request.
 //!
 //! See [`delegate_get`] for the in-process re-drive invariant (why
 //! `Accept`/`Accept-Encoding` must be stripped) and [`read_json`] for the
@@ -70,13 +69,6 @@ pub(crate) async fn read_json(response: Response, max_bytes: usize) -> Result<Va
 /// sub-response can't be read or parsed.
 pub(crate) fn internal_error(diagnostics: &str) -> Response {
     operation_outcome(StatusCode::INTERNAL_SERVER_ERROR, "exception", diagnostics)
-}
-
-/// A `404` OperationOutcome for a delegated read that resolved but doesn't
-/// carry what the caller asked for (e.g. a `DocumentReference` with no
-/// attachment data).
-pub(crate) fn not_found(diagnostics: &str) -> Response {
-    operation_outcome(StatusCode::NOT_FOUND, "not-found", diagnostics)
 }
 
 fn operation_outcome(status: StatusCode, code: &str, diagnostics: &str) -> Response {

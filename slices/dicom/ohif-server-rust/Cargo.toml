@@ -1,0 +1,32 @@
+[package]
+name = "ohif-server-rust"
+version = "0.0.0"
+edition.workspace = true
+publish.workspace = true
+
+# The OHIF server slice: a scope-gated endpoint that serves DICOM file bytes
+# decoded from FHIR DocumentReference attachments. HFS holds the clinical data;
+# this crate wraps one read path for the OHIF viewer's HTTP fetch. Layered like
+# `collector-rust` / `tunnel-rust`: pure `domain`, `hfs` adapter, and `http`.
+[dependencies]
+anyhow.workspace = true
+axum.workspace = true
+# Decodes the DocumentReference attachment's base64 `data` into raw file bytes.
+base64 = "0.23"
+serde.workspace = true
+serde_json.workspace = true
+# In-process re-drive of HFS's router via `oneshot`.
+tower.workspace = true
+scopes-rust = { path = "../../scopes/scopes-rust" }
+scope-capabilities-rust = { path = "../../scopes/scope-capabilities-rust", features = ["openapi"] }
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["http-errors"] }
+utoipa.workspace = true
+utoipa-axum.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+shared-structures-rust = { path = "../../shared-structures/shared-structures-rust", features = ["openapi-snapshot"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+http-body-util.workspace = true

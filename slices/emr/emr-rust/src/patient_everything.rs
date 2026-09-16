@@ -17,8 +17,7 @@
 //!
 //! **In-process re-drive invariant:** see [`crate::delegate`] — this handler's
 //! delegated reads (the primary Patient, each related-type search) go through
-//! [`crate::delegate::delegate_get`] and [`crate::delegate::read_json`], shared
-//! with [`crate::dicom_files`]'s single-resource read.
+//! [`crate::delegate::delegate_get`] and [`crate::delegate::read_json`].
 //!
 //! A related-resource search that fails (non-200 or an unreadable body) is
 //! logged and treated as *no matches* rather than aborting: only the primary

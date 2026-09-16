@@ -1,0 +1,100 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "OHIF Server API",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/api/dicom/files/{id}": {
+      "get": {
+        "tags": [
+          "DICOM Files"
+        ],
+        "operationId": "handle_get_dicom_file",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "DocumentReference id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Raw DICOM file bytes",
+            "content": {
+              "application/octet-stream": {}
+            }
+          },
+          "403": {
+            "description": "The caller's token doesn't cover `user/DocumentReference.r`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsufficientScopeBody"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No DocumentReference with this id or no attachment data",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DicomFileNotFoundBody"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "DicomFileNotFoundBody": {
+        "type": "object",
+        "required": [
+          "error",
+          "id",
+          "detail"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          }
+        }
+      },
+      "InsufficientScopeBody": {
+        "type": "object",
+        "description": "Wire shape for a 403 — the caller authenticated, but their token doesn't cover\nthe scope(s) an operation requires. `missingScopes` names the scopes the\ncaller must additionally hold.",
+        "required": [
+          "error",
+          "missingScopes"
+        ],
+        "properties": {
+          "error": {
+            "type": "string",
+            "description": "Always `\"InsufficientScope\"` — the discriminant a client switches on."
+          },
+          "missingScopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The rendered scopes the caller lacks."
+          }
+        }
+      }
+    }
+  }
+}

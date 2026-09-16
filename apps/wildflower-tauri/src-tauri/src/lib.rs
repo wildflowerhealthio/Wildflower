@@ -318,14 +318,6 @@ async fn run_server(
     let fhir_routers = setup_fhir_r4(&runtime, &emr_config, revocation_store.clone())
         .context("failed to set up FHIR R4 router")?;
     let fhir_r4_router = fhir_routers.fhir_r4;
-    // Ungated at this layer (unlike `gated_fhir_r4` below): auth still
-    // happens, just further down. The handler re-drives into HFS in-process
-    // (see `emr_rust::dicom_files::dicom_files_router`), and that delegated
-    // request runs through HFS's own bearer-JWT + SMART v2 scope enforcement
-    // for the underlying `DocumentReference` read. It's mounted at the app
-    // root (not under `/fhir-r4`) so an OHIF viewer running as its own origin
-    // can reach it without also carrying the host's Owner-scoped bearer gate.
-    let dicom_files_router = fhir_routers.dicom_files;
 
     // The app-wide diesel r2d2 pool, built once here on the same database file
     // `db` serves the other slices from and shared (cheap `Arc` clone) across
@@ -396,6 +388,16 @@ async fn run_server(
         fhir_r4_router,
         gatekeeper.state.clone(),
         emr_rust::UNAUTHENTICATED_FHIR_PATHS,
+    );
+
+    // The OHIF DICOM file server — scope-gated on `user/DocumentReference.r`.
+    // It reads DocumentReferences from HFS in-process (the handler re-drives
+    // through the HFS router), decodes the attachment's base64 data, and serves
+    // the raw bytes for the OHIF viewer. Gated like the other slices.
+    let gated_ohif_server = layer_router_with_gatekeeper_auth_gating(
+        ohif_server_rust::setup_ohif_server(fhir_routers.hfs_router),
+        gatekeeper.state.clone(),
+        &[],
     );
 
     // The real `/collector/remotes` surface (replacing the former api_stubs
@@ -649,6 +651,7 @@ async fn run_server(
                 ("Apps", apps_rust::openapi_spec()),
                 ("Databases", databases_rust::openapi_spec()),
                 ("Collector", collector_rust::openapi_spec()),
+                ("OHIF Server", ohif_server_rust::openapi_spec()),
                 ("Tunnel", tunnel_rust::openapi_spec()),
                 ("FHIR R4", emr_rust::openapi_spec()),
             ],
@@ -674,7 +677,7 @@ async fn run_server(
     let api_router = Router::new()
         .merge(gatekeeper.router)
         .merge(gated_fhir_r4)
-        .merge(dicom_files_router)
+        .merge(gated_ohif_server)
         .merge(gated_collector)
         .merge(gated_tunnel)
         // The app-layer `/health`: an unauthenticated liveness endpoint the

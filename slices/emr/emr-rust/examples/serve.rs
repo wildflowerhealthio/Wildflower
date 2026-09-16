@@ -37,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
     let routers = setup_fhir_r4(&runtime, &config, revocation_store)?;
     let router = Router::new()
         .merge(routers.fhir_r4)
-        .merge(routers.dicom_files);
+        .merge(ohif_server_rust::setup_ohif_server(routers.hfs_router));
     let addr: SocketAddr = runtime
         .loopback_base_url_ref()
         .authority()
