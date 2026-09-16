@@ -27,9 +27,9 @@ const LIGHT_SELECTOR = ':root'
 const DARK_SELECTOR = ":root[data-color-scheme='dark']"
 
 /**
- * The stylesheet's own text. It is read off disk rather than imported: under
- * Vitest, Vite's CSS plugin answers a `./colors-custom.css?raw` import with an
- * empty string, so the parse would silently find nothing to check.
+ * The stylesheet's own text, read off disk rather than imported: under Vitest,
+ * Vite's CSS plugin answers a `./colors-custom.css?raw` import with an empty
+ * string, so every parse below would silently find nothing to check.
  */
 const source = readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), 'colors-custom.css'),

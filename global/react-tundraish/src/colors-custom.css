@@ -198,36 +198,22 @@
   --color-warning-border: #e0c46b;
 
   /*
-   * Categorical series slots — chart identity. Assigned 1 → 4 in fixed order and
-   * never cycled: a fifth series folds into an "Other" series or takes a facet,
-   * it does not come back around to slot 1. Slot 1 is the navy accent's base
-   * step (the same value as `--color-accent-5`) so a chart opens on-brand;
-   * slots 2-4 are the dataviz reference palette's orange / aqua / yellow.
-   *
-   * The four are validated as a *set* against the page canvas
-   * (`--color-canvas`) — lightness band, chroma floor, protan/deutan ΔE,
-   * normal-vision ΔE, contrast — so a single slot can't be re-picked on its
-   * own: re-run the validator over all four, in both modes, and snap to a
-   * passing step. The set clears every gate on the adjacent pairlist (stacks,
-   * bars, lines); it does **not** clear an all-pairs form (scatter, bubble,
-   * map, small multiples) at four slots, where yellow and orange can land side
-   * by side — those forms carry three series and fold the rest.
-   *
-   * Two rules the colours can't enforce themselves: on the light canvas slots
-   * 2-4 sit below 3:1, so a light chart owes the reader a second channel
-   * (direct labels or a table view) rather than colour alone; and status
-   * (success / warning / danger) is reserved — it never stands in for a series,
-   * and a series never borrows it. Value, label, and legend text keeps the text
-   * tokens; the swatch beside the text carries the identity.
+   * Categorical series slots — chart identity, assigned 1 → 4 in fixed order and
+   * never cycled. Slot 1 is the navy accent's base step (`--color-accent-5`) so
+   * a chart opens on-brand; 2-4 are the dataviz reference palette's orange /
+   * aqua / yellow. The four are validated as a *set* per mode against the page
+   * canvas (`--color-canvas`), so re-picking one slot means re-validating all
+   * four in both modes. The rules that go with them — never a status colour,
+   * text stays in the text tokens, what `-soft` is for, and why four slots hold
+   * for stacks/bars/lines but not for a scatter — are in ../AGENTS.md.
    */
   --color-series-1: #3d66d0; /* navy accent — the `--color-accent-5` step */
   --color-series-2: #eb6834; /* orange */
   --color-series-3: #1baf7a; /* aqua */
   --color-series-4: #eda100; /* yellow */
 
-  /* Low-alpha companions — the fill behind a reference-range band, drawn from
-   * the same hue with `color-mix()` so a re-stepped slot carries its band with
-   * it. A band is a backdrop: never a mark, never a text colour. */
+  /* Band fills — the backdrop behind a reference range, mixed off the slot they
+   * belong to so a re-stepped slot carries its band with it. */
   --color-series-1-soft: color-mix(in oklab, var(--color-series-1) 18%, transparent);
   --color-series-2-soft: color-mix(in oklab, var(--color-series-2) 18%, transparent);
   --color-series-3-soft: color-mix(in oklab, var(--color-series-3) 18%, transparent);
@@ -335,21 +321,16 @@
   --color-warning-foreground: #d9b661; /* banner / badge text */
   --color-warning-border: #55471e;
 
-  /*
-   * Categorical series slots, dark. The same four hues stepped for the dark
-   * canvas and re-validated there — a designed set, not a flipped one. Slot 1
-   * is again the accent's base step (`--color-accent-5`'s dark value). Fixed
-   * order, never cycled; status colours stay out of the series; text keeps the
-   * text tokens. All four clear 3:1 on the dark canvas, so the light mode's
-   * labels-or-table relief rule is a light-mode obligation only.
-   */
+  /* Categorical series slots, dark: the same four hues stepped for the dark
+   * canvas and re-validated there — a designed set, not a flipped one. All four
+   * clear 3:1 here, so the light mode's labels-or-table relief is a light-mode
+   * obligation only. */
   --color-series-1: #426dd7; /* navy accent — the `--color-accent-5` step */
   --color-series-2: #d95926; /* orange */
   --color-series-3: #199e70; /* aqua */
   --color-series-4: #c98500; /* yellow */
 
-  /* Band fills lift to 22%: the same alpha reads fainter over near-black than
-   * it does over the light canvas. */
+  /* Band fills lift to 22% — the same alpha reads fainter over near-black. */
   --color-series-1-soft: color-mix(in oklab, var(--color-series-1) 22%, transparent);
   --color-series-2-soft: color-mix(in oklab, var(--color-series-2) 22%, transparent);
   --color-series-3-soft: color-mix(in oklab, var(--color-series-3) 22%, transparent);
