@@ -24,7 +24,15 @@ import { Har, type HarBody, type HarEntry, NOT_MEASURED } from './har.ts'
  * @packageDocumentation
  */
 
-/** Prefix of an {@link Entry}'s synthesized id. */
+/**
+ * Prefix of an {@link Entry}'s synthesized id.
+ *
+ * @remarks
+ * Exported so a producer that builds a {@link Log} without reading an archive —
+ * the HAR recorder accumulating live responses — synthesizes the same
+ * `har-entry-<index>` ids from this one definition rather than a copy of the
+ * literal.
+ */
 const ENTRY_ID_PREFIX = 'har-entry-'
 
 /** Why a re-encoded archive has no request side, stated in the file itself. */
@@ -229,4 +237,4 @@ const LogFromHarJson = Schema.parseJson(LogFromHar).annotations({
   description: 'The entries an import replays, carried as the text of a .har file.',
 })
 
-export { type Entry, type Log, LogFromHarJson }
+export { ENTRY_ID_PREFIX, type Entry, type Log, LogFromHarJson }

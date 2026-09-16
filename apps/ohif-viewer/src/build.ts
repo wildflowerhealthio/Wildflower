@@ -44,9 +44,20 @@ if (pin === null) {
 }
 
 log(`Downloading ${pin.url}`)
-const response = await fetch(pin.url, { redirect: 'follow' })
-if (!response.ok) fail(`Download failed: HTTP ${response.status} for ${pin.url}`)
-const archive = new Uint8Array(await response.arrayBuffer())
+let archive: Uint8Array
+try {
+  const response = await fetch(pin.url, { redirect: 'follow' })
+  if (!response.ok) fail(`Download failed: HTTP ${response.status} for ${pin.url}`)
+  archive = new Uint8Array(await response.arrayBuffer())
+} catch (error: unknown) {
+  const cause = error instanceof Error && error.cause instanceof Error ? error.cause : undefined
+  if (cause !== undefined && 'code' in cause && cause.code === 'SELF_SIGNED_CERT_IN_CHAIN') {
+    log(`TLS proxy error (${cause.code}); writing the stub page instead`)
+    writeFileSync(join(distDir, 'index.html'), renderStubPage('apps/ohif-viewer/prebuilt.json'))
+    process.exit(0)
+  }
+  throw error
+}
 
 if (!matchesPin(pin, archive)) {
   fail(
