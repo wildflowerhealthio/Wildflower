@@ -20,6 +20,7 @@ const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 
 /** A representative config carrying a `securityLabel` (the HAR-shaped case). */
 const labelled = sourceFileCodec({
+  format: 'example',
   coding: { system: SYSTEM, code: 'example-source-file' },
   contentType: 'application/json',
   descriptionPrefix: 'Example source file: ',
@@ -31,6 +32,7 @@ const labelled = sourceFileCodec({
 
 /** The same shape with no `securityLabel` (the PDF-shaped case). */
 const unlabelled = sourceFileCodec({
+  format: 'example-pdf',
   coding: { system: SYSTEM, code: 'example-source-file' },
   contentType: 'application/pdf',
   descriptionPrefix: 'Example doc: ',
@@ -234,6 +236,7 @@ describe('buildSourceFile — the deterministic mint', () => {
   it('namespaces the id by coding system — two formats never collide on identical bytes and name', async () => {
     const picked = { fileName: 'report.bin', bytes: new TextEncoder().encode('shared') }
     const other = sourceFileCodec({
+      format: 'other',
       coding: {
         system: 'https://other.test/fhir/CodeSystem/source-file',
         code: 'example-source-file',

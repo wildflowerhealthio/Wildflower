@@ -111,19 +111,13 @@ const groupByFormat = (registry: ReadRegistry, picks: readonly PickedFile[]): Gr
  * @param files - The files that format claimed
  * @returns The format's per-unit outcomes
  */
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- the single use is the point: `kind: K` (not `FormatKind`) is what lets `registry[kind]` and `settings[kind]` type-check against each other in the body
 const decodeFormat = <K extends FormatKind>(
   registry: ReadRegistry,
   settings: FormatSettings,
   kind: K,
   files: readonly PickedFile[]
 ): Effect.Effect<readonly Either.Either<ReadUnit<FhirResource, K>, UnreadableUnit<K>>[]> =>
-  // The descriptor's `decode` stamps `format: kind` at runtime, but returns
-  // `string` because fundamentals is format-agnostic. The registry's
-  // construction guarantees the runtime format equals `K`.
-  registry[kind].decode(files, settings[kind]) as Effect.Effect<
-    readonly Either.Either<ReadUnit<FhirResource, K>, UnreadableUnit<K>>[]
-  >
+  registry[kind].decode(files, settings[kind])
 
 /**
  * Read a freshly picked batch: group it by format, decode every group

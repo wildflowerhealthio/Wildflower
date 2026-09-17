@@ -98,7 +98,7 @@ interface Options {
  * survive the re-decode.
  */
 const resolve = (
-  codec: Pick<SourceFileCodec, 'buildSourceFile'>,
+  codec: Pick<SourceFileCodec<string>, 'buildSourceFile'>,
   file: PickedFile,
   options?: Options
 ): Effect.Effect<Resolved, ParseResult.ParseError> => {
@@ -189,11 +189,12 @@ interface PerFileDecodeOptions {
  * batch's other files unaffected. Each unit's id is deterministic via
  * {@link unitId}.
  *
+ * @typeParam TFormat - The format tag literal (e.g. `'har'`), read from the codec
  * @typeParam TSettings - The format's per-import settings
  * @typeParam TParsed - The resource type the format decodes to; the minted
  *   `DocumentReference` joins it in the result
- * @param format - The format tag stamped onto each unit
- * @param codec - The format's source-file codec (its `buildSourceFile`)
+ * @param codec - The format's source-file codec (its `buildSourceFile` and
+ *   `format` tag — the tag is stamped onto each unit and used for id derivation)
  * @param decodeOne - The format's per-file decode
  * @param options - Per-file knobs, see {@link PerFileDecodeOptions}
  * @returns A batch `decode` in the {@link FileImporterDescriptor} shape
@@ -204,9 +205,8 @@ interface PerFileDecodeOptions {
  * resources are stamped with the pick's existing reference.
  */
 const perFileDecode =
-  <TSettings, TParsed extends MetaSource.Sourceable>(
-    format: string,
-    codec: Pick<SourceFileCodec, 'buildSourceFile'>,
+  <TFormat extends string, TSettings, TParsed extends MetaSource.Sourceable>(
+    codec: Pick<SourceFileCodec<TFormat>, 'buildSourceFile' | 'format'>,
     decodeOne: DecodeOne<TSettings, TParsed>,
     options?: PerFileDecodeOptions
   ) =>
@@ -215,14 +215,14 @@ const perFileDecode =
     settings: TSettings
   ): Effect.Effect<
     readonly Either.Either<
-      ReadUnit<TParsed | DocumentReferenceType, string>,
-      UnreadableUnit<string>
+      ReadUnit<TParsed | DocumentReferenceType, TFormat>,
+      UnreadableUnit<TFormat>
     >[]
   > =>
     Effect.forEach(
       files,
       (file) => {
-        const id = unitId(format, [file])
+        const id = unitId(codec.format, [file])
         return Effect.gen(function* () {
           const { ref, labeled } = yield* resolve(codec, file, {
             subject: options?.subjectFor?.(file),
@@ -236,7 +236,7 @@ const perFileDecode =
             id,
             title: file.fileName,
             files: [file] as readonly PickedFile[],
-            format,
+            format: codec.format,
             decoded: withSections(stamped, labeled === undefined ? [] : [labeled]),
           })
         }).pipe(
@@ -245,8 +245,8 @@ const perFileDecode =
               error
             ): Effect.Effect<
               Either.Either<
-                ReadUnit<TParsed | DocumentReferenceType, string>,
-                UnreadableUnit<string>
+                ReadUnit<TParsed | DocumentReferenceType, TFormat>,
+                UnreadableUnit<TFormat>
               >
             > =>
               Effect.succeed(
@@ -255,7 +255,7 @@ const perFileDecode =
                   id,
                   title: file.fileName,
                   files: [file] as readonly PickedFile[],
-                  format,
+                  format: codec.format,
                   error,
                 })
               )

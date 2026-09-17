@@ -54,7 +54,7 @@ const patientSubjectOf = (file: PickedFile): { readonly reference: string } | un
   return { reference: `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}` }
 }
 
-const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResource> = {
+const dicomImporterDescriptor: FileImporterDescriptor<'dicom', DicomSettings, FhirResource> = {
   format: 'dicom',
   display: {
     title: 'DICOM image',
@@ -62,7 +62,7 @@ const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResourc
   },
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
-  decode: SourceFile.perFileDecode('dicom', dicomSourceFileCodec, decodeDicom, {
+  decode: SourceFile.perFileDecode(dicomSourceFileCodec, decodeDicom, {
     subjectFor: patientSubjectOf,
   }),
   sourceFileCategoryToken: DICOM_SOURCE_FILE_CATEGORY_TOKEN,

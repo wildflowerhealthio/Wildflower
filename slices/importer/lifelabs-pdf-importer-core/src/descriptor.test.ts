@@ -61,11 +61,9 @@ const SETTINGS = { timeZone: 'America/Vancouver' }
 /** The lift the descriptor uses, with the printed document standing in for the PDF. */
 const decodeReports = (
   reports: readonly Report.Type[]
-): FileImporterDescriptor<LifeLabsPdfSettings, FhirResource>['decode'] =>
-  SourceFile.perFileDecode<LifeLabsPdfSettings, FhirResource>(
-    'lifelabs-pdf',
-    lifeLabsPdfSourceFileCodec,
-    (_file, settings) => decodeLifeLabsPdfDocument(layoutDocument(reports), settings)
+): FileImporterDescriptor<'lifelabs-pdf', LifeLabsPdfSettings, FhirResource>['decode'] =>
+  SourceFile.perFileDecode(lifeLabsPdfSourceFileCodec, (_file, settings: LifeLabsPdfSettings) =>
+    decodeLifeLabsPdfDocument(layoutDocument(reports), settings)
   )
 
 /** The one `read` unit a single-file decode yields, or a failure naming what came back. */
@@ -160,8 +158,8 @@ describe('lifeLabsPdfImporterDescriptor decode', () => {
     expect(outcomes).toHaveLength(1)
     const [outcome] = outcomes
     expect(outcome).toBeDefined()
-    expect(Either.isLeft(outcome!)).toBe(true)
-    if (Either.isLeft(outcome!)) {
+    expect(Either.isLeft(outcome)).toBe(true)
+    if (Either.isLeft(outcome)) {
       expect(outcome.left.title).toBe(file.fileName)
       expect(outcome.left.files).toEqual([file])
       expect(ParseResult.isParseError(outcome.left.error)).toBe(true)

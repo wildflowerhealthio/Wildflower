@@ -43,6 +43,7 @@ import {
 const HAR_SOURCE_FILE_CONTENT_TYPE = 'application/json'
 
 const codec = SourceFile.codec({
+  format: 'har',
   coding: { system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE },
   contentType: HAR_SOURCE_FILE_CONTENT_TYPE,
   descriptionPrefix: 'HAR archive: ',

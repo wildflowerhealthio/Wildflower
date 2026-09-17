@@ -50,7 +50,9 @@ interface Coding {
 }
 
 /** The per-format data {@link sourceFileCodec} needs to build one format's source-file codec. */
-interface SourceFileConfig {
+interface SourceFileConfig<TFormat extends string> {
+  /** The format tag this codec belongs to — carried onto the codec for `perFileDecode`. */
+  readonly format: TFormat
   /** The `type`/`category` coding that says "this is a source file of this format". */
   readonly coding: Coding
   /** The attachment's media type (`application/json` for HAR, `application/pdf` for LifeLabs). */
@@ -105,7 +107,9 @@ interface SourceFileWireParams {
 }
 
 /** The codec {@link sourceFileCodec} returns for one format. */
-interface SourceFileCodec {
+interface SourceFileCodec<TFormat extends string> {
+  /** The format tag this codec was built for. */
+  readonly format: TFormat
   /** The decoded-side schema: `{ id, fileName, uploadedAt, bytes }`. */
   readonly SourceFile: Schema.Schema<SourceFile, SourceFileEncoded>
   /** The FHIR resource id refinement — matches the id `buildSourceFile` derives. */
@@ -154,7 +158,9 @@ interface SourceFileCodec {
  *   `SourceFileFromFhirJson` and their `encode`/`decode`), the pure `toWire`
  *   builder, `isSourceFile`, and the `categoryToken`
  */
-const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
+const sourceFileCodec = <TFormat extends string>(
+  config: SourceFileConfig<TFormat>
+): SourceFileCodec<TFormat> => {
   const { coding, contentType, descriptionPrefix, securityLabel } = config
 
   const SourceFileId = Schema.NonEmptyString.pipe(
@@ -315,6 +321,7 @@ const sourceFileCodec = (config: SourceFileConfig): SourceFileCodec => {
     })
 
   return {
+    format: config.format,
     SourceFile: SourceFileSchema,
     SourceFileId,
     SourceFileFromDocumentReference,

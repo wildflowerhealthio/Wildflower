@@ -13,7 +13,14 @@ import {
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { entryFormat, entryId, groupByFormat, readBatch, type ReadRegistry, redecodeFormat } from './read-batch.ts'
+import {
+  entryFormat,
+  entryId,
+  groupByFormat,
+  readBatch,
+  type ReadRegistry,
+  redecodeFormat,
+} from './read-batch.ts'
 import { defaultFormatSettings, type FormatKind, formatRegistry } from './registry.ts'
 
 /**
@@ -49,11 +56,11 @@ const fakeResource = (id: string): FhirResource =>
 
 /** A fake decode: one unit per file, returning Either<ReadUnit, UnreadableUnit> with deterministic ids. A file whose first byte is 0 is unreadable. */
 const fakeDecode =
-  (kind: FormatKind) =>
+  <K extends FormatKind>(kind: K) =>
   (
     files: readonly PickedFile[],
     settings: unknown
-  ): Effect.Effect<readonly Either.Either<ReadUnit<FhirResource, string>, UnreadableUnit<string>>[]> =>
+  ): Effect.Effect<readonly Either.Either<ReadUnit<FhirResource, K>, UnreadableUnit<K>>[]> =>
     Effect.succeed(
       files.map((file) =>
         file.bytes[0] === 0
@@ -132,9 +139,7 @@ describe('readBatch', () => {
   it('property: one outcome per pick, tagged by its format, unreadable exactly for a zero-led file, ids deterministic', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(pickArbitrary, { maxLength: 8 }), async (picks) => {
-        const units = await Effect.runPromise(
-          readBatch(fakeRegistry, defaultFormatSettings, picks)
-        )
+        const units = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
         expect(units.length).toBe(picks.length)
         expect(new Set(units.map(entryId)).size).toBe(units.length)
         for (const unit of units) {
@@ -159,11 +164,9 @@ describe('readBatch', () => {
   it('should decode each format under its own settings', async () => {
     const settings = { ...defaultFormatSettings, har: { disabledKinds: ['X'] } }
     const [unit] = await Effect.runPromise(
-      readBatch(
-        fakeRegistry,
-        settings,
-        [{ fileName: 'har-a', bytes: new Uint8Array([1]), source: PickedFileSource.local }]
-      )
+      readBatch(fakeRegistry, settings, [
+        { fileName: 'har-a', bytes: new Uint8Array([1]), source: PickedFileSource.local },
+      ])
     )
     if (unit === undefined || !Either.isRight(unit)) throw new Error('expected a read unit')
     expect(unit.right.decoded.sections[0]?.title).toBe(`har:${JSON.stringify(settings.har)}`)
@@ -221,9 +224,7 @@ describe('readBatch over the real registry', () => {
       },
       { fileName: 'scan.dcm', bytes: dicomBytes, source: PickedFileSource.local },
     ]
-    const units = await Effect.runPromise(
-      readBatch(formatRegistry, defaultFormatSettings, picks)
-    )
+    const units = await Effect.runPromise(readBatch(formatRegistry, defaultFormatSettings, picks))
     expect(
       units.map((unit) => [
         Either.isRight(unit) ? 'read' : 'left',

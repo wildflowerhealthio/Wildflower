@@ -23,6 +23,7 @@ const DICOM_SOURCE_FILE_CODE = 'dicom-source-file'
 const DICOM_SOURCE_FILE_CONTENT_TYPE = 'application/dicom'
 
 const dicomSourceFileCodec = SourceFile.codec({
+  format: 'dicom',
   coding: { system: DICOM_SYSTEM, code: DICOM_SOURCE_FILE_CODE },
   contentType: DICOM_SOURCE_FILE_CONTENT_TYPE,
   descriptionPrefix: 'DICOM file: ',

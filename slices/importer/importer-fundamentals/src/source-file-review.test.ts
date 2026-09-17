@@ -21,6 +21,7 @@ import { perFileDecode, SECTION_TITLE, resolve, key, withSections } from './sour
  */
 
 const codec = sourceFileCodec({
+  format: 'test',
   coding: { system: 'https://example.test/fhir/CodeSystem/source-file', code: 'example' },
   contentType: 'application/octet-stream',
   descriptionPrefix: 'Example: ',
@@ -210,7 +211,7 @@ describe('MetaSource.stamp / MetaSource.stampDecoded', () => {
 })
 
 describe('perFileDecode', () => {
-  const decode = perFileDecode('test', codec, decodeBytes)
+  const decode = perFileDecode(codec, decodeBytes)
 
   it('property: one unit per file, in pick order, each titled by its file name — left for an empty file, right otherwise', async () => {
     await fc.assert(
@@ -267,7 +268,7 @@ describe('perFileDecode', () => {
 
   it('should hand the per-file decode the resolved source id', async () => {
     const seen: string[] = []
-    const spying = perFileDecode('test', codec, (file, settings: null, source) => {
+    const spying = perFileDecode(codec, (file, settings: null, source) => {
       seen.push(SourceFileFhirReference.make(source.id))
       return decodeBytes(file, settings)
     })

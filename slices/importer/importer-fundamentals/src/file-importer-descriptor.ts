@@ -112,7 +112,7 @@ const unitId = (format: string, files: readonly PickedFile[]): string =>
  * `Either`-valued batch outcome; discrimination is via `Either.isRight`.
  *
  * @typeParam TParsed - The concrete resource type the format decodes to
- * @typeParam F - The format tag (e.g. `FormatKind` in the registry)
+ * @typeParam TFormat - The format tag (e.g. `FormatKind` in the registry)
  *
  * @remarks
  * A single-file format returns one unit per input file, titled by the file
@@ -121,11 +121,11 @@ const unitId = (format: string, files: readonly PickedFile[]): string =>
  * `id` is a per-unit stable identity for a React `key` and for the
  * reviewer's selection map — it survives a settings re-decode.
  */
-interface ReadUnit<TParsed, F extends string> {
+interface ReadUnit<TParsed, TFormat extends string> {
   readonly id: string
   readonly title: string
   readonly files: readonly PickedFile[]
-  readonly format: F
+  readonly format: TFormat
   readonly decoded: DecodedFile<TParsed>
 }
 
@@ -135,14 +135,14 @@ interface ReadUnit<TParsed, F extends string> {
  * a whole. Tagged for discrimination against other error variants (e.g.
  * `UnrecognizedFile`) in the `Left` of an `Either`-valued batch outcome.
  *
- * @typeParam F - The format tag (e.g. `FormatKind` in the registry)
+ * @typeParam TFormat - The format tag (e.g. `FormatKind` in the registry)
  */
-interface UnreadableUnit<F extends string> {
+interface UnreadableUnit<TFormat extends string> {
   readonly _tag: 'UnreadableUnit'
   readonly id: string
   readonly title: string
   readonly files: readonly PickedFile[]
-  readonly format: F
+  readonly format: TFormat
   readonly error: ParseResult.ParseError
 }
 
@@ -178,9 +178,9 @@ interface UnreadableUnit<F extends string> {
  * `meta.source` with it — so the source file rides the same reviewed batch as
  * the extracted resources, and the shell has no source-file knowledge at all.
  */
-interface FileImporterDescriptor<TSettings, TParsed> {
+interface FileImporterDescriptor<TFormat extends string, TSettings, TParsed> {
   /** The format tag this descriptor binds (`'har'`, `'lifelabs-pdf'`); the registry's key. */
-  readonly format: string
+  readonly format: TFormat
   /** User-facing strings the shell shows for this format. */
   readonly display: { readonly title: string; readonly description: string }
   /**
@@ -197,31 +197,31 @@ interface FileImporterDescriptor<TSettings, TParsed> {
   /**
    * Decode a batch of picked files into one `Either` per unit the format
    * decides on — `Right` for a successfully decoded {@link ReadUnit} (with
-   * a deterministic id and the format tag already stamped), `Left` for an
-   * {@link UnreadableUnit} carrying the malformed-input `ParseError`. Never
-   * fails, requires no services, and writes nothing.
+   * a deterministic id and the format tag `TFormat` already stamped), `Left`
+   * for
+   * an {@link UnreadableUnit} carrying the malformed-input `ParseError`.
+   * Never fails, requires no services, and writes nothing.
    *
    * @remarks
    * Single-file formats wrap a per-file decode with `perFileDecode`
-   * (`source-file-review.ts`), which mints the file's source-file
-   * `DocumentReference`, prepends it as its own "Source file" section,
-   * stamps every extracted resource's `meta.source` with it, and derives
-   * the unit's id deterministically via {@link unitId}; a group format
-   * (a DICOM study merging several `.dcm` files) does the same with
-   * `sourceFileFor` per file and decides for itself which source file each
-   * of its resources names. Bytes rather than text so the seam stays
-   * format-blind: a HAR decodes UTF-8 JSON, a PDF decodes binary. Resource
-   * keys must be stable across settings changes where the underlying
-   * resource is unchanged, so a re-decode under new settings keeps the
-   * reviewer's per-resource exclusions and edits applying. Every file in
-   * the batch is one this descriptor's {@link detect} claimed.
+   * (`source-file-review.ts`), which reads the format tag from the codec,
+   * mints the file's source-file `DocumentReference`, prepends it as its
+   * own "Source file" section, stamps every extracted resource's
+   * `meta.source` with it, and derives the unit's id deterministically via
+   * {@link unitId}; a group format (a DICOM study merging several `.dcm`
+   * files) does the same with `sourceFileFor` per file and decides for
+   * itself which source file each of its resources names. Bytes rather than
+   * text so the seam stays format-blind: a HAR decodes UTF-8 JSON, a PDF
+   * decodes binary. Resource keys must be stable across settings changes
+   * where the underlying resource is unchanged, so a re-decode under new
+   * settings keeps the reviewer's per-resource exclusions and edits
+   * applying. Every file in the batch is one this descriptor's
+   * {@link detect} claimed.
    */
   readonly decode: (
     files: readonly PickedFile[],
     settings: TSettings
-  ) => Effect.Effect<
-    readonly Either.Either<ReadUnit<TParsed, string>, UnreadableUnit<string>>[]
-  >
+  ) => Effect.Effect<readonly Either.Either<ReadUnit<TParsed, TFormat>, UnreadableUnit<TFormat>>[]>
   /**
    * FHIR `category` search token — `system|code` form — every server-side
    * source-file read filters on for this format's uploaded source files.
@@ -306,7 +306,7 @@ interface FileImporterDescriptor<TSettings, TParsed> {
  * {@link FileImporterDescriptor} itself so the shell can route bound
  * (descriptor + adapters) records through it.
  */
-const identify = <D extends Pick<FileImporterDescriptor<never, never>, 'detect'>>(
+const identify = <D extends Pick<FileImporterDescriptor<string, never, never>, 'detect'>>(
   descriptors: readonly D[],
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))

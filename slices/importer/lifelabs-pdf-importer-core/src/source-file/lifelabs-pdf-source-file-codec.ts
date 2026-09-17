@@ -36,6 +36,7 @@ const LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE = 'application/pdf'
  * format's source file with (through `perFileDecode`).
  */
 const lifeLabsPdfSourceFileCodec = SourceFile.codec({
+  format: 'lifelabs-pdf',
   coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
   contentType: LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
   descriptionPrefix: 'LifeLabs report PDF: ',

@@ -60,15 +60,16 @@ type FormatSettings = { readonly [K in FormatKind]: FormatVariant[K]['settings']
  * construction with no casts.
  */
 type BoundFormat<K extends FormatKind> = FileImporterDescriptor<
+  K,
   FormatVariant[K]['settings'],
   FormatVariant[K]['parsed']
-> & { readonly format: K }
+>
 
 /** The closed registry; its keys are the {@link FormatKind} union. */
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
-  har: { ...harImporterDescriptor, format: 'har' },
-  'lifelabs-pdf': { ...lifeLabsPdfImporterDescriptor, format: 'lifelabs-pdf' },
-  dicom: { ...dicomImporterDescriptor, format: 'dicom' },
+  har: harImporterDescriptor,
+  'lifelabs-pdf': lifeLabsPdfImporterDescriptor,
+  dicom: dicomImporterDescriptor,
 }
 
 /** The default settings of every registered format — the state a fresh import seeds. */

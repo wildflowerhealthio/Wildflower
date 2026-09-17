@@ -30,7 +30,11 @@ import {
  * stamped onto every synthesized resource's `meta.source`; a `server` pick
  * mints nothing and stamps the reference it came with.
  */
-const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<LifeLabsPdfSettings, FhirResource> = {
+const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
+  'lifelabs-pdf',
+  LifeLabsPdfSettings,
+  FhirResource
+> = {
   format: 'lifelabs-pdf',
   display: {
     title: 'LifeLabs report',
@@ -38,7 +42,7 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<LifeLabsPdfSettings,
   },
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
-  decode: SourceFile.perFileDecode('lifelabs-pdf', lifeLabsPdfSourceFileCodec, decodeLifeLabsPdf),
+  decode: SourceFile.perFileDecode(lifeLabsPdfSourceFileCodec, decodeLifeLabsPdf),
   sourceFileCategoryToken: LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
   isSourceFile: isLifeLabsPdfSourceFile,
   sourceFileFromDocumentReference: (resource) =>

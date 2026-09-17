@@ -96,7 +96,7 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
  * independent of the kind toggles, so a settings change re-decodes to the same
  * keys for the resources that survive it.
  */
-const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> = {
+const harImporterDescriptor: FileImporterDescriptor<'har', HarSettings, FhirResource> = {
   format: 'har',
   display: {
     title: 'HAR archive',
@@ -104,7 +104,7 @@ const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> =
   },
   detect: detectHar,
   defaultSettings: defaultHarSettings,
-  decode: SourceFile.perFileDecode('har', harSourceFileCodec, (file, settings) =>
+  decode: SourceFile.perFileDecode(harSourceFileCodec, (file, settings) =>
     decodeHar(file.bytes, settings).pipe(
       Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
       Effect.map((previews): DecodedFile<FhirResource> => ({
