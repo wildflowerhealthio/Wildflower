@@ -37,13 +37,7 @@ class ReactFileImporter<TFormat extends FormatKind> extends FileImporter<
     importer: FileImporter<TFormat, FormatSettings[TFormat]>,
     SettingsPicker: (props: SettingsPickerProps<FormatSettings[TFormat]>) => JSX.Element
   ) {
-    super({
-      codec: importer['codec'],
-      display: importer.display,
-      detect: importer.detect,
-      defaultSettings: importer.defaultSettings,
-      decode: importer.decode,
-    })
+    super({ from: importer })
     this.SettingsPicker = SettingsPicker
   }
 }

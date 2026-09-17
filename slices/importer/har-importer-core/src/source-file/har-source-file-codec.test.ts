@@ -15,28 +15,10 @@ import {
 } from 'web-trace-core/codec'
 import { arbitraries } from 'web-trace-core/test-helpers'
 
-import {
-  HAR_SOURCE_FILE_CATEGORY_TOKEN,
-  HAR_SOURCE_FILE_CONTENT_TYPE,
-  harSourceFileFromDocumentReference,
-  isHarSourceFile,
-  buildSourceFile,
-} from './har-source-file-codec.ts'
+import { harImporter } from '../har-importer.ts'
 
-/**
- * The shared codec machinery — round trip, hash/size, `subject`, verbatim
- * bytes, the deterministic id — is pinned once in
- * `importer-fundamentals`' `source-file-codec.test.ts`. This file asserts
- * only what is HAR-specific: the web-trace coding and raw security label, and
- * the two seams a HAR source file alone touches — disjointness from a captured
- * trace, and that the stored bytes still read as an HTTP Archive.
- */
-
-const { exchange: exchangeArbitrary } = arbitraries(fc)
-
-/** Mint a HAR source file resource from picked bytes — the descriptor's own entry point. */
 const mint = (bytes: Uint8Array, fileName = 'portal-session.har'): Promise<DocumentReferenceType> =>
-  Effect.runPromise(buildSourceFile({ fileName, bytes }))
+  Effect.runPromise(harImporter.buildSourceFile({ fileName, bytes }))
 
 describe('HAR source file coding', () => {
   it('carries the web-trace har-archive coding on type and category, the raw label, and json content', async () => {
@@ -50,13 +32,13 @@ describe('HAR source file coding', () => {
       WEB_TRACE_REDACTION_SYSTEM
     )
     expect(resource.securityLabel[0]?.coding[0]?.code).toBe(WEB_TRACE_RAW_CODE)
-    expect(resource.content[0]?.attachment?.contentType).toBe(HAR_SOURCE_FILE_CONTENT_TYPE)
+    expect(resource.content[0]?.attachment?.contentType).toBe(harImporter.contentType)
     expect(resource.description).toBe('HAR archive: portal-session.har')
-    expect(isHarSourceFile(resource)).toBe(true)
+    expect(harImporter.isSourceFile(resource)).toBe(true)
   })
 
   it('exposes the category search token in system|code form', () => {
-    expect(HAR_SOURCE_FILE_CATEGORY_TOKEN).toBe(`${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE}`)
+    expect(harImporter.categoryToken).toBe(`${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE}`)
   })
 })
 
@@ -70,10 +52,10 @@ describe('HAR source file vs captured trace', () => {
           const sourceFileResource = await mint(bytes)
           const traceResource = await Effect.runPromise(toDocumentReference(exchange))
 
-          expect(isHarSourceFile(sourceFileResource)).toBe(true)
+          expect(harImporter.isSourceFile(sourceFileResource)).toBe(true)
           expect(isWebTrace(sourceFileResource)).toBe(false)
           expect(isWebTrace(traceResource)).toBe(true)
-          expect(isHarSourceFile(traceResource)).toBe(false)
+          expect(harImporter.isSourceFile(traceResource)).toBe(false)
         }
       ),
       { numRuns: numRunsFor({ base: 50 }) }
@@ -85,7 +67,7 @@ describe('HAR source file vs captured trace', () => {
       fc.asyncProperty(exchangeArbitrary, async (exchange) => {
         const outcome = await Effect.runPromise(
           Effect.either(
-            harSourceFileFromDocumentReference(
+            harImporter.sourceFileFromDocumentReference(
               await Effect.runPromise(toDocumentReference(exchange))
             )
           )
@@ -98,11 +80,9 @@ describe('HAR source file vs captured trace', () => {
   })
 })
 
+const { exchange: exchangeArbitrary } = arbitraries(fc)
+
 test('property: stored bytes still parse as an HTTP Archive after the round trip, which is the point of storing them', async () => {
-  // The seam between this codec and the `http-archive` package: a source file is
-  // only worth storing if what comes back out is still readable as the file
-  // that went in. Nothing here parses the source file — `HttpArchive.LogFromHarJson`
-  // does, on the bytes the codec hands back.
   await fc.assert(
     fc.asyncProperty(
       fc.array(exchangeArbitrary, { minLength: 1, maxLength: 4 }),
@@ -111,7 +91,9 @@ test('property: stored bytes still parse as an HTTP Archive after the round trip
           Schema.encode(HarFromJson)(emitHar(exchanges, { sessionId: 'session-0' }))
         )
         const resource = await mint(new TextEncoder().encode(fileText))
-        const stored = await Effect.runPromise(harSourceFileFromDocumentReference(resource))
+        const stored = await Effect.runPromise(
+          harImporter.sourceFileFromDocumentReference(resource)
+        )
 
         const log = await Effect.runPromise(
           Schema.decodeUnknown(HttpArchive.LogFromHarJson)(new TextDecoder().decode(stored.bytes))

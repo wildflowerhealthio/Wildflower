@@ -8,4 +8,8 @@
  */
 const DICOM_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/dicom'
 
-export { DICOM_SYSTEM }
+const DICOM_SOURCE_FILE_CODE = 'dicom-source-file'
+
+const DICOM_SOURCE_FILE_CONTENT_TYPE = 'application/dicom'
+
+export { DICOM_SOURCE_FILE_CODE, DICOM_SOURCE_FILE_CONTENT_TYPE, DICOM_SYSTEM }

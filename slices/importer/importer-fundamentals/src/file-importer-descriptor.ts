@@ -1,126 +1,45 @@
-import type { Effect, Either, ParseResult } from 'effect'
-import type { DocumentReference, FhirResource } from 'fhir-r4/resources'
+import { DateTime, Effect, Either, Encoding, ParseResult, Schema } from 'effect'
+import type * as FhirR4 from 'fhir/r4.d.ts'
+import { joinIdComponents, localResourceId } from 'fhir-r4/identity'
+import { DocumentReference, type FhirResource } from 'fhir-r4/resources'
 
+import * as MetaSource from './meta-source.ts'
 import type { PickedFile } from './picked-file.ts'
-import type { SourceFileCodec } from './source-file-codec.ts'
+import { sha256Base64 } from './sha256.ts'
+import * as SourceFileFhirReference from './source-file-fhir-reference.ts'
 
-/**
- * A decoded FHIR R4 `DocumentReference` — the concrete type of a resource the
- * shell reads back from the FHIR server before dispatching it to one
- * descriptor's {@link FileImporterDescriptor.isSourceFile} predicate and
- * {@link FileImporterDescriptor.sourceFileFromDocumentReference} reader.
- *
- * @remarks
- * A local alias for `typeof DocumentReference.Schema.Type`, exported so
- * every consumer of the source-file seam names it the same way. `web-trace-core`
- * carries its own alias with the same shape for the trace codec; both point
- * at the same underlying `Schema.Type`, so a value satisfies either.
- */
+// ─── Shared Types ───────────────────────────────────────────────────────────
+
 type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
-/**
- * A titled resource a format binding yields from its review state — the
- * general-purpose unit the shell and the confirm step work with. The key
- * is stable across review-state changes (a kind toggle in one format must
- * not renumber resources in another), and the title is the one-line
- * display the shell shows beside each resource's include checkbox.
- *
- * @typeParam TParsed - The concrete resource type the format decodes to
- *   (FHIR for HAR and LifeLabs PDF)
- */
 interface LabeledResource<TParsed> {
   readonly key: string
   readonly title: string
   readonly resource: TParsed
 }
 
-/**
- * One titled group of labeled resources a format's decode yields — the unit
- * the shell's generalized review lists. A format decides what a section is
- * from its own structure: the HAR binding sections by URL, the LifeLabs PDF
- * binding by report.
- *
- * @typeParam TParsed - The concrete resource type the format decodes to
- *   (FHIR for HAR and LifeLabs PDF)
- */
 interface LabeledSection<TParsed> {
   readonly title: string
   readonly resources: readonly LabeledResource<TParsed>[]
 }
 
-/**
- * Everything one file's decode yields for review: the titled sections of
- * labeled resources the shell renders with per-resource include/edit, and
- * the file-level diagnostic notes for what did not become a resource (a
- * response no kind matched, a body the archive dropped) — surfaced so the
- * reviewer's opt-in stays informed, folded to data so decode stays total
- * past the one malformed-file `ParseError`.
- *
- * @typeParam TParsed - The concrete resource type the format decodes to
- */
 interface DecodedFile<TParsed> {
   readonly sections: readonly LabeledSection<TParsed>[]
   readonly notes: readonly string[]
 }
 
-/**
- * Every labeled resource across a decoded file's sections, in section order —
- * the flat list the per-resource `StagedImport` transitions and the confirm's
- * write set fold over.
- *
- * @param sections - A decoded file's sections
- * @returns The sections' resources concatenated, order preserved
- */
 const sectionResources = <TParsed>(
   sections: readonly LabeledSection<TParsed>[]
 ): readonly LabeledResource<TParsed>[] => sections.flatMap((section) => section.resources)
 
-/**
- * The props a format's settings picker receives — the current settings and a
- * way to change them. Generic over the format's `TSettings` so each picker is
- * written against its own precise shape, mirroring the collector slice's
- * `ConfigFormProps`.
- *
- * @remarks
- * Declared here — below every format's React package — so a format UI
- * implements it without reaching into a sibling format's package. A plain
- * props record, no React types: the picker component shape lives where the
- * components do.
- */
 interface SettingsPickerProps<TSettings> {
-  /** The current settings value. */
   readonly settings: TSettings
-  /** Called with the next settings when the user changes them. */
   readonly onChange: (settings: TSettings) => void
 }
 
-/**
- * Deterministic unit identity derived from the format tag and the file
- * names the unit was decoded from. Stable across settings re-decodes
- * because the inputs are the same, so the reviewer's selection map (keyed
- * by unit id) survives without external id-preservation logic.
- *
- * @param format - The format tag (`'har'`, `'lifelabs-pdf'`, etc.)
- * @param files - The picked files the unit was decoded from
- * @returns A stable, human-readable id
- */
 const unitId = (format: string, files: readonly PickedFile[]): string =>
   `${format}/${files.map((f) => f.fileName).join(',')}`
 
-/**
- * One unit the batch read decoded successfully, stamped with a stable id
- * and the format that claimed it. Lives in the `Right` of an
- * `Either`-valued batch outcome; discrimination is via `Either.isRight`.
- *
- * @typeParam TFormat - The format tag (e.g. `FormatKind` in the registry)
- *
- * @remarks
- * A single-file format returns one unit per input file, titled by the file
- * name; a group format (a DICOM study spanning several `.dcm` files) may
- * merge several files into fewer units and title them by what the group is.
- * `id` is a per-unit stable identity for a React `key` and for the
- * reviewer's selection map — it survives a settings re-decode.
- */
 interface ReadUnit<TFormat extends string> {
   readonly id: string
   readonly title: string
@@ -129,14 +48,6 @@ interface ReadUnit<TFormat extends string> {
   readonly decoded: DecodedFile<FhirResource>
 }
 
-/**
- * A unit whose format was identified but whose decode rejected the bytes —
- * the malformed-input case, folded to data so a batch decode never fails as
- * a whole. Tagged for discrimination against other error variants (e.g.
- * `UnrecognizedFile`) in the `Left` of an `Either`-valued batch outcome.
- *
- * @typeParam TFormat - The format tag (e.g. `FormatKind` in the registry)
- */
 interface UnreadableUnit<TFormat extends string> {
   readonly _tag: 'UnreadableUnit'
   readonly id: string
@@ -146,22 +57,174 @@ interface UnreadableUnit<TFormat extends string> {
   readonly error: ParseResult.ParseError
 }
 
+// ─── Source File Types ──────────────────────────────────────────────────────
+
+interface Coding {
+  readonly system: string
+  readonly code: string
+}
+
+interface SourceFile {
+  readonly id: string
+  readonly fileName: string
+  readonly uploadedAt: DateTime.Utc
+  readonly bytes: Uint8Array
+}
+
+interface SourceFileEncoded {
+  readonly id: string
+  readonly fileName: string
+  readonly uploadedAt: string
+  readonly bytes: string
+}
+
+// ─── Decode Types ───────────────────────────────────────────────────────────
+
+interface SourceFileRef {
+  readonly id: string
+}
+
+type DecodeOne<TSettings> = (
+  file: PickedFile,
+  settings: TSettings,
+  source: SourceFileRef
+) => Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError>
+
+// ─── Source File Review Helpers ─────────────────────────────────────────────
+
+const sourceFileKey = (fileName: string): string => `source-file/${fileName}`
+
+const SOURCE_FILE_SECTION_TITLE = 'Source file'
+
+interface SourceFileResolved {
+  readonly ref: SourceFileRef
+  readonly labeled: LabeledResource<DocumentReferenceType> | undefined
+}
+
+const mintedWithoutId = (fileName: string): ParseResult.ParseError =>
+  new ParseResult.ParseError({
+    issue: new ParseResult.Type(
+      Schema.String.ast,
+      fileName,
+      `Source file minted without an id: ${fileName}`
+    ),
+  })
+
+type BuildSourceFile = (
+  picked: { readonly fileName: string; readonly bytes: Uint8Array },
+  options?: { readonly subject?: { readonly reference: string } }
+) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
+
+const resolveSourceFile = (
+  buildSourceFile: BuildSourceFile,
+  file: PickedFile,
+  options?: { readonly subject?: { readonly reference: string } | undefined }
+): Effect.Effect<SourceFileResolved, ParseResult.ParseError> => {
+  if (file.source._tag === 'server') {
+    const { reference } = file.source
+    return Effect.succeed({
+      ref: { id: SourceFileFhirReference.idOf(reference) },
+      labeled: undefined,
+    })
+  }
+  return buildSourceFile(file, { subject: options?.subject }).pipe(
+    Effect.flatMap((resource): Effect.Effect<SourceFileResolved, ParseResult.ParseError> => {
+      const { id } = resource
+      if (id === null) return Effect.fail(mintedWithoutId(file.fileName))
+      return Effect.succeed({
+        ref: { id },
+        labeled: { key: sourceFileKey(file.fileName), title: file.fileName, resource },
+      })
+    })
+  )
+}
+
+const withSourceSections = <TParsed>(
+  decoded: DecodedFile<TParsed>,
+  sourceFiles: readonly LabeledResource<TParsed>[]
+): DecodedFile<TParsed> => {
+  if (sourceFiles.length === 0) return decoded
+  const sections: readonly LabeledSection<TParsed>[] = sourceFiles.map((sourceFile) => ({
+    title: SOURCE_FILE_SECTION_TITLE,
+    resources: [sourceFile],
+  }))
+  return { ...decoded, sections: [...sections, ...decoded.sections] }
+}
+
+interface PerFileDecodeOptions {
+  readonly subjectFor?: (file: PickedFile) => { readonly reference: string } | undefined
+}
+
+const buildPerFileDecode = <TFormat extends string, TSettings>(
+  provider: {
+    readonly format: TFormat
+    readonly buildSourceFile: BuildSourceFile
+  },
+  decodeOne: DecodeOne<TSettings>,
+  options?: PerFileDecodeOptions
+) =>
+  (
+    files: readonly PickedFile[],
+    settings: TSettings
+  ): Effect.Effect<readonly Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>[]> =>
+    Effect.forEach(
+      files,
+      (file) => {
+        const id = unitId(provider.format, [file])
+        return Effect.gen(function* () {
+          const { ref, labeled } = yield* resolveSourceFile(
+            provider.buildSourceFile,
+            file,
+            { subject: options?.subjectFor?.(file) }
+          )
+          const decoded = yield* decodeOne(file, settings, ref)
+          const stamped = MetaSource.stampDecoded(decoded, SourceFileFhirReference.make(ref.id))
+          return Either.right({
+            id,
+            title: file.fileName,
+            files: [file] as readonly PickedFile[],
+            format: provider.format,
+            decoded: withSourceSections(stamped, labeled === undefined ? [] : [labeled]),
+          })
+        }).pipe(
+          Effect.catchAll(
+            (error): Effect.Effect<Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>> =>
+              Effect.succeed(
+                Either.left({
+                  _tag: 'UnreadableUnit' as const,
+                  id,
+                  title: file.fileName,
+                  files: [file] as readonly PickedFile[],
+                  format: provider.format,
+                  error,
+                })
+              )
+          )
+        )
+      },
+      { concurrency: 'unbounded' }
+    )
+
+// ─── Schema Annotation Derivation ──────────────────────────────────────────
+
+const pascalCase = (format: string): string =>
+  format.split('-').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('')
+
+// ─── FileImporter ───────────────────────────────────────────────────────────
+
 /**
  * "A file-format importer" as one first-class value: everything the shell
  * needs to turn a picked file of one format into reviewed, opt-in-written
  * resources. Each format binding (`har-importer-core`, etc.) instantiates
  * one; the registry lists them.
  *
- * @typeParam TFormat - The format tag literal (`'har'`, `'lifelabs-pdf'`, etc.)
- * @typeParam TSettings - The format's per-import settings
- *
- * @remarks
- * The source-file codec is encapsulated: the shell reads the category
- * token, the `isSourceFile` predicate, the read-back function, and the
- * content type through accessors, and never sees the codec's schemas, wire
- * builder, or `buildSourceFile`. `perFileDecode` receives the codec at
- * construction time (before this class is instantiated), so the decode
- * function closes over it without exposing it.
+ * The source-file FHIR encoding is built internally from the format's coding
+ * and content type — every format stores its uploaded source file as a
+ * `DocumentReference` with one attachment carrying the bytes verbatim, keyed
+ * under a per-format `type`/`category` coding. The class builds the schemas,
+ * the deterministic id mint, the read-back, and the batch decode from the
+ * constructor config; a binding supplies its coding constants and a per-file
+ * decode function, nothing else.
  */
 class FileImporter<TFormat extends string, TSettings> {
   readonly format: TFormat
@@ -172,69 +235,231 @@ class FileImporter<TFormat extends string, TSettings> {
     files: readonly PickedFile[],
     settings: TSettings
   ) => Effect.Effect<readonly Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>[]>
+  readonly categoryToken: string
+  readonly contentType: string
+  readonly isSourceFile: (resource: DocumentReferenceType) => boolean
+  readonly sourceFileFromDocumentReference: (
+    resource: DocumentReferenceType
+  ) => Effect.Effect<
+    { readonly id: string; readonly fileName: string; readonly bytes: Uint8Array },
+    ParseResult.ParseError
+  >
+  readonly sourceFileToDocumentReference: (
+    sourceFile: SourceFile
+  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
+  readonly buildSourceFile: BuildSourceFile
 
-  protected readonly codec: SourceFileCodec<TFormat>
+  constructor(
+    config:
+      | {
+          readonly format: TFormat
+          readonly coding: Coding
+          readonly contentType: string
+          readonly display: { readonly title: string; readonly description: string }
+          readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
+          readonly defaultSettings: TSettings
+          readonly decodeOne: DecodeOne<TSettings>
+          readonly securityLabel?: readonly Coding[] | undefined
+          readonly subjectFor?: (file: PickedFile) => { readonly reference: string } | undefined
+        }
+      | { readonly from: FileImporter<TFormat, TSettings> }
+  ) {
+    if ('from' in config) {
+      const source = config.from
+      this.format = source.format
+      this.display = source.display
+      this.detect = source.detect
+      this.defaultSettings = source.defaultSettings
+      this.decode = source.decode
+      this.categoryToken = source.categoryToken
+      this.contentType = source.contentType
+      this.isSourceFile = source.isSourceFile
+      this.sourceFileFromDocumentReference = source.sourceFileFromDocumentReference
+      this.sourceFileToDocumentReference = source.sourceFileToDocumentReference
+      this.buildSourceFile = source.buildSourceFile
+      return
+    }
 
-  constructor(config: {
-    readonly codec: SourceFileCodec<TFormat>
-    readonly display: { readonly title: string; readonly description: string }
-    readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
-    readonly defaultSettings: TSettings
-    readonly decode: (
-      files: readonly PickedFile[],
-      settings: TSettings
-    ) => Effect.Effect<readonly Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>[]>
-  }) {
-    this.codec = config.codec
-    this.format = config.codec.format
+    const { coding, contentType, securityLabel } = config
+    const descriptionPrefix = `${config.display.title}: `
+    const sourceFileName = `${pascalCase(config.format)}SourceFile`
+
+    this.format = config.format
     this.display = config.display
     this.detect = config.detect
     this.defaultSettings = config.defaultSettings
-    this.decode = config.decode
-  }
+    this.contentType = contentType
+    this.categoryToken = `${coding.system}|${coding.code}`
 
-  get categoryToken(): string {
-    return this.codec.categoryToken
-  }
+    const SourceFileId = Schema.NonEmptyString.pipe(
+      Schema.pattern(/^[A-Za-z0-9\-.]{1,64}$/u)
+    ).annotations({
+      identifier: `${sourceFileName}Id`,
+      description: `FHIR resource id of an uploaded ${config.display.title.toLowerCase()} source file; deterministic in the file hash and name.`,
+    })
 
-  get contentType(): string {
-    return this.codec.contentType
-  }
+    const SourceFileSchema = Schema.Struct({
+      id: SourceFileId,
+      fileName: Schema.NonEmptyString,
+      uploadedAt: Schema.DateTimeUtc,
+      bytes: Schema.Uint8ArrayFromBase64,
+    })
 
-  isSourceFile(resource: DocumentReferenceType): boolean {
-    return this.codec.isSourceFile(resource)
-  }
+    const decodeResource = ParseResult.decodeUnknown(DocumentReference.Schema)
+    const encodeResource = ParseResult.encode(DocumentReference.Schema)
+    const decodeSourceFile = ParseResult.decodeUnknown(SourceFileSchema)
 
-  sourceFileFromDocumentReference(
-    resource: DocumentReferenceType
-  ): Effect.Effect<
-    { readonly id: string; readonly fileName: string; readonly bytes: Uint8Array },
-    ParseResult.ParseError
-  > {
-    return this.codec.sourceFileFromDocumentReference(resource)
+    const toWire = ({
+      sourceFile,
+      hash,
+      subject,
+    }: {
+      readonly sourceFile: SourceFile
+      readonly hash: string
+      readonly subject: { readonly reference: string } | undefined
+    }): FhirR4.DocumentReference => {
+      const uploadedAt = DateTime.formatIso(sourceFile.uploadedAt)
+      return {
+        resourceType: 'DocumentReference',
+        id: sourceFile.id,
+        status: 'current',
+        type: { coding: [{ system: coding.system, code: coding.code }] },
+        category: [{ coding: [{ system: coding.system, code: coding.code }] }],
+        date: uploadedAt,
+        description: `${descriptionPrefix}${sourceFile.fileName}`,
+        ...(subject === undefined ? {} : { subject }),
+        ...(securityLabel === undefined
+          ? {}
+          : { securityLabel: [{ coding: securityLabel.map((one) => ({ ...one })) }] }),
+        content: [
+          {
+            attachment: {
+              contentType,
+              data: Encoding.encodeBase64(sourceFile.bytes),
+              size: sourceFile.bytes.length,
+              hash,
+              title: sourceFile.fileName,
+              creation: uploadedAt,
+            },
+          },
+        ],
+      }
+    }
+
+    const hasSourceFileCoding = (concept: FhirR4.CodeableConcept | undefined): boolean =>
+      (concept?.coding ?? []).some((one) => one.system === coding.system && one.code === coding.code)
+
+    const readEncodedSourceFile = (
+      wire: FhirR4.DocumentReference
+    ): Either.Either<unknown, string> => {
+      if (!hasSourceFileCoding(wire.type) || !(wire.category ?? []).some(hasSourceFileCoding)) {
+        return Either.left(`Not a ${coding.code} document`)
+      }
+      const attachment = wire.content?.[0]?.attachment
+      if (attachment === undefined) return Either.left('No content entry')
+      if (attachment.data === undefined) return Either.left('Attachment carries no data')
+      return Either.right({
+        id: wire.id,
+        fileName: attachment.title,
+        uploadedAt: attachment.creation ?? wire.date,
+        bytes: attachment.data,
+      })
+    }
+
+    const SourceFileFromDocumentReference: Schema.Schema<SourceFile, DocumentReferenceType> =
+      Schema.transformOrFail(
+        Schema.typeSchema(DocumentReference.Schema),
+        Schema.typeSchema(SourceFileSchema),
+        {
+          strict: true,
+          decode: (resource, _options, ast) =>
+            encodeResource(resource).pipe(
+              Effect.flatMap((wire) =>
+                Either.match(readEncodedSourceFile(wire), {
+                  onLeft: (reason) =>
+                    Effect.fail(
+                      new ParseResult.Type(ast, resource, `${wire.id ?? '<no id>'}: ${reason}`)
+                    ),
+                  onRight: (value) => decodeSourceFile(value),
+                })
+              )
+            ),
+          encode: (sourceFile, _options, ast) =>
+            sha256Base64(new Uint8Array(sourceFile.bytes)).pipe(
+              Effect.mapError((error) => new ParseResult.Type(ast, sourceFile, error.reason)),
+              Effect.flatMap((hash) =>
+                decodeResource(toWire({ sourceFile, hash, subject: undefined }))
+              )
+            ),
+        }
+      ).annotations({
+        identifier: `${sourceFileName}FromDocumentReference`,
+        description: `One uploaded ${config.display.title.toLowerCase()} source file, encoded as a FHIR R4 DocumentReference.`,
+      })
+
+    this.isSourceFile = (resource: DocumentReferenceType): boolean =>
+      resource.category.some((category) =>
+        category.coding.some(
+          (one) => one.system?.toString() === coding.system && one.code === coding.code
+        )
+      )
+
+    this.sourceFileFromDocumentReference = Schema.decode(SourceFileFromDocumentReference)
+    this.sourceFileToDocumentReference = Schema.encode(SourceFileFromDocumentReference)
+
+    this.buildSourceFile = (
+      picked: {
+        readonly fileName: string
+        readonly bytes: Uint8Array
+      },
+      options?: { readonly subject?: { readonly reference: string } }
+    ): Effect.Effect<DocumentReferenceType, ParseResult.ParseError> =>
+      Effect.gen(function* () {
+        const bytes = new Uint8Array(picked.bytes)
+        const hash = yield* sha256Base64(bytes).pipe(
+          Effect.mapError((error) =>
+            ParseResult.parseError(new ParseResult.Type(SourceFileSchema.ast, picked, error.reason))
+          )
+        )
+        const uploadedAt = yield* DateTime.now
+        const id = localResourceId(
+          coding.system,
+          'DocumentReference',
+          joinIdComponents([hash, picked.fileName])
+        )
+        return yield* decodeResource(
+          toWire({
+            sourceFile: { id, fileName: picked.fileName, uploadedAt, bytes },
+            hash,
+            subject: options?.subject,
+          })
+        ).pipe(Effect.mapError(ParseResult.parseError))
+      })
+
+    this.decode = buildPerFileDecode(this, config.decodeOne, {
+      subjectFor: config.subjectFor,
+    })
   }
 }
 
-/**
- * The first registered importer whose `detect` claims the picked bytes, or
- * `undefined` when none does.
- *
- * @remarks
- * First match wins, so registry order is priority order — put formats with
- * crisp magic-byte tests (PDF's `%PDF-`) ahead of looser syntactic ones.
- */
 const identify = <D extends Pick<FileImporter<string, never>, 'detect'>>(
   descriptors: readonly D[],
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
 
-export { FileImporter, identify, sectionResources, unitId }
+export { FileImporter, SOURCE_FILE_SECTION_TITLE, identify, sectionResources, sourceFileKey, unitId }
 export type {
+  Coding,
   DecodedFile,
+  DecodeOne,
   DocumentReferenceType,
   LabeledResource,
   LabeledSection,
+  PerFileDecodeOptions,
   ReadUnit,
   SettingsPickerProps,
+  SourceFile,
+  SourceFileEncoded,
+  SourceFileRef,
   UnreadableUnit,
 }

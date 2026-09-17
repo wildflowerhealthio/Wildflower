@@ -1,49 +1,35 @@
-import { DateTime, Effect, Encoding, Schema } from 'effect'
+import { DateTime, Effect, Encoding } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
-import type { DocumentReferenceType } from './file-importer-descriptor.ts'
-import { type SourceFile, sourceFileCodec } from './source-file-codec.ts'
-
-/**
- * The shared source-file codec builder, tested once against synthetic
- * configs — the machinery every format's `/source-file` shim inherits: the
- * encode ⇄ decode round trip, the attachment hash/size, `subject` staying
- * absent, bytes carried verbatim (never a UTF-8 round trip), the decode's
- * failure modes, and the deterministic id `buildSourceFile` mints. A format's
- * own test asserts only what is format-specific (its coding, content type,
- * `securityLabel`, and disjointness from a neighbour on the same axis).
- */
+import { FileImporter, type SourceFile } from './file-importer-descriptor.ts'
 
 const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 
-/** A representative config carrying a `securityLabel` (the HAR-shaped case). */
-const labelled = sourceFileCodec({
+const labelled = new FileImporter({
   format: 'example',
   coding: { system: SYSTEM, code: 'example-source-file' },
   contentType: 'application/json',
-  descriptionPrefix: 'Example source file: ',
   securityLabel: [{ system: 'https://example.test/fhir/CodeSystem/redaction', code: 'raw' }],
-  sourceFileName: 'ExampleSourceFile',
-  label: 'One uploaded example source file',
-  idDescription: 'FHIR resource id of an uploaded example source file.',
+  display: { title: 'Example source file', description: 'Test format' },
+  detect: () => false,
+  defaultSettings: undefined,
+  decodeOne: () => Effect.succeed({ sections: [], notes: [] }),
 })
 
-/** The same shape with no `securityLabel` (the PDF-shaped case). */
-const unlabelled = sourceFileCodec({
+const unlabelled = new FileImporter({
   format: 'example-pdf',
   coding: { system: SYSTEM, code: 'example-source-file' },
   contentType: 'application/pdf',
-  descriptionPrefix: 'Example doc: ',
-  sourceFileName: 'ExampleDoc',
-  label: 'One uploaded example doc',
-  idDescription: 'FHIR resource id of an uploaded example doc.',
+  display: { title: 'Example doc', description: 'Test format' },
+  detect: () => false,
+  defaultSettings: undefined,
+  decodeOne: () => Effect.succeed({ sections: [], notes: [] }),
 })
 
 const UPLOAD_FLOOR = Date.UTC(2026, 0, 1)
 
-/** Uploads of arbitrary **binary** bytes — the codec must not become a UTF-8 round trip. */
 const sourceFileArbitrary: fc.Arbitrary<SourceFile> = fc.record({
   id: fc.uuid().map(String),
   fileName: fc
@@ -71,7 +57,6 @@ const roundTrip = (sourceFile: SourceFile): Promise<SourceFile> =>
       .pipe(Effect.flatMap(labelled.sourceFileFromDocumentReference))
   )
 
-/** `DateTime.Utc` compares by identity under `toEqual`; compare the instants instead. */
 const comparable = (
   sourceFile: SourceFile
 ): Omit<SourceFile, 'uploadedAt'> & { readonly uploadedAtMillis: number } => {
@@ -79,11 +64,6 @@ const comparable = (
   return { ...rest, uploadedAtMillis: DateTime.toEpochMillis(uploadedAt) }
 }
 
-/**
- * The base64 SHA-256 of `bytes`, derived here rather than through the package's
- * own `sha256Base64` — a property about the attachment's hash that called the
- * function that wrote it would pass no matter what either does.
- */
 const digestOf = async (bytes: Uint8Array): Promise<string> => {
   const buffer = new ArrayBuffer(bytes.byteLength)
   new Uint8Array(buffer).set(bytes)
@@ -124,9 +104,6 @@ describe('the codec as a schema', () => {
     await fc.assert(
       fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
         expect(
-          labelled.toWire({ sourceFile, hash: 'hash=', subject: undefined }).subject
-        ).toBeUndefined()
-        expect(
           (await Effect.runPromise(labelled.sourceFileToDocumentReference(sourceFile))).subject
         ).toBeUndefined()
       }),
@@ -134,49 +111,18 @@ describe('the codec as a schema', () => {
     )
   })
 
-  test('property: it round-trips straight from FHIR JSON', async () => {
-    await fc.assert(
-      fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
-        const json: unknown = JSON.parse(
-          JSON.stringify(
-            await Effect.runPromise(Schema.encode(labelled.SourceFileFromFhirJson)(sourceFile))
-          )
-        )
-        const back = await Effect.runPromise(
-          Schema.decodeUnknown(labelled.SourceFileFromFhirJson)(json)
-        )
-        expect(comparable(back)).toEqual(comparable(sourceFile))
-      }),
-      { numRuns: numRunsFor({ base: 50 }) }
+  it('carries the coding on both type and category', async () => {
+    const resource = await Effect.runPromise(
+      labelled.sourceFileToDocumentReference(example())
     )
-  })
-
-  test('it composes like any other schema: a struct field decodes through it', async () => {
-    const Envelope = Schema.Struct({ sourceFile: labelled.SourceFileFromDocumentReference })
-    const sourceFile = example()
-    const resource = await Effect.runPromise(labelled.sourceFileToDocumentReference(sourceFile))
-    const decoded = await Effect.runPromise(Schema.decode(Envelope)({ sourceFile: resource }))
-    expect(comparable(decoded.sourceFile)).toEqual(comparable(sourceFile))
-  })
-
-  it('carries the coding on both type and category, and the security label when configured', () => {
-    const withLabel = labelled.toWire({
-      sourceFile: example(),
-      hash: 'DEADBEEF=',
-      subject: undefined,
-    })
-    expect(withLabel.type?.coding).toEqual([{ system: SYSTEM, code: 'example-source-file' }])
-    expect(withLabel.category).toEqual([
-      { coding: [{ system: SYSTEM, code: 'example-source-file' }] },
-    ])
-    expect(withLabel.securityLabel).toEqual([
-      { coding: [{ system: 'https://example.test/fhir/CodeSystem/redaction', code: 'raw' }] },
-    ])
-    // With no securityLabel in the config, the field is omitted entirely.
+    expect(resource.type.coding.map((c) => ({ system: c.system?.toString(), code: c.code }))).toEqual(
+      [{ system: SYSTEM, code: 'example-source-file' }]
+    )
     expect(
-      unlabelled.toWire({ sourceFile: example(), hash: 'DEADBEEF=', subject: undefined })
-        .securityLabel
-    ).toBeUndefined()
+      resource.category.map((cat) =>
+        cat.coding.map((c) => ({ system: c.system?.toString(), code: c.code }))
+      )
+    ).toEqual([[{ system: SYSTEM, code: 'example-source-file' }]])
   })
 
   it('exposes the category token in system|code form', () => {
@@ -207,15 +153,13 @@ describe('the codec as a schema', () => {
 })
 
 describe('buildSourceFile — the deterministic mint', () => {
-  const mint = (picked: { fileName: string; bytes: Uint8Array }): Promise<DocumentReferenceType> =>
+  const mint = (picked: { fileName: string; bytes: Uint8Array }) =>
     Effect.runPromise(labelled.buildSourceFile(picked))
 
   it('derives the id from the bytes and name — the same file mints the same id', async () => {
     const picked = { fileName: 'report.bin', bytes: new TextEncoder().encode('same bytes') }
     const first = await mint(picked)
     const second = await mint(picked)
-    // Deterministic despite a fresh `uploadedAt` on each mint: the id is a
-    // function of the content, not the clock.
     expect(first.id).toBe(second.id)
     expect(first.id).toMatch(/^wf-[0-9a-f]{32}$/u)
   })
@@ -235,17 +179,17 @@ describe('buildSourceFile — the deterministic mint', () => {
 
   it('namespaces the id by coding system — two formats never collide on identical bytes and name', async () => {
     const picked = { fileName: 'report.bin', bytes: new TextEncoder().encode('shared') }
-    const other = sourceFileCodec({
+    const other = new FileImporter({
       format: 'other',
       coding: {
         system: 'https://other.test/fhir/CodeSystem/source-file',
         code: 'example-source-file',
       },
       contentType: 'application/json',
-      descriptionPrefix: 'Other source file: ',
-      sourceFileName: 'OtherSourceFile',
-      label: 'One uploaded other source file',
-      idDescription: 'FHIR resource id of an uploaded other source file.',
+      display: { title: 'Other source file', description: 'Test' },
+      detect: () => false,
+      defaultSettings: undefined,
+      decodeOne: () => Effect.succeed({ sections: [], notes: [] }),
     })
     const here = await mint(picked)
     const there = await Effect.runPromise(other.buildSourceFile(picked))

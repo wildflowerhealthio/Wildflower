@@ -24,4 +24,13 @@ const LifeLabsIdentifierSystem = {
   OntarioHealthCardNumber: 'https://fhir.infoway-inforoute.ca/NamingSystem/ca-on-patient-hcn',
 } as const
 
-export { LIFELABS_SYSTEM, LifeLabsIdentifierSystem }
+const LIFELABS_PDF_SOURCE_FILE_CODE = 'lifelabs-pdf-archive'
+
+const LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE = 'application/pdf'
+
+export {
+  LIFELABS_PDF_SOURCE_FILE_CODE,
+  LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
+  LIFELABS_SYSTEM,
+  LifeLabsIdentifierSystem,
+}

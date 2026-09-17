@@ -14,8 +14,8 @@
  * @packageDocumentation
  */
 export { harImporter } from './har-importer.ts'
+export { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from './har-importer.ts'
 export { decodeHar, toInput } from './decode-har.ts'
 export { detectHar, looksLikeJson } from './detect-har.ts'
-export { buildSourceFile } from './source-file/index.ts'
 export { fhirSources } from './fhir-pool.ts'
 export { defaultHarSettings, type HarSettings } from './har-settings.ts'

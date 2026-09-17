@@ -2,23 +2,28 @@ import { Effect, Either, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { FhirResource } from 'fhir-r4/resources'
 import {
-  type FileImporter,
+  FileImporter,
   PickedFileSource,
   type PickedFile,
   type ReadUnit,
   sectionResources,
-  SourceFile,
+  SOURCE_FILE_SECTION_TITLE,
+  sourceFileKey,
   SourceFileFhirReference,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeLifeLabsPdfDocument } from './decode.ts'
+import { detectLifeLabsPdf } from './detect.ts'
 import { lifeLabsPdfImporter } from './descriptor.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import type * as Report from './entities/report.ts'
-import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
-import { lifeLabsPdfSourceFileCodec } from './source-file/index.ts'
+import { defaultLifeLabsPdfSettings } from './settings.ts'
+import {
+  LIFELABS_PDF_SOURCE_FILE_CODE,
+  LIFELABS_SYSTEM,
+} from './source-system.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 describe('lifeLabsPdfImporter', () => {
@@ -45,28 +50,20 @@ describe('lifeLabsPdfImporter', () => {
   })
 })
 
-/**
- * The decode the descriptor exposes is {@link decodeLifeLabsPdfDocument}
- * lifted through `SourceFile.perFileDecode`. The pdfjs extraction seam in between is
- * untested-by-design (no PDF writer in this package, and the anonymizer's
- * descriptor makes the same call), so the source-file behaviour `SourceFile.perFileDecode`
- * adds is driven over the same lift with the extraction replaced by
- * `layoutDocument`'s printed inverse — everything below the seam is the real
- * decode. The descriptor's own `decode` covers the failure side, where the
- * bytes never reach a report.
- */
-
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
-/** The lift the descriptor uses, with the printed document standing in for the PDF. */
-const decodeReports = (
-  reports: readonly Report.Type[]
-): FileImporter<'lifelabs-pdf', LifeLabsPdfSettings, FhirResource>['decode'] =>
-  SourceFile.perFileDecode(lifeLabsPdfSourceFileCodec, (_file, settings: LifeLabsPdfSettings) =>
-    decodeLifeLabsPdfDocument(layoutDocument(reports), settings)
-  )
+const importerForReports = (reports: readonly Report.Type[]) =>
+  new FileImporter({
+    format: 'lifelabs-pdf' as const,
+    coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
+    contentType: 'application/pdf',
+    display: { title: 'LifeLabs report', description: 'Test' },
+    detect: detectLifeLabsPdf,
+    defaultSettings: SETTINGS,
+    decodeOne: (_file: PickedFile, settings: typeof SETTINGS) =>
+      decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
+  })
 
-/** The one `read` unit a single-file decode yields, or a failure naming what came back. */
 const readUnit = (
   outcomes: readonly Either.Either<ReadUnit<string>, unknown>[]
 ): ReadUnit<string>['decoded'] => {
@@ -93,14 +90,14 @@ describe('lifeLabsPdfImporter decode', () => {
           }
 
           const decoded = readUnit(
-            await Effect.runPromise(decodeReports(reports)([file], SETTINGS))
+            await Effect.runPromise(importerForReports(reports).decode([file], SETTINGS))
           )
 
           const [sourceSection, ...reportSections] = decoded.sections
-          expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
+          expect(sourceSection?.title).toBe(SOURCE_FILE_SECTION_TITLE)
           const sourceRow = sourceSection?.resources[0]
           expect(sourceSection?.resources).toHaveLength(1)
-          expect(sourceRow?.key).toBe(SourceFile.key(file.fileName))
+          expect(sourceRow?.key).toBe(sourceFileKey(file.fileName))
           expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
           const sourceId = sourceRow?.resource.id
           expect(sourceId).toEqual(expect.any(String))
@@ -125,11 +122,11 @@ describe('lifeLabsPdfImporter decode', () => {
           }
 
           const decoded = readUnit(
-            await Effect.runPromise(decodeReports(reports)([file], SETTINGS))
+            await Effect.runPromise(importerForReports(reports).decode([file], SETTINGS))
           )
 
           expect(decoded.sections.map((section) => section.title)).not.toContain(
-            SourceFile.SECTION_TITLE
+            SOURCE_FILE_SECTION_TITLE
           )
           const labeled = sectionResources(decoded.sections)
           expect(labeled.length).toBeGreaterThan(0)

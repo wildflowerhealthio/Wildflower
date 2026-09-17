@@ -4,36 +4,33 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import {
   FileImporter,
-  SourceFile,
   type DecodedFile,
   type LabeledResource,
   type LabeledSection,
 } from 'importer-fundamentals'
+
+import {
+  HAR_ARCHIVE_CODE,
+  WEB_TRACE_CODE_SYSTEM,
+  WEB_TRACE_RAW_CODE,
+  WEB_TRACE_REDACTION_SYSTEM,
+} from 'web-trace-core/codec'
 
 import { decodeHar } from './decode-har.ts'
 import { detectHar } from './detect-har.ts'
 import { fhirSources } from './fhir-pool.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 import { preview, type PreviewedResponse } from './review.ts'
-import { harSourceFileCodec } from './source-file/index.ts'
 
-/** One previewed response at the concrete FHIR binding. */
 type FhirPreview = PreviewedResponse<HttpResponseKind.HttpResponseKind<FhirResource>, FhirResource>
 
-/** The flat pool derived once from the sources — what recognition routes against. */
 const fhirPool = SourceDescriptor.poolOf(fhirSources)
 
-/** The kind names the settings leave enabled, out of the whole pool. */
 const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
   const disabled = new Set(settings.disabledKinds)
   return new Set(fhirPool.map((kind) => kind.name).filter((name) => !disabled.has(name)))
 }
 
-/**
- * The previews folded into per-URL sections, in first-seen URL order. Only a
- * response that parsed to at least one resource contributes; everything else
- * becomes a note via {@link notesFor}.
- */
 const sectionsByUrl = (
   previews: readonly FhirPreview[]
 ): readonly LabeledSection<FhirResource>[] => {
@@ -56,11 +53,6 @@ const sectionsByUrl = (
   return order.map((url) => ({ title: url, resources: byUrl.get(url) ?? [] }))
 }
 
-/**
- * The file-level diagnostic notes: one line per response that yielded no
- * resources, in input order, each naming its URL — what the collapsed
- * per-response states of the old interactive review said, folded to data.
- */
 const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
   previews.flatMap((entry) => {
     const url = entry.ref.url
@@ -74,39 +66,27 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
       : [`Excluded — every matching kind is turned off in the settings: ${url}`]
   })
 
-/**
- * The concrete {@link FileImporterDescriptor} for the `har` format: HAR decode
- * in, FHIR resources out, written through the FHIR store.
- *
- * @remarks
- * `decode` runs the whole read half: the HAR parse, per-URL recognition
- * against the pool (filtered by the settings' kind toggles), and the parse of
- * every chosen response — folded into per-URL {@link LabeledSection}s plus a
- * note per response that yielded nothing. It owns the source file too: through
- * `perFileDecode` it mints a `local` pick's source-file `DocumentReference`,
- * lists it as its own "Source file" section, and stamps every extracted
- * resource's `meta.source` with it (a `server` pick mints nothing and stamps
- * the reference it was picked by). Resource keys are `responseId:index`,
- * independent of the kind toggles, so a settings change re-decodes to the same
- * keys for the resources that survive it.
- */
 const harImporter = new FileImporter({
-  codec: harSourceFileCodec,
+  format: 'har',
+  coding: { system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE },
+  contentType: 'application/json',
+  securityLabel: [{ system: WEB_TRACE_REDACTION_SYSTEM, code: WEB_TRACE_RAW_CODE }],
   display: {
     title: 'HAR archive',
     description: 'Import FHIR records from a captured browsing session.',
   },
   detect: detectHar,
   defaultSettings: defaultHarSettings,
-  decode: SourceFile.perFileDecode(harSourceFileCodec, (file, settings) =>
+  decodeOne: (file, settings) =>
     decodeHar(file.bytes, settings).pipe(
       Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
       Effect.map((previews): DecodedFile<FhirResource> => ({
         sections: sectionsByUrl(previews),
         notes: notesFor(previews),
       }))
-    )
-  ),
+    ),
 })
 
 export { harImporter }
+export { fhirSources }
+export { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'web-trace-core/codec'

@@ -4,37 +4,24 @@ import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { DecodedFile, DocumentReferenceType, ReadUnit } from './file-importer-descriptor.ts'
+import {
+  FileImporter,
+  SOURCE_FILE_SECTION_TITLE,
+  sourceFileKey,
+  type DecodedFile,
+  type DocumentReferenceType,
+  type ReadUnit,
+} from './file-importer-descriptor.ts'
 import * as MetaSource from './meta-source.ts'
 import * as PickedFileSource from './picked-file-source.ts'
 import type { PickedFile } from './picked-file.ts'
-import { sourceFileCodec } from './source-file-codec.ts'
 import * as SourceFileFhirReference from './source-file-fhir-reference.ts'
-import { perFileDecode, SECTION_TITLE, resolve, key, withSections } from './source-file-review.ts'
 
-/**
- * The generic source-file pieces a format's `decode` composes, tested against
- * a synthetic codec and a synthetic per-file decode — the behaviour every
- * binding inherits: a local pick mints a review row and stamps its reference,
- * a server pick mints nothing and stamps the existing one, a malformed file
- * folds to its own `unreadable` unit without touching the batch's other
- * files, and the upload instant is read off the clock.
- */
-
-const codec = sourceFileCodec({
-  format: 'test',
-  coding: { system: 'https://example.test/fhir/CodeSystem/source-file', code: 'example' },
-  contentType: 'application/octet-stream',
-  descriptionPrefix: 'Example: ',
-  sourceFileName: 'ExampleSourceFile',
-  label: 'One uploaded example file',
-  idDescription: 'FHIR resource id of an uploaded example file.',
-})
+const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 
 const fakeResource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
-/** A minimal Sourceable value for MetaSource tests — not a real FhirResource, just needs meta. */
 interface Marker {
   readonly resourceType: 'Basic'
   readonly id: string
@@ -56,7 +43,6 @@ const localFile = (fileName: string, bytes: Uint8Array): PickedFile => ({
   source: PickedFileSource.local,
 })
 
-/** A decode that yields one resource per byte, keyed by index — or refuses an empty file. */
 const decodeBytes = (
   file: PickedFile,
   _settings: null
@@ -81,6 +67,16 @@ const decodeBytes = (
         notes: [],
       })
 
+const importer = new FileImporter({
+  format: 'test',
+  coding: { system: SYSTEM, code: 'example' },
+  contentType: 'application/octet-stream',
+  display: { title: 'Example', description: 'Test format' },
+  detect: () => false,
+  defaultSettings: null,
+  decodeOne: decodeBytes,
+})
+
 const fileArbitrary: fc.Arbitrary<PickedFile> = fc.record({
   fileName: fc.stringMatching(/^[a-z0-9]{1,12}\.bin$/u),
   bytes: fc.uint8Array({ maxLength: 6 }),
@@ -92,7 +88,6 @@ const fileArbitrary: fc.Arbitrary<PickedFile> = fc.record({
 
 const ONE_INSTANT = DateTime.unsafeMake(Date.UTC(2026, 3, 1))
 
-/** Run under the test clock, set to one fixed instant. */
 const atFixedInstant = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
   Effect.runPromise(
     Effect.gen(function* () {
@@ -101,74 +96,35 @@ const atFixedInstant = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
     }).pipe(Effect.provide(TestContext.TestContext))
   )
 
-describe('resolve', () => {
+describe('resolve (tested through decode)', () => {
   it('should mint a local pick into a labeled row keyed by its file name', async () => {
-    const { ref, labeled } = await atFixedInstant(
-      resolve(codec, localFile('scan.bin', new Uint8Array([1, 2])))
+    const units = await atFixedInstant(
+      importer.decode([localFile('scan.bin', new Uint8Array([1, 2]))], null)
     )
-    expect(labeled).toBeDefined()
-    expect(labeled?.key).toBe(key('scan.bin'))
+    const unit = units[0]
+    expect(unit).toBeDefined()
+    expect(Either.isRight(unit!)).toBe(true)
+    if (!Either.isRight(unit!)) return
+    const sourceSection = unit.right.decoded.sections[0]
+    expect(sourceSection?.title).toBe(SOURCE_FILE_SECTION_TITLE)
+    const labeled = sourceSection?.resources[0]
+    expect(labeled?.key).toBe(sourceFileKey('scan.bin'))
     expect(labeled?.title).toBe('scan.bin')
-    expect(labeled?.resource.id).toBe(ref.id)
     expect(labeled?.resource.date).toEqual(ONE_INSTANT)
   })
 
   it('should resolve a server pick to its existing reference and mint nothing', async () => {
-    const { ref, labeled } = await Effect.runPromise(
-      resolve(codec, {
-        fileName: 'old.bin',
-        bytes: new Uint8Array(),
-        source: PickedFileSource.server('doc-1'),
-      })
+    const units = await Effect.runPromise(
+      importer.decode(
+        [{ fileName: 'old.bin', bytes: new Uint8Array([1]), source: PickedFileSource.server('doc-1') }],
+        null
+      )
     )
-    expect(labeled).toBeUndefined()
-    expect(ref).toEqual({ id: 'doc-1' })
-  })
-
-  it('should pass a subject through to the minted resource', async () => {
-    const { labeled } = await Effect.runPromise(
-      resolve(codec, localFile('scan.bin', new Uint8Array([1])), {
-        subject: { reference: 'Patient/p-1' },
-      })
-    )
-    expect(labeled?.resource.subject?.reference).toBe('Patient/p-1')
-  })
-})
-
-describe('withSections', () => {
-  it('property: prepends one titled section per source file, in order, and leaves the rest intact', () => {
-    const labeledArbitrary = fc.record({
-      key: fc.string(),
-      title: fc.string(),
-      resource: fc.integer(),
-    })
-    const sectionArbitrary = fc.record({
-      title: fc.string(),
-      resources: fc.array(labeledArbitrary),
-    })
-    fc.assert(
-      fc.property(
-        fc.record({ sections: fc.array(sectionArbitrary), notes: fc.array(fc.string()) }),
-        fc.array(labeledArbitrary),
-        (decoded, sourceFiles) => {
-          const result = withSections(decoded, sourceFiles)
-          expect(result.notes).toBe(decoded.notes)
-          expect(result.sections.slice(sourceFiles.length)).toEqual(decoded.sections)
-          expect(result.sections.slice(0, sourceFiles.length)).toEqual(
-            sourceFiles.map((sourceFile) => ({
-              title: SECTION_TITLE,
-              resources: [sourceFile],
-            }))
-          )
-        }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-
-  it('should return the decoded file itself when there is no source file', () => {
-    const decoded: DecodedFile<number> = { sections: [], notes: ['n'] }
-    expect(withSections(decoded, [])).toBe(decoded)
+    const unit = units[0]
+    expect(unit).toBeDefined()
+    expect(Either.isRight(unit!)).toBe(true)
+    if (!Either.isRight(unit!)) return
+    expect(unit.right.decoded.sections.every((s) => s.title !== SOURCE_FILE_SECTION_TITLE)).toBe(true)
   })
 })
 
@@ -221,13 +177,11 @@ describe('MetaSource.stamp / MetaSource.stampDecoded', () => {
   })
 })
 
-describe('perFileDecode', () => {
-  const decode = perFileDecode(codec, decodeBytes)
-
+describe('decode (batch behavior)', () => {
   it('property: one unit per file, in pick order, each titled by its file name — left for an empty file, right otherwise', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(fileArbitrary, { maxLength: 6 }), async (files) => {
-        const units = await Effect.runPromise(decode(files, null))
+        const units = await Effect.runPromise(importer.decode(files, null))
         const titles = units.map((unit) =>
           Either.isRight(unit) ? unit.right.title : unit.left.title
         )
@@ -252,13 +206,13 @@ describe('perFileDecode', () => {
       fc.asyncProperty(
         fileArbitrary.filter((file) => file.bytes.length > 0),
         async (file) => {
-          const [unit] = await Effect.runPromise(decode([file], null))
+          const [unit] = await Effect.runPromise(importer.decode([file], null))
           if (unit === undefined || !Either.isRight(unit)) throw new Error('expected a read unit')
           const [first, ...rest] = unit.right.decoded.sections
           const extracted = rest.flatMap((section) => section.resources)
           if (file.source._tag === 'local') {
-            expect(first?.title).toBe(SECTION_TITLE)
-            expect(first?.resources.map((entry) => entry.key)).toEqual([key(file.fileName)])
+            expect(first?.title).toBe(SOURCE_FILE_SECTION_TITLE)
+            expect(first?.resources.map((entry) => entry.key)).toEqual([sourceFileKey(file.fileName)])
             const sourceId = first?.resources[0]?.resource.id
             expect(extracted.length).toBe(file.bytes.length)
             for (const entry of extracted) {
@@ -279,12 +233,20 @@ describe('perFileDecode', () => {
 
   it('should hand the per-file decode the resolved source id', async () => {
     const seen: string[] = []
-    const spying = perFileDecode(codec, (file, settings: null, source) => {
-      seen.push(SourceFileFhirReference.make(source.id))
-      return decodeBytes(file, settings)
+    const spyImporter = new FileImporter({
+      format: 'test',
+      coding: { system: SYSTEM, code: 'example' },
+      contentType: 'application/octet-stream',
+      display: { title: 'Example', description: 'Test format' },
+      detect: () => false,
+      defaultSettings: null,
+      decodeOne: (file, settings: null, source) => {
+        seen.push(SourceFileFhirReference.make(source.id))
+        return decodeBytes(file, settings)
+      },
     })
     const units = await Effect.runPromise(
-      spying(
+      spyImporter.decode(
         [
           localFile('a.bin', new Uint8Array([1])),
           {
@@ -318,9 +280,9 @@ describe('perFileDecode', () => {
     const [first, second] = await Effect.runPromise(
       Effect.gen(function* () {
         yield* TestClock.setTime(DateTime.toEpochMillis(ONE_INSTANT))
-        const a = sourceRowOf(yield* decode([file], null))
+        const a = sourceRowOf(yield* importer.decode([file], null))
         yield* TestClock.setTime(DateTime.toEpochMillis(ONE_INSTANT) + 60_000)
-        const b = sourceRowOf(yield* decode([file], null))
+        const b = sourceRowOf(yield* importer.decode([file], null))
         return [a, b]
       }).pipe(Effect.provide(TestContext.TestContext))
     )

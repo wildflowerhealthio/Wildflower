@@ -1,33 +1,21 @@
-import { FileImporter, SourceFile } from 'importer-fundamentals'
+import { FileImporter } from 'importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
 import { defaultLifeLabsPdfSettings } from './settings.ts'
-import { lifeLabsPdfSourceFileCodec } from './source-file/index.ts'
+import { LIFELABS_PDF_SOURCE_FILE_CODE, LIFELABS_SYSTEM } from './source-system.ts'
 
-/**
- * The `lifelabs-pdf` importer: a LifeLabs report's positioned text in,
- * FHIR resources out.
- *
- * @remarks
- * `decode` yields one section per report the PDF carries and no notes — this
- * format has no routing decisions (no per-URL kind picks, no source toggles),
- * so every resource the decode yields is a review candidate. It is
- * {@link decodeLifeLabsPdf} lifted through `perFileDecode` with this format's
- * source-file codec, so a `local` pick's source-file `DocumentReference` is
- * minted inside the decode, reviewed as its own "Source file" section, and
- * stamped onto every synthesized resource's `meta.source`; a `server` pick
- * mints nothing and stamps the reference it came with.
- */
 const lifeLabsPdfImporter = new FileImporter({
-  codec: lifeLabsPdfSourceFileCodec,
+  format: 'lifelabs-pdf',
+  coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
+  contentType: 'application/pdf',
   display: {
     title: 'LifeLabs report',
     description: 'Import lab results from a LifeLabs report PDF.',
   },
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
-  decode: SourceFile.perFileDecode(lifeLabsPdfSourceFileCodec, decodeLifeLabsPdf),
+  decodeOne: decodeLifeLabsPdf,
 })
 
 export { lifeLabsPdfImporter }
