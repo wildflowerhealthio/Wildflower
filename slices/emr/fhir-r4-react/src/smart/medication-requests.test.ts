@@ -99,7 +99,7 @@ describe('fetchMedicationRequestPage', () => {
 
     // The patientId is URL-encoded into the `patient=` search parameter, and the
     // page is sorted server-side so scroll paging can append without reordering.
-    expect(queries).toEqual(['MedicationRequest?patient=pat%2F1&_sort=-authoredon'])
+    expect(queries).toEqual(['MedicationRequest?patient=pat%2F1&_count=200&_sort=-authoredon'])
   })
 
   test('reads every MedicationRequest when no patient is in context (system launch)', async () => {
@@ -107,7 +107,7 @@ describe('fetchMedicationRequestPage', () => {
 
     await Effect.runPromise(fetchMedicationRequestPage(client, { patientId: null }))
 
-    expect(queries).toEqual(['MedicationRequest?_sort=-authoredon'])
+    expect(queries).toEqual(['MedicationRequest?_count=200&_sort=-authoredon'])
   })
 
   test('requests a later page by its cursor URL verbatim', async () => {

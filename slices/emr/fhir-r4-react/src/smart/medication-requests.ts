@@ -1,9 +1,9 @@
 import type { Effect, Schema } from 'effect'
 import { MedicationRequest } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
-import { RESOURCE_PAGE_SIZE } from './resource-page.ts'
 
 import {
+  RESOURCE_PAGE_SIZE,
   type BundleDecodeError,
   type ResourcePageRequestError,
   fetchResourcePage,

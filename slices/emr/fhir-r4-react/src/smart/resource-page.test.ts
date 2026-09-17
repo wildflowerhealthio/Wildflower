@@ -199,8 +199,9 @@ describe('fetchResourcePage', () => {
     )
   })
 
-  test('a response that is not a bundle fails with BundleDecodeError', async () => {
-    for (const response of [null, undefined, 'a string', 42, true]) {
+  test.each([null, undefined, 'a string', 42, true])(
+    'a response that is not a bundle fails with BundleDecodeError: %p',
+    async (response) => {
       const { client } = stubSmartClient(response)
 
       const exit = await Effect.runPromiseExit(
@@ -216,7 +217,7 @@ describe('fetchResourcePage', () => {
         }
       }
     }
-  })
+  )
 
   test('a request failure surfaces as ResourcePageRequestError', async () => {
     const requestError = new Error('network down')
