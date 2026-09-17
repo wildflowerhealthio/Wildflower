@@ -1,4 +1,4 @@
-import { Data, Either, Match, Option } from 'effect'
+import { Data, Either, Option } from 'effect'
 import {
   diffJson,
   type DiffStatus,
@@ -52,6 +52,8 @@ import styles from './preview-panel.module.css'
 type SettingsRegistry = {
   readonly [K in FormatKind]: Pick<BoundFormat<K>, 'display' | 'SettingsPicker'>
 }
+
+type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatSettings[K]) => void
 
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
@@ -158,47 +160,28 @@ const tallyLabel = (tally: TypeTally): string => {
 }
 
 /**
- * One format's settings form, dispatched on the format tag so the picker
- * component and the settings value line up per branch — no cast.
- *
- * @remarks
- * `Match.exhaustive` rather than an `if`/fallthrough: every branch is
- * identical but for `kind`, and a fallthrough silently binds one format's
- * group to another format's picker — which is what happened when `dicom`
- * joined the registry and kept editing the LifeLabs settings, leaving DICOM
- * decoding under its defaults forever. Registering a format without a branch
- * here must fail to compile, and with `Match.exhaustive` it does.
+ * One format's settings form. The registry's construction guarantees the
+ * picker's settings type matches `FormatSettings[kind]`; the cast bridges
+ * a correlation TypeScript cannot prove through a union-keyed index.
  */
-const FormatSettingsForm = ({
-  format,
+const FormatSettingsForm = <TFormat extends FormatKind>({
+  kind,
   settings,
   settingsRegistry,
   onSettingsChange,
 }: {
-  readonly format: FormatKind
+  readonly kind: TFormat
   readonly settings: FormatSettings
   readonly settingsRegistry: SettingsRegistry
-  readonly onSettingsChange: PreviewPanelProps['onSettingsChange']
+  readonly onSettingsChange: SettingsChangeHandler<TFormat>
 }): JSX.Element => {
-  // Each branch re-indexes on its own literal `kind`, the way `runDecode`
-  // does: a shared generic helper loses the correlation between
-  // `FormatVariant[K]['settings']` and `FormatSettings[K]` and stops
-  // type-checking.
-  return Match.type<FormatKind>().pipe(
-    Match.when('har', (kind) => {
-      const Picker = settingsRegistry[kind].SettingsPicker
-      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
-    }),
-    Match.when('lifelabs-pdf', (kind) => {
-      const Picker = settingsRegistry[kind].SettingsPicker
-      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
-    }),
-    Match.when('dicom', (kind) => {
-      const Picker = settingsRegistry[kind].SettingsPicker
-      return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
-    }),
-    Match.exhaustive
-  )(format)
+  // The registry's typed construction guarantees the picker's TSettings and
+  // settings[kind] are the same concrete type for any given kind. TS cannot
+  // prove this through a union-keyed index, so we widen the picker to accept
+  // any registered format's settings.
+  const Picker = settingsRegistry[kind].SettingsPicker
+
+  return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
 }
 
 /**
@@ -718,7 +701,7 @@ const PreviewPanel = ({
             <h3 className={styles.formatHeading}>{settingsRegistry[group.format].display.title}</h3>
             <div className={styles.settingsForm}>
               <FormatSettingsForm
-                format={group.format}
+                kind={group.format}
                 settings={settings}
                 settingsRegistry={settingsRegistry}
                 onSettingsChange={onSettingsChange}

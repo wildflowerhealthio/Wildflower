@@ -6,7 +6,6 @@ import {
   formatKinds,
   formatRegistry as coreRegistry,
   type FormatSettings,
-  type FormatVariant,
 } from 'importer-core'
 import { FileImporter, type SettingsPickerProps } from 'importer-fundamentals'
 import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
@@ -30,15 +29,13 @@ import type { JSX } from 'react'
  */
 class ReactFileImporter<TFormat extends FormatKind> extends FileImporter<
   TFormat,
-  FormatVariant[TFormat]['settings']
+  FormatSettings[TFormat]
 > {
-  readonly SettingsPicker: (
-    props: SettingsPickerProps<FormatVariant[TFormat]['settings']>
-  ) => JSX.Element
+  readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[TFormat]>) => JSX.Element
 
   constructor(
-    importer: FileImporter<TFormat, FormatVariant[TFormat]['settings']>,
-    SettingsPicker: (props: SettingsPickerProps<FormatVariant[TFormat]['settings']>) => JSX.Element
+    importer: FileImporter<TFormat, FormatSettings[TFormat]>,
+    SettingsPicker: (props: SettingsPickerProps<FormatSettings[TFormat]>) => JSX.Element
   ) {
     super({
       codec: importer['codec'],
@@ -62,4 +59,4 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
 }
 
 export { defaultFormatSettings, formatKinds, formatRegistry }
-export type { BoundFormat, FormatKind, FormatSettings, FormatVariant }
+export type { BoundFormat, FormatKind, FormatSettings }

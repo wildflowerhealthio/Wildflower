@@ -15,7 +15,7 @@
  * @packageDocumentation
  */
 export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.ts'
-export type { BoundFormat, FormatKind, FormatSettings, FormatVariant } from './registry.ts'
+export type { BoundFormat, FormatKind, FormatSettings } from './registry.ts'
 export {
   type BatchEntry,
   decodeFormat,

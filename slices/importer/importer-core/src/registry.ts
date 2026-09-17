@@ -14,30 +14,25 @@ import { type LifeLabsPdfSettings, lifeLabsPdfImporter } from 'lifelabs-pdf-impo
  * @packageDocumentation
  */
 
-/**
- * Type-level map from format tag to its concrete settings type.
- */
-interface FormatVariant {
-  har: { settings: HarSettings }
-  'lifelabs-pdf': { settings: LifeLabsPdfSettings }
-  dicom: { settings: DicomSettings }
-}
-
 /** Every registered file-format tag. */
-type FormatKind = keyof FormatVariant
+type FormatKind = keyof FormatSettings
 
 /**
  * The current settings of every registered format, indexed by tag — the
  * state the settings pickers edit and every decode reads.
  */
-type FormatSettings = { readonly [K in FormatKind]: FormatVariant[K]['settings'] }
+type FormatSettings = {
+  har: HarSettings
+  'lifelabs-pdf': LifeLabsPdfSettings
+  dicom: DicomSettings
+}
 
 /**
  * One registered format's importer, parameterised on its {@link FormatKind}
  * key so every field carries the format's concrete types through
  * {@link FormatVariant}.
  */
-type BoundFormat<K extends FormatKind> = FileImporter<K, FormatVariant[K]['settings']>
+type BoundFormat<K extends FormatKind> = FileImporter<K, FormatSettings[K]>
 
 /** The closed registry; its keys are the {@link FormatKind} union. */
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
@@ -57,4 +52,4 @@ const defaultFormatSettings: FormatSettings = {
 const formatKinds: readonly FormatKind[] = ['har', 'lifelabs-pdf', 'dicom']
 
 export { defaultFormatSettings, formatKinds, formatRegistry }
-export type { BoundFormat, FormatKind, FormatSettings, FormatVariant }
+export type { BoundFormat, FormatKind, FormatSettings }
