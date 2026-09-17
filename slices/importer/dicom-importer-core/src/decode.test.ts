@@ -21,7 +21,7 @@ const pick = (bytes: Uint8Array): PickedFile => ({
 })
 
 /**
- * The source file `perFileDecode` resolves before calling the decode; the
+ * The source file the importer resolves before calling this decode; the
  * decode reads its `id` and recomputes nothing, so a stand-in id is enough.
  */
 const source: SourceFile.Ref = { id: 'doc-1' }

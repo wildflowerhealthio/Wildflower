@@ -10,7 +10,7 @@ import { choiceElementSetPassthroughFields, ChoiceElementSet } from 'fhir-r4/dat
  * @remarks
  * Accepts `unknown` because the shell threads generic previews
  * (`PreviewedResource<unknown>`) even though the HAR binding pins
- * `TParsed = FhirResource` at runtime. The read is a per-type Effect Schema
+ * a `FhirResource` at runtime. The read is a per-type Effect Schema
  * decode against the summary fields we care about (never the whole resource),
  * so a partial or mis-typed field folds cleanly to `''` instead of throwing,
  * and the summary falls back to `resourceType/id` when nothing survives.

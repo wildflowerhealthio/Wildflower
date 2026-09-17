@@ -57,7 +57,7 @@ const registeredDescriptors = Object.values(formatRegistry)
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
-  const importRun = useImportRun(formatRegistry)
+  const importRun = useImportRun()
   const confirm = useConfirmImport()
 
   const [selections, setSelections] = useState<ReadonlyMap<FormatKind, StagedImport.Selection>>(

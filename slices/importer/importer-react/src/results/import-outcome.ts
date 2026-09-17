@@ -86,7 +86,7 @@ const isPartialOutcome = (outcome: ImportOutcome): boolean =>
  * The source file writes in the same bundle as the resources it names, so
  * its write is just one of the `imported` unit's per-entry results. `title`
  * names the unit in every case (its file name, for a single-file format),
- * and `id` is the unit's stable identity, carried from its `UnitReadOutcome`
+ * and `id` is the unit's stable identity, carried from its `FormatDecode.Result`
  * for a React `key` since two units in a batch can share a title.
  */
 type FileImportResult =

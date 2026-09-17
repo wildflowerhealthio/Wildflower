@@ -19,6 +19,25 @@ interface DecodedFile {
 const resources = (decodedFile: { readonly sections: readonly Section[] }): readonly Resource[] =>
   decodedFile.sections.flatMap((section) => section.resources)
 
-export { resources }
+/**
+ * Prefix every review key in a decoded file, so one file's keys cannot
+ * collide with another's once the batch merges their sections.
+ *
+ * @param decodedFile - One file's decode, keyed within itself
+ * @param prefix - The file's key namespace (`FormatDecode.keyPrefix`)
+ * @returns The same sections and notes with every resource key prefixed
+ */
+const namespaceKeys = (decodedFile: DecodedFile, prefix: string): DecodedFile => ({
+  ...decodedFile,
+  sections: decodedFile.sections.map((section) => ({
+    ...section,
+    resources: section.resources.map((resource) => ({
+      ...resource,
+      key: `${prefix}${resource.key}`,
+    })),
+  })),
+})
+
+export { namespaceKeys, resources }
 
 export type { Resource, Section, DecodedFile }

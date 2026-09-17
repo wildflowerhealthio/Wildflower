@@ -1,5 +1,5 @@
 /**
- * The HAR binding of the importer slice: the concrete `FileImporterDescriptor`
+ * The HAR binding of the importer slice: the concrete `FileImporter`
  * for format `'har'`, assembled from the `http-archive` HAR projection, the
  * FHIR R4 response-kind pool, and the HAR source-file codec.
  *

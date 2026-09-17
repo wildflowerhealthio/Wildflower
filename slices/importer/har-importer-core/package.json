@@ -2,7 +2,7 @@
   "name": "har-importer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The HAR binding of the importer slice: the concrete FileImporterDescriptor for format 'har' — decoding through the `http-archive` package's HttpArchive projection, the har source file DocumentReference codec (`/source-file`), the FHIR R4 response-kind pool, HAR settings, and the FHIR persist sink. The HAR format itself lives in `http-archive` (slices/file-formats); the shape-preserving anonymizer in har-anonymizer-core (slices/anonymizer). No DOM, no fs, no React.",
+  "description": "The HAR binding of the importer slice: the concrete FileImporter for format 'har' — decoding through the `http-archive` package's HttpArchive projection, the HAR source-file DocumentReference coding the importer mints from, the FHIR R4 response-kind pool, and HAR settings. The HAR format itself lives in `http-archive` (slices/file-formats); the shape-preserving anonymizer in har-anonymizer-core (slices/anonymizer). No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

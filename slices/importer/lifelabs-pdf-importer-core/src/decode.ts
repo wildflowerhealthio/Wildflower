@@ -123,13 +123,13 @@ const decodeLifeLabsPdfDocument = (
 /**
  * Decode one picked LifeLabs report PDF into per-report sections of adopted,
  * labeled FHIR resources — the per-file decode the descriptor's `decode`
- * lifts through `perFileDecode`.
+ * lifts through its per-file decode.
  *
  * @param file - The picked file, whose `bytes` are a LifeLabs "Reports" PDF
  *   exactly as the picker read them
  * @param settings - The import's settings (time zone for date interpretation)
  * @param _source - The file's source-file reference, unused: this format's
- *   resources carry no id derived from their source file, and `perFileDecode`
+ *   resources carry no id derived from their source file, and `FileImporter`
  *   stamps `meta.source` itself
  * @returns One section of `LabeledResource`s per report, no notes; fails only
  *   with a `ParseError` when the bytes are not a PDF the extractor can open or

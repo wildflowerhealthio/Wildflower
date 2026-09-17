@@ -1,6 +1,6 @@
 /**
  * Decode a DICOM file into one section of FHIR resources and diagnostic
- * notes — the per-file decode `perFileDecode` lifts into the descriptor's
+ * notes — the `decodeOne` the format's `FileImporter` lifts into its batch
  * `decode`. A `dicom-parser` failure is a `ParseError`.
  *
  * @packageDocumentation

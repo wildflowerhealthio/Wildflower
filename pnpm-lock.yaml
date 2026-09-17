@@ -314,6 +314,9 @@ importers:
       fhir-r4-react:
         specifier: workspace:*
         version: link:../../slices/emr/fhir-r4-react
+      importer-core:
+        specifier: workspace:*
+        version: link:../../slices/importer/importer-core
       importer-react:
         specifier: workspace:*
         version: link:../../slices/importer/importer-react

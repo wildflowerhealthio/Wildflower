@@ -1,7 +1,8 @@
 import { parseDicomFile } from 'dicom'
 import { writeDicom } from 'dicom/test-helpers'
-import { DateTime, Effect, Either, Option } from 'effect'
+import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
+import { Patient } from 'fhir-r4/resources'
 import {
   PickedFileSource,
   SourceFile,
@@ -74,7 +75,7 @@ describe('dicomImporter', () => {
       expect(section.title).toBe(SourceFile.SECTION_TITLE)
       expect(section.resources).toHaveLength(1)
       const [row] = section.resources
-      expect(row.key).toBe(SourceFile.key('sample.dcm'))
+      expect(row.key).toBe(`0:sample.dcm/${SourceFile.key('sample.dcm')}`)
       expect(row.resource.resourceType).toBe('DocumentReference')
       const { id } = row.resource
       if (id === null) throw new Error('expected a minted source file id')
@@ -99,7 +100,7 @@ describe('dicomImporter', () => {
       const [section] = unit.decoded.sections
       expect(section.title).toBe(SourceFile.SECTION_TITLE)
       const [row] = section.resources
-      expect(row.key).toBe(SourceFile.key('sample.dcm'))
+      expect(row.key).toBe(`0:sample.dcm/${SourceFile.key('sample.dcm')}`)
       if (row.resource.resourceType !== 'DocumentReference')
         throw new Error('expected a source file')
       expect(row.resource.subject?.reference).toBe(headerPatientReference(bytes))
@@ -154,16 +155,31 @@ describe('dicomImporter', () => {
   })
 
   describe('patientSubjectOf', () => {
-    it('has no subject for a header with no patient identity', () => {
-      const bytes = writeDicom({
-        StudyInstanceUID: '1.2.3.4.5',
-        SeriesInstanceUID: '1.2.3.4.5.1',
-        SOPInstanceUID: '1.2.3.4.5.1.1',
-        Modality: 'CT',
+    const anyFile: PickedFile = {
+      fileName: 'sample.dcm',
+      bytes: new Uint8Array(),
+      source: PickedFileSource.local,
+    }
+
+    it('has no subject when the decode synthesized no Patient', () => {
+      // A header with no PatientID and no PatientName decodes to no resources
+      // at all, so there is nothing to file the raw image under.
+      expect(patientSubjectOf(anyFile, { sections: [], notes: [] })).toBeUndefined()
+    })
+
+    it('names the Patient the decode synthesized, without re-parsing the file', () => {
+      const patient = Schema.decodeUnknownSync(Patient.Schema)({
+        resourceType: 'Patient',
+        id: 'wf-patient-1',
       })
       expect(
-        patientSubjectOf({ fileName: 'sample.dcm', bytes, source: PickedFileSource.local })
-      ).toBeUndefined()
+        patientSubjectOf(anyFile, {
+          sections: [
+            { title: 'CT', resources: [{ key: 'patient', title: 'Patient', resource: patient }] },
+          ],
+          notes: [],
+        })
+      ).toEqual({ reference: 'Patient/wf-patient-1' })
     })
   })
 })

@@ -1,12 +1,13 @@
 import { Effect, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import {
-  FileImporter,
+  type FileImporter,
+  fileImporter,
   PickedFileSource,
   type PickedFile,
   DecodedFile,
   SourceFile,
-  type FormatDecode,
+  FormatDecode,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -49,7 +50,7 @@ const SETTINGS = { timeZone: 'America/Vancouver' }
 const importerForReports = (
   reports: readonly Report.Type[]
 ): FileImporter<'lifelabs-pdf', typeof SETTINGS> =>
-  new FileImporter({
+  fileImporter({
     format: 'lifelabs-pdf' as const,
     coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
     contentType: 'application/pdf',
@@ -89,7 +90,9 @@ describe('lifeLabsPdfImporter decode', () => {
           expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
           const sourceRow = sourceSection?.resources[0]
           expect(sourceSection?.resources).toHaveLength(1)
-          expect(sourceRow?.key).toBe(SourceFile.key(file.fileName))
+          expect(sourceRow?.key).toBe(
+            `${FormatDecode.keyPrefix(0, file)}${SourceFile.key(file.fileName)}`
+          )
           expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
           const sourceId = sourceRow?.resource.id
           expect(sourceId).toEqual(expect.any(String))

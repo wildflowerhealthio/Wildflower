@@ -18,6 +18,7 @@ export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.t
 export type { BoundFormat, FormatKind, FormatSettings } from './registry.ts'
 export {
   type BatchDecodeResult,
+  claimedFormats,
   decodeFormat,
   groupByFormat,
   type GroupedPicks,
@@ -25,6 +26,6 @@ export {
   readBatch,
   type ReadRegistry,
   redecodeFormat,
-  UnrecognizedFile,
+  type UnrecognizedFile,
 } from './read-batch.ts'
 export { planFormatWrite, type SkipReason, type WritePlan } from './plan-write.ts'

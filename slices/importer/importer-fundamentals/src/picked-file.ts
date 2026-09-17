@@ -15,14 +15,24 @@
 
 import * as SourceFile from './source-file.ts'
 
-/** Where a {@link PickedFile} came from: a `local` file the device holds, or a `server` file already stored as a `DocumentReference` on the FHIR server. */
-type PickedFileSource =
+/**
+ * Where a {@link PickedFile} came from: a `local` file the device holds, or a
+ * `server` file already stored as a `DocumentReference` on the FHIR server.
+ *
+ * @remarks
+ * Named `Source` rather than `PickedFileSource` because this module is
+ * consumed as the `PickedFileSource` namespace — `PickedFileSource.Source`
+ * and `PickedFileSource.local` then read as one vocabulary, where a type and
+ * a namespace sharing the name `PickedFileSource` meant two different things
+ * at the same import site.
+ */
+type Source =
   | { readonly _tag: 'local' }
   | { readonly _tag: 'server'; readonly reference: SourceFile.Reference }
 
-const local: PickedFileSource = { _tag: 'local' }
+const local: Source = { _tag: 'local' }
 
-const server = (id: string): PickedFileSource => ({
+const server = (id: string): Source => ({
   _tag: 'server',
   reference: SourceFile.makeReference(id),
 })
@@ -34,8 +44,8 @@ interface PickedFile {
   /** The file's raw bytes, exactly as they were read. */
   readonly bytes: Uint8Array
   /** Which source produced this pick. */
-  readonly source: PickedFileSource
+  readonly source: Source
 }
 
 export { local, server }
-export type { PickedFile, PickedFileSource }
+export type { PickedFile, Source }

@@ -1,7 +1,7 @@
-import { Data, Effect, Option, pipe } from 'effect'
+import { Effect, Option, pipe } from 'effect'
 import { FormatDecode, identify, type PickedFile } from 'importer-fundamentals'
 
-import type { BoundFormat, FormatKind, FormatSettings } from './registry.ts'
+import { type BoundFormat, type FormatKind, formatKinds, type FormatSettings } from './registry.ts'
 
 /**
  * The read half of an import as pure functions over the registry: group a
@@ -48,13 +48,22 @@ interface GroupedPicks {
   readonly unrecognized: readonly PickedFile[]
 }
 
-/** A picked file no registered descriptor's `detect` claimed. */
-class UnrecognizedFile extends Data.TaggedError('UnrecognizedFile')<{
+/**
+ * A picked file no registered importer's `detect` claimed.
+ *
+ * @remarks
+ * Plain data, not an error: nothing ever fails with one. `readBatch` builds
+ * them, the preview renders them as "not a format the importer recognizes",
+ * and the confirm reports each as a `skipped` result.
+ */
+interface UnrecognizedFile {
+  /** Distinguishes this pick from every other in the batch — the row's React key and result id. */
   readonly id: string
+  /** The file's name, as the preview and the results head the row with. */
   readonly title: string
+  /** The one pick, kept as a list so it reads like every other unit's `files`. */
   readonly files: readonly PickedFile[]
-  readonly format?: undefined
-}> {}
+}
 
 /**
  * One decode result per registered format, each correlated with its own
@@ -112,7 +121,7 @@ const groupByFormat = (registry: ReadRegistry, picks: readonly PickedFile[]): Gr
 /**
  * Run one format's batch `decode` on its files under the format's current
  * settings. Each result's id is deterministic, minted inside the format's
- * `decode` via {@link formatDecodeId}.
+ * `decode` via `FormatDecode.makeId`.
  *
  * @typeParam K - The one format being decoded; generic so `registry[kind]`
  *   and `settings[kind]` stay correlated (see the module remarks)
@@ -164,8 +173,8 @@ const collectFormats = (
 /**
  * Read a freshly picked batch: group it by format, decode every group
  * under its format's current settings, and yield a {@link BatchDecodeResult}
- * with one {@link FormatDecodeResult} per format kind plus any
- * unrecognized files.
+ * with one `FormatDecode.Result` per format kind plus any unrecognized
+ * files.
  *
  * @param registry - The registered formats' `detect`s and `decode`s
  * @param settings - Every format's current settings
@@ -174,7 +183,7 @@ const collectFormats = (
  *
  * @remarks
  * Formats decode concurrently. Each format's id is deterministic via
- * {@link formatDecodeId}, so a settings re-decode produces the same ids
+ * `FormatDecode.makeId`, so a settings re-decode produces the same ids
  * by construction.
  */
 const readBatch = (
@@ -191,14 +200,11 @@ const readBatch = (
         Option.map((files) => decodeFormat(registry, settings, kind, files)),
         Option.getOrElse(() => Effect.succeed(FormatDecode.emptyResult(kind)))
       ),
-    unrecognized.map(
-      (pick) =>
-        new UnrecognizedFile({
-          id: FormatDecode.makeId('unrecognized', [pick]),
-          title: pick.fileName,
-          files: [pick],
-        })
-    )
+    unrecognized.map((pick, index): UnrecognizedFile => ({
+      id: FormatDecode.makeFileId('unrecognized', index, pick),
+      title: pick.fileName,
+      files: [pick],
+    }))
   )
 }
 
@@ -216,7 +222,7 @@ const readBatch = (
  * Rebuilds the batch through {@link collectFormats} rather than replacing one
  * slot: every other format's slot is passed straight back, by reference, so
  * nothing else re-decodes. Each format's id is deterministic via
- * {@link formatDecodeId}, so the same files produce the same ids under any
+ * `FormatDecode.makeId`, so the same files produce the same ids under any
  * settings — the reviewer's selection survives by construction.
  */
 const redecodeFormat = (
@@ -238,8 +244,27 @@ const redecodeFormat = (
   )
 }
 
+/**
+ * The formats that claimed at least one file in a batch, in registry order.
+ *
+ * @remarks
+ * The one predicate for "did this format take part in this import", held here
+ * rather than re-derived per caller: the preview renders a group per claimed
+ * format and tallies over the same set, and the confirm plans a write for
+ * each. A format that claimed nothing has an `emptyResult` — no files, no
+ * sections, and a blank `title` — so treating it as a participant produces a
+ * titleless `skipped` row in the results, which is what the confirm used to
+ * report before it came through here.
+ *
+ * @param batch - The batch's decode result
+ * @returns Every format with at least one claimed file, in {@link formatKinds} order
+ */
+const claimedFormats = (batch: BatchDecodeResult): readonly FormatKind[] =>
+  formatKinds.filter((kind) => batch[kind].files.length > 0)
+
 export {
   type BatchDecodeResult,
+  claimedFormats,
   decodeFormat,
   groupByFormat,
   type GroupedPicks,
@@ -247,5 +272,5 @@ export {
   readBatch,
   type ReadRegistry,
   redecodeFormat,
-  UnrecognizedFile,
+  type UnrecognizedFile,
 }

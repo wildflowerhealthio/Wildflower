@@ -3,9 +3,9 @@ import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
-import type * as DecodedFile from './decoded-file.ts'
-import { FileImporter, type DocumentReferenceType } from './file-importer-descriptor.ts'
-import type * as FormatDecode from './format-decode.ts'
+import * as DecodedFile from './decoded-file.ts'
+import { fileImporter, type DocumentReferenceType } from './file-importer.ts'
+import * as FormatDecode from './format-decode.ts'
 import * as PickedFileSource from './picked-file.ts'
 import type { PickedFile } from './picked-file.ts'
 import * as SourceFile from './source-file.ts'
@@ -16,7 +16,7 @@ const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 // The codec as a schema / the deterministic mint
 // ---------------------------------------------------------------------------
 
-const labelled = new FileImporter({
+const labelled = fileImporter({
   format: 'example',
   coding: { system: SYSTEM, code: 'example-source-file' },
   contentType: 'application/json',
@@ -176,7 +176,7 @@ describe('buildSourceFile — the deterministic mint', () => {
 
   it('namespaces the id by coding system — two formats never collide on identical bytes and name', async () => {
     const picked = { fileName: 'report.bin', bytes: new TextEncoder().encode('shared') }
-    const other = new FileImporter({
+    const other = fileImporter({
       format: 'other',
       coding: {
         system: 'https://other.test/fhir/CodeSystem/source-file',
@@ -241,7 +241,7 @@ const decodeBytes = (
         notes: [],
       })
 
-const importer = new FileImporter({
+const importer = fileImporter({
   format: 'test',
   coding: { system: SYSTEM, code: 'example' },
   contentType: 'application/octet-stream',
@@ -279,7 +279,9 @@ describe('resolve (tested through decode)', () => {
     expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
     const labeled = sourceSection?.resources[0]
 
-    expect(labeled?.key).toBe(SourceFile.key('scan.bin'))
+    expect(labeled?.key).toBe(
+      `${FormatDecode.keyPrefix(0, localFile('scan.bin', new Uint8Array()))}${SourceFile.key('scan.bin')}`
+    )
     expect(labeled?.title).toBe('scan.bin')
 
     if (labeled.resource.resourceType !== 'DocumentReference')
@@ -336,7 +338,7 @@ describe('decode (batch behavior)', () => {
           if (file.source._tag === 'local') {
             expect(sections[0]?.title).toBe(SourceFile.SECTION_TITLE)
             expect(sections[0]?.resources.map((entry) => entry.key)).toEqual([
-              SourceFile.key(file.fileName),
+              `${FormatDecode.keyPrefix(0, file)}${SourceFile.key(file.fileName)}`,
             ])
             const sourceId = sections[0]?.resources[0]?.resource.id
             const extracted = sections.slice(1).flatMap((s) => s.resources)
@@ -359,7 +361,7 @@ describe('decode (batch behavior)', () => {
 
   it('should hand the per-file decode the resolved source id', async () => {
     const seen: string[] = []
-    const spyImporter = new FileImporter({
+    const spyImporter = fileImporter({
       format: 'test',
       coding: { system: SYSTEM, code: 'example' },
       contentType: 'application/octet-stream',
@@ -388,6 +390,97 @@ describe('decode (batch behavior)', () => {
     expect(seen.toSorted()).toEqual(
       [`DocumentReference/${sourceRow?.resource.id}`, 'DocumentReference/doc-b'].toSorted()
     )
+  })
+
+  it('property: every review key across a multi-file batch is distinct', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(
+          fileArbitrary.filter((file) => file.bytes.length > 0),
+          {
+            minLength: 2,
+            maxLength: 5,
+          }
+        ),
+        async (files) => {
+          const result = await Effect.runPromise(importer.decode(files, null))
+          const keys = result.decoded.sections.flatMap((section) =>
+            section.resources.map((entry) => entry.key)
+          )
+          expect(new Set(keys).size).toBe(keys.length)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+
+  it('should keep two files that decode to the same key apart', async () => {
+    // Both files decode to a `<fileName>:0` key, and both mint a source-file
+    // row — the collision that let unticking one file's row drop the other's
+    // resource, since the selection is keyed by (format, key).
+    const result = await Effect.runPromise(
+      importer.decode(
+        [localFile('scan.bin', new Uint8Array([1])), localFile('scan.bin', new Uint8Array([2]))],
+        null
+      )
+    )
+    const keys = result.decoded.sections.flatMap((section) =>
+      section.resources.map((entry) => entry.key)
+    )
+    expect(keys.length).toBe(4)
+    expect(new Set(keys).size).toBe(4)
+  })
+
+  it('should give two unreadable files of the same name distinct ids', async () => {
+    const empty = new Uint8Array()
+    const result = await Effect.runPromise(
+      importer.decode([localFile('same.bin', empty), localFile('same.bin', empty)], null)
+    )
+    expect(result.unreadableFiles.map((file) => file.id)).toEqual([
+      'test/0:same.bin',
+      'test/1:same.bin',
+    ])
+  })
+
+  it('should give two batches of same-named files distinct result ids', () => {
+    const one = FormatDecode.makeId('test', [
+      localFile('a.bin', new Uint8Array()),
+      localFile('b.bin', new Uint8Array()),
+    ])
+    const swapped = FormatDecode.makeId('test', [
+      localFile('b.bin', new Uint8Array()),
+      localFile('a.bin', new Uint8Array()),
+    ])
+    const duplicated = FormatDecode.makeId('test', [
+      localFile('a.bin', new Uint8Array()),
+      localFile('a.bin', new Uint8Array()),
+    ])
+    expect(new Set([one, swapped, duplicated]).size).toBe(3)
+  })
+
+  it('should file the minted source file under the subject the decode named', async () => {
+    const subjectImporter = fileImporter({
+      format: 'test',
+      coding: { system: SYSTEM, code: 'example' },
+      contentType: 'application/octet-stream',
+      display: { title: 'Example', description: 'Test format' },
+      detect: () => false,
+      defaultSettings: null,
+      decodeOne: decodeBytes,
+      // The decode's own resources name the subject, so a format never parses
+      // its file twice to derive one.
+      subjectFor: (_file, decoded) => {
+        const first = DecodedFile.resources(decoded)[0]
+        return first === undefined ? undefined : { reference: `Patient/${first.resource.id}` }
+      },
+    })
+    const result = await Effect.runPromise(
+      subjectImporter.decode([localFile('scan.bin', new Uint8Array([9]))], null)
+    )
+    const sourceRow = result.decoded.sections[0]?.resources[0]?.resource
+    if (sourceRow?.resourceType !== 'DocumentReference')
+      throw expect.fail('Expected a source-file DocumentReference')
+    expect(sourceRow.subject?.reference).toBe('Patient/9')
   })
 
   it('should re-stamp the upload instant from the clock on each decode, keeping the id', async () => {

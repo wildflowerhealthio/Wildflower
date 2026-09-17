@@ -2,7 +2,7 @@
   "name": "importer-core",
   "version": "0.0.0",
   "private": true,
-  "description": "The pure core of the importer slice: the closed format registry (every registered FileImporterDescriptor, typed per format) and the batch machinery the shell drives — group a pick by format, read it into review units, re-decode one format's units under new settings, and plan a unit's write from its reviewed selection. No DOM, no fs, no React.",
+  "description": "The pure core of the importer slice: the closed format registry (every registered FileImporter, typed per format) and the batch machinery the shell drives — group a pick by format, read it into one result per format, re-decode one format under new settings, and plan a format's write from its reviewed selection. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

@@ -29,7 +29,7 @@ const looksLikeJson = (bytes: Uint8Array): boolean => {
 }
 
 /**
- * `FileImporterDescriptor.detect` for HAR: extension `.har`, or JSON-object
+ * `FileImporter`'s `detect` for HAR: extension `.har`, or JSON-object
  * shape.
  */
 const detectHar = (fileBytes: Uint8Array, fileName: string): boolean =>

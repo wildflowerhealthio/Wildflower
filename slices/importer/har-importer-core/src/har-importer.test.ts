@@ -5,7 +5,7 @@ import { SourceDescriptor } from 'http-extraction-fundamentals'
 import {
   PickedFileSource,
   SourceFile,
-  type FormatDecode,
+  FormatDecode,
   type DecodedFile,
   type PickedFile,
 } from 'importer-fundamentals'
@@ -108,7 +108,7 @@ const POOL_KIND_NAMES: string[] = SourceDescriptor.poolOf(fhirSources).map((kind
 const OBSERVATION_KINDS = ['ObservationListResponseKind', 'ObservationResponseKind']
 
 /** The fixture archive, picked from `source` under one file name. */
-const pickedHar = (source: PickedFileSource.PickedFileSource): PickedFile => ({
+const pickedHar = (source: PickedFileSource.Source): PickedFile => ({
   fileName: 'archive.har',
   bytes: RECOGNIZED_WITH_NOISE,
   source,
@@ -198,8 +198,10 @@ describe('harImporter.decode', () => {
     const sourceSection = decoded.sections[0]
 
     expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
+    // The key is namespaced by the file's slot in the batch, so two archives
+    // in one pick cannot collide on it.
     expect(sourceSection?.resources.map((entry) => entry.key)).toEqual([
-      SourceFile.key('archive.har'),
+      `${FormatDecode.keyPrefix(0, pickedHar(PickedFileSource.local))}${SourceFile.key('archive.har')}`,
     ])
     expect(sourceSection?.resources[0]?.resource.resourceType).toBe('DocumentReference')
   })

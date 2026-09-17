@@ -6,8 +6,8 @@ import { useRunAuthed } from 'fhir-r4-react'
 import { type FhirR4ResourcesHttpApiClient, persistBatchBundle } from 'fhir-r4/clients'
 import {
   type BatchDecodeResult,
+  claimedFormats,
   type FormatKind,
-  formatKinds,
   planFormatWrite,
 } from 'importer-core'
 import type { FormatDecode, StagedImport } from 'importer-fundamentals'
@@ -25,6 +25,10 @@ import {
  * exactly those resources as one `persistBatchBundle`.
  *
  * @remarks
+ * Only the formats that claimed a file take part — the same
+ * `claimedFormats` set the preview rendered groups for, so the results name
+ * exactly the formats the reviewer saw.
+ *
  * The seam the preview-then-confirm promise rests on — nothing here runs
  * until the user confirms a reviewed batch, and what runs is
  * `importer-core`'s `planFormatWrite` (the reviewed objects, exclusions
@@ -127,7 +131,10 @@ const useConfirmImport = (): ConfirmImport => {
       const ticket = latest.current
       setState({ _tag: 'confirming' })
 
-      const formatEffects = formatKinds.map((kind) =>
+      // Only the formats that claimed a file: a format that claimed none has
+      // an empty result with a blank title, and planning a write for it would
+      // report a titleless "nothing to import" row per unused format.
+      const formatEffects = claimedFormats(batchResult).map((kind) =>
         importOneFormat(batchResult[kind], selectionFor(kind))
       )
       const unrecognizedEffects = batchResult.unrecognizedFiles.map(

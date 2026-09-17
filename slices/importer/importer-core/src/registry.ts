@@ -6,10 +6,20 @@ import { type LifeLabsPdfSettings, lifeLabsPdfImporter } from 'lifelabs-pdf-impo
 /**
  * The closed, compile-time format registry: every registered
  * {@link FileImporter}, indexed by its format tag and typed through
- * {@link FormatVariant} so each entry keeps its concrete settings without
- * erasure. The single edit point for wiring a file-format binding into the
- * importer; the React shell layers each format's `SettingsPicker` on top of
+ * {@link BoundFormat} so each entry keeps its concrete settings without
+ * erasure. The React shell layers each format's `SettingsPicker` on top of
  * this record.
+ *
+ * @remarks
+ * Wiring a binding in is three edits *here* — the {@link FormatSettings} map,
+ * the {@link formatRegistry} literal, and {@link defaultFormatSettings} — plus
+ * `collectFormats` in `read-batch.ts` and the picker entry in
+ * `importer-react`'s registry. Every one of them is a mapped or exhaustive
+ * type over {@link FormatKind}, so a format added to `FormatSettings` and
+ * missed anywhere else **fails to compile**; none of them can drift silently.
+ * {@link formatKinds} is derived from the registry rather than listed, because
+ * a hand-written `readonly FormatKind[]` is the one slot a missing entry
+ * *would* have slipped through.
  *
  * @packageDocumentation
  */
@@ -29,8 +39,7 @@ type FormatSettings = {
 
 /**
  * One registered format's importer, parameterised on its {@link FormatKind}
- * key so every field carries the format's concrete types through
- * {@link FormatVariant}.
+ * key so every field carries the format's concrete types.
  */
 type BoundFormat<K extends FormatKind> = FileImporter<K, FormatSettings[K]>
 
@@ -48,8 +57,20 @@ const defaultFormatSettings: FormatSettings = {
   dicom: formatRegistry.dicom.defaultSettings,
 }
 
-/** Every registered format tag, in registry (priority) order — the typed walk over the closed registry. */
-const formatKinds: readonly FormatKind[] = ['har', 'lifelabs-pdf', 'dicom']
+/** Whether a key is one the registry holds — the runtime check behind {@link formatKinds}. */
+const isFormatKind = (key: string): key is FormatKind => Object.hasOwn(formatRegistry, key)
+
+/**
+ * Every registered format tag, in registry (priority) order — the typed walk
+ * over the closed registry.
+ *
+ * @remarks
+ * Derived from {@link formatRegistry} rather than listed, so it cannot fall
+ * out of step with it: a format added to the registry is walked from that
+ * edit alone. The order is the registry literal's own key order, which is
+ * what `detect` priority means.
+ */
+const formatKinds: readonly FormatKind[] = Object.keys(formatRegistry).filter(isFormatKind)
 
 export { defaultFormatSettings, formatKinds, formatRegistry }
 export type { BoundFormat, FormatKind, FormatSettings }

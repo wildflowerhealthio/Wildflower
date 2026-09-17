@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
-import { FileImporter, type DecodedFile } from 'importer-fundamentals'
+import { fileImporter, type DecodedFile } from 'importer-fundamentals'
 
 import {
   HAR_ARCHIVE_CODE,
@@ -59,7 +59,7 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
       : [`Excluded — every matching kind is turned off in the settings: ${url}`]
   })
 
-const harImporter = new FileImporter({
+const harImporter = fileImporter({
   format: 'har',
   coding: { system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE },
   contentType: 'application/json',

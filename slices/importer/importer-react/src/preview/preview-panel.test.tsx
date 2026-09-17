@@ -7,7 +7,7 @@ import {
   type BatchDecodeResult,
   type FormatKind,
   type FormatSettings,
-  UnrecognizedFile,
+  type UnrecognizedFile,
 } from 'importer-core'
 import { StagedImport, FormatDecode, type DecodedFile } from 'importer-fundamentals'
 import type { JSX } from 'react'
@@ -115,11 +115,11 @@ describe('PreviewPanel', () => {
       'lifelabs-pdf': FormatDecode.emptyResult('lifelabs-pdf'),
       dicom: FormatDecode.emptyResult('dicom'),
       unrecognizedFiles: [
-        new UnrecognizedFile({
+        {
           id: 'x',
           title: 'notes.txt',
           files: [pickedFile('notes.txt')],
-        }),
+        },
       ],
     }
     render(<PreviewPanel {...panelProps(batch)} />)

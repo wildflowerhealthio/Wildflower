@@ -6,7 +6,13 @@ import { PickedFileSource, type PickedFile, FormatDecode, SourceFile } from 'imp
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { groupByFormat, readBatch, type ReadRegistry, redecodeFormat } from './read-batch.ts'
+import {
+  claimedFormats,
+  groupByFormat,
+  readBatch,
+  type ReadRegistry,
+  redecodeFormat,
+} from './read-batch.ts'
 import { defaultFormatSettings, type FormatKind, formatKinds, formatRegistry } from './registry.ts'
 
 /**
@@ -202,5 +208,45 @@ describe('readBatch over the real registry', () => {
     expect(batch.dicom.decoded.sections.length).toBeGreaterThan(1)
     expect(batch.unrecognizedFiles.length).toBe(1)
     expect(batch.unrecognizedFiles[0]?.title).toBe('notes.txt')
+  })
+})
+
+describe('claimedFormats', () => {
+  it('property: names exactly the formats a pick gave files to, in registry order', async () => {
+    await fc.assert(
+      fc.asyncProperty(batchArbitrary(6), async (picks) => {
+        const batch = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
+        const expected = formatKinds.filter((kind) =>
+          picks.some((pick) => kindOf(pick.fileName) === kind)
+        )
+        expect(claimedFormats(batch)).toEqual(expected)
+      }),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+
+  it('names no format for a batch of unrecognized picks only', async () => {
+    const batch = await Effect.runPromise(
+      readBatch(fakeRegistry, defaultFormatSettings, [
+        { fileName: 'txt-a', bytes: new Uint8Array([1]), source: PickedFileSource.local },
+      ])
+    )
+    expect(claimedFormats(batch)).toEqual([])
+  })
+})
+
+describe('unrecognized picks', () => {
+  it('gives two same-named unrecognized picks distinct ids', async () => {
+    const pick = (): PickedFile => ({
+      fileName: 'txt-same',
+      bytes: new Uint8Array([1]),
+      source: PickedFileSource.local,
+    })
+    const batch = await Effect.runPromise(
+      readBatch(fakeRegistry, defaultFormatSettings, [pick(), pick()])
+    )
+    const ids = batch.unrecognizedFiles.map((file) => file.id)
+    expect(ids.length).toBe(2)
+    expect(new Set(ids).size).toBe(2)
   })
 })

@@ -14,6 +14,7 @@ import type { TraceBody } from 'web-trace-core'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
+import { SKIPPED_HEADING } from './results/import-results.tsx'
 
 /**
  * The whole preview-then-confirm flow, driven end-to-end over the real
@@ -138,6 +139,12 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
     expect(writes().length).toBeGreaterThan(0)
+    // The results name only the formats that claimed a file. The batch has one
+    // HAR and nothing else, so the "nothing to import" section must be absent
+    // entirely — a confirm that planned a write per *registered* format instead
+    // reported one titleless skipped row per unused format.
+    expect(screen.queryByRole('heading', { name: SKIPPED_HEADING })).toBeNull()
+    expect(screen.getByRole('status').textContent).toMatch(/Wrote 4 of 4 resources/)
   })
 
   it('writes the source-file archive in the same batch, first, and stamps every resource with it', async () => {

@@ -7,10 +7,11 @@ import {
   type FormatKind,
   type FormatSettings,
   readBatch,
-  type ReadRegistry,
   redecodeFormat,
 } from 'importer-core'
 import type { PickedFile } from 'importer-fundamentals'
+
+import { formatRegistry } from '../registry.ts'
 
 /**
  * Running the read half of the import over a batch of {@link PickedFile}s —
@@ -27,6 +28,10 @@ import type { PickedFile } from 'importer-fundamentals'
  * React. Run through `useRunAuthed` (the slice's one runner) even though a
  * decode needs no auth; the write client stays unreachable by `decode`'s own
  * construction, not by anything this hook does.
+ *
+ * The registry is the shell's own `formatRegistry`, imported rather than
+ * taken as a parameter: there is one, the hook is mounted once, and a
+ * parameter only bought dependency arrays that had to be lied about.
  *
  * @packageDocumentation
  */
@@ -71,29 +76,45 @@ interface ImportRun {
   readonly reset: () => void
 }
 
+/** Everything a decode reads before it starts: the settings to compose onto, and the batch to re-decode from. */
+interface Current {
+  readonly settings: FormatSettings
+  readonly run: ImportRunState
+}
+
+const INITIAL_CURRENT: Current = { settings: defaultFormatSettings, run: { _tag: 'idle' } }
+
 /**
  * Drives a batch read as an imperative action and re-decodes a format's
  * files when its settings change. The authed runner comes from router
  * context via `fhir-r4-react`, so mount this inside the host app's router.
  *
- * @param registry - The registered formats' `detect` / `decode` surface,
- *   indexed by format kind
  * @returns The read surface: its `state`, the current per-format `settings`,
  *   the `run` trigger, `applySettings`, and a `reset` back to `idle`
  */
-const useImportRun = (registry: ReadRegistry): ImportRun => {
+const useImportRun = (): ImportRun => {
   const runAuthed = useRunAuthed()
-  const [state, setState] = useState<ImportRunState>({ _tag: 'idle' })
-  const [settings, setSettings] = useState<FormatSettings>(defaultFormatSettings)
+  const [state, setState] = useState<ImportRunState>(INITIAL_CURRENT.run)
+  const [settings, setSettings] = useState<FormatSettings>(INITIAL_CURRENT.settings)
   const [redecoding, setRedecoding] = useState(false)
   const latest = useRef(0)
   // Advanced only by `run`, so it names the picked batch rather than the
   // decode pass — see `ImportRunState`'s `batchId`.
   const batchCounter = useRef(0)
-  // The settings the in-flight (or latest) decode ran under — read by
-  // applySettings so a re-decode composes with the freshest value even
-  // before React commits the state update.
-  const settingsRef = useRef(settings)
+  // What the *next* decode reads, as opposed to what this render shows. It is
+  // one ref rather than a closure over `state` plus a settings mirror: two
+  // settings changes in one tick must compose, so the second has to see the
+  // first's value before React commits it, and reading the batch here instead
+  // of closing over it keeps every action below identity-stable for the life
+  // of the hook.
+  const current = useRef<Current>(INITIAL_CURRENT)
+
+  // Write both the ref the actions read and the state the screen renders, so
+  // the two can never disagree.
+  const commitRun = useCallback((run: ImportRunState): void => {
+    current.current = { ...current.current, run }
+    setState(run)
+  }, [])
 
   const run = useCallback(
     (picks: readonly PickedFile[]): void => {
@@ -102,41 +123,42 @@ const useImportRun = (registry: ReadRegistry): ImportRun => {
       batchCounter.current += 1
       const ticket = latest.current
       const batchId = batchCounter.current
-      setState({ _tag: 'reading' })
-      void runAuthed(readBatch(registry, settingsRef.current, picks)).then((batch) => {
+      commitRun({ _tag: 'reading' })
+      void runAuthed(readBatch(formatRegistry, current.current.settings, picks)).then((batch) => {
         if (latest.current !== ticket) return
-        setState({ _tag: 'ready', batchId, batch })
+        commitRun({ _tag: 'ready', batchId, batch })
       })
     },
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary
-    [runAuthed]
+    [commitRun, runAuthed]
   )
 
   const applySettings = useCallback(
     <K extends FormatKind>(format: K, next: FormatSettings[K]): void => {
-      const merged: FormatSettings = { ...settingsRef.current, [format]: next }
-      settingsRef.current = merged
+      const merged: FormatSettings = { ...current.current.settings, [format]: next }
+      current.current = { ...current.current, settings: merged }
       setSettings(merged)
-      if (state._tag !== 'ready') return
+      const { run: pending } = current.current
+      if (pending._tag !== 'ready') return
       latest.current += 1
       const ticket = latest.current
-      const { batchId } = state
+      const { batchId } = pending
       setRedecoding(true)
-      void runAuthed(redecodeFormat(registry, merged, format, state.batch)).then((batch) => {
-        if (latest.current !== ticket) return
-        setRedecoding(false)
-        setState({ _tag: 'ready', batchId, batch })
-      })
+      void runAuthed(redecodeFormat(formatRegistry, merged, format, pending.batch)).then(
+        (batch) => {
+          if (latest.current !== ticket) return
+          setRedecoding(false)
+          commitRun({ _tag: 'ready', batchId, batch })
+        }
+      )
     },
-    // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary
-    [runAuthed, state]
+    [commitRun, runAuthed]
   )
 
   const reset = useCallback((): void => {
     latest.current++
     setRedecoding(false)
-    setState({ _tag: 'idle' })
-  }, [])
+    commitRun({ _tag: 'idle' })
+  }, [commitRun])
 
   return { state, settings, redecoding, run, applySettings, reset }
 }

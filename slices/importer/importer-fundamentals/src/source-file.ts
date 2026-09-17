@@ -55,8 +55,24 @@ type DecodeOne<TSettings> = (
   source: Ref
 ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError>
 
+/**
+ * How a format names the subject its minted source file is filed under.
+ *
+ * @remarks
+ * Called with the file's *decode*, not just its bytes, so a format reads the
+ * subject off the resources it already extracted rather than parsing the file
+ * a second time — DICOM files the raw image under the `Patient` its decode
+ * synthesized. Returning `undefined` leaves the source file with no
+ * `subject`, which is the default: it keeps an engineering artifact out of
+ * `Patient/$everything`.
+ */
+type SubjectFor = (
+  file: PickedFile,
+  decoded: DecodedFile.DecodedFile
+) => { readonly reference: string } | undefined
+
 interface PerFileDecodeOptions {
-  readonly subjectFor?: (file: PickedFile) => { readonly reference: string } | undefined
+  readonly subjectFor?: SubjectFor | undefined
 }
 
 /** The review key of a minted source-file row, stable across a settings re-decode. */
@@ -66,4 +82,4 @@ const key = (fileName: string): string => `source-file/${fileName}`
 const SECTION_TITLE = 'Source file'
 
 export { SECTION_TITLE, idFromReference, isReference, key, makeReference }
-export type { DecodeOne, PerFileDecodeOptions, Ref, Reference, Type }
+export type { DecodeOne, PerFileDecodeOptions, Ref, Reference, SubjectFor, Type }

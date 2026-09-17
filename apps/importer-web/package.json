@@ -29,6 +29,7 @@
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "fhir-r4-react": "workspace:*",
+    "importer-core": "workspace:*",
     "importer-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",

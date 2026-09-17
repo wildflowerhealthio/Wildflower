@@ -53,15 +53,15 @@ interface DiffRow {
 
 /**
  * Every previewed resource's server comparison, keyed by format kind and
- * then by {@link LabeledResource.key} within the format.
+ * then by `DecodedFile.Resource`'s `key` within the format.
  *
  * @remarks
- * Two formats can carry the same resource key — a format whose keys name
- * the resource's role (DICOM's `patient`, `imaging-study`) repeats them per
- * file, and every format's source-file row is keyed by file name — so a
- * flat map keyed by resource key alone would let one format's verdict
- * overwrite another's. Scoping by format keeps each format's badges and
- * pre-exclusions its own.
+ * A resource key is unique within one format — a per-file decode's keys are
+ * namespaced by the file they came from (`FormatDecode.keyPrefix`), so
+ * DICOM's fixed `patient` / `imaging-study` and every format's source-file
+ * row stay distinct across the files a format claimed. Across formats they
+ * are not: two formats may both key a row `0:a.json/patient`. Scoping by
+ * format is what keeps each format's badges and pre-exclusions its own.
  */
 type FormatComparisons = ReadonlyMap<FormatKind, ReadonlyMap<string, ServerComparison>>
 
@@ -90,7 +90,7 @@ const AS_NEW: ServerComparison = { status: 'new', fields: [] }
 
 /**
  * Re-key a `Type/id → comparison` map onto the batch's formats and their
- * `LabeledResource.key`s.
+ * resource keys.
  *
  * @param rows - Every previewed resource with its format
  * @param byDiffKey - The classifier's verdicts by `Type/id`
@@ -136,7 +136,7 @@ const batchOf = (queryKey: readonly unknown[]): number | undefined => {
 /**
  * Run the pre-fetch over every labeled resource across the batch's formats
  * and expose the classification as a
- * `FormatKind → LabeledResource.key → ServerComparison` lookup.
+ * `FormatKind → resource key → ServerComparison` lookup.
  *
  * @param batch - The current batch's decode result (undefined while the
  *   import-run is still `idle` or `reading`); only read formats contribute
@@ -211,7 +211,7 @@ const useServerDiff = (batch: BatchDecodeResult | undefined, batchId: number): S
 }
 
 /**
- * The `StagedImport.Selection.excludedResources` set for a format, seeded
+ * The `StagedImport.Selection`'s `excludedResources` set for a format, seeded
  * from its server diff: every `unchanged` labeled resource is pre-excluded
  * so a re-import of a format whose resources the server already holds writes
  * nothing by default. The reviewer can still tick any row back on.
