@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Effect } from 'effect'
+import { Effect, Either } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import { type FhirR4ResourcesHttpApiClient, persistBatchBundle } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import { planUnitWrite, type UnitReadOutcome } from 'importer-core'
+import { type BatchEntry, entryId, planUnitWrite } from 'importer-core'
 import type { StagedImport } from 'importer-fundamentals'
 
 import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
@@ -81,7 +81,7 @@ interface ConfirmImport {
    * unit's labeled resources come off its own decoded sections — the same
    * objects the preview rendered, its source file among them.
    */
-  readonly confirm: (units: readonly UnitReadOutcome[], selectionFor: SelectionFor) => void
+  readonly confirm: (units: readonly BatchEntry[], selectionFor: SelectionFor) => void
   /** Discard the outcome and return to `idle` (a "start over" from results). */
   readonly reset: () => void
 }
@@ -93,10 +93,11 @@ interface ConfirmImport {
  * resource is a per-entry outcome, never a raised error.
  */
 const importOneUnit = (
-  unit: UnitReadOutcome,
+  unit: BatchEntry,
   selectionFor: SelectionFor
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
-  const { id, title } = unit
+  const id = entryId(unit)
+  const { title } = Either.merge(unit)
   const plan = planUnitWrite(unit, selectionFor(id))
   if (plan._tag === 'skip')
     return Effect.succeed({ _tag: 'skipped', id, title, reason: plan.reason })
@@ -127,7 +128,7 @@ const useConfirmImport = (): ConfirmImport => {
   const latest = useRef(0)
 
   const confirm = useCallback(
-    (units: readonly UnitReadOutcome[], selectionFor: SelectionFor): void => {
+    (units: readonly BatchEntry[], selectionFor: SelectionFor): void => {
       latest.current += 1
       const ticket = latest.current
       setState({ _tag: 'confirming' })

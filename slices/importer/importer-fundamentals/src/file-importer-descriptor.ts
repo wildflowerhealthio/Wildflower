@@ -1,4 +1,4 @@
-import type { Effect, ParseResult } from 'effect'
+import type { Effect, Either, ParseResult } from 'effect'
 import type { DocumentReference } from 'fhir-r4/resources'
 
 import type { PickedFile } from './picked-file.ts'
@@ -94,44 +94,57 @@ interface SettingsPickerProps<TSettings> {
 }
 
 /**
- * One reviewable unit a format's `decode` read successfully: the picked
- * files the format grouped into it, a format-chosen title, and the decoded
- * sections + notes for them — the source-file `DocumentReference`(s) the
- * format minted for its `local` files already among the sections, so the
- * shell reviews them like any other resource.
+ * Deterministic unit identity derived from the format tag and the file
+ * names the unit was decoded from. Stable across settings re-decodes
+ * because the inputs are the same, so the reviewer's selection map (keyed
+ * by unit id) survives without external id-preservation logic.
+ *
+ * @param format - The format tag (`'har'`, `'lifelabs-pdf'`, etc.)
+ * @param files - The picked files the unit was decoded from
+ * @returns A stable, human-readable id
+ */
+const unitId = (format: string, files: readonly PickedFile[]): string =>
+  `${format}/${files.map((f) => f.fileName).join(',')}`
+
+/**
+ * One unit the batch read decoded successfully, stamped with a stable id
+ * and the format that claimed it. Lives in the `Right` of an
+ * `Either`-valued batch outcome; discrimination is via `Either.isRight`.
  *
  * @typeParam TParsed - The concrete resource type the format decodes to
+ * @typeParam F - The format tag (e.g. `FormatKind` in the registry)
  *
  * @remarks
  * A single-file format returns one unit per input file, titled by the file
  * name; a group format (a DICOM study spanning several `.dcm` files) may
  * merge several files into fewer units and title them by what the group is.
+ * `id` is a per-unit stable identity for a React `key` and for the
+ * reviewer's selection map — it survives a settings re-decode.
  */
-interface DecodedUnit<TParsed> {
-  readonly _tag: 'read'
-  /** What the review heads this unit with — the file name for a single-file format. */
+interface ReadUnit<TParsed, F extends string> {
+  readonly id: string
   readonly title: string
-  /** The picked files this unit was decoded from, in pick order. */
   readonly files: readonly PickedFile[]
+  readonly format: F
   readonly decoded: DecodedFile<TParsed>
 }
 
 /**
- * A unit whose files the format claimed (by `detect`) but could not read —
+ * A unit whose format was identified but whose decode rejected the bytes —
  * the malformed-input case, folded to data so a batch decode never fails as
- * a whole: one bad file in a batch of five leaves the other four reviewable.
+ * a whole. Tagged for discrimination against other error variants (e.g.
+ * `UnrecognizedFile`) in the `Left` of an `Either`-valued batch outcome.
+ *
+ * @typeParam F - The format tag (e.g. `FormatKind` in the registry)
  */
-interface UnreadableUnit {
-  readonly _tag: 'unreadable'
-  /** What the review heads this unit with — the file name for a single-file format. */
+interface UnreadableUnit<F extends string> {
+  readonly _tag: 'UnreadableUnit'
+  readonly id: string
   readonly title: string
-  /** The picked files the format grouped into this unit, in pick order. */
   readonly files: readonly PickedFile[]
+  readonly format: F
   readonly error: ParseResult.ParseError
 }
-
-/** What a format's `decode` yields per unit: read into sections, or unreadable. */
-type DecodeOutcome<TParsed> = DecodedUnit<TParsed> | UnreadableUnit
 
 /**
  * "A file-format importer" as one first-class value: everything the shell needs
@@ -182,16 +195,18 @@ interface FileImporterDescriptor<TSettings, TParsed> {
   /** A valid settings value to seed a fresh import's settings form. */
   readonly defaultSettings: TSettings
   /**
-   * Decode a batch of picked files into one {@link DecodeOutcome} per unit
-   * the format decides on — every unit `read` into sections and notes, or
-   * `unreadable` with the malformed-input `ParseError`. Never fails, requires
-   * no services, and writes nothing.
+   * Decode a batch of picked files into one `Either` per unit the format
+   * decides on — `Right` for a successfully decoded {@link ReadUnit} (with
+   * a deterministic id and the format tag already stamped), `Left` for an
+   * {@link UnreadableUnit} carrying the malformed-input `ParseError`. Never
+   * fails, requires no services, and writes nothing.
    *
    * @remarks
    * Single-file formats wrap a per-file decode with `perFileDecode`
    * (`source-file-review.ts`), which mints the file's source-file
-   * `DocumentReference`, prepends it as its own "Source file" section, and
-   * stamps every extracted resource's `meta.source` with it; a group format
+   * `DocumentReference`, prepends it as its own "Source file" section,
+   * stamps every extracted resource's `meta.source` with it, and derives
+   * the unit's id deterministically via {@link unitId}; a group format
    * (a DICOM study merging several `.dcm` files) does the same with
    * `sourceFileFor` per file and decides for itself which source file each
    * of its resources names. Bytes rather than text so the seam stays
@@ -204,7 +219,9 @@ interface FileImporterDescriptor<TSettings, TParsed> {
   readonly decode: (
     files: readonly PickedFile[],
     settings: TSettings
-  ) => Effect.Effect<readonly DecodeOutcome<TParsed>[]>
+  ) => Effect.Effect<
+    readonly Either.Either<ReadUnit<TParsed, string>, UnreadableUnit<string>>[]
+  >
   /**
    * FHIR `category` search token — `system|code` form — every server-side
    * source-file read filters on for this format's uploaded source files.
@@ -294,15 +311,14 @@ const identify = <D extends Pick<FileImporterDescriptor<never, never>, 'detect'>
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
 
-export { identify, sectionResources }
+export { identify, sectionResources, unitId }
 export type {
   DecodedFile,
-  DecodedUnit,
-  DecodeOutcome,
   DocumentReferenceType,
   FileImporterDescriptor,
   LabeledResource,
   LabeledSection,
+  ReadUnit,
   SettingsPickerProps,
   UnreadableUnit,
 }

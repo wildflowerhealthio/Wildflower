@@ -17,20 +17,16 @@
 export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.ts'
 export type { BoundFormat, FormatKind, FormatSettings, FormatVariant } from './registry.ts'
 export {
-  fromDecodeOutcome,
-  type ReadUnit,
-  type UnitReadOutcome,
-  type UnreadableUnit,
-  type UnrecognizedFile,
-} from './unit-read-outcome.ts'
-export {
+  type BatchEntry,
   decodeFormat,
+  entryFormat,
+  entryId,
   groupByFormat,
   type GroupedPicks,
   identifyPick,
-  type NewId,
   readBatch,
   type ReadRegistry,
   redecodeFormat,
+  UnrecognizedFile,
 } from './read-batch.ts'
 export { planUnitWrite, type SkipReason, type WritePlan } from './plan-write.ts'

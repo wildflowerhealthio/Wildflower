@@ -23,9 +23,10 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
   (resource-agnostic, format-agnostic) — the `FileImporterDescriptor` contract
-  (a batch `decode` yielding one `DecodeOutcome` per unit — `read` into a
-  `DecodedFile` of titled `LabeledSection`s plus diagnostic notes, or
-  `unreadable` — plus the server-read seam for uploaded source files), the
+  (a batch `decode` yielding one `Either<ReadUnit, UnreadableUnit>` per unit —
+  a `ReadUnit` with a `DecodedFile` of titled `LabeledSection`s plus diagnostic
+  notes, or an `UnreadableUnit` with its `ParseError` — plus the deterministic
+  `unitId` derivation and the server-read seam for uploaded source files), the
   `PickedFile` vocabulary, the shared `sourceFileCodec` and the
   `source-file-review.ts` helpers a format's `decode` mints its own source file
   with, the pure per-resource `StagedImport` model, and the structural
@@ -65,11 +66,12 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   `BoundFormat<K>`, `formatRegistry`, `defaultFormatSettings`, `formatKinds`)
   and the batch machinery over it: `groupByFormat` splits a pick by the first
   claiming `detect`, `decodeFormat` runs one format's `decode` under its own
-  settings, `readBatch` yields one `UnitReadOutcome` (`ReadUnit` /
-  `UnreadableUnit` / `UnrecognizedFile`, each with an `id`, a `title`, and its
-  `files`) per unit, `redecodeFormat` re-runs one format's units under new
-  settings keeping every id, and `planUnitWrite` turns a reviewed unit into the
-  exact resource list to write. No DOM, no React, no client.
+  settings, `readBatch` yields one `BatchEntry` (`Either<ReadUnit,
+  UnreadableUnit | UnrecognizedFile>`, with deterministic ids via `unitId` —
+  extracted by `entryId` / `entryFormat`) per unit, `redecodeFormat` re-runs
+  one format's units from their retained files under new settings, and
+  `planUnitWrite` turns a reviewed unit into the exact resource list to write.
+  No DOM, no React, no client.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
   the React half of the registry (`importer-core`'s descriptors plus each

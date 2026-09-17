@@ -1,4 +1,4 @@
-import { Effect, Schema } from 'effect'
+import { Effect, Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { HarFromJson, emitHar } from 'http-archive'
 import { SourceDescriptor } from 'http-extraction-fundamentals'
@@ -6,9 +6,9 @@ import {
   PickedFileSource,
   SourceFile,
   SourceFileFhirReference,
-  type DecodedUnit,
   type LabeledSection,
   type PickedFile,
+  type ReadUnit,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
@@ -125,14 +125,14 @@ const pickedHar = (source: PickedFileSource.PickedFileSource): PickedFile => ({
 const readOne = async (
   file: PickedFile,
   settings: HarSettings = defaultHarSettings
-): Promise<DecodedUnit<FhirResource>> => {
+): Promise<ReadUnit<FhirResource, string>> => {
   const units = await Effect.runPromise(harImporterDescriptor.decode([file], settings))
   expect(units).toHaveLength(1)
   const unit = units[0]
-  if (unit === undefined || unit._tag !== 'read') {
-    throw new Error(`Expected one read unit, got ${unit?._tag ?? 'nothing'}`)
+  if (unit === undefined || !Either.isRight(unit)) {
+    throw new Error(`Expected one read unit, got ${unit === undefined ? 'nothing' : 'unreadable'}`)
   }
-  return unit
+  return unit.right
 }
 
 /** The format's own sections — everything but the minted source file's. */
@@ -244,9 +244,11 @@ describe('harImporterDescriptor.decode', () => {
     const unit = units[0]
 
     expect(units).toHaveLength(1)
-    expect(unit?._tag).toBe('unreadable')
-    if (unit === undefined || unit._tag !== 'unreadable') throw new Error('expected unreadable')
-    expect(unit.title).toBe('archive.har')
-    expect(unit.error._tag).toBe('ParseError')
+    expect(unit).toBeDefined()
+    expect(Either.isLeft(unit!)).toBe(true)
+    if (unit === undefined || !Either.isLeft(unit)) throw new Error('expected unreadable')
+    expect(unit.left._tag).toBe('UnreadableUnit')
+    expect(unit.left.title).toBe('archive.har')
+    expect(unit.left.error._tag).toBe('ParseError')
   })
 })

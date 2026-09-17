@@ -6,7 +6,8 @@ import { classifyAgainstServer, diffKey, type ServerComparison } from 'fhir-r4/c
 import type { FhirResource } from 'fhir-r4/resources'
 import { type LabeledResource, sectionResources } from 'importer-fundamentals'
 
-import type { UnitReadOutcome } from 'importer-core'
+import { Either, Option, pipe } from 'effect'
+import type { BatchEntry } from 'importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**
@@ -113,15 +114,20 @@ const byUnitAndKey = (
  * Every previewed resource across a batch's read units, paired with its unit
  * and labeled key — the flat list one classifier round trip probes.
  */
-const diffRowsOf = (units: readonly UnitReadOutcome[]): readonly DiffRow[] =>
+const diffRowsOf = (units: readonly BatchEntry[]): readonly DiffRow[] =>
   units.flatMap((unit) =>
-    unit._tag === 'read'
-      ? sectionResources(unit.decoded.sections).map((entry): DiffRow => ({
-          unitId: unit.id,
+    pipe(
+      unit,
+      Either.getRight,
+      Option.map((value) =>
+        sectionResources(value.decoded.sections).map((entry): DiffRow => ({
+          unitId: value.id,
           key: entry.key,
           resource: entry.resource,
         }))
-      : []
+      ),
+      Option.getOrElse(() => [] as const)
+    )
   )
 
 /**
@@ -149,7 +155,7 @@ const batchOf = (queryKey: readonly unknown[]): number | undefined => {
  * @returns `loading` until this batch has verdicts worth showing, then `ready`
  */
 const useServerDiff = (
-  units: readonly UnitReadOutcome[] | undefined,
+  units: readonly BatchEntry[] | undefined,
   batchId: number
 ): ServerDiffState => {
   const runAuthed = useRunAuthed()

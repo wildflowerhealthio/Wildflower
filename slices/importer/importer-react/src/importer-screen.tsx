@@ -1,4 +1,6 @@
+import { Either } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
+import { entryId } from 'importer-core'
 import { StagedImport, sectionResources } from 'importer-fundamentals'
 import { type JSX, useCallback, useState } from 'react'
 
@@ -79,10 +81,10 @@ const ImporterScreen = (): JSX.Element => {
         return StagedImport.initial<FhirResource>()
       }
       const unit = readFiles.find(
-        (candidate) => candidate.id === fileId && candidate._tag === 'read'
+        (candidate) => entryId(candidate) === fileId && Either.isRight(candidate)
       )
-      if (unit === undefined || unit._tag !== 'read') return StagedImport.initial<FhirResource>()
-      const labeled = sectionResources(unit.decoded.sections)
+      if (unit === undefined || !Either.isRight(unit)) return StagedImport.initial<FhirResource>()
+      const labeled = sectionResources(unit.right.decoded.sections)
       if (labeled.length === 0) return StagedImport.initial<FhirResource>()
       return {
         excludedResources: initialExclusionsFor(labeled, diff.comparisons.get(fileId)),

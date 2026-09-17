@@ -1,13 +1,14 @@
-import { Effect, ParseResult, Schema } from 'effect'
+import { Effect, Either, ParseResult, Schema } from 'effect'
 
 import type {
   DecodedFile,
-  DecodedUnit,
-  DecodeOutcome,
   DocumentReferenceType,
   LabeledResource,
   LabeledSection,
+  ReadUnit,
+  UnreadableUnit,
 } from './file-importer-descriptor.ts'
+import { unitId } from './file-importer-descriptor.ts'
 import * as MetaSource from './meta-source.ts'
 import type { PickedFile } from './picked-file.ts'
 import type { SourceFileCodec } from './source-file-codec.ts'
@@ -182,13 +183,16 @@ interface PerFileDecodeOptions {
  * Lift a single-file decode into the descriptor's batch `decode`: for each
  * picked file, resolve its source file, run `decodeOne`, list the minted
  * source file as its own "Source file" section, stamp every extracted
- * resource's `meta.source` with it, and yield one `read` unit titled by the
- * file name — or an `unreadable` unit carrying that file's `ParseError`,
- * leaving the batch's other files unaffected.
+ * resource's `meta.source` with it, and yield one {@link ReadUnit} (in an
+ * `Either.Right`) titled by the file name — or an {@link UnreadableUnit}
+ * (in an `Either.Left`) carrying that file's `ParseError`, leaving the
+ * batch's other files unaffected. Each unit's id is deterministic via
+ * {@link unitId}.
  *
  * @typeParam TSettings - The format's per-import settings
  * @typeParam TParsed - The resource type the format decodes to; the minted
  *   `DocumentReference` joins it in the result
+ * @param format - The format tag stamped onto each unit
  * @param codec - The format's source-file codec (its `buildSourceFile`)
  * @param decodeOne - The format's per-file decode
  * @param options - Per-file knobs, see {@link PerFileDecodeOptions}
@@ -201,6 +205,7 @@ interface PerFileDecodeOptions {
  */
 const perFileDecode =
   <TSettings, TParsed extends MetaSource.Sourceable>(
+    format: string,
     codec: Pick<SourceFileCodec, 'buildSourceFile'>,
     decodeOne: DecodeOne<TSettings, TParsed>,
     options?: PerFileDecodeOptions
@@ -208,11 +213,17 @@ const perFileDecode =
   (
     files: readonly PickedFile[],
     settings: TSettings
-  ): Effect.Effect<readonly DecodeOutcome<TParsed | DocumentReferenceType>[]> =>
+  ): Effect.Effect<
+    readonly Either.Either<
+      ReadUnit<TParsed | DocumentReferenceType, string>,
+      UnreadableUnit<string>
+    >[]
+  > =>
     Effect.forEach(
       files,
-      (file) =>
-        Effect.gen(function* () {
+      (file) => {
+        const id = unitId(format, [file])
+        return Effect.gen(function* () {
           const { ref, labeled } = yield* resolve(codec, file, {
             subject: options?.subjectFor?.(file),
           })
@@ -221,17 +232,36 @@ const perFileDecode =
             decoded,
             SourceFileFhirReference.make(ref.id)
           )
-          return {
-            _tag: 'read',
+          return Either.right({
+            id,
             title: file.fileName,
-            files: [file],
+            files: [file] as readonly PickedFile[],
+            format,
             decoded: withSections(stamped, labeled === undefined ? [] : [labeled]),
-          } satisfies DecodedUnit<TParsed | DocumentReferenceType>
+          })
         }).pipe(
-          Effect.catchAll((error): Effect.Effect<DecodeOutcome<TParsed | DocumentReferenceType>> =>
-            Effect.succeed({ _tag: 'unreadable', title: file.fileName, files: [file], error })
+          Effect.catchAll(
+            (
+              error
+            ): Effect.Effect<
+              Either.Either<
+                ReadUnit<TParsed | DocumentReferenceType, string>,
+                UnreadableUnit<string>
+              >
+            > =>
+              Effect.succeed(
+                Either.left({
+                  _tag: 'UnreadableUnit' as const,
+                  id,
+                  title: file.fileName,
+                  files: [file] as readonly PickedFile[],
+                  format,
+                  error,
+                })
+              )
           )
-        ),
+        )
+      },
       { concurrency: 'unbounded' }
     )
 

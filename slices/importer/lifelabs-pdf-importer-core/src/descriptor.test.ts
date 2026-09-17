@@ -1,12 +1,11 @@
-import { Effect, ParseResult } from 'effect'
+import { Effect, Either, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { FhirResource } from 'fhir-r4/resources'
 import {
-  type DecodedUnit,
-  type DecodeOutcome,
   type FileImporterDescriptor,
   PickedFileSource,
   type PickedFile,
+  type ReadUnit,
   sectionResources,
   SourceFile,
   SourceFileFhirReference,
@@ -64,20 +63,23 @@ const decodeReports = (
   reports: readonly Report.Type[]
 ): FileImporterDescriptor<LifeLabsPdfSettings, FhirResource>['decode'] =>
   SourceFile.perFileDecode<LifeLabsPdfSettings, FhirResource>(
+    'lifelabs-pdf',
     lifeLabsPdfSourceFileCodec,
     (_file, settings) => decodeLifeLabsPdfDocument(layoutDocument(reports), settings)
   )
 
 /** The one `read` unit a single-file decode yields, or a failure naming what came back. */
 const readUnit = <TParsed>(
-  outcomes: readonly DecodeOutcome<TParsed>[]
-): DecodedUnit<TParsed>['decoded'] => {
+  outcomes: readonly Either.Either<ReadUnit<TParsed, string>, unknown>[]
+): ReadUnit<TParsed, string>['decoded'] => {
   expect(outcomes).toHaveLength(1)
   const [outcome] = outcomes
-  if (outcome === undefined || outcome._tag !== 'read') {
-    throw new Error(`expected one read unit, got ${JSON.stringify(outcomes.map((o) => o._tag))}`)
+  if (outcome === undefined || !Either.isRight(outcome)) {
+    throw new Error(
+      `expected one read unit, got ${JSON.stringify(outcomes?.map((o) => (Either.isRight(o) ? 'Right' : 'Left')))}`
+    )
   }
-  return outcome.decoded
+  return outcome.right.decoded
 }
 
 describe('lifeLabsPdfImporterDescriptor decode', () => {
@@ -157,11 +159,12 @@ describe('lifeLabsPdfImporterDescriptor decode', () => {
 
     expect(outcomes).toHaveLength(1)
     const [outcome] = outcomes
-    expect(outcome?._tag).toBe('unreadable')
-    expect(outcome?.title).toBe(file.fileName)
-    expect(outcome?.files).toEqual([file])
-    if (outcome?._tag === 'unreadable') {
-      expect(ParseResult.isParseError(outcome.error)).toBe(true)
+    expect(outcome).toBeDefined()
+    expect(Either.isLeft(outcome!)).toBe(true)
+    if (Either.isLeft(outcome!)) {
+      expect(outcome.left.title).toBe(file.fileName)
+      expect(outcome.left.files).toEqual([file])
+      expect(ParseResult.isParseError(outcome.left.error)).toBe(true)
     }
   })
 })

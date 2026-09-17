@@ -30,9 +30,10 @@ files (HAR, LifeLabs PDF, DICOM) — which a host passes into that shell's
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../AGENTS.md): it depends on its sources, never the reverse.
 It depends on `importer-core` (the descriptor registry, `readBatch` /
-`redecodeFormat` / `planUnitWrite`, and the `UnitReadOutcome` model),
-`importer-fundamentals` (the `PickedFile` vocabulary, the `LabeledSection` /
-`LabeledResource` shapes, and the pure `StagedImport` model), each format's
+`redecodeFormat` / `planUnitWrite`, and the `BatchEntry` model),
+`importer-fundamentals` (the `PickedFile` vocabulary, the `ReadUnit` /
+`UnreadableUnit` shapes, the `LabeledSection` / `LabeledResource` shapes, and
+the pure `StagedImport` model), each format's
 React package for its settings picker only (`har-importer-react`,
 `lifelabs-pdf-importer-react`, `dicom-importer-react`), `fhir-r4` (the typed
 client, `persistBatchBundle`, and the server-diff classifier), `fhir-r4-react`
@@ -86,7 +87,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   write action.
   `use-import-run.ts` is React state around `importer-core`: `run` calls
   `readBatch` (through `useRunAuthed`) over the whole pick and holds the
-  resulting `UnitReadOutcome`s, `applySettings` calls `redecodeFormat` for the
+  resulting `BatchEntry`s, `applySettings` calls `redecodeFormat` for the
   one format whose settings changed — from the units' retained `PickedFile`s,
   keeping every unit id, so keyed selections keep applying — and it owns the
   `FormatSettings` record, the `batchId` that tells a fresh pick from a
@@ -295,9 +296,9 @@ source }` — the `local` / `server` `PickedFileSource`, `LOCAL_SOURCE`,
   name — deterministic, not a per-pick uuid — so its bundle entry is a PUT to a
   stable `DocumentReference/<id>` and re-importing the same file under the same
   name overwrites in place rather than piling up duplicates. The attachment's
-  `hash` and `size` still describe the bytes. (The `crypto.randomUUID()` in
-  `use-import-run.ts` is the client-side id of a review _unit_, not the source
-  file resource id.)
+  `hash` and `size` still describe the bytes. (Unit ids are also deterministic —
+  derived by `unitId` from the format tag and the picked files — so there is
+  no client-side `crypto.randomUUID()` for unit ids either.)
 - **Upload takes bytes, not text.** The source file codec stores the file
   verbatim so a truncated or mis-encoded upload is preserved and the
   attachment `hash` means something. `PickedFile.bytes` is a `Uint8Array` from

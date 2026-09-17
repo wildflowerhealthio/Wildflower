@@ -17,9 +17,9 @@ TParsed>`**, "a file-format importer" as one value a closed registry lists:
   `format` (the registry key), `display`, `detect` (cheap syntactic
   identification; **`identify`** finds the first claiming descriptor),
   `defaultSettings`, `decode(files: readonly PickedFile[], settings) →
-Effect<readonly DecodeOutcome<TParsed>[]>` (requires nothing and **never
-  fails** — a preview can never reach a write client, and one malformed file
-  never sinks a batch), and — the **server-read seam** the shell reads
+Effect<readonly Either<ReadUnit<TParsed, F>, UnreadableUnit<F>>[]>` (requires
+  nothing and **never fails** — a preview can never reach a write client, and
+  one malformed file never sinks a batch), and — the **server-read seam** the shell reads
   uploaded source files back through — `sourceFileCategoryToken` (the
   `system|code` search token, promoted from the format's `/source-file`
   codec), `isSourceFile` (whether a decoded `DocumentReference` is a source
@@ -29,11 +29,12 @@ Effect<readonly DecodeOutcome<TParsed>[]>` (requires nothing and **never
   preview modal's renderer choice: PDF via `<iframe>`, JSON via `<pre>`).
   There is **no** `buildSourceFile` field: the format mints its own source
   file inside `decode`.
-  One **`DecodeOutcome<TParsed>`** comes back per _unit_ the format decides
-  on — a **`DecodedUnit`** (`_tag: 'read'`, a format-chosen `title`, the
-  `files` it was decoded from, and a `DecodedFile`) or an
-  **`UnreadableUnit`** (`_tag: 'unreadable'`, the same `title` and `files`,
-  plus the malformed-input `ParseError`). A **`DecodedFile<TParsed>`** is
+  `decode` returns one `Either<ReadUnit<TParsed, F>, UnreadableUnit<F>>` per
+  _unit_ the format decides on — a **`ReadUnit<TParsed, F>`** (no `_tag`;
+  a deterministic `id` via **`unitId(format, files)`**, the `format` tag, a
+  format-chosen `title`, the `files` it was decoded from, and a `DecodedFile`)
+  or an **`UnreadableUnit<F>`** (`_tag: 'UnreadableUnit'`, the same identity
+  fields, plus the malformed-input `ParseError`). A **`DecodedFile<TParsed>`** is
   titled **`LabeledSection`**s of **`LabeledResource`**s (stable `key`,
   one-line `title`, the parsed `resource`) plus file-level diagnostic note
   strings for what did not become a resource. **`sectionResources`** flattens
@@ -94,14 +95,16 @@ Effect<readonly DecodeOutcome<TParsed>[]>` (requires nothing and **never
   as its own `SOURCE_SECTION_TITLE` — "Source file" — section),
   **`withMetaSource`** / **`stampMetaSource`** (write `meta.source` onto one
   resource, or onto every resource in every section), **`sourceFileKey`** (the
-  stable review key, `source-file/<fileName>`), and **`perFileDecode(codec,
-decodeOne, { subjectFor? })`** — which strings them together into the
-  descriptor's batch `decode` for a single-file format, one unit per file,
-  folding a `ParseError` into that file's own `unreadable` unit. A group
-  format calls the pieces itself. `decodeOne(file, settings, source)` receives
-  the resolved **`SourceFileRef`**, so a format whose resources name the
-  stored file (DICOM's `ImagingStudy` `gridfsFileId`) reads the id there
-  rather than recomputing it.
+  stable review key, `source-file/<fileName>`), and **`perFileDecode(format,
+codec, decodeOne, { subjectFor? })`** — which strings them together into the
+  descriptor's batch `decode` for a single-file format, one unit per file:
+  `format` is the format tag (first argument), used to mint deterministic ids
+  via `unitId` and to stamp the format on each result; a `ParseError` is
+  folded into that file's own `UnreadableUnit`, and a successful decode returns
+  a `ReadUnit` — each as an `Either`. A group format calls the pieces itself.
+  `decodeOne(file, settings, source)` receives the resolved **`SourceFileRef`**,
+  so a format whose resources name the stored file (DICOM's `ImagingStudy`
+  `gridfsFileId`) reads the id there rather than recomputing it.
 - `src/picked-file.ts` — **`PickedFile`** (`{ fileName, bytes, source }`), the
   one value every picker source converges on and every `decode` receives, plus
   its **`PickedFileSource`** (`local` / `server` with a `reference`),

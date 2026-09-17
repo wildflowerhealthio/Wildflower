@@ -3,7 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { Either, type ParseResult, Schema } from 'effect'
 import type { DiffSlot, FieldDiff, ServerComparison } from 'fhir-r4/clients'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { UnitReadOutcome } from 'importer-core'
+import { type BatchEntry, UnrecognizedFile } from 'importer-core'
 import type { DecodedFile, LabeledResource, LabeledSection } from 'importer-fundamentals'
 import { StagedImport } from 'importer-fundamentals'
 import type { JSX } from 'react'
@@ -88,20 +88,22 @@ describe('PreviewPanel', () => {
   })
 
   it('sums a mixed batch with an unreadable and an unrecognized file, each file rendered under its name', () => {
-    const files: readonly UnitReadOutcome[] = [
+    const files: readonly BatchEntry[] = [
       readFile(
         'a.har',
         decoded([section('https://a', [labeledResource('pat-1', 'Patient/pat-1')])])
       ),
-      {
-        _tag: 'unreadable',
+      Either.left({
+        _tag: 'UnreadableUnit' as const,
         id: 'u',
         title: 'broken.har',
         files: [pickedFile('broken.har')],
         format: 'har',
         error: anyParseError(),
-      },
-      { _tag: 'unrecognized', id: 'x', title: 'notes.txt', files: [pickedFile('notes.txt')] },
+      }),
+      Either.left(
+        new UnrecognizedFile({ id: 'x', title: 'notes.txt', files: [pickedFile('notes.txt')] })
+      ),
       readFile(
         'c.har',
         decoded([section('https://c', [labeledResource('obs-1', 'Observation/obs-1')])])
@@ -418,19 +420,19 @@ const pickedFile = (fileName: string): PickedFile => ({
   source: PickedFileSource.local,
 })
 
-/** A `read` {@link UnitReadOutcome} carrying the given decoded sections, titled by its file name. */
+/** A read `BatchEntry` carrying the given decoded sections, titled by its file name. */
 const readFile = (
   fileName: string,
   decodedFile: DecodedFile<FhirResource>,
   format: FormatKind = 'har'
-): UnitReadOutcome => ({
-  _tag: 'read',
-  id: fileName,
-  title: fileName,
-  files: [pickedFile(fileName)],
-  format,
-  decoded: decodedFile,
-})
+): BatchEntry =>
+  Either.right({
+    id: fileName,
+    title: fileName,
+    files: [pickedFile(fileName)],
+    format,
+    decoded: decodedFile,
+  })
 
 /** Verdicts for the one unit `readFile('a.har', …)` builds, keyed by its id. */
 const comparisonsFor = (
@@ -488,7 +490,7 @@ const settingsRegistry: SettingsRegistry = {
 
 /** Shared panel props wired to synthetic lookups. */
 const panelProps = (
-  files: readonly UnitReadOutcome[],
+  files: readonly BatchEntry[],
   overrides: {
     readonly onConfirm?: () => void
     readonly onSelectionChange?: PreviewPanelProps['onSelectionChange']

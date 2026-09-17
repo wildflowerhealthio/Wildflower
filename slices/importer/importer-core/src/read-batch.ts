@@ -1,17 +1,21 @@
-import { Effect } from 'effect'
+import { Data, Effect, Either } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import { type DecodeOutcome, identify, type PickedFile } from 'importer-fundamentals'
+import {
+  identify,
+  type PickedFile,
+  type ReadUnit,
+  type UnreadableUnit,
+  unitId,
+} from 'importer-fundamentals'
 
 import type { BoundFormat, FormatKind, FormatSettings } from './registry.ts'
-import { fromDecodeOutcome, type UnitReadOutcome } from './unit-read-outcome.ts'
 
 /**
  * The read half of an import as pure functions over the registry: group a
  * picked batch by the format that claims each file, run every format's
- * batch `decode` under its current settings, fold the outcomes into
- * {@link UnitReadOutcome}s, and re-decode one format's units when its
- * settings change. No services, no writes — the shell runs these and holds
- * the result.
+ * batch `decode` under its current settings, and re-decode one format's
+ * units when its settings change. No services, no writes — the shell runs
+ * these and holds the result.
  *
  * @remarks
  * The registry is a record keyed by {@link FormatKind}, so a caller holding a
@@ -35,9 +39,6 @@ type ReadRegistry = {
   readonly [K in FormatKind]: Pick<BoundFormat<K>, 'format' | 'detect' | 'decode'>
 }
 
-/** Mints the per-unit ids — injected so a caller (or a test) decides where identity comes from. */
-type NewId = () => string
-
 /** A picked batch split by the format that claimed each file. */
 interface GroupedPicks {
   /** The picks each registered format claimed, in pick order, keyed by format. */
@@ -45,6 +46,20 @@ interface GroupedPicks {
   /** The picks no registered format claimed, in pick order. */
   readonly unrecognized: readonly PickedFile[]
 }
+
+/** A picked file no registered descriptor's `detect` claimed. */
+class UnrecognizedFile extends Data.TaggedError('UnrecognizedFile')<{
+  readonly id: string
+  readonly title: string
+  readonly files: readonly PickedFile[]
+  readonly format?: undefined
+}> {}
+
+/** The batch outcome for one unit: a successfully decoded `ReadUnit` or a failure. */
+type BatchEntry = Either.Either<
+  ReadUnit<FhirResource, FormatKind>,
+  UnreadableUnit<FormatKind> | UnrecognizedFile
+>
 
 /**
  * The format that claims a pick, by the first registered `detect` that
@@ -85,7 +100,8 @@ const groupByFormat = (registry: ReadRegistry, picks: readonly PickedFile[]): Gr
 
 /**
  * Run one format's batch `decode` on its files under the format's current
- * settings.
+ * settings. Each unit's id and format tag are deterministic, minted inside
+ * the format's `decode` via {@link unitId}.
  *
  * @typeParam K - The one format being decoded; generic so `registry[kind]`
  *   and `settings[kind]` stay correlated (see the module remarks)
@@ -101,8 +117,13 @@ const decodeFormat = <K extends FormatKind>(
   settings: FormatSettings,
   kind: K,
   files: readonly PickedFile[]
-): Effect.Effect<readonly DecodeOutcome<FhirResource>[]> =>
-  registry[kind].decode(files, settings[kind])
+): Effect.Effect<readonly Either.Either<ReadUnit<FhirResource, K>, UnreadableUnit<K>>[]> =>
+  // The descriptor's `decode` stamps `format: kind` at runtime, but returns
+  // `string` because fundamentals is format-agnostic. The registry's
+  // construction guarantees the runtime format equals `K`.
+  registry[kind].decode(files, settings[kind]) as Effect.Effect<
+    readonly Either.Either<ReadUnit<FhirResource, K>, UnreadableUnit<K>>[]
+  >
 
 /**
  * Read a freshly picked batch: group it by format, decode every group
@@ -112,43 +133,45 @@ const decodeFormat = <K extends FormatKind>(
  * @param registry - The registered formats' `detect`s and `decode`s
  * @param settings - Every format's current settings
  * @param picks - The batch, in pick order
- * @param newId - Mints each unit's id
- * @returns One {@link UnitReadOutcome} per unit
+ * @returns One `Either` per unit: `Right` for decoded, `Left` for failures
  *
  * @remarks
  * Formats decode concurrently; a format's own units come back in the order
  * its `decode` yields them (pick order, for a single-file format). Each
- * unit's id is minted once here and kept by {@link redecodeFormat}, so a
- * selection keyed by unit id survives a settings change.
+ * unit's id is deterministic via {@link unitId}, so a settings re-decode
+ * produces the same ids by construction.
  */
 const readBatch = (
   registry: ReadRegistry,
   settings: FormatSettings,
-  picks: readonly PickedFile[],
-  newId: NewId
-): Effect.Effect<readonly UnitReadOutcome[]> => {
+  picks: readonly PickedFile[]
+): Effect.Effect<readonly BatchEntry[]> => {
   const { groups, unrecognized } = groupByFormat(registry, picks)
   const decodeGroup = ([format, files]: readonly [
     FormatKind,
     readonly PickedFile[],
-  ]): Effect.Effect<readonly UnitReadOutcome[]> =>
-    decodeFormat(registry, settings, format, files).pipe(
-      Effect.map((outcomes) =>
-        outcomes.map((outcome) => fromDecodeOutcome(format, newId(), outcome))
-      )
-    )
+  ]): Effect.Effect<readonly BatchEntry[]> => decodeFormat(registry, settings, format, files)
   return Effect.forEach([...groups.entries()], decodeGroup, { concurrency: 'unbounded' }).pipe(
-    Effect.map((perFormat): readonly UnitReadOutcome[] => [
+    Effect.map((perFormat): readonly BatchEntry[] => [
       ...perFormat.flat(),
-      ...unrecognized.map((pick): UnitReadOutcome => ({
-        _tag: 'unrecognized',
-        id: newId(),
-        title: pick.fileName,
-        files: [pick],
-      })),
+      ...unrecognized.map((pick): BatchEntry =>
+        Either.left(
+          new UnrecognizedFile({
+            id: unitId('unrecognized', [pick]),
+            title: pick.fileName,
+            files: [pick],
+          })
+        )
+      ),
     ])
   )
 }
+
+/** Extract the id from either side of a batch entry. */
+const entryId = (entry: BatchEntry): string => Either.merge(entry).id
+
+/** Extract the format from either side (undefined for unrecognized). */
+const entryFormat = (entry: BatchEntry): FormatKind | undefined => Either.merge(entry).format
 
 /**
  * Re-decode one format's units from their retained files under new
@@ -158,46 +181,41 @@ const readBatch = (
  * @param settings - Every format's settings, the changed one included
  * @param kind - The format whose settings changed
  * @param units - The batch's current outcomes
- * @param newId - Mints an id only when a re-decode yields more units than it
- *   started with (a group format regrouping); the first unit keeps its id
  * @returns The batch with that format's units replaced
  *
  * @remarks
- * `read` and `unreadable` units of the format alike re-decode — new
- * settings could in principle read a file the old ones could not. A unit
- * that re-decodes to exactly one unit (every single-file format, always)
- * keeps its id, so the reviewer's selection keyed by it keeps applying;
- * a re-decode that yields several units keeps the id on the first.
+ * Both read and unreadable units of the format re-decode — new settings
+ * could in principle read a file the old ones could not. Each unit's id
+ * is deterministic via {@link unitId}, so the same files produce the same
+ * ids under any settings — the reviewer's selection survives by
+ * construction.
  */
 const redecodeFormat = (
   registry: ReadRegistry,
   settings: FormatSettings,
   kind: FormatKind,
-  units: readonly UnitReadOutcome[],
-  newId: NewId
-): Effect.Effect<readonly UnitReadOutcome[]> =>
+  units: readonly BatchEntry[]
+): Effect.Effect<readonly BatchEntry[]> =>
   Effect.forEach(
     units,
-    (unit): Effect.Effect<readonly UnitReadOutcome[]> => {
-      if (unit._tag === 'unrecognized' || unit.format !== kind) return Effect.succeed([unit])
-      return decodeFormat(registry, settings, kind, unit.files).pipe(
-        Effect.map((outcomes) =>
-          outcomes.map((outcome, index) =>
-            fromDecodeOutcome(kind, index === 0 ? unit.id : newId(), outcome)
-          )
-        )
-      )
+    (unit): Effect.Effect<readonly BatchEntry[]> => {
+      if (entryFormat(unit) !== kind) return Effect.succeed([unit])
+      const { files } = Either.merge(unit)
+      return decodeFormat(registry, settings, kind, files)
     },
     { concurrency: 'unbounded' }
   ).pipe(Effect.map((perUnit) => perUnit.flat()))
 
 export {
+  type BatchEntry,
   decodeFormat,
+  entryFormat,
+  entryId,
   groupByFormat,
   type GroupedPicks,
   identifyPick,
-  type NewId,
   readBatch,
   type ReadRegistry,
   redecodeFormat,
+  UnrecognizedFile,
 }

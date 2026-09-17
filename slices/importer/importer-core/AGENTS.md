@@ -22,28 +22,27 @@ write plan with this package alone.
   the seed a fresh import starts from, and **`formatKinds`** the typed
   registry-order walk. Adding a format is one `FormatVariant` entry, one
   registry entry, one default, one kind.
-- `src/unit-read-outcome.ts` — **`UnitReadOutcome`**, what one unit of a picked
-  batch read to: **`ReadUnit<K>`** (a stable `id`, the format's `title`, the
-  `files` it was decoded from, the `format` tag, and the `decoded` sections +
-  notes — the format's own source-file `DocumentReference` already among
-  them), **`UnreadableUnit<K>`** (the same identity plus the format's
-  `ParseError`), or **`UnrecognizedFile`** (a pick no `detect` claimed).
 - `src/read-batch.ts` — the read half as pure functions over a
   **`ReadRegistry`** (each format's `detect` + `decode`): **`groupByFormat`**
   splits a pick by the first claiming `detect`; **`decodeFormat`** runs one
   format's batch `decode` under its settings — generic in `K` so
   `registry[kind]` and `settings[kind]` stay correlated with no per-format
   `Match` branch; **`readBatch`** decodes every group concurrently and yields
-  one outcome per unit, ids minted through an injected `NewId`;
+  one **`BatchEntry`** (`Either<ReadUnit<FhirResource, FormatKind>,
+  UnreadableUnit<FormatKind> | UnrecognizedFile>`) per unit — ids are
+  deterministic via `unitId`, and **`entryId`** / **`entryFormat`** extract
+  the id or format from either side; **`UnrecognizedFile`** is a
+  `Data.TaggedError` for a pick no `detect` claimed;
   **`redecodeFormat`** re-runs one format's units from their retained files
-  under new settings, keeping every id and position (a re-decode that yields
-  more units than it started with keeps the id on the first).
-- `src/plan-write.ts` — **`planUnitWrite(unit, selection)`**, the pure half of
-  the confirm: a `write` of exactly the reviewed resources (exclusions
-  applied, inline edits substituted, in review order) with the `excluded`
-  count, or a `skip` with its **`SkipReason`** (`nothing` / `unreadable`). It
-  adds no provenance and rewrites nothing: the format's `decode` already
-  minted the source file and stamped `meta.source`.
+  under new settings (ids are deterministic, so no id-preservation logic is
+  needed).
+- `src/plan-write.ts` — **`planUnitWrite(entry, selection)`**, the pure half of
+  the confirm: takes a `BatchEntry` and uses `Either.match` to produce a
+  `write` of exactly the reviewed resources (exclusions applied, inline edits
+  substituted, in review order) with the `excluded` count, or a `skip` with
+  its **`SkipReason`** (`nothing` / `unreadable` / `unrecognized`). It adds no
+  provenance and rewrites nothing: the format's `decode` already minted the
+  source file and stamped `meta.source`.
 
 ## Layering
 
@@ -61,8 +60,9 @@ nothing from `slices/collector` or `slices/http-extraction`.
   `importer-fundamentals`' helpers. `readBatch` and `planUnitWrite` treat the
   source-file row as any other resource. Do not reintroduce a shell-side
   mint, a side map of source files, or a "primary file".
-- **Unit ids are minted once and kept.** The reviewer's selection is keyed
-  by unit id, so `redecodeFormat` never re-mints an id a unit already has.
+- **Unit ids are deterministic via `unitId`.** The id is derived from the
+  format tag and the picked files, so a re-decode produces the same ids and
+  the reviewer's selection (keyed by unit id) keeps applying.
 - **`decode` never fails.** A malformed file is an `unreadable` unit, folded
   by the format; there is no `catchAll` in the read half, and a format that
   raised would be a contract bug, not a case to handle here.

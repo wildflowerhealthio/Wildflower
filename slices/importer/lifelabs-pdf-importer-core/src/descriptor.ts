@@ -38,7 +38,7 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<LifeLabsPdfSettings,
   },
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
-  decode: SourceFile.perFileDecode(lifeLabsPdfSourceFileCodec, decodeLifeLabsPdf),
+  decode: SourceFile.perFileDecode('lifelabs-pdf', lifeLabsPdfSourceFileCodec, decodeLifeLabsPdf),
   sourceFileCategoryToken: LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
   isSourceFile: isLifeLabsPdfSourceFile,
   sourceFileFromDocumentReference: (resource) =>

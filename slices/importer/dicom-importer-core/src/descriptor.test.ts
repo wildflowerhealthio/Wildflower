@@ -6,8 +6,8 @@ import type { FhirResource } from 'fhir-r4/resources'
 import {
   PickedFileSource,
   SourceFile,
-  type DecodedUnit,
   type PickedFile,
+  type ReadUnit,
 } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -63,18 +63,18 @@ describe('dicomImporterDescriptor', () => {
       return `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}`
     }
 
-    const readUnit = async (file: PickedFile): Promise<DecodedUnit<FhirResource>> => {
+    const readUnit = async (file: PickedFile): Promise<ReadUnit<FhirResource, string>> => {
       const outcomes = await Effect.runPromise(
         dicomImporterDescriptor.decode([file], defaultDicomSettings)
       )
       expect(outcomes).toHaveLength(1)
       const outcome = outcomes[0]
-      if (outcome._tag !== 'read') throw new Error('expected a read unit')
-      return outcome
+      if (!Either.isRight(outcome)) throw new Error('expected a read unit')
+      return outcome.right
     }
 
     /** The one id every resource of a unit must agree on: its source file's. */
-    const sourceFileIdOfUnit = (unit: DecodedUnit<FhirResource>): string => {
+    const sourceFileIdOfUnit = (unit: ReadUnit<FhirResource, string>): string => {
       const [section] = unit.decoded.sections
       expect(section.title).toBe(SourceFile.SECTION_TITLE)
       expect(section.resources).toHaveLength(1)
@@ -86,7 +86,7 @@ describe('dicomImporterDescriptor', () => {
       return id
     }
 
-    const imagingStudyInstanceId = (unit: DecodedUnit<FhirResource>): string | undefined => {
+    const imagingStudyInstanceId = (unit: ReadUnit<FhirResource, string>): string | undefined => {
       for (const section of unit.decoded.sections) {
         for (const { resource } of section.resources) {
           if (resource.resourceType !== 'ImagingStudy') continue
@@ -153,7 +153,7 @@ describe('dicomImporterDescriptor', () => {
           defaultDicomSettings
         )
       )
-      expect(outcomes.map((outcome) => outcome._tag)).toEqual(['unreadable'])
+      expect(outcomes.map(Either.isLeft)).toEqual([true])
     })
   })
 

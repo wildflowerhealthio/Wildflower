@@ -62,7 +62,7 @@ const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResourc
   },
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
-  decode: SourceFile.perFileDecode(dicomSourceFileCodec, decodeDicom, {
+  decode: SourceFile.perFileDecode('dicom', dicomSourceFileCodec, decodeDicom, {
     subjectFor: patientSubjectOf,
   }),
   sourceFileCategoryToken: DICOM_SOURCE_FILE_CATEGORY_TOKEN,

@@ -1,8 +1,8 @@
-import { Schema } from 'effect'
+import { Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import type { ServerComparison } from 'fhir-r4/clients'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import type { UnitReadOutcome } from 'importer-core'
+import type { BatchEntry } from 'importer-core'
 import { PickedFileSource } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -21,30 +21,30 @@ const patient = (id: string): FhirResource =>
 
 /** A read unit whose one section holds one resource per `[key, id]` pair. */
 const unit = (
-  unitId: string,
+  id: string,
   entries: readonly (readonly [string, string])[]
-): UnitReadOutcome => ({
-  _tag: 'read',
-  id: unitId,
-  title: `${unitId}.dcm`,
-  files: [
-    { fileName: `${unitId}.dcm`, bytes: new Uint8Array([1]), source: PickedFileSource.local },
-  ],
-  format: 'dicom',
-  decoded: {
-    sections: [
-      {
-        title: 's',
-        resources: entries.map(([key, id]) => ({
-          key,
-          title: `Patient/${id}`,
-          resource: patient(id),
-        })),
-      },
+): BatchEntry =>
+  Either.right({
+    id,
+    title: `${id}.dcm`,
+    files: [
+      { fileName: `${id}.dcm`, bytes: new Uint8Array([1]), source: PickedFileSource.local },
     ],
-    notes: [],
-  },
-})
+    format: 'dicom',
+    decoded: {
+      sections: [
+        {
+          title: 's',
+          resources: entries.map(([key, rid]) => ({
+            key,
+            title: `Patient/${rid}`,
+            resource: patient(rid),
+          })),
+        },
+      ],
+      notes: [],
+    },
+  })
 
 const UNCHANGED: ServerComparison = { status: 'unchanged', fields: [] }
 const CHANGED: ServerComparison = { status: 'changed', fields: [] }
@@ -73,7 +73,10 @@ describe('diffRowsOf / byUnitAndKey', () => {
       )
     fc.assert(
       fc.property(
-        fc.uniqueArray(unitArbitrary, { maxLength: 5, selector: (candidate) => candidate.id }),
+        fc.uniqueArray(unitArbitrary, {
+          maxLength: 5,
+          selector: (candidate) => (Either.isRight(candidate) ? candidate.right.id : ''),
+        }),
         fc.func(fc.constantFrom(UNCHANGED, CHANGED, undefined)),
         (units, verdictFor) => {
           const rows = diffRowsOf(units)
@@ -86,7 +89,8 @@ describe('diffRowsOf / byUnitAndKey', () => {
           expect(rows.length).toBe(
             units.reduce(
               (n, u) =>
-                n + (u._tag === 'read' ? (u.decoded.sections[0]?.resources.length ?? 0) : 0),
+                n +
+                (Either.isRight(u) ? (u.right.decoded.sections[0]?.resources.length ?? 0) : 0),
               0
             )
           )

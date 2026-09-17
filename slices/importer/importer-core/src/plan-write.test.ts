@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { Either, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { PickedFileSource, StagedImport } from 'importer-fundamentals'
@@ -6,30 +6,34 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { planUnitWrite } from './plan-write.ts'
-import type { UnitReadOutcome } from './unit-read-outcome.ts'
+import type { BatchEntry } from './read-batch.ts'
+import { UnrecognizedFile } from './read-batch.ts'
 
 const resource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
-const readUnit = (keys: readonly string[]): UnitReadOutcome => ({
-  _tag: 'read',
-  id: 'u',
-  title: 'a.har',
-  files: [{ fileName: 'a.har', bytes: new Uint8Array([1]), source: PickedFileSource.local }],
-  format: 'har',
-  decoded: {
-    sections: [
-      { title: 's', resources: keys.map((key) => ({ key, title: key, resource: resource(key) })) },
-    ],
-    notes: [],
-  },
-})
+const readUnit = (keys: readonly string[]): BatchEntry =>
+  Either.right({
+    id: 'u',
+    title: 'a.har',
+    files: [{ fileName: 'a.har', bytes: new Uint8Array([1]), source: PickedFileSource.local }],
+    format: 'har',
+    decoded: {
+      sections: [
+        { title: 's', resources: keys.map((key) => ({ key, title: key, resource: resource(key) })) },
+      ],
+      notes: [],
+    },
+  })
 
 describe('planUnitWrite', () => {
   it('should skip an unreadable or unrecognized unit as unreadable', () => {
     const files = [{ fileName: 'x', bytes: new Uint8Array(), source: PickedFileSource.local }]
     expect(
-      planUnitWrite({ _tag: 'unrecognized', id: 'u', title: 'x', files }, StagedImport.initial())
+      planUnitWrite(
+        Either.left(new UnrecognizedFile({ id: 'u', title: 'x', files })),
+        StagedImport.initial()
+      )
     ).toEqual({ _tag: 'skip', reason: 'unreadable' })
   })
 

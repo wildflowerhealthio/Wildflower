@@ -1,8 +1,8 @@
-import { Option } from 'effect'
+import { Either, Option } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
 import { StagedImport, sectionResources } from 'importer-fundamentals'
 
-import type { UnitReadOutcome } from './unit-read-outcome.ts'
+import type { BatchEntry } from './read-batch.ts'
 
 /**
  * The pure half of the confirm: from one unit's read outcome and the
@@ -45,23 +45,26 @@ type WritePlan =
 /**
  * Plan one unit's write from its reviewed selection.
  *
- * @param unit - The unit's read outcome
+ * @param unit - The unit's batch entry (an Either)
  * @param selection - The selection the reviewer left it with
  * @returns A `write` of the chosen resources, or a `skip` with its reason
  */
 const planUnitWrite = (
-  unit: UnitReadOutcome,
+  unit: BatchEntry,
   selection: StagedImport.Selection<FhirResource>
-): WritePlan => {
-  if (unit._tag !== 'read') return { _tag: 'skip', reason: 'unreadable' }
-  const labeled = sectionResources(unit.decoded.sections)
-  const resources = labeled
-    .filter((entry) => StagedImport.isResourceIncluded(selection, entry.key))
-    .map((entry) =>
-      Option.getOrElse(StagedImport.editedResource(selection, entry.key), () => entry.resource)
-    )
-  if (resources.length === 0) return { _tag: 'skip', reason: 'nothing' }
-  return { _tag: 'write', resources, excluded: StagedImport.excludedCount(labeled, selection) }
-}
+): WritePlan =>
+  Either.match(unit, {
+    onLeft: () => ({ _tag: 'skip', reason: 'unreadable' }),
+    onRight: ({ decoded }) => {
+      const labeled = sectionResources(decoded.sections)
+      const resources = labeled
+        .filter((entry) => StagedImport.isResourceIncluded(selection, entry.key))
+        .map((entry) =>
+          Option.getOrElse(StagedImport.editedResource(selection, entry.key), () => entry.resource)
+        )
+      if (resources.length === 0) return { _tag: 'skip', reason: 'nothing' }
+      return { _tag: 'write', resources, excluded: StagedImport.excludedCount(labeled, selection) }
+    },
+  })
 
 export { planUnitWrite, type SkipReason, type WritePlan }

@@ -1,4 +1,4 @@
-import { Data, Match, Option } from 'effect'
+import { Data, Either, Match, Option } from 'effect'
 import {
   diffJson,
   type DiffStatus,
@@ -15,7 +15,8 @@ import { StagedImport, sectionResources } from 'importer-fundamentals'
 import { type JSX, useEffect, useMemo, useRef, useState } from 'react'
 import { Chip } from 'react-tundraish'
 
-import type { ReadUnit, UnitReadOutcome, UnreadableUnit } from 'importer-core'
+import { type BatchEntry, entryId } from 'importer-core'
+import type { ReadUnit } from 'importer-fundamentals'
 
 import type { BoundFormat, FormatKind, FormatSettings } from '../registry.ts'
 import { formatKinds } from '../registry.ts'
@@ -56,7 +57,7 @@ type SettingsRegistry = {
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
   /** Every unit's read outcome, rendered together under one confirm. */
-  readonly files: readonly UnitReadOutcome[]
+  readonly files: readonly BatchEntry[]
   /** The current per-format settings the decodes ran under. */
   readonly settings: FormatSettings
   /** The registered formats' display + settings pickers, indexed by kind. */
@@ -491,7 +492,7 @@ const ReadFileBody = ({
   onSelectionChange,
   onEditResource,
 }: {
-  readonly file: ReadUnit<FormatKind>
+  readonly file: ReadUnit<FhirResource, FormatKind>
   readonly selection: StagedImport.Selection<FhirResource>
   /** This unit's own verdicts by resource key; `undefined` renders no badges. */
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
@@ -567,35 +568,41 @@ const FileSection = ({
   onSelectionChange,
   onEditResource,
 }: {
-  readonly file: UnitReadOutcome
+  readonly file: BatchEntry
   readonly selectionFor: PreviewPanelProps['selectionFor']
   readonly comparisons: UnitComparisons
   readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
   readonly onEditResource: (unitId: string, key: string, resource: unknown) => void
-}): JSX.Element => (
-  <section className={styles.fileSection} aria-label={file.title}>
-    <h3 className={styles.fileHeading}>{file.title}</h3>
-    {file._tag === 'unreadable' && (
-      <p role="alert" className={styles.emptyMessage}>
-        {UNREADABLE_FILE_MESSAGE}
-      </p>
-    )}
-    {file._tag === 'unrecognized' && (
-      <p role="alert" className={styles.emptyMessage}>
-        {UNRECOGNIZED_FILE_MESSAGE}
-      </p>
-    )}
-    {file._tag === 'read' && (
-      <ReadFileBody
-        file={file}
-        selection={selectionFor(file.id)}
-        comparisons={comparisons.get(file.id)}
-        onSelectionChange={(selection) => onSelectionChange(file.id, selection)}
-        onEditResource={(key, resource) => onEditResource(file.id, key, resource)}
-      />
-    )}
-  </section>
-)
+}): JSX.Element => {
+  return Either.match(file, {
+    onRight(unit) {
+      return (
+        <section className={styles.fileSection} aria-label={unit.title}>
+          <h3 className={styles.fileHeading}>{unit.title}</h3>
+          <ReadFileBody
+            file={unit}
+            selection={selectionFor(unit.id)}
+            comparisons={comparisons.get(unit.id)}
+            onSelectionChange={(selection) => onSelectionChange(unit.id, selection)}
+            onEditResource={(key, resource) => onEditResource(unit.id, key, resource)}
+          />
+        </section>
+      )
+    },
+    onLeft(failure) {
+      return (
+        <section className={styles.fileSection} aria-label={failure.title}>
+          <h3 className={styles.fileHeading}>{failure.title}</h3>
+          <p role="alert" className={styles.emptyMessage}>
+            {failure._tag === 'UnreadableUnit'
+              ? UNREADABLE_FILE_MESSAGE
+              : UNRECOGNIZED_FILE_MESSAGE}
+          </p>
+        </section>
+      )
+    },
+  })
+}
 
 /** The single action row for the whole batch: confirm (when anything is chosen) and cancel. */
 const PreviewActions = ({
@@ -658,9 +665,9 @@ const PreviewPanel = ({
     let included = 0
     let excluded = 0
     for (const file of files) {
-      if (file._tag !== 'read') continue
-      const labeled = sectionResources(file.decoded.sections)
-      const selection = selectionFor(file.id)
+      if (!Either.isRight(file)) continue
+      const labeled = sectionResources(file.right.decoded.sections)
+      const selection = selectionFor(file.right.id)
       included += StagedImport.includedCount(labeled, selection)
       excluded += StagedImport.excludedCount(labeled, selection)
     }
@@ -683,13 +690,14 @@ const PreviewPanel = ({
   const formatGroups = formatKinds
     .map((format) => ({
       format,
-      files: files.filter(
-        (file): file is ReadUnit<FormatKind> | UnreadableUnit<FormatKind> =>
-          file._tag !== 'unrecognized' && file.format === format
-      ),
+      files: files.filter((file): file is BatchEntry => {
+        return Either.merge(file).format === format
+      }),
     }))
     .filter((group) => group.files.length > 0)
-  const unrecognized = files.filter((file) => file._tag === 'unrecognized')
+  const unrecognized = files.filter(
+    (file) => Either.isLeft(file) && file.left._tag === 'UnrecognizedFile'
+  )
 
   return (
     <section aria-label="Import preview" className={styles.panel}>
@@ -720,7 +728,7 @@ const PreviewPanel = ({
             <div className={styles.fileSections}>
               {group.files.map((file) => (
                 <FileSection
-                  key={file.id}
+                  key={entryId(file)}
                   file={file}
                   selectionFor={selectionFor}
                   comparisons={comparisons}
@@ -733,7 +741,7 @@ const PreviewPanel = ({
         ))}
         {unrecognized.map((file) => (
           <FileSection
-            key={file.id}
+            key={entryId(file)}
             file={file}
             selectionFor={selectionFor}
             comparisons={comparisons}

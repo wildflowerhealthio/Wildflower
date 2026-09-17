@@ -2,13 +2,13 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import {
+  type BatchEntry,
   defaultFormatSettings,
   type FormatKind,
   type FormatSettings,
   readBatch,
   type ReadRegistry,
   redecodeFormat,
-  type UnitReadOutcome,
 } from 'importer-core'
 import type { PickedFile } from 'importer-fundamentals'
 
@@ -48,7 +48,7 @@ type ImportRunState =
        * stay on screen while the next one loads.
        */
       readonly batchId: number
-      readonly units: readonly UnitReadOutcome[]
+      readonly units: readonly BatchEntry[]
     }
 
 /** Imperative surface the screen drives the read through. */
@@ -69,9 +69,6 @@ interface ImportRun {
   /** Discard the current read and return to `idle` (settings persist). */
   readonly reset: () => void
 }
-
-/** Where a unit's identity comes from: the platform's UUID, minted per unit at read time. */
-const newUnitId = (): string => crypto.randomUUID()
 
 /**
  * Drives a batch read as an imperative action and re-decodes a format's
@@ -105,7 +102,7 @@ const useImportRun = (registry: ReadRegistry): ImportRun => {
       const ticket = latest.current
       const batchId = batch.current
       setState({ _tag: 'reading' })
-      void runAuthed(readBatch(registry, settingsRef.current, picks, newUnitId)).then((units) => {
+      void runAuthed(readBatch(registry, settingsRef.current, picks)).then((units) => {
         if (latest.current !== ticket) return
         setState({ _tag: 'ready', batchId, units })
       })
@@ -124,7 +121,7 @@ const useImportRun = (registry: ReadRegistry): ImportRun => {
       const ticket = latest.current
       const { batchId } = state
       setRedecoding(true)
-      void runAuthed(redecodeFormat(registry, merged, format, state.units, newUnitId)).then(
+      void runAuthed(redecodeFormat(registry, merged, format, state.units)).then(
         (units) => {
           if (latest.current !== ticket) return
           setRedecoding(false)
