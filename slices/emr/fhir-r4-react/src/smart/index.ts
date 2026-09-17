@@ -16,11 +16,44 @@ export {
 } from './standalone-launch.ts'
 
 export {
+  BundleDecodeError,
+  RESOURCE_PAGE_SIZE,
+  ResourcePageRequestError,
+  fetchResourcePage,
+  type PagedResourceRead,
+  type ResourcePage,
+  type ResourcePageCursor,
+} from './resource-page.ts'
+
+export {
   fetchMedicationRequestPage,
   type MedicationRequestCursor,
   type MedicationRequestPage,
   type MedicationRequestResource,
 } from './medication-requests.ts'
+
+export {
+  fetchObservationPage,
+  type ObservationPage,
+  type ObservationPageCursor,
+  type ObservationResource,
+} from './observations.ts'
+
+export {
+  fetchPatient,
+  fetchPatientPage,
+  type PatientPage,
+  type PatientPageCursor,
+  type PatientResource,
+} from './patients.ts'
+
+export {
+  fetchDocumentReferencePage,
+  type DocumentReferenceFirstPage,
+  type DocumentReferencePage,
+  type DocumentReferencePageCursor,
+  type DocumentReferenceResource,
+} from './document-references.ts'
 
 export {
   buildSmartQueryClient,

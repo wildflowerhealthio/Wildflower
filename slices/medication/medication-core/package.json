@@ -12,6 +12,7 @@
     },
     "./fhir": {
       "source": "./src/fhir/index.ts",
+      "types": "./dist/fhir/index.d.ts",
       "default": "./dist/fhir/index.js"
     },
     "./package.json": "./package.json"
