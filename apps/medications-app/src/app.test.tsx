@@ -18,10 +18,13 @@ const { handshakeMock, fetchMock, catalogMock } = vi.hoisted(() => ({
   fetchMock: vi.fn<() => Promise<MedicationRequestPage>>(),
   catalogMock: vi.fn<() => Promise<unknown>>(),
 }))
-vi.mock('fhir-r4-react/smart', () => ({
-  useSmartHandshake: () => handshakeMock(),
-  fetchMedicationRequestPage: () => fetchMock(),
-}))
+vi.mock('fhir-r4-react/smart', async () => {
+  const { Effect } = await import('effect')
+  return {
+    useSmartHandshake: () => handshakeMock(),
+    fetchMedicationRequestPage: () => Effect.promise(() => fetchMock()),
+  }
+})
 vi.mock('./interaction-catalog.ts', () => ({
   getInteractionCatalog: () => catalogMock(),
 }))
@@ -33,12 +36,13 @@ const { App } = await import('./app.tsx')
 const readyHandshake: SmartHandshake = { kind: 'ready', client: {} as unknown as Client }
 
 /** An empty terminal page — no rows, no further cursor. */
-const lastPage: MedicationRequestPage = { items: [], nextPageUrl: null }
+const lastPage: MedicationRequestPage = { items: [], nextPageUrl: null, droppedEntryCount: 0 }
 
 /** A non-terminal empty page pointing at the given next cursor. */
 const pageTo = (next: number): MedicationRequestPage => ({
   items: [],
   nextPageUrl: `https://fhir.example/MedicationRequest?p=${next}`,
+  droppedEntryCount: 0,
 })
 
 /** A valid, empty DDInter catalog — enough for the report shell to render. */
@@ -404,6 +408,7 @@ describe('App', () => {
       .mockResolvedValueOnce({
         items: [],
         nextPageUrl: 'https://fhir.example/MedicationRequest?p=2',
+        droppedEntryCount: 0,
       })
       .mockResolvedValueOnce(lastPage)
 

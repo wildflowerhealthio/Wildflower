@@ -1,9 +1,11 @@
-import type { Schema } from 'effect'
+import type { Effect, Schema } from 'effect'
 import { Observation } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
+  type BundleDecodeError,
+  type ResourcePageRequestError,
   fetchResourcePage,
   type PagedResourceRead,
   type ResourcePage,
@@ -55,7 +57,7 @@ const observationRead: PagedResourceRead<
  *
  * @param client - The SMART client the search is issued through
  * @param cursor - Patient scope for the first page, or a previous page's `nextPageUrl`
- * @returns The page's decoded `Observation`s and the next page's cursor
+ * @returns An effect yielding the page's decoded `Observation`s and the next page's cursor
  *
  * @remarks
  * The patient id is a parameter rather than something this reader lifts off
@@ -65,10 +67,11 @@ const observationRead: PagedResourceRead<
  * Rows a server sends without a `status` survive: `Observation.Schema` defaults a
  * missing status to FHIR's own `unknown` sentinel rather than failing the entry.
  */
-const fetchObservationPage = async (
+const fetchObservationPage = (
   client: Client,
   cursor: ObservationPageCursor
-): Promise<ObservationPage> => fetchResourcePage(client, observationRead, cursor)
+): Effect.Effect<ObservationPage, ResourcePageRequestError | BundleDecodeError> =>
+  fetchResourcePage(client, observationRead, cursor)
 
 export {
   fetchObservationPage,

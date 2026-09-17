@@ -1,5 +1,5 @@
 import { skipToken, useInfiniteQuery, useQuery } from '@tanstack/react-query'
-import { Match } from 'effect'
+import { Effect, Match } from 'effect'
 import {
   fetchMedicationRequestPage,
   type MedicationRequestCursor,
@@ -128,7 +128,7 @@ export const App = (): JSX.Element => {
       client === undefined
         ? skipToken
         : ({ pageParam }: { readonly pageParam: MedicationRequestCursor }) =>
-            fetchMedicationRequestPage(client, pageParam),
+            Effect.runPromise(fetchMedicationRequestPage(client, pageParam)),
     initialPageParam: initialCursor,
     getNextPageParam: (lastPage): MedicationRequestCursor | undefined =>
       lastPage.nextPageUrl === null ? undefined : { pageUrl: lastPage.nextPageUrl },

@@ -16,7 +16,9 @@ export {
 } from './standalone-launch.ts'
 
 export {
+  BundleDecodeError,
   RESOURCE_PAGE_SIZE,
+  ResourcePageRequestError,
   fetchResourcePage,
   type PagedResourceRead,
   type ResourcePage,
@@ -44,6 +46,14 @@ export {
   type PatientPageCursor,
   type PatientResource,
 } from './patients.ts'
+
+export {
+  fetchDocumentReferencePage,
+  type DocumentReferenceFirstPage,
+  type DocumentReferencePage,
+  type DocumentReferencePageCursor,
+  type DocumentReferenceResource,
+} from './document-references.ts'
 
 export {
   buildSmartQueryClient,

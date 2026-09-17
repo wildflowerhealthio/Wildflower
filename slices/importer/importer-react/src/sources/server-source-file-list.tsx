@@ -9,7 +9,7 @@ import {
   type SourceFileRow,
   fetchSourceFile,
   fetchSourceFileContents,
-  useSourceFilesQuery,
+  useSmartSourceFilesQuery,
 } from '../queries/source-files.ts'
 import { formatRegistry } from '../registry.ts'
 import type { PickedFile } from './picked-file.ts'
@@ -134,7 +134,7 @@ const SourceFileListContent = ({
  */
 const ServerSourceFileList = ({ onPick }: ServerSourceFileListProps): JSX.Element => {
   const runAuthed = useRunAuthed()
-  const sourceFiles = useSourceFilesQuery()
+  const sourceFiles = useSmartSourceFilesQuery()
   const [error, setError] = useState<string | null>(null)
   const [previewing, setPreviewing] = useState<SourceFileRow | null>(null)
 

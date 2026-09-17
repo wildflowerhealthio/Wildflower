@@ -9,8 +9,11 @@ import type { DateTime } from 'effect'
 import { Array as Arr, Effect, Option } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
+import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { DocumentReferenceType } from 'importer-fundamentals'
+
+type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
 import { formatKinds, formatRegistry, type FormatKind } from '../registry.ts'
 import { type PickedFile, serverSource } from '../sources/picked-file.ts'
@@ -171,6 +174,13 @@ const rowsOf = (
   })
 
 /**
+ * Projects decoded `DocumentReference` resources (as returned by
+ * {@link fetchDocumentReferencePage}) into source-file rows.
+ */
+const rowsFromResources = (resources: readonly DocumentReferenceType[]): readonly SourceFileRow[] =>
+  rowsOf(resources.map((resource) => ({ resource })))
+
+/**
  * Query options for the paged source-file read, for a caller that drives the
  * query itself (a route loader, a test through `QueryClient`).
  *
@@ -235,6 +245,86 @@ const useSourceFilesQuery = (
   options?: SourceFilesQueryOptions
 ): UseInfiniteQueryResult<InfiniteData<SourceFilePage, SourceFilePageParam>, Error> =>
   useInfiniteQuery(sourceFilesInfiniteQueryOptions(useRunAuthed(), options))
+
+/**
+ * Query options for the source-file listing that pages through
+ * {@link fetchDocumentReferencePage} via the SMART fhirclient `Client`, rather
+ * than the typed Effect client.
+ *
+ * @param smartClient - The fhirclient `Client` from a completed SMART handshake
+ * @param options - Page size (default {@link DEFAULT_PAGE_SIZE})
+ * @returns Infinite-query options whose pages are {@link SourceFilePage}s
+ *
+ * @remarks
+ * The paging cursor is the full `next`-link URL from the bundle (not the
+ * extracted `_pageToken` the typed-client variant uses), passed verbatim on the
+ * next request — the same mechanism every SMART reader in `fhir-r4-react/smart`
+ * uses.
+ */
+const smartSourceFilesInfiniteQueryOptions = (
+  smartClient: SmartClient,
+  options?: SourceFilesQueryOptions
+): UseInfiniteQueryOptions<
+  SourceFilePage,
+  Error,
+  InfiniteData<SourceFilePage, SourceFilePageParam>,
+  SourceFilesQueryKey,
+  SourceFilePageParam
+> => {
+  const _pageSize = options?.pageSize ?? DEFAULT_PAGE_SIZE
+  return infiniteQueryOptions({
+    queryKey: [...SOURCE_FILES_QUERY_KEY, { pageSize: _pageSize }] as const,
+    initialPageParam: null as SourceFilePageParam,
+    getNextPageParam: (lastPage: SourceFilePage): SourceFilePageParam =>
+      lastPage.nextPageToken ?? null,
+    queryFn: ({
+      pageParam,
+    }: {
+      readonly pageParam: SourceFilePageParam
+    }): Promise<SourceFilePage> =>
+      Effect.runPromise(
+        fetchDocumentReferencePage(
+          smartClient,
+          pageParam === null
+            ? {
+                first: {
+                  patientId: null,
+                  category: SOURCE_FILES_CATEGORY_TOKEN,
+                },
+              }
+            : { pageUrl: pageParam }
+        )
+      ).then((page) => ({
+        sourceFiles: rowsFromResources(page.items),
+        nextPageToken: page.nextPageUrl ?? undefined,
+      })),
+  })
+}
+
+/**
+ * Lists the device's uploaded source files using the SMART fhirclient
+ * transport. The SMART client comes from `useSmartHandshake`; if the
+ * handshake has not completed yet the query is disabled.
+ *
+ * @param options - Page size
+ * @returns The infinite query; `data.pages` are {@link SourceFilePage}s in
+ *   the order they were fetched
+ */
+const useSmartSourceFilesQuery = (
+  options?: SourceFilesQueryOptions
+): UseInfiniteQueryResult<InfiniteData<SourceFilePage, SourceFilePageParam>, Error> => {
+  const handshake = useSmartHandshake()
+  const client = handshake.kind === 'ready' ? handshake.client : undefined
+  // When the SMART client is not yet available, fall back to the typed-client
+  // variant so the query still works (e.g. when the handshake is in progress
+  // and the component mounts during the connection phase).
+  const runAuthed = useRunAuthed()
+  return useInfiniteQuery(
+    client !== undefined
+      ? smartSourceFilesInfiniteQueryOptions(client, options)
+      : sourceFilesInfiniteQueryOptions(runAuthed, options)
+  )
+}
 
 /**
  * Fetches one source file whole and reads it back as a {@link PickedFile}.
@@ -305,8 +395,10 @@ export {
   type SourceFilePage,
   type SourceFilePageParam,
   type SourceFileRow,
+  smartSourceFilesInfiniteQueryOptions,
   sourceFilesInfiniteQueryOptions,
   type SourceFilesQueryKey,
   type SourceFilesQueryOptions,
+  useSmartSourceFilesQuery,
   useSourceFilesQuery,
 }

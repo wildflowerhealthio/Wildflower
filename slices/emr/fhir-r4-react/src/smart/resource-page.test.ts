@@ -1,10 +1,15 @@
-import { Arbitrary, Option, Schema } from 'effect'
+import { Arbitrary, Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { Observation } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test, vi } from 'vite-plus/test'
 
-import { fetchResourcePage, type PagedResourceRead } from './resource-page.ts'
+import {
+  BundleDecodeError,
+  ResourcePageRequestError,
+  fetchResourcePage,
+  type PagedResourceRead,
+} from './resource-page.ts'
 import { stubSmartClient } from './stub-smart-client.test-helpers.ts'
 
 type ObservationType = Schema.Schema.Type<typeof Observation.Schema>
@@ -125,7 +130,9 @@ describe('fetchResourcePage', () => {
             )
           )
 
-          const page = await fetchResourcePage(client, observationRead, { first: 'pat-1' })
+          const page = await Effect.runPromise(
+            fetchResourcePage(client, observationRead, { first: 'pat-1' })
+          )
 
           // Each fixture really is (un)decodable — otherwise the assertions
           // below would hold for a reason that is not the reader's doing.
@@ -136,6 +143,9 @@ describe('fetchResourcePage', () => {
           const expectedIds = entries.filter((entry) => entry.decodable).map((entry) => entry.id)
           expect(page.items.map((item) => item.id)).toEqual(expectedIds)
           expect(page.nextPageUrl).toBe(linkCase.expectedNext)
+
+          const expectedDropped = entries.filter((entry) => !entry.decodable).length
+          expect(page.droppedEntryCount).toBe(expectedDropped)
         }
       ),
       { numRuns: numRunsFor({ base: 100 }) }
@@ -154,10 +164,12 @@ describe('fetchResourcePage', () => {
           const firstPageQuery = vi.fn((value: string): string => `${paramName}=${value}`)
           const { client, queries } = stubSmartClient(bundle([], undefined))
 
-          await fetchResourcePage(
-            client,
-            { resourceType, schema: Observation.Schema, firstPageQuery },
-            { first }
+          await Effect.runPromise(
+            fetchResourcePage(
+              client,
+              { resourceType, schema: Observation.Schema, firstPageQuery },
+              { first }
+            )
           )
 
           expect(firstPageQuery).toHaveBeenCalledWith(first)
@@ -174,7 +186,9 @@ describe('fetchResourcePage', () => {
         const firstPageQuery = vi.fn((patientId: string): string => patientId)
         const { client, queries } = stubSmartClient(bundle([], undefined))
 
-        await fetchResourcePage(client, { ...observationRead, firstPageQuery }, { pageUrl })
+        await Effect.runPromise(
+          fetchResourcePage(client, { ...observationRead, firstPageQuery }, { pageUrl })
+        )
 
         // The server's own `next` link is used as-is — no re-derivation of
         // scope, sort or page size, so the first-page query is never consulted.
@@ -185,27 +199,43 @@ describe('fetchResourcePage', () => {
     )
   })
 
-  test('property: a response that is not a bundle yields an empty last page', async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.oneof(
-          fc.constant(null),
-          fc.constant(undefined),
-          fc.string(),
-          fc.integer(),
-          fc.boolean()
-        ),
-        async (response) => {
-          const { client } = stubSmartClient(response)
+  test('a response that is not a bundle fails with BundleDecodeError', async () => {
+    for (const response of [null, undefined, 'a string', 42, true]) {
+      const { client } = stubSmartClient(response)
 
-          const page = await fetchResourcePage(client, observationRead, { first: 'pat-1' })
+      const exit = await Effect.runPromiseExit(
+        fetchResourcePage(client, observationRead, { first: 'pat-1' })
+      )
 
-          expect(page.items).toEqual([])
-          expect(page.nextPageUrl).toBeNull()
+      expect(exit._tag).toBe('Failure')
+      if (exit._tag === 'Failure') {
+        const error = exit.cause._tag === 'Fail' ? exit.cause.error : undefined
+        expect(error).toBeInstanceOf(BundleDecodeError)
+        if (error instanceof BundleDecodeError) {
+          expect(error.response).toBe(response)
         }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
+      }
+    }
+  })
+
+  test('a request failure surfaces as ResourcePageRequestError', async () => {
+    const requestError = new Error('network down')
+    const { client } = stubSmartClient(null)
+    // Override the stub's request to reject
+    client.request = () => Promise.reject(requestError)
+
+    const exit = await Effect.runPromiseExit(
+      fetchResourcePage(client, observationRead, { first: 'pat-1' })
     )
+
+    expect(exit._tag).toBe('Failure')
+    if (exit._tag === 'Failure') {
+      const error = exit.cause._tag === 'Fail' ? exit.cause.error : undefined
+      expect(error).toBeInstanceOf(ResourcePageRequestError)
+      if (error instanceof ResourcePageRequestError) {
+        expect(error.cause).toBe(requestError)
+      }
+    }
   })
 
   test('a fully-populated Observation survives the page element-for-element', async () => {
@@ -221,7 +251,9 @@ describe('fetchResourcePage', () => {
         const wire = encodeObservation(observation)
         const { client } = stubSmartClient(bundle([wire], undefined))
 
-        const page = await fetchResourcePage(client, observationRead, { first: 'pat-1' })
+        const page = await Effect.runPromise(
+          fetchResourcePage(client, observationRead, { first: 'pat-1' })
+        )
 
         expect(page.items).toHaveLength(1)
         // Re-encoded rather than compared as decoded values: the decoded form

@@ -1,3 +1,4 @@
+import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
@@ -21,7 +22,7 @@ describe('fetchObservationPage', () => {
   test('scopes the first-page query to the patient, oldest-observed first, 200 to a page', async () => {
     const { client, queries } = stubSmartClient(bundle([]))
 
-    await fetchObservationPage(client, { first: 'pat/1' })
+    await Effect.runPromise(fetchObservationPage(client, { first: 'pat/1' }))
 
     expect(queries).toEqual(['Observation?patient=pat%2F1&_sort=date&_count=200'])
   })
@@ -29,7 +30,7 @@ describe('fetchObservationPage', () => {
   test('reads every Observation when no patient is in context (system launch)', async () => {
     const { client, queries } = stubSmartClient(bundle([]))
 
-    await fetchObservationPage(client, { first: null })
+    await Effect.runPromise(fetchObservationPage(client, { first: null }))
 
     expect(queries).toEqual(['Observation?_sort=date&_count=200'])
   })
@@ -39,7 +40,7 @@ describe('fetchObservationPage', () => {
       fc.asyncProperty(fc.string(), async (patientId) => {
         const { client, queries } = stubSmartClient(bundle([]))
 
-        await fetchObservationPage(client, { first: patientId })
+        await Effect.runPromise(fetchObservationPage(client, { first: patientId }))
 
         // Parsed back rather than string-compared: an id carrying `&`, `=` or a
         // space must arrive at the server as one parameter value, not as extra
@@ -57,7 +58,7 @@ describe('fetchObservationPage', () => {
     const { client, queries } = stubSmartClient(bundle([]))
     const pageUrl = 'https://fhir.example/Observation?_getpages=abc&_getpagesoffset=200'
 
-    await fetchObservationPage(client, { pageUrl })
+    await Effect.runPromise(fetchObservationPage(client, { pageUrl }))
 
     expect(queries).toEqual([pageUrl])
   })
@@ -70,7 +71,7 @@ describe('fetchObservationPage', () => {
       bundle([{ resourceType: 'Observation', id: 'obs-1', code: {} }])
     )
 
-    const page = await fetchObservationPage(client, { first: null })
+    const page = await Effect.runPromise(fetchObservationPage(client, { first: null }))
 
     expect(page.items).toHaveLength(1)
     expect(page.items[0]?.status).toBe('unknown')
@@ -80,8 +81,9 @@ describe('fetchObservationPage', () => {
     const good: unknown = { resourceType: 'Observation', id: 'obs-1', status: 'final', code: {} }
     const { client } = stubSmartClient(bundle([{ malformed: true }, good]))
 
-    const page = await fetchObservationPage(client, { first: null })
+    const page = await Effect.runPromise(fetchObservationPage(client, { first: null }))
 
     expect(page.items.map((item) => item.id)).toEqual(['obs-1'])
+    expect(page.droppedEntryCount).toBe(1)
   })
 })

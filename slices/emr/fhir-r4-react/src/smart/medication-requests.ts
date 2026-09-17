@@ -1,8 +1,14 @@
-import type { Schema } from 'effect'
+import type { Effect, Schema } from 'effect'
 import { MedicationRequest } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 
-import { fetchResourcePage, type PagedResourceRead, type ResourcePage } from './resource-page.ts'
+import {
+  type BundleDecodeError,
+  type ResourcePageRequestError,
+  fetchResourcePage,
+  type PagedResourceRead,
+  type ResourcePage,
+} from './resource-page.ts'
 
 /** The decoded FHIR R4 `MedicationRequest` resource. */
 type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Schema>
@@ -49,7 +55,7 @@ const medicationRequestRead: PagedResourceRead<
  *
  * @param client - The SMART client the search is issued through
  * @param cursor - Patient scope for the first page, or a previous page's `nextPageUrl`
- * @returns The page's decoded `MedicationRequest`s and the next page's cursor
+ * @returns An effect yielding the page's decoded `MedicationRequest`s and the next page's cursor
  *
  * @remarks
  * A thin patient-scoped wrapper over {@link fetchResourcePage}, which owns the
@@ -57,10 +63,10 @@ const medicationRequestRead: PagedResourceRead<
  * arrive newest-authored first ({@link SORT_PARAM}), which is what lets a caller
  * append them without reordering earlier rows.
  */
-const fetchMedicationRequestPage = async (
+const fetchMedicationRequestPage = (
   client: Client,
   cursor: MedicationRequestCursor
-): Promise<MedicationRequestPage> =>
+): Effect.Effect<MedicationRequestPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(
     client,
     medicationRequestRead,

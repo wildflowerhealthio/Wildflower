@@ -1,10 +1,11 @@
-import type { Option } from 'effect'
-import { Schema } from 'effect'
+import { Effect, type Option, Schema } from 'effect'
 import { Patient } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
 
 import {
   RESOURCE_PAGE_SIZE,
+  ResourcePageRequestError,
+  type BundleDecodeError,
   fetchResourcePage,
   type PagedResourceRead,
   type ResourcePage,
@@ -51,14 +52,17 @@ const decodePatient = Schema.decodeUnknownOption(Patient.Schema)
  *
  * @param client - The SMART client the search is issued through
  * @param cursor - `{ first: null }` for the first page, or a previous page's `nextPageUrl`
- * @returns The page's decoded `Patient`s and the next page's cursor
+ * @returns An effect yielding the page's decoded `Patient`s and the next page's cursor
  *
  * @remarks
  * This is the picker's read: what a launch with no patient in context offers the
  * user to choose from. A launch that _does_ carry a patient reads that one
  * directly with {@link fetchPatient} instead.
  */
-const fetchPatientPage = async (client: Client, cursor: PatientPageCursor): Promise<PatientPage> =>
+const fetchPatientPage = (
+  client: Client,
+  cursor: PatientPageCursor
+): Effect.Effect<PatientPage, ResourcePageRequestError | BundleDecodeError> =>
   fetchResourcePage(client, patientRead, cursor)
 
 /**
@@ -66,22 +70,23 @@ const fetchPatientPage = async (client: Client, cursor: PatientPageCursor): Prom
  *
  * @param client - The SMART client the read is issued through
  * @param id - The patient's logical id, e.g. the `client.patient.id` a launch put in context
- * @returns The decoded `Patient`, or `None` when the server's answer does not
- *          decode as one
+ * @returns An effect yielding the decoded `Patient`, or `None` when the server's
+ *          answer does not decode as one
  *
  * @remarks
  * Only a decode failure is reported as `None` — a transport or HTTP failure
- * (including a 404) rejects the promise, because "this server does not have that
- * patient" and "this server sent something this client cannot read" are
- * different things for a caller to show.
+ * surfaces through the error channel as {@link ResourcePageRequestError},
+ * because "this server does not have that patient" and "this server sent
+ * something this client cannot read" are different things for a caller to show.
  */
-const fetchPatient = async (
+const fetchPatient = (
   client: Client,
   id: string
-): Promise<Option.Option<PatientResource>> => {
-  const resource = await client.request<unknown>(`Patient/${encodeURIComponent(id)}`)
-  return decodePatient(resource)
-}
+): Effect.Effect<Option.Option<PatientResource>, ResourcePageRequestError> =>
+  Effect.tryPromise({
+    try: () => client.request<unknown>(`Patient/${encodeURIComponent(id)}`),
+    catch: (cause) => new ResourcePageRequestError({ cause }),
+  }).pipe(Effect.map((resource) => decodePatient(resource)))
 
 export {
   fetchPatient,
