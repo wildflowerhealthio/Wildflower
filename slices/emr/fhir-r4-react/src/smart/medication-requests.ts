@@ -1,6 +1,7 @@
 import type { Effect, Schema } from 'effect'
 import { MedicationRequest } from 'fhir-r4/resources'
 import type Client from 'fhirclient/lib/Client'
+import { RESOURCE_PAGE_SIZE } from './resource-page.ts'
 
 import {
   type BundleDecodeError,
@@ -30,7 +31,7 @@ type MedicationRequestCursor = { readonly patientId: string | null } | { readonl
 // Newest-authored first, server-side, so scroll paging can append each page
 // without reordering rows already on screen. `authoredon` is the FHIR R4
 // `MedicationRequest` search parameter backing the `authoredOn` element.
-const SORT_PARAM = '_sort=-authoredon'
+const ALWAYS_PRESENT_PARAMS = `_count=${RESOURCE_PAGE_SIZE}&_sort=-authoredon`
 
 /**
  * The `MedicationRequest` read. Deliberately pins no `_count`: `medications-app`
@@ -45,7 +46,9 @@ const medicationRequestRead: PagedResourceRead<
   resourceType: 'MedicationRequest',
   schema: MedicationRequest.Schema,
   firstPageQuery: (patientId: string | null): string =>
-    patientId === null ? SORT_PARAM : `patient=${encodeURIComponent(patientId)}&${SORT_PARAM}`,
+    patientId === null
+      ? ALWAYS_PRESENT_PARAMS
+      : `patient=${encodeURIComponent(patientId)}&${ALWAYS_PRESENT_PARAMS}`,
 }
 
 /**
@@ -60,7 +63,7 @@ const medicationRequestRead: PagedResourceRead<
  * @remarks
  * A thin patient-scoped wrapper over {@link fetchResourcePage}, which owns the
  * paging, the permissive bundle decode and the per-entry decode-or-drop. Pages
- * arrive newest-authored first ({@link SORT_PARAM}), which is what lets a caller
+ * arrive newest-authored first ({@link ALWAYS_PRESENT_PARAMS}), which is what lets a caller
  * append them without reordering earlier rows.
  */
 const fetchMedicationRequestPage = (
