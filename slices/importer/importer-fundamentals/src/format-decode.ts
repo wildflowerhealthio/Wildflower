@@ -1,5 +1,4 @@
 import { type ParseResult } from 'effect'
-import { type FhirResource } from 'fhir-r4/resources'
 import type * as DecodedFile from './decoded-file.ts'
 import { type PickedFile } from './picked-file.ts'
 
@@ -11,7 +10,7 @@ interface Result<TFormat extends string> {
   readonly title: string
   readonly files: readonly PickedFile[]
   readonly format: TFormat
-  readonly decoded: DecodedFile.DecodedFile<FhirResource>
+  readonly decoded: DecodedFile.DecodedFile
   readonly unreadableFiles: readonly UnreadableFile[]
 }
 

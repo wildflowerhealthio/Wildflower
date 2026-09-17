@@ -62,7 +62,7 @@ interface PreviewPanelProps {
   /** The registered formats' display + settings pickers, indexed by kind. */
   readonly settingsRegistry: SettingsRegistry
   /** The reviewed selection for a format (defaults to `StagedImport.initial()` before any edit). */
-  readonly selectionFor: (format: FormatKind) => StagedImport.Selection<FhirResource>
+  readonly selectionFor: (format: FormatKind) => StagedImport.Selection
   /**
    * Each labeled resource's server comparison (`new` / `unchanged` /
    * `changed`, and for `changed` the leaf-level field diffs), keyed by
@@ -74,10 +74,7 @@ interface PreviewPanelProps {
    */
   readonly comparisons: FormatComparisons
   /** Called when a format's review changes its selection. */
-  readonly onSelectionChange: (
-    format: FormatKind,
-    selection: StagedImport.Selection<FhirResource>
-  ) => void
+  readonly onSelectionChange: (format: FormatKind, selection: StagedImport.Selection) => void
   /** Called when the user changes one format's settings; the caller re-decodes. */
   readonly onSettingsChange: <K extends FormatKind>(format: K, settings: FormatSettings[K]) => void
   /**
@@ -128,8 +125,8 @@ interface TypeTally {
 
 /** The per-type tallies of one format's decoded resources, in first-seen order. */
 const perTypeTallies = (
-  decodedFile: DecodedFile.DecodedFile<FhirResource>,
-  selection: StagedImport.Selection<FhirResource>
+  decodedFile: DecodedFile.DecodedFile,
+  selection: StagedImport.Selection
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
@@ -353,7 +350,7 @@ const ResourceRow = ({
 }: {
   readonly resourceKey: string
   readonly resource: unknown
-  readonly selection: StagedImport.Selection<FhirResource>
+  readonly selection: StagedImport.Selection
   readonly comparison: ServerComparison | undefined
   readonly onToggle: (key: string) => void
   readonly onEdit: (key: string, resource: unknown) => void
@@ -429,8 +426,8 @@ const SectionToggle = ({
 }: {
   readonly title: string
   readonly resourceKeys: readonly string[]
-  readonly selection: StagedImport.Selection<FhirResource>
-  readonly onSelectionChange: (selection: StagedImport.Selection<FhirResource>) => void
+  readonly selection: StagedImport.Selection
+  readonly onSelectionChange: (selection: StagedImport.Selection) => void
 }): JSX.Element => {
   const includedCount = resourceKeys.filter((key) =>
     StagedImport.isResourceIncluded(selection, key)
@@ -473,9 +470,9 @@ const ReadFileBody = ({
   onEditResource,
 }: {
   readonly result: FormatDecode.Result<string>
-  readonly selection: StagedImport.Selection<FhirResource>
+  readonly selection: StagedImport.Selection
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
-  readonly onSelectionChange: (selection: StagedImport.Selection<FhirResource>) => void
+  readonly onSelectionChange: (selection: StagedImport.Selection) => void
   readonly onEditResource: (key: string, resource: unknown) => void
 }): JSX.Element => {
   const { sections, notes } = result.decoded

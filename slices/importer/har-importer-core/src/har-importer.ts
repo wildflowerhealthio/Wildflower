@@ -26,15 +26,13 @@ const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
   return new Set(fhirPool.map((kind) => kind.name).filter((name) => !disabled.has(name)))
 }
 
-const sectionsByUrl = (
-  previews: readonly FhirPreview[]
-): readonly DecodedFile.Section<FhirResource>[] => {
+const sectionsByUrl = (previews: readonly FhirPreview[]): readonly DecodedFile.Section[] => {
   const order: string[] = []
-  const byUrl = new Map<string, DecodedFile.Resource<FhirResource>[]>()
+  const byUrl = new Map<string, DecodedFile.Resource[]>()
   for (const entry of previews) {
     if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
     const url = entry.ref.url
-    const labeled = entry.outcome.resources.map((resource): DecodedFile.Resource<FhirResource> => ({
+    const labeled = entry.outcome.resources.map((resource): DecodedFile.Resource => ({
       key: resource.key,
       title: `${resource.resource.resourceType}/${resource.resource.id ?? '?'}`,
       resource: resource.resource,
@@ -75,7 +73,7 @@ const harImporter = new FileImporter({
   decodeOne: (file, settings) =>
     decodeHar(file.bytes, settings).pipe(
       Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
-      Effect.map((previews): DecodedFile.DecodedFile<FhirResource> => ({
+      Effect.map((previews): DecodedFile.DecodedFile => ({
         sections: sectionsByUrl(previews),
         notes: notesFor(previews),
       }))

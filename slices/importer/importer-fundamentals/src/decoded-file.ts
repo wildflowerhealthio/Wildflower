@@ -1,22 +1,23 @@
-interface Resource<TParsed> {
+import type { FhirResource } from 'fhir-r4/resources'
+
+interface Resource {
   readonly key: string
   readonly title: string
-  readonly resource: TParsed
+  readonly resource: FhirResource
 }
 
-interface Section<TParsed> {
+interface Section {
   readonly title: string
-  readonly resources: readonly Resource<TParsed>[]
+  readonly resources: readonly Resource[]
 }
 
-interface DecodedFile<TParsed> {
-  readonly sections: readonly Section<TParsed>[]
+interface DecodedFile {
+  readonly sections: readonly Section[]
   readonly notes: readonly string[]
 }
 
-const resources = <TParsed>(decodedFile: {
-  readonly sections: readonly Section<TParsed>[]
-}): readonly Resource<TParsed>[] => decodedFile.sections.flatMap((section) => section.resources)
+const resources = (decodedFile: { readonly sections: readonly Section[] }): readonly Resource[] =>
+  decodedFile.sections.flatMap((section) => section.resources)
 
 export { resources }
 

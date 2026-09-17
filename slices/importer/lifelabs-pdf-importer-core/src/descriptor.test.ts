@@ -5,9 +5,7 @@ import {
   PickedFileSource,
   type PickedFile,
   DecodedFile,
-  SOURCE_FILE_SECTION_TITLE,
-  sourceFileKey,
-  SourceFileFhirReference,
+  SourceFile,
   type FormatDecode,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
@@ -88,10 +86,10 @@ describe('lifeLabsPdfImporter decode', () => {
           )
 
           const [sourceSection] = decoded.sections
-          expect(sourceSection?.title).toBe(SOURCE_FILE_SECTION_TITLE)
+          expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
           const sourceRow = sourceSection?.resources[0]
           expect(sourceSection?.resources).toHaveLength(1)
-          expect(sourceRow?.key).toBe(sourceFileKey(file.fileName))
+          expect(sourceRow?.key).toBe(SourceFile.key(file.fileName))
           expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
           const sourceId = sourceRow?.resource.id
           expect(sourceId).toEqual(expect.any(String))
@@ -120,14 +118,12 @@ describe('lifeLabsPdfImporter decode', () => {
           )
 
           expect(decoded.sections.map((section) => section.title)).not.toContain(
-            SOURCE_FILE_SECTION_TITLE
+            SourceFile.SECTION_TITLE
           )
           const labeled = DecodedFile.resources(decoded)
           expect(labeled.length).toBeGreaterThan(0)
           for (const item of labeled) {
-            expect(item.resource.meta?.source).toBe(
-              SourceFileFhirReference.make('wf-already-uploaded')
-            )
+            expect(item.resource.meta?.source).toBe(SourceFile.makeReference('wf-already-uploaded'))
           }
         }
       ),

@@ -12,46 +12,51 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 ## Shape
 
-- `src/file-importer-descriptor.ts` — **`FileImporterDescriptor<TSettings,
-TParsed>`**, "a file-format importer" as one value a closed registry lists:
-  `format` (the registry key), `display`, `detect` (cheap syntactic
-  identification; **`identify`** finds the first claiming descriptor),
-  `defaultSettings`, `decode(files: readonly PickedFile[], settings) →
-Effect<readonly Either<ReadUnit<TParsed, F>, UnreadableUnit<F>>[]>` (requires
-  nothing and **never fails** — a preview can never reach a write client, and
-  one malformed file never sinks a batch), and — the **server-read seam** the shell reads
-  uploaded source files back through — `sourceFileCategoryToken` (the
-  `system|code` search token, promoted from the format's `/source-file`
-  codec), `isSourceFile` (whether a decoded `DocumentReference` is a source
-  file of _this_ format, disjoint across formats),
-  `sourceFileFromDocumentReference` (the bytes-and-name reader a preview or a
-  pick calls to re-hydrate one), and `sourceFileContentType` (drives the
-  preview modal's renderer choice: PDF via `<iframe>`, JSON via `<pre>`).
-  There is **no** `buildSourceFile` field: the format mints its own source
-  file inside `decode`.
-  `decode` returns one `Either<ReadUnit<TParsed, F>, UnreadableUnit<F>>` per
-  _unit_ the format decides on — a **`ReadUnit<TParsed, F>`** (no `_tag`;
-  a deterministic `id` via **`unitId(format, files)`**, the `format` tag, a
-  format-chosen `title`, the `files` it was decoded from, and a `DecodedFile`)
-  or an **`UnreadableUnit<F>`** (`_tag: 'UnreadableUnit'`, the same identity
-  fields, plus the malformed-input `ParseError`). A **`DecodedFile<TParsed>`** is
-  titled **`LabeledSection`**s of **`LabeledResource`**s (stable `key`,
-  one-line `title`, the parsed `resource`) plus file-level diagnostic note
-  strings for what did not become a resource. **`sectionResources`** flattens
-  the sections in order — the list the review transitions and the confirm
-  fold over. **`SettingsPickerProps<TSettings>`** (the `{ settings, onChange }`
-  contract every format's settings picker renders against) also lives here,
-  below every format's React package. Settings are pre-decode input: a change
-  re-decodes the unit, so resource keys must be stable across settings
-  changes where the underlying resource is unchanged.
+- `src/file-importer-descriptor.ts` — **`FileImporter<TFormat, TSettings>`**,
+  "a file-format importer" as one first-class value a closed registry lists.
+  Constructed from a binding's config (`format`, `coding`, `contentType`,
+  `display`, `detect`, `defaultSettings`, `decodeOne: SourceFile.DecodeOne<TSettings>`,
+  optional `securityLabel` / `subjectFor`) — or from `{ from: otherImporter }`
+  to derive a variant. The constructor builds, from the coding and content
+  type alone: the per-format `SourceFile` schema and its
+  `SourceFileFromDocumentReference` transform, `isSourceFile`,
+  `sourceFileFromDocumentReference` / `sourceFileToDocumentReference`,
+  `categoryToken`, `buildSourceFile` (the deterministic mint — a SHA-256 of
+  the bytes plus the file name via `fhir-r4/identity`'s `localResourceId`, so
+  re-importing the same file upserts rather than duplicating), and `decode`
+  itself (`buildPerFileDecode`: resolve each file's source through
+  `resolveSourceFile` — mint for a `local` pick, read back the reference for a
+  `server` one — run the binding's `decodeOne`, stamp every resource's
+  `meta.source` via `MetaSource.stampDecoded`, and prepend the source-file row
+  via `withSourceSections`). No format names another format: a binding
+  supplies only its own coding constants and `decodeOne`. Also holds
+  `Coding`, `DocumentReferenceType`, `SourceFileEncoded`,
+  `SettingsPickerProps<TSettings>` (the `{ settings, onChange }` contract
+  every format's settings picker renders against, below every format's React
+  package), and **`identify`** (the first registered importer whose `detect`
+  claims a pick).
+- `src/source-file.ts` — the **`SourceFile`** namespace every binding and the
+  shell import: **`Type`** (a decoded source file's `id` / `fileName` /
+  `uploadedAt` / `bytes`), **`Ref`** (the resolved per-decode id a
+  `DecodeOne` receives), **`Reference`** (the typed
+  `` `DocumentReference/${string}` `` a stamped resource's `meta.source`
+  points at, plus `makeReference` / `idFromReference` / `isReference`),
+  **`DecodeOne<TSettings>`** (one format's per-file decode signature —
+  `(file, settings, source: Ref) => Effect<DecodedFile.DecodedFile, ParseError>`),
+  **`PerFileDecodeOptions`** (`subjectFor`), and **`SECTION_TITLE`** / **`key`**
+  (the review section title and the stable per-file row key a minted source
+  file is reviewed under). Depends only on `decoded-file.ts` and
+  `picked-file.ts` (types only, so no runtime cycle even though
+  `picked-file.ts` depends back on this module for `Reference` /
+  `makeReference`).
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
-  selection model. A `Selection<TParsed>` is two axes: `excludedResources`
+  selection model. A `Selection` is two axes: `excludedResources`
   (per-resource opt-outs, keyed by `LabeledResource.key`) and
-  `resourceOverrides` (per-resource inline edits, same keying — the
-  reviewer's edited resource replaces the decoded original at confirm).
-  `initial` / `toggleResource` / `setResourcesIncluded` (the batch form of
-  `toggleResource`, so the shell can opt a whole section in or out at once) /
-  `edit` / `revert` are the transitions;
+  `resourceOverrides` (per-resource inline edits over `FhirResource`, same
+  keying — the reviewer's edited resource replaces the decoded original at
+  confirm). `initial` / `toggleResource` / `setResourcesIncluded` (the batch
+  form of `toggleResource`, so the shell can opt a whole section in or out at
+  once) / `edit` / `revert` are the transitions;
   `isResourceIncluded` / `isResourceEdited` / `editedResource` the reads;
   `chosenResources` folds a flat labeled list through the exclusions and
   edit overrides into the confirm's write set — no re-parse at confirm, the
@@ -59,58 +64,10 @@ Effect<readonly Either<ReadUnit<TParsed, F>, UnreadableUnit<F>>[]>` (requires
   `excludedCount` drive the shell's tallies. Orphaned selection entries
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
-- `src/persist-failure.ts` — **`PersistFailure`**, the structural echo of a
-  write sink's own failure record (`{ failed: { label, id }, cause }`). Declared
-  here — this package sits below the concrete sinks and cannot name them — and
-  checked **structurally** at each binding's seam, mirroring how
-  `collector-fundamentals` declares its `PersistFailure` against `fhir-r4`'s
-  `ResourceWriteFailure`.
-- `src/source-file-codec.ts` — **`sourceFileCodec(config)`**, the one
-  definition of how any uploaded source file is stored as a FHIR R4
-  `DocumentReference` (one attachment carrying the bytes verbatim, `subject`
-  deliberately absent unless a format passes one). The HAR and LifeLabs codecs
-  were identical bar their coding, content type, description text, and (HAR
-  only) a `securityLabel`, so the shape lives here and each binding passes
-  those in as **data** — `har-importer-core/source-file`,
-  `lifelabs-pdf-importer-core/source-file`, and
-  `dicom-importer-core/source-file` are thin config + re-export shims. The
-  returned **`SourceFileCodec`** carries the `SourceFile` schema (+
-  `SourceFileId`), both directions (`SourceFileFromDocumentReference` /
-  `SourceFileFromFhirJson` and their `encode`/`decode`), the pure `toWire`
-  builder, `isSourceFile`, the `categoryToken`, and **`buildSourceFile`** —
-  the mint a format's `decode` calls per `local` pick: it derives a
-  **deterministic** id from the bytes' SHA-256 and the file name via
-  `fhir-r4/identity`'s `localResourceId` (so re-importing the same file
-  upserts rather than duplicating), reads the clock for the upload instant,
-  and encodes. The mint lives here, not per binding, because the id needs the
-  digest and the shared derivation, both of which this package owns. A
-  binding still owns its own coding constants (a HAR binding passes
-  `web-trace-core`'s), so this module names no format and imports no format
-  slice. The shared builder is pinned by `source-file-codec.test.ts`, so a
-  format's `/source-file` test asserts only its own config.
-- `src/source-file-review.ts` — the generic pieces a format composes **inside
-  its own `decode`** to own its source file: **`sourceFileFor`** (mint through
-  the codec for a `local` pick, resolve the existing `DocumentReference/<id>`
-  for a `server` one), **`withSourceSections`** (prepend each minted resource
-  as its own `SOURCE_SECTION_TITLE` — "Source file" — section),
-  **`withMetaSource`** / **`stampMetaSource`** (write `meta.source` onto one
-  resource, or onto every resource in every section), **`sourceFileKey`** (the
-  stable review key, `source-file/<fileName>`), and **`perFileDecode(format,
-codec, decodeOne, { subjectFor? })`** — which strings them together into the
-  descriptor's batch `decode` for a single-file format, one unit per file:
-  `format` is the format tag (first argument), used to mint deterministic ids
-  via `unitId` and to stamp the format on each result; a `ParseError` is
-  folded into that file's own `UnreadableUnit`, and a successful decode returns
-  a `ReadUnit` — each as an `Either`. A group format calls the pieces itself.
-  `decodeOne(file, settings, source)` receives the resolved **`SourceFileRef`**,
-  so a format whose resources name the stored file (DICOM's `ImagingStudy`
-  `gridfsFileId`) reads the id there rather than recomputing it.
 - `src/picked-file.ts` — **`PickedFile`** (`{ fileName, bytes, source }`), the
-  one value every picker source converges on and every `decode` receives, plus
-  its **`PickedFileSource`** (`local` / `server` with a `reference`),
-  `LOCAL_SOURCE`, `serverSource`, and the one spelling of a source file's
-  reference in both directions — **`sourceFileReference`** and
-  **`sourceFileIdOf`**. Bytes rather than text so the picker stays
+  one value every picker source converges on and every `decode` receives, and
+  its **`PickedFileSource`** (`local` / `server` with a `SourceFile.Reference`)
+  the file's provenance. Bytes rather than text so the picker stays
   format-blind; the provenance rides along because minting or not minting a
   source file is the decode's decision.
 - `src/sha256.ts` — **`sha256Base64`** (+ `DigestUnavailable`), the base64
@@ -122,23 +79,25 @@ codec, decodeOne, { subjectFor? })`** — which strings them together into the
 ## Layering
 
 Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
-`DocumentReference` schema and `DocumentReferenceType`, `fhir-r4/data-types`
-for `Meta` (the slot `withMetaSource` writes into), `fhir-r4/identity` for the
-shared id derivation, and `fhir`'s wire types. Hosting the shared
-`sourceFileCodec` is what widened `fhir-r4` from a type-only import to the
-`DocumentReference` runtime schema (the codec builds and decodes the resource)
-— but still no client, no other resource schemas, and no `persistResources`:
-the write sink stays at the shell (`fhir-r4/clients`' `persistBatchBundle`) and
-the per-format extracted resource type is still `TParsed`. It deliberately does
-**not** depend on `web-trace-core`: the digest helper (`sha256.ts`) and
-`withMetaSource` are both verbatim copies of web-trace's, for the same reason —
-standard, project-neutral helpers, and moving them would invert the
-importer → web-trace direction. A HAR binding passes web-trace's coding
-constants in as data. Names no source-file _format_ (each binding supplies
-`decode` and its coding), no HTTP vocabulary (the HAR binding's recognition
-machinery lives in `har-importer-core`), and no UI framework. Never imports a
-`*-importer-core`, an `importer-core`, a `*-importer-react`,
-`slices/collector`, or `slices/http-extraction`.
+`DocumentReference` schema and `DocumentReferenceType`, `fhir-r4/resources` for
+`FhirResource` (`decoded-file.ts` and `staged-import.ts` are concrete over it,
+not generic — every format binds `FhirResource`, so there is no `TParsed` left
+to abstract over), `fhir-r4/data-types` for `Meta` (the slot `MetaSource.stamp`
+writes into), `fhir-r4/identity` for the shared id derivation, and `fhir`'s
+wire types. Hosting `FileImporter`'s source-file schema is what widened
+`fhir-r4` from a type-only import to the `DocumentReference` runtime schema
+(it builds and decodes the resource) — but still no client, no other resource
+schemas, and no `persistResources`: the write sink stays at the shell
+(`fhir-r4/clients`' `persistBatchBundle`). It deliberately does **not** depend
+on `web-trace-core`: the digest helper (`sha256.ts`) and `meta-source.ts` are
+both verbatim-in-spirit copies of web-trace's, for the same reason — standard,
+project-neutral helpers, and moving them would invert the importer →
+web-trace direction. A HAR binding passes web-trace's coding constants in as
+data. Names no source-file _format_ (each binding supplies `decodeOne` and its
+coding), no HTTP vocabulary (the HAR binding's recognition machinery lives in
+`har-importer-core`), and no UI framework. Never imports a `*-importer-core`,
+an `importer-core`, a `*-importer-react`, `slices/collector`, or
+`slices/http-extraction`.
 
 ## Guardrails
 
@@ -156,10 +115,11 @@ machinery lives in `har-importer-core`), and no UI framework. Never imports a
   package needs a `catchAll`.
 - **The source file is the format's, minted inside `decode`.** What a source
   file is, which resources point at it, and what happens to those links are
-  each format's decisions, expressed through `source-file-review.ts`'s
-  helpers. The shell has no source-file knowledge at all — it reviews the
-  minted row like any other resource. Do not put a `buildSourceFile` back on
-  the descriptor or a mint back in the shell.
+  each format's decisions, expressed through `file-importer-descriptor.ts`'s
+  internal helpers over the `source-file.ts` vocabulary. The shell has no
+  source-file knowledge at all — it reviews the minted row like any other
+  resource. Do not put a `buildSourceFile` back on the descriptor or a mint
+  back in the shell.
 - **Selection keys by `LabeledResource.key`.** Selection state must be
   serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.

@@ -42,11 +42,7 @@ const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.Pars
   )
 }
 
-const labelAdopted = (
-  resource: FhirResource,
-  key: string,
-  title: string
-): DecodedFile.Resource<FhirResource> => {
+const labelAdopted = (resource: FhirResource, key: string, title: string): DecodedFile.Resource => {
   const adopted = adopt(resource)
   return { key, title, resource: adopted }
 }
@@ -89,7 +85,7 @@ const decodeDicom = (
   file: PickedFile,
   settings: DicomSettings,
   source: SourceFile.Ref
-): Effect.Effect<DecodedFile.DecodedFile<FhirResource>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
@@ -111,7 +107,7 @@ const decodeDicom = (
     }
 
     const resources = yield* toFhirResources(header, settings, source.id)
-    const labeled: DecodedFile.Resource<FhirResource>[] = []
+    const labeled: DecodedFile.Resource[] = []
 
     for (const resource of resources) {
       switch (resource.resourceType) {
@@ -129,7 +125,7 @@ const decodeDicom = (
       }
     }
 
-    const sections: DecodedFile.Section<FhirResource>[] =
+    const sections: DecodedFile.Section[] =
       labeled.length > 0 ? [{ title: sectionTitle(header), resources: labeled }] : []
 
     return { sections, notes }

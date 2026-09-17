@@ -6,4 +6,4 @@
  *
  * @packageDocumentation
  */
-export { type PickedFile, PickedFileSource, SourceFileFhirReference } from 'importer-fundamentals'
+export { type PickedFile, PickedFileSource, SourceFile } from 'importer-fundamentals'

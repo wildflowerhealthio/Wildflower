@@ -27,14 +27,14 @@ const stamp = <TResource extends Sourceable>(resource: TResource, source: string
   },
 })
 
-const stampDecoded = <TParsed extends Sourceable>(
-  decoded: DecodedFile.DecodedFile<TParsed>,
+const stampDecoded = (
+  decoded: DecodedFile.DecodedFile,
   source: string
-): DecodedFile.DecodedFile<TParsed> => ({
+): DecodedFile.DecodedFile => ({
   ...decoded,
   sections: decoded.sections.map((section) => ({
     ...section,
-    resources: section.resources.map((entry): DecodedFile.Resource<TParsed> => ({
+    resources: section.resources.map((entry): DecodedFile.Resource => ({
       ...entry,
       resource: stamp(entry.resource, source),
     })),

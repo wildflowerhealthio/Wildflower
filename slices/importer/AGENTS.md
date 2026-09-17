@@ -27,11 +27,10 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   a `ReadUnit` with a `DecodedFile` of titled `LabeledSection`s plus diagnostic
   notes, or an `UnreadableUnit` with its `ParseError` — plus the deterministic
   `unitId` derivation and the server-read seam for uploaded source files), the
-  `PickedFile` vocabulary, the shared `sourceFileCodec` and the
-  `source-file-review.ts` helpers a format's `decode` mints its own source file
-  with, the pure per-resource `StagedImport` model, and the structural
-  `PersistFailure`. There is no `persist` sink: the write is the shell's one
-  `persistBatchBundle`.
+  `PickedFile` vocabulary, the `SourceFile` reference/decode vocabulary and the
+  `FileImporter` class's internal helpers a format's `decode` mints its own
+  source file with, and the pure per-resource `StagedImport` model. There is
+  no `persist` sink: the write is the shell's one `persistBatchBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
   `harImporterDescriptor` for format `'har'`: HAR decode through the
   pre-adopted FHIR response-kind pool into per-URL sections (with a note per
@@ -171,8 +170,7 @@ sits above `http-extraction` and below every binding, exactly as
 - [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
   — the checklist for a new format binding.
 - [importer-fundamentals AGENTS.md](./importer-fundamentals/AGENTS.md) — the
-  descriptor contract, the source-file helpers, the `StagedImport` model, and
-  `PersistFailure`.
+  descriptor contract, the source-file helpers, and the `StagedImport` model.
 - [importer-core AGENTS.md](./importer-core/AGENTS.md) — the closed descriptor
   registry and the pure batch machinery the shell drives.
 - [har-importer-core AGENTS.md](./har-importer-core/AGENTS.md) — the HAR binding's

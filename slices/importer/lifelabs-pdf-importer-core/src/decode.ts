@@ -59,7 +59,7 @@ const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
  * rather than paper over it with a shared `'?'` key that would collide across
  * resources and defeat `StagedImport.Selection`.
  */
-const labelAdopted = (resource: FhirResource): DecodedFile.Resource<FhirResource> => {
+const labelAdopted = (resource: FhirResource): DecodedFile.Resource => {
   const adopted = adopt(resource)
   const type = adopted.resourceType
   const id = adopted.id
@@ -106,14 +106,14 @@ const reportSectionTitle = (report: Report.Type): string => {
 const decodeLifeLabsPdfDocument = (
   document: Document.Type,
   settings: LifeLabsPdfSettings
-): Effect.Effect<DecodedFile.DecodedFile<FhirResource>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
     const reports = yield* Report.tryFromDocument(document).pipe(
       Effect.mapError(unrecognizedAsParseError)
     )
     const groups = yield* toFhirResources(reports, { timeZone })
-    const sections = groups.map((group): DecodedFile.Section<FhirResource> => ({
+    const sections = groups.map((group): DecodedFile.Section => ({
       title: reportSectionTitle(group.report),
       resources: group.resources.map(labelAdopted),
     }))
@@ -148,7 +148,7 @@ const decodeLifeLabsPdf = (
   file: PickedFile,
   settings: LifeLabsPdfSettings,
   _source: SourceFile.Ref
-): Effect.Effect<DecodedFile.DecodedFile<FhirResource>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.tryPromise({
     try: () => extractPositionedText(file.bytes),
     catch: extractionAsParseError,

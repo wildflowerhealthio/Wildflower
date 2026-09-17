@@ -49,7 +49,7 @@ type WritePlan =
  */
 const planFormatWrite = (
   result: FormatDecode.Result<string>,
-  selection: StagedImport.Selection<FhirResource>
+  selection: StagedImport.Selection
 ): WritePlan => {
   const labeled = DecodedFile.resources(result.decoded)
   const resources = labeled

@@ -231,7 +231,7 @@ describe('PreviewPanel', () => {
 
     expect(onSelectionChange).toHaveBeenCalledWith(
       'har',
-      StagedImport.toggleResource(StagedImport.initial<FhirResource>(), 'pat-1')
+      StagedImport.toggleResource(StagedImport.initial(), 'pat-1')
     )
   })
 
@@ -255,13 +255,13 @@ describe('PreviewPanel', () => {
 
     expect(onSelectionChange).toHaveBeenCalledWith(
       'lifelabs-pdf',
-      StagedImport.setResourcesIncluded(StagedImport.initial<FhirResource>(), ['p1', 'o1'], false)
+      StagedImport.setResourcesIncluded(StagedImport.initial(), ['p1', 'o1'], false)
     )
   })
 
   it('opts a partially-included section fully in, and shows the toggle indeterminate', async () => {
     const onSelectionChange = vi.fn()
-    const partial = StagedImport.toggleResource(StagedImport.initial<FhirResource>(), 'o1')
+    const partial = StagedImport.toggleResource(StagedImport.initial(), 'o1')
     const batch = makeBatch({
       'lifelabs-pdf': formatResult(
         'reports.pdf',
@@ -357,7 +357,7 @@ describe('PreviewPanel', () => {
     const onServer = { resourceType: 'Patient', id: 'pat-1' }
     const patientResource = Schema.decodeUnknownSync(Patient.Schema)(onServer)
     const edited = Schema.decodeUnknownSync(Patient.Schema)({ ...onServer, gender: 'male' })
-    const labeled: DecodedFile.Resource<FhirResource> = {
+    const labeled: DecodedFile.Resource = {
       key: 'pat-1',
       title: 'Patient/pat-1',
       resource: patientResource,
@@ -368,8 +368,8 @@ describe('PreviewPanel', () => {
     const comparisons = comparisonsFor('har', [
       ['pat-1', { status: 'unchanged', fields: [], server: patientWire(onServer) }],
     ])
-    const selectionFor = (): StagedImport.Selection<FhirResource> =>
-      StagedImport.edit(StagedImport.initial<FhirResource>(), 'pat-1', edited)
+    const selectionFor = (): StagedImport.Selection =>
+      StagedImport.edit(StagedImport.initial(), 'pat-1', edited)
     render(<PreviewPanel {...panelProps(batch, { comparisons, selectionFor })} />)
 
     await userEvent.click(screen.getByRole('button', { name: /Differs from server/ }))
@@ -382,7 +382,7 @@ describe('PreviewPanel', () => {
       resourceType: 'Patient',
       id: 'pat-1',
     })
-    const labeled: DecodedFile.Resource<FhirResource> = {
+    const labeled: DecodedFile.Resource = {
       key: 'pat-1',
       title: 'Patient/pat-1',
       resource: patientResource,
@@ -437,7 +437,7 @@ const pickedFile = (fileName: string): PickedFile => ({
  */
 const formatResult = <K extends FormatKind>(
   fileName: string,
-  decodedFile: DecodedFile.DecodedFile<FhirResource>,
+  decodedFile: DecodedFile.DecodedFile,
   format: K
 ): FormatDecode.Result<K> => ({
   id: `${format}/${fileName}`,
@@ -468,18 +468,18 @@ const comparisonsFor = (
 
 /** A decoded file from sections and optional notes. */
 const decoded = (
-  sections: readonly DecodedFile.Section<FhirResource>[],
+  sections: readonly DecodedFile.Section[],
   notes: readonly string[] = []
-): DecodedFile.DecodedFile<FhirResource> => ({ sections, notes })
+): DecodedFile.DecodedFile => ({ sections, notes })
 
 /** One titled section holding the given resources. */
 const section = (
   title: string,
-  resources: readonly DecodedFile.Resource<FhirResource>[]
-): DecodedFile.Section<FhirResource> => ({ title, resources })
+  resources: readonly DecodedFile.Resource[]
+): DecodedFile.Section => ({ title, resources })
 
 /** A synthetic labeled resource for the panel to count and display. */
-const labeledResource = (key: string, title: string): DecodedFile.Resource<FhirResource> => {
+const labeledResource = (key: string, title: string): DecodedFile.Resource => {
   const [resourceType = 'Patient', id = key] = title.split('/')
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test fixture: the panel only reads resourceType/id off the resource
   const resource = { resourceType, id } as FhirResource
@@ -531,7 +531,7 @@ const panelProps = (
     batch,
     settings,
     settingsRegistry,
-    selectionFor: overrides.selectionFor ?? (() => StagedImport.initial<FhirResource>()),
+    selectionFor: overrides.selectionFor ?? (() => StagedImport.initial()),
     comparisons: overrides.comparisons ?? new Map(),
     onSelectionChange: overrides.onSelectionChange ?? (() => undefined),
     onSettingsChange: overrides.onSettingsChange ?? (() => undefined),

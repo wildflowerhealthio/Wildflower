@@ -2,7 +2,7 @@
   "name": "importer-fundamentals",
   "version": "0.0.0",
   "private": true,
-  "description": "Resource-agnostic upstream of the importer slice: the FileImporterDescriptor contract (sectioned decode + persist), the per-resource review/selection model, and the structural PersistFailure. Names no archive format and no resource type. No DOM, no fs, no React.",
+  "description": "Resource-agnostic upstream of the importer slice: the FileImporterDescriptor contract (sectioned decode + persist) and the per-resource review/selection model. Names no archive format and no resource type. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

@@ -13,7 +13,19 @@
  * @packageDocumentation
  */
 
-import type { PickedFileSource } from './picked-file-source.ts'
+import * as SourceFile from './source-file.ts'
+
+/** Where a {@link PickedFile} came from: a `local` file the device holds, or a `server` file already stored as a `DocumentReference` on the FHIR server. */
+type PickedFileSource =
+  | { readonly _tag: 'local' }
+  | { readonly _tag: 'server'; readonly reference: SourceFile.Reference }
+
+const local: PickedFileSource = { _tag: 'local' }
+
+const server = (id: string): PickedFileSource => ({
+  _tag: 'server',
+  reference: SourceFile.makeReference(id),
+})
 
 /** A file chosen from one of the picker's sources, ready to hand on. */
 interface PickedFile {
@@ -25,4 +37,5 @@ interface PickedFile {
   readonly source: PickedFileSource
 }
 
-export type { PickedFile }
+export { local, server }
+export type { PickedFile, PickedFileSource }

@@ -5,7 +5,6 @@ import { SourceDescriptor } from 'http-extraction-fundamentals'
 import {
   PickedFileSource,
   SourceFile,
-  SourceFileFhirReference,
   type FormatDecode,
   type DecodedFile,
   type PickedFile,
@@ -14,8 +13,6 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 import { type TraceBody, type TraceExchange } from 'web-trace-core'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
-
-import type { FhirResource } from 'fhir-r4/resources'
 
 import { fhirSources } from './fhir-pool.ts'
 import { harImporter } from './har-importer.ts'
@@ -137,13 +134,13 @@ const readOne = async (
 
 /** The format's own sections — everything but the minted source file's. */
 const extractedSections = (
-  sections: readonly DecodedFile.Section<FhirResource>[]
-): readonly DecodedFile.Section<FhirResource>[] =>
+  sections: readonly DecodedFile.Section[]
+): readonly DecodedFile.Section[] =>
   sections.filter((section) => section.title !== SourceFile.SECTION_TITLE)
 
 /** Every `meta.source` across the given sections, in section order. */
 const metaSourcesOf = (
-  sections: readonly DecodedFile.Section<FhirResource>[]
+  sections: readonly DecodedFile.Section[]
 ): readonly (string | null | undefined)[] =>
   sections.flatMap((section) => section.resources.map((entry) => entry.resource.meta?.source))
 
@@ -214,7 +211,7 @@ describe('harImporter.decode', () => {
 
     expect(decoded.sections.map((section) => section.title)).not.toContain(SourceFile.SECTION_TITLE)
     expect(sources.length).toBeGreaterThan(0)
-    expect(sources).toEqual(sources.map(() => SourceFileFhirReference.make('doc-1')))
+    expect(sources).toEqual(sources.map(() => SourceFile.makeReference('doc-1')))
   })
 
   test('property: every extracted resource names the minted source file, under any kind toggles', async () => {
@@ -227,7 +224,7 @@ describe('harImporter.decode', () => {
         expect(decoded.sections[0]?.title).toBe(SourceFile.SECTION_TITLE)
         expect(minted?.id).toEqual(expect.any(String))
         for (const source of metaSourcesOf(extractedSections(decoded.sections))) {
-          expect(source).toBe(SourceFileFhirReference.make(minted?.id ?? ''))
+          expect(source).toBe(SourceFile.makeReference(minted?.id ?? ''))
         }
       }),
       { numRuns: numRunsFor({ base: 25 }) }

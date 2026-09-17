@@ -62,7 +62,7 @@ describe('planFormatWrite', () => {
         fc.func(fc.boolean()),
         fc.func(fc.boolean()),
         (keys, excludes, edits) => {
-          let selection = StagedImport.initial<FhirResource>()
+          let selection = StagedImport.initial()
           for (const key of keys) {
             if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
             if (edits(key)) selection = StagedImport.edit(selection, key, resource(`${key}-edited`))

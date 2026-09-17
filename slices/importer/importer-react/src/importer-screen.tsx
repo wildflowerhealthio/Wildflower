@@ -1,4 +1,3 @@
-import type { FhirResource } from 'fhir-r4/resources'
 import type { FormatKind } from 'importer-core'
 import { formatKinds } from 'importer-core'
 import { StagedImport, DecodedFile } from 'importer-fundamentals'
@@ -61,20 +60,17 @@ const ImporterScreen = (): JSX.Element => {
   const importRun = useImportRun(formatRegistry)
   const confirm = useConfirmImport()
 
-  const [selections, setSelections] = useState<
-    ReadonlyMap<FormatKind, StagedImport.Selection<FhirResource>>
-  >(new Map())
+  const [selections, setSelections] = useState<ReadonlyMap<FormatKind, StagedImport.Selection>>(
+    new Map()
+  )
 
   const runState = importRun.state
   const batch = runState._tag === 'ready' ? runState.batch : undefined
   const diff = useServerDiff(batch, runState._tag === 'ready' ? runState.batchId : 0)
 
-  const initialSelections = useMemo((): ReadonlyMap<
-    FormatKind,
-    StagedImport.Selection<FhirResource>
-  > => {
+  const initialSelections = useMemo((): ReadonlyMap<FormatKind, StagedImport.Selection> => {
     if (diff._tag === 'loading' || batch === undefined) return new Map()
-    const entries: [FormatKind, StagedImport.Selection<FhirResource>][] = []
+    const entries: [FormatKind, StagedImport.Selection][] = []
     for (const kind of formatKinds) {
       const result = batch[kind]
       if (result.files.length === 0) continue
@@ -88,15 +84,13 @@ const ImporterScreen = (): JSX.Element => {
   }, [diff, batch])
 
   const selectionFor = useCallback(
-    (format: FormatKind): StagedImport.Selection<FhirResource> =>
-      selections.get(format) ??
-      initialSelections.get(format) ??
-      StagedImport.initial<FhirResource>(),
+    (format: FormatKind): StagedImport.Selection =>
+      selections.get(format) ?? initialSelections.get(format) ?? StagedImport.initial(),
     [selections, initialSelections]
   )
 
   const onSelectionChange = useCallback(
-    (format: FormatKind, selection: StagedImport.Selection<FhirResource>): void => {
+    (format: FormatKind, selection: StagedImport.Selection): void => {
       setSelections((previous) => new Map(previous).set(format, selection))
     },
     []

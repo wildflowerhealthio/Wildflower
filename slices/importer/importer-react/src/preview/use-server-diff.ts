@@ -222,7 +222,7 @@ const useServerDiff = (batch: BatchDecodeResult | undefined, batchId: number): S
  * @returns The keys to pre-exclude
  */
 const initialExclusionsFor = (
-  labeled: readonly DecodedFile.Resource<FhirResource>[],
+  labeled: readonly DecodedFile.Resource[],
   comparisons: ReadonlyMap<string, ServerComparison> | undefined
 ): ReadonlySet<string> => {
   const excluded = new Set<string>()

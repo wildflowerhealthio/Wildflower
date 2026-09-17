@@ -4,7 +4,6 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import { type FhirR4ResourcesHttpApiClient, persistBatchBundle } from 'fhir-r4/clients'
-import type { FhirResource } from 'fhir-r4/resources'
 import {
   type BatchDecodeResult,
   type FormatKind,
@@ -67,7 +66,7 @@ type ConfirmState =
   | { readonly _tag: 'done'; readonly batch: BatchOutcome }
 
 /** How the confirm reads each format's reviewed selection. */
-type SelectionFor = (format: FormatKind) => StagedImport.Selection<FhirResource>
+type SelectionFor = (format: FormatKind) => StagedImport.Selection
 
 /** Imperative surface the screen drives the confirm through. */
 interface ConfirmImport {
@@ -90,7 +89,7 @@ interface ConfirmImport {
  */
 const importOneFormat = (
   result: FormatDecode.Result<string>,
-  selection: StagedImport.Selection<FhirResource>
+  selection: StagedImport.Selection
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
   const { id, title } = result
   const plan = planFormatWrite(result, selection)
