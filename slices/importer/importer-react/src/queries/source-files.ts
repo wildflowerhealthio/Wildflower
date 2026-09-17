@@ -11,7 +11,11 @@ import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { type DocumentReferenceType, type PickedFile, serverSource } from 'importer-fundamentals'
+import {
+  type DocumentReferenceType,
+  type PickedFile,
+  PickedFileSource,
+} from 'importer-fundamentals'
 
 type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
@@ -354,7 +358,7 @@ const fetchSourceFile = (
       return {
         fileName: sourceFile.fileName,
         bytes: sourceFile.bytes,
-        source: serverSource(row.id),
+        source: PickedFileSource.server(row.id),
       }
     })
   )

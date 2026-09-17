@@ -1,6 +1,6 @@
 import type { ParseResult } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { DecodedFile, PickedFile } from 'importer-fundamentals'
+import type { DecodeOutcome, DecodedFile, PickedFile } from 'importer-fundamentals'
 
 import type { FormatKind } from './registry.ts'
 
@@ -69,4 +69,34 @@ interface UnrecognizedFile {
  */
 type UnitReadOutcome = ReadUnit<FormatKind> | UnreadableUnit<FormatKind> | UnrecognizedFile
 
-export type { ReadUnit, UnitReadOutcome, UnreadableUnit, UnrecognizedFile }
+/** Tag a format's decode outcome with the format and a unit id. */
+const fromDecodeOutcome = (
+  format: FormatKind,
+  id: string,
+  outcome: DecodeOutcome<FhirResource>
+): UnitReadOutcome =>
+  outcome._tag === 'read'
+    ? {
+        _tag: 'read',
+        id,
+        title: outcome.title,
+        files: outcome.files,
+        format,
+        decoded: outcome.decoded,
+      }
+    : {
+        _tag: 'unreadable',
+        id,
+        title: outcome.title,
+        files: outcome.files,
+        format,
+        error: outcome.error,
+      }
+
+export {
+  fromDecodeOutcome,
+  type ReadUnit,
+  type UnitReadOutcome,
+  type UnreadableUnit,
+  type UnrecognizedFile,
+}

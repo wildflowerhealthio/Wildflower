@@ -1,4 +1,4 @@
-import { sourceFileCodec } from 'importer-fundamentals'
+import { SourceFile } from 'importer-fundamentals'
 
 import { LIFELABS_SYSTEM } from '../source-system.ts'
 
@@ -35,7 +35,7 @@ const LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE = 'application/pdf'
  * object, whose `buildSourceFile` the descriptor's `decode` mints this
  * format's source file with (through `perFileDecode`).
  */
-const lifeLabsPdfSourceFileCodec = sourceFileCodec({
+const lifeLabsPdfSourceFileCodec = SourceFile.codec({
   coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
   contentType: LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
   descriptionPrefix: 'LifeLabs report PDF: ',

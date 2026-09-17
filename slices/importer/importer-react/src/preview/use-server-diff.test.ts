@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import type { ServerComparison } from 'fhir-r4/clients'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import type { UnitReadOutcome } from 'importer-core'
-import { LOCAL_SOURCE } from 'importer-fundamentals'
+import { PickedFileSource } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -27,7 +27,9 @@ const unit = (
   _tag: 'read',
   id: unitId,
   title: `${unitId}.dcm`,
-  files: [{ fileName: `${unitId}.dcm`, bytes: new Uint8Array([1]), source: LOCAL_SOURCE }],
+  files: [
+    { fileName: `${unitId}.dcm`, bytes: new Uint8Array([1]), source: PickedFileSource.local },
+  ],
   format: 'dicom',
   decoded: {
     sections: [

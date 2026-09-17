@@ -3,7 +3,7 @@ import { Effect } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
 import {
-  perFileDecode,
+  SourceFile,
   type DecodedFile,
   type FileImporterDescriptor,
   type LabeledResource,
@@ -104,7 +104,7 @@ const harImporterDescriptor: FileImporterDescriptor<HarSettings, FhirResource> =
   },
   detect: detectHar,
   defaultSettings: defaultHarSettings,
-  decode: perFileDecode(harSourceFileCodec, (file, settings) =>
+  decode: SourceFile.perFileDecode(harSourceFileCodec, (file, settings) =>
     decodeHar(file.bytes, settings).pipe(
       Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
       Effect.map((previews): DecodedFile<FhirResource> => ({

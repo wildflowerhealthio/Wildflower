@@ -1,5 +1,4 @@
 import { Effect, ParseResult, Schema } from 'effect'
-import type { Meta } from 'fhir-r4/data-types'
 
 import type {
   DecodedFile,
@@ -9,8 +8,10 @@ import type {
   LabeledResource,
   LabeledSection,
 } from './file-importer-descriptor.ts'
-import { type PickedFile, sourceFileIdOf, sourceFileReference } from './picked-file.ts'
+import * as MetaSource from './meta-source.ts'
+import type { PickedFile } from './picked-file.ts'
 import type { SourceFileCodec } from './source-file-codec.ts'
+import * as SourceFileFhirReference from './source-file-fhir-reference.ts'
 
 /**
  * The generic pieces every format composes to own its source-file
@@ -39,20 +40,19 @@ import type { SourceFileCodec } from './source-file-codec.ts'
  * @param fileName - The picked file's name
  * @returns `source-file/<fileName>`
  */
-const sourceFileKey = (fileName: string): string => `source-file/${fileName}`
+const key = (fileName: string): string => `source-file/${fileName}`
 
 /** The section title a source file is reviewed under. */
-const SOURCE_SECTION_TITLE = 'Source file'
+const SECTION_TITLE = 'Source file'
 
 /**
  * What a per-file decode learns about its file's source-file
- * `DocumentReference`, local or server: the logical id and the
- * `DocumentReference/<id>` reference every extracted resource stamps onto
- * `meta.source`.
+ * `DocumentReference`: the logical id. The full
+ * `DocumentReference/<id>` reference is derivable via
+ * {@link SourceFileFhirReference.make}.
  */
-interface SourceFileRef {
+interface Ref {
   readonly id: string
-  readonly reference: string
 }
 
 /**
@@ -61,18 +61,18 @@ interface SourceFileRef {
  *
  * @remarks
  * `labeled` is present for a `local` pick — the freshly minted
- * `DocumentReference`, keyed by {@link sourceFileKey} and titled by the file
- * name, ready for {@link withSourceSections} — and absent for a `server`
+ * `DocumentReference`, keyed by {@link key} and titled by the file
+ * name, ready for {@link withSections} — and absent for a `server`
  * pick, whose source file already exists on the server and is neither
  * re-reviewed nor re-uploaded.
  */
-interface ResolvedSourceFile {
-  readonly ref: SourceFileRef
+interface Resolved {
+  readonly ref: Ref
   readonly labeled: LabeledResource<DocumentReferenceType> | undefined
 }
 
-/** The options a format can hand {@link sourceFileFor} through to the codec's mint. */
-interface SourceFileOptions {
+/** The options a format can hand {@link resolve} through to the codec's mint. */
+interface Options {
   /** A `subject` to link the minted resource to (DICOM derives a Patient from its header). */
   readonly subject?: { readonly reference: string } | undefined
 }
@@ -90,35 +90,31 @@ interface SourceFileOptions {
  *
  * @remarks
  * Fails only as the codec's mint does — a `ParseError` for a digest
- * unavailable in an insecure context — or when a `server` reference is not
- * a `DocumentReference/<id>` (a malformed pick, folded to the same channel
- * so a caller has one failure to handle). The mint reads the clock
+ * unavailable in an insecure context. The mint reads the clock
  * (`DateTime.now`) for the upload instant, so a settings re-decode
  * re-stamps it; the id is deterministic in the bytes and the name, so
  * the review key, the `meta.source` links, and a reviewer's edit all
  * survive the re-decode.
  */
-const sourceFileFor = (
+const resolve = (
   codec: Pick<SourceFileCodec, 'buildSourceFile'>,
   file: PickedFile,
-  options?: SourceFileOptions
-): Effect.Effect<ResolvedSourceFile, ParseResult.ParseError> => {
+  options?: Options
+): Effect.Effect<Resolved, ParseResult.ParseError> => {
   if (file.source._tag === 'server') {
     const { reference } = file.source
-    const id = sourceFileIdOf(reference)
-    if (id === undefined) return Effect.fail(notASourceFileReference(reference))
-    return Effect.succeed({ ref: { id, reference }, labeled: undefined })
+    return Effect.succeed({
+      ref: { id: SourceFileFhirReference.idOf(reference) },
+      labeled: undefined,
+    })
   }
   return codec.buildSourceFile(file, { subject: options?.subject }).pipe(
-    Effect.flatMap((resource): Effect.Effect<ResolvedSourceFile, ParseResult.ParseError> => {
-      // The codec mints the id, so a null here is a broken codec rather than
-      // an input the format can do anything with — but the schema types the
-      // field nullable, and a link to nothing is worse than no link.
+    Effect.flatMap((resource): Effect.Effect<Resolved, ParseResult.ParseError> => {
       const { id } = resource
       if (id === null) return Effect.fail(mintedWithoutId(file.fileName))
       return Effect.succeed({
-        ref: { id, reference: sourceFileReference(id) },
-        labeled: { key: sourceFileKey(file.fileName), title: file.fileName, resource },
+        ref: { id },
+        labeled: { key: key(file.fileName), title: file.fileName, resource },
       })
     })
   )
@@ -134,16 +130,6 @@ const mintedWithoutId = (fileName: string): ParseResult.ParseError =>
     ),
   })
 
-/** A `server` pick whose reference does not name a `DocumentReference`. */
-const notASourceFileReference = (reference: string): ParseResult.ParseError =>
-  new ParseResult.ParseError({
-    issue: new ParseResult.Type(
-      Schema.String.ast,
-      reference,
-      `Not a DocumentReference reference: ${reference}`
-    ),
-  })
-
 /**
  * Prepend one "Source file" section per labeled source file ahead of a
  * decoded file's own sections, so the generalized review lists each source
@@ -156,82 +142,17 @@ const notASourceFileReference = (reference: string): ParseResult.ParseError =>
  * @param sourceFiles - The labeled source files, in file order
  * @returns The decoded file with the source-file sections prepended
  */
-const withSourceSections = <TParsed>(
+const withSections = <TParsed>(
   decoded: DecodedFile<TParsed>,
   sourceFiles: readonly LabeledResource<TParsed>[]
 ): DecodedFile<TParsed> => {
   if (sourceFiles.length === 0) return decoded
   const sections: readonly LabeledSection<TParsed>[] = sourceFiles.map((sourceFile) => ({
-    title: SOURCE_SECTION_TITLE,
+    title: SECTION_TITLE,
     resources: [sourceFile],
   }))
   return { ...decoded, sections: [...sections, ...decoded.sections] }
 }
-
-/**
- * The minimum a resource must expose to carry a `meta.source` link: the
- * `meta` slot the back-link is written into.
- *
- * @remarks
- * Structural rather than the `FhirResource` union, so a format whose
- * decode produces a narrower type keeps that type through the stamp. The
- * same shape `web-trace-core`'s provenance helper uses; a copy rather than
- * an import, since this package must not depend on that slice.
- */
-interface MetaSourceable {
-  readonly meta: typeof Meta.Schema.Type | null
-}
-
-/**
- * Set `meta.source` on a resource, preserving whatever else its `meta`
- * carried.
- *
- * @param resource - The resource to link
- * @param source - The relative reference of the source file that produced it
- * @returns The resource with `meta.source` set
- *
- * @remarks
- * FHIR's `meta.source` is one `uri`, so a resource decoded from several
- * files (a group format's study-level resource) can name only one of them
- * here — which one is the format's decision.
- */
-const withMetaSource = <TResource extends MetaSourceable>(
-  resource: TResource,
-  source: string
-): TResource => ({
-  ...resource,
-  meta: {
-    lastUpdated: null,
-    profile: [],
-    security: [],
-    tag: [],
-    versionId: null,
-    ...resource.meta,
-    source,
-  },
-})
-
-/**
- * Stamp `meta.source` onto every resource in every section of a decoded
- * file, leaving titles, keys, and notes untouched.
- *
- * @param decoded - The format's own sections and notes
- * @param source - The reference every resource is stamped with
- * @returns The same sections with each resource linked
- */
-const stampMetaSource = <TParsed extends MetaSourceable>(
-  decoded: DecodedFile<TParsed>,
-  source: string
-): DecodedFile<TParsed> => ({
-  ...decoded,
-  sections: decoded.sections.map((section) => ({
-    ...section,
-    resources: section.resources.map((entry) => ({
-      ...entry,
-      resource: withMetaSource(entry.resource, source),
-    })),
-  })),
-})
 
 /**
  * A single-file format's per-file decode: the picked file, the settings the
@@ -243,7 +164,7 @@ const stampMetaSource = <TParsed extends MetaSourceable>(
 type DecodeOne<TSettings, TParsed> = (
   file: PickedFile,
   settings: TSettings,
-  source: SourceFileRef
+  source: Ref
 ) => Effect.Effect<DecodedFile<TParsed>, ParseResult.ParseError>
 
 /** The per-format knobs {@link perFileDecode} takes beside the codec and the decode. */
@@ -279,7 +200,7 @@ interface PerFileDecodeOptions {
  * resources are stamped with the pick's existing reference.
  */
 const perFileDecode =
-  <TSettings, TParsed extends MetaSourceable>(
+  <TSettings, TParsed extends MetaSource.Sourceable>(
     codec: Pick<SourceFileCodec, 'buildSourceFile'>,
     decodeOne: DecodeOne<TSettings, TParsed>,
     options?: PerFileDecodeOptions
@@ -292,19 +213,19 @@ const perFileDecode =
       files,
       (file) =>
         Effect.gen(function* () {
-          const { ref, labeled } = yield* sourceFileFor(codec, file, {
+          const { ref, labeled } = yield* resolve(codec, file, {
             subject: options?.subjectFor?.(file),
           })
           const decoded = yield* decodeOne(file, settings, ref)
-          const stamped: DecodedFile<TParsed | DocumentReferenceType> = stampMetaSource(
+          const stamped: DecodedFile<TParsed | DocumentReferenceType> = MetaSource.stampDecoded(
             decoded,
-            ref.reference
+            SourceFileFhirReference.make(ref.id)
           )
           return {
             _tag: 'read',
             title: file.fileName,
             files: [file],
-            decoded: withSourceSections(stamped, labeled === undefined ? [] : [labeled]),
+            decoded: withSections(stamped, labeled === undefined ? [] : [labeled]),
           } satisfies DecodedUnit<TParsed | DocumentReferenceType>
         }).pipe(
           Effect.catchAll((error): Effect.Effect<DecodeOutcome<TParsed | DocumentReferenceType>> =>
@@ -316,16 +237,13 @@ const perFileDecode =
 
 export {
   type DecodeOne,
-  type MetaSourceable,
+  type Options,
   type PerFileDecodeOptions,
+  type Ref,
+  type Resolved,
+  SECTION_TITLE,
+  key,
   perFileDecode,
-  type ResolvedSourceFile,
-  SOURCE_SECTION_TITLE,
-  type SourceFileOptions,
-  type SourceFileRef,
-  sourceFileFor,
-  sourceFileKey,
-  stampMetaSource,
-  withMetaSource,
-  withSourceSections,
+  resolve,
+  withSections,
 }

@@ -1,7 +1,7 @@
 import { Effect } from 'effect'
 import { identify, type FileImporterDescriptor } from 'importer-fundamentals'
 
-import { LOCAL_SOURCE, type PickedFile } from './picked-file.ts'
+import { PickedFileSource, type PickedFile } from './picked-file.ts'
 
 /**
  * Reading a file the user dropped or chose, and rejecting one that no
@@ -95,7 +95,11 @@ const acceptLocalFile = (
       const bytes = new Uint8Array(buffer)
       const claim = identify(descriptors, { fileName: file.name, bytes })
       if (claim === undefined) return Effect.fail(REJECTION_MESSAGE)
-      return Effect.succeed<PickedFile>({ fileName: file.name, bytes, source: LOCAL_SOURCE })
+      return Effect.succeed<PickedFile>({
+        fileName: file.name,
+        bytes,
+        source: PickedFileSource.local,
+      })
     })
   )
 

@@ -17,7 +17,7 @@ import { parseDicomFile } from 'dicom'
 import { Effect, Either } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import { perFileDecode, type FileImporterDescriptor, type PickedFile } from 'importer-fundamentals'
+import { SourceFile, type FileImporterDescriptor, type PickedFile } from 'importer-fundamentals'
 
 import { decodeDicom } from './decode.ts'
 import { detectDicom } from './detect.ts'
@@ -62,7 +62,9 @@ const dicomImporterDescriptor: FileImporterDescriptor<DicomSettings, FhirResourc
   },
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
-  decode: perFileDecode(dicomSourceFileCodec, decodeDicom, { subjectFor: patientSubjectOf }),
+  decode: SourceFile.perFileDecode(dicomSourceFileCodec, decodeDicom, {
+    subjectFor: patientSubjectOf,
+  }),
   sourceFileCategoryToken: DICOM_SOURCE_FILE_CATEGORY_TOKEN,
   isSourceFile: isDicomSourceFile,
   sourceFileFromDocumentReference: (resource) =>

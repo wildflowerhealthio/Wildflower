@@ -15,7 +15,7 @@ import type {
   LabeledResource,
   LabeledSection,
   PickedFile,
-  SourceFileRef,
+  SourceFile,
 } from 'importer-fundamentals'
 
 import { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
@@ -94,7 +94,7 @@ const sectionTitle = (header: DicomHeader): string => {
 const decodeDicom = (
   file: PickedFile,
   settings: DicomSettings,
-  source: SourceFileRef
+  source: SourceFile.Ref
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)

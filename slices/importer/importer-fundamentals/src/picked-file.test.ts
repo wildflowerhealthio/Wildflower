@@ -2,26 +2,33 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { serverSource, sourceFileIdOf, sourceFileReference } from './picked-file.ts'
+import * as PickedFileSource from './picked-file-source.ts'
+import * as SourceFileFhirReference from './source-file-fhir-reference.ts'
 
-describe('sourceFileReference / sourceFileIdOf', () => {
-  it('property: the id round-trips through the reference form', () => {
+describe('SourceFileFhirReference', () => {
+  it('property: the id round-trips through make/idOf', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), (id) => {
-        expect(sourceFileIdOf(sourceFileReference(id))).toBe(id)
+        expect(SourceFileFhirReference.idOf(SourceFileFhirReference.make(id))).toBe(id)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
 
   it('should reject a reference to any other resource type, and an empty id', () => {
-    expect(sourceFileIdOf('Patient/p-1')).toBeUndefined()
-    expect(sourceFileIdOf('DocumentReference/')).toBeUndefined()
-    expect(sourceFileIdOf('')).toBeUndefined()
+    expect(SourceFileFhirReference.is('Patient/p-1')).toBe(false)
+    expect(SourceFileFhirReference.is('DocumentReference/')).toBe(false)
+    expect(SourceFileFhirReference.is('')).toBe(false)
   })
 
+  it('should accept a well-formed DocumentReference reference', () => {
+    expect(SourceFileFhirReference.is('DocumentReference/doc-1')).toBe(true)
+  })
+})
+
+describe('PickedFileSource', () => {
   it('should build a server source carrying the reference form of the id', () => {
-    expect(serverSource('doc-9')).toEqual({
+    expect(PickedFileSource.server('doc-9')).toEqual({
       _tag: 'server',
       reference: 'DocumentReference/doc-9',
     })

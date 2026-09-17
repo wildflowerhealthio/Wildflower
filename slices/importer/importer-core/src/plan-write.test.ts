@@ -1,7 +1,7 @@
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import { LOCAL_SOURCE, StagedImport } from 'importer-fundamentals'
+import { PickedFileSource, StagedImport } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -15,7 +15,7 @@ const readUnit = (keys: readonly string[]): UnitReadOutcome => ({
   _tag: 'read',
   id: 'u',
   title: 'a.har',
-  files: [{ fileName: 'a.har', bytes: new Uint8Array([1]), source: LOCAL_SOURCE }],
+  files: [{ fileName: 'a.har', bytes: new Uint8Array([1]), source: PickedFileSource.local }],
   format: 'har',
   decoded: {
     sections: [
@@ -27,7 +27,7 @@ const readUnit = (keys: readonly string[]): UnitReadOutcome => ({
 
 describe('planUnitWrite', () => {
   it('should skip an unreadable or unrecognized unit as unreadable', () => {
-    const files = [{ fileName: 'x', bytes: new Uint8Array(), source: LOCAL_SOURCE }]
+    const files = [{ fileName: 'x', bytes: new Uint8Array(), source: PickedFileSource.local }]
     expect(
       planUnitWrite({ _tag: 'unrecognized', id: 'u', title: 'x', files }, StagedImport.initial())
     ).toEqual({ _tag: 'skip', reason: 'unreadable' })

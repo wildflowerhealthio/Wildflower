@@ -5,14 +5,11 @@ import {
   type DecodedUnit,
   type DecodeOutcome,
   type FileImporterDescriptor,
-  LOCAL_SOURCE,
-  perFileDecode,
+  PickedFileSource,
   type PickedFile,
   sectionResources,
-  serverSource,
-  SOURCE_SECTION_TITLE,
-  sourceFileKey,
-  sourceFileReference,
+  SourceFile,
+  SourceFileFhirReference,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -51,9 +48,9 @@ describe('lifeLabsPdfImporterDescriptor', () => {
 
 /**
  * The decode the descriptor exposes is {@link decodeLifeLabsPdfDocument}
- * lifted through `perFileDecode`. The pdfjs extraction seam in between is
+ * lifted through `SourceFile.perFileDecode`. The pdfjs extraction seam in between is
  * untested-by-design (no PDF writer in this package, and the anonymizer's
- * descriptor makes the same call), so the source-file behaviour `perFileDecode`
+ * descriptor makes the same call), so the source-file behaviour `SourceFile.perFileDecode`
  * adds is driven over the same lift with the extraction replaced by
  * `layoutDocument`'s printed inverse — everything below the seam is the real
  * decode. The descriptor's own `decode` covers the failure side, where the
@@ -66,8 +63,9 @@ const SETTINGS = { timeZone: 'America/Vancouver' }
 const decodeReports = (
   reports: readonly Report.Type[]
 ): FileImporterDescriptor<LifeLabsPdfSettings, FhirResource>['decode'] =>
-  perFileDecode<LifeLabsPdfSettings, FhirResource>(lifeLabsPdfSourceFileCodec, (_file, settings) =>
-    decodeLifeLabsPdfDocument(layoutDocument(reports), settings)
+  SourceFile.perFileDecode<LifeLabsPdfSettings, FhirResource>(
+    lifeLabsPdfSourceFileCodec,
+    (_file, settings) => decodeLifeLabsPdfDocument(layoutDocument(reports), settings)
   )
 
 /** The one `read` unit a single-file decode yields, or a failure naming what came back. */
@@ -91,7 +89,7 @@ describe('lifeLabsPdfImporterDescriptor decode', () => {
           const file: PickedFile = {
             fileName: 'Reports.pdf',
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
-            source: LOCAL_SOURCE,
+            source: PickedFileSource.local,
           }
 
           const decoded = readUnit(
@@ -99,10 +97,10 @@ describe('lifeLabsPdfImporterDescriptor decode', () => {
           )
 
           const [sourceSection, ...reportSections] = decoded.sections
-          expect(sourceSection?.title).toBe(SOURCE_SECTION_TITLE)
+          expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
           const sourceRow = sourceSection?.resources[0]
           expect(sourceSection?.resources).toHaveLength(1)
-          expect(sourceRow?.key).toBe(sourceFileKey(file.fileName))
+          expect(sourceRow?.key).toBe(SourceFile.key(file.fileName))
           expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
           const sourceId = sourceRow?.resource.id
           expect(sourceId).toEqual(expect.any(String))
@@ -123,7 +121,7 @@ describe('lifeLabsPdfImporterDescriptor decode', () => {
           const file: PickedFile = {
             fileName: 'Reports.pdf',
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
-            source: serverSource('wf-already-uploaded'),
+            source: PickedFileSource.server('wf-already-uploaded'),
           }
 
           const decoded = readUnit(
@@ -131,12 +129,14 @@ describe('lifeLabsPdfImporterDescriptor decode', () => {
           )
 
           expect(decoded.sections.map((section) => section.title)).not.toContain(
-            SOURCE_SECTION_TITLE
+            SourceFile.SECTION_TITLE
           )
           const labeled = sectionResources(decoded.sections)
           expect(labeled.length).toBeGreaterThan(0)
           for (const item of labeled) {
-            expect(item.resource.meta?.source).toBe(sourceFileReference('wf-already-uploaded'))
+            expect(item.resource.meta?.source).toBe(
+              SourceFileFhirReference.make('wf-already-uploaded')
+            )
           }
         }
       ),
@@ -148,7 +148,7 @@ describe('lifeLabsPdfImporterDescriptor decode', () => {
     const file: PickedFile = {
       fileName: 'not-a-report.pdf',
       bytes: new TextEncoder().encode('this is not a PDF at all'),
-      source: LOCAL_SOURCE,
+      source: PickedFileSource.local,
     }
 
     const outcomes = await Effect.runPromise(

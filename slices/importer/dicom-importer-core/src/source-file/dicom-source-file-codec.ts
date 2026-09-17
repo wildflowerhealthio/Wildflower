@@ -1,4 +1,4 @@
-import { sourceFileCodec } from 'importer-fundamentals'
+import { SourceFile } from 'importer-fundamentals'
 
 import { DICOM_SYSTEM } from '../source-system.ts'
 
@@ -22,7 +22,7 @@ const DICOM_SOURCE_FILE_CODE = 'dicom-source-file'
 
 const DICOM_SOURCE_FILE_CONTENT_TYPE = 'application/dicom'
 
-const dicomSourceFileCodec = sourceFileCodec({
+const dicomSourceFileCodec = SourceFile.codec({
   coding: { system: DICOM_SYSTEM, code: DICOM_SOURCE_FILE_CODE },
   contentType: DICOM_SOURCE_FILE_CONTENT_TYPE,
   descriptionPrefix: 'DICOM file: ',

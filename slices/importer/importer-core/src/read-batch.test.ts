@@ -4,9 +4,9 @@ import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import {
   type DecodeOutcome,
-  LOCAL_SOURCE,
+  PickedFileSource,
   type PickedFile,
-  SOURCE_SECTION_TITLE,
+  SourceFile,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -30,7 +30,11 @@ const pickArbitrary: fc.Arbitrary<PickedFile> = fc
     fc.stringMatching(/^[a-z0-9]{1,6}$/u),
     fc.uint8Array({ minLength: 1, maxLength: 4 })
   )
-  .map(([prefix, stem, bytes]) => ({ fileName: `${prefix}-${stem}`, bytes, source: LOCAL_SOURCE }))
+  .map(([prefix, stem, bytes]) => ({
+    fileName: `${prefix}-${stem}`,
+    bytes,
+    source: PickedFileSource.local,
+  }))
 
 const kindOf = (fileName: string): FormatKind | undefined => {
   if (fileName.startsWith('har-')) return 'har'
@@ -156,7 +160,7 @@ describe('readBatch', () => {
       readBatch(
         fakeRegistry,
         settings,
-        [{ fileName: 'har-a', bytes: new Uint8Array([1]), source: LOCAL_SOURCE }],
+        [{ fileName: 'har-a', bytes: new Uint8Array([1]), source: PickedFileSource.local }],
         counter()
       )
     )
@@ -209,8 +213,12 @@ describe('readBatch over the real registry', () => {
       Modality: 'CT',
     })
     const picks: readonly PickedFile[] = [
-      { fileName: 'notes.txt', bytes: new TextEncoder().encode('hello'), source: LOCAL_SOURCE },
-      { fileName: 'scan.dcm', bytes: dicomBytes, source: LOCAL_SOURCE },
+      {
+        fileName: 'notes.txt',
+        bytes: new TextEncoder().encode('hello'),
+        source: PickedFileSource.local,
+      },
+      { fileName: 'scan.dcm', bytes: dicomBytes, source: PickedFileSource.local },
     ]
     const units = await Effect.runPromise(
       readBatch(formatRegistry, defaultFormatSettings, picks, counter())
@@ -222,7 +230,7 @@ describe('readBatch over the real registry', () => {
     const dicom = units[0]
     if (dicom?._tag !== 'read') throw new Error('expected a read unit')
     expect(dicom.format).toBe('dicom')
-    expect(dicom.decoded.sections[0]?.title).toBe(SOURCE_SECTION_TITLE)
+    expect(dicom.decoded.sections[0]?.title).toBe(SourceFile.SECTION_TITLE)
     expect(dicom.decoded.sections.length).toBeGreaterThan(1)
   })
 })

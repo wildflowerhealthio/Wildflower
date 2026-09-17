@@ -6,7 +6,7 @@ import type {
   LabeledResource,
   LabeledSection,
   PickedFile,
-  SourceFileRef,
+  SourceFile,
 } from 'importer-fundamentals'
 import type { Document } from 'positioned-text'
 import { extractPositionedText } from 'positioned-text-web'
@@ -153,7 +153,7 @@ const decodeLifeLabsPdfDocument = (
 const decodeLifeLabsPdf = (
   file: PickedFile,
   settings: LifeLabsPdfSettings,
-  _source: SourceFileRef
+  _source: SourceFile.Ref
 ): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.tryPromise({
     try: () => extractPositionedText(file.bytes),

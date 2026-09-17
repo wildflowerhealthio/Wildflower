@@ -3,7 +3,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { type DecodeOutcome, identify, type PickedFile } from 'importer-fundamentals'
 
 import type { BoundFormat, FormatKind, FormatSettings } from './registry.ts'
-import type { UnitReadOutcome } from './unit-read-outcome.ts'
+import { fromDecodeOutcome, type UnitReadOutcome } from './unit-read-outcome.ts'
 
 /**
  * The read half of an import as pure functions over the registry: group a
@@ -104,30 +104,6 @@ const decodeFormat = <K extends FormatKind>(
 ): Effect.Effect<readonly DecodeOutcome<FhirResource>[]> =>
   registry[kind].decode(files, settings[kind])
 
-/** Tag a format's decode outcome with the format and a unit id. */
-const toUnitOutcome = (
-  format: FormatKind,
-  id: string,
-  outcome: DecodeOutcome<FhirResource>
-): UnitReadOutcome =>
-  outcome._tag === 'read'
-    ? {
-        _tag: 'read',
-        id,
-        title: outcome.title,
-        files: outcome.files,
-        format,
-        decoded: outcome.decoded,
-      }
-    : {
-        _tag: 'unreadable',
-        id,
-        title: outcome.title,
-        files: outcome.files,
-        format,
-        error: outcome.error,
-      }
-
 /**
  * Read a freshly picked batch: group it by format, decode every group
  * under its format's current settings, and yield one outcome per unit —
@@ -157,7 +133,9 @@ const readBatch = (
     readonly PickedFile[],
   ]): Effect.Effect<readonly UnitReadOutcome[]> =>
     decodeFormat(registry, settings, format, files).pipe(
-      Effect.map((outcomes) => outcomes.map((outcome) => toUnitOutcome(format, newId(), outcome)))
+      Effect.map((outcomes) =>
+        outcomes.map((outcome) => fromDecodeOutcome(format, newId(), outcome))
+      )
     )
   return Effect.forEach([...groups.entries()], decodeGroup, { concurrency: 'unbounded' }).pipe(
     Effect.map((perFormat): readonly UnitReadOutcome[] => [
@@ -205,7 +183,7 @@ const redecodeFormat = (
       return decodeFormat(registry, settings, kind, unit.files).pipe(
         Effect.map((outcomes) =>
           outcomes.map((outcome, index) =>
-            toUnitOutcome(kind, index === 0 ? unit.id : newId(), outcome)
+            fromDecodeOutcome(kind, index === 0 ? unit.id : newId(), outcome)
           )
         )
       )

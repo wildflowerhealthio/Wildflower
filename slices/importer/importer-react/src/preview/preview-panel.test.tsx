@@ -10,7 +10,7 @@ import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { defaultFormatSettings, type FormatKind, type FormatSettings } from '../registry.ts'
-import { LOCAL_SOURCE, type PickedFile } from '../sources/picked-file.ts'
+import { PickedFileSource, type PickedFile } from '../sources/picked-file.ts'
 import {
   NO_RESOURCES_MESSAGE,
   NOTHING_TO_IMPORT_HEADING,
@@ -415,7 +415,7 @@ const patientWire = (wire: Record<string, unknown>): unknown =>
 const pickedFile = (fileName: string): PickedFile => ({
   fileName,
   bytes: new TextEncoder().encode('{}'),
-  source: LOCAL_SOURCE,
+  source: PickedFileSource.local,
 })
 
 /** A `read` {@link UnitReadOutcome} carrying the given decoded sections, titled by its file name. */
