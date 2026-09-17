@@ -1,4 +1,4 @@
-import { Data, Either, Option } from 'effect'
+import { Data, Option } from 'effect'
 import {
   diffJson,
   type DiffStatus,
@@ -10,18 +10,17 @@ import {
   type ServerComparison,
 } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { LabeledSection, ReadUnit } from 'importer-fundamentals'
-import { StagedImport, sectionResources } from 'importer-fundamentals'
-import { type JSX, useEffect, useMemo, useRef, useState } from 'react'
+import { type FormatDecode, DecodedFile, StagedImport } from 'importer-fundamentals'
+import { type JSX, useMemo, useEffect, useRef, useState } from 'react'
 import { Chip } from 'react-tundraish'
 
-import { type BatchEntry, entryId } from 'importer-core'
+import type { BatchDecodeResult, FormatKind, FormatSettings } from 'importer-core'
+import { formatKinds } from 'importer-core'
 
-import type { BoundFormat, FormatKind, FormatSettings } from '../registry.ts'
-import { formatKinds } from '../registry.ts'
+import type { BoundFormat } from '../registry.ts'
 import { describeResource, resourceTypeOf } from './describe-resource.ts'
 import { ResourceEditor } from './resource-editor.tsx'
-import type { UnitComparisons } from './use-server-diff.ts'
+import type { FormatComparisons } from './use-server-diff.ts'
 import styles from './preview-panel.module.css'
 
 /**
@@ -30,16 +29,15 @@ import styles from './preview-panel.module.css'
  * confirming is an informed, opt-in act.
  *
  * @remarks
- * A pick is a *batch* of one or more files, read into units (one per file
- * for a single-file format) and rendered together under one confirm. The
- * display is fully general — the same for every format: units grouped by
- * format under that format's settings form, each read unit showing its
+ * A pick is a *batch* of one or more files, grouped by format and decoded
+ * into one {@link FormatDecodeResult} per format, rendered together under
+ * one confirm. The display is fully general — the same for every format:
+ * formats shown under that format's settings form, each format showing its
  * decoded sections (title + per-resource rows with include/edit/revert)
- * and its diagnostic notes under the title its format gave it, an
- * unreadable unit reported against that title rather than sinking the
- * batch. A settings change calls `onSettingsChange`; the shell re-decodes
- * that format's units. The confirm appears only when at least
- * one resource is included, and it does not write — it calls `onConfirm`;
+ * and its diagnostic notes, with unreadable files reported rather than
+ * sinking the batch. A settings change calls `onSettingsChange`; the shell
+ * re-decodes that format. The confirm appears only when at least one
+ * resource is included, and it does not write — it calls `onConfirm`;
  * the confirm step writes exactly the reviewed objects.
  *
  * @packageDocumentation
@@ -57,27 +55,27 @@ type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatS
 
 /** Props for {@link PreviewPanel}. */
 interface PreviewPanelProps {
-  /** Every unit's read outcome, rendered together under one confirm. */
-  readonly files: readonly BatchEntry[]
+  /** The batch decode result, one entry per format plus unrecognized files. */
+  readonly batch: BatchDecodeResult
   /** The current per-format settings the decodes ran under. */
   readonly settings: FormatSettings
   /** The registered formats' display + settings pickers, indexed by kind. */
   readonly settingsRegistry: SettingsRegistry
-  /** The reviewed selection for a unit (defaults to `StagedImport.initial()` before any edit). */
-  readonly selectionFor: (unitId: string) => StagedImport.Selection<FhirResource>
+  /** The reviewed selection for a format (defaults to `StagedImport.initial()` before any edit). */
+  readonly selectionFor: (format: FormatKind) => StagedImport.Selection<FhirResource>
   /**
    * Each labeled resource's server comparison (`new` / `unchanged` /
-   * `changed`, and for `changed` the leaf-level field diffs), keyed by unit
-   * id and then by {@link LabeledResource.key}. Rendered as a badge on each
-   * row — the `changed` badge opens to show `field "server" -> "import"`
-   * with a per-field reset. A key absent from the map (the pre-fetch is
-   * still in flight, or the resource is not covered by the classifier)
-   * renders no badge.
+   * `changed`, and for `changed` the leaf-level field diffs), keyed by
+   * format kind and then by {@link LabeledResource.key}. Rendered as a
+   * badge on each row — the `changed` badge opens to show
+   * `field "server" -> "import"` with a per-field reset. A key absent from
+   * the map (the pre-fetch is still in flight, or the resource is not
+   * covered by the classifier) renders no badge.
    */
-  readonly comparisons: UnitComparisons
-  /** Called when a unit's review changes its selection. */
+  readonly comparisons: FormatComparisons
+  /** Called when a format's review changes its selection. */
   readonly onSelectionChange: (
-    unitId: string,
+    format: FormatKind,
     selection: StagedImport.Selection<FhirResource>
   ) => void
   /** Called when the user changes one format's settings; the caller re-decodes. */
@@ -128,14 +126,14 @@ interface TypeTally {
   readonly excluded: number
 }
 
-/** The per-type tallies of one file's decoded resources, in first-seen order. */
+/** The per-type tallies of one format's decoded resources, in first-seen order. */
 const perTypeTallies = (
-  sections: readonly LabeledSection<FhirResource>[],
+  decodedFile: DecodedFile.DecodedFile<FhirResource>,
   selection: StagedImport.Selection<FhirResource>
 ): readonly TypeTally[] => {
   const order: string[] = []
   const totals = new Map<string, { total: number; excluded: number }>()
-  for (const resource of sectionResources(sections)) {
+  for (const resource of DecodedFile.resources(decodedFile)) {
     const type = resourceTypeOf(resource.resource)
     const excluded = StagedImport.isResourceIncluded(selection, resource.key) ? 0 : 1
     const bucket = totals.get(type)
@@ -462,27 +460,29 @@ const SectionToggle = ({
 }
 
 /**
- * One read unit's decoded sections and notes — the generalized review body
+ * One format's decoded sections and notes — the generalized review body
  * every format shares: a per-type tally, one titled section per decode
- * section with per-resource rows, and the unit's diagnostic notes folded
+ * section with per-resource rows, and the format's diagnostic notes folded
  * into a collapsed details block.
  */
 const ReadFileBody = ({
-  file,
+  result,
   selection,
   comparisons,
   onSelectionChange,
   onEditResource,
 }: {
-  readonly file: ReadUnit<FormatKind>
+  readonly result: FormatDecode.Result<string>
   readonly selection: StagedImport.Selection<FhirResource>
-  /** This unit's own verdicts by resource key; `undefined` renders no badges. */
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined
   readonly onSelectionChange: (selection: StagedImport.Selection<FhirResource>) => void
   readonly onEditResource: (key: string, resource: unknown) => void
 }): JSX.Element => {
-  const { sections, notes } = file.decoded
-  const tallies = useMemo(() => perTypeTallies(sections, selection), [sections, selection])
+  const { sections, notes } = result.decoded
+  const tallies = useMemo(
+    () => perTypeTallies(result.decoded, selection),
+    [result.decoded, selection]
+  )
   return (
     <div className={styles.readBody}>
       {tallies.length > 0 && (
@@ -490,10 +490,21 @@ const ReadFileBody = ({
           {tallies.map(tallyLabel).join(' · ')}
         </p>
       )}
-      {sections.length === 0 && <p className={styles.emptyMessage}>{NO_RESOURCES_MESSAGE}</p>}
+      {sections.length === 0 && result.unreadableFiles.length === 0 && (
+        <p className={styles.emptyMessage}>{NO_RESOURCES_MESSAGE}</p>
+      )}
+      {result.unreadableFiles.length > 0 && (
+        <ul className={styles.noteList}>
+          {result.unreadableFiles.map((file) => (
+            <li key={file.id} className={styles.note}>
+              {file.title}: {UNREADABLE_FILE_MESSAGE}
+            </li>
+          ))}
+        </ul>
+      )}
       {sections.map((section) => (
         <section
-          // Resource keys are unique per unit, so a section's first resource
+          // Resource keys are unique per format, so a section's first resource
           // identifies it even when two sections share a title.
           key={section.resources[0]?.key ?? section.title}
           className={styles.decodeSection}
@@ -542,50 +553,6 @@ const ReadFileBody = ({
   )
 }
 
-/** One unit's whole outcome, under the title its format gave it — what a format group is built from. */
-const FileSection = ({
-  file,
-  selectionFor,
-  comparisons,
-  onSelectionChange,
-  onEditResource,
-}: {
-  readonly file: BatchEntry
-  readonly selectionFor: PreviewPanelProps['selectionFor']
-  readonly comparisons: UnitComparisons
-  readonly onSelectionChange: PreviewPanelProps['onSelectionChange']
-  readonly onEditResource: (unitId: string, key: string, resource: unknown) => void
-}): JSX.Element => {
-  return Either.match(file, {
-    onRight(unit) {
-      return (
-        <section className={styles.fileSection} aria-label={unit.title}>
-          <h3 className={styles.fileHeading}>{unit.title}</h3>
-          <ReadFileBody
-            file={unit}
-            selection={selectionFor(unit.id)}
-            comparisons={comparisons.get(unit.id)}
-            onSelectionChange={(selection) => onSelectionChange(unit.id, selection)}
-            onEditResource={(key, resource) => onEditResource(unit.id, key, resource)}
-          />
-        </section>
-      )
-    },
-    onLeft(failure) {
-      return (
-        <section className={styles.fileSection} aria-label={failure.title}>
-          <h3 className={styles.fileHeading}>{failure.title}</h3>
-          <p role="alert" className={styles.emptyMessage}>
-            {failure._tag === 'UnreadableUnit'
-              ? UNREADABLE_FILE_MESSAGE
-              : UNRECOGNIZED_FILE_MESSAGE}
-          </p>
-        </section>
-      )
-    },
-  })
-}
-
 /** The single action row for the whole batch: confirm (when anything is chosen) and cancel. */
 const PreviewActions = ({
   writableCount,
@@ -614,22 +581,22 @@ const PreviewActions = ({
   </div>
 )
 
-/** The resource-editor dialog's state: closed, or open on one unit's resource. */
+/** The resource-editor dialog's state: closed, or open on one format's resource. */
 type EditorState = Data.TaggedEnum<{
   readonly Closed: Record<never, never>
-  readonly Open: { readonly fileId: string; readonly key: string; readonly resource: unknown }
+  readonly Open: { readonly format: FormatKind; readonly key: string; readonly resource: unknown }
 }>
 const editorState = Data.taggedEnum<EditorState>()
 const { Closed: makeClosedEditor, Open: makeOpenEditor } = editorState
 
 /**
  * The preview surface. Renders the batch grouped by format — each format's
- * settings form over its units' sectioned, per-resource reviews — and, when
- * at least one resource is included, the single confirm action that opts
- * into writing the whole batch.
+ * settings form over its decoded sections and per-resource reviews — and,
+ * when at least one resource is included, the single confirm action that
+ * opts into writing the whole batch.
  */
 const PreviewPanel = ({
-  files,
+  batch,
   settings,
   settingsRegistry,
   selectionFor,
@@ -643,96 +610,92 @@ const PreviewPanel = ({
 }: PreviewPanelProps): JSX.Element => {
   const [editing, setEditing] = useState<EditorState>(makeClosedEditor())
 
+  const totalFiles = useMemo(
+    () =>
+      formatKinds.reduce((sum, kind) => sum + batch[kind].files.length, 0) +
+      batch.unrecognizedFiles.length,
+    [batch]
+  )
+
   const { writableCount, excludedCount } = useMemo(() => {
     let included = 0
     let excluded = 0
-    for (const file of files) {
-      if (!Either.isRight(file)) continue
-      const labeled = sectionResources(file.right.decoded.sections)
-      const selection = selectionFor(file.right.id)
+    for (const kind of formatKinds) {
+      const result = batch[kind]
+      if (result.files.length === 0) continue
+      const labeled = DecodedFile.resources(result.decoded)
+      const selection = selectionFor(kind)
       included += StagedImport.includedCount(labeled, selection)
       excluded += StagedImport.excludedCount(labeled, selection)
     }
     return { writableCount: included, excludedCount: excluded }
-  }, [files, selectionFor])
+  }, [batch, selectionFor])
 
-  const openEditor = (fileId: string, key: string, resource: unknown): void => {
-    setEditing(makeOpenEditor({ fileId, key, resource }))
+  const openEditor = (format: FormatKind, key: string, resource: unknown): void => {
+    setEditing(makeOpenEditor({ format, key, resource }))
   }
   const closeEditor = (): void => setEditing(makeClosedEditor())
   const keepEdit = (resource: FhirResource): void => {
     if (editing._tag !== 'Open') return
     onSelectionChange(
-      editing.fileId,
-      StagedImport.edit(selectionFor(editing.fileId), editing.key, resource)
+      editing.format,
+      StagedImport.edit(selectionFor(editing.format), editing.key, resource)
     )
     setEditing(makeClosedEditor())
   }
 
-  const { formatGroups, unrecognized } = useMemo(() => {
-    const groups = formatKinds
-      .map((format) => ({
-        format,
-        files: files.filter((file): file is BatchEntry => Either.merge(file).format === format),
-      }))
-      .filter((group) => group.files.length > 0)
-    return {
-      formatGroups: groups,
-      unrecognized: files.filter(
-        (file) => Either.isLeft(file) && file.left._tag === 'UnrecognizedFile'
-      ),
-    }
-  }, [files])
+  const activeFormats = useMemo(
+    () => formatKinds.filter((kind) => batch[kind].files.length > 0),
+    [batch]
+  )
 
   return (
     <section aria-label="Import preview" className={styles.panel}>
       <h2 className={styles.heading}>
         {writableCount > 0 ? PREVIEW_HEADING : NOTHING_TO_IMPORT_HEADING}
       </h2>
-      {files.length > 1 && writableCount > 0 && (
+      {totalFiles > 1 && writableCount > 0 && (
         <p role="status" className={styles.batchSummary}>
-          {`${writableCount} ${plural(writableCount, 'resource')} across ${files.length} files`}
+          {`${writableCount} ${plural(writableCount, 'resource')} across ${totalFiles} files`}
         </p>
       )}
       <div className={styles.formatGroups}>
-        {formatGroups.map((group) => (
-          <section
-            key={group.format}
-            className={styles.formatGroup}
-            aria-label={settingsRegistry[group.format].display.title}
-          >
-            <h3 className={styles.formatHeading}>{settingsRegistry[group.format].display.title}</h3>
-            <div className={styles.settingsForm}>
-              <FormatSettingsForm
-                kind={group.format}
-                settings={settings}
-                settingsRegistry={settingsRegistry}
-                onSettingsChange={onSettingsChange}
-              />
-            </div>
-            <div className={styles.fileSections}>
-              {group.files.map((file) => (
-                <FileSection
-                  key={entryId(file)}
-                  file={file}
-                  selectionFor={selectionFor}
-                  comparisons={comparisons}
-                  onSelectionChange={onSelectionChange}
-                  onEditResource={openEditor}
+        {activeFormats.map((kind) => {
+          const result = batch[kind]
+          return (
+            <section
+              key={kind}
+              className={styles.formatGroup}
+              aria-label={settingsRegistry[kind].display.title}
+            >
+              <h3 className={styles.formatHeading}>{settingsRegistry[kind].display.title}</h3>
+              <div className={styles.settingsForm}>
+                <FormatSettingsForm
+                  kind={kind}
+                  settings={settings}
+                  settingsRegistry={settingsRegistry}
+                  onSettingsChange={onSettingsChange}
                 />
-              ))}
-            </div>
+              </div>
+              <div className={styles.fileSections}>
+                <ReadFileBody
+                  result={result}
+                  selection={selectionFor(kind)}
+                  comparisons={comparisons.get(kind)}
+                  onSelectionChange={(selection) => onSelectionChange(kind, selection)}
+                  onEditResource={(key, resource) => openEditor(kind, key, resource)}
+                />
+              </div>
+            </section>
+          )
+        })}
+        {batch.unrecognizedFiles.map((file) => (
+          <section key={file.id} className={styles.fileSection} aria-label={file.title}>
+            <h3 className={styles.fileHeading}>{file.title}</h3>
+            <p role="alert" className={styles.emptyMessage}>
+              {UNRECOGNIZED_FILE_MESSAGE}
+            </p>
           </section>
-        ))}
-        {unrecognized.map((file) => (
-          <FileSection
-            key={entryId(file)}
-            file={file}
-            selectionFor={selectionFor}
-            comparisons={comparisons}
-            onSelectionChange={onSelectionChange}
-            onEditResource={openEditor}
-          />
         ))}
       </div>
       <PreviewActions

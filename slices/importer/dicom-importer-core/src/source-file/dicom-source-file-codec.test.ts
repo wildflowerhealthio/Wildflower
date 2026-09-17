@@ -3,7 +3,11 @@ import type { DocumentReferenceType } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporter } from '../descriptor.ts'
-import { DICOM_SOURCE_FILE_CODE, DICOM_SOURCE_FILE_CONTENT_TYPE, DICOM_SYSTEM } from '../source-system.ts'
+import {
+  DICOM_SOURCE_FILE_CODE,
+  DICOM_SOURCE_FILE_CONTENT_TYPE,
+  DICOM_SYSTEM,
+} from '../source-system.ts'
 
 const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<DocumentReferenceType> =>
   Effect.runPromise(dicomImporter.buildSourceFile({ fileName, bytes }))

@@ -8,7 +8,7 @@
 
 import type { Meta } from 'fhir-r4/data-types'
 
-import type { DecodedFile, LabeledResource } from './file-importer-descriptor.ts'
+import type * as DecodedFile from './decoded-file.ts'
 
 interface Sourceable {
   readonly meta: typeof Meta.Schema.Type | null
@@ -28,13 +28,13 @@ const stamp = <TResource extends Sourceable>(resource: TResource, source: string
 })
 
 const stampDecoded = <TParsed extends Sourceable>(
-  decoded: DecodedFile<TParsed>,
+  decoded: DecodedFile.DecodedFile<TParsed>,
   source: string
-): DecodedFile<TParsed> => ({
+): DecodedFile.DecodedFile<TParsed> => ({
   ...decoded,
   sections: decoded.sections.map((section) => ({
     ...section,
-    resources: section.resources.map((entry): LabeledResource<TParsed> => ({
+    resources: section.resources.map((entry): DecodedFile.Resource<TParsed> => ({
       ...entry,
       resource: stamp(entry.resource, source),
     })),

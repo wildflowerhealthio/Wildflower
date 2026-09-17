@@ -1,43 +1,57 @@
-import { Either, Schema } from 'effect'
+import { Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import { PickedFileSource, StagedImport } from 'importer-fundamentals'
+import { type FormatDecode, PickedFileSource, StagedImport } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { planUnitWrite } from './plan-write.ts'
-import type { BatchEntry } from './read-batch.ts'
-import { UnrecognizedFile } from './read-batch.ts'
+import { planFormatWrite } from './plan-write.ts'
 
 const resource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
-const readUnit = (keys: readonly string[]): BatchEntry =>
-  Either.right({
-    id: 'u',
-    title: 'a.har',
-    files: [{ fileName: 'a.har', bytes: new Uint8Array([1]), source: PickedFileSource.local }],
-    format: 'har',
-    decoded: {
-      sections: [
+const formatResult = (keys: readonly string[]): FormatDecode.Result<string> => ({
+  id: 'u',
+  title: 'a.har',
+  files: [{ fileName: 'a.har', bytes: new Uint8Array([1]), source: PickedFileSource.local }],
+  format: 'har',
+  decoded: {
+    sections: [
+      {
+        title: 's',
+        resources: keys.map((key) => ({ key, title: key, resource: resource(key) })),
+      },
+    ],
+    notes: [],
+  },
+  unreadableFiles: [],
+})
+
+describe('planFormatWrite', () => {
+  it('should skip a format with only unreadable files as unreadable', () => {
+    const result: FormatDecode.Result<string> = {
+      id: 'u',
+      title: 'broken.har',
+      files: [{ fileName: 'broken.har', bytes: new Uint8Array(), source: PickedFileSource.local }],
+      format: 'har',
+      decoded: { sections: [], notes: [] },
+      unreadableFiles: [
         {
-          title: 's',
-          resources: keys.map((key) => ({ key, title: key, resource: resource(key) })),
+          id: 'broken',
+          title: 'broken.har',
+          pickedFile: {
+            fileName: 'broken.har',
+            bytes: new Uint8Array(),
+            source: PickedFileSource.local,
+          },
+          error: Schema.decodeUnknownSync(Schema.Never)('x'),
         },
       ],
-      notes: [],
-    },
-  })
-
-describe('planUnitWrite', () => {
-  it('should skip an unreadable or unrecognized unit as unreadable', () => {
-    const files = [{ fileName: 'x', bytes: new Uint8Array(), source: PickedFileSource.local }]
-    expect(
-      planUnitWrite(
-        Either.left(new UnrecognizedFile({ id: 'u', title: 'x', files })),
-        StagedImport.initial()
-      )
-    ).toEqual({ _tag: 'skip', reason: 'unreadable' })
+    }
+    expect(planFormatWrite(result, StagedImport.initial())).toEqual({
+      _tag: 'skip',
+      reason: 'unreadable',
+    })
   })
 
   it('property: writes exactly the included resources in review order, edits substituted, excluded counted', () => {
@@ -53,7 +67,7 @@ describe('planUnitWrite', () => {
             if (excludes(key)) selection = StagedImport.toggleResource(selection, key)
             if (edits(key)) selection = StagedImport.edit(selection, key, resource(`${key}-edited`))
           }
-          const plan = planUnitWrite(readUnit(keys), selection)
+          const plan = planFormatWrite(formatResult(keys), selection)
           const included = keys.filter((key) => !excludes(key))
           if (included.length === 0) {
             expect(plan).toEqual({ _tag: 'skip', reason: 'nothing' })

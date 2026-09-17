@@ -2,12 +2,11 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { sectionResources } from './file-importer-descriptor.ts'
-import type { LabeledSection } from './file-importer-descriptor.ts'
+import * as DecodedFile from './decoded-file.ts'
 
 describe('sectionResources', () => {
   it('should flatten a decoded file’s sections into one list, in section order', () => {
-    const sections: readonly LabeledSection<string>[] = [
+    const sections: readonly DecodedFile.Section<string>[] = [
       {
         title: 'https://r4.example.org/Patient/pat-7',
         resources: [{ key: 'req-0:0', title: 'Patient/pat-7', resource: 'patient' }],
@@ -21,7 +20,7 @@ describe('sectionResources', () => {
       },
     ]
 
-    expect(sectionResources(sections).map((entry) => entry.key)).toEqual([
+    expect(DecodedFile.resources({ sections }).map((entry) => entry.key)).toEqual([
       'req-0:0',
       'req-1:0',
       'req-1:1',
@@ -37,7 +36,7 @@ describe('sectionResources', () => {
     })
     fc.assert(
       fc.property(fc.array(sectionArbitrary), (sections) => {
-        const flat = sectionResources(sections)
+        const flat = DecodedFile.resources({ sections })
 
         expect(flat).toEqual(sections.flatMap((section) => section.resources))
       }),

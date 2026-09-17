@@ -10,13 +10,7 @@ import { parseDicomFile } from 'dicom'
 import { DateTime, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type {
-  DecodedFile,
-  LabeledResource,
-  LabeledSection,
-  PickedFile,
-  SourceFile,
-} from 'importer-fundamentals'
+import type { DecodedFile, PickedFile, SourceFile } from 'importer-fundamentals'
 
 import { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
 import type { DicomSettings } from './settings.ts'
@@ -52,7 +46,7 @@ const labelAdopted = (
   resource: FhirResource,
   key: string,
   title: string
-): LabeledResource<FhirResource> => {
+): DecodedFile.Resource<FhirResource> => {
   const adopted = adopt(resource)
   return { key, title, resource: adopted }
 }
@@ -95,7 +89,7 @@ const decodeDicom = (
   file: PickedFile,
   settings: DicomSettings,
   source: SourceFile.Ref
-): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile.DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
@@ -117,7 +111,7 @@ const decodeDicom = (
     }
 
     const resources = yield* toFhirResources(header, settings, source.id)
-    const labeled: LabeledResource<FhirResource>[] = []
+    const labeled: DecodedFile.Resource<FhirResource>[] = []
 
     for (const resource of resources) {
       switch (resource.resourceType) {
@@ -135,7 +129,7 @@ const decodeDicom = (
       }
     }
 
-    const sections: LabeledSection<FhirResource>[] =
+    const sections: DecodedFile.Section<FhirResource>[] =
       labeled.length > 0 ? [{ title: sectionTitle(header), resources: labeled }] : []
 
     return { sections, notes }

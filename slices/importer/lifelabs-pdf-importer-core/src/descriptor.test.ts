@@ -1,29 +1,25 @@
-import { Effect, Either, ParseResult } from 'effect'
+import { Effect, ParseResult } from 'effect'
 import * as fc from 'fast-check'
-import type { FhirResource } from 'fhir-r4/resources'
 import {
   FileImporter,
   PickedFileSource,
   type PickedFile,
-  type ReadUnit,
-  sectionResources,
+  DecodedFile,
   SOURCE_FILE_SECTION_TITLE,
   sourceFileKey,
   SourceFileFhirReference,
+  type FormatDecode,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeLifeLabsPdfDocument } from './decode.ts'
-import { detectLifeLabsPdf } from './detect.ts'
 import { lifeLabsPdfImporter } from './descriptor.ts'
+import { detectLifeLabsPdf } from './detect.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import type * as Report from './entities/report.ts'
 import { defaultLifeLabsPdfSettings } from './settings.ts'
-import {
-  LIFELABS_PDF_SOURCE_FILE_CODE,
-  LIFELABS_SYSTEM,
-} from './source-system.ts'
+import { LIFELABS_PDF_SOURCE_FILE_CODE, LIFELABS_SYSTEM } from './source-system.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 describe('lifeLabsPdfImporter', () => {
@@ -52,7 +48,9 @@ describe('lifeLabsPdfImporter', () => {
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
-const importerForReports = (reports: readonly Report.Type[]) =>
+const importerForReports = (
+  reports: readonly Report.Type[]
+): FileImporter<'lifelabs-pdf', typeof SETTINGS> =>
   new FileImporter({
     format: 'lifelabs-pdf' as const,
     coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
@@ -64,17 +62,13 @@ const importerForReports = (reports: readonly Report.Type[]) =>
       decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
   })
 
-const readUnit = (
-  outcomes: readonly Either.Either<ReadUnit<string>, unknown>[]
-): ReadUnit<string>['decoded'] => {
-  expect(outcomes).toHaveLength(1)
-  const [outcome] = outcomes
-  if (outcome === undefined || !Either.isRight(outcome)) {
+const readUnit = (result: FormatDecode.Result<string>): FormatDecode.Result<string>['decoded'] => {
+  if (result.unreadableFiles.length > 0) {
     throw new Error(
-      `expected one read unit, got ${JSON.stringify(outcomes?.map((o) => (Either.isRight(o) ? 'Right' : 'Left')))}`
+      `expected a readable result, got ${result.unreadableFiles.length} unreadable files`
     )
   }
-  return outcome.right.decoded
+  return result.decoded
 }
 
 describe('lifeLabsPdfImporter decode', () => {
@@ -93,7 +87,7 @@ describe('lifeLabsPdfImporter decode', () => {
             await Effect.runPromise(importerForReports(reports).decode([file], SETTINGS))
           )
 
-          const [sourceSection, ...reportSections] = decoded.sections
+          const [sourceSection] = decoded.sections
           expect(sourceSection?.title).toBe(SOURCE_FILE_SECTION_TITLE)
           const sourceRow = sourceSection?.resources[0]
           expect(sourceSection?.resources).toHaveLength(1)
@@ -101,7 +95,7 @@ describe('lifeLabsPdfImporter decode', () => {
           expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
           const sourceId = sourceRow?.resource.id
           expect(sourceId).toEqual(expect.any(String))
-          for (const item of sectionResources(reportSections)) {
+          for (const item of DecodedFile.resources(decoded).slice(1)) {
             expect(item.resource.meta?.source).toBe(`DocumentReference/${String(sourceId)}`)
           }
         }
@@ -128,7 +122,7 @@ describe('lifeLabsPdfImporter decode', () => {
           expect(decoded.sections.map((section) => section.title)).not.toContain(
             SOURCE_FILE_SECTION_TITLE
           )
-          const labeled = sectionResources(decoded.sections)
+          const labeled = DecodedFile.resources(decoded)
           expect(labeled.length).toBeGreaterThan(0)
           for (const item of labeled) {
             expect(item.resource.meta?.source).toBe(
@@ -141,25 +135,22 @@ describe('lifeLabsPdfImporter decode', () => {
     )
   })
 
-  it('yields one unreadable unit for bytes that are not a PDF', async () => {
+  it('collects an unreadable file for bytes that are not a PDF', async () => {
     const file: PickedFile = {
       fileName: 'not-a-report.pdf',
       bytes: new TextEncoder().encode('this is not a PDF at all'),
       source: PickedFileSource.local,
     }
 
-    const outcomes = await Effect.runPromise(
+    const result = await Effect.runPromise(
       lifeLabsPdfImporter.decode([file], defaultLifeLabsPdfSettings)
     )
 
-    expect(outcomes).toHaveLength(1)
-    const [outcome] = outcomes
-    expect(outcome).toBeDefined()
-    expect(Either.isLeft(outcome)).toBe(true)
-    if (Either.isLeft(outcome)) {
-      expect(outcome.left.title).toBe(file.fileName)
-      expect(outcome.left.files).toEqual([file])
-      expect(ParseResult.isParseError(outcome.left.error)).toBe(true)
-    }
+    expect(result.decoded.sections).toHaveLength(0)
+    expect(result.unreadableFiles).toHaveLength(1)
+    const [unreadable] = result.unreadableFiles
+    expect(unreadable?.title).toBe(file.fileName)
+    expect(unreadable?.pickedFile).toEqual(file)
+    expect(ParseResult.isParseError(unreadable?.error)).toBe(true)
   })
 })

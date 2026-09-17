@@ -3,7 +3,11 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
-import { FileImporter, type SourceFile } from './file-importer-descriptor.ts'
+import {
+  FileImporter,
+  type DocumentReferenceType,
+  type SourceFile,
+} from './file-importer-descriptor.ts'
 
 const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 
@@ -13,16 +17,6 @@ const labelled = new FileImporter({
   contentType: 'application/json',
   securityLabel: [{ system: 'https://example.test/fhir/CodeSystem/redaction', code: 'raw' }],
   display: { title: 'Example source file', description: 'Test format' },
-  detect: () => false,
-  defaultSettings: undefined,
-  decodeOne: () => Effect.succeed({ sections: [], notes: [] }),
-})
-
-const unlabelled = new FileImporter({
-  format: 'example-pdf',
-  coding: { system: SYSTEM, code: 'example-source-file' },
-  contentType: 'application/pdf',
-  display: { title: 'Example doc', description: 'Test format' },
   detect: () => false,
   defaultSettings: undefined,
   decodeOne: () => Effect.succeed({ sections: [], notes: [] }),
@@ -112,12 +106,10 @@ describe('the codec as a schema', () => {
   })
 
   it('carries the coding on both type and category', async () => {
-    const resource = await Effect.runPromise(
-      labelled.sourceFileToDocumentReference(example())
-    )
-    expect(resource.type.coding.map((c) => ({ system: c.system?.toString(), code: c.code }))).toEqual(
-      [{ system: SYSTEM, code: 'example-source-file' }]
-    )
+    const resource = await Effect.runPromise(labelled.sourceFileToDocumentReference(example()))
+    expect(
+      resource.type?.coding.map((c) => ({ system: c.system?.toString(), code: c.code }))
+    ).toEqual([{ system: SYSTEM, code: 'example-source-file' }])
     expect(
       resource.category.map((cat) =>
         cat.coding.map((c) => ({ system: c.system?.toString(), code: c.code }))
@@ -153,7 +145,7 @@ describe('the codec as a schema', () => {
 })
 
 describe('buildSourceFile — the deterministic mint', () => {
-  const mint = (picked: { fileName: string; bytes: Uint8Array }) =>
+  const mint = (picked: { fileName: string; bytes: Uint8Array }): Promise<DocumentReferenceType> =>
     Effect.runPromise(labelled.buildSourceFile(picked))
 
   it('derives the id from the bytes and name — the same file mints the same id', async () => {

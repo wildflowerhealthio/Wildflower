@@ -4,10 +4,10 @@ import { useMemo, useState } from 'react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { classifyAgainstServer, diffKey, type ServerComparison } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import { type LabeledResource, sectionResources } from 'importer-fundamentals'
+import { DecodedFile } from 'importer-fundamentals'
 
-import { Either, Option, pipe } from 'effect'
-import type { BatchEntry } from 'importer-core'
+import type { BatchDecodeResult, FormatKind } from 'importer-core'
+import { formatKinds } from 'importer-core'
 import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
 
 /**
@@ -44,26 +44,26 @@ import { IMPORTER_QUERY_KEY } from '../queries/keys.ts'
  * @packageDocumentation
  */
 
-/** One labeled resource, the unit it belongs to, and the value the classifier probes for it. */
+/** One labeled resource, the format it belongs to, and the value the classifier probes for it. */
 interface DiffRow {
-  readonly unitId: string
+  readonly format: FormatKind
   readonly key: string
   readonly resource: FhirResource
 }
 
 /**
- * Every previewed resource's server comparison, keyed by unit id and then by
- * {@link LabeledResource.key} within the unit.
+ * Every previewed resource's server comparison, keyed by format kind and
+ * then by {@link LabeledResource.key} within the format.
  *
  * @remarks
- * Two units can carry the same resource key — a format whose keys name the
- * resource's role (DICOM's `patient`, `imaging-study`) repeats them per file,
- * and every format's source-file row is keyed by file name — so a flat map
- * keyed by resource key alone would let one unit's verdict overwrite
- * another's. Scoping by unit keeps each unit's badges and pre-exclusions its
- * own.
+ * Two formats can carry the same resource key — a format whose keys name
+ * the resource's role (DICOM's `patient`, `imaging-study`) repeats them per
+ * file, and every format's source-file row is keyed by file name — so a
+ * flat map keyed by resource key alone would let one format's verdict
+ * overwrite another's. Scoping by format keeps each format's badges and
+ * pre-exclusions its own.
  */
-type UnitComparisons = ReadonlyMap<string, ReadonlyMap<string, ServerComparison>>
+type FormatComparisons = ReadonlyMap<FormatKind, ReadonlyMap<string, ServerComparison>>
 
 /**
  * The state of the pre-fetch: `loading` while there is nothing worth showing
@@ -75,59 +75,52 @@ type UnitComparisons = ReadonlyMap<string, ReadonlyMap<string, ServerComparison>
  */
 type ServerDiffState =
   | { readonly _tag: 'loading' }
-  | { readonly _tag: 'ready'; readonly comparisons: UnitComparisons }
+  | { readonly _tag: 'ready'; readonly comparisons: FormatComparisons }
   | {
       readonly _tag: 'error'
-      readonly comparisons: UnitComparisons
+      readonly comparisons: FormatComparisons
       readonly error: Error
     }
 
 /** No comparisons, held once so an empty batch keeps a stable identity. */
-const NO_COMPARISONS: UnitComparisons = new Map()
+const NO_COMPARISONS: FormatComparisons = new Map()
 
 /** The comparison a resource with no classifier entry falls back to. */
 const AS_NEW: ServerComparison = { status: 'new', fields: [] }
 
 /**
- * Re-key a `Type/id → comparison` map onto the batch's units and their
+ * Re-key a `Type/id → comparison` map onto the batch's formats and their
  * `LabeledResource.key`s.
  *
- * @param rows - Every previewed resource with its unit
+ * @param rows - Every previewed resource with its format
  * @param byDiffKey - The classifier's verdicts by `Type/id`
- * @returns The verdicts by unit id, then by resource key; a row the
+ * @returns The verdicts by format kind, then by resource key; a row the
  *   classifier did not cover reads as `new`
  */
-const byUnitAndKey = (
+const byFormatAndKey = (
   rows: readonly DiffRow[],
   byDiffKey: ReadonlyMap<string, ServerComparison>
-): UnitComparisons => {
-  const comparisons = new Map<string, Map<string, ServerComparison>>()
+): FormatComparisons => {
+  const comparisons = new Map<FormatKind, Map<string, ServerComparison>>()
   for (const row of rows) {
-    const unit = comparisons.get(row.unitId) ?? new Map<string, ServerComparison>()
-    unit.set(row.key, byDiffKey.get(diffKey(row.resource)) ?? AS_NEW)
-    comparisons.set(row.unitId, unit)
+    const format = comparisons.get(row.format) ?? new Map<string, ServerComparison>()
+    format.set(row.key, byDiffKey.get(diffKey(row.resource)) ?? AS_NEW)
+    comparisons.set(row.format, format)
   }
   return comparisons
 }
 
 /**
- * Every previewed resource across a batch's read units, paired with its unit
+ * Every previewed resource across a batch's formats, paired with its format
  * and labeled key — the flat list one classifier round trip probes.
  */
-const diffRowsOf = (units: readonly BatchEntry[]): readonly DiffRow[] =>
-  units.flatMap((unit) =>
-    pipe(
-      unit,
-      Either.getRight,
-      Option.map((value) =>
-        sectionResources(value.decoded.sections).map((entry): DiffRow => ({
-          unitId: value.id,
-          key: entry.key,
-          resource: entry.resource,
-        }))
-      ),
-      Option.getOrElse(() => [] as const)
-    )
+const diffRowsOf = (batch: BatchDecodeResult): readonly DiffRow[] =>
+  formatKinds.flatMap((kind) =>
+    DecodedFile.resources(batch[kind].decoded).map((entry): DiffRow => ({
+      format: kind,
+      key: entry.key,
+      resource: entry.resource,
+    }))
   )
 
 /**
@@ -141,12 +134,12 @@ const batchOf = (queryKey: readonly unknown[]): number | undefined => {
 }
 
 /**
- * Run the pre-fetch over every labeled resource across the batch's read files
- * and expose the classification as a `LabeledResource.key → ServerComparison`
- * lookup.
+ * Run the pre-fetch over every labeled resource across the batch's formats
+ * and expose the classification as a
+ * `FormatKind → LabeledResource.key → ServerComparison` lookup.
  *
- * @param units - The current batch's read outcomes (undefined while the
- *   import-run is still `idle` or `reading`); only `read` units contribute
+ * @param batch - The current batch's decode result (undefined while the
+ *   import-run is still `idle` or `reading`); only read formats contribute
  *   resources
  * @param batchId - Identifies the picked batch: stable across a settings
  *   re-decode of the same files, different for a fresh pick. It is what
@@ -154,17 +147,14 @@ const batchOf = (queryKey: readonly unknown[]): number | undefined => {
  *   next one loads.
  * @returns `loading` until this batch has verdicts worth showing, then `ready`
  */
-const useServerDiff = (
-  units: readonly BatchEntry[] | undefined,
-  batchId: number
-): ServerDiffState => {
+const useServerDiff = (batch: BatchDecodeResult | undefined, batchId: number): ServerDiffState => {
   const runAuthed = useRunAuthed()
 
-  // Every resource across every read unit, paired with its unit and labeled
+  // Every resource across every format, paired with its format and labeled
   // key — one flat list drives one bundle round trip.
   const rows = useMemo(
-    (): readonly DiffRow[] | undefined => (units === undefined ? undefined : diffRowsOf(units)),
-    [units]
+    (): readonly DiffRow[] | undefined => (batch === undefined ? undefined : diffRowsOf(batch)),
+    [batch]
   )
 
   // A token that advances whenever the decoded batch changes reference — a
@@ -205,12 +195,12 @@ const useServerDiff = (
   return useMemo((): ServerDiffState => {
     if (!enabled || rows === undefined) return { _tag: 'ready', comparisons: NO_COMPARISONS }
     if (query.data !== undefined) {
-      return { _tag: 'ready', comparisons: byUnitAndKey(rows, query.data) }
+      return { _tag: 'ready', comparisons: byFormatAndKey(rows, query.data) }
     }
     if (query.isError)
       return {
         _tag: 'error',
-        comparisons: byUnitAndKey(rows, new Map()),
+        comparisons: byFormatAndKey(rows, new Map()),
         error:
           query.error instanceof Error
             ? query.error
@@ -221,18 +211,18 @@ const useServerDiff = (
 }
 
 /**
- * The `StagedImport.Selection.excludedResources` set for a unit, seeded from
- * its server diff: every `unchanged` labeled resource is pre-excluded so a
- * re-import of a unit whose resources the server already holds writes
+ * The `StagedImport.Selection.excludedResources` set for a format, seeded
+ * from its server diff: every `unchanged` labeled resource is pre-excluded
+ * so a re-import of a format whose resources the server already holds writes
  * nothing by default. The reviewer can still tick any row back on.
  *
- * @param labeled - The unit's labeled resources
- * @param comparisons - The unit's own verdicts by resource key (`undefined`
+ * @param labeled - The format's labeled resources
+ * @param comparisons - The format's own verdicts by resource key (`undefined`
  *   when the diff has none for it, which excludes nothing)
  * @returns The keys to pre-exclude
  */
 const initialExclusionsFor = (
-  labeled: readonly LabeledResource<FhirResource>[],
+  labeled: readonly DecodedFile.Resource<FhirResource>[],
   comparisons: ReadonlyMap<string, ServerComparison> | undefined
 ): ReadonlySet<string> => {
   const excluded = new Set<string>()
@@ -243,11 +233,11 @@ const initialExclusionsFor = (
 }
 
 export {
-  byUnitAndKey,
+  byFormatAndKey,
   type DiffRow,
   diffRowsOf,
+  type FormatComparisons,
   initialExclusionsFor,
   type ServerDiffState,
-  type UnitComparisons,
   useServerDiff,
 }

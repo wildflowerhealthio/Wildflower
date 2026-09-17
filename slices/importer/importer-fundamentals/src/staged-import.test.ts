@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import type { LabeledResource } from './file-importer-descriptor.ts'
+import type * as DecodedFile from './decoded-file.ts'
 
 import * as StagedImport from './staged-import.ts'
 
@@ -18,14 +18,14 @@ import * as StagedImport from './staged-import.ts'
 // ---------------------------------------------------------------------------
 
 /** Build a `LabeledResource<string>` from a key and resource value. */
-const labeled = (key: string, resource: string, title = key): LabeledResource<string> => ({
+const labeled = (key: string, resource: string, title = key): DecodedFile.Resource<string> => ({
   key,
   title,
   resource,
 })
 
 /** A standard three-resource pool used across most tests. */
-const threeLabeled: readonly LabeledResource<string>[] = [
+const threeLabeled: readonly DecodedFile.Resource<string>[] = [
   labeled('a', 'alpha'),
   labeled('b', 'beta'),
   labeled('c', 'gamma'),

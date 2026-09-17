@@ -2,12 +2,7 @@ import { Effect } from 'effect'
 
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
-import {
-  FileImporter,
-  type DecodedFile,
-  type LabeledResource,
-  type LabeledSection,
-} from 'importer-fundamentals'
+import { FileImporter, type DecodedFile } from 'importer-fundamentals'
 
 import {
   HAR_ARCHIVE_CODE,
@@ -33,13 +28,13 @@ const enabledKindNames = (settings: HarSettings): ReadonlySet<string> => {
 
 const sectionsByUrl = (
   previews: readonly FhirPreview[]
-): readonly LabeledSection<FhirResource>[] => {
+): readonly DecodedFile.Section<FhirResource>[] => {
   const order: string[] = []
-  const byUrl = new Map<string, LabeledResource<FhirResource>[]>()
+  const byUrl = new Map<string, DecodedFile.Resource<FhirResource>[]>()
   for (const entry of previews) {
     if (entry.outcome._tag !== 'resources' || entry.outcome.resources.length === 0) continue
     const url = entry.ref.url
-    const labeled = entry.outcome.resources.map((resource): LabeledResource<FhirResource> => ({
+    const labeled = entry.outcome.resources.map((resource): DecodedFile.Resource<FhirResource> => ({
       key: resource.key,
       title: `${resource.resource.resourceType}/${resource.resource.id ?? '?'}`,
       resource: resource.resource,
@@ -80,13 +75,12 @@ const harImporter = new FileImporter({
   decodeOne: (file, settings) =>
     decodeHar(file.bytes, settings).pipe(
       Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
-      Effect.map((previews): DecodedFile<FhirResource> => ({
+      Effect.map((previews): DecodedFile.DecodedFile<FhirResource> => ({
         sections: sectionsByUrl(previews),
         notes: notesFor(previews),
       }))
     ),
 })
 
-export { harImporter }
-export { fhirSources }
+export { harImporter, fhirSources }
 export { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'web-trace-core/codec'

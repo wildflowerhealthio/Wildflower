@@ -2,7 +2,7 @@ import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import {
-  type BatchEntry,
+  type BatchDecodeResult,
   defaultFormatSettings,
   type FormatKind,
   type FormatSettings,
@@ -14,8 +14,9 @@ import type { PickedFile } from 'importer-fundamentals'
 
 /**
  * Running the read half of the import over a batch of {@link PickedFile}s —
- * `importer-core`'s `readBatch` — and holding each unit's outcome for the
- * screen to review, alongside the per-format settings the decodes ran under.
+ * `importer-core`'s `readBatch` — and holding the {@link BatchDecodeResult}
+ * for the screen to review, alongside the per-format settings the decodes
+ * ran under.
  *
  * @remarks
  * The React state around a pure core: this hook owns the batch lifecycle
@@ -31,8 +32,8 @@ import type { PickedFile } from 'importer-fundamentals'
  */
 
 /**
- * The lifecycle of one batch read, holding every unit's outcome so the
- * screen can render one combined review.
+ * The lifecycle of one batch read, holding the decode result so the screen
+ * can render one combined review.
  */
 type ImportRunState =
   | { readonly _tag: 'idle' }
@@ -42,13 +43,13 @@ type ImportRunState =
       /**
        * Identifies the picked batch. Advances on {@link ImportRun.run} and is
        * preserved by {@link ImportRun.applySettings}, so a consumer can tell a
-       * *fresh pick* from a re-decode of the same files — which `units` alone
-       * cannot say, since a re-decode replaces that array too. The server-diff
+       * *fresh pick* from a re-decode of the same files — which `batch` alone
+       * cannot say, since a re-decode replaces it too. The server-diff
        * pre-fetch uses it to decide whether the previous classification may
        * stay on screen while the next one loads.
        */
       readonly batchId: number
-      readonly units: readonly BatchEntry[]
+      readonly batch: BatchDecodeResult
     }
 
 /** Imperative surface the screen drives the read through. */
@@ -61,8 +62,8 @@ interface ImportRun {
   /** Read a freshly-picked batch of files into review units, replacing any previous one. */
   readonly run: (picks: readonly PickedFile[]) => void
   /**
-   * Change one format's settings and re-decode that format's units from
-   * their retained files. Other formats' units and every unit's id are
+   * Change one format's settings and re-decode that format's files from
+   * their retained picks. Other formats' results and every id are
    * untouched.
    */
   readonly applySettings: <K extends FormatKind>(format: K, settings: FormatSettings[K]) => void
@@ -72,7 +73,7 @@ interface ImportRun {
 
 /**
  * Drives a batch read as an imperative action and re-decodes a format's
- * units when its settings change. The authed runner comes from router
+ * files when its settings change. The authed runner comes from router
  * context via `fhir-r4-react`, so mount this inside the host app's router.
  *
  * @param registry - The registered formats' `detect` / `decode` surface,
@@ -88,7 +89,7 @@ const useImportRun = (registry: ReadRegistry): ImportRun => {
   const latest = useRef(0)
   // Advanced only by `run`, so it names the picked batch rather than the
   // decode pass — see `ImportRunState`'s `batchId`.
-  const batch = useRef(0)
+  const batchCounter = useRef(0)
   // The settings the in-flight (or latest) decode ran under — read by
   // applySettings so a re-decode composes with the freshest value even
   // before React commits the state update.
@@ -98,13 +99,13 @@ const useImportRun = (registry: ReadRegistry): ImportRun => {
     (picks: readonly PickedFile[]): void => {
       if (picks.length === 0) return
       latest.current += 1
-      batch.current += 1
+      batchCounter.current += 1
       const ticket = latest.current
-      const batchId = batch.current
+      const batchId = batchCounter.current
       setState({ _tag: 'reading' })
-      void runAuthed(readBatch(registry, settingsRef.current, picks)).then((units) => {
+      void runAuthed(readBatch(registry, settingsRef.current, picks)).then((batch) => {
         if (latest.current !== ticket) return
-        setState({ _tag: 'ready', batchId, units })
+        setState({ _tag: 'ready', batchId, batch })
       })
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary
@@ -121,10 +122,10 @@ const useImportRun = (registry: ReadRegistry): ImportRun => {
       const ticket = latest.current
       const { batchId } = state
       setRedecoding(true)
-      void runAuthed(redecodeFormat(registry, merged, format, state.units)).then((units) => {
+      void runAuthed(redecodeFormat(registry, merged, format, state.batch)).then((batch) => {
         if (latest.current !== ticket) return
         setRedecoding(false)
-        setState({ _tag: 'ready', batchId, units })
+        setState({ _tag: 'ready', batchId, batch })
       })
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary

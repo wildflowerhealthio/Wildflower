@@ -1,17 +1,16 @@
-import { DateTime, Effect, Either, ParseResult, Schema, TestClock, TestContext } from 'effect'
+import { DateTime, Effect, ParseResult, Schema, TestClock, TestContext } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-
+import type * as DecodedFile from './decoded-file.ts'
 import {
   FileImporter,
   SOURCE_FILE_SECTION_TITLE,
   sourceFileKey,
-  type DecodedFile,
   type DocumentReferenceType,
-  type ReadUnit,
 } from './file-importer-descriptor.ts'
+import type * as FormatDecode from './format-decode.ts'
 import * as MetaSource from './meta-source.ts'
 import * as PickedFileSource from './picked-file-source.ts'
 import type { PickedFile } from './picked-file.ts'
@@ -46,7 +45,7 @@ const localFile = (fileName: string, bytes: Uint8Array): PickedFile => ({
 const decodeBytes = (
   file: PickedFile,
   _settings: null
-): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile.DecodedFile<FhirResource>, ParseResult.ParseError> =>
   file.bytes.length === 0
     ? Effect.fail(
         new ParseResult.ParseError({
@@ -98,33 +97,35 @@ const atFixedInstant = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
 
 describe('resolve (tested through decode)', () => {
   it('should mint a local pick into a labeled row keyed by its file name', async () => {
-    const units = await atFixedInstant(
+    const result = await atFixedInstant(
       importer.decode([localFile('scan.bin', new Uint8Array([1, 2]))], null)
     )
-    const unit = units[0]
-    expect(unit).toBeDefined()
-    expect(Either.isRight(unit!)).toBe(true)
-    if (!Either.isRight(unit!)) return
-    const sourceSection = unit.right.decoded.sections[0]
+    const sourceSection = result.decoded.sections[0]
     expect(sourceSection?.title).toBe(SOURCE_FILE_SECTION_TITLE)
     const labeled = sourceSection?.resources[0]
+
     expect(labeled?.key).toBe(sourceFileKey('scan.bin'))
     expect(labeled?.title).toBe('scan.bin')
+
+    if (labeled.resource.resourceType !== 'DocumentReference')
+      throw expect.fail('Incorrect resource type')
     expect(labeled?.resource.date).toEqual(ONE_INSTANT)
   })
 
   it('should resolve a server pick to its existing reference and mint nothing', async () => {
-    const units = await Effect.runPromise(
+    const result = await Effect.runPromise(
       importer.decode(
-        [{ fileName: 'old.bin', bytes: new Uint8Array([1]), source: PickedFileSource.server('doc-1') }],
+        [
+          {
+            fileName: 'old.bin',
+            bytes: new Uint8Array([1]),
+            source: PickedFileSource.server('doc-1'),
+          },
+        ],
         null
       )
     )
-    const unit = units[0]
-    expect(unit).toBeDefined()
-    expect(Either.isRight(unit!)).toBe(true)
-    if (!Either.isRight(unit!)) return
-    expect(unit.right.decoded.sections.every((s) => s.title !== SOURCE_FILE_SECTION_TITLE)).toBe(true)
+    expect(result.decoded.sections.every((s) => s.title !== SOURCE_FILE_SECTION_TITLE)).toBe(true)
   })
 })
 
@@ -178,24 +179,22 @@ describe('MetaSource.stamp / MetaSource.stampDecoded', () => {
 })
 
 describe('decode (batch behavior)', () => {
-  it('property: one unit per file, in pick order, each titled by its file name — left for an empty file, right otherwise', async () => {
+  it('property: readable files produce sections, unreadable files are collected, in pick order', async () => {
     await fc.assert(
       fc.asyncProperty(fc.array(fileArbitrary, { maxLength: 6 }), async (files) => {
-        const units = await Effect.runPromise(importer.decode(files, null))
-        const titles = units.map((unit) =>
-          Either.isRight(unit) ? unit.right.title : unit.left.title
-        )
-        expect(titles).toEqual(files.map((file) => file.fileName))
-        for (const [index, unit] of units.entries()) {
-          const file = files[index]
-          const inner = Either.isRight(unit) ? unit.right : unit.left
-          expect(inner.files).toEqual([file])
-          if (file !== undefined && file.bytes.length === 0) {
-            expect(Either.isLeft(unit)).toBe(true)
-          } else {
-            expect(Either.isRight(unit)).toBe(true)
-          }
+        const result = await Effect.runPromise(importer.decode(files, null))
+        const readable = files.filter((file) => file.bytes.length > 0)
+        const unreadable = files.filter((file) => file.bytes.length === 0)
+        expect(result.unreadableFiles.length).toBe(unreadable.length)
+        for (const [index, entry] of result.unreadableFiles.entries()) {
+          expect(entry.title).toBe(unreadable[index]?.fileName)
         }
+        // Each readable file contributes a source-file section (for local picks) plus a content section.
+        // Server picks contribute only a content section (no source-file row).
+        const localReadable = readable.filter((f) => f.source._tag === 'local')
+        const serverReadable = readable.filter((f) => f.source._tag === 'server')
+        const expectedSections = localReadable.length * 2 + serverReadable.length
+        expect(result.decoded.sections.length).toBe(expectedSections)
       }),
       { numRuns: numRunsFor({ base: 40 }) }
     )
@@ -206,22 +205,23 @@ describe('decode (batch behavior)', () => {
       fc.asyncProperty(
         fileArbitrary.filter((file) => file.bytes.length > 0),
         async (file) => {
-          const [unit] = await Effect.runPromise(importer.decode([file], null))
-          if (unit === undefined || !Either.isRight(unit)) throw new Error('expected a read unit')
-          const [first, ...rest] = unit.right.decoded.sections
-          const extracted = rest.flatMap((section) => section.resources)
+          const result = await Effect.runPromise(importer.decode([file], null))
+          const sections = result.decoded.sections
           if (file.source._tag === 'local') {
-            expect(first?.title).toBe(SOURCE_FILE_SECTION_TITLE)
-            expect(first?.resources.map((entry) => entry.key)).toEqual([sourceFileKey(file.fileName)])
-            const sourceId = first?.resources[0]?.resource.id
+            expect(sections[0]?.title).toBe(SOURCE_FILE_SECTION_TITLE)
+            expect(sections[0]?.resources.map((entry) => entry.key)).toEqual([
+              sourceFileKey(file.fileName),
+            ])
+            const sourceId = sections[0]?.resources[0]?.resource.id
+            const extracted = sections.slice(1).flatMap((s) => s.resources)
             expect(extracted.length).toBe(file.bytes.length)
             for (const entry of extracted) {
               expect(entry.resource.meta?.source).toBe(`DocumentReference/${sourceId}`)
             }
           } else {
-            expect(first?.title).toBe(file.fileName)
-            expect(unit.right.decoded.sections.length).toBe(1)
-            for (const entry of first?.resources ?? []) {
+            expect(sections[0]?.title).toBe(file.fileName)
+            expect(sections.length).toBe(1)
+            for (const entry of sections[0]?.resources ?? []) {
               expect(entry.resource.meta?.source).toBe(file.source.reference)
             }
           }
@@ -245,7 +245,7 @@ describe('decode (batch behavior)', () => {
         return decodeBytes(file, settings)
       },
     })
-    const units = await Effect.runPromise(
+    const result = await Effect.runPromise(
       spyImporter.decode(
         [
           localFile('a.bin', new Uint8Array([1])),
@@ -258,10 +258,7 @@ describe('decode (batch behavior)', () => {
         null
       )
     )
-    const sourceRow =
-      units[0] !== undefined && Either.isRight(units[0])
-        ? units[0].right.decoded.sections[0]?.resources[0]
-        : undefined
+    const sourceRow = result.decoded.sections[0]?.resources[0]
     expect(seen.toSorted()).toEqual(
       [`DocumentReference/${sourceRow?.resource.id}`, 'DocumentReference/doc-b'].toSorted()
     )
@@ -270,11 +267,9 @@ describe('decode (batch behavior)', () => {
   it('should re-stamp the upload instant from the clock on each decode, keeping the id', async () => {
     const file = localFile('scan.bin', new Uint8Array([7]))
     const sourceRowOf = (
-      units: readonly Either.Either<ReadUnit<string>, unknown>[]
+      result: FormatDecode.Result<string>
     ): DocumentReferenceType | undefined => {
-      const unit = units[0]
-      if (unit === undefined || !Either.isRight(unit)) return undefined
-      const resource = unit.right.decoded.sections[0]?.resources[0]?.resource
+      const resource = result.decoded.sections[0]?.resources[0]?.resource
       return resource?.resourceType === 'DocumentReference' ? resource : undefined
     }
     const [first, second] = await Effect.runPromise(

@@ -1,27 +1,13 @@
 import { writeDicom } from 'dicom/test-helpers'
-import { Effect, Either, ParseResult, Schema } from 'effect'
+import { Effect, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import {
-  PickedFileSource,
-  type PickedFile,
-  type ReadUnit,
-  SourceFile,
-  type UnreadableUnit,
-  unitId,
-} from 'importer-fundamentals'
+import { PickedFileSource, type PickedFile, FormatDecode, SourceFile } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  entryFormat,
-  entryId,
-  groupByFormat,
-  readBatch,
-  type ReadRegistry,
-  redecodeFormat,
-} from './read-batch.ts'
-import { defaultFormatSettings, type FormatKind, formatRegistry } from './registry.ts'
+import { groupByFormat, readBatch, type ReadRegistry, redecodeFormat } from './read-batch.ts'
+import { defaultFormatSettings, type FormatKind, formatKinds, formatRegistry } from './registry.ts'
 
 /**
  * The batch read over a fake registry whose formats claim files by name
@@ -58,49 +44,41 @@ const kindOf = (fileName: string): FormatKind | undefined => {
 const fakeResource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
-/** A fake decode: one unit per file, returning Either<ReadUnit, UnreadableUnit> with deterministic ids. A file whose first byte is 0 is unreadable. */
+/** A fake decode: aggregates files into one FormatDecodeResult. A file whose first byte is 0 is unreadable. */
 const fakeDecode =
   <K extends FormatKind>(kind: K) =>
-  (
-    files: readonly PickedFile[],
-    settings: unknown
-  ): Effect.Effect<readonly Either.Either<ReadUnit<K>, UnreadableUnit<K>>[]> =>
-    Effect.succeed(
-      files.map((file) =>
-        file.bytes[0] === 0
-          ? Either.left({
-              _tag: 'UnreadableUnit' as const,
-              id: unitId(kind, [file]),
-              title: file.fileName,
-              files: [file],
-              format: kind,
-              error: new ParseResult.ParseError({
-                issue: new ParseResult.Type(Schema.Unknown.ast, file.fileName, 'zero'),
-              }),
-            })
-          : Either.right({
-              id: unitId(kind, [file]),
-              title: file.fileName,
-              files: [file] as readonly PickedFile[],
-              format: kind,
-              decoded: {
-                sections: [
-                  {
-                    title: `${kind}:${JSON.stringify(settings)}`,
-                    resources: [
-                      {
-                        key: 'r',
-                        title: 'Patient/r',
-                        resource: fakeResource(`${kind}-${file.fileName}`),
-                      },
-                    ],
-                  },
-                ],
-                notes: [],
+  (files: readonly PickedFile[], settings: unknown): Effect.Effect<FormatDecode.Result<K>> =>
+    Effect.succeed({
+      id: FormatDecode.makeId(kind, files),
+      title: files.map((f) => f.fileName).join(', '),
+      files,
+      format: kind,
+      decoded: {
+        sections: files
+          .filter((file) => file.bytes[0] !== 0)
+          .map((file) => ({
+            title: `${kind}:${JSON.stringify(settings)}`,
+            resources: [
+              {
+                key: `r:${file.fileName}`,
+                title: `Patient/${kind}-${file.fileName}`,
+                resource: fakeResource(`${kind}-${file.fileName}`),
               },
-            })
-      )
-    )
+            ],
+          })),
+        notes: [],
+      },
+      unreadableFiles: files
+        .filter((file) => file.bytes[0] === 0)
+        .map((file) => ({
+          id: FormatDecode.makeId(kind, [file]),
+          title: file.fileName,
+          pickedFile: file,
+          error: new ParseResult.ParseError({
+            issue: new ParseResult.Type(Schema.Unknown.ast, file.fileName, 'zero'),
+          }),
+        })),
+    })
 
 const fakeRegistry: ReadRegistry = {
   har: { format: 'har', detect: (_b, name) => kindOf(name) === 'har', decode: fakeDecode('har') },
@@ -114,12 +92,6 @@ const fakeRegistry: ReadRegistry = {
     detect: (_b, name) => kindOf(name) === 'dicom',
     decode: fakeDecode('dicom'),
   },
-}
-
-/** Whether a pick should be right (decoded), left-unreadable, or left-unrecognized. */
-const expectedSide = (pick: PickedFile): 'right' | 'unreadable' | 'unrecognized' => {
-  if (kindOf(pick.fileName) === undefined) return 'unrecognized'
-  return pick.bytes[0] === 0 ? 'unreadable' : 'right'
 }
 
 describe('groupByFormat', () => {
@@ -140,25 +112,24 @@ describe('groupByFormat', () => {
 })
 
 describe('readBatch', () => {
-  it('property: one outcome per pick, tagged by its format, unreadable exactly for a zero-led file, ids deterministic', async () => {
+  it('property: every format gets its claimed files, unreadable files separate from decoded, unrecognized files collected', async () => {
     await fc.assert(
       fc.asyncProperty(batchArbitrary(8), async (picks) => {
-        const units = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
-        expect(units.length).toBe(picks.length)
-        expect(new Set(units.map(entryId)).size).toBe(units.length)
-        for (const unit of units) {
-          const files = Either.isRight(unit) ? unit.right.files : unit.left.files
-          const pick = files[0]
-          if (pick === undefined) throw new Error('a unit always carries its pick')
-          const title = Either.isRight(unit) ? unit.right.title : unit.left.title
-          expect(title).toBe(pick.fileName)
-          expect(entryFormat(unit)).toBe(kindOf(pick.fileName))
-          const side = expectedSide(pick)
-          if (side === 'right') {
-            expect(Either.isRight(unit)).toBe(true)
-          } else {
-            expect(Either.isLeft(unit)).toBe(true)
-          }
+        const batch = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
+        for (const kind of formatKinds) {
+          const result = batch[kind]
+          const expectedFiles = picks.filter((pick) => kindOf(pick.fileName) === kind)
+          expect(result.files).toEqual(expectedFiles)
+          expect(result.format).toBe(kind)
+          const expectedReadable = expectedFiles.filter((f) => f.bytes[0] !== 0)
+          const expectedUnreadable = expectedFiles.filter((f) => f.bytes[0] === 0)
+          expect(result.decoded.sections.length).toBe(expectedReadable.length)
+          expect(result.unreadableFiles.length).toBe(expectedUnreadable.length)
+        }
+        const expectedUnrecognized = picks.filter((pick) => kindOf(pick.fileName) === undefined)
+        expect(batch.unrecognizedFiles.length).toBe(expectedUnrecognized.length)
+        for (const [index, file] of batch.unrecognizedFiles.entries()) {
+          expect(file.title).toBe(expectedUnrecognized[index]?.fileName)
         }
       }),
       { numRuns: numRunsFor({ base: 60 }) }
@@ -167,18 +138,17 @@ describe('readBatch', () => {
 
   it('should decode each format under its own settings', async () => {
     const settings = { ...defaultFormatSettings, har: { disabledKinds: ['X'] } }
-    const [unit] = await Effect.runPromise(
+    const batch = await Effect.runPromise(
       readBatch(fakeRegistry, settings, [
         { fileName: 'har-a', bytes: new Uint8Array([1]), source: PickedFileSource.local },
       ])
     )
-    if (unit === undefined || !Either.isRight(unit)) throw new Error('expected a read unit')
-    expect(unit.right.decoded.sections[0]?.title).toBe(`har:${JSON.stringify(settings.har)}`)
+    expect(batch.har.decoded.sections[0]?.title).toBe(`har:${JSON.stringify(settings.har)}`)
   })
 })
 
 describe('redecodeFormat', () => {
-  it('property: only the changed format re-decodes; every unit keeps its id', async () => {
+  it('property: only the changed format re-decodes; every other format keeps its reference', async () => {
     await fc.assert(
       fc.asyncProperty(
         batchArbitrary(8),
@@ -191,18 +161,16 @@ describe('redecodeFormat', () => {
           const after = await Effect.runPromise(
             redecodeFormat(fakeRegistry, settings, changed, before)
           )
-          expect(after.map(entryId)).toEqual(before.map(entryId))
-          for (const [index, unit] of after.entries()) {
-            const previous = before[index]
-            if (previous === undefined) throw new Error('same length')
-            if (entryFormat(previous) !== changed) {
-              expect(unit).toBe(previous)
-            } else if (Either.isRight(unit)) {
-              expect(unit.right.decoded.sections[0]?.title).toBe(
+          for (const kind of formatKinds) {
+            if (kind !== changed) {
+              expect(after[kind]).toBe(before[kind])
+            } else if (after[kind].decoded.sections.length > 0) {
+              expect(after[kind].decoded.sections[0]?.title).toBe(
                 `${changed}:${JSON.stringify(settings[changed])}`
               )
             }
           }
+          expect(after.unrecognizedFiles).toBe(before.unrecognizedFiles)
         }
       ),
       { numRuns: numRunsFor({ base: 60 }) }
@@ -211,7 +179,7 @@ describe('redecodeFormat', () => {
 })
 
 describe('readBatch over the real registry', () => {
-  it('should read a DICOM file into a titled unit with its Source file section, and leave a text file unrecognized', async () => {
+  it('should read a DICOM file into a decoded result with its Source file section, and leave a text file unrecognized', async () => {
     const dicomBytes = writeDicom({
       StudyInstanceUID: '1.2.3.4.5',
       SeriesInstanceUID: '1.2.3.4.5.1',
@@ -228,20 +196,11 @@ describe('readBatch over the real registry', () => {
       },
       { fileName: 'scan.dcm', bytes: dicomBytes, source: PickedFileSource.local },
     ]
-    const units = await Effect.runPromise(readBatch(formatRegistry, defaultFormatSettings, picks))
-    expect(
-      units.map((unit) => [
-        Either.isRight(unit) ? 'read' : 'left',
-        Either.isRight(unit) ? unit.right.title : unit.left.title,
-      ])
-    ).toEqual([
-      ['read', 'scan.dcm'],
-      ['left', 'notes.txt'],
-    ])
-    const dicom = units[0]
-    if (dicom === undefined || !Either.isRight(dicom)) throw new Error('expected a read unit')
-    expect(dicom.right.format).toBe('dicom')
-    expect(dicom.right.decoded.sections[0]?.title).toBe(SourceFile.SECTION_TITLE)
-    expect(dicom.right.decoded.sections.length).toBeGreaterThan(1)
+    const batch = await Effect.runPromise(readBatch(formatRegistry, defaultFormatSettings, picks))
+    expect(batch.dicom.files.length).toBe(1)
+    expect(batch.dicom.decoded.sections[0]?.title).toBe(SourceFile.SECTION_TITLE)
+    expect(batch.dicom.decoded.sections.length).toBeGreaterThan(1)
+    expect(batch.unrecognizedFiles.length).toBe(1)
+    expect(batch.unrecognizedFiles[0]?.title).toBe('notes.txt')
   })
 })

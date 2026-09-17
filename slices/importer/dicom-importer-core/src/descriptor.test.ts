@@ -2,7 +2,12 @@ import { parseDicomFile } from 'dicom'
 import { writeDicom } from 'dicom/test-helpers'
 import { DateTime, Effect, Either, Option } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
-import { PickedFileSource, SourceFile, type PickedFile, type ReadUnit } from 'importer-fundamentals'
+import {
+  PickedFileSource,
+  SourceFile,
+  type FormatDecode,
+  type PickedFile,
+} from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporter, patientSubjectOf } from './descriptor.ts'
@@ -57,16 +62,14 @@ describe('dicomImporter', () => {
       return `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}`
     }
 
-    const readUnit = async (file: PickedFile): Promise<ReadUnit<string>> => {
-      const outcomes = await Effect.runPromise(dicomImporter.decode([file], defaultDicomSettings))
-      expect(outcomes).toHaveLength(1)
-      const outcome = outcomes[0]
-      if (!Either.isRight(outcome)) throw new Error('expected a read unit')
-      return outcome.right
+    const readUnit = async (file: PickedFile): Promise<FormatDecode.Result<string>> => {
+      const result = await Effect.runPromise(dicomImporter.decode([file], defaultDicomSettings))
+      if (result.unreadableFiles.length > 0) throw new Error('expected a readable result')
+      return result
     }
 
-    /** The one id every resource of a unit must agree on: its source file's. */
-    const sourceFileIdOfUnit = (unit: ReadUnit<string>): string => {
+    /** The one id every resource of a result must agree on: its source file's. */
+    const sourceFileIdOfUnit = (unit: FormatDecode.Result<string>): string => {
       const [section] = unit.decoded.sections
       expect(section.title).toBe(SourceFile.SECTION_TITLE)
       expect(section.resources).toHaveLength(1)
@@ -78,7 +81,7 @@ describe('dicomImporter', () => {
       return id
     }
 
-    const imagingStudyInstanceId = (unit: ReadUnit<string>): string | undefined => {
+    const imagingStudyInstanceId = (unit: FormatDecode.Result<string>): string | undefined => {
       for (const section of unit.decoded.sections) {
         for (const { resource } of section.resources) {
           if (resource.resourceType !== 'ImagingStudy') continue
@@ -132,8 +135,8 @@ describe('dicomImporter', () => {
       expect(imagingStudyInstanceId(unit)).toBe('doc-9')
     })
 
-    it('yields one unreadable unit for bytes that are not DICOM', async () => {
-      const outcomes = await Effect.runPromise(
+    it('collects an unreadable file for bytes that are not DICOM', async () => {
+      const result = await Effect.runPromise(
         dicomImporter.decode(
           [
             {
@@ -145,7 +148,8 @@ describe('dicomImporter', () => {
           defaultDicomSettings
         )
       )
-      expect(outcomes.map(Either.isLeft)).toEqual([true])
+      expect(result.decoded.sections).toHaveLength(0)
+      expect(result.unreadableFiles).toHaveLength(1)
     })
   })
 

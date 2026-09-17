@@ -1,9 +1,9 @@
 /**
  * The pure core of the importer slice: the closed format registry — every
- * registered {@link FileImporterDescriptor}, typed per format — and the batch
- * machinery a shell drives: group a pick by format, read it into review
- * units, re-decode one format's units under new settings, and plan a unit's
- * write from its reviewed selection.
+ * registered {@link FileImporter}, typed per format — and the batch
+ * machinery a shell drives: group a pick by format, read it into a
+ * {@link BatchDecodeResult}, re-decode one format under new settings, and
+ * plan a format's write from its reviewed selection.
  *
  * @remarks
  * Sits between the format bindings (`har-importer-core`,
@@ -17,10 +17,8 @@
 export { defaultFormatSettings, formatKinds, formatRegistry } from './registry.ts'
 export type { BoundFormat, FormatKind, FormatSettings } from './registry.ts'
 export {
-  type BatchEntry,
+  type BatchDecodeResult,
   decodeFormat,
-  entryFormat,
-  entryId,
   groupByFormat,
   type GroupedPicks,
   identifyPick,
@@ -29,4 +27,4 @@ export {
   redecodeFormat,
   UnrecognizedFile,
 } from './read-batch.ts'
-export { planUnitWrite, type SkipReason, type WritePlan } from './plan-write.ts'
+export { planFormatWrite, type SkipReason, type WritePlan } from './plan-write.ts'

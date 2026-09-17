@@ -1,8 +1,9 @@
 import { DateTime, Effect, Either, Encoding, ParseResult, Schema } from 'effect'
-import type * as FhirR4 from 'fhir/r4.d.ts'
 import { joinIdComponents, localResourceId } from 'fhir-r4/identity'
 import { DocumentReference, type FhirResource } from 'fhir-r4/resources'
-
+import type * as FhirR4 from 'fhir/r4.d.ts'
+import type * as DecodedFile from './decoded-file.ts'
+import * as FormatDecode from './format-decode.ts'
 import * as MetaSource from './meta-source.ts'
 import type { PickedFile } from './picked-file.ts'
 import { sha256Base64 } from './sha256.ts'
@@ -12,49 +13,9 @@ import * as SourceFileFhirReference from './source-file-fhir-reference.ts'
 
 type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
-interface LabeledResource<TParsed> {
-  readonly key: string
-  readonly title: string
-  readonly resource: TParsed
-}
-
-interface LabeledSection<TParsed> {
-  readonly title: string
-  readonly resources: readonly LabeledResource<TParsed>[]
-}
-
-interface DecodedFile<TParsed> {
-  readonly sections: readonly LabeledSection<TParsed>[]
-  readonly notes: readonly string[]
-}
-
-const sectionResources = <TParsed>(
-  sections: readonly LabeledSection<TParsed>[]
-): readonly LabeledResource<TParsed>[] => sections.flatMap((section) => section.resources)
-
 interface SettingsPickerProps<TSettings> {
   readonly settings: TSettings
   readonly onChange: (settings: TSettings) => void
-}
-
-const unitId = (format: string, files: readonly PickedFile[]): string =>
-  `${format}/${files.map((f) => f.fileName).join(',')}`
-
-interface ReadUnit<TFormat extends string> {
-  readonly id: string
-  readonly title: string
-  readonly files: readonly PickedFile[]
-  readonly format: TFormat
-  readonly decoded: DecodedFile<FhirResource>
-}
-
-interface UnreadableUnit<TFormat extends string> {
-  readonly _tag: 'UnreadableUnit'
-  readonly id: string
-  readonly title: string
-  readonly files: readonly PickedFile[]
-  readonly format: TFormat
-  readonly error: ParseResult.ParseError
 }
 
 // ─── Source File Types ──────────────────────────────────────────────────────
@@ -88,7 +49,7 @@ type DecodeOne<TSettings> = (
   file: PickedFile,
   settings: TSettings,
   source: SourceFileRef
-) => Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError>
+) => Effect.Effect<DecodedFile.DecodedFile<FhirResource>, ParseResult.ParseError>
 
 // ─── Source File Review Helpers ─────────────────────────────────────────────
 
@@ -98,7 +59,7 @@ const SOURCE_FILE_SECTION_TITLE = 'Source file'
 
 interface SourceFileResolved {
   readonly ref: SourceFileRef
-  readonly labeled: LabeledResource<DocumentReferenceType> | undefined
+  readonly labeled: DecodedFile.Resource<DocumentReferenceType> | undefined
 }
 
 const mintedWithoutId = (fileName: string): ParseResult.ParseError =>
@@ -140,11 +101,11 @@ const resolveSourceFile = (
 }
 
 const withSourceSections = <TParsed>(
-  decoded: DecodedFile<TParsed>,
-  sourceFiles: readonly LabeledResource<TParsed>[]
-): DecodedFile<TParsed> => {
+  decoded: DecodedFile.DecodedFile<TParsed>,
+  sourceFiles: readonly DecodedFile.Resource<TParsed>[]
+): DecodedFile.DecodedFile<TParsed> => {
   if (sourceFiles.length === 0) return decoded
-  const sections: readonly LabeledSection<TParsed>[] = sourceFiles.map((sourceFile) => ({
+  const sections: readonly DecodedFile.Section<TParsed>[] = sourceFiles.map((sourceFile) => ({
     title: SOURCE_FILE_SECTION_TITLE,
     resources: [sourceFile],
   }))
@@ -155,60 +116,79 @@ interface PerFileDecodeOptions {
   readonly subjectFor?: (file: PickedFile) => { readonly reference: string } | undefined
 }
 
-const buildPerFileDecode = <TFormat extends string, TSettings>(
-  provider: {
-    readonly format: TFormat
-    readonly buildSourceFile: BuildSourceFile
-  },
-  decodeOne: DecodeOne<TSettings>,
-  options?: PerFileDecodeOptions
-) =>
+const buildPerFileDecode =
+  <TFormat extends string, TSettings>(
+    provider: {
+      readonly format: TFormat
+      readonly buildSourceFile: BuildSourceFile
+    },
+    decodeOne: DecodeOne<TSettings>,
+    options?: PerFileDecodeOptions
+  ) =>
   (
     files: readonly PickedFile[],
     settings: TSettings
-  ): Effect.Effect<readonly Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>[]> =>
+  ): Effect.Effect<FormatDecode.Result<TFormat>> =>
     Effect.forEach(
       files,
-      (file) => {
-        const id = unitId(provider.format, [file])
-        return Effect.gen(function* () {
-          const { ref, labeled } = yield* resolveSourceFile(
-            provider.buildSourceFile,
-            file,
-            { subject: options?.subjectFor?.(file) }
-          )
+      (file) =>
+        Effect.gen(function* () {
+          const { ref, labeled } = yield* resolveSourceFile(provider.buildSourceFile, file, {
+            subject: options?.subjectFor?.(file),
+          })
           const decoded = yield* decodeOne(file, settings, ref)
           const stamped = MetaSource.stampDecoded(decoded, SourceFileFhirReference.make(ref.id))
-          return Either.right({
-            id,
-            title: file.fileName,
-            files: [file] as readonly PickedFile[],
-            format: provider.format,
-            decoded: withSourceSections(stamped, labeled === undefined ? [] : [labeled]),
-          })
+          return Either.right(withSourceSections(stamped, labeled === undefined ? [] : [labeled]))
         }).pipe(
           Effect.catchAll(
-            (error): Effect.Effect<Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>> =>
+            (
+              error
+            ): Effect.Effect<
+              Either.Either<DecodedFile.DecodedFile<FhirResource>, FormatDecode.UnreadableFile>
+            > =>
               Effect.succeed(
                 Either.left({
-                  _tag: 'UnreadableUnit' as const,
-                  id,
+                  id: FormatDecode.makeId(provider.format, [file]),
                   title: file.fileName,
-                  files: [file] as readonly PickedFile[],
-                  format: provider.format,
+                  pickedFile: file,
                   error,
                 })
               )
           )
-        )
-      },
+        ),
       { concurrency: 'unbounded' }
+    ).pipe(
+      Effect.map((results): FormatDecode.Result<TFormat> => {
+        const sections: DecodedFile.Section<FhirResource>[] = []
+        const notes: string[] = []
+        const unreadableFiles: FormatDecode.UnreadableFile[] = []
+        for (const result of results) {
+          Either.match(result, {
+            onLeft: (failure) => unreadableFiles.push(failure),
+            onRight: (decoded) => {
+              sections.push(...decoded.sections)
+              notes.push(...decoded.notes)
+            },
+          })
+        }
+        return {
+          id: FormatDecode.makeId(provider.format, files),
+          title: files.map((f) => f.fileName).join(', '),
+          files,
+          format: provider.format,
+          decoded: { sections, notes },
+          unreadableFiles,
+        }
+      })
     )
 
 // ─── Schema Annotation Derivation ──────────────────────────────────────────
 
 const pascalCase = (format: string): string =>
-  format.split('-').map((s) => s.charAt(0).toUpperCase() + s.slice(1)).join('')
+  format
+    .split('-')
+    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .join('')
 
 // ─── FileImporter ───────────────────────────────────────────────────────────
 
@@ -234,16 +214,13 @@ class FileImporter<TFormat extends string, TSettings> {
   readonly decode: (
     files: readonly PickedFile[],
     settings: TSettings
-  ) => Effect.Effect<readonly Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>[]>
+  ) => Effect.Effect<FormatDecode.Result<TFormat>>
   readonly categoryToken: string
   readonly contentType: string
   readonly isSourceFile: (resource: DocumentReferenceType) => boolean
   readonly sourceFileFromDocumentReference: (
     resource: DocumentReferenceType
-  ) => Effect.Effect<
-    { readonly id: string; readonly fileName: string; readonly bytes: Uint8Array },
-    ParseResult.ParseError
-  >
+  ) => Effect.Effect<SourceFile, ParseResult.ParseError>
   readonly sourceFileToDocumentReference: (
     sourceFile: SourceFile
   ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
@@ -347,7 +324,9 @@ class FileImporter<TFormat extends string, TSettings> {
     }
 
     const hasSourceFileCoding = (concept: FhirR4.CodeableConcept | undefined): boolean =>
-      (concept?.coding ?? []).some((one) => one.system === coding.system && one.code === coding.code)
+      (concept?.coding ?? []).some(
+        (one) => one.system === coding.system && one.code === coding.code
+      )
 
     const readEncodedSourceFile = (
       wire: FhirR4.DocumentReference
@@ -447,19 +426,15 @@ const identify = <D extends Pick<FileImporter<string, never>, 'detect'>>(
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
 
-export { FileImporter, SOURCE_FILE_SECTION_TITLE, identify, sectionResources, sourceFileKey, unitId }
+export { FileImporter, SOURCE_FILE_SECTION_TITLE, identify, sourceFileKey }
 export type {
   Coding,
   DecodedFile,
   DecodeOne,
   DocumentReferenceType,
-  LabeledResource,
-  LabeledSection,
   PerFileDecodeOptions,
-  ReadUnit,
   SettingsPickerProps,
   SourceFile,
   SourceFileEncoded,
   SourceFileRef,
-  UnreadableUnit,
 }

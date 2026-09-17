@@ -1,11 +1,9 @@
-import { Either, Option } from 'effect'
+import { Option } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import { StagedImport, sectionResources } from 'importer-fundamentals'
-
-import type { BatchEntry } from './read-batch.ts'
+import { StagedImport, DecodedFile, type FormatDecode } from 'importer-fundamentals'
 
 /**
- * The pure half of the confirm: from one unit's read outcome and the
+ * The pure half of the confirm: from one format's decode result and the
  * selection it was reviewed under, exactly the resources to write — or the
  * reason nothing is. The shell submits the `write` plan as one batch
  * bundle; nothing here touches a client.
@@ -24,14 +22,14 @@ import type { BatchEntry } from './read-batch.ts'
  */
 
 /**
- * Why a unit in a confirmed batch contributes no written resources without
- * that being a failure: `nothing` — the review kept none of its resources
- * (or its decode yielded none); `unreadable` — its decode rejected the
- * bytes, or no format claimed it.
+ * Why a format in a confirmed batch contributes no written resources
+ * without that being a failure: `nothing` — the review kept none of its
+ * resources (or its decode yielded none); `unreadable` — all its files
+ * rejected during decode; `unrecognized` — no format claimed the file.
  */
-type SkipReason = 'nothing' | 'unreadable'
+type SkipReason = 'nothing' | 'unreadable' | 'unrecognized'
 
-/** What one unit's confirm should do. */
+/** What one format's confirm should do. */
 type WritePlan =
   | { readonly _tag: 'skip'; readonly reason: SkipReason }
   | {
@@ -43,28 +41,28 @@ type WritePlan =
     }
 
 /**
- * Plan one unit's write from its reviewed selection.
+ * Plan one format's write from its reviewed selection.
  *
- * @param unit - The unit's batch entry (an Either)
+ * @param result - The format's decode result
  * @param selection - The selection the reviewer left it with
  * @returns A `write` of the chosen resources, or a `skip` with its reason
  */
-const planUnitWrite = (
-  unit: BatchEntry,
+const planFormatWrite = (
+  result: FormatDecode.Result<string>,
   selection: StagedImport.Selection<FhirResource>
-): WritePlan =>
-  Either.match(unit, {
-    onLeft: () => ({ _tag: 'skip', reason: 'unreadable' }),
-    onRight: ({ decoded }) => {
-      const labeled = sectionResources(decoded.sections)
-      const resources = labeled
-        .filter((entry) => StagedImport.isResourceIncluded(selection, entry.key))
-        .map((entry) =>
-          Option.getOrElse(StagedImport.editedResource(selection, entry.key), () => entry.resource)
-        )
-      if (resources.length === 0) return { _tag: 'skip', reason: 'nothing' }
-      return { _tag: 'write', resources, excluded: StagedImport.excludedCount(labeled, selection) }
-    },
-  })
+): WritePlan => {
+  const labeled = DecodedFile.resources(result.decoded)
+  const resources = labeled
+    .filter((entry) => StagedImport.isResourceIncluded(selection, entry.key))
+    .map((entry) =>
+      Option.getOrElse(StagedImport.editedResource(selection, entry.key), () => entry.resource)
+    )
+  if (resources.length === 0) {
+    const reason: SkipReason =
+      labeled.length === 0 && result.unreadableFiles.length > 0 ? 'unreadable' : 'nothing'
+    return { _tag: 'skip', reason }
+  }
+  return { _tag: 'write', resources, excluded: StagedImport.excludedCount(labeled, selection) }
+}
 
-export { planUnitWrite, type SkipReason, type WritePlan }
+export { planFormatWrite, type SkipReason, type WritePlan }

@@ -1,4 +1,4 @@
-import { Effect, Either, Schema } from 'effect'
+import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { HarFromJson, emitHar } from 'http-archive'
 import { SourceDescriptor } from 'http-extraction-fundamentals'
@@ -6,9 +6,9 @@ import {
   PickedFileSource,
   SourceFile,
   SourceFileFhirReference,
-  type LabeledSection,
+  type FormatDecode,
+  type DecodedFile,
   type PickedFile,
-  type ReadUnit,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
@@ -125,25 +125,25 @@ const pickedHar = (source: PickedFileSource.PickedFileSource): PickedFile => ({
 const readOne = async (
   file: PickedFile,
   settings: HarSettings = defaultHarSettings
-): Promise<ReadUnit<string>> => {
-  const units = await Effect.runPromise(harImporter.decode([file], settings))
-  expect(units).toHaveLength(1)
-  const unit = units[0]
-  if (unit === undefined || !Either.isRight(unit)) {
-    throw new Error(`Expected one read unit, got ${unit === undefined ? 'nothing' : 'unreadable'}`)
+): Promise<FormatDecode.Result<string>> => {
+  const result = await Effect.runPromise(harImporter.decode([file], settings))
+  if (result.unreadableFiles.length > 0) {
+    throw new Error(
+      `Expected a readable result, got ${result.unreadableFiles.length} unreadable files`
+    )
   }
-  return unit.right
+  return result
 }
 
 /** The format's own sections — everything but the minted source file's. */
 const extractedSections = (
-  sections: readonly LabeledSection<FhirResource>[]
-): readonly LabeledSection<FhirResource>[] =>
+  sections: readonly DecodedFile.Section<FhirResource>[]
+): readonly DecodedFile.Section<FhirResource>[] =>
   sections.filter((section) => section.title !== SourceFile.SECTION_TITLE)
 
 /** Every `meta.source` across the given sections, in section order. */
 const metaSourcesOf = (
-  sections: readonly LabeledSection<FhirResource>[]
+  sections: readonly DecodedFile.Section<FhirResource>[]
 ): readonly (string | null | undefined)[] =>
   sections.flatMap((section) => section.resources.map((entry) => entry.resource.meta?.source))
 
@@ -240,15 +240,11 @@ describe('harImporter.decode', () => {
       bytes: new TextEncoder().encode('{ not a har }'),
       source: PickedFileSource.local,
     }
-    const units = await Effect.runPromise(harImporter.decode([file], defaultHarSettings))
-    const unit = units[0]
+    const result = await Effect.runPromise(harImporter.decode([file], defaultHarSettings))
 
-    expect(units).toHaveLength(1)
-    expect(unit).toBeDefined()
-    expect(Either.isLeft(unit)).toBe(true)
-    if (unit === undefined || !Either.isLeft(unit)) throw new Error('expected unreadable')
-    expect(unit.left._tag).toBe('UnreadableUnit')
-    expect(unit.left.title).toBe('archive.har')
-    expect(unit.left.error._tag).toBe('ParseError')
+    expect(result.decoded.sections).toHaveLength(0)
+    expect(result.unreadableFiles).toHaveLength(1)
+    expect(result.unreadableFiles[0]?.title).toBe('archive.har')
+    expect(result.unreadableFiles[0]?.error._tag).toBe('ParseError')
   })
 })

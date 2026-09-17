@@ -1,6 +1,6 @@
 import { Option } from 'effect'
 
-import type { LabeledResource } from './file-importer-descriptor.ts'
+import type * as DecodedFile from './decoded-file.ts'
 
 /**
  * The pure model of an import that has been decoded but not yet written: which
@@ -136,7 +136,7 @@ const editedResource = <TParsed>(
  *   reviewer has set one
  */
 const chosenResources = <TParsed>(
-  labeled: readonly LabeledResource<TParsed>[],
+  labeled: readonly DecodedFile.Resource<TParsed>[],
   selection: Selection<TParsed>
 ): readonly TParsed[] =>
   labeled
@@ -145,13 +145,13 @@ const chosenResources = <TParsed>(
 
 /** How many labeled resources are included under a selection. */
 const includedCount = <TParsed>(
-  labeled: readonly LabeledResource<TParsed>[],
+  labeled: readonly DecodedFile.Resource<TParsed>[],
   selection: Selection<TParsed>
 ): number => chosenResources(labeled, selection).length
 
 /** How many labeled resources are excluded under a selection. */
 const excludedCount = (
-  labeled: readonly LabeledResource<unknown>[],
+  labeled: readonly DecodedFile.Resource<unknown>[],
   selection: Selection<unknown>
 ): number => labeled.filter((entry) => !isResourceIncluded(selection, entry.key)).length
 

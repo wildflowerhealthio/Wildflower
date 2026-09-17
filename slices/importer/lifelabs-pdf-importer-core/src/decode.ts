@@ -1,13 +1,7 @@
 import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type {
-  DecodedFile,
-  LabeledResource,
-  LabeledSection,
-  PickedFile,
-  SourceFile,
-} from 'importer-fundamentals'
+import type { DecodedFile, PickedFile, SourceFile } from 'importer-fundamentals'
 import type { Document } from 'positioned-text'
 import { extractPositionedText } from 'positioned-text-web'
 
@@ -65,7 +59,7 @@ const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
  * rather than paper over it with a shared `'?'` key that would collide across
  * resources and defeat `StagedImport.Selection`.
  */
-const labelAdopted = (resource: FhirResource): LabeledResource<FhirResource> => {
+const labelAdopted = (resource: FhirResource): DecodedFile.Resource<FhirResource> => {
   const adopted = adopt(resource)
   const type = adopted.resourceType
   const id = adopted.id
@@ -112,14 +106,14 @@ const reportSectionTitle = (report: Report.Type): string => {
 const decodeLifeLabsPdfDocument = (
   document: Document.Type,
   settings: LifeLabsPdfSettings
-): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile.DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
     const reports = yield* Report.tryFromDocument(document).pipe(
       Effect.mapError(unrecognizedAsParseError)
     )
     const groups = yield* toFhirResources(reports, { timeZone })
-    const sections = groups.map((group): LabeledSection<FhirResource> => ({
+    const sections = groups.map((group): DecodedFile.Section<FhirResource> => ({
       title: reportSectionTitle(group.report),
       resources: group.resources.map(labelAdopted),
     }))
@@ -154,7 +148,7 @@ const decodeLifeLabsPdf = (
   file: PickedFile,
   settings: LifeLabsPdfSettings,
   _source: SourceFile.Ref
-): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile.DecodedFile<FhirResource>, ParseResult.ParseError> =>
   Effect.tryPromise({
     try: () => extractPositionedText(file.bytes),
     catch: extractionAsParseError,
