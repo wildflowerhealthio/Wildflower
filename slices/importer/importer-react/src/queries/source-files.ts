@@ -271,9 +271,9 @@ const smartSourceFilesInfiniteQueryOptions = (
   SourceFilesQueryKey,
   SourceFilePageParam
 > => {
-  const _pageSize = options?.pageSize ?? DEFAULT_PAGE_SIZE
+  const pageSize = options?.pageSize ?? DEFAULT_PAGE_SIZE
   return infiniteQueryOptions({
-    queryKey: [...SOURCE_FILES_QUERY_KEY, { pageSize: _pageSize }] as const,
+    queryKey: [...SOURCE_FILES_QUERY_KEY, { pageSize }] as const,
     initialPageParam: null as SourceFilePageParam,
     getNextPageParam: (lastPage: SourceFilePage): SourceFilePageParam =>
       lastPage.nextPageToken ?? null,
