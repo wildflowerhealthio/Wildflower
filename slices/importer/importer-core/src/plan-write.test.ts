@@ -1,4 +1,4 @@
-import { Schema } from 'effect'
+import { ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { type FormatDecode, PickedFileSource, StagedImport } from 'importer-fundamentals'
@@ -44,7 +44,9 @@ describe('planFormatWrite', () => {
             bytes: new Uint8Array(),
             source: PickedFileSource.local,
           },
-          error: Schema.decodeUnknownSync(Schema.Never)('x'),
+          error: new ParseResult.ParseError({
+            issue: new ParseResult.Type(Schema.Never.ast, 'x', 'unreadable'),
+          }),
         },
       ],
     }
