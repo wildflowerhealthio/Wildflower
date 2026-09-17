@@ -669,17 +669,20 @@ const PreviewPanel = ({
     setEditing(makeClosedEditor())
   }
 
-  const formatGroups = formatKinds
-    .map((format) => ({
-      format,
-      files: files.filter((file): file is BatchEntry => {
-        return Either.merge(file).format === format
-      }),
-    }))
-    .filter((group) => group.files.length > 0)
-  const unrecognized = files.filter(
-    (file) => Either.isLeft(file) && file.left._tag === 'UnrecognizedFile'
-  )
+  const { formatGroups, unrecognized } = useMemo(() => {
+    const groups = formatKinds
+      .map((format) => ({
+        format,
+        files: files.filter((file): file is BatchEntry => Either.merge(file).format === format),
+      }))
+      .filter((group) => group.files.length > 0)
+    return {
+      formatGroups: groups,
+      unrecognized: files.filter(
+        (file) => Either.isLeft(file) && file.left._tag === 'UnrecognizedFile'
+      ),
+    }
+  }, [files])
 
   return (
     <section aria-label="Import preview" className={styles.panel}>
