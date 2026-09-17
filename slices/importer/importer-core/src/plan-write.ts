@@ -1,4 +1,3 @@
-import { Option } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
 import { StagedImport, DecodedFile, type FormatDecode } from 'importer-fundamentals'
 
@@ -52,11 +51,7 @@ const planFormatWrite = (
   selection: StagedImport.Selection
 ): WritePlan => {
   const labeled = DecodedFile.resources(result.decoded)
-  const resources = labeled
-    .filter((entry) => StagedImport.isResourceIncluded(selection, entry.key))
-    .map((entry) =>
-      Option.getOrElse(StagedImport.editedResource(selection, entry.key), () => entry.resource)
-    )
+  const resources = StagedImport.chosenResources(labeled, selection)
   if (resources.length === 0) {
     const reason: SkipReason =
       labeled.length === 0 && result.unreadableFiles.length > 0 ? 'unreadable' : 'nothing'
