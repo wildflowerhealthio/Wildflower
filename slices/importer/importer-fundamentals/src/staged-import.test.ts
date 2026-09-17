@@ -405,6 +405,67 @@ describe('StagedImport.chosenResources', () => {
 })
 
 // ---------------------------------------------------------------------------
+// StagedImport.chosenEntries
+// ---------------------------------------------------------------------------
+
+describe('StagedImport.chosenEntries', () => {
+  it('should return all entries with keys when nothing is excluded or edited', () => {
+    const entries = StagedImport.chosenEntries(threeLabeled, StagedImport.initial<string>())
+
+    expect(entries).toEqual([
+      { key: 'a', resource: 'alpha' },
+      { key: 'b', resource: 'beta' },
+      { key: 'c', resource: 'gamma' },
+    ])
+  })
+
+  it('should drop exactly the excluded entry', () => {
+    const selection = StagedImport.toggleResource(StagedImport.initial<string>(), 'b')
+    const entries = StagedImport.chosenEntries(threeLabeled, selection)
+
+    expect(entries).toEqual([
+      { key: 'a', resource: 'alpha' },
+      { key: 'c', resource: 'gamma' },
+    ])
+  })
+
+  it('should substitute an edit override in place of the original', () => {
+    const selection = StagedImport.edit(StagedImport.initial<string>(), 'b', 'BETA')
+    const entries = StagedImport.chosenEntries(threeLabeled, selection)
+
+    expect(entries).toEqual([
+      { key: 'a', resource: 'alpha' },
+      { key: 'b', resource: 'BETA' },
+      { key: 'c', resource: 'gamma' },
+    ])
+  })
+
+  it('should agree with chosenResources on the resource values (property)', () => {
+    const keys = ['a', 'b', 'c'] as const
+
+    fc.assert(
+      fc.property(
+        fc.subarray([...keys]),
+        fc.array(fc.tuple(fc.constantFrom(...keys), fc.string()), {
+          minLength: 0,
+          maxLength: 6,
+        }),
+        (excluded, edits) => {
+          let selection = StagedImport.initial<string>()
+          for (const key of excluded) selection = StagedImport.toggleResource(selection, key)
+          for (const [key, value] of edits) selection = StagedImport.edit(selection, key, value)
+
+          const entries = StagedImport.chosenEntries(threeLabeled, selection)
+          const resources = StagedImport.chosenResources(threeLabeled, selection)
+          expect(entries.map((e) => e.resource)).toEqual(resources)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 40 }) }
+    )
+  })
+})
+
+// ---------------------------------------------------------------------------
 // StagedImport.includedCount
 // ---------------------------------------------------------------------------
 

@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { Effect, Match, Option } from 'effect'
+import { Effect } from 'effect'
 import { useCallback, useRef, useState } from 'react'
 
 import { useRunAuthed } from 'fhir-r4-react'
 import { type FhirR4ResourcesHttpApiClient, persistBatchBundle } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import { StagedImport, sectionResources } from 'importer-fundamentals'
+import { Decode, StagedImport } from 'importer-fundamentals'
 import { withMetaSource } from 'web-trace-core/provenance'
 
 import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
@@ -13,7 +13,6 @@ import {
   type BatchOutcome,
   type FileImportResult,
   importOutcome,
-  type SkipReason,
 } from '../results/import-outcome.ts'
 import { sourceFileReference, type PickedFile } from '../sources/picked-file.ts'
 import type { FileReadOutcome } from './use-import-run.ts'
@@ -89,33 +88,6 @@ interface ConfirmImport {
   readonly reset: () => void
 }
 
-/** One chosen resource carried with the review key it was chosen under. */
-interface ChosenEntry {
-  readonly key: string
-  readonly resource: FhirResource
-}
-
-/**
- * Every labeled resource the reviewer left included, with any inline edit
- * substituted in, carried alongside its {@link StagedImport.Selection} key — the
- * key form of {@link StagedImport.chosenResources}, so the confirm can tell the
- * file's source file apart from the extracted resources by its stable key
- * rather than by re-recognizing its coding.
- */
-const chosenEntries = (
-  labeled: readonly { readonly key: string; readonly resource: FhirResource }[],
-  selection: StagedImport.Selection<FhirResource>
-): readonly ChosenEntry[] =>
-  labeled
-    .filter((entry) => StagedImport.isResourceIncluded(selection, entry.key))
-    .map((entry) => ({
-      key: entry.key,
-      resource: Option.getOrElse(
-        StagedImport.editedResource(selection, entry.key),
-        () => entry.resource
-      ),
-    }))
-
 /** Replace a resource's `id`, preserving its concrete type — mirrors {@link withMetaSource}. */
 const withId = <TResource extends { readonly id: string | null }>(
   resource: TResource,
@@ -155,40 +127,34 @@ const importOneFile = (
 ): Effect.Effect<FileImportResult, never, FhirR4ResourcesHttpApiClient> => {
   const { id, picked } = file
   const fileName = picked.fileName
-  const skip = (reason: SkipReason): Effect.Effect<FileImportResult> =>
-    Effect.succeed({ _tag: 'skipped', id, fileName, reason })
-  return Match.value(file).pipe(
-    Match.tag('unreadable', () => skip('unreadable')),
-    Match.tag('unrecognized', () => skip('unreadable')),
-    Match.tag('read', ({ decoded, sourceFile }) => {
-      const selection = selectionFor(id)
-      const labeled = sectionResources(decoded.sections)
-      const chosen = chosenEntries(labeled, selection)
-      const excluded = StagedImport.excludedCount(labeled, selection)
-      if (chosen.length === 0) return skip('nothing')
+  const selection = file._tag === 'read' ? selectionFor(id) : StagedImport.initial<FhirResource>()
+  const writeSet = Decode.fromSingleFileDecode(file, selection)
 
-      const sourceFileKey = sourceFile?.key
-      const canonicalId = sourceFile?.resource.id ?? null
-      const sourceFileIncluded =
-        sourceFile !== undefined && StagedImport.isResourceIncluded(selection, sourceFile.key)
-      const sourceRef = provenanceRef(picked, canonicalId, sourceFileIncluded)
+  if (writeSet._tag === 'skip') {
+    return Effect.succeed({ _tag: 'skipped', id, fileName, reason: writeSet.reason })
+  }
 
-      const resources = chosen.map(({ key, resource }) => {
-        if (key === sourceFileKey)
-          return canonicalId === null ? resource : withId(resource, canonicalId)
-        return sourceRef === undefined ? resource : withMetaSource(resource, sourceRef)
-      })
+  const { chosen, excluded } = writeSet
+  const sourceFile = file._tag === 'read' ? file.sourceFile : undefined
+  const sourceFileKey = sourceFile?.key
+  const canonicalId = sourceFile?.resource.id ?? null
+  const sourceFileIncluded =
+    sourceFile !== undefined && StagedImport.isResourceIncluded(selection, sourceFile.key)
+  const sourceRef = provenanceRef(picked, canonicalId, sourceFileIncluded)
 
-      return persistBatchBundle(resources).pipe(
-        Effect.map((entries): FileImportResult => ({
-          _tag: 'imported',
-          id,
-          fileName,
-          outcome: importOutcome(resources.length, sourceRef, fileName, entries, excluded),
-        }))
-      )
-    }),
-    Match.exhaustive
+  const resources = chosen.map(({ key, resource }) => {
+    if (key === sourceFileKey)
+      return canonicalId === null ? resource : withId(resource, canonicalId)
+    return sourceRef === undefined ? resource : withMetaSource(resource, sourceRef)
+  })
+
+  return persistBatchBundle(resources).pipe(
+    Effect.map((entries): FileImportResult => ({
+      _tag: 'imported',
+      id,
+      fileName,
+      outcome: importOutcome(resources.length, sourceRef, fileName, entries, excluded),
+    }))
   )
 }
 

@@ -127,6 +127,39 @@ const editedResource = <TParsed>(
 }
 
 /**
+ * One chosen resource carried with the review key it was chosen under — the
+ * key-preserving unit of the confirm's write set. The key lets a downstream
+ * consumer (the provenance-stamping confirm, a planned `planFormatWrite`)
+ * distinguish a file's source file from its extracted resources by its stable
+ * key rather than by re-recognizing its coding.
+ */
+interface ChosenEntry<TParsed> {
+  readonly key: string
+  readonly resource: TParsed
+}
+
+/**
+ * The confirm's write set with keys preserved: every labeled resource the
+ * reviewer left included, with any inline edit substituted in, carried
+ * alongside its {@link Selection} key, in resolve order.
+ *
+ * @param labeled - The labeled resources from the format's `resolve`
+ * @param selection - The reviewer's per-resource choices
+ * @returns The chosen entries, each replaced by its edit override when the
+ *   reviewer has set one
+ */
+const chosenEntries = <TParsed>(
+  labeled: readonly LabeledResource<TParsed>[],
+  selection: Selection<TParsed>
+): readonly ChosenEntry<TParsed>[] =>
+  labeled
+    .filter((entry) => isResourceIncluded(selection, entry.key))
+    .map((entry) => ({
+      key: entry.key,
+      resource: selection.resourceOverrides.get(entry.key) ?? entry.resource,
+    }))
+
+/**
  * The confirm's write set: every labeled resource the reviewer left included,
  * with any inline edit substituted in, in resolve order.
  *
@@ -138,10 +171,7 @@ const editedResource = <TParsed>(
 const chosenResources = <TParsed>(
   labeled: readonly LabeledResource<TParsed>[],
   selection: Selection<TParsed>
-): readonly TParsed[] =>
-  labeled
-    .filter((entry) => isResourceIncluded(selection, entry.key))
-    .map((entry) => selection.resourceOverrides.get(entry.key) ?? entry.resource)
+): readonly TParsed[] => chosenEntries(labeled, selection).map((entry) => entry.resource)
 
 /** How many labeled resources are included under a selection. */
 const includedCount = <TParsed>(
@@ -156,6 +186,7 @@ const excludedCount = (
 ): number => labeled.filter((entry) => !isResourceIncluded(selection, entry.key)).length
 
 export {
+  chosenEntries,
   chosenResources,
   edit,
   editedResource,
@@ -168,4 +199,4 @@ export {
   setResourcesIncluded,
   toggleResource,
 }
-export type { Selection }
+export type { ChosenEntry, Selection }

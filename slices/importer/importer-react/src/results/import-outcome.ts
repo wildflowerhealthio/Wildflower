@@ -1,4 +1,5 @@
 import type { BatchEntryOutcome, WriteIssue } from 'fhir-r4/clients'
+import type { Decode } from 'importer-fundamentals'
 
 /**
  * What a confirmed import wrote, and what it could not — the value the results
@@ -91,17 +92,10 @@ const isPartialOutcome = (outcome: ImportOutcome): boolean =>
 
 /**
  * Why a file in a batch contributed no written resources without that being a
- * failure.
- *
- * @remarks
- * The read half's non-writing outcome, plus the rare unreadable file: a
- * `nothing` file previewed no resources to import (its traffic matched no kind,
- * or matched but decoded nothing — one collapsed outcome under per-URL
- * recognition), and an `unreadable` file did not parse as a HAR at all. Neither
- * is a failure — an empty preview is ordinary data, not an error — but each is
- * reported so a reader knows why a file they picked wrote nothing.
+ * failure — re-exported from the canonical definition in
+ * `importer-fundamentals`' {@link Decode} namespace.
  */
-type SkipReason = 'nothing' | 'unreadable'
+type SkipReason = Decode.SkipReason
 
 /**
  * What a single file in a confirmed batch resolved to.
