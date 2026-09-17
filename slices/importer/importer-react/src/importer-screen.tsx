@@ -1,8 +1,7 @@
-import { Either } from 'effect'
+import { Array as Arr, Either, Option, pipe } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import { entryId } from 'importer-core'
 import { StagedImport, sectionResources } from 'importer-fundamentals'
-import { type JSX, useCallback, useState } from 'react'
+import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
 import { useConfirmImport } from './preview/use-confirm-import.ts'
@@ -69,29 +68,35 @@ const ImporterScreen = (): JSX.Element => {
   const readFiles = runState._tag === 'ready' ? runState.units : undefined
   const diff = useServerDiff(readFiles, runState._tag === 'ready' ? runState.batchId : 0)
 
-  const selectionFor = useCallback(
-    (fileId: string): StagedImport.Selection<FhirResource> => {
-      const user = selections.get(fileId)
-      if (user !== undefined) return user
-      // Seed the initial selection from the server-diff status: an
-      // `unchanged` resource is pre-excluded so a re-import writes nothing
-      // by default. As soon as the reviewer toggles anything,
-      // `selections.get(fileId)` wins and this seed is out of the picture.
-      if (diff._tag === 'loading' || readFiles === undefined) {
-        return StagedImport.initial<FhirResource>()
-      }
-      const unit = readFiles.find(
-        (candidate) => entryId(candidate) === fileId && Either.isRight(candidate)
+  const initialSelections = useMemo((): ReadonlyMap<
+    string,
+    StagedImport.Selection<FhirResource>
+  > => {
+    if (diff._tag === 'loading' || readFiles === undefined) return new Map()
+    return new Map(
+      Arr.filterMap(readFiles, (unit) =>
+        pipe(
+          Either.getRight(unit),
+          Option.flatMap(({ id, decoded }) => {
+            const labeled = sectionResources(decoded.sections)
+            const excluded = initialExclusionsFor(labeled, diff.comparisons.get(id))
+            if (excluded.size === 0) return Option.none()
+            return Option.some([
+              id,
+              { excludedResources: excluded, resourceOverrides: new Map() },
+            ] as const)
+          })
+        )
       )
-      if (unit === undefined || !Either.isRight(unit)) return StagedImport.initial<FhirResource>()
-      const labeled = sectionResources(unit.right.decoded.sections)
-      if (labeled.length === 0) return StagedImport.initial<FhirResource>()
-      return {
-        excludedResources: initialExclusionsFor(labeled, diff.comparisons.get(fileId)),
-        resourceOverrides: new Map(),
-      }
-    },
-    [selections, diff, readFiles]
+    )
+  }, [diff, readFiles])
+
+  const selectionFor = useCallback(
+    (fileId: string): StagedImport.Selection<FhirResource> =>
+      selections.get(fileId) ??
+      initialSelections.get(fileId) ??
+      StagedImport.initial<FhirResource>(),
+    [selections, initialSelections]
   )
 
   const onSelectionChange = useCallback(
