@@ -52,8 +52,9 @@ const SKIPPED_HEADING = 'Files with nothing to import'
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
 
 /** Why a skipped file wrote nothing, in words a reader can act on. */
-const skipReasonText = (reason: SkipReason): string => {
+const skipReasonText = (reason: SkipReason | 'unrecognized'): string => {
   if (reason === 'nothing') return 'Nothing here to import.'
+  if (reason === 'unrecognized') return 'File type not recognized.'
   return 'Could not be read.'
 }
 

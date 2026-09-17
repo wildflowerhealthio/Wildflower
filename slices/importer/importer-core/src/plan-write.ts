@@ -24,9 +24,9 @@ import { StagedImport, DecodedFile, type FormatDecode } from 'importer-fundament
  * Why a format in a confirmed batch contributes no written resources
  * without that being a failure: `nothing` — the review kept none of its
  * resources (or its decode yielded none); `unreadable` — all its files
- * rejected during decode; `unrecognized` — no format claimed the file.
+ * rejected during decode.
  */
-type SkipReason = 'nothing' | 'unreadable' | 'unrecognized'
+type SkipReason = 'nothing' | 'unreadable'
 
 /** What one format's confirm should do. */
 type WritePlan =

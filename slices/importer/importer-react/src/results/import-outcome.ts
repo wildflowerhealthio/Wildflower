@@ -100,7 +100,7 @@ type FileImportResult =
       readonly _tag: 'skipped'
       readonly id: string
       readonly title: string
-      readonly reason: SkipReason
+      readonly reason: SkipReason | 'unrecognized'
     }
 
 /** A confirmed batch: one {@link FileImportResult} per unit the user confirmed. */
