@@ -67,9 +67,9 @@ const decodeReports = (
   )
 
 /** The one `read` unit a single-file decode yields, or a failure naming what came back. */
-const readUnit = <TParsed>(
-  outcomes: readonly Either.Either<ReadUnit<TParsed, string>, unknown>[]
-): ReadUnit<TParsed, string>['decoded'] => {
+const readUnit = (
+  outcomes: readonly Either.Either<ReadUnit<string>, unknown>[]
+): ReadUnit<string>['decoded'] => {
   expect(outcomes).toHaveLength(1)
   const [outcome] = outcomes
   if (outcome === undefined || !Either.isRight(outcome)) {

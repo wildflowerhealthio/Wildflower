@@ -64,7 +64,7 @@ const fakeDecode =
   (
     files: readonly PickedFile[],
     settings: unknown
-  ): Effect.Effect<readonly Either.Either<ReadUnit<FhirResource, K>, UnreadableUnit<K>>[]> =>
+  ): Effect.Effect<readonly Either.Either<ReadUnit<K>, UnreadableUnit<K>>[]> =>
     Effect.succeed(
       files.map((file) =>
         file.bytes[0] === 0

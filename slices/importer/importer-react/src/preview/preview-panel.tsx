@@ -491,7 +491,7 @@ const ReadFileBody = ({
   onSelectionChange,
   onEditResource,
 }: {
-  readonly file: ReadUnit<FhirResource, FormatKind>
+  readonly file: ReadUnit<FormatKind>
   readonly selection: StagedImport.Selection<FhirResource>
   /** This unit's own verdicts by resource key; `undefined` renders no badges. */
   readonly comparisons: ReadonlyMap<string, ServerComparison> | undefined

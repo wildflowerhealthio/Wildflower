@@ -1,5 +1,7 @@
 import { Effect, Either, ParseResult, Schema } from 'effect'
 
+import type { FhirResource } from 'fhir-r4/resources'
+
 import type {
   DecodedFile,
   DocumentReferenceType,
@@ -162,11 +164,11 @@ const withSections = <TParsed>(
  * `ImagingStudy` instance names it) reads it here rather than recomputing
  * it.
  */
-type DecodeOne<TSettings, TParsed> = (
+type DecodeOne<TSettings> = (
   file: PickedFile,
   settings: TSettings,
   source: Ref
-) => Effect.Effect<DecodedFile<TParsed>, ParseResult.ParseError>
+) => Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError>
 
 /** The per-format knobs {@link perFileDecode} takes beside the codec and the decode. */
 interface PerFileDecodeOptions {
@@ -191,13 +193,11 @@ interface PerFileDecodeOptions {
  *
  * @typeParam TFormat - The format tag literal (e.g. `'har'`), read from the codec
  * @typeParam TSettings - The format's per-import settings
- * @typeParam TParsed - The resource type the format decodes to; the minted
- *   `DocumentReference` joins it in the result
  * @param codec - The format's source-file codec (its `buildSourceFile` and
  *   `format` tag — the tag is stamped onto each unit and used for id derivation)
  * @param decodeOne - The format's per-file decode
  * @param options - Per-file knobs, see {@link PerFileDecodeOptions}
- * @returns A batch `decode` in the {@link FileImporterDescriptor} shape
+ * @returns A batch `decode` in the {@link FileImporter} shape
  *
  * @remarks
  * Files decode concurrently and the outcomes come back in pick order. A
@@ -205,20 +205,15 @@ interface PerFileDecodeOptions {
  * resources are stamped with the pick's existing reference.
  */
 const perFileDecode =
-  <TFormat extends string, TSettings, TParsed extends MetaSource.Sourceable>(
+  <TFormat extends string, TSettings>(
     codec: Pick<SourceFileCodec<TFormat>, 'buildSourceFile' | 'format'>,
-    decodeOne: DecodeOne<TSettings, TParsed>,
+    decodeOne: DecodeOne<TSettings>,
     options?: PerFileDecodeOptions
   ) =>
   (
     files: readonly PickedFile[],
     settings: TSettings
-  ): Effect.Effect<
-    readonly Either.Either<
-      ReadUnit<TParsed | DocumentReferenceType, TFormat>,
-      UnreadableUnit<TFormat>
-    >[]
-  > =>
+  ): Effect.Effect<readonly Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>[]> =>
     Effect.forEach(
       files,
       (file) => {
@@ -228,10 +223,7 @@ const perFileDecode =
             subject: options?.subjectFor?.(file),
           })
           const decoded = yield* decodeOne(file, settings, ref)
-          const stamped: DecodedFile<TParsed | DocumentReferenceType> = MetaSource.stampDecoded(
-            decoded,
-            SourceFileFhirReference.make(ref.id)
-          )
+          const stamped = MetaSource.stampDecoded(decoded, SourceFileFhirReference.make(ref.id))
           return Either.right({
             id,
             title: file.fileName,
@@ -241,14 +233,7 @@ const perFileDecode =
           })
         }).pipe(
           Effect.catchAll(
-            (
-              error
-            ): Effect.Effect<
-              Either.Either<
-                ReadUnit<TParsed | DocumentReferenceType, TFormat>,
-                UnreadableUnit<TFormat>
-              >
-            > =>
+            (error): Effect.Effect<Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>> =>
               Effect.succeed(
                 Either.left({
                   _tag: 'UnreadableUnit' as const,

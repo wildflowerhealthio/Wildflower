@@ -1,5 +1,5 @@
 import type { Effect, Either, ParseResult } from 'effect'
-import type { DocumentReference } from 'fhir-r4/resources'
+import type { DocumentReference, FhirResource } from 'fhir-r4/resources'
 
 import type { PickedFile } from './picked-file.ts'
 import type { SourceFileCodec } from './source-file-codec.ts'
@@ -112,7 +112,6 @@ const unitId = (format: string, files: readonly PickedFile[]): string =>
  * and the format that claimed it. Lives in the `Right` of an
  * `Either`-valued batch outcome; discrimination is via `Either.isRight`.
  *
- * @typeParam TParsed - The concrete resource type the format decodes to
  * @typeParam TFormat - The format tag (e.g. `FormatKind` in the registry)
  *
  * @remarks
@@ -122,12 +121,12 @@ const unitId = (format: string, files: readonly PickedFile[]): string =>
  * `id` is a per-unit stable identity for a React `key` and for the
  * reviewer's selection map — it survives a settings re-decode.
  */
-interface ReadUnit<TParsed, TFormat extends string> {
+interface ReadUnit<TFormat extends string> {
   readonly id: string
   readonly title: string
   readonly files: readonly PickedFile[]
   readonly format: TFormat
-  readonly decoded: DecodedFile<TParsed>
+  readonly decoded: DecodedFile<FhirResource>
 }
 
 /**
@@ -155,7 +154,6 @@ interface UnreadableUnit<TFormat extends string> {
  *
  * @typeParam TFormat - The format tag literal (`'har'`, `'lifelabs-pdf'`, etc.)
  * @typeParam TSettings - The format's per-import settings
- * @typeParam TParsed - The resource type this format decodes to
  *
  * @remarks
  * The source-file codec is encapsulated: the shell reads the category
@@ -165,7 +163,7 @@ interface UnreadableUnit<TFormat extends string> {
  * construction time (before this class is instantiated), so the decode
  * function closes over it without exposing it.
  */
-class FileImporter<TFormat extends string, TSettings, TParsed> {
+class FileImporter<TFormat extends string, TSettings> {
   readonly format: TFormat
   readonly display: { readonly title: string; readonly description: string }
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
@@ -173,7 +171,7 @@ class FileImporter<TFormat extends string, TSettings, TParsed> {
   readonly decode: (
     files: readonly PickedFile[],
     settings: TSettings
-  ) => Effect.Effect<readonly Either.Either<ReadUnit<TParsed, TFormat>, UnreadableUnit<TFormat>>[]>
+  ) => Effect.Effect<readonly Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>[]>
 
   protected readonly codec: SourceFileCodec<TFormat>
 
@@ -185,9 +183,7 @@ class FileImporter<TFormat extends string, TSettings, TParsed> {
     readonly decode: (
       files: readonly PickedFile[],
       settings: TSettings
-    ) => Effect.Effect<
-      readonly Either.Either<ReadUnit<TParsed, TFormat>, UnreadableUnit<TFormat>>[]
-    >
+    ) => Effect.Effect<readonly Either.Either<ReadUnit<TFormat>, UnreadableUnit<TFormat>>[]>
   }) {
     this.codec = config.codec
     this.format = config.codec.format
@@ -227,7 +223,7 @@ class FileImporter<TFormat extends string, TSettings, TParsed> {
  * First match wins, so registry order is priority order — put formats with
  * crisp magic-byte tests (PDF's `%PDF-`) ahead of looser syntactic ones.
  */
-const identify = <D extends Pick<FileImporter<string, never, never>, 'detect'>>(
+const identify = <D extends Pick<FileImporter<string, never>, 'detect'>>(
   descriptors: readonly D[],
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))

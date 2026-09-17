@@ -28,16 +28,17 @@ import type { JSX } from 'react'
  * importer method (detect, decode, isSourceFile, etc.) is inherited, and
  * the picker is the one addition.
  */
-class ReactFileImporter<
-  TFormat extends FormatKind,
-  TSettings = FormatVariant[TFormat]['settings'],
-  TParsed = FormatVariant[TFormat]['parsed'],
-> extends FileImporter<TFormat, TSettings, TParsed> {
-  readonly SettingsPicker: (props: SettingsPickerProps<TSettings>) => JSX.Element
+class ReactFileImporter<TFormat extends FormatKind> extends FileImporter<
+  TFormat,
+  FormatVariant[TFormat]['settings']
+> {
+  readonly SettingsPicker: (
+    props: SettingsPickerProps<FormatVariant[TFormat]['settings']>
+  ) => JSX.Element
 
   constructor(
-    importer: FileImporter<TFormat, TSettings, TParsed>,
-    SettingsPicker: (props: SettingsPickerProps<TSettings>) => JSX.Element
+    importer: FileImporter<TFormat, FormatVariant[TFormat]['settings']>,
+    SettingsPicker: (props: SettingsPickerProps<FormatVariant[TFormat]['settings']>) => JSX.Element
   ) {
     super({
       codec: importer['codec'],

@@ -1,5 +1,6 @@
 import { DateTime, Effect, Either, ParseResult, Schema, TestClock, TestContext } from 'effect'
 import * as fc from 'fast-check'
+import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -30,11 +31,21 @@ const codec = sourceFileCodec({
   idDescription: 'FHIR resource id of an uploaded example file.',
 })
 
-/** A minimal resource in the `MetaSource.Sourceable` shape; `meta` starts unset. */
+const fakeResource = (id: string): FhirResource =>
+  Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
+
+/** A minimal Sourceable value for MetaSource tests — not a real FhirResource, just needs meta. */
 interface Marker {
   readonly resourceType: 'Basic'
   readonly id: string
-  readonly meta: DocumentReferenceType['meta']
+  readonly meta: {
+    source: string | null
+    lastUpdated: null
+    profile: readonly string[]
+    security: readonly never[]
+    tag: readonly never[]
+    versionId: string | null
+  } | null
 }
 
 const marker = (id: string): Marker => ({ resourceType: 'Basic', id, meta: null })
@@ -49,7 +60,7 @@ const localFile = (fileName: string, bytes: Uint8Array): PickedFile => ({
 const decodeBytes = (
   file: PickedFile,
   _settings: null
-): Effect.Effect<DecodedFile<Marker>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
   file.bytes.length === 0
     ? Effect.fail(
         new ParseResult.ParseError({
@@ -62,8 +73,8 @@ const decodeBytes = (
             title: file.fileName,
             resources: [...file.bytes].map((byte, index) => ({
               key: `${file.fileName}:${index}`,
-              title: `Basic/${byte}`,
-              resource: marker(`${byte}`),
+              title: `Patient/${byte}`,
+              resource: fakeResource(`${byte}`),
             })),
           },
         ],
@@ -297,7 +308,7 @@ describe('perFileDecode', () => {
   it('should re-stamp the upload instant from the clock on each decode, keeping the id', async () => {
     const file = localFile('scan.bin', new Uint8Array([7]))
     const sourceRowOf = (
-      units: readonly Either.Either<ReadUnit<Marker | DocumentReferenceType, string>, unknown>[]
+      units: readonly Either.Either<ReadUnit<string>, unknown>[]
     ): DocumentReferenceType | undefined => {
       const unit = units[0]
       if (unit === undefined || !Either.isRight(unit)) return undefined

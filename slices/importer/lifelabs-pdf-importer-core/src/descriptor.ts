@@ -1,9 +1,8 @@
-import type { FhirResource } from 'fhir-r4/resources'
 import { FileImporter, SourceFile } from 'importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
-import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
+import { defaultLifeLabsPdfSettings } from './settings.ts'
 import { lifeLabsPdfSourceFileCodec } from './source-file/index.ts'
 
 /**
@@ -20,7 +19,7 @@ import { lifeLabsPdfSourceFileCodec } from './source-file/index.ts'
  * stamped onto every synthesized resource's `meta.source`; a `server` pick
  * mints nothing and stamps the reference it came with.
  */
-const lifeLabsPdfImporter = new FileImporter<'lifelabs-pdf', LifeLabsPdfSettings, FhirResource>({
+const lifeLabsPdfImporter = new FileImporter({
   codec: lifeLabsPdfSourceFileCodec,
   display: {
     title: 'LifeLabs report',

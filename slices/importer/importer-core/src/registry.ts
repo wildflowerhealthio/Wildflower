@@ -1,5 +1,4 @@
 import { type DicomSettings, dicomImporter } from 'dicom-importer-core'
-import type { FhirResource } from 'fhir-r4/resources'
 import { type HarSettings, harImporter } from 'har-importer-core'
 import type { FileImporter } from 'importer-fundamentals'
 import { type LifeLabsPdfSettings, lifeLabsPdfImporter } from 'lifelabs-pdf-importer-core'
@@ -7,31 +6,21 @@ import { type LifeLabsPdfSettings, lifeLabsPdfImporter } from 'lifelabs-pdf-impo
 /**
  * The closed, compile-time format registry: every registered
  * {@link FileImporter}, indexed by its format tag and typed through
- * {@link FormatVariant} so each entry keeps its concrete settings and parsed
- * types without erasure. The single edit point for wiring a file-format
- * binding into the importer; the React shell layers each format's
- * `SettingsPicker` on top of this record.
+ * {@link FormatVariant} so each entry keeps its concrete settings without
+ * erasure. The single edit point for wiring a file-format binding into the
+ * importer; the React shell layers each format's `SettingsPicker` on top of
+ * this record.
  *
  * @packageDocumentation
  */
 
 /**
- * Type-level map from format tag to its concrete type pair: the format's
- * settings and the resource type it decodes to.
+ * Type-level map from format tag to its concrete settings type.
  */
 interface FormatVariant {
-  har: {
-    settings: HarSettings
-    parsed: FhirResource
-  }
-  'lifelabs-pdf': {
-    settings: LifeLabsPdfSettings
-    parsed: FhirResource
-  }
-  dicom: {
-    settings: DicomSettings
-    parsed: FhirResource
-  }
+  har: { settings: HarSettings }
+  'lifelabs-pdf': { settings: LifeLabsPdfSettings }
+  dicom: { settings: DicomSettings }
 }
 
 /** Every registered file-format tag. */
@@ -48,11 +37,7 @@ type FormatSettings = { readonly [K in FormatKind]: FormatVariant[K]['settings']
  * key so every field carries the format's concrete types through
  * {@link FormatVariant}.
  */
-type BoundFormat<K extends FormatKind> = FileImporter<
-  K,
-  FormatVariant[K]['settings'],
-  FormatVariant[K]['parsed']
->
+type BoundFormat<K extends FormatKind> = FileImporter<K, FormatVariant[K]['settings']>
 
 /** The closed registry; its keys are the {@link FormatKind} union. */
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {

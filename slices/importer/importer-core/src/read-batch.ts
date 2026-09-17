@@ -1,5 +1,4 @@
 import { Data, Effect, Either } from 'effect'
-import type { FhirResource } from 'fhir-r4/resources'
 import {
   identify,
   type PickedFile,
@@ -56,10 +55,7 @@ class UnrecognizedFile extends Data.TaggedError('UnrecognizedFile')<{
 }> {}
 
 /** The batch outcome for one unit: a successfully decoded `ReadUnit` or a failure. */
-type BatchEntry = Either.Either<
-  ReadUnit<FhirResource, FormatKind>,
-  UnreadableUnit<FormatKind> | UnrecognizedFile
->
+type BatchEntry = Either.Either<ReadUnit<FormatKind>, UnreadableUnit<FormatKind> | UnrecognizedFile>
 
 /**
  * The format that claims a pick, by the first registered `detect` that
@@ -116,7 +112,7 @@ const decodeFormat = <K extends FormatKind>(
   settings: FormatSettings,
   kind: K,
   files: readonly PickedFile[]
-): Effect.Effect<readonly Either.Either<ReadUnit<FhirResource, K>, UnreadableUnit<K>>[]> =>
+): Effect.Effect<readonly Either.Either<ReadUnit<K>, UnreadableUnit<K>>[]> =>
   registry[kind].decode(files, settings[kind])
 
 /**

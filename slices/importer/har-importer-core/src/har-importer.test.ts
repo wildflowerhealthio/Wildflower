@@ -125,7 +125,7 @@ const pickedHar = (source: PickedFileSource.PickedFileSource): PickedFile => ({
 const readOne = async (
   file: PickedFile,
   settings: HarSettings = defaultHarSettings
-): Promise<ReadUnit<FhirResource, string>> => {
+): Promise<ReadUnit<string>> => {
   const units = await Effect.runPromise(harImporter.decode([file], settings))
   expect(units).toHaveLength(1)
   const unit = units[0]
