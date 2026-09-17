@@ -2,8 +2,8 @@
 
 The **DICOM binding** of the importer slice (core layer): DICOM tag parsing
 via the `dicom` file-formats package, FHIR R4 synthesis (Patient,
-ServiceRequest, ImagingStudy), byte-level `.dcm` detection, and the source
-file codec that stores a DICOM file as a FHIR `DocumentReference`.
+ServiceRequest, ImagingStudy), byte-level `.dcm` detection, and the
+source-file coding that stores a DICOM file as a FHIR `DocumentReference`.
 
 The core stays pure in the layering sense — no DOM, no `fs`, no React. A
 `.dcm` file's raw bytes in, Patient / ServiceRequest / ImagingStudy out. The
@@ -52,9 +52,9 @@ decode yields one section per file when the header carries a patient identity.
 - `src/decode.ts` — **`decodeDicom`**: parses the DICOM file via
   `parseDicomFile`, synthesizes FHIR resources via `toFhirResources`, adopts
   them under `DICOM_SYSTEM`. Takes `(file, settings, source)` — the picked
-  file, the import's settings, and the source-file `DocumentReference`
-  `perFileDecode` resolved for it (minted for a local pick, the existing one
-  for a server pick). It rejects a `settings.timeZone` the runtime cannot
+  file, the import's settings, and the source-file id the importer's batch
+  `decode` resolved for it (minted for a local pick, read off the existing
+  reference for a server pick). It rejects a `settings.timeZone` the runtime cannot
   resolve up front (`checkTimeZone`, a `ParseError`) rather than substituting
   one — every `started` it emits is resolved against that zone, so a guess
   would write instants hours away from what the equipment recorded. The
@@ -63,30 +63,33 @@ decode yields one section per file when the header carries a patient identity.
   resolved source file and derives nothing from the bytes, so the link and the
   stored resource name the same thing by construction. One section titled
   `<Modality> <StudyDescription> · <StudyDate>` with stable keys `patient`,
-  `service-request`, `imaging-study`. Notes for missing patient identity or
-  absent AccessionNumber. A `dicom-parser` failure is a `ParseError`.
-- `src/source-file/dicom-source-file-codec.ts` — thin config over
-  `sourceFileCodec` with the DICOM coding
-  (`DICOM_SYSTEM|dicom-source-file`), content type `application/dicom`. It
-  exports the whole `dicomSourceFileCodec` beside the pieces, since
-  `perFileDecode` mints through the codec itself.
-- `src/source-file/index.ts` — barrel re-exporting codec + `DICOM_SYSTEM`.
-- `src/descriptor.ts` — the `FileImporterDescriptor` for format `'dicom'`.
-  Its `decode` is `perFileDecode(dicomSourceFileCodec, decodeDicom, {
-subjectFor: patientSubjectOf })`: the shared helper mints each local pick's
-  source file, lists it as its own "Source file" section, stamps every
-  extracted resource's `meta.source` with it, and hands its reference to
-  `decodeDicom`. **`patientSubjectOf`** (exported) is the one format-specific
-  knob — it parses the header and returns the `Patient/<localResourceId>`
-  reference the minted source file links to, or `undefined` for bytes that are
-  not DICOM or a header with no patient identity. The descriptor carries no
-  `buildSourceFile` of its own.
+  `service-request`, `imaging-study`. Those keys are fixed _within one file_ —
+  safe only because `fileImporter` prefixes each file's keys with its slot in
+  the batch, which is what keeps eight picked images from all colliding on
+  `patient`. Notes for missing patient identity or absent AccessionNumber. A
+  `dicom-parser` failure is a `ParseError`.
+- `src/source-file/index.ts` — barrel re-exporting the coding constants
+  (`DICOM_SYSTEM`, `DICOM_SOURCE_FILE_CODE`,
+  `DICOM_SOURCE_FILE_CONTENT_TYPE`). The FHIR encoding is not written here —
+  `descriptor.ts` passes those constants to `fileImporter` as data.
+- `src/descriptor.ts` — **`dicomImporter`**, the `fileImporter` call for format
+  `'dicom'`: the DICOM coding (`DICOM_SYSTEM|dicom-source-file`), content type
+  `application/dicom`, `detectDicom`, the default settings, `decodeDicom` as
+  its `decodeOne`, and `subjectFor: patientSubjectOf`. The batch decode
+  `fileImporter` returns mints each local pick's source file, lists it as its
+  own "Source file" section, stamps every extracted resource's `meta.source`
+  with it, and hands its id to `decodeDicom`. **`patientSubjectOf`** (exported)
+  is the one format-specific knob: it reads the `Patient` off the _decode's own
+  resources_ and returns its `Patient/<id>` reference, so the raw image is
+  filed in that patient's record — and the file is parsed once, not twice. A
+  header with no patient identity decodes to no `Patient` and so gets no
+  subject.
 - `src/index.ts` — public API barrel.
 
 ## Layering
 
 - **Depends on**: `dicom` (DICOM tag parsing), `importer-fundamentals`
-  (the `FileImporterDescriptor` contract, `sourceFileCodec`), `fhir-r4`
+  (the `FileImporter` contract and its `fileImporter` factory), `fhir-r4`
   (resource types + identity), `kitchen-sink` (`fnv1a64`), `effect`.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).

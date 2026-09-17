@@ -2,7 +2,7 @@
  * The DICOM binding of the importer slice (core layer): DICOM tag parsing
  * via the `dicom` file-formats package, FHIR R4 synthesis (Patient,
  * ServiceRequest, ImagingStudy), byte-level `.dcm` detection, and the
- * source file codec. No DOM, no `fs`, no React.
+ * source-file coding. No DOM, no `fs`, no React.
  *
  * @packageDocumentation
  */

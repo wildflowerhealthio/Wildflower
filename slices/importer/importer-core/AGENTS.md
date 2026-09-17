@@ -13,32 +13,38 @@ write plan with this package alone.
 ## Shape
 
 - `src/registry.ts` — the closed, compile-time **`formatRegistry`**:
-  `{ har, 'lifelabs-pdf', dicom }`, each entry the format's
-  `FileImporterDescriptor` typed through the **`FormatVariant`** type-level
-  map (`settings` / `parsed` per format) as a **`BoundFormat<K>`**, so
-  per-format concrete types survive without casts and a format missing a
-  descriptor field fails to compile here. **`FormatKind`** is the key union,
-  **`FormatSettings`** the per-format settings record, **`defaultFormatSettings`**
-  the seed a fresh import starts from, and **`formatKinds`** the typed
-  registry-order walk. Adding a format is one `FormatVariant` entry, one
-  registry entry, one default, one kind.
+  `{ har, 'lifelabs-pdf', dicom }`, each entry the format's `FileImporter`
+  typed as a **`BoundFormat<K>`**, so per-format concrete types survive
+  without casts and a format missing a field fails to compile here.
+  **`FormatSettings`** is the per-format settings record and the source of
+  truth — **`FormatKind`** is its key union, **`defaultFormatSettings`** the
+  seed a fresh import starts from, and **`formatKinds`** the typed
+  registry-order walk, _derived_ from `formatRegistry` rather than listed,
+  because a hand-written `readonly FormatKind[]` was the one slot a missing
+  format could slip through silently. Adding a format is one `FormatSettings`
+  entry, one registry entry, one default — and `collectFormats` below. All
+  four are mapped or exhaustive types over `FormatKind`, so missing any of
+  them is a compile error.
 - `src/read-batch.ts` — the read half as pure functions over a
   **`ReadRegistry`** (each format's `detect` + `decode`): **`groupByFormat`**
   splits a pick by the first claiming `detect`; **`decodeFormat`** runs one
   format's batch `decode` under its settings — generic in `K` so
   `registry[kind]` and `settings[kind]` stay correlated with no per-format
-  `Match` branch; **`readBatch`** decodes every group concurrently and yields
-  one **`BatchEntry`** (`Either<ReadUnit<FhirResource, FormatKind>,
-UnreadableUnit<FormatKind> | UnrecognizedFile>`) per unit — ids are
-  deterministic via `unitId`, and **`entryId`** / **`entryFormat`** extract
-  the id or format from either side; **`UnrecognizedFile`** is a
-  `Data.TaggedError` for a pick no `detect` claimed;
-  **`redecodeFormat`** re-runs one format's units from their retained files
-  under new settings (ids are deterministic, so no id-preservation logic is
-  needed).
-- `src/plan-write.ts` — **`planUnitWrite(entry, selection)`**, the pure half of
-  the confirm: takes a `BatchEntry` and uses `Either.match` to produce a
-  `write` of exactly the reviewed resources (exclusions applied, inline edits
+  `Match` branch; **`readBatch`** decodes every group concurrently into a
+  **`BatchDecodeResult`** — one `FormatDecode.Result<K>` per registered
+  format (an `emptyResult` for a format that claimed nothing) plus the
+  **`UnrecognizedFile`**s, plain data for the picks no `detect` claimed;
+  **`claimedFormats`** names the formats that actually took part, the one
+  predicate the preview and the confirm both read; **`redecodeFormat`**
+  re-runs one format's files from their retained picks under new settings
+  (ids are deterministic, so no id-preservation logic is needed).
+  **`collectFormats`** is the one place the registry is enumerated by name,
+  and its remarks say why: TypeScript drops the correlation between a computed
+  union key and its value, so a record assembled from a `kind` variable is
+  checked against nothing.
+- `src/plan-write.ts` — **`planFormatWrite(result, selection)`**, the pure half
+  of the confirm: from one format's decode result it produces a `write` of
+  exactly the reviewed resources (exclusions applied, inline edits
   substituted, in review order) with the `excluded` count, or a `skip` with
   its **`SkipReason`** (`nothing` / `unreadable` / `unrecognized`). It adds no
   provenance and rewrites nothing: the format's `decode` already minted the
@@ -47,7 +53,7 @@ UnreadableUnit<FormatKind> | UnrecognizedFile>`) per unit — ids are
 ## Layering
 
 Depends on `importer-fundamentals` (the contract, `PickedFile`, `StagedImport`),
-the three `*-importer-core` bindings (the descriptors the registry lists),
+the three `*-importer-core` bindings (the importers the registry lists),
 `fhir-r4` (the `FhirResource` type), and `effect`. Depended on by
 `importer-react`. Imports no `*-importer-react`, no `web-trace-core`, and
 nothing from `slices/collector` or `slices/http-extraction`.
@@ -56,16 +62,18 @@ nothing from `slices/collector` or `slices/http-extraction`.
 
 - **No source-file knowledge here.** What a source file is, which resources
   point at it, and what happens to those links when the reviewer excludes it
-  are each format's decisions, made inside its `decode` through
-  `importer-fundamentals`' helpers. `readBatch` and `planUnitWrite` treat the
-  source-file row as any other resource. Do not reintroduce a shell-side
-  mint, a side map of source files, or a "primary file".
-- **Unit ids are deterministic via `unitId`.** The id is derived from the
-  format tag and the picked files, so a re-decode produces the same ids and
-  the reviewer's selection (keyed by unit id) keeps applying.
-- **`decode` never fails.** A malformed file is an `unreadable` unit, folded
-  by the format; there is no `catchAll` in the read half, and a format that
-  raised would be a contract bug, not a case to handle here.
+  are each format's decisions, made inside its `decode` by
+  `importer-fundamentals`' `fileImporter`. `readBatch` and `planFormatWrite`
+  treat the source-file row as any other resource. Do not reintroduce a
+  shell-side mint, a side map of source files, or a "primary file".
+- **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from
+  the format tag and the picked files — each file's _slot_ (its index and
+  name), so two picks of the same name stay distinct — and a re-decode hands
+  the same `files` array back, so the same ids come out and the reviewer's
+  selection keeps applying.
+- **`decode` never fails.** A malformed file is an `unreadableFiles` entry,
+  folded by `fileImporter`; there is no `catchAll` in the read half, and a
+  format that raised would be a contract bug, not a case to handle here.
 - **Dispatch generically, not by `Match`.** Indexing the registry by a
   `FormatKind` union loses the per-format correlation; a generic
   `<K extends FormatKind>(kind: K)` helper keeps it. Add formats to the
@@ -75,7 +83,7 @@ nothing from `slices/collector` or `slices/http-extraction`.
 
 - [slices/importer AGENTS.md](../AGENTS.md) — package roles and layering.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
-  descriptor contract, the source-file helpers, and `StagedImport`.
+  `FileImporter` contract, the source-file seam, and `StagedImport`.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
   runs these functions from its hooks.
 - [Adding a File-Format Importer How-To](../docs/Adding%20a%20File-Format%20Importer%20How-To.md)

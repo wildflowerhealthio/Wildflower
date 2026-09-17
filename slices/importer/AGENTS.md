@@ -22,59 +22,62 @@ Part of the offline FHIR HAR importer epic (#489).
 Each package's own AGENTS.md is the authority on its shape; the roles:
 
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
-  (resource-agnostic, format-agnostic) — the `FileImporterDescriptor` contract
-  (a batch `decode` yielding one `Either<ReadUnit, UnreadableUnit>` per unit —
-  a `ReadUnit` with a `DecodedFile` of titled `LabeledSection`s plus diagnostic
-  notes, or an `UnreadableUnit` with its `ParseError` — plus the deterministic
-  `unitId` derivation and the server-read seam for uploaded source files), the
-  `PickedFile` vocabulary, the `SourceFile` reference/decode vocabulary and the
-  `FileImporter` class's internal helpers a format's `decode` mints its own
-  source file with, and the pure per-resource `StagedImport` model. There is
-  no `persist` sink: the write is the shell's one `persistBatchBundle`.
+  (resource-agnostic, format-agnostic) — the `FileImporter` contract and the
+  `fileImporter` factory that builds one: a binding gives a per-file
+  `decodeOne` and its coding constants, and gets back the batch `decode` the
+  shell runs (one `FormatDecode.Result` per format: the merged sections and
+  notes, plus an `unreadableFiles` row per file that rejected), the
+  deterministic source-file mint and its server-read seam, and the per-file
+  review-key namespacing that keeps one claimed file's keys from colliding
+  with another's. Also the `PickedFile` vocabulary, the `SourceFile`
+  reference/decode vocabulary, and the pure per-resource `StagedImport` model.
+  There is no `persist` sink: the write is the shell's one
+  `persistBatchBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
-  `harImporterDescriptor` for format `'har'`: HAR decode through the
+  `harImporter` for format `'har'`: HAR decode through the
   pre-adopted FHIR response-kind pool into per-URL sections (with a note per
-  response that yielded nothing) and its own HAR source-file codec, minted
-  inside `decode`. The kind toggles are a _setting_
+  response that yielded nothing), under the HAR source-file coding its importer
+  mints from inside `decode`. The kind toggles are a _setting_
   (`HarSettings.disabledKinds`), applied inside `decode` too.
 - **[`har-importer-react`](./har-importer-react/AGENTS.md)** (the HAR UI) —
   `HarSettingsPicker`, the whole-import kind toggles grouped by source. The
   format has no review UI of its own; the shell's generalized sectioned
   review covers it.
 - **[`lifelabs-pdf-importer-core`](./lifelabs-pdf-importer-core/AGENTS.md)** (the
-  LifeLabs PDF binding) — `lifeLabsPdfImporterDescriptor` for format
+  LifeLabs PDF binding) — `lifeLabsPdfImporter` for format
   `'lifelabs-pdf'`: takes a picked LifeLabs report PDF's raw bytes end-to-end,
   running `positioned-text-web`'s extraction seam (the same one the PDF
   anonymizer uses) before the positioned-text dialect and the FHIR R4
-  synthesis, and its own PDF source-file codec. Its decode yields one section per
-  report the PDF carries; this format makes no HTTP routing decisions (no
+  synthesis, under its own PDF source-file coding. Its decode yields one section
+  per report the PDF carries; this format makes no HTTP routing decisions (no
   response-kind recognition; this format is documents, not archived HTTP
   traffic).
 - **[`lifelabs-pdf-importer-react`](./lifelabs-pdf-importer-react/AGENTS.md)**
   (the LifeLabs PDF UI) — `LifeLabsPdfSettingsPicker` (the report's time zone).
 - **[`dicom-importer-core`](./dicom-importer-core/AGENTS.md)** (the DICOM
-  binding) — `dicomImporterDescriptor` for format `'dicom'`: byte-level `.dcm`
+  binding) — `dicomImporter` for format `'dicom'`: byte-level `.dcm`
   detection (DICM magic at offset 128 or `.dcm` extension), the source-file
-  codec that stores a DICOM file as a FHIR `DocumentReference` (linked to the
-  Patient its header names), header tag parsing,
-  and FHIR R4 synthesis (Patient / ServiceRequest / ImagingStudy).
+  coding that stores a DICOM file as a FHIR `DocumentReference` filed under the
+  Patient the decode synthesized (its `subjectFor` reads that Patient off the
+  decode, so the file is parsed once), header tag parsing, and FHIR R4
+  synthesis (Patient / ServiceRequest / ImagingStudy).
 - **[`dicom-importer-react`](./dicom-importer-react/AGENTS.md)** (the DICOM
   UI) — `DicomSettingsPicker` (the acquiring equipment's time zone).
 - **[`importer-core`](./importer-core/AGENTS.md)** (the pure core) — the closed
-  descriptor registry (`FormatVariant`, `FormatKind`, `FormatSettings`,
-  `BoundFormat<K>`, `formatRegistry`, `defaultFormatSettings`, `formatKinds`)
-  and the batch machinery over it: `groupByFormat` splits a pick by the first
-  claiming `detect`, `decodeFormat` runs one format's `decode` under its own
-  settings, `readBatch` yields one `BatchEntry` (`Either<ReadUnit,
-UnreadableUnit | UnrecognizedFile>`, with deterministic ids via `unitId` —
-  extracted by `entryId` / `entryFormat`) per unit, `redecodeFormat` re-runs
-  one format's units from their retained files under new settings, and
-  `planUnitWrite` turns a reviewed unit into the exact resource list to write.
-  No DOM, no React, no client.
+  importer registry (`FormatKind`, `FormatSettings`, `BoundFormat<K>`,
+  `formatRegistry`, `defaultFormatSettings`, and `formatKinds` derived from the
+  registry) and the batch machinery over it: `groupByFormat` splits a pick by
+  the first claiming `detect`, `decodeFormat` runs one format's `decode` under
+  its own settings, `readBatch` yields a `BatchDecodeResult` — one
+  `FormatDecode.Result` per registered format plus the `UnrecognizedFile`s —
+  `claimedFormats` names the formats that actually took part, `redecodeFormat`
+  re-runs one format's files from their retained picks under new settings, and
+  `planFormatWrite` turns a format's reviewed selection into the exact resource
+  list to write. No DOM, no React, no client.
 - **[`importer-react`](./importer-react/AGENTS.md)** (the shell) —
   `ImporterScreen`, the whole pick-review-confirm flow a host app mounts, plus
-  the React half of the registry (`importer-core`'s descriptors plus each
-  format's `SettingsPicker`) and the generalized sectioned review every format
+  the React half of the registry (each `importer-core` importer spread with
+  that format's `SettingsPicker`) and the generalized sectioned review every format
   shares (per-resource include/edit with the inline JSON `ResourceEditor`),
   plus `ServerSourceFileList`, the uploaded-source-files pick source the
   anonymizer slice's shell takes through its `serverSource` slot.
@@ -121,17 +124,17 @@ sits above `http-extraction` and below every binding, exactly as
   **preview** — `decode` yields the actual resources, sectioned, so the
   reviewer sees them and can opt any of them out or edit them inline;
   **writes** still only run at confirm, and confirm writes exactly those
-  reviewed objects (`importer-core`'s `planUnitWrite`) with no re-parse — the same
+  reviewed objects (`importer-core`'s `planFormatWrite`) with no re-parse — the same
   "is the same object" argument the anonymizer's preview makes. This split
   is the whole point; do not collapse it. A settings change (a HAR kind
   toggle, the LifeLabs time zone) re-runs `decode` from the retained bytes —
   still the read half.
 - **The picker takes bytes, and identifies against every registered
-  descriptor.** A picked file is a name + raw bytes + its provenance (`local`,
+  format.** A picked file is a name + raw bytes + its provenance (`local`,
   or `server` naming a source file already on the device): HAR is UTF-8 JSON, a
   LifeLabs report is a PDF, a DICOM file is binary, and every downstream step
-  reads bytes. The picker runs each registered descriptor's `detect` on every
-  drop and yields the pick tagged with the first descriptor that claims it, so
+  reads bytes. The picker runs each registered format's `detect` on every
+  drop and yields the pick tagged with the first format that claims it, so
   a batch may span formats — `importer-core`'s `readBatch` groups the pick by
   format and runs each format's own batch `decode` under that format's
   settings. A format's `decode` mints its own source-file `DocumentReference`
@@ -139,11 +142,13 @@ sits above `http-extraction` and below every binding, exactly as
   extracted resource's `meta.source` with it; nothing above the binding mints
   or stamps anything. The write itself is format-blind — one shared
   `persistBatchBundle` at the shell.
-- **The registry is closed and compile-time.** The descriptor registry is
+- **The registry is closed and compile-time.** The importer registry is
   `importer-core`'s literal `{ har, 'lifelabs-pdf', dicom }`, and
-  `importer-react`'s registry layers each format's `SettingsPicker` on it;
-  every field is typed against its format's concrete parsed/settings types
-  through `FormatVariant`, so a format missing one part fails to compile.
+  `importer-react`'s registry spreads each entry with that format's
+  `SettingsPicker` — composition, not a subclass, so a field added to
+  `FileImporter` cannot be silently dropped on the way through. Every slot is a
+  mapped or exhaustive type over `FormatKind`, so a format missing one part
+  fails to compile.
   Dispatch over the registry is generic (`<K extends FormatKind>`), not a
   `Match` branch per format — the one exhaustive match left is the preview
   panel's settings form. The review display is not a registry
@@ -152,7 +157,7 @@ sits above `http-extraction` and below every binding, exactly as
   package — the importer has no HTTP wire union to derive.
 - **The slice imports only the accepted seams.** `har-importer-core` depends on
   `web-trace-core` for the HAR codec and the source-file coding constants only —
-  `withMetaSource` and the source-file helpers come from
+  the `meta.source` stamping and the source-file mint come from
   `importer-fundamentals` — plus `http-extraction-fundamentals`
   (extraction + recognition), `fhir-r4-source` (the pre-adopted pool),
   `importer-fundamentals` (the contract), and `fhir-r4` (resources). It
@@ -161,8 +166,8 @@ sits above `http-extraction` and below every binding, exactly as
 - **A future file format gets its own binding, not a widened HAR one.** A CSV
   or another imaging import decodes a _document_: its decode belongs in a pure dialect package
   (the way rexall's carebook dialect and `web-trace-core`'s codec work), wrapped
-  here by a sibling `*-importer-core` binding implementing the same
-  `FileImporterDescriptor`. The dialect sits below both transports, which is what
+  here by a sibling `*-importer-core` binding built on the same
+  `fileImporter`. The dialect sits below both transports, which is what
   keeps the graph acyclic.
 
 ## References
@@ -170,15 +175,15 @@ sits above `http-extraction` and below every binding, exactly as
 - [Adding a File-Format Importer How-To](./docs/Adding%20a%20File-Format%20Importer%20How-To.md)
   — the checklist for a new format binding.
 - [importer-fundamentals AGENTS.md](./importer-fundamentals/AGENTS.md) — the
-  descriptor contract, the source-file helpers, and the `StagedImport` model.
-- [importer-core AGENTS.md](./importer-core/AGENTS.md) — the closed descriptor
+  `FileImporter` contract, the source-file seam, and the `StagedImport` model.
+- [importer-core AGENTS.md](./importer-core/AGENTS.md) — the closed importer
   registry and the pure batch machinery the shell drives.
 - [har-importer-core AGENTS.md](./har-importer-core/AGENTS.md) — the HAR binding's
-  decode/pool/source-file codec.
+  decode, pool, and source-file coding.
 - [har-importer-react AGENTS.md](./har-importer-react/AGENTS.md) — the HAR
   settings picker (the response-kind toggles).
 - [dicom-importer-core AGENTS.md](./dicom-importer-core/AGENTS.md) — the DICOM
-  binding's detect/source-file/decode.
+  binding's detect, source file, and decode.
 - [dicom-importer-react AGENTS.md](./dicom-importer-react/AGENTS.md) — the DICOM
   settings picker (the equipment time zone).
 - [importer-react AGENTS.md](./importer-react/AGENTS.md) — the shell, the
