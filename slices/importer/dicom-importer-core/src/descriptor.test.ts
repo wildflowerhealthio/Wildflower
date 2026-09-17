@@ -3,12 +3,7 @@ import { writeDicom } from 'dicom/test-helpers'
 import { DateTime, Effect, Either, Option } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import {
-  PickedFileSource,
-  SourceFile,
-  type PickedFile,
-  type ReadUnit,
-} from 'importer-fundamentals'
+import { PickedFileSource, SourceFile, type PickedFile, type ReadUnit } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporterDescriptor, patientSubjectOf } from './descriptor.ts'

@@ -44,6 +44,10 @@ const pickArbitrary: fc.Arbitrary<PickedFile> = fc
     source: PickedFileSource.local,
   }))
 
+/** A batch of picks with unique file names — deterministic ids are keyed on file name, so duplicates would collide. */
+const batchArbitrary = (maxLength: number): fc.Arbitrary<PickedFile[]> =>
+  fc.uniqueArray(pickArbitrary, { maxLength, selector: (pick) => pick.fileName })
+
 const kindOf = (fileName: string): FormatKind | undefined => {
   if (fileName.startsWith('har-')) return 'har'
   if (fileName.startsWith('pdf-')) return 'lifelabs-pdf'
@@ -138,7 +142,7 @@ describe('groupByFormat', () => {
 describe('readBatch', () => {
   it('property: one outcome per pick, tagged by its format, unreadable exactly for a zero-led file, ids deterministic', async () => {
     await fc.assert(
-      fc.asyncProperty(fc.array(pickArbitrary, { maxLength: 8 }), async (picks) => {
+      fc.asyncProperty(batchArbitrary(8), async (picks) => {
         const units = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
         expect(units.length).toBe(picks.length)
         expect(new Set(units.map(entryId)).size).toBe(units.length)
@@ -177,7 +181,7 @@ describe('redecodeFormat', () => {
   it('property: only the changed format re-decodes; every unit keeps its id', async () => {
     await fc.assert(
       fc.asyncProperty(
-        fc.array(pickArbitrary, { maxLength: 8 }),
+        batchArbitrary(8),
         fc.constantFrom<FormatKind>('har', 'lifelabs-pdf', 'dicom'),
         async (picks, changed) => {
           const before = await Effect.runPromise(

@@ -29,7 +29,7 @@ write plan with this package alone.
   `registry[kind]` and `settings[kind]` stay correlated with no per-format
   `Match` branch; **`readBatch`** decodes every group concurrently and yields
   one **`BatchEntry`** (`Either<ReadUnit<FhirResource, FormatKind>,
-  UnreadableUnit<FormatKind> | UnrecognizedFile>`) per unit — ids are
+UnreadableUnit<FormatKind> | UnrecognizedFile>`) per unit — ids are
   deterministic via `unitId`, and **`entryId`** / **`entryFormat`** extract
   the id or format from either side; **`UnrecognizedFile`** is a
   `Data.TaggedError` for a pick no `detect` claimed;

@@ -10,13 +10,12 @@ import {
   type ServerComparison,
 } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { LabeledSection } from 'importer-fundamentals'
+import type { LabeledSection, ReadUnit } from 'importer-fundamentals'
 import { StagedImport, sectionResources } from 'importer-fundamentals'
 import { type JSX, useEffect, useMemo, useRef, useState } from 'react'
 import { Chip } from 'react-tundraish'
 
 import { type BatchEntry, entryId } from 'importer-core'
-import type { ReadUnit } from 'importer-fundamentals'
 
 import type { BoundFormat, FormatKind, FormatSettings } from '../registry.ts'
 import { formatKinds } from '../registry.ts'

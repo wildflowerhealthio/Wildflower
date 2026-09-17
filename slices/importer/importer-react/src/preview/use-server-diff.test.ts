@@ -20,16 +20,11 @@ const patient = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
 /** A read unit whose one section holds one resource per `[key, id]` pair. */
-const unit = (
-  id: string,
-  entries: readonly (readonly [string, string])[]
-): BatchEntry =>
+const unit = (id: string, entries: readonly (readonly [string, string])[]): BatchEntry =>
   Either.right({
     id,
     title: `${id}.dcm`,
-    files: [
-      { fileName: `${id}.dcm`, bytes: new Uint8Array([1]), source: PickedFileSource.local },
-    ],
+    files: [{ fileName: `${id}.dcm`, bytes: new Uint8Array([1]), source: PickedFileSource.local }],
     format: 'dicom',
     decoded: {
       sections: [
@@ -89,8 +84,7 @@ describe('diffRowsOf / byUnitAndKey', () => {
           expect(rows.length).toBe(
             units.reduce(
               (n, u) =>
-                n +
-                (Either.isRight(u) ? (u.right.decoded.sections[0]?.resources.length ?? 0) : 0),
+                n + (Either.isRight(u) ? (u.right.decoded.sections[0]?.resources.length ?? 0) : 0),
               0
             )
           )

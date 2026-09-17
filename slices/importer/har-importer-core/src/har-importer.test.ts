@@ -245,7 +245,7 @@ describe('harImporterDescriptor.decode', () => {
 
     expect(units).toHaveLength(1)
     expect(unit).toBeDefined()
-    expect(Either.isLeft(unit!)).toBe(true)
+    expect(Either.isLeft(unit)).toBe(true)
     if (unit === undefined || !Either.isLeft(unit)) throw new Error('expected unreadable')
     expect(unit.left._tag).toBe('UnreadableUnit')
     expect(unit.left.title).toBe('archive.har')

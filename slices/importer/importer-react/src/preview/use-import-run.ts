@@ -121,13 +121,11 @@ const useImportRun = (registry: ReadRegistry): ImportRun => {
       const ticket = latest.current
       const { batchId } = state
       setRedecoding(true)
-      void runAuthed(redecodeFormat(registry, merged, format, state.units)).then(
-        (units) => {
-          if (latest.current !== ticket) return
-          setRedecoding(false)
-          setState({ _tag: 'ready', batchId, units })
-        }
-      )
+      void runAuthed(redecodeFormat(registry, merged, format, state.units)).then((units) => {
+        if (latest.current !== ticket) return
+        setRedecoding(false)
+        setState({ _tag: 'ready', batchId, units })
+      })
     },
     // oxlint-disable-next-line react-hooks/exhaustive-deps -- react/memo-dependencies (React Compiler) is authoritative and says registry is unnecessary
     [runAuthed, state]

@@ -67,7 +67,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   and the batch machinery over it: `groupByFormat` splits a pick by the first
   claiming `detect`, `decodeFormat` runs one format's `decode` under its own
   settings, `readBatch` yields one `BatchEntry` (`Either<ReadUnit,
-  UnreadableUnit | UnrecognizedFile>`, with deterministic ids via `unitId` —
+UnreadableUnit | UnrecognizedFile>`, with deterministic ids via `unitId` —
   extracted by `entryId` / `entryFormat`) per unit, `redecodeFormat` re-runs
   one format's units from their retained files under new settings, and
   `planUnitWrite` turns a reviewed unit into the exact resource list to write.

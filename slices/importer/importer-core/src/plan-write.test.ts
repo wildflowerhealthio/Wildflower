@@ -20,7 +20,10 @@ const readUnit = (keys: readonly string[]): BatchEntry =>
     format: 'har',
     decoded: {
       sections: [
-        { title: 's', resources: keys.map((key) => ({ key, title: key, resource: resource(key) })) },
+        {
+          title: 's',
+          resources: keys.map((key) => ({ key, title: key, resource: resource(key) })),
+        },
       ],
       notes: [],
     },
