@@ -6,15 +6,14 @@ import { defaultDicomSettings } from './settings.ts'
 import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from './source-system.ts'
 
 /**
- * File the raw image under the patient the decode extracted from the DICOM
- * header, so the bytes ride along in that patient's record.
+ * File the raw image under the patient the decode extracted, so the bytes ride
+ * along in that patient's record.
  *
  * @remarks
- * Reads the `Patient` off the decode's own resources rather than re-parsing
- * the file: `decodeDicom` has already parsed the header, synthesized the
- * patient, and adopted it under {@link DICOM_SYSTEM}, so its id is exactly the
- * one a second parse would derive. A file whose header names no patient
- * decodes to no `Patient` and gets no subject.
+ * Reads the `Patient` off the decode's own resources rather than re-parsing the
+ * file: `decodeDicom` has already parsed the header and adopted the patient
+ * under {@link DICOM_SYSTEM}, so its id is the one a second parse would derive.
+ * A header naming no patient decodes to no `Patient`, and gets no subject.
  */
 const patientSubjectOf: SourceFile.SubjectFor = (_file, decoded) => {
   const patient = DecodedFile.resources(decoded).find(

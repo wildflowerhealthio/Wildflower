@@ -223,10 +223,10 @@ const ReadFileBody = ({
       )}
       {sections.map((section) => (
         <section
-          // A resource key is namespaced by the file it was decoded from
-          // (`FormatDecode.keyPrefix`), so it is unique across the whole
-          // format — which makes a section's first resource identify it even
-          // when two files contribute sections of the same title.
+          // A resource key is namespaced by the file it came from
+          // (`FormatDecode.keyPrefix`), so it is unique across the format —
+          // which lets a section's first resource identify it even when two
+          // files contribute sections of the same title.
           key={section.resources[0]?.key ?? section.title}
           className={styles.decodeSection}
           aria-label={section.title}

@@ -31,17 +31,13 @@ interface Subject {
 }
 
 /**
- * A source file whose id is already decided but whose `DocumentReference` is
- * not yet built.
+ * A source file whose id is decided but whose `DocumentReference` is not yet
+ * built.
  *
  * @remarks
- * The two halves are separate because they are needed at different points of
- * a per-file decode: the id is an *input* to the decode (a format whose
- * resources name the stored file reads it there), while the subject the
- * resource is filed under can only be known *after* it — DICOM files the raw
- * image under the patient the decode extracted. Splitting the mint is what
- * lets both happen off a single hash of the bytes and a single parse of the
- * file.
+ * Split because the halves are needed at different points of a decode: the id
+ * is an *input* to it, while the subject the resource is filed under is only
+ * known after it. One hash of the bytes covers both.
  */
 interface MintedSourceFile {
   /** The deterministic id, from the bytes' SHA-256 and the file name. */
@@ -97,7 +93,7 @@ const withSourceSection = (
 /**
  * Lift one format's per-file `decodeOne` into the batch `decode` the shell
  * runs: one file at a time, each contributing its own "Source file" row, its
- * sections under its own key namespace, and its own `unreadable` row when it
+ * sections under its own key namespace, and its own unreadable row when it
  * rejects.
  *
  * @param provider - The format tag and the source-file mint the rows come from
@@ -210,11 +206,10 @@ interface FileImporterConfig<TFormat extends string, TSettings> {
  * {@link fileImporter}; the registry lists them.
  *
  * @remarks
- * A plain record of closures, not a class instance: an adapter layer extends
- * an importer by spreading it — which is how `importer-react`'s registry
- * attaches each format's `SettingsPicker` — and a spread is only total when
- * there is no prototype to lose. Nothing here is inherited, so nothing can be
- * dropped by a layer above.
+ * A plain record of closures, not a class instance: an adapter layer extends an
+ * importer by spreading it — which is how `importer-react`'s registry attaches
+ * each format's `SettingsPicker` — and a spread is only total when there is no
+ * prototype to lose.
  */
 interface FileImporter<TFormat extends string, TSettings> {
   readonly format: TFormat

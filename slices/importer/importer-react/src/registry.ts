@@ -24,12 +24,10 @@ import type { JSX } from 'react'
  * One registered format: its core importer extended with its settings picker.
  *
  * @remarks
- * An intersection built by spreading the core importer, not a subclass. A
- * subclass had to hand-copy every field of `FileImporter` through a copy
- * constructor, so a field added to `FileImporter` would have been silently
- * dropped here with no type error anywhere; a spread carries whatever the
- * importer has. `FileImporter` is a plain record with no prototype, so the
- * spread is total.
+ * An intersection built by spreading the core importer, not a subclass: a
+ * subclass had to hand-copy every field through a copy constructor, so a field
+ * added to `FileImporter` would have been dropped here with no type error
+ * anywhere. `FileImporter` has no prototype, so the spread is total.
  */
 type BoundFormat<K extends FormatKind> = FileImporter<K, FormatSettings[K]> & {
   readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element

@@ -61,10 +61,8 @@ type DecodeOne<TSettings> = (
  * @remarks
  * Called with the file's *decode*, not just its bytes, so a format reads the
  * subject off the resources it already extracted rather than parsing the file
- * a second time — DICOM files the raw image under the `Patient` its decode
- * synthesized. Returning `undefined` leaves the source file with no
- * `subject`, which is the default: it keeps an engineering artifact out of
- * `Patient/$everything`.
+ * twice. `undefined` leaves the source file with no `subject` — the default,
+ * which keeps an engineering artifact out of `Patient/$everything`.
  */
 type SubjectFor = (
   file: PickedFile,

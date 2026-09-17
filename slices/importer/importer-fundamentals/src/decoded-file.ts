@@ -24,7 +24,7 @@ const resources = (decodedFile: { readonly sections: readonly Section[] }): read
  * collide with another's once the batch merges their sections.
  *
  * @param decodedFile - One file's decode, keyed within itself
- * @param prefix - The file's key namespace (`FormatDecode.keyPrefix`)
+ * @param prefix - The file's key namespace, from `FormatDecode.keyPrefix` (whose module remarks say why)
  * @returns The same sections and notes with every resource key prefixed
  */
 const namespaceKeys = (decodedFile: DecodedFile, prefix: string): DecodedFile => ({

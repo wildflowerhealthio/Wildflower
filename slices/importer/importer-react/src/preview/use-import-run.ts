@@ -101,12 +101,10 @@ const useImportRun = (): ImportRun => {
   // Advanced only by `run`, so it names the picked batch rather than the
   // decode pass — see `ImportRunState`'s `batchId`.
   const batchCounter = useRef(0)
-  // What the *next* decode reads, as opposed to what this render shows. It is
-  // one ref rather than a closure over `state` plus a settings mirror: two
+  // What the *next* decode reads, as opposed to what this render shows: two
   // settings changes in one tick must compose, so the second has to see the
-  // first's value before React commits it, and reading the batch here instead
-  // of closing over it keeps every action below identity-stable for the life
-  // of the hook.
+  // first's value before React commits it, and reading the batch here rather
+  // than closing over it keeps every action below identity-stable.
   const current = useRef<Current>(INITIAL_CURRENT)
 
   // Write both the ref the actions read and the state the screen renders, so

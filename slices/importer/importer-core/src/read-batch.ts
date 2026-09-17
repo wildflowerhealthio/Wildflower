@@ -49,12 +49,8 @@ interface GroupedPicks {
 }
 
 /**
- * A picked file no registered importer's `detect` claimed.
- *
- * @remarks
- * Plain data, not an error: nothing ever fails with one. `readBatch` builds
- * them, the preview renders them as "not a format the importer recognizes",
- * and the confirm reports each as a `skipped` result.
+ * A picked file no registered importer's `detect` claimed — plain data, not an
+ * error, since nothing ever fails with one.
  */
 interface UnrecognizedFile {
   /** Distinguishes this pick from every other in the batch — the row's React key and result id. */
@@ -248,13 +244,10 @@ const redecodeFormat = (
  * The formats that claimed at least one file in a batch, in registry order.
  *
  * @remarks
- * The one predicate for "did this format take part in this import", held here
- * rather than re-derived per caller: the preview renders a group per claimed
- * format and tallies over the same set, and the confirm plans a write for
- * each. A format that claimed nothing has an `emptyResult` — no files, no
- * sections, and a blank `title` — so treating it as a participant produces a
- * titleless `skipped` row in the results, which is what the confirm used to
- * report before it came through here.
+ * The one predicate for "did this format take part", so the preview's groups
+ * and tallies and the confirm's write plans agree. A format that claimed
+ * nothing has an `emptyResult` — no files, no sections, a blank `title` — so
+ * treating it as a participant reports a titleless `skipped` row.
  *
  * @param batch - The batch's decode result
  * @returns Every format with at least one claimed file, in {@link formatKinds} order

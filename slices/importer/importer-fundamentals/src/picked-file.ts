@@ -20,11 +20,9 @@ import * as SourceFile from './source-file.ts'
  * `server` file already stored as a `DocumentReference` on the FHIR server.
  *
  * @remarks
- * Named `Source` rather than `PickedFileSource` because this module is
- * consumed as the `PickedFileSource` namespace — `PickedFileSource.Source`
- * and `PickedFileSource.local` then read as one vocabulary, where a type and
- * a namespace sharing the name `PickedFileSource` meant two different things
- * at the same import site.
+ * Named `Source`, not `PickedFileSource`, because this module is consumed as
+ * the `PickedFileSource` namespace: one name meaning both a namespace and a
+ * type at the same import site is what that avoids.
  */
 type Source =
   | { readonly _tag: 'local' }
