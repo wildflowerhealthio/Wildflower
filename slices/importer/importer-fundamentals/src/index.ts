@@ -25,11 +25,10 @@ export * as PickedFileSource from './picked-file-source.ts'
 export * as SourceFile from './source-file.ts'
 export * as SourceFileFhirReference from './source-file-fhir-reference.ts'
 export * as StagedImport from './staged-import.ts'
-export { identify, sectionResources, unitId } from './file-importer-descriptor.ts'
+export { FileImporter, identify, sectionResources, unitId } from './file-importer-descriptor.ts'
 export type {
   DecodedFile,
   DocumentReferenceType,
-  FileImporterDescriptor,
   LabeledResource,
   LabeledSection,
   ReadUnit,

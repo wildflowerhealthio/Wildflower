@@ -1,26 +1,16 @@
-import { type DicomSettings, dicomImporterDescriptor } from 'dicom-importer-core'
+import { type DicomSettings, dicomImporter } from 'dicom-importer-core'
 import type { FhirResource } from 'fhir-r4/resources'
-import { type HarSettings, harImporterDescriptor } from 'har-importer-core'
-import type { FileImporterDescriptor } from 'importer-fundamentals'
-import { type LifeLabsPdfSettings, lifeLabsPdfImporterDescriptor } from 'lifelabs-pdf-importer-core'
+import { type HarSettings, harImporter } from 'har-importer-core'
+import type { FileImporter } from 'importer-fundamentals'
+import { type LifeLabsPdfSettings, lifeLabsPdfImporter } from 'lifelabs-pdf-importer-core'
 
 /**
  * The closed, compile-time format registry: every registered
- * {@link FileImporterDescriptor}, indexed by its format tag and typed through
+ * {@link FileImporter}, indexed by its format tag and typed through
  * {@link FormatVariant} so each entry keeps its concrete settings and parsed
  * types without erasure. The single edit point for wiring a file-format
  * binding into the importer; the React shell layers each format's
  * `SettingsPicker` on top of this record.
- *
- * @remarks
- * Mirrors the `ResourceVariant` pattern in `scopes-core`'s `multi-scope.ts`:
- * a type-level map from format tag to its concrete type pair, so
- * `BoundFormat<K>` preserves per-format correlation. Where a consumer names a
- * format literally (`formatRegistry.har`) the concrete types flow through;
- * where it is format-agnostic it parameterises on {@link FormatKind}. Every
- * format decodes straight to the general `DecodedFile` — sections plus
- * notes, its own source file among them — so nothing here is per-format
- * beyond the settings type.
  *
  * @packageDocumentation
  */
@@ -54,12 +44,11 @@ type FormatKind = keyof FormatVariant
 type FormatSettings = { readonly [K in FormatKind]: FormatVariant[K]['settings'] }
 
 /**
- * One registered format's descriptor, parameterised on its {@link FormatKind}
+ * One registered format's importer, parameterised on its {@link FormatKind}
  * key so every field carries the format's concrete types through
- * {@link FormatVariant}. The registry validates type agreement at
- * construction with no casts.
+ * {@link FormatVariant}.
  */
-type BoundFormat<K extends FormatKind> = FileImporterDescriptor<
+type BoundFormat<K extends FormatKind> = FileImporter<
   K,
   FormatVariant[K]['settings'],
   FormatVariant[K]['parsed']
@@ -67,9 +56,9 @@ type BoundFormat<K extends FormatKind> = FileImporterDescriptor<
 
 /** The closed registry; its keys are the {@link FormatKind} union. */
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
-  har: harImporterDescriptor,
-  'lifelabs-pdf': lifeLabsPdfImporterDescriptor,
-  dicom: dicomImporterDescriptor,
+  har: harImporter,
+  'lifelabs-pdf': lifeLabsPdfImporter,
+  dicom: dicomImporter,
 }
 
 /** The default settings of every registered format — the state a fresh import seeds. */

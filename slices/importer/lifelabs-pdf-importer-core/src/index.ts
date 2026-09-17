@@ -13,7 +13,7 @@
  */
 export { decodeLifeLabsPdf, decodeLifeLabsPdfDocument, reportSectionTitle } from './decode.ts'
 export { detectLifeLabsPdf } from './detect.ts'
-export { lifeLabsPdfImporterDescriptor } from './descriptor.ts'
+export { lifeLabsPdfImporter } from './descriptor.ts'
 export { buildSourceFile } from './source-file/index.ts'
 export * as Report from './entities/report.ts'
 export type { Type as ReportGroup } from './entities/group.ts'

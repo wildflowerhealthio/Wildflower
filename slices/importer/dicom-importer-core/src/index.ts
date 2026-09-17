@@ -8,7 +8,7 @@
  */
 export { decodeDicom } from './decode.ts'
 export { detectDicom } from './detect.ts'
-export { dicomImporterDescriptor } from './descriptor.ts'
+export { dicomImporter } from './descriptor.ts'
 export { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
 export { dicomCalendarDate, dicomInstant } from './fhir/dates.ts'
 export { buildSourceFile } from './source-file/index.ts'

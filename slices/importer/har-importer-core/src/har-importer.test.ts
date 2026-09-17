@@ -18,7 +18,7 @@ import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-help
 import type { FhirResource } from 'fhir-r4/resources'
 
 import { fhirSources } from './fhir-pool.ts'
-import { harImporterDescriptor } from './har-importer.ts'
+import { harImporter } from './har-importer.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 
 /**
@@ -126,7 +126,7 @@ const readOne = async (
   file: PickedFile,
   settings: HarSettings = defaultHarSettings
 ): Promise<ReadUnit<FhirResource, string>> => {
-  const units = await Effect.runPromise(harImporterDescriptor.decode([file], settings))
+  const units = await Effect.runPromise(harImporter.decode([file], settings))
   expect(units).toHaveLength(1)
   const unit = units[0]
   if (unit === undefined || !Either.isRight(unit)) {
@@ -147,7 +147,7 @@ const metaSourcesOf = (
 ): readonly (string | null | undefined)[] =>
   sections.flatMap((section) => section.resources.map((entry) => entry.resource.meta?.source))
 
-describe('harImporterDescriptor.decode', () => {
+describe('harImporter.decode', () => {
   it('should fold a recognized archive into one section per URL, in first-seen order', async () => {
     const decoded = (await readOne(pickedHar(PickedFileSource.local))).decoded
 
@@ -240,7 +240,7 @@ describe('harImporterDescriptor.decode', () => {
       bytes: new TextEncoder().encode('{ not a har }'),
       source: PickedFileSource.local,
     }
-    const units = await Effect.runPromise(harImporterDescriptor.decode([file], defaultHarSettings))
+    const units = await Effect.runPromise(harImporter.decode([file], defaultHarSettings))
     const unit = units[0]
 
     expect(units).toHaveLength(1)

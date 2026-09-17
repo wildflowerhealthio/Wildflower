@@ -1,24 +1,14 @@
-import { Effect } from 'effect'
 import type { FhirResource } from 'fhir-r4/resources'
-import { SourceFile, type FileImporterDescriptor } from 'importer-fundamentals'
+import { FileImporter, SourceFile } from 'importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
 import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
-import {
-  isLifeLabsPdfSourceFile,
-  LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
-  LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
-  lifeLabsPdfSourceFileCodec,
-  lifeLabsPdfSourceFileFromDocumentReference,
-} from './source-file/index.ts'
+import { lifeLabsPdfSourceFileCodec } from './source-file/index.ts'
 
 /**
- * The concrete {@link FileImporterDescriptor} for the `lifelabs-pdf` format:
- * a LifeLabs report's positioned text in, FHIR resources out. Persistence is
- * shell-owned — every FHIR-targeting importer writes through one shared
- * `POST /` batch bundle (`persistBatchBundle` in `fhir-r4/clients`), so no
- * format brings its own write sink.
+ * The `lifelabs-pdf` importer: a LifeLabs report's positioned text in,
+ * FHIR resources out.
  *
  * @remarks
  * `decode` yields one section per report the PDF carries and no notes — this
@@ -30,12 +20,8 @@ import {
  * stamped onto every synthesized resource's `meta.source`; a `server` pick
  * mints nothing and stamps the reference it came with.
  */
-const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
-  'lifelabs-pdf',
-  LifeLabsPdfSettings,
-  FhirResource
-> = {
-  format: 'lifelabs-pdf',
+const lifeLabsPdfImporter = new FileImporter<'lifelabs-pdf', LifeLabsPdfSettings, FhirResource>({
+  codec: lifeLabsPdfSourceFileCodec,
   display: {
     title: 'LifeLabs report',
     description: 'Import lab results from a LifeLabs report PDF.',
@@ -43,13 +29,6 @@ const lifeLabsPdfImporterDescriptor: FileImporterDescriptor<
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
   decode: SourceFile.perFileDecode(lifeLabsPdfSourceFileCodec, decodeLifeLabsPdf),
-  sourceFileCategoryToken: LIFELABS_PDF_SOURCE_FILE_CATEGORY_TOKEN,
-  isSourceFile: isLifeLabsPdfSourceFile,
-  sourceFileFromDocumentReference: (resource) =>
-    lifeLabsPdfSourceFileFromDocumentReference(resource).pipe(
-      Effect.map((sourceFile) => ({ fileName: sourceFile.fileName, bytes: sourceFile.bytes }))
-    ),
-  sourceFileContentType: LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
-}
+})
 
-export { lifeLabsPdfImporterDescriptor }
+export { lifeLabsPdfImporter }

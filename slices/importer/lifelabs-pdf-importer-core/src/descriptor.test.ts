@@ -2,7 +2,7 @@ import { Effect, Either, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import type { FhirResource } from 'fhir-r4/resources'
 import {
-  type FileImporterDescriptor,
+  type FileImporter,
   PickedFileSource,
   type PickedFile,
   type ReadUnit,
@@ -14,34 +14,34 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeLifeLabsPdfDocument } from './decode.ts'
-import { lifeLabsPdfImporterDescriptor } from './descriptor.ts'
+import { lifeLabsPdfImporter } from './descriptor.ts'
 import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import type * as Report from './entities/report.ts'
 import { defaultLifeLabsPdfSettings, type LifeLabsPdfSettings } from './settings.ts'
 import { lifeLabsPdfSourceFileCodec } from './source-file/index.ts'
 import { layoutDocument } from './test-helpers.ts'
 
-describe('lifeLabsPdfImporterDescriptor', () => {
+describe('lifeLabsPdfImporter', () => {
   it('has the lifelabs-pdf format tag', () => {
-    expect(lifeLabsPdfImporterDescriptor.format).toBe('lifelabs-pdf')
+    expect(lifeLabsPdfImporter.format).toBe('lifelabs-pdf')
   })
 
   it('detects a PDF by `%PDF-` magic bytes and by the `.pdf` extension', () => {
     const pdfMagic = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31, 0x2e, 0x37])
-    expect(lifeLabsPdfImporterDescriptor.detect(pdfMagic, 'unknown')).toBe(true)
-    expect(lifeLabsPdfImporterDescriptor.detect(new Uint8Array(), 'report.pdf')).toBe(true)
-    expect(lifeLabsPdfImporterDescriptor.detect(new Uint8Array(), 'report.PDF')).toBe(true)
+    expect(lifeLabsPdfImporter.detect(pdfMagic, 'unknown')).toBe(true)
+    expect(lifeLabsPdfImporter.detect(new Uint8Array(), 'report.pdf')).toBe(true)
+    expect(lifeLabsPdfImporter.detect(new Uint8Array(), 'report.PDF')).toBe(true)
   })
 
   it('does not claim a HAR-shaped file — neither the extension nor the bytes match', () => {
     const jsonLike = new TextEncoder().encode('{"log":{"version":"1.2"}}')
-    expect(lifeLabsPdfImporterDescriptor.detect(jsonLike, 'capture.har')).toBe(false)
-    expect(lifeLabsPdfImporterDescriptor.detect(jsonLike, 'export.json')).toBe(false)
+    expect(lifeLabsPdfImporter.detect(jsonLike, 'capture.har')).toBe(false)
+    expect(lifeLabsPdfImporter.detect(jsonLike, 'export.json')).toBe(false)
   })
 
   it('defaultSettings has a timeZone', () => {
-    expect(lifeLabsPdfImporterDescriptor.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
-    expect(lifeLabsPdfImporterDescriptor.defaultSettings.timeZone).toBe('America/Toronto')
+    expect(lifeLabsPdfImporter.defaultSettings).toEqual(defaultLifeLabsPdfSettings)
+    expect(lifeLabsPdfImporter.defaultSettings.timeZone).toBe('America/Toronto')
   })
 })
 
@@ -61,7 +61,7 @@ const SETTINGS = { timeZone: 'America/Vancouver' }
 /** The lift the descriptor uses, with the printed document standing in for the PDF. */
 const decodeReports = (
   reports: readonly Report.Type[]
-): FileImporterDescriptor<'lifelabs-pdf', LifeLabsPdfSettings, FhirResource>['decode'] =>
+): FileImporter<'lifelabs-pdf', LifeLabsPdfSettings, FhirResource>['decode'] =>
   SourceFile.perFileDecode(lifeLabsPdfSourceFileCodec, (_file, settings: LifeLabsPdfSettings) =>
     decodeLifeLabsPdfDocument(layoutDocument(reports), settings)
   )
@@ -80,7 +80,7 @@ const readUnit = <TParsed>(
   return outcome.right.decoded
 }
 
-describe('lifeLabsPdfImporterDescriptor decode', () => {
+describe('lifeLabsPdfImporter decode', () => {
   it('property: a local pick is reviewed with its minted source file, and every resource points at it', async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -152,7 +152,7 @@ describe('lifeLabsPdfImporterDescriptor decode', () => {
     }
 
     const outcomes = await Effect.runPromise(
-      lifeLabsPdfImporterDescriptor.decode([file], defaultLifeLabsPdfSettings)
+      lifeLabsPdfImporter.decode([file], defaultLifeLabsPdfSettings)
     )
 
     expect(outcomes).toHaveLength(1)

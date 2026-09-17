@@ -2,6 +2,7 @@ import type { Effect, Either, ParseResult } from 'effect'
 import type { DocumentReference } from 'fhir-r4/resources'
 
 import type { PickedFile } from './picked-file.ts'
+import type { SourceFileCodec } from './source-file-codec.ts'
 
 /**
  * A decoded FHIR R4 `DocumentReference` — the concrete type of a resource the
@@ -147,175 +148,94 @@ interface UnreadableUnit<TFormat extends string> {
 }
 
 /**
- * "A file-format importer" as one first-class value: everything the shell needs
- * to turn a picked file of one format into reviewed, opt-in-written resources —
- * resource-agnostic and format-agnostic in this package, bound to a concrete
- * format and resource type in its own `*-importer-core` package.
+ * "A file-format importer" as one first-class value: everything the shell
+ * needs to turn a picked file of one format into reviewed, opt-in-written
+ * resources. Each format binding (`har-importer-core`, etc.) instantiates
+ * one; the registry lists them.
  *
- * @typeParam TSettings - The format's per-import settings (the kind toggles
- *   for HAR, the report time zone for LifeLabs PDF); the shell seeds a form
- *   from {@link defaultSettings} and hands the chosen settings to
- *   {@link decode}, re-decoding a file when its format's settings change
- * @typeParam TParsed - The resource type this format decodes to (FHIR for HAR
- *   and LifeLabs PDF)
+ * @typeParam TFormat - The format tag literal (`'har'`, `'lifelabs-pdf'`, etc.)
+ * @typeParam TSettings - The format's per-import settings
+ * @typeParam TParsed - The resource type this format decodes to
  *
  * @remarks
- * The format core owns the whole decode; the general shell sees only the
- * {@link DecodedFile} — titled sections of {@link LabeledResource}s plus
- * diagnostic notes — and renders one per-resource exclude/edit review over
- * it, with no format-specific review UI. Persistence of the reviewed FHIR
- * resources themselves is *not* the format's job: every FHIR-targeting
- * importer writes through the shared `persistBatchBundle` in
- * `fhir-r4/clients` at the shell (see `use-confirm-import.ts` in
- * `importer-react`), so no format can bring its own persistence approach —
- * dropped after HAR and LifeLabs proved to share a verbatim identical
- * `withMetaSource → persistResources` sink. No field on the descriptor
- * requires a write client: {@link decode} is pure, so a preview can never
- * reach the write client by construction. The format's decode also owns the
- * source-file `DocumentReference`: it mints one per `local` file (through
- * `perFileDecode` / `sourceFileFor` in `source-file-review.ts`), lists it
- * among the decoded sections, and stamps every extracted resource's
- * `meta.source` with it — so the source file rides the same reviewed batch as
- * the extracted resources, and the shell has no source-file knowledge at all.
+ * The source-file codec is encapsulated: the shell reads the category
+ * token, the `isSourceFile` predicate, the read-back function, and the
+ * content type through accessors, and never sees the codec's schemas, wire
+ * builder, or `buildSourceFile`. `perFileDecode` receives the codec at
+ * construction time (before this class is instantiated), so the decode
+ * function closes over it without exposing it.
  */
-interface FileImporterDescriptor<TFormat extends string, TSettings, TParsed> {
-  /** The format tag this descriptor binds (`'har'`, `'lifelabs-pdf'`); the registry's key. */
+class FileImporter<TFormat extends string, TSettings, TParsed> {
   readonly format: TFormat
-  /** User-facing strings the shell shows for this format. */
   readonly display: { readonly title: string; readonly description: string }
-  /**
-   * Cheap syntactic identification: whether these bytes plausibly hold this
-   * format, by file extension or by magic bytes. Not a parse — the picker
-   * tries every registered descriptor's `detect` on every drop, so a full
-   * parse here would run every format's parser on every pick. First
-   * descriptor whose `detect` claims a file wins; register the crispest
-   * (magic bytes) ahead of the loosest (extension sniff).
-   */
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
-  /** A valid settings value to seed a fresh import's settings form. */
   readonly defaultSettings: TSettings
-  /**
-   * Decode a batch of picked files into one `Either` per unit the format
-   * decides on — `Right` for a successfully decoded {@link ReadUnit} (with
-   * a deterministic id and the format tag `TFormat` already stamped), `Left`
-   * for
-   * an {@link UnreadableUnit} carrying the malformed-input `ParseError`.
-   * Never fails, requires no services, and writes nothing.
-   *
-   * @remarks
-   * Single-file formats wrap a per-file decode with `perFileDecode`
-   * (`source-file-review.ts`), which reads the format tag from the codec,
-   * mints the file's source-file `DocumentReference`, prepends it as its
-   * own "Source file" section, stamps every extracted resource's
-   * `meta.source` with it, and derives the unit's id deterministically via
-   * {@link unitId}; a group format (a DICOM study merging several `.dcm`
-   * files) does the same with `sourceFileFor` per file and decides for
-   * itself which source file each of its resources names. Bytes rather than
-   * text so the seam stays format-blind: a HAR decodes UTF-8 JSON, a PDF
-   * decodes binary. Resource keys must be stable across settings changes
-   * where the underlying resource is unchanged, so a re-decode under new
-   * settings keeps the reviewer's per-resource exclusions and edits
-   * applying. Every file in the batch is one this descriptor's
-   * {@link detect} claimed.
-   */
   readonly decode: (
     files: readonly PickedFile[],
     settings: TSettings
   ) => Effect.Effect<readonly Either.Either<ReadUnit<TParsed, TFormat>, UnreadableUnit<TFormat>>[]>
-  /**
-   * FHIR `category` search token — `system|code` form — every server-side
-   * source-file read filters on for this format's uploaded source files.
-   * The one spelling of the token, sourced from the format's `/source-file`
-   * codec so a downstream reader cannot drift from what the codec writes.
-   *
-   * @remarks
-   * The shell unions every registered format's token into one comma-joined
-   * `category=t1,t2,...` search, so listing "every uploaded source file on
-   * the FHIR server" needs no per-format query. Cannot be `undefined`: the
-   * format has a corresponding source-file codec (the
-   * format's decode mints with it, the
-   * {@link sourceFileFromDocumentReference} reads with it) — this is that
-   * same coding, promoted to a search token.
-   */
-  readonly sourceFileCategoryToken: string
-  /**
-   * Whether a decoded `DocumentReference` is a source file of *this*
-   * format, by `category`. The predicate every row is classified through:
-   * the comma-joined server search returns rows for every registered
-   * format, and each row is tagged with the descriptor whose
-   * `isSourceFile` claims it.
-   *
-   * @remarks
-   * Source-file predicates are disjoint across formats by construction —
-   * `isHarSourceFile` tests `WEB_TRACE_CODE_SYSTEM|har-archive`,
-   * `isLifeLabsPdfSourceFile` tests
-   * `LIFELABS_SYSTEM|lifelabs-pdf-archive` — so exactly one predicate
-   * claims any given row. A row no predicate claims is dropped by the
-   * shell (the coding matched the token search but the resource is not
-   * from a registered format).
-   */
-  readonly isSourceFile: (resource: DocumentReferenceType) => boolean
-  /**
-   * Reads a decoded source-file `DocumentReference` back as its bytes and
-   * file name. The seam a preview modal calls to render the raw source
-   * file, and the same reader `fetchSourceFile` uses to re-hydrate a
-   * picked source file into its `PickedFile` bytes.
-   *
-   * @remarks
-   * Returns bytes rather than text so a PDF source file round-trips
-   * verbatim (a UTF-8 round trip would mangle it) and a HAR source file
-   * keeps its original byte-level content for hashing. Requires nothing (a
-   * preview or a pick reads the resource the FHIR server already returned),
-   * and fails only as a `ParseError` when the resource does not match this
-   * format's source-file shape — a caller dispatches on
-   * {@link isSourceFile} first, so the failure is the "coding matched but
-   * the resource is malformed" case, not the "wrong format" case.
-   */
-  readonly sourceFileFromDocumentReference: (
+
+  protected readonly codec: SourceFileCodec<TFormat>
+
+  constructor(config: {
+    readonly codec: SourceFileCodec<TFormat>
+    readonly display: { readonly title: string; readonly description: string }
+    readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
+    readonly defaultSettings: TSettings
+    readonly decode: (
+      files: readonly PickedFile[],
+      settings: TSettings
+    ) => Effect.Effect<
+      readonly Either.Either<ReadUnit<TParsed, TFormat>, UnreadableUnit<TFormat>>[]
+    >
+  }) {
+    this.codec = config.codec
+    this.format = config.codec.format
+    this.display = config.display
+    this.detect = config.detect
+    this.defaultSettings = config.defaultSettings
+    this.decode = config.decode
+  }
+
+  get categoryToken(): string {
+    return this.codec.categoryToken
+  }
+
+  get contentType(): string {
+    return this.codec.contentType
+  }
+
+  isSourceFile(resource: DocumentReferenceType): boolean {
+    return this.codec.isSourceFile(resource)
+  }
+
+  sourceFileFromDocumentReference(
     resource: DocumentReferenceType
-  ) => Effect.Effect<
-    { readonly fileName: string; readonly bytes: Uint8Array },
+  ): Effect.Effect<
+    { readonly id: string; readonly fileName: string; readonly bytes: Uint8Array },
     ParseResult.ParseError
-  >
-  /**
-   * The MIME type of this format's source-file attachment
-   * (`'application/json'` for HAR, `'application/pdf'` for LifeLabs PDF).
-   * Drives the preview modal's renderer choice — a PDF renders in an
-   * `<iframe>` from a `blob:` URL, JSON pretty-prints inside a `<pre>`.
-   *
-   * @remarks
-   * The source-file codec's own content-type constant, promoted to the
-   * descriptor so the shell needs no format-specific dispatch to pick a
-   * renderer.
-   */
-  readonly sourceFileContentType: string
+  > {
+    return this.codec.sourceFileFromDocumentReference(resource)
+  }
 }
 
 /**
- * The first registered descriptor whose {@link FileImporterDescriptor.detect}
- * claims the picked bytes, or `undefined` when none does.
- *
- * @param descriptors - The registry's descriptors, in registry order
- * @param file - The picked file to identify, as name plus bytes
- * @returns The claiming descriptor, or `undefined`
+ * The first registered importer whose `detect` claims the picked bytes, or
+ * `undefined` when none does.
  *
  * @remarks
  * First match wins, so registry order is priority order — put formats with
  * crisp magic-byte tests (PDF's `%PDF-`) ahead of looser syntactic ones.
- * Generic over anything descriptor-shaped rather than over
- * {@link FileImporterDescriptor} itself so the shell can route bound
- * (descriptor + adapters) records through it.
  */
-const identify = <D extends Pick<FileImporterDescriptor<string, never, never>, 'detect'>>(
+const identify = <D extends Pick<FileImporter<string, never, never>, 'detect'>>(
   descriptors: readonly D[],
   file: { readonly fileName: string; readonly bytes: Uint8Array }
 ): D | undefined => descriptors.find((descriptor) => descriptor.detect(file.bytes, file.fileName))
 
-export { identify, sectionResources, unitId }
+export { FileImporter, identify, sectionResources, unitId }
 export type {
   DecodedFile,
   DocumentReferenceType,
-  FileImporterDescriptor,
   LabeledResource,
   LabeledSection,
   ReadUnit,

@@ -72,7 +72,7 @@ const DEFAULT_PAGE_SIZE = 50
  * `DocumentReference` matching *any* of the tokens.
  */
 const SOURCE_FILES_CATEGORY_TOKEN = formatKinds
-  .map((kind) => formatRegistry[kind].sourceFileCategoryToken)
+  .map((kind) => formatRegistry[kind].categoryToken)
   .join(',')
 
 /**
@@ -354,10 +354,11 @@ const fetchSourceFile = (
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
       const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      const sourceFile = yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
+      const { fileName, bytes } =
+        yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
       return {
-        fileName: sourceFile.fileName,
-        bytes: sourceFile.bytes,
+        fileName,
+        bytes,
         source: PickedFileSource.server(row.id),
       }
     })
@@ -386,7 +387,9 @@ const fetchSourceFileContents = (
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
       const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      return yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
+      const { fileName, bytes } =
+        yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
+      return { fileName, bytes }
     })
   )
 

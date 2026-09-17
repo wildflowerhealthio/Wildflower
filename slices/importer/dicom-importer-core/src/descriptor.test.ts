@@ -6,7 +6,7 @@ import type { FhirResource } from 'fhir-r4/resources'
 import { PickedFileSource, SourceFile, type PickedFile, type ReadUnit } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { dicomImporterDescriptor, patientSubjectOf } from './descriptor.ts'
+import { dicomImporter, patientSubjectOf } from './descriptor.ts'
 import { patientOriginalId } from './fhir/to-fhir.ts'
 import { defaultDicomSettings } from './settings.ts'
 import { DICOM_SYSTEM } from './source-system.ts'
@@ -21,30 +21,30 @@ const sampleDicomBytes = (): Uint8Array =>
     Modality: 'CT',
   })
 
-describe('dicomImporterDescriptor', () => {
+describe('dicomImporter', () => {
   it('has the dicom format tag', () => {
-    expect(dicomImporterDescriptor.format).toBe('dicom')
+    expect(dicomImporter.format).toBe('dicom')
   })
 
   it('detects a file with DICM magic bytes at offset 128', () => {
     const bytes = new Uint8Array(132)
     bytes.set([0x44, 0x49, 0x43, 0x4d], 128)
-    expect(dicomImporterDescriptor.detect(bytes, 'unknown')).toBe(true)
+    expect(dicomImporter.detect(bytes, 'unknown')).toBe(true)
   })
 
   it('detects a file by .dcm extension', () => {
-    expect(dicomImporterDescriptor.detect(new Uint8Array(), 'scan.dcm')).toBe(true)
-    expect(dicomImporterDescriptor.detect(new Uint8Array(), 'Scan.DCM')).toBe(true)
+    expect(dicomImporter.detect(new Uint8Array(), 'scan.dcm')).toBe(true)
+    expect(dicomImporter.detect(new Uint8Array(), 'Scan.DCM')).toBe(true)
   })
 
   it('does not claim a non-DICOM file', () => {
     const json = new TextEncoder().encode('{"log":{"version":"1.2"}}')
-    expect(dicomImporterDescriptor.detect(json, 'capture.har')).toBe(false)
+    expect(dicomImporter.detect(json, 'capture.har')).toBe(false)
   })
 
   it('defaultSettings carries a time zone the runtime can resolve', () => {
-    expect(dicomImporterDescriptor.defaultSettings).toEqual(defaultDicomSettings)
-    expect(Object.keys(dicomImporterDescriptor.defaultSettings)).toEqual(['timeZone'])
+    expect(dicomImporter.defaultSettings).toEqual(defaultDicomSettings)
+    expect(Object.keys(dicomImporter.defaultSettings)).toEqual(['timeZone'])
     expect(Option.isSome(DateTime.zoneMakeNamed(defaultDicomSettings.timeZone))).toBe(true)
   })
 
@@ -59,9 +59,7 @@ describe('dicomImporterDescriptor', () => {
     }
 
     const readUnit = async (file: PickedFile): Promise<ReadUnit<FhirResource, string>> => {
-      const outcomes = await Effect.runPromise(
-        dicomImporterDescriptor.decode([file], defaultDicomSettings)
-      )
+      const outcomes = await Effect.runPromise(dicomImporter.decode([file], defaultDicomSettings))
       expect(outcomes).toHaveLength(1)
       const outcome = outcomes[0]
       if (!Either.isRight(outcome)) throw new Error('expected a read unit')
@@ -137,7 +135,7 @@ describe('dicomImporterDescriptor', () => {
 
     it('yields one unreadable unit for bytes that are not DICOM', async () => {
       const outcomes = await Effect.runPromise(
-        dicomImporterDescriptor.decode(
+        dicomImporter.decode(
           [
             {
               fileName: 'sample.dcm',

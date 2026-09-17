@@ -110,6 +110,8 @@ interface SourceFileWireParams {
 interface SourceFileCodec<TFormat extends string> {
   /** The format tag this codec was built for. */
   readonly format: TFormat
+  /** The attachment's media type — drives the preview modal's renderer choice. */
+  readonly contentType: string
   /** The decoded-side schema: `{ id, fileName, uploadedAt, bytes }`. */
   readonly SourceFile: Schema.Schema<SourceFile, SourceFileEncoded>
   /** The FHIR resource id refinement — matches the id `buildSourceFile` derives. */
@@ -322,6 +324,7 @@ const sourceFileCodec = <TFormat extends string>(
 
   return {
     format: config.format,
+    contentType,
     SourceFile: SourceFileSchema,
     SourceFileId,
     SourceFileFromDocumentReference,

@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
-import { identify, type FileImporterDescriptor } from 'importer-fundamentals'
+import type { FileImporter } from 'importer-fundamentals'
+import { identify } from 'importer-fundamentals'
 
 import { PickedFileSource, type PickedFile } from './picked-file.ts'
 
@@ -68,7 +69,7 @@ const unrecognizedRejection = (file: ReadableFile): RejectedFile => ({
 })
 
 /** Descriptors carry only `detect` through this gate. */
-type IdentifiableDescriptor = Pick<FileImporterDescriptor<string, never, never>, 'detect'>
+type IdentifiableDescriptor = Pick<FileImporter<string, never, never>, 'detect'>
 
 /**
  * Reads a local file's bytes and rejects it if no registered descriptor's

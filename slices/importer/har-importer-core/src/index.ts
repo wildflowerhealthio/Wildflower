@@ -13,7 +13,7 @@
  *
  * @packageDocumentation
  */
-export { harImporterDescriptor } from './har-importer.ts'
+export { harImporter } from './har-importer.ts'
 export { decodeHar, toInput } from './decode-har.ts'
 export { detectHar, looksLikeJson } from './detect-har.ts'
 export { buildSourceFile } from './source-file/index.ts'

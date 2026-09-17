@@ -251,7 +251,7 @@ const PreviewBody = ({
     <PreviewContents
       fileName={query.data.fileName}
       bytes={query.data.bytes}
-      contentType={formatRegistry[row.format].sourceFileContentType}
+      contentType={formatRegistry[row.format].contentType}
       onClose={onClose}
     />
   )

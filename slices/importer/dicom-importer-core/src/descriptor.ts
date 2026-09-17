@@ -14,22 +14,15 @@
  * @packageDocumentation
  */
 import { parseDicomFile } from 'dicom'
-import { Effect, Either } from 'effect'
+import { Either } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
-import type { FhirResource } from 'fhir-r4/resources'
-import { SourceFile, type FileImporterDescriptor, type PickedFile } from 'importer-fundamentals'
+import { FileImporter, SourceFile, type PickedFile } from 'importer-fundamentals'
 
 import { decodeDicom } from './decode.ts'
 import { detectDicom } from './detect.ts'
 import { patientOriginalId } from './fhir/to-fhir.ts'
-import { defaultDicomSettings, type DicomSettings } from './settings.ts'
-import {
-  DICOM_SOURCE_FILE_CATEGORY_TOKEN,
-  DICOM_SOURCE_FILE_CONTENT_TYPE,
-  dicomSourceFileCodec,
-  dicomSourceFileFromDocumentReference,
-  isDicomSourceFile,
-} from './source-file/index.ts'
+import { defaultDicomSettings } from './settings.ts'
+import { dicomSourceFileCodec } from './source-file/index.ts'
 import { DICOM_SYSTEM } from './source-system.ts'
 
 /**
@@ -54,8 +47,8 @@ const patientSubjectOf = (file: PickedFile): { readonly reference: string } | un
   return { reference: `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}` }
 }
 
-const dicomImporterDescriptor: FileImporterDescriptor<'dicom', DicomSettings, FhirResource> = {
-  format: 'dicom',
+const dicomImporter = new FileImporter({
+  codec: dicomSourceFileCodec,
   display: {
     title: 'DICOM image',
     description: 'Import a DICOM (.dcm) file.',
@@ -65,13 +58,6 @@ const dicomImporterDescriptor: FileImporterDescriptor<'dicom', DicomSettings, Fh
   decode: SourceFile.perFileDecode(dicomSourceFileCodec, decodeDicom, {
     subjectFor: patientSubjectOf,
   }),
-  sourceFileCategoryToken: DICOM_SOURCE_FILE_CATEGORY_TOKEN,
-  isSourceFile: isDicomSourceFile,
-  sourceFileFromDocumentReference: (resource) =>
-    dicomSourceFileFromDocumentReference(resource).pipe(
-      Effect.map((sourceFile) => ({ fileName: sourceFile.fileName, bytes: sourceFile.bytes }))
-    ),
-  sourceFileContentType: DICOM_SOURCE_FILE_CONTENT_TYPE,
-}
+})
 
-export { dicomImporterDescriptor, patientSubjectOf }
+export { dicomImporter, patientSubjectOf }
