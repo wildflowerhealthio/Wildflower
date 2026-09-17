@@ -1,4 +1,5 @@
-import { Data, Effect, Either, Option, Schema } from 'effect'
+import { Data, Effect, Either, Array as Arr, Schema } from 'effect'
+import type { ParseError } from 'effect/ParseResult'
 import type Client from 'fhirclient/lib/Client'
 
 /**
@@ -18,6 +19,7 @@ class ResourcePageRequestError extends Data.TaggedError('ResourcePageRequestErro
 }> {}
 
 class BundleDecodeError extends Data.TaggedError('BundleDecodeError')<{
+  readonly cause: ParseError
   readonly response: unknown
 }> {}
 
@@ -40,7 +42,7 @@ const BundlePage = Schema.Struct({
     )
   ),
 })
-const decodeBundlePage = Schema.decodeUnknownOption(BundlePage)
+const decodeBundlePage = Schema.decodeUnknown(BundlePage)
 
 /**
  * One page of a paged FHIR search: the resources this page decoded, the
@@ -128,28 +130,26 @@ const fetchResourcePage = <A, I, First>(
       catch: (cause) => new ResourcePageRequestError({ cause }),
     })
 
-    const page = decodeBundlePage(bundle)
-    if (Option.isNone(page)) {
-      return yield* new BundleDecodeError({ response: bundle })
-    }
+    const page = yield* decodeBundlePage(bundle).pipe(
+      Effect.mapError((cause) => new BundleDecodeError({ cause, response: bundle }))
+    )
 
-    const decodeResource = Schema.decodeUnknownEither(read.schema)
-    const items: A[] = []
-    let droppedEntryCount = 0
-    for (const entry of page.value.entry ?? []) {
-      const result = decodeResource(entry.resource)
-      if (Either.isRight(result)) {
-        items.push(result.right)
-      } else {
-        droppedEntryCount++
-      }
-    }
+    const decodeResource = Schema.decodeUnknown(read.schema)
+    const decodeEffects = (page.entry ?? []).map((entry) =>
+      decodeResource(entry.resource).pipe(
+        Effect.mapError((cause) => new BundleDecodeError({ cause, response: entry.resource })),
+        Effect.either
+      )
+    )
+    const results = yield* Effect.all(decodeEffects)
+    const items: A[] = Arr.filterMap(results, Either.getRight)
+    const droppedEntries = Arr.filterMap(results, Either.getLeft)
 
-    const next = (page.value.link ?? []).find((link) => link.relation === 'next')?.url
+    const next = (page.link ?? []).find((link) => link.relation === 'next')?.url
     return {
       items,
       nextPageUrl: next === undefined || next === null || next === '' ? null : next,
-      droppedEntryCount,
+      droppedEntryCount: droppedEntries.length,
     }
   })
 
