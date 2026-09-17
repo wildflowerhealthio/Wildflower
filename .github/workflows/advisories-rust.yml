@@ -5,6 +5,9 @@ name: Rust Advisories
 # Rust- or Tauri-touching PRs, so an advisory filed against an otherwise-
 # unchanged dependency would go unnoticed until the next such PR; this weekly
 # run closes that gap.
+#
+# cargo-deny-action runs in its own container and compiles nothing, so no Rust
+# cache is configured here — see docs/Rust/CI Build Cache Explanation.md.
 on:
   schedule:
     - cron: '0 6 * * 1' # Mondays 06:00 UTC

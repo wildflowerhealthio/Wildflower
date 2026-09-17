@@ -103,6 +103,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [Documentation Reference](./docs/Documentation/Reference.md) — Naming rules for docs
 - [Bridge Explanation](./docs/Messaging/Bridge%20Explanation.md) — The webview ↔ host bridge; [Wire Pinning How-To](./docs/Messaging/Wire%20Pinning%20How-To.md) for TS ⇄ Rust wire shapes
 - [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why `pnpm.overrides` exists and when to add/remove one
+- [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md) — The Rust cache keys CI jobs share, and what forks them
 
 ## Commands
 
@@ -126,6 +127,10 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
 - **TS format/lint/typecheck/test** — `vp check` + `vp test`. The enforced lint/format rules are oxlint+oxfmt, configured in `vite.config.ts` under the `lint:`/`fmt:` keys — **not** `eslint.config.mjs`, which runs only the informational TSDoc check (`lint:comments`, `continue-on-error`). Editing eslint config never fixes a lint failure.
 - **Rust fmt + clippy (`-D warnings`) + nextest** — `./scripts/checks/rust.sh` is the canonical Rust check; both the git hooks and CI (`ci-rust.yml`, which compiles the full workspace incl. the Tauri crates in one job) call it. It self-skips when `cargo` is absent, so a frontend-only change stays green locally while CI still gates it on PRs.
 - **cargo-deny** (licenses/advisories, `deny.toml`) gates new Rust deps.
+- **Rust build cache** — each cargo job names its build environment with a
+  `cache-shared-key`, and `rust-cache-warm.yml` warms the shared entry on `main`
+  (a PR run can only restore its base branch's cache). Keys and constraints:
+  [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md).
 - **markdownlint-cli2** on all `.md` — run locally via `vp run lint:docs`.
 - **OpenAPI Rust↔TS drift** (`api-sync.yml`) — a committed snapshot per slice. Regenerate a stale one with `UPDATE_OPENAPI=1 cargo test -p <slice>-rust openapi_spec_snapshot_is_up_to_date`; the TS half is `vp test openapi-drift`.
 

@@ -1,0 +1,70 @@
+name: Rust Cache Warm
+
+# Fills the default branch's Rust cache so pre-merge runs of ci-rust.yml start
+# warm: ci-rust.yml is `pull_request`-only, so without this nothing ever writes
+# to main's scope — the only scope a PR run can restore from — and every PR pays
+# a cold dependency compile. This job saves under ci-rust.yml's
+# `workspace-linux-dev` key and reproduces its build environment exactly. It is
+# not a gate: no fmt, clippy or tests, only the compile whose artifacts
+# ci-rust.yml reuses. Why that reproduction has to be exact, and why the release
+# builds are not warmed: docs/Rust/CI Build Cache Explanation.md.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # The files rust-cache folds into its lock hash. Root `Cargo.toml` is
+      # listed bare as well — `**/` is not guaranteed to match a root-level file.
+      - 'Cargo.lock'
+      - 'Cargo.toml'
+      - '**/Cargo.toml'
+      - 'rust-toolchain.toml'
+      # What this job compiles, and against which placeholders.
+      - 'scripts/checks/rust.sh'
+      - 'scripts/ci/stub-embedded-bundles.sh'
+      - '.github/workflows/rust-cache-warm.yml'
+  # Re-warm on demand, e.g. after the 7-day idle eviction drops the entry.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Only the newest main commit's cache is worth building; supersede in-flight
+# warms rather than queueing them.
+concurrency:
+  group: rust-cache-warm
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    name: Build workspace dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The Tauri crates `include_str!` generated web bundles that a fresh
+      # checkout doesn't have; same placeholders ci-rust.yml compiles against.
+      - name: Stub the embedded web bundles
+        run: ./scripts/ci/stub-embedded-bundles.sh all
+
+      - name: Install Tauri system dependencies
+        # Same list as ci-rust.yml — required for the webkit2gtk crate to link.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libxdo-dev
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          # The key ci-rust.yml restores from.
+          cache-shared-key: workspace-linux-dev
+          # A failed compile still saves whatever did build, so a broken main
+          # doesn't leave every PR cold.
+          cache-on-failure: true
+
+      - name: Build workspace (dependencies + all targets)
+        # Compile-only sibling of ci-rust.yml's `clippy-all`, with its exact
+        # selection so the cached artifacts match what that step looks for.
+        run: ./scripts/checks/rust.sh build-all
