@@ -58,9 +58,10 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
       ? [`Matched no importer: ${url}`]
       : [`Excluded — every matching kind is turned off in the settings: ${url}`]
   })
+const format = 'har'
 
 const harImporter = fileImporter({
-  format: 'har',
+  format,
   coding: { system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE },
   contentType: 'application/json',
   securityLabel: [{ system: WEB_TRACE_REDACTION_SYSTEM, code: WEB_TRACE_RAW_CODE }],

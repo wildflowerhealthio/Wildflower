@@ -41,7 +41,7 @@ type FormatSettings = {
  * One registered format's importer, parameterised on its {@link FormatKind}
  * key so every field carries the format's concrete types.
  */
-type BoundFormat<K extends FormatKind> = FileImporter<K, FormatSettings[K]>
+type BoundFormat<K extends FormatKind> = FileImporter<FormatSettings[K], K>
 
 /** The closed registry; its keys are the {@link FormatKind} union. */
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {

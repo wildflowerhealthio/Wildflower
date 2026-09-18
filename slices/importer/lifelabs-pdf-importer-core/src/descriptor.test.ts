@@ -48,7 +48,7 @@ const SETTINGS = { timeZone: 'America/Vancouver' }
 
 const importerForReports = (
   reports: readonly Report.Type[]
-): FileImporter<'lifelabs-pdf', typeof SETTINGS> =>
+): FileImporter<typeof SETTINGS, 'lifelabs-pdf'> =>
   fileImporter({
     format: 'lifelabs-pdf' as const,
     coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },

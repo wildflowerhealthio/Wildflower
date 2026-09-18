@@ -20,27 +20,18 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `subjectFor`). A `FileImporter` is a **plain record, not a class instance**:
   an adapter layer extends one by spreading it (which is how
   `importer-react`'s registry attaches each format's `SettingsPicker`), and a
-  spread is only total when there is no prototype to lose. The factory derives,
-  from the coding and content type alone: the per-format `SourceFile` schema
-  and its `SourceFileFromDocumentReference` transform, `isSourceFile`,
-  `sourceFileFromDocumentReference` / `sourceFileToDocumentReference`,
-  `categoryToken`, the deterministic mint (`mintSourceFile` decides the
-  `SourceFile.Type` — its id a SHA-256 of the bytes plus the file name via
-  `fhir-r4/identity`'s `localResourceId`, so re-importing the same file upserts
-  rather than duplicating — and `sourceFileToDocumentReference` encodes one,
-  optionally under a `Subject`; `buildSourceFile` does both at once), and
-  `decode` itself. That last one, `buildPerFileDecode`, is
-  where the per-file contract becomes the batch one: for each claimed file it
-  resolves the source to a `SourceFile.Reference` (minting for a `local` pick,
-  passing a `server` pick's existing reference through verbatim), runs the
-  binding's `decodeOne` with it,
-  **namespaces the decode's review keys** by the file's slot
-  (`FormatDecode.keyPrefix`), stamps every resource's `meta.source` via
-  `MetaSource.stampDecoded`, finishes the mint under the subject `subjectFor`
-  reads off the decode, prepends it as the file's "Source file" section, and
-  folds a `ParseError` into that file's own `unreadableFiles` entry. No format
+  spread is only total when there is no prototype to lose. **The factory is the
+  binder**: it builds one `SourceFile.FormatContext` from the config and
+  provides it at the boundary, so every member it returns — the
+  `SourceFileFromDocumentReference` transform behind
+  `sourceFileFromDocumentReference`, `sourceFileToDocumentReference`,
+  `mintSourceFile`, `buildSourceFile` (mint then encode, in one step), and the
+  batch `decode` it assembles with `DecodeFunction.fromProvider` — requires
+  nothing. What it owns itself is the per-format wrapping: the schema transform
+  and its annotations, `isSourceFile`, and `categoryToken`; the codec underneath
+  is `source-file.ts`'s. No format
   names another format: a binding supplies only its own coding constants and
-  `decodeOne`. Also holds `Coding`,
+  `decodeOne`. Also holds `Coding` (re-exported from `source-file.ts`),
   `DocumentReferenceType`, `FileImporterConfig`,
   `SettingsPickerProps<TSettings>` (the `{ settings, onChange }` contract
   every format's settings picker renders against, below every format's React
@@ -73,10 +64,34 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   twice), **`PerFileDecodeOptions`**, `prependToDecodedFile`, and
   **`SECTION_TITLE`** / **`key`**
   (the review section title and the stable per-file row key a minted source
-  file is reviewed under). Depends only on `decoded-file.ts` and
+  file is reviewed under).
+  It also owns the **codec** itself, written once rather than per format:
+  **`tryFromNamedBytes`** (the deterministic mint — the id a SHA-256 of the
+  bytes plus the file name through `fhir-r4/identity`'s `localResourceId`, so
+  re-importing the same file upserts rather than duplicating and no two formats
+  collide), **`encode`** (source file → its `DocumentReference`, optionally
+  under a `Subject`) and **`decode`** (a stored resource → back, or a failure
+  naming the resource and the reason). All three are parameterized by
+  **`FormatContext`**, the `Context.Tag` carrying one format's `coding` /
+  `contentType` / `securityLabel` / `descriptionPrefix`; `encode` and `decode`
+  each take the `ast` to blame, so a failure is reported against the schema the
+  caller was working in. Depends only on `decoded-file.ts` and
   `picked-file.ts` (types only, so no runtime cycle even though
   `picked-file.ts` depends back on this module for `Reference` /
   `makeReference`).
+- `src/decode-function.ts` — the **`DecodeFunction`** namespace: **`Type<TSettings, TFormat, R>`**,
+  the batch decode's signature (`R` is always spelled — `never` once bound,
+  `SourceFile.FormatContext` while not), and **`fromProvider`**, where the
+  per-file contract becomes the batch one. For each claimed file it resolves the
+  source to a `SourceFile.Reference` (minting for a `local` pick, passing a
+  `server` pick's existing reference through verbatim), runs the binding's
+  `decodeOne` with it, **namespaces the decode's review keys** by the file's slot
+  (`FormatDecode.keyPrefix`), stamps every resource's `meta.source` via
+  `MetaSource.stampDecoded`, finishes the mint under the subject `subjectFor`
+  reads off the decode, prepends it as the file's "Source file" section, and
+  folds a `ParseError` into that file's own `unreadableFiles` entry. It composes
+  from _unbound_ source-file operations, so the decode it returns still carries
+  the `FormatContext` requirement for its assembler to bind.
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` is two axes: `excludedResources`
   (per-resource opt-outs, keyed by a `DecodedFile.Resource`'s `key`) and
@@ -143,8 +158,16 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   decisions (HAR's kind toggles) expresses them as _settings_, and its decode
   folds everything that yielded no resources into notes — there is no
   per-format review state and no format review UI. Don't reintroduce either.
+- **`fileImporter` is the only binder of `SourceFile.FormatContext`.** The
+  codec is parameterized by it, `DecodeFunction.fromProvider` passes the
+  requirement through, and the factory discharges it once from the config it was
+  handed. Nothing on `FileImporter` carries it, and nothing above this package
+  ever provides it — see "Bake an internal context requirement to reshape the
+  public type" in the [Effect Patterns Reference](../../../docs/Effect/Patterns%20Reference.md).
+  A new source-file operation belongs in `source-file.ts` requiring the tag, not
+  in the factory closing over `coding`.
 - **`decode` never fails.** Malformed input is an `unreadableFiles` entry, not
-  an error channel: `buildPerFileDecode` folds the `ParseError` into the file
+  an error channel: `DecodeFunction.fromProvider` folds the `ParseError` into the file
   it belongs to, so one bad file in a batch leaves the rest reviewable and
   nothing above this package needs a `catchAll`.
 - **The source file is the format's, minted inside `decode`.** What a source
@@ -157,7 +180,7 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   `decodeOne` keys within _one_ file, because that is all it can see; the
   batch merges every claimed file's sections into one format-wide review,
   while the selection, the server-diff verdicts and the write plan are all
-  keyed by `(format, key)`. `buildPerFileDecode` prefixes each file's keys
+  keyed by `(format, key)`. `DecodeFunction.fromProvider` prefixes each file's keys
   with its slot, which is what makes a fixed key safe. Do not push that
   obligation down into the bindings — a `decodeOne` that tries to be unique
   across a batch cannot be, since it is not given the batch.
