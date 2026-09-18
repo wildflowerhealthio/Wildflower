@@ -23,26 +23,26 @@
 
 import { type ParseResult } from 'effect'
 import type * as DecodedFile from './decoded-file.ts'
-import { type PickedFile } from './picked-file.ts'
+import type * as PickedFile from './picked-file.ts'
 
 /** One file's slot within the batch its format claimed: its position, then its name. */
-const fileSlot = (index: number, file: PickedFile): string => `${index}:${file.fileName}`
+const fileSlot = (index: number, file: PickedFile.Type): string => `${index}:${file.fileName}`
 
 /** The id of one format's whole decode result — deterministic in its files and their order. */
-const makeId = (format: string, files: readonly PickedFile[]): string =>
+const makeId = (format: string, files: readonly PickedFile.Type[]): string =>
   `${format}/${files.map((file, index) => fileSlot(index, file)).join(',')}`
 
 /** The id of one file within its format's batch — an {@link UnreadableFile} row's, and an unrecognized pick's. */
-const makeFileId = (format: string, index: number, file: PickedFile): string =>
+const makeFileId = (format: string, index: number, file: PickedFile.Type): string =>
   `${format}/${fileSlot(index, file)}`
 
 /** The namespace every review key decoded out of one file carries — see the module remarks. */
-const keyPrefix = (index: number, file: PickedFile): string => `${fileSlot(index, file)}/`
+const keyPrefix = (index: number, file: PickedFile.Type): string => `${fileSlot(index, file)}/`
 
 interface Result<TFormat extends string> {
   readonly id: string
   readonly title: string
-  readonly files: readonly PickedFile[]
+  readonly files: readonly PickedFile.Type[]
   readonly format: TFormat
   readonly decoded: DecodedFile.DecodedFile
   readonly unreadableFiles: readonly UnreadableFile[]
@@ -51,7 +51,7 @@ interface Result<TFormat extends string> {
 interface UnreadableFile {
   readonly id: string
   readonly title: string
-  readonly pickedFile: PickedFile
+  readonly pickedFile: PickedFile.Type
   readonly error: ParseResult.ParseError
 }
 

@@ -43,9 +43,9 @@ type ReadRegistry = {
 /** A picked batch split by the format that claimed each file. */
 interface GroupedPicks {
   /** The picks each registered format claimed, in pick order, keyed by format. */
-  readonly groups: ReadonlyMap<FormatKind, readonly PickedFile.PickedFile[]>
+  readonly groups: ReadonlyMap<FormatKind, readonly PickedFile.Type[]>
   /** The picks no registered format claimed, in pick order. */
-  readonly unrecognized: readonly PickedFile.PickedFile[]
+  readonly unrecognized: readonly PickedFile.Type[]
 }
 
 /**
@@ -58,7 +58,7 @@ interface UnrecognizedFile {
   /** The file's name, as the preview and the results head the row with. */
   readonly title: string
   /** The one pick, kept as a list so it reads like every other unit's `files`. */
-  readonly files: readonly PickedFile.PickedFile[]
+  readonly files: readonly PickedFile.Type[]
 }
 
 /**
@@ -87,10 +87,8 @@ type BatchDecodeResult = FormatResults & {
  * format whose `isSourceFile` claimed it), and the identification is the
  * fact this module must not assume.
  */
-const identifyPick = (
-  registry: ReadRegistry,
-  pick: PickedFile.PickedFile
-): FormatKind | undefined => FormatDetector.claiming(Object.values(registry), pick)?.format
+const identifyPick = (registry: ReadRegistry, pick: PickedFile.Type): FormatKind | undefined =>
+  FormatDetector.claiming(Object.values(registry), pick)?.format
 
 /**
  * Split a picked batch by the format that claims each file.
@@ -100,12 +98,9 @@ const identifyPick = (
  * @returns The per-format groups (pick order kept within each) and the
  *   unclaimed picks
  */
-const groupByFormat = (
-  registry: ReadRegistry,
-  picks: readonly PickedFile.PickedFile[]
-): GroupedPicks => {
-  const groups = new Map<FormatKind, PickedFile.PickedFile[]>()
-  const unrecognized: PickedFile.PickedFile[] = []
+const groupByFormat = (registry: ReadRegistry, picks: readonly PickedFile.Type[]): GroupedPicks => {
+  const groups = new Map<FormatKind, PickedFile.Type[]>()
+  const unrecognized: PickedFile.Type[] = []
   for (const pick of picks) {
     const kind = identifyPick(registry, pick)
     if (kind === undefined) {
@@ -136,7 +131,7 @@ const decodeFormat = <K extends FormatKind>(
   registry: ReadRegistry,
   settings: FormatSettings,
   kind: K,
-  files: readonly PickedFile.PickedFile[]
+  files: readonly PickedFile.Type[]
 ): Effect.Effect<FormatDecode.Result<K>> => registry[kind].decode(files, settings[kind])
 
 /**
@@ -190,7 +185,7 @@ const collectFormats = (
 const readBatch = (
   registry: ReadRegistry,
   settings: FormatSettings,
-  picks: readonly PickedFile.PickedFile[]
+  picks: readonly PickedFile.Type[]
 ): Effect.Effect<BatchDecodeResult> => {
   const { groups, unrecognized } = groupByFormat(registry, picks)
   return collectFormats(

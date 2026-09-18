@@ -422,7 +422,7 @@ const patientWire = (wire: Record<string, unknown>): unknown =>
   )
 
 /** A `local` pick with the given name. */
-const pickedFile = (fileName: string): PickedFile.PickedFile => ({
+const pickedFile = (fileName: string): PickedFile.Type => ({
   fileName,
   bytes: new TextEncoder().encode('{}'),
   source: PickedFile.Source.local,

@@ -24,7 +24,7 @@ import { harImporter } from '../har-importer.ts'
  */
 const mint = (bytes: Uint8Array, fileName = 'portal-session.har'): Promise<DocumentReferenceType> =>
   Effect.runPromise(
-    SourceFile.make({ fileName, bytes }).pipe(
+    SourceFile.mintResource({ fileName, bytes }).pipe(
       Effect.provideService(SourceFile.FormatContext, harImporter.sourceFileFormat)
     )
   )

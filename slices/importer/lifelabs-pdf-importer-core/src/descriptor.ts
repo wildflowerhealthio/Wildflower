@@ -16,7 +16,7 @@ const sourceFileFormat = {
   contentType: 'application/pdf',
   descriptionPrefix: `${display.title}: `,
 }
-const decodeFunctionConfig = {
+const decodeConfig = {
   format,
   decodeOne: decodeLifeLabsPdf,
 } as const
@@ -25,7 +25,7 @@ const lifeLabsPdfImporter = FileImporter.make({
   format,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
+  decode: DecodeFunction.fromPerFile(decodeConfig),
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
 })

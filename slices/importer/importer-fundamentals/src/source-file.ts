@@ -11,8 +11,8 @@
  *
  * The codec — `tryFromNamedBytes`, `encode`, `decode` — is written once here
  * rather than per format, parameterised by the {@link FormatContext} a format's
- * coding constants supply. `fileImporter` is the only place that binds that
- * context; see `file-importer.ts`.
+ * coding constants supply. `FileImporter.make` is the only place that binds
+ * that context; see `file-importer.ts`.
  *
  * @packageDocumentation
  */
@@ -84,10 +84,7 @@ interface Subject {
  * twice. `undefined` leaves the source file with no `subject` — the default,
  * which keeps an engineering artifact out of `Patient/$everything`.
  */
-type SubjectFor = (
-  file: PickedFile.PickedFile,
-  decoded: DecodedFile.DecodedFile
-) => Subject | undefined
+type SubjectFor = (file: PickedFile.Type, decoded: DecodedFile.DecodedFile) => Subject | undefined
 
 interface PerFileDecodeOptions {
   readonly subjectFor?: SubjectFor | undefined
@@ -201,16 +198,16 @@ const toWire = ({
  * Hash the bytes and build the source file's `DocumentReference`.
  *
  * @remarks
- * Takes the `ast` to blame so every caller — the codec's own schema transform,
- * and the subject-bearing `sourceFileToDocumentReference` above it — reports a
- * digest failure against the schema it was working in.
+ * The private half of {@link encode}: it takes the `ast` to blame, so its two
+ * callers — {@link encode} and the schema transform's own `encode` — each
+ * report a digest failure against the schema they were working in.
  *
  * @param sourceFile - The minted source file to store
  * @param subject - The subject to file it under, when the format names one
  * @param ast - The schema to blame for a failure
  * @returns The source file's `DocumentReference`
  */
-const encode = (
+const hashAndBuild = (
   sourceFile: Type,
   subject: Subject | undefined,
   ast: SchemaAST.AST
@@ -247,7 +244,7 @@ const readParts = (
 
 /**
  * Read a stored `DocumentReference` back into a source file — the mirror of
- * {@link encode}, and like it blaming the `ast` the caller was working in.
+ * {@link hashAndBuild}, and like it blaming the `ast` the caller was working in.
  *
  * @param wire - The stored resource, as wire JSON
  * @param ast - The schema to blame for a failure
@@ -310,7 +307,7 @@ const FromDocumentReferenceSchema: Schema.Schema<Type, DocumentReferenceType, Fo
           encodeResource(resource),
           Effect.flatMap((wire) => decode(wire, ast))
         ),
-      encode: (sourceFile, _options, ast) => encode(sourceFile, undefined, ast),
+      encode: (sourceFile, _options, ast) => hashAndBuild(sourceFile, undefined, ast),
     }
   ).annotations({
     identifier: `SourceFileFromDocumentReference`,
@@ -319,30 +316,42 @@ const FromDocumentReferenceSchema: Schema.Schema<Type, DocumentReferenceType, Fo
 
 const validateSourceFile = ParseResult.validate(Schema.typeSchema(SourceFileSchema))
 
-const encodeSourceFile = (
+/**
+ * Encode a source file as the `DocumentReference` it is stored as — the
+ * public mirror of {@link decode}.
+ *
+ * @param sourceFile - The minted source file to store
+ * @param subject - The subject to file it under, when the format names one
+ * @returns The source file's `DocumentReference`
+ */
+const encode = (
   sourceFile: Type,
   subject?: Subject
 ): Effect.Effect<DocumentReferenceType, ParseResult.ParseError, FormatContext> =>
   validateSourceFile(sourceFile).pipe(
-    Effect.flatMap((valid) => encode(valid, subject, FromDocumentReferenceSchema.ast)),
+    Effect.flatMap((valid) => hashAndBuild(valid, subject, FromDocumentReferenceSchema.ast)),
     Effect.mapError(ParseResult.parseError)
   )
 
 /**
  * Mint a picked file's source file and encode it, in one step —
- * {@link tryFromNamedBytes} then {@link encodeSourceFile}.
+ * {@link tryFromNamedBytes} then {@link encode}.
+ *
+ * @remarks
+ * Named for its *result*: unlike `tryFromNamedBytes`, which yields a
+ * {@link Type}, this yields the stored resource. The batch decode does the two
+ * steps separately, because it can only name the subject once the file's
+ * decode has run.
  *
  * @param picked - The picked file's name and bytes
  * @param subject - The subject to file it under, when the format names one
  * @returns The source file's `DocumentReference`
  */
-const make = (
+const mintResource = (
   picked: PickedFile.NamedBytes,
   subject?: Subject
 ): Effect.Effect<DocumentReferenceType, ParseResult.ParseError, FormatContext> =>
-  tryFromNamedBytes(picked).pipe(
-    Effect.flatMap((sourceFile) => encodeSourceFile(sourceFile, subject))
-  )
+  tryFromNamedBytes(picked).pipe(Effect.flatMap((sourceFile) => encode(sourceFile, subject)))
 
 const inFormatsCategory = (
   documentReference: DocumentReferenceType
@@ -362,15 +371,15 @@ export {
   FormatContext,
   categoryToken,
   decode,
+  encode,
   idFromReference,
   inFormatsCategory,
   key,
-  make,
   makeReference,
+  mintResource,
   prependToDecodedFile,
   tryFromNamedBytes,
   FromDocumentReferenceSchema,
-  encodeSourceFile,
   SourceFileSchema as Schema,
 }
 export type { Coding, Format, PerFileDecodeOptions, Reference, Subject, SubjectFor, Type }

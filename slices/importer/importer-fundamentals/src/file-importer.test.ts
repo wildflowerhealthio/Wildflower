@@ -26,14 +26,14 @@ const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
 const fakeResource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
-const localFile = (fileName: string, bytes: Uint8Array): PickedFile.PickedFile => ({
+const localFile = (fileName: string, bytes: Uint8Array): PickedFile.Type => ({
   fileName,
   bytes,
   source: PickedFile.Source.local,
 })
 
 const decodeBytes = (
-  file: PickedFile.PickedFile,
+  file: PickedFile.Type,
   _settings: null
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   file.bytes.length === 0
@@ -63,7 +63,7 @@ const sourceFileFormat = {
   contentType: 'application/octet-stream',
   descriptionPrefix: `${display.title}: `,
 }
-const decodeFunctionConfig = {
+const decodeConfig = {
   format: testFormat,
   decodeOne: decodeBytes,
 } as const
@@ -72,12 +72,12 @@ const importer = FileImporter.make({
   format: testFormat,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
+  decode: DecodeFunction.fromPerFile(decodeConfig),
   detect: () => false,
   defaultSettings: null,
 })
 
-const fileArbitrary: fc.Arbitrary<PickedFile.PickedFile> = fc.record({
+const fileArbitrary: fc.Arbitrary<PickedFile.Type> = fc.record({
   fileName: fc.stringMatching(/^[a-z0-9]{1,12}\.bin$/u),
   bytes: fc.uint8Array({ maxLength: 6 }),
   source: fc.oneof(
@@ -101,14 +101,14 @@ const otherSourceFileFormat = {
   ...sourceFileFormat,
   coding: { system: SYSTEM, code: 'other-example' },
 }
-const otherDecodeFunctionConfig = { ...decodeFunctionConfig, format: 'other' } as const
+const otherDecodeFunctionConfig = { ...decodeConfig, format: 'other' } as const
 
 /** A second format over the same system, to check that recognition is per-coding. */
 const otherImporter = FileImporter.make({
   format: testFormat,
   display: otherDisplay,
   sourceFileFormat: otherSourceFileFormat,
-  decode: DecodeFunction.fromCombinableDecodeConfig(otherDecodeFunctionConfig),
+  decode: DecodeFunction.fromPerFile(otherDecodeFunctionConfig),
   detect: () => false,
   defaultSettings: null,
 })
@@ -116,7 +116,7 @@ const otherImporter = FileImporter.make({
 /** The source-file row a single-local-pick decode leads with. */
 const mintedSourceFile = async <TFormat extends string>(
   format: FileImporter.Type<null, TFormat>,
-  file: PickedFile.PickedFile
+  file: PickedFile.Type
 ): Promise<DocumentReferenceType> => {
   const result = await atFixedInstant(format.decode([file], null))
   const resource = result.decoded.sections[0]?.resources[0]?.resource
@@ -246,11 +246,7 @@ describe('decode (batch behavior)', () => {
     const format = 'test'
     const spyDecodeFunctionConfig = {
       format,
-      decodeOne: (
-        file: PickedFile.PickedFile,
-        settings: null,
-        sourceFile: SourceFile.Reference
-      ) => {
+      decodeOne: (file: PickedFile.Type, settings: null, sourceFile: SourceFile.Reference) => {
         seen.push(sourceFile)
         return decodeBytes(file, settings)
       },
@@ -259,7 +255,7 @@ describe('decode (batch behavior)', () => {
       format,
       display,
       sourceFileFormat,
-      decode: DecodeFunction.fromCombinableDecodeConfig(spyDecodeFunctionConfig),
+      decode: DecodeFunction.fromPerFile(spyDecodeFunctionConfig),
       detect: () => false,
       defaultSettings: null,
     })
@@ -350,10 +346,10 @@ describe('decode (batch behavior)', () => {
 
   it('should file the minted source file under the subject the decode named', async () => {
     const subjectDecodeFunctionConfig = {
-      ...decodeFunctionConfig,
+      ...decodeConfig,
       // The decode's own resources name the subject, so a format never parses
       // its file twice to derive one.
-      subjectFor: (_file: PickedFile.PickedFile, decoded: DecodedFile.DecodedFile) => {
+      subjectFor: (_file: PickedFile.Type, decoded: DecodedFile.DecodedFile) => {
         const first = DecodedFile.resources(decoded)[0]
         return first === undefined ? undefined : { reference: `Patient/${first.resource.id}` }
       },
@@ -362,7 +358,7 @@ describe('decode (batch behavior)', () => {
       format: subjectDecodeFunctionConfig.format,
       display,
       sourceFileFormat,
-      decode: DecodeFunction.fromCombinableDecodeConfig(subjectDecodeFunctionConfig),
+      decode: DecodeFunction.fromPerFile(subjectDecodeFunctionConfig),
       detect: () => false,
       defaultSettings: null,
     })

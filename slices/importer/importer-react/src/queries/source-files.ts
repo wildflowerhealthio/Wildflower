@@ -345,7 +345,7 @@ const useSmartSourceFilesQuery = (
 const fetchSourceFile = (
   runAuthed: RunAuthed,
   row: { readonly id: string; readonly format: FormatKind }
-): Promise<PickedFile.PickedFile> =>
+): Promise<PickedFile.Type> =>
   runAuthed(
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient

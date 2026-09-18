@@ -16,7 +16,7 @@ import {
  */
 const mint = (bytes: Uint8Array, fileName = 'lab-report.pdf'): Promise<DocumentReferenceType> =>
   Effect.runPromise(
-    SourceFile.make({ fileName, bytes }).pipe(
+    SourceFile.mintResource({ fileName, bytes }).pipe(
       Effect.provideService(SourceFile.FormatContext, lifeLabsPdfImporter.sourceFileFormat)
     )
   )

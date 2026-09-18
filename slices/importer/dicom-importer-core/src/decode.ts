@@ -84,7 +84,7 @@ const sectionTitle = (header: DicomHeader): string => {
  *   IANA time zone name
  */
 const decodeDicom = (
-  file: PickedFile.PickedFile,
+  file: PickedFile.Type,
   settings: DicomSettings,
   sourceFile: SourceFile.Reference
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>

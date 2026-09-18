@@ -21,9 +21,10 @@ interface SettingsPickerProps<TSettings> {
  * A binding writes each seam in the shape the thing that consumes it reads,
  * rather than as loose fields the factory would assemble: the source-file
  * constants as one `SourceFile.Format` (the value the codec is parameterized
- * by), and the batch decode as the still-unbound
- * `DecodeFunction.WithContext` that `DecodeFunction.fromCombinableDecodeConfig`
- * hands back. `sourceFileFormat` is spelled once, here: the decode arrives
+ * by), and the batch decode as a still-unbound `DecodeFunction.WithContext` —
+ * from `DecodeFunction.fromPerFile` for a format whose files decode one at a
+ * time, or from whatever constructor suits one whose files do not.
+ * `sourceFileFormat` is spelled once, here: the decode arrives
  * needing a `SourceFile.FormatContext` and {@link make} provides it, so the
  * constants the importer reads `categoryToken` and `isSourceFile` out of are
  * by construction the ones its decode mints under.

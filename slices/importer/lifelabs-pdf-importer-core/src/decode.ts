@@ -145,7 +145,7 @@ const decodeLifeLabsPdfDocument = (
  * JSON download.
  */
 const decodeLifeLabsPdf = (
-  file: PickedFile.PickedFile,
+  file: PickedFile.Type,
   settings: LifeLabsPdfSettings,
   _sourceFile: SourceFile.Reference
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>

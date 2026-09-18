@@ -84,13 +84,13 @@ const unrecognizedRejection = (file: ReadableFile): RejectedFile => ({
 const acceptLocalFile = (
   descriptors: readonly FormatDetector.Type[],
   file: ReadableFile
-): Effect.Effect<PickedFile.PickedFile, string> =>
+): Effect.Effect<PickedFile.Type, string> =>
   Effect.promise(() => file.arrayBuffer()).pipe(
     Effect.flatMap((buffer) => {
       const bytes = new Uint8Array(buffer)
       const claim = FormatDetector.claiming(descriptors, { fileName: file.name, bytes })
       if (claim === undefined) return Effect.fail(REJECTION_MESSAGE)
-      return Effect.succeed<PickedFile.PickedFile>({
+      return Effect.succeed<PickedFile.Type>({
         fileName: file.name,
         bytes,
         source: PickedFile.Source.local,

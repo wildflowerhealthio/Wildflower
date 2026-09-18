@@ -9,12 +9,26 @@ import * as SourceFile from './source-file.ts'
 type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
 /**
- * What {@link fromCombinableDecodeConfig} needs of a format: its tag, its per-file decode, and
+ * What {@link fromPerFile} needs of a format: its tag, its per-file decode, and
  * — when it files its source file under a subject — its `subjectFor`.
  *
  * @remarks
+ * **Per-file** is the assumption, not a filler word. It constrains both ends:
+ * `decodeOne` is handed one file and *cannot see the others*, and the per-file
+ * results **sum** into the batch's — sections concatenate, notes concatenate,
+ * unreadable files accumulate, and no file's decode can change another's. That
+ * is what lets {@link fromPerFile} run the files concurrently and fold one bad
+ * file into its own `unreadableFiles` row while the rest stay reviewable.
+ *
+ * It is one way to build a {@link Type}, not the only one. A format whose files
+ * must be read *together* — a multi-part archive, a manifest naming its
+ * siblings, anything where the batch is more than the sum of its files — is not
+ * per-file, and needs its own constructor here rather than a widened version of
+ * this one. Reaching for this one and trying to smuggle cross-file state
+ * through `settings` is the failure mode it exists to make obvious.
+ *
  * The source-file operations are not parameters: this module calls
- * `SourceFile.tryFromNamedBytes` and `SourceFile.encodeSourceFile` directly,
+ * `SourceFile.tryFromNamedBytes` and `SourceFile.encode` directly,
  * unbound, so the decode it builds still carries the
  * `SourceFile.FormatContext` requirement for `FileImporter.make` to discharge
  * in one place. That is the whole reason this module takes no
@@ -22,8 +36,7 @@ type DocumentReferenceType = typeof DocumentReference.Schema.Type
  * disagree with the one the importer reads its `categoryToken` and
  * `isSourceFile` out of, and nothing would catch it.
  */
-interface CombinableDecodeConfig<TFormat extends string, TSettings>
-  extends SourceFile.PerFileDecodeOptions {
+interface PerFileConfig<TFormat extends string, TSettings> extends SourceFile.PerFileDecodeOptions {
   readonly format: TFormat
   /**
    * One format's per-file decode step, given the file, its settings, and the
@@ -31,7 +44,7 @@ interface CombinableDecodeConfig<TFormat extends string, TSettings>
    * minted for a `local` pick, the existing one for a `server` pick.
    */
   readonly decodeOne: (
-    file: PickedFile.PickedFile,
+    file: PickedFile.Type,
     settings: TSettings,
     sourceFile: SourceFile.Reference
   ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError>
@@ -56,7 +69,7 @@ interface ResolvedSource {
 }
 
 const resolveSource = (
-  file: PickedFile.PickedFile
+  file: PickedFile.Type
 ): Effect.Effect<ResolvedSource, ParseResult.ParseError, SourceFile.FormatContext> => {
   if (file.source._tag === 'server') {
     return Effect.succeed({ reference: file.source.reference, mintResource: undefined })
@@ -65,26 +78,26 @@ const resolveSource = (
     Effect.map((sourceFile) => ({
       reference: SourceFile.makeReference(sourceFile.id),
       mintResource: (subject: SourceFile.Subject | undefined) =>
-        SourceFile.encodeSourceFile(sourceFile, subject),
+        SourceFile.encode(sourceFile, subject),
     }))
   )
 }
 
 /**
- * Lift one format's per-file `decodeOne` into the batch `decode` the shell
- * runs: one file at a time, each contributing its own "Source file" row, its
- * sections under its own key namespace, and its own unreadable row when it
- * rejects.
+ * Lift a format whose files decode one at a time — see {@link PerFileConfig} —
+ * into the batch `decode` the shell runs: each file decoded on its own and
+ * concurrently, each contributing its own "Source file" row, its sections under
+ * its own key namespace, and its own unreadable row when it rejects.
  *
  * @param config - The format's tag, per-file decode, and optional `subjectFor`
  * @returns The format's batch `decode`, which never fails, still needing its `SourceFile.FormatContext`
  */
-const fromCombinableDecodeConfig =
+const fromPerFile =
   <TFormat extends string, TSettings>(
-    config: CombinableDecodeConfig<TFormat, TSettings>
+    config: PerFileConfig<TFormat, TSettings>
   ): WithContext<TSettings, TFormat, SourceFile.FormatContext> =>
   (
-    files: readonly PickedFile.PickedFile[],
+    files: readonly PickedFile.Type[],
     settings: TSettings
   ): Effect.Effect<FormatDecode.Result<TFormat>, never, SourceFile.FormatContext> =>
     Effect.forEach(
@@ -156,7 +169,8 @@ const fromCombinableDecodeConfig =
  * @remarks
  * This is the bound end of {@link WithContext} — what a `FileImporter` exposes,
  * once `FileImporter.make` has discharged the source-file context.
- * {@link fromCombinableDecodeConfig} returns the unbound end.
+ * {@link fromPerFile} returns the unbound end, and is one constructor of this
+ * type rather than the only one.
  */
 type Type<in TSettings, TFormat extends string> = WithContext<TSettings, TFormat, never>
 
@@ -166,9 +180,9 @@ type Type<in TSettings, TFormat extends string> = WithContext<TSettings, TFormat
  * format's coding constants are still to be provided.
  */
 type WithContext<in TSettings, TFormat extends string, R> = (
-  files: readonly PickedFile.PickedFile[],
+  files: readonly PickedFile.Type[],
   settings: TSettings
 ) => Effect.Effect<FormatDecode.Result<TFormat>, never, R>
 
-export { fromCombinableDecodeConfig }
-export type { CombinableDecodeConfig, Type, WithContext }
+export { fromPerFile }
+export type { PerFileConfig, Type, WithContext }

@@ -64,7 +64,7 @@ interface SourcePickerProps {
    * was accepted; a re-pick replaces the previous batch. The picker holds
    * no selection of its own; the caller owns what happens next.
    */
-  readonly onPick: (picks: readonly PickedFile.PickedFile[]) => void
+  readonly onPick: (picks: readonly PickedFile.Type[]) => void
   /**
    * Whether the caller consumes a batch of files or a single file at a
    * time. Defaults to `'batch'`. See {@link SourcePickerMode}.

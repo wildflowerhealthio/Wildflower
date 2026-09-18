@@ -35,7 +35,7 @@ const sourceFileFormat = {
   contentType: 'application/dicom',
   descriptionPrefix: `${display.title}: `,
 }
-const decodeFunctionConfig = {
+const decodeConfig = {
   format,
   decodeOne: decodeDicom,
   subjectFor: patientSubjectOf,
@@ -45,7 +45,7 @@ const dicomImporter = FileImporter.make({
   display,
   sourceFileFormat,
   format,
-  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
+  decode: DecodeFunction.fromPerFile(decodeConfig),
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
 })

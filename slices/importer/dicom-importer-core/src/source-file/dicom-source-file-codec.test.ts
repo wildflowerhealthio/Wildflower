@@ -16,7 +16,7 @@ import {
  */
 const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<DocumentReferenceType> =>
   Effect.runPromise(
-    SourceFile.make({ fileName, bytes }).pipe(
+    SourceFile.mintResource({ fileName, bytes }).pipe(
       Effect.provideService(SourceFile.FormatContext, dicomImporter.sourceFileFormat)
     )
   )

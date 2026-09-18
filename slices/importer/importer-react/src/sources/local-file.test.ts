@@ -45,7 +45,7 @@ const pdfDescriptor: FormatDetector.Type = {
 
 const descriptors: readonly FormatDetector.Type[] = [pdfDescriptor, harDescriptor]
 
-const runAccept = (file: ReadableFile): Promise<Either.Either<PickedFile.PickedFile, string>> =>
+const runAccept = (file: ReadableFile): Promise<Either.Either<PickedFile.Type, string>> =>
   Effect.runPromise(Effect.either(acceptLocalFile(descriptors, file)))
 
 describe('acceptLocalFile', () => {

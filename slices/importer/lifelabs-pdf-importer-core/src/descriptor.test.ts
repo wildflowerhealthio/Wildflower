@@ -57,15 +57,15 @@ const importerForReports = (
 ): FileImporter.Type<typeof SETTINGS, 'lifelabs-pdf'> => {
   const format = 'lifelabs-pdf'
   // Closes over `reports`, so it is built per call rather than at module scope.
-  const decodeFunctionConfig = {
+  const decodeConfig = {
     format,
-    decodeOne: (_file: PickedFile.PickedFile, settings: typeof SETTINGS) =>
+    decodeOne: (_file: PickedFile.Type, settings: typeof SETTINGS) =>
       decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
   } as const
   return FileImporter.make({
     format,
     sourceFileFormat,
-    decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
+    decode: DecodeFunction.fromPerFile(decodeConfig),
     display: { title: 'LifeLabs report', description: 'Test' },
     detect: detectLifeLabsPdf,
     defaultSettings: SETTINGS,
@@ -87,7 +87,7 @@ describe('lifeLabsPdfImporter decode', () => {
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
         async (reports) => {
-          const file: PickedFile.PickedFile = {
+          const file: PickedFile.Type = {
             fileName: 'Reports.pdf',
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
             source: PickedFile.Source.local,
@@ -121,7 +121,7 @@ describe('lifeLabsPdfImporter decode', () => {
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
         async (reports) => {
-          const file: PickedFile.PickedFile = {
+          const file: PickedFile.Type = {
             fileName: 'Reports.pdf',
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
             source: PickedFile.Source.server('wf-already-uploaded'),
@@ -146,7 +146,7 @@ describe('lifeLabsPdfImporter decode', () => {
   })
 
   it('collects an unreadable file for bytes that are not a PDF', async () => {
-    const file: PickedFile.PickedFile = {
+    const file: PickedFile.Type = {
       fileName: 'not-a-report.pdf',
       bytes: new TextEncoder().encode('this is not a PDF at all'),
       source: PickedFile.Source.local,

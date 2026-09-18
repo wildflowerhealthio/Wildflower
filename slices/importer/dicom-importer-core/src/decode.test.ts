@@ -14,7 +14,7 @@ import { type DicomSettings } from './settings.ts'
 const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
 
 /** A local pick of the given bytes — what the picker hands every decode. */
-const pick = (bytes: Uint8Array): PickedFile.PickedFile => ({
+const pick = (bytes: Uint8Array): PickedFile.Type => ({
   fileName: 'sample.dcm',
   bytes,
   source: PickedFile.Source.local,

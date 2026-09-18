@@ -102,7 +102,7 @@ const POOL_KIND_NAMES: string[] = SourceDescriptor.poolOf(fhirSources).map((kind
 const OBSERVATION_KINDS = ['ObservationListResponseKind', 'ObservationResponseKind']
 
 /** The fixture archive, picked from `source` under one file name. */
-const pickedHar = (source: PickedFile.Source.Type): PickedFile.PickedFile => ({
+const pickedHar = (source: PickedFile.Source.Type): PickedFile.Type => ({
   fileName: 'archive.har',
   bytes: RECOGNIZED_WITH_NOISE,
   source,
@@ -114,7 +114,7 @@ const pickedHar = (source: PickedFile.Source.Type): PickedFile.PickedFile => ({
  * bytes through Web Crypto.
  */
 const readOne = async (
-  file: PickedFile.PickedFile,
+  file: PickedFile.Type,
   settings: HarSettings = defaultHarSettings
 ): Promise<FormatDecode.Result<string>> => {
   const result = await Effect.runPromise(harImporter.decode([file], settings))
@@ -228,7 +228,7 @@ describe('harImporter.decode', () => {
   })
 
   it('should report bytes that are not a well-formed HAR as one unreadable unit', async () => {
-    const file: PickedFile.PickedFile = {
+    const file: PickedFile.Type = {
       fileName: 'archive.har',
       bytes: new TextEncoder().encode('{ not a har }'),
       source: PickedFile.Source.local,

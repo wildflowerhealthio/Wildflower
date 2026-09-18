@@ -58,7 +58,7 @@ describe('dicomImporter', () => {
       return `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}`
     }
 
-    const readUnit = async (file: PickedFile.PickedFile): Promise<FormatDecode.Result<string>> => {
+    const readUnit = async (file: PickedFile.Type): Promise<FormatDecode.Result<string>> => {
       const result = await Effect.runPromise(dicomImporter.decode([file], defaultDicomSettings))
       if (result.unreadableFiles.length > 0) throw new Error('expected a readable result')
       return result
@@ -154,7 +154,7 @@ describe('dicomImporter', () => {
   })
 
   describe('patientSubjectOf', () => {
-    const anyFile: PickedFile.PickedFile = {
+    const anyFile: PickedFile.Type = {
       fileName: 'sample.dcm',
       bytes: new Uint8Array(),
       source: PickedFile.Source.local,

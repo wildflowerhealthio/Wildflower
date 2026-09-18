@@ -91,7 +91,7 @@ describe('tryFromNamedBytes — the deterministic mint', () => {
 })
 
 // ---------------------------------------------------------------------------
-// encodeSourceFile / FromDocumentReferenceSchema — the codec proper
+// encode / FromDocumentReferenceSchema — the codec proper
 // ---------------------------------------------------------------------------
 
 const UPLOAD_FLOOR = Date.UTC(2026, 0, 1)
@@ -116,7 +116,7 @@ const example = (overrides: Partial<SourceFile.Type> = {}): SourceFile.Type => (
 const readBack = Schema.decode(SourceFile.FromDocumentReferenceSchema)
 
 const roundTrip = (sourceFile: SourceFile.Type): Promise<SourceFile.Type> =>
-  run(SourceFile.encodeSourceFile(sourceFile).pipe(Effect.flatMap(readBack)))
+  run(SourceFile.encode(sourceFile).pipe(Effect.flatMap(readBack)))
 
 /** `uploadedAt` is a `DateTime`; compared by its instant so two equal times match. */
 const comparable = (
@@ -146,8 +146,7 @@ describe('the codec as a schema', () => {
   test('property: hash and size describe the attachment bytes, stored verbatim', async () => {
     await fc.assert(
       fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
-        const attachment = (await run(SourceFile.encodeSourceFile(sourceFile))).content[0]
-          ?.attachment
+        const attachment = (await run(SourceFile.encode(sourceFile))).content[0]?.attachment
         expect(attachment?.size).toBe(sourceFile.bytes.length)
         expect(attachment?.hash).toBe(await digestOf(sourceFile.bytes))
         expect(attachment?.data).toBe(Encoding.encodeBase64(sourceFile.bytes))
@@ -164,7 +163,7 @@ describe('the codec as a schema', () => {
   test('property: subject is absent unless one is named, keeping source files out of Patient/$everything', async () => {
     await fc.assert(
       fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
-        expect((await run(SourceFile.encodeSourceFile(sourceFile))).subject).toBeNull()
+        expect((await run(SourceFile.encode(sourceFile))).subject).toBeNull()
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )
@@ -174,7 +173,7 @@ describe('the codec as a schema', () => {
     await fc.assert(
       fc.asyncProperty(sourceFileArbitrary, fc.uuid(), async (sourceFile, patientId) => {
         const resource = await run(
-          SourceFile.encodeSourceFile(sourceFile, { reference: `Patient/${patientId}` })
+          SourceFile.encode(sourceFile, { reference: `Patient/${patientId}` })
         )
         expect(resource.subject?.reference).toBe(`Patient/${patientId}`)
       }),
@@ -183,7 +182,7 @@ describe('the codec as a schema', () => {
   })
 
   it('carries the format context coding on both type and category', async () => {
-    const resource = await run(SourceFile.encodeSourceFile(example()))
+    const resource = await run(SourceFile.encode(example()))
     expect(
       resource.type?.coding.map((one) => ({ system: one.system?.toString(), code: one.code }))
     ).toEqual([exampleFormat.coding])
@@ -195,7 +194,7 @@ describe('the codec as a schema', () => {
   })
 
   it('rejects a resource whose attachment carries no data', async () => {
-    const resource = await run(SourceFile.encodeSourceFile(example()))
+    const resource = await run(SourceFile.encode(example()))
     const dataless = resource.content.map((entry) => ({
       ...entry,
       attachment: { ...entry.attachment, data: null },
@@ -206,14 +205,14 @@ describe('the codec as a schema', () => {
   })
 
   it('a decode failure names the offending resource, so a failing list says which one', async () => {
-    const resource = await run(SourceFile.encodeSourceFile(example()))
+    const resource = await run(SourceFile.encode(example()))
     const outcome = await run(Effect.either(readBack({ ...resource, category: [] })))
     expect(outcome._tag).toBe('Left')
     if (outcome._tag === 'Left') expect(outcome.left.message).toContain(resource.id)
   })
 
   it("another format's document is not this one's source file", async () => {
-    const resource = await runAs(otherFormat, SourceFile.encodeSourceFile(example()))
+    const resource = await runAs(otherFormat, SourceFile.encode(example()))
     const outcome = await run(Effect.either(readBack(resource)))
     expect(outcome._tag).toBe('Left')
     if (outcome._tag === 'Left') expect(outcome.left.message).toContain(exampleFormat.coding.code)

@@ -24,7 +24,7 @@ import { defaultFormatSettings, type FormatKind, formatKinds, formatRegistry } f
  */
 
 /** A pick claimed by the fake format named in its file name (`har-…`, `pdf-…`, `dcm-…`), or by none. */
-const pickArbitrary: fc.Arbitrary<PickedFile.PickedFile> = fc
+const pickArbitrary: fc.Arbitrary<PickedFile.Type> = fc
   .tuple(
     fc.constantFrom('har', 'pdf', 'dcm', 'txt'),
     fc.stringMatching(/^[a-z0-9]{1,6}$/u),
@@ -37,7 +37,7 @@ const pickArbitrary: fc.Arbitrary<PickedFile.PickedFile> = fc
   }))
 
 /** A batch of picks with unique file names — deterministic ids are keyed on file name, so duplicates would collide. */
-const batchArbitrary = (maxLength: number): fc.Arbitrary<PickedFile.PickedFile[]> =>
+const batchArbitrary = (maxLength: number): fc.Arbitrary<PickedFile.Type[]> =>
   fc.uniqueArray(pickArbitrary, { maxLength, selector: (pick) => pick.fileName })
 
 const kindOf = (fileName: string): FormatKind | undefined => {
@@ -53,10 +53,7 @@ const fakeResource = (id: string): FhirResource =>
 /** A fake decode: aggregates files into one FormatDecodeResult. A file whose first byte is 0 is unreadable. */
 const fakeDecode =
   <K extends FormatKind>(kind: K) =>
-  (
-    files: readonly PickedFile.PickedFile[],
-    settings: unknown
-  ): Effect.Effect<FormatDecode.Result<K>> =>
+  (files: readonly PickedFile.Type[], settings: unknown): Effect.Effect<FormatDecode.Result<K>> =>
     Effect.succeed({
       id: FormatDecode.makeId(kind, files),
       title: files.map((f) => f.fileName).join(', '),
@@ -202,7 +199,7 @@ describe('readBatch over the real registry', () => {
       PatientID: 'P001',
       Modality: 'CT',
     })
-    const picks: readonly PickedFile.PickedFile[] = [
+    const picks: readonly PickedFile.Type[] = [
       {
         fileName: 'notes.txt',
         bytes: new TextEncoder().encode('hello'),
@@ -245,7 +242,7 @@ describe('claimedFormats', () => {
 
 describe('unrecognized picks', () => {
   it('gives two same-named unrecognized picks distinct ids', async () => {
-    const pick = (): PickedFile.PickedFile => ({
+    const pick = (): PickedFile.Type => ({
       fileName: 'txt-same',
       bytes: new Uint8Array([1]),
       source: PickedFile.Source.local,

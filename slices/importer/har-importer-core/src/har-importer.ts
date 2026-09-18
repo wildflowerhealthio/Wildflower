@@ -72,7 +72,7 @@ const sourceFileFormat = {
   descriptionPrefix: `${display.title}: `,
 }
 
-const decodeFunctionConfig: DecodeFunction.CombinableDecodeConfig<typeof format, HarSettings> = {
+const decodeConfig: DecodeFunction.PerFileConfig<typeof format, HarSettings> = {
   format,
   decodeOne: (file, settings) =>
     decodeHar(file.bytes, settings).pipe(
@@ -88,7 +88,7 @@ const harImporter = FileImporter.make({
   format,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
+  decode: DecodeFunction.fromPerFile(decodeConfig),
   detect: detectHar,
   defaultSettings: defaultHarSettings,
 })

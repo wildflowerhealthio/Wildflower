@@ -53,7 +53,7 @@ const JSON_PREVIEW_SIZE_LIMIT = 5 * 1024 * 1024
 /** Props for {@link ServerSourceFileList}. */
 interface ServerSourceFileListProps {
   /** Called with the fetched source file once a selected row resolves. */
-  readonly onPick: (picked: PickedFile.PickedFile) => void
+  readonly onPick: (picked: PickedFile.Type) => void
 }
 
 /** Props for {@link SourceFileListContent}. */
