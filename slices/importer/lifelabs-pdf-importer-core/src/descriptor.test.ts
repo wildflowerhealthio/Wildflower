@@ -65,7 +65,7 @@ const importerForReports = (
   return FileImporter.make({
     format,
     sourceFileFormat,
-    decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),
+    decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
     display: { title: 'LifeLabs report', description: 'Test' },
     detect: detectLifeLabsPdf,
     defaultSettings: SETTINGS,

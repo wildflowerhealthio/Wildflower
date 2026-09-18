@@ -45,7 +45,7 @@ const dicomImporter = FileImporter.make({
   display,
   sourceFileFormat,
   format,
-  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),
+  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
 })

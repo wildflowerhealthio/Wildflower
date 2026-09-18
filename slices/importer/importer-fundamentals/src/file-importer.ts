@@ -22,16 +22,21 @@ interface SettingsPickerProps<TSettings> {
  * A binding writes each seam in the shape the thing that consumes it reads,
  * rather than as loose fields the factory would assemble: the source-file
  * constants as one `SourceFile.Format` (the value the codec is parameterized
- * by), and the batch decode's inputs as one `DecodeFunction.Config` (the value
- * `DecodeFunction.fromConfig` takes), the format tag among them. Nothing here
- * is spelled twice. `descriptionPrefix` is the binding's too — conventionally
+ * by), and the batch decode as the still-unbound
+ * `DecodeFunction.WithContext` that `DecodeFunction.fromCombinableDecodeConfig`
+ * hands back. `sourceFileFormat` is spelled once, here: the decode arrives
+ * needing a `SourceFile.FormatContext` and {@link make} provides it, so the
+ * constants the importer reads `categoryToken` and `isSourceFile` out of are
+ * by construction the ones its decode mints under.
+ * `descriptionPrefix` is the binding's too — conventionally
  * `${display.title}: `, spelled at the call site so a format that wants a
  * different prefix simply writes one.
  */
 interface FileImporterConfig<TFormat extends string, TSettings> {
   readonly format: TFormat
   readonly sourceFileFormat: SourceFile.Format
-  readonly decode: DecodeFunction.Type<TSettings, TFormat>
+  /** The format's batch decode, still needing the source-file context {@link make} binds. */
+  readonly decode: DecodeFunction.WithContext<TSettings, TFormat, SourceFile.FormatContext>
   readonly display: { readonly title: string; readonly description: string }
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: TSettings
@@ -88,11 +93,12 @@ type Unknown = Omit<Type<any, string>, 'defaultSettings' | 'decode'>
  * binding — every format stores its uploaded source file as a
  * `DocumentReference` with one attachment carrying the bytes verbatim, keyed
  * under a per-format `type`/`category` coding. The codec itself lives in
- * `source-file.ts`, parameterized by a `SourceFile.FormatContext`; this is
- * where the config's `sourceFileFormat` is provided as that context, once — so
+ * `source-file.ts`, parameterized by a `SourceFile.FormatContext`; this is the
+ * only place the config's `sourceFileFormat` is provided as that context — so
  * the schemas, the read-back and the batch decode all come out of the
- * factory requiring nothing. A binding supplies those constants and a
- * per-file decode function, nothing else.
+ * factory requiring nothing, and all of them read one copy of the constants.
+ * A binding supplies those constants and a per-file decode function, nothing
+ * else.
  *
  * @param config - The format's source-file constants, decode config, display strings, `detect` and settings
  * @returns The format's importer, ready for the registry
@@ -121,7 +127,7 @@ const make = <TFormat extends string, TSettings>(
       Schema.decode(SourceFile.FromDocumentReferenceSchema),
       provideSourceFileFormat
     ),
-    decode: config.decode,
+    decode: (files, settings) => provideSourceFileFormat(config.decode(files, settings)),
   }
 }
 

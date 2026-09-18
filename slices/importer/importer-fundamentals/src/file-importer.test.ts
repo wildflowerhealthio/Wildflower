@@ -72,7 +72,7 @@ const importer = FileImporter.make({
   format: testFormat,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),
+  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
   detect: () => false,
   defaultSettings: null,
 })
@@ -108,10 +108,7 @@ const otherImporter = FileImporter.make({
   format: testFormat,
   display: otherDisplay,
   sourceFileFormat: otherSourceFileFormat,
-  decode: DecodeFunction.fromCombinableDecodeConfig(
-    otherDecodeFunctionConfig,
-    otherSourceFileFormat
-  ),
+  decode: DecodeFunction.fromCombinableDecodeConfig(otherDecodeFunctionConfig),
   detect: () => false,
   defaultSettings: null,
 })
@@ -262,7 +259,7 @@ describe('decode (batch behavior)', () => {
       format,
       display,
       sourceFileFormat,
-      decode: DecodeFunction.fromCombinableDecodeConfig(spyDecodeFunctionConfig, sourceFileFormat),
+      decode: DecodeFunction.fromCombinableDecodeConfig(spyDecodeFunctionConfig),
       detect: () => false,
       defaultSettings: null,
     })
@@ -365,10 +362,7 @@ describe('decode (batch behavior)', () => {
       format: subjectDecodeFunctionConfig.format,
       display,
       sourceFileFormat,
-      decode: DecodeFunction.fromCombinableDecodeConfig(
-        subjectDecodeFunctionConfig,
-        sourceFileFormat
-      ),
+      decode: DecodeFunction.fromCombinableDecodeConfig(subjectDecodeFunctionConfig),
       detect: () => false,
       defaultSettings: null,
     })

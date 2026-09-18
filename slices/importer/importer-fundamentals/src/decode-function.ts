@@ -13,16 +13,14 @@ type DocumentReferenceType = typeof DocumentReference.Schema.Type
  * — when it files its source file under a subject — its `subjectFor`.
  *
  * @remarks
- * A `FileImporterConfig` nests one of these as its `decodeFunctionConfig`, so a
- * binding writes the shape this module reads and `fileImporter` hands it
- * straight through. It is also where the format tag is declared, once — the
- * importer's own `format` is read back off it.
- *
- * The source-file operations are not parameters: this
- * module calls `SourceFile.tryFromNamedBytes` and `SourceFile.encodeSourceFile`
- * directly, unbound, so the decode it builds still carries the
- * `SourceFile.FormatContext` requirement for `fileImporter` to discharge in one
- * place.
+ * The source-file operations are not parameters: this module calls
+ * `SourceFile.tryFromNamedBytes` and `SourceFile.encodeSourceFile` directly,
+ * unbound, so the decode it builds still carries the
+ * `SourceFile.FormatContext` requirement for `FileImporter.make` to discharge
+ * in one place. That is the whole reason this module takes no
+ * `SourceFile.Format`: a second copy of a format's coding constants here could
+ * disagree with the one the importer reads its `categoryToken` and
+ * `isSourceFile` out of, and nothing would catch it.
  */
 interface CombinableDecodeConfig<TFormat extends string, TSettings>
   extends SourceFile.PerFileDecodeOptions {
@@ -83,13 +81,12 @@ const resolveSource = (
  */
 const fromCombinableDecodeConfig =
   <TFormat extends string, TSettings>(
-    config: CombinableDecodeConfig<TFormat, TSettings>,
-    sourceFileFormat: SourceFile.Format
-  ): Type<TSettings, TFormat> =>
+    config: CombinableDecodeConfig<TFormat, TSettings>
+  ): WithContext<TSettings, TFormat, SourceFile.FormatContext> =>
   (
     files: readonly PickedFile.PickedFile[],
     settings: TSettings
-  ): Effect.Effect<FormatDecode.Result<TFormat>, never> =>
+  ): Effect.Effect<FormatDecode.Result<TFormat>, never, SourceFile.FormatContext> =>
     Effect.forEach(
       files,
       (file, index) => {
@@ -149,22 +146,25 @@ const fromCombinableDecodeConfig =
           decoded: { sections, notes },
           unreadableFiles,
         }
-      }),
-      Effect.provideService(SourceFile.FormatContext, sourceFileFormat)
+      })
     )
 
 /**
  * The batch decode the shell runs: every file of one format, under that
- * format's settings, never failing.
+ * format's settings, never failing and requiring nothing.
  *
  * @remarks
- * `R` is spelled at every use. A decode a `FileImporter` exposes is bound —
- * `Type<TSettings, TFormat, never>`; one still to be bound, as
- * {@link fromCombinableDecodeConfig} returns, is
- * `Type<TSettings, TFormat, SourceFile.FormatContext>`.
+ * This is the bound end of {@link WithContext} — what a `FileImporter` exposes,
+ * once `FileImporter.make` has discharged the source-file context.
+ * {@link fromCombinableDecodeConfig} returns the unbound end.
  */
 type Type<in TSettings, TFormat extends string> = WithContext<TSettings, TFormat, never>
 
+/**
+ * A batch decode with its requirement still spelled: `never` once
+ * `FileImporter.make` has bound it, `SourceFile.FormatContext` while the
+ * format's coding constants are still to be provided.
+ */
 type WithContext<in TSettings, TFormat extends string, R> = (
   files: readonly PickedFile.PickedFile[],
   settings: TSettings

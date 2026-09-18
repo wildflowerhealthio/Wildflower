@@ -88,7 +88,7 @@ const harImporter = FileImporter.make({
   format,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),
+  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig),
   detect: detectHar,
   defaultSettings: defaultHarSettings,
 })
