@@ -1,4 +1,4 @@
-import { FileImporter, DecodeFunction } from 'importer-fundamentals'
+import { FileImporter, PerFileDecodeFunction } from 'importer-fundamentals'
 
 import { decodeLifeLabsPdf } from './decode.ts'
 import { detectLifeLabsPdf } from './detect.ts'
@@ -25,7 +25,7 @@ const lifeLabsPdfImporter = FileImporter.make({
   format,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromPerFile(decodeConfig),
+  decode: PerFileDecodeFunction.make(decodeConfig),
   detect: detectLifeLabsPdf,
   defaultSettings: defaultLifeLabsPdfSettings,
 })

@@ -25,7 +25,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   (resource-agnostic, format-agnostic) — the `FileImporter` contract and the
   `FileImporter.make` factory that builds one: a binding gives a
   `sourceFileFormat` (its coding constants) and a batch `decode` still needing
-  that format's context — typically `DecodeFunction.fromPerFile` over its format
+  that format's context — typically `PerFileDecodeFunction.make` over its format
   tag and per-file `decodeOne` — and gets back a bound importer whose `decode`
   the shell runs (one `FormatDecode.Result` per format: the merged sections and
   notes, plus an `unreadableFiles` row per file that rejected), plus the
@@ -34,7 +34,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   with another's. The factory binding the context is what keeps
   `sourceFileFormat` spelled once per binding. Also the `PickedFile`
   vocabulary, the `FormatDetector` seam the picker sniffs with, the `SourceFile`
-  reference/decode vocabulary, and the pure per-resource `StagedImport` model.
+  reference vocabulary and the `SourceFileCodec` that stores and reads one back,
+  and the pure per-resource `StagedImport` model.
   There is no `persist` sink: the write is the shell's one
   `persistBatchBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —

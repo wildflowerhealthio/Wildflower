@@ -4,7 +4,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import { emitHar, HarFromJson, HttpArchive } from 'http-archive'
-import { SourceFile } from 'importer-fundamentals'
+import { SourceFileCodec, type SourceFile } from 'importer-fundamentals'
 import {
   HAR_ARCHIVE_CODE,
   isWebTrace,
@@ -27,8 +27,8 @@ const mint = (
   fileName = 'portal-session.har'
 ): Promise<SourceFile.DocumentReferenceType> =>
   Effect.runPromise(
-    SourceFile.mintResource({ fileName, bytes }).pipe(
-      Effect.provideService(SourceFile.FormatContext, harImporter.sourceFileFormat)
+    SourceFileCodec.mintResource({ fileName, bytes }).pipe(
+      Effect.provideService(SourceFileCodec.FormatContext, harImporter.sourceFileFormat)
     )
   )
 

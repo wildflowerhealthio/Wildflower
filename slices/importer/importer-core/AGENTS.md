@@ -81,7 +81,7 @@ nothing from `slices/collector` or `slices/http-extraction`.
   the same `files` array back, so the same ids come out and the reviewer's
   selection keeps applying.
 - **`decode` never fails.** A malformed file is an `unreadableFiles` entry,
-  folded by `DecodeFunction.fromPerFile`; there is no `catchAll` in the read half, and a
+  folded by `PerFileDecodeFunction.make`; there is no `catchAll` in the read half, and a
   format that raised would be a contract bug, not a case to handle here.
 - **Dispatch generically, not by `Match`.** Indexing the registry by a
   `FormatKind` union loses the per-format correlation; a generic

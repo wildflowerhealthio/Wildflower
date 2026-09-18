@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { SourceFile } from 'importer-fundamentals'
+import { SourceFileCodec, type SourceFile } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { lifeLabsPdfImporter } from './lifelabs-pdf-importer.ts'
@@ -19,8 +19,8 @@ const mint = (
   fileName = 'lab-report.pdf'
 ): Promise<SourceFile.DocumentReferenceType> =>
   Effect.runPromise(
-    SourceFile.mintResource({ fileName, bytes }).pipe(
-      Effect.provideService(SourceFile.FormatContext, lifeLabsPdfImporter.sourceFileFormat)
+    SourceFileCodec.mintResource({ fileName, bytes }).pipe(
+      Effect.provideService(SourceFileCodec.FormatContext, lifeLabsPdfImporter.sourceFileFormat)
     )
   )
 

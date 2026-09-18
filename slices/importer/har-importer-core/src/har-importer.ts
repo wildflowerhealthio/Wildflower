@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
-import { FileImporter, DecodeFunction, type DecodedFile } from 'importer-fundamentals'
+import { FileImporter, PerFileDecodeFunction, type DecodedFile } from 'importer-fundamentals'
 
 import {
   HAR_ARCHIVE_CODE,
@@ -72,7 +72,7 @@ const sourceFileFormat = {
   descriptionPrefix: `${display.title}: `,
 }
 
-const decodeConfig: DecodeFunction.PerFileConfig<typeof format, HarSettings> = {
+const decodeConfig: PerFileDecodeFunction.Config<typeof format, HarSettings> = {
   format,
   decodeOne: (file, settings) =>
     decodeHar(file.bytes, settings).pipe(
@@ -88,7 +88,7 @@ const harImporter = FileImporter.make({
   format,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromPerFile(decodeConfig),
+  decode: PerFileDecodeFunction.make(decodeConfig),
   detect: detectHar,
   defaultSettings: defaultHarSettings,
 })

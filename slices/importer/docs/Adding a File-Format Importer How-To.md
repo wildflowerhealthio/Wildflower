@@ -68,7 +68,7 @@ const decodeMyFormat = (
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> => …
 ```
 
-`DecodeFunction.fromPerFile` lifts that into the batch `decode(files, settings)`
+`PerFileDecodeFunction.make` lifts that into the batch `decode(files, settings)`
 the shell runs across every file the format claimed. That lifted decode is what:
 
 - resolves each file's source file — minting one for a `local` pick and handing
@@ -99,7 +99,7 @@ Three obligations:
   by `responseId:index`, DICOM by the resource's role), because the reviewer's
   per-resource exclusions and inline edits are keyed by it and must survive a
   settings re-decode. Key **within one file** and do not try to make keys unique
-  across the batch yourself — `fromPerFile` prefixes each file's keys with its
+  across the batch yourself — `PerFileDecodeFunction.make` prefixes each file's keys with its
   slot (`FormatDecode.keyPrefix`), which is what makes a fixed key like
   `patient` safe when the reviewer picked eight images at once.
 - **Sections are the display.** Pick a sectioning that means something to the
@@ -135,7 +135,7 @@ links are already there, stamped by the decode.
 A source file is the picked file itself, stored as a FHIR `DocumentReference`
 with the bytes verbatim. It is **the format's**, not the shell's — but a binding
 does not write the encoding. You pass `FileImporter.make` one **`sourceFileFormat`**
-— a `SourceFile.Format`, the same value the codec is parameterized by: a
+— a `SourceFileCodec.Format`, the same value the codec is parameterized by: a
 `coding` (`{ system, code }`), a `contentType`, a `descriptionPrefix`
 (conventionally `` `${display.title}: ` ``), and optionally a `securityLabel`.
 It derives the whole seam from that:
@@ -149,18 +149,22 @@ It derives the whole seam from that:
 
 The write direction is not a field on the importer: minting and encoding a
 source file is what the batch `decode` does either side of a `decodeOne`, so the
-resource can be filed under a subject the decode named. `SourceFile.mintResource`
+resource can be filed under a subject the decode named. `SourceFileCodec.mintResource`
 (mint then encode, named for its result — the stored resource) and its halves
-`SourceFile.tryFromNamedBytes` / `SourceFile.encode` are what it calls, each
-requiring the codec's
-`SourceFile.FormatContext`. `sourceFileFormat` is that context's value, which is
+`SourceFileCodec.tryFromNamedBytes` / `SourceFileCodec.encode` are what it calls,
+each requiring the codec's
+`SourceFileCodec.FormatContext`. `sourceFileFormat` is that context's value, which is
 how a binding's test drives the codec under the format's real config:
 
 ```ts
-SourceFile.mintResource({ fileName, bytes }).pipe(
-  Effect.provideService(SourceFile.FormatContext, myImporter.sourceFileFormat)
+SourceFileCodec.mintResource({ fileName, bytes }).pipe(
+  Effect.provideService(SourceFileCodec.FormatContext, myImporter.sourceFileFormat)
 )
 ```
+
+The `SourceFile` namespace beside it is the codec's _vocabulary_ — `Type`,
+`Coding`, `Reference` and its two constructors — and is context-free. Reach for
+`SourceFile` to name a source file and `SourceFileCodec` to store or read one.
 
 The mint derives its id from the bytes' SHA-256 and the file name through
 `fhir-r4/identity`'s `localResourceId`, so re-importing the same file under the
@@ -174,7 +178,7 @@ resources the decode already produced rather than parsing the file a second
 time:
 
 ```ts
-const patientSubjectOf: SourceFile.SubjectFor = (_file, decoded) => {
+const patientSubjectOf: PerFileDecodeFunction.FileSubjectForPair = (_file, decoded) => {
   const patient = DecodedFile.resources(decoded).find(
     (entry) => entry.resource.resourceType === 'Patient'
   )
@@ -217,24 +221,27 @@ const myImporter = FileImporter.make({
   format,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromPerFile(decodeConfig),
+  decode: PerFileDecodeFunction.make(decodeConfig),
   detect: (bytes, fileName) => fileName.toLowerCase().endsWith('.myfmt') || myMagic(bytes),
   defaultSettings: defaultMySettings,
 })
 ```
 
-`DecodeFunction.fromPerFile` returns a decode that still **needs** the
+`PerFileDecodeFunction.make` returns a decode that still **needs** the
 source-file context; `FileImporter.make` is what provides it, from the
 `sourceFileFormat` in the same call. That is why you pass those constants once
 and only once — the decode's mint and the importer's `categoryToken` /
 `isSourceFile` then read the same copy by construction.
 
-**`fromPerFile` is one constructor, not the only one.** _Per-file_ is a real
-assumption: your `decodeOne` is handed one file and cannot see the others, and
-the per-file results sum into the batch's. If your format's files must be read
-_together_ — a multi-part archive, a manifest naming its siblings — it is not
-per-file, and needs a new constructor in `decode-function.ts` rather than a
-widened version of this one. Do not smuggle cross-file state through `settings`.
+**`PerFileDecodeFunction` is one constructor, not the only one.** `DecodeFunction`
+is the general contract — files and settings in, one `FormatDecode.Result` out —
+and `per-file-decode-function.ts` is the one module that builds it under the
+assumption that the files are independent. _Per-file_ is a real assumption: your
+`decodeOne` is handed one file and cannot see the others, and the per-file
+results sum into the batch's. If your format's files must be read _together_ — a
+multi-part archive, a manifest naming its siblings — it is not per-file, and
+needs its own sibling module beside `per-file-decode-function.ts` rather than a
+widened version of that one. Do not smuggle cross-file state through `settings`.
 
 The result is a plain record, not a class instance — which is what lets
 `importer-react`'s registry extend it with a `SettingsPicker` by spreading it,

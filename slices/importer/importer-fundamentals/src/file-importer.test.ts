@@ -3,17 +3,17 @@ import * as fc from 'fast-check'
 import { type FhirResource, type DocumentReference, Patient } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
-import * as DecodeFunction from './decode-function.ts'
 import * as DecodedFile from './decoded-file.ts'
 import * as FileImporter from './file-importer.ts'
 import * as FormatDecode from './format-decode.ts'
+import * as PerFileDecodeFunction from './per-file-decode-function.ts'
 import * as PickedFile from './picked-file.ts'
-import * as SourceFile from './source-file.ts'
+import type * as SourceFile from './source-file.ts'
 
 type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
 // The source-file codec itself — the mint, the encode, the read-back — is
-// `source-file.ts`'s and is tested there, directly under a `FormatContext`.
+// `source-file-codec.ts`'s and is tested there, directly under a `FormatContext`.
 // What this file covers is the factory: what `fileImporter` derives from a
 // binding's config, and the batch `decode` it assembles.
 
@@ -72,7 +72,7 @@ const importer = FileImporter.make({
   format: testFormat,
   display,
   sourceFileFormat,
-  decode: DecodeFunction.fromPerFile(decodeConfig),
+  decode: PerFileDecodeFunction.make(decodeConfig),
   detect: () => false,
   defaultSettings: null,
 })
@@ -108,7 +108,7 @@ const otherImporter = FileImporter.make({
   format: testFormat,
   display: otherDisplay,
   sourceFileFormat: otherSourceFileFormat,
-  decode: DecodeFunction.fromPerFile(otherDecodeFunctionConfig),
+  decode: PerFileDecodeFunction.make(otherDecodeFunctionConfig),
   detect: () => false,
   defaultSettings: null,
 })
@@ -158,11 +158,11 @@ describe('resolve (tested through decode)', () => {
       importer.decode([localFile('scan.bin', new Uint8Array([1, 2]))], null)
     )
     const sourceSection = result.decoded.sections[0]
-    expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
+    expect(sourceSection?.title).toBe('Source file')
     const labeled = sourceSection?.resources[0]
 
     expect(labeled?.key).toBe(
-      `${FormatDecode.keyPrefix(0, localFile('scan.bin', new Uint8Array()))}${SourceFile.key('scan.bin')}`
+      `${FormatDecode.keyPrefix(0, localFile('scan.bin', new Uint8Array()))}source-file/scan.bin`
     )
     expect(labeled?.title).toBe('scan.bin')
 
@@ -184,7 +184,7 @@ describe('resolve (tested through decode)', () => {
         null
       )
     )
-    expect(result.decoded.sections.every((s) => s.title !== SourceFile.SECTION_TITLE)).toBe(true)
+    expect(result.decoded.sections.every((s) => s.title !== 'Source file')).toBe(true)
   })
 })
 
@@ -218,9 +218,9 @@ describe('decode (batch behavior)', () => {
           const result = await Effect.runPromise(importer.decode([file], null))
           const sections = result.decoded.sections
           if (file.source._tag === 'local') {
-            expect(sections[0]?.title).toBe(SourceFile.SECTION_TITLE)
+            expect(sections[0]?.title).toBe('Source file')
             expect(sections[0]?.resources.map((entry) => entry.key)).toEqual([
-              `${FormatDecode.keyPrefix(0, file)}${SourceFile.key(file.fileName)}`,
+              `${FormatDecode.keyPrefix(0, file)}source-file/${file.fileName}`,
             ])
             const sourceId = sections[0]?.resources[0]?.resource.id
             const extracted = sections.slice(1).flatMap((s) => s.resources)
@@ -255,7 +255,7 @@ describe('decode (batch behavior)', () => {
       format,
       display,
       sourceFileFormat,
-      decode: DecodeFunction.fromPerFile(spyDecodeFunctionConfig),
+      decode: PerFileDecodeFunction.make(spyDecodeFunctionConfig),
       detect: () => false,
       defaultSettings: null,
     })
@@ -358,7 +358,7 @@ describe('decode (batch behavior)', () => {
       format: subjectDecodeFunctionConfig.format,
       display,
       sourceFileFormat,
-      decode: DecodeFunction.fromPerFile(subjectDecodeFunctionConfig),
+      decode: PerFileDecodeFunction.make(subjectDecodeFunctionConfig),
       detect: () => false,
       defaultSettings: null,
     })

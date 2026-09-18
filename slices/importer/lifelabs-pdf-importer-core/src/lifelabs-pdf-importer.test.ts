@@ -6,7 +6,7 @@ import {
   DecodedFile,
   SourceFile,
   FormatDecode,
-  DecodeFunction,
+  PerFileDecodeFunction,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -65,7 +65,7 @@ const importerForReports = (
   return FileImporter.make({
     format,
     sourceFileFormat,
-    decode: DecodeFunction.fromPerFile(decodeConfig),
+    decode: PerFileDecodeFunction.make(decodeConfig),
     display: { title: 'LifeLabs report', description: 'Test' },
     detect: detectLifeLabsPdf,
     defaultSettings: SETTINGS,
@@ -98,11 +98,11 @@ describe('lifeLabsPdfImporter decode', () => {
           )
 
           const [sourceSection] = decoded.sections
-          expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
+          expect(sourceSection?.title).toBe('Source file')
           const sourceRow = sourceSection?.resources[0]
           expect(sourceSection?.resources).toHaveLength(1)
           expect(sourceRow?.key).toBe(
-            `${FormatDecode.keyPrefix(0, file)}${SourceFile.key(file.fileName)}`
+            `${FormatDecode.keyPrefix(0, file)}source-file/${file.fileName}`
           )
           expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
           const sourceId = sourceRow?.resource.id
@@ -131,9 +131,7 @@ describe('lifeLabsPdfImporter decode', () => {
             await Effect.runPromise(importerForReports(reports).decode([file], SETTINGS))
           )
 
-          expect(decoded.sections.map((section) => section.title)).not.toContain(
-            SourceFile.SECTION_TITLE
-          )
+          expect(decoded.sections.map((section) => section.title)).not.toContain('Source file')
           const labeled = DecodedFile.resources(decoded)
           expect(labeled.length).toBeGreaterThan(0)
           for (const item of labeled) {

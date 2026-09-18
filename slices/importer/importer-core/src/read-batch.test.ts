@@ -2,7 +2,7 @@ import { writeDicom } from 'dicom/test-helpers'
 import { Effect, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import { PickedFile, FormatDecode, SourceFile } from 'importer-fundamentals'
+import { PickedFile, FormatDecode } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -209,7 +209,7 @@ describe('readBatch over the real registry', () => {
     ]
     const batch = await Effect.runPromise(readBatch(formatRegistry, defaultFormatSettings, picks))
     expect(batch.dicom.files.length).toBe(1)
-    expect(batch.dicom.decoded.sections[0]?.title).toBe(SourceFile.SECTION_TITLE)
+    expect(batch.dicom.decoded.sections[0]?.title).toBe('Source file')
     expect(batch.dicom.decoded.sections.length).toBeGreaterThan(1)
     expect(batch.unrecognizedFiles.length).toBe(1)
     expect(batch.unrecognizedFiles[0]?.title).toBe('notes.txt')

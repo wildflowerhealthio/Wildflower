@@ -129,8 +129,7 @@ const readOne = async (
 /** The format's own sections — everything but the minted source file's. */
 const extractedSections = (
   sections: readonly DecodedFile.Section[]
-): readonly DecodedFile.Section[] =>
-  sections.filter((section) => section.title !== SourceFile.SECTION_TITLE)
+): readonly DecodedFile.Section[] => sections.filter((section) => section.title !== 'Source file')
 
 /** Every `meta.source` across the given sections, in section order. */
 const metaSourcesOf = (
@@ -143,7 +142,7 @@ describe('harImporter.decode', () => {
     const decoded = (await readOne(pickedHar(PickedFile.Source.local))).decoded
 
     expect(decoded.sections.map((section) => section.title)).toEqual([
-      SourceFile.SECTION_TITLE,
+      'Source file',
       PATIENT_URL,
       OBSERVATION_URL,
     ])
@@ -191,11 +190,11 @@ describe('harImporter.decode', () => {
     const decoded = (await readOne(pickedHar(PickedFile.Source.local))).decoded
     const sourceSection = decoded.sections[0]
 
-    expect(sourceSection?.title).toBe(SourceFile.SECTION_TITLE)
+    expect(sourceSection?.title).toBe('Source file')
     // The key is namespaced by the file's slot in the batch, so two archives
     // in one pick cannot collide on it.
     expect(sourceSection?.resources.map((entry) => entry.key)).toEqual([
-      `${FormatDecode.keyPrefix(0, pickedHar(PickedFile.Source.local))}${SourceFile.key('archive.har')}`,
+      `${FormatDecode.keyPrefix(0, pickedHar(PickedFile.Source.local))}source-file/archive.har`,
     ])
     expect(sourceSection?.resources[0]?.resource.resourceType).toBe('DocumentReference')
   })
@@ -205,7 +204,7 @@ describe('harImporter.decode', () => {
 
     const sources = metaSourcesOf(decoded.sections)
 
-    expect(decoded.sections.map((section) => section.title)).not.toContain(SourceFile.SECTION_TITLE)
+    expect(decoded.sections.map((section) => section.title)).not.toContain('Source file')
     expect(sources.length).toBeGreaterThan(0)
     expect(sources).toEqual(sources.map(() => SourceFile.makeReference('doc-1')))
   })
@@ -217,7 +216,7 @@ describe('harImporter.decode', () => {
           .decoded
         const minted = decoded.sections[0]?.resources[0]?.resource
 
-        expect(decoded.sections[0]?.title).toBe(SourceFile.SECTION_TITLE)
+        expect(decoded.sections[0]?.title).toBe('Source file')
         expect(minted?.id).toEqual(expect.any(String))
         for (const source of metaSourcesOf(extractedSections(decoded.sections))) {
           expect(source).toBe(SourceFile.makeReference(minted?.id ?? ''))

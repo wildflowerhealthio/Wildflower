@@ -1,6 +1,7 @@
 import { Effect, type ParseResult, Schema, Function as Func } from 'effect'
 import type * as DecodeFunction from './decode-function.ts'
-import * as SourceFile from './source-file.ts'
+import * as SourceFileCodec from './source-file-codec.ts'
+import type * as SourceFile from './source-file.ts'
 
 /**
  * The constructor config a format binding supplies.
@@ -8,12 +9,12 @@ import * as SourceFile from './source-file.ts'
  * @remarks
  * A binding writes each seam in the shape the thing that consumes it reads,
  * rather than as loose fields the factory would assemble: the source-file
- * constants as one `SourceFile.Format` (the value the codec is parameterized
+ * constants as one `SourceFileCodec.Format` (the value the codec is parameterized
  * by), and the batch decode as a still-unbound `DecodeFunction.WithContext` —
- * from `DecodeFunction.fromPerFile` for a format whose files decode one at a
+ * from `PerFileDecodeFunction.make` for a format whose files decode one at a
  * time, or from whatever constructor suits one whose files do not.
  * `sourceFileFormat` is spelled once, here: the decode arrives
- * needing a `SourceFile.FormatContext` and {@link make} provides it, so the
+ * needing a `SourceFileCodec.FormatContext` and {@link make} provides it, so the
  * constants the importer reads `categoryToken` and `isSourceFile` out of are
  * by construction the ones its decode mints under.
  * `descriptionPrefix` is the binding's too — conventionally
@@ -22,9 +23,9 @@ import * as SourceFile from './source-file.ts'
  */
 interface FileImporterConfig<TFormat extends string, TSettings> {
   readonly format: TFormat
-  readonly sourceFileFormat: SourceFile.Format
+  readonly sourceFileFormat: SourceFileCodec.Format
   /** The format's batch decode, still needing the source-file context {@link make} binds. */
-  readonly decode: DecodeFunction.WithContext<TSettings, TFormat, SourceFile.FormatContext>
+  readonly decode: DecodeFunction.WithContext<TSettings, TFormat, SourceFileCodec.FormatContext>
   readonly display: { readonly title: string; readonly description: string }
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: TSettings
@@ -43,7 +44,7 @@ interface FileImporterConfig<TFormat extends string, TSettings> {
  * prototype to lose.
  *
  * Every member requires nothing: the source-file codec's
- * `SourceFile.FormatContext` is bound by {@link fileImporter}, so no consumer
+ * `SourceFileCodec.FormatContext` is bound by {@link fileImporter}, so no consumer
  * carries it.
  */
 interface Type<TSettings, TFormat extends string> {
@@ -65,7 +66,7 @@ interface Type<TSettings, TFormat extends string> {
    * them — the one piece of that binding this importer carries as data rather
    * than as a closure over it.
    */
-  readonly sourceFileFormat: SourceFile.Format
+  readonly sourceFileFormat: SourceFileCodec.Format
   readonly sourceFileFromDocumentReference: (
     resource: SourceFile.DocumentReferenceType
   ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
@@ -80,7 +81,7 @@ interface Type<TSettings, TFormat extends string> {
  * binding — every format stores its uploaded source file as a
  * `DocumentReference` with one attachment carrying the bytes verbatim, keyed
  * under a per-format `type`/`category` coding. The codec itself lives in
- * `source-file.ts`, parameterized by a `SourceFile.FormatContext`; this is the
+ * `source-file-codec.ts`, parameterized by a `SourceFileCodec.FormatContext`; this is the
  * only place the config's `sourceFileFormat` is provided as that context — so
  * the schemas, the read-back and the batch decode all come out of the
  * factory requiring nothing, and all of them read one copy of the constants.
@@ -96,7 +97,10 @@ const make = <TFormat extends string, TSettings>(
   const { sourceFileFormat } = config
   const { contentType } = sourceFileFormat
 
-  const provideSourceFileFormat = Effect.provideService(SourceFile.FormatContext, sourceFileFormat)
+  const provideSourceFileFormat = Effect.provideService(
+    SourceFileCodec.FormatContext,
+    sourceFileFormat
+  )
 
   return {
     format: config.format,
@@ -105,13 +109,17 @@ const make = <TFormat extends string, TSettings>(
     defaultSettings: config.defaultSettings,
     contentType,
     sourceFileFormat,
-    categoryToken: Func.pipe(SourceFile.categoryToken, provideSourceFileFormat, Effect.runSync),
+    categoryToken: Func.pipe(
+      SourceFileCodec.categoryToken,
+      provideSourceFileFormat,
+      Effect.runSync
+    ),
     isSourceFile: Func.compose(
-      Func.compose(SourceFile.inFormatsCategory, provideSourceFileFormat),
+      Func.compose(SourceFileCodec.inFormatsCategory, provideSourceFileFormat),
       Effect.runSync
     ),
     sourceFileFromDocumentReference: Func.compose(
-      Schema.decode(SourceFile.FromDocumentReferenceSchema),
+      Schema.decode(SourceFileCodec.FromDocumentReferenceSchema),
       provideSourceFileFormat
     ),
     decode: (files, settings) => provideSourceFileFormat(config.decode(files, settings)),

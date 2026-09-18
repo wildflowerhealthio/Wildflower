@@ -1,4 +1,4 @@
-import { DecodedFile, FileImporter, type SourceFile, DecodeFunction } from 'importer-fundamentals'
+import { DecodedFile, FileImporter, PerFileDecodeFunction } from 'importer-fundamentals'
 
 import { decodeDicom } from './decode.ts'
 import { detectDicom } from './detect.ts'
@@ -15,7 +15,7 @@ import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from './source-system.ts'
  * under {@link DICOM_SYSTEM}, so its id is the one a second parse would derive.
  * A header naming no patient decodes to no `Patient`, and gets no subject.
  */
-const patientSubjectOf: SourceFile.SubjectFor = (_file, decoded) => {
+const patientSubjectOf: PerFileDecodeFunction.FileSubjectForPair = (_file, decoded) => {
   const patient = DecodedFile.resources(decoded).find(
     (entry) => entry.resource.resourceType === 'Patient'
   )
@@ -45,7 +45,7 @@ const dicomImporter = FileImporter.make({
   display,
   sourceFileFormat,
   format,
-  decode: DecodeFunction.fromPerFile(decodeConfig),
+  decode: PerFileDecodeFunction.make(decodeConfig),
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
 })

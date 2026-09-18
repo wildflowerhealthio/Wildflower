@@ -3,7 +3,7 @@ import { writeDicom } from 'dicom/test-helpers'
 import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import { Patient } from 'fhir-r4/resources'
-import { PickedFile, SourceFile, type FormatDecode } from 'importer-fundamentals'
+import { PickedFile, type FormatDecode } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporter, patientSubjectOf } from './dicom-importer.ts'
@@ -67,10 +67,10 @@ describe('dicomImporter', () => {
     /** The one id every resource of a result must agree on: its source file's. */
     const sourceFileIdOfUnit = (unit: FormatDecode.Result<string>): string => {
       const [section] = unit.decoded.sections
-      expect(section.title).toBe(SourceFile.SECTION_TITLE)
+      expect(section.title).toBe('Source file')
       expect(section.resources).toHaveLength(1)
       const [row] = section.resources
-      expect(row.key).toBe(`0:sample.dcm/${SourceFile.key('sample.dcm')}`)
+      expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
       expect(row.resource.resourceType).toBe('DocumentReference')
       const { id } = row.resource
       if (id === null) throw new Error('expected a minted source file id')
@@ -97,9 +97,9 @@ describe('dicomImporter', () => {
         source: PickedFile.Source.local,
       })
       const [section] = unit.decoded.sections
-      expect(section.title).toBe(SourceFile.SECTION_TITLE)
+      expect(section.title).toBe('Source file')
       const [row] = section.resources
-      expect(row.key).toBe(`0:sample.dcm/${SourceFile.key('sample.dcm')}`)
+      expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
       if (row.resource.resourceType !== 'DocumentReference')
         throw new Error('expected a source file')
       expect(row.resource.subject?.reference).toBe(headerPatientReference(bytes))
@@ -127,7 +127,7 @@ describe('dicomImporter', () => {
         source: PickedFile.Source.server('doc-9'),
       })
       for (const section of unit.decoded.sections) {
-        expect(section.title).not.toBe(SourceFile.SECTION_TITLE)
+        expect(section.title).not.toBe('Source file')
         for (const { resource } of section.resources) {
           expect(resource.meta?.source).toBe('DocumentReference/doc-9')
         }
