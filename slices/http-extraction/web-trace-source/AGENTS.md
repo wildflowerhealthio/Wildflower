@@ -16,7 +16,7 @@ closes over session state that differs per dispatch.
   (`{ bodyContentTypes, maxBodyBytes }`).
 - `src/response-kinds/raw-exchange-response-kind.ts` — the catch-all response
   kind factory. `makeRawExchangeResponseKind({ sessionId, policy })` returns an
-  `HttpResponseKind<DocumentReferenceType>` whose `tryRecognize` is total
+  `HttpResponseKind<DocumentReference.Type>` whose `tryRecognize` is total
   (`Some` for every URL, `CATCH_ALL` specificity, no `source`), and whose
   `parse` encodes the exchange through `web-trace-core`'s codec.
 - `src/index.ts` — barrel re-exporting both modules.

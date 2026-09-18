@@ -20,16 +20,6 @@
  */
 
 import type { DateTime } from 'effect'
-import type { DocumentReference } from 'fhir-r4/resources'
-
-/**
- * A validated `DocumentReference` — the resource a source file is stored as.
- *
- * @remarks
- * Declared here, the module that owns the source-file/`DocumentReference`
- * relationship, rather than re-spelled in each module that touches one.
- */
-type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
 /** One uploaded source file, decoded: its id, name, upload instant, and bytes. */
 interface Type {
@@ -59,4 +49,4 @@ const makeReference = (id: string): Reference => `${REFERENCE_PREFIX}${id}`
 const idFromReference = (ref: Reference): string => ref.slice(REFERENCE_PREFIX.length)
 
 export { idFromReference, makeReference }
-export type { Coding, DocumentReferenceType, Reference, Type }
+export type { Coding, Reference, Type }

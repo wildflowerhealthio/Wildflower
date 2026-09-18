@@ -144,4 +144,8 @@ const PractitionerSchema: Schema.Schema<
   never
 > = PractitionerStruct
 
+/** A decoded `Practitioner` — the type {@link PractitionerSchema} produces. */
+type Type = typeof PractitionerSchema.Type
+
 export { PractitionerSchema as Schema }
+export type { Type }

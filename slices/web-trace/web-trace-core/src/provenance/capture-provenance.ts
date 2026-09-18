@@ -1,13 +1,14 @@
 import { type DateTime, Effect, type ParseResult } from 'effect'
 
 import type { Meta } from 'fhir-r4/data-types'
+import type { DocumentReference } from 'fhir-r4/resources'
 
 import {
   type BodyDigestUnavailable,
   type CaptureHeaders,
   storeBodyVerbatim,
 } from '../capture/index.ts'
-import { type DocumentReferenceType, toDocumentReference } from '../codec/index.ts'
+import { toDocumentReference } from '../codec/index.ts'
 import { noTimings, type TraceExchange, traceResourceId } from '../trace-exchange.ts'
 
 /**
@@ -28,7 +29,7 @@ interface ReferencableResource {
 /** What one response's capture produced. */
 interface ProvenanceCapture<TResource> {
   /** The trace, naming every resource below in `context.related`. */
-  readonly trace: DocumentReferenceType
+  readonly trace: DocumentReference.Type
   /** The produced resources, each carrying `meta.source` back to the trace. */
   readonly linked: readonly TResource[]
 }
@@ -194,7 +195,7 @@ interface ProvenanceHookResult<TResource> {
   /** The parse output, each resource carrying `meta.source` back to the trace. */
   readonly resources: readonly TResource[]
   /** The trace — persisted best-effort, never part of the run's summary. */
-  readonly diagnostics: readonly DocumentReferenceType[]
+  readonly diagnostics: readonly DocumentReference.Type[]
 }
 
 /**

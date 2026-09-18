@@ -78,9 +78,10 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   points at, plus `makeReference` / `idFromReference`) — the **single currency
   for "which source file"**, which a `decodeOne` receives, which a `server` pick
   already carries, and which `idFromReference` unwraps only where a format needs
-  the bare id (DICOM's `gridfsFileId`) — and **`DocumentReferenceType`** (a
-  validated `DocumentReference` — declared here, the module that owns that
-  relationship, rather than re-spelled in each module that touches one).
+  the bare id (DICOM's `gridfsFileId`). A validated `DocumentReference` is
+  **not** named here: a module that needs that type imports `DocumentReference`
+  from `fhir-r4/resources` and writes `DocumentReference.Type`, so the resource
+  schema stays the one place its decoded shape is spelled.
   It imports nothing from this package and does nothing at runtime beyond
   concatenating or slicing a string, which is what lets `picked-file-source.ts`
   and `meta-source.ts` name a `Reference` without pulling the codec in behind

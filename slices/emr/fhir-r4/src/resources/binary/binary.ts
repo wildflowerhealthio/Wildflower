@@ -58,4 +58,8 @@ const BinaryStruct = Schema.extend(
 
 const BinarySchema: Schema.Schema<typeof BinaryStruct.Type, FhirR4.Binary, never> = BinaryStruct
 
+/** A decoded `Binary` — the type {@link BinarySchema} produces. */
+type Type = typeof BinarySchema.Type
+
 export { BinarySchema as Schema }
+export type { Type }

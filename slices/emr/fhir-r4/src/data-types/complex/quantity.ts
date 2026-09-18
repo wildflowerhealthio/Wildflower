@@ -51,4 +51,7 @@ const fromSimpleQuantity = (
   value: simple.value,
 })
 
+type Type = typeof QuantityStruct.Type
+
 export { QuantitySchema as Schema, fromSimpleQuantity }
+export type { Type }

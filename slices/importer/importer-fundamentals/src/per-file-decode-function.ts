@@ -19,6 +19,7 @@
  */
 
 import { Effect, Either, type ParseResult } from 'effect'
+import type { DocumentReference } from 'fhir-r4/resources'
 import type * as DecodeFunction from './decode-function.ts'
 import * as DecodedFile from './decoded-file.ts'
 import * as FormatDecode from './format-decode.ts'
@@ -123,7 +124,7 @@ interface ResolvedSource {
     | ((
         subject: SourceFileCodec.Subject | undefined
       ) => Effect.Effect<
-        SourceFile.DocumentReferenceType,
+        DocumentReference.Type,
         ParseResult.ParseError,
         SourceFileCodec.FormatContext
       >)

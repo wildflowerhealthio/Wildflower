@@ -1,5 +1,6 @@
 import { Effect } from 'effect'
-import { SourceFileCodec, type SourceFile } from 'importer-fundamentals'
+import type { DocumentReference } from 'fhir-r4/resources'
+import { SourceFileCodec } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { lifeLabsPdfImporter } from './lifelabs-pdf-importer.ts'
@@ -14,10 +15,7 @@ import {
  * driven under `lifeLabsPdfImporter`'s own format constants, which is the same
  * context its batch `decode` mints under.
  */
-const mint = (
-  bytes: Uint8Array,
-  fileName = 'lab-report.pdf'
-): Promise<SourceFile.DocumentReferenceType> =>
+const mint = (bytes: Uint8Array, fileName = 'lab-report.pdf'): Promise<DocumentReference.Type> =>
   Effect.runPromise(
     SourceFileCodec.mintResource({ fileName, bytes }).pipe(
       Effect.provideService(SourceFileCodec.FormatContext, lifeLabsPdfImporter.sourceFileFormat)

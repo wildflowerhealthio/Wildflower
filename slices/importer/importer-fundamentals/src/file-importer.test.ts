@@ -10,8 +10,6 @@ import * as PerFileDecodeFunction from './per-file-decode-function.ts'
 import * as PickedFile from './picked-file.ts'
 import type * as SourceFile from './source-file.ts'
 
-type DocumentReferenceType = typeof DocumentReference.Schema.Type
-
 // The source-file codec itself — the mint, the encode, the read-back — is
 // `source-file-codec.ts`'s and is tested there, directly under a `FormatContext`.
 // What this file covers is the factory: what `fileImporter` derives from a
@@ -117,7 +115,7 @@ const otherImporter = FileImporter.make({
 const mintedSourceFile = async <TFormat extends string>(
   format: FileImporter.Type<null, TFormat>,
   file: PickedFile.Type
-): Promise<DocumentReferenceType> => {
+): Promise<DocumentReference.Type> => {
   const result = await atFixedInstant(format.decode([file], null))
   const resource = result.decoded.sections[0]?.resources[0]?.resource
   if (resource?.resourceType !== 'DocumentReference')
@@ -375,7 +373,7 @@ describe('decode (batch behavior)', () => {
     const file = localFile('scan.bin', new Uint8Array([7]))
     const sourceRowOf = (
       result: FormatDecode.Result<string>
-    ): DocumentReferenceType | undefined => {
+    ): DocumentReference.Type | undefined => {
       const resource = result.decoded.sections[0]?.resources[0]?.resource
       return resource?.resourceType === 'DocumentReference' ? resource : undefined
     }

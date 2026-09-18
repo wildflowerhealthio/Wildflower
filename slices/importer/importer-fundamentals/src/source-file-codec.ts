@@ -141,7 +141,7 @@ const hashAndBuild = (
   sourceFile: SourceFile.Type,
   subject: Subject | undefined,
   ast: SchemaAST.AST
-): Effect.Effect<SourceFile.DocumentReferenceType, ParseResult.ParseIssue, FormatContext> =>
+): Effect.Effect<DocumentReference.Type, ParseResult.ParseIssue, FormatContext> =>
   sha256Base64(new Uint8Array(sourceFile.bytes)).pipe(
     Effect.mapError((error) => new ParseResult.Type(ast, sourceFile, error.reason)),
     Effect.flatMap((hash) => toWire({ sourceFile, hash, subject })),
@@ -231,7 +231,7 @@ const encodeResource = ParseResult.encode(DocumentReference.Schema)
 
 const FromDocumentReferenceSchema: Schema.Schema<
   SourceFile.Type,
-  SourceFile.DocumentReferenceType,
+  DocumentReference.Type,
   FormatContext
 > = Schema.transformOrFail(
   Schema.typeSchema(DocumentReference.Schema),
@@ -263,7 +263,7 @@ const validateSourceFile = ParseResult.validate(Schema.typeSchema(SourceFileSche
 const encode = (
   sourceFile: SourceFile.Type,
   subject?: Subject
-): Effect.Effect<SourceFile.DocumentReferenceType, ParseResult.ParseError, FormatContext> =>
+): Effect.Effect<DocumentReference.Type, ParseResult.ParseError, FormatContext> =>
   validateSourceFile(sourceFile).pipe(
     Effect.flatMap((valid) => hashAndBuild(valid, subject, FromDocumentReferenceSchema.ast)),
     Effect.mapError(ParseResult.parseError)
@@ -286,11 +286,11 @@ const encode = (
 const mintResource = (
   picked: PickedFile.NamedBytes,
   subject?: Subject
-): Effect.Effect<SourceFile.DocumentReferenceType, ParseResult.ParseError, FormatContext> =>
+): Effect.Effect<DocumentReference.Type, ParseResult.ParseError, FormatContext> =>
   tryFromNamedBytes(picked).pipe(Effect.flatMap((sourceFile) => encode(sourceFile, subject)))
 
 const inFormatsCategory = (
-  documentReference: SourceFile.DocumentReferenceType
+  documentReference: DocumentReference.Type
 ): Effect.Effect<boolean, never, FormatContext> =>
   Effect.map(FormatContext, ({ coding }) =>
     documentReference.category.some((category) =>

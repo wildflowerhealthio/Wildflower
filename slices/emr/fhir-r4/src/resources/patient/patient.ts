@@ -202,4 +202,8 @@ const PatientStruct = Schema.extend(
 
 const PatientSchema: Schema.Schema<typeof PatientStruct.Type, FhirR4.Patient, never> = PatientStruct
 
+/** A decoded `Patient` — the type {@link PatientSchema} produces. */
+type Type = typeof PatientSchema.Type
+
 export { PatientSchema as Schema }
+export type { Type }

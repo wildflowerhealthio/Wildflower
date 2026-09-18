@@ -3,8 +3,9 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
+import type { DocumentReference } from 'fhir-r4/resources'
 import { emitHar, HarFromJson, HttpArchive } from 'http-archive'
-import { SourceFileCodec, type SourceFile } from 'importer-fundamentals'
+import { SourceFileCodec } from 'importer-fundamentals'
 import {
   HAR_ARCHIVE_CODE,
   isWebTrace,
@@ -25,7 +26,7 @@ import { harImporter } from './har-importer.ts'
 const mint = (
   bytes: Uint8Array,
   fileName = 'portal-session.har'
-): Promise<SourceFile.DocumentReferenceType> =>
+): Promise<DocumentReference.Type> =>
   Effect.runPromise(
     SourceFileCodec.mintResource({ fileName, bytes }).pipe(
       Effect.provideService(SourceFileCodec.FormatContext, harImporter.sourceFileFormat)

@@ -41,6 +41,7 @@
   },
   "peerDependencies": {
     "effect": "catalog:",
+    "fhir-r4": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
     "web-trace-core": "workspace:*"
   }

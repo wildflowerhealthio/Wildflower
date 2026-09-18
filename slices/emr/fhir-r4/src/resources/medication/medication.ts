@@ -126,4 +126,8 @@ const empty: typeof MedicationStruct.Type = {
 const MedicationSchema: Schema.Schema<typeof MedicationStruct.Type, FhirR4.Medication, never> =
   MedicationStruct
 
+/** A decoded `Medication` — the type {@link MedicationSchema} produces. */
+type Type = typeof MedicationSchema.Type
+
 export { MedicationSchema as Schema, StatusSchema, empty }
+export type { Type }

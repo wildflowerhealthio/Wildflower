@@ -373,4 +373,8 @@ const MedicationRequestSchema: Schema.Schema<
   never
 > = MedicationRequestStruct
 
+/** A decoded `MedicationRequest` — the type {@link MedicationRequestSchema} produces. */
+type Type = typeof MedicationRequestSchema.Type
+
 export { MedicationRequestSchema as Schema, StatusSchema, IntentSchema, PrioritySchema, empty }
+export type { Type }

@@ -311,4 +311,8 @@ const ObservationSchema: Schema.Schema<
   never
 > = ObservationStruct
 
+/** A decoded `Observation` — the type {@link ObservationSchema} produces. */
+type Type = typeof ObservationSchema.Type
+
 export { ObservationSchema as Schema, StatusSchema }
+export type { Type }

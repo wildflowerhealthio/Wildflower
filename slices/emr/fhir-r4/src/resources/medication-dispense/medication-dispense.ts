@@ -285,4 +285,8 @@ const MedicationDispenseSchema: Schema.Schema<
   never
 > = MedicationDispenseStruct
 
+/** A decoded `MedicationDispense` — the type {@link MedicationDispenseSchema} produces. */
+type Type = typeof MedicationDispenseSchema.Type
+
 export { MedicationDispenseSchema as Schema, StatusSchema, empty }
+export type { Type }

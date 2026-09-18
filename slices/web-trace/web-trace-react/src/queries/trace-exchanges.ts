@@ -9,13 +9,13 @@ import { Effect, Option } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
+import type { DocumentReference } from 'fhir-r4/resources'
 import type { TraceExchange } from 'web-trace-core'
 import {
   fromDocumentReference,
   isWebTrace,
   WEB_TRACE_CATEGORY_CODE,
   WEB_TRACE_CODE_SYSTEM,
-  type DocumentReferenceType,
 } from 'web-trace-core/codec'
 
 import { TRACE_EXCHANGES_QUERY_KEY } from './keys.ts'
@@ -107,11 +107,11 @@ interface TraceExchangesQueryOptions {
  * rather than swallowed.
  */
 const decodePage = (
-  entries: readonly { readonly resource: DocumentReferenceType | null }[],
+  entries: readonly { readonly resource: DocumentReference.Type | null }[],
   links: readonly PageLink[]
 ): Effect.Effect<TraceExchangePage> =>
   Effect.gen(function* () {
-    const traces = entries.flatMap((entry): readonly DocumentReferenceType[] => {
+    const traces = entries.flatMap((entry): readonly DocumentReference.Type[] => {
       const resource = entry.resource
       return resource === null || !isWebTrace(resource) ? [] : [resource]
     })

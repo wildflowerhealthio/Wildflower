@@ -6,8 +6,6 @@ import { HttpResponseKind, UrlMatch } from 'http-extraction-fundamentals'
 import { extractJson } from '../extract-json.ts'
 import { recognizeFhirRoot } from '../recognize-fhir-root.ts'
 
-type ObservationType = typeof Observation.Schema.Type
-
 const ObservationBundle = Bundle.Schema(Observation.Schema)
 const decode = Schema.decode(Schema.parseJson(ObservationBundle))
 const isObservation = Schema.is(Observation.Schema)
@@ -36,7 +34,7 @@ const observationListUrl = UrlMatch.make({
  * across raw-JSON XHR intercepts and the mobile WebView's JSON viewer
  * wrap.
  */
-const ObservationListResponseKind: HttpResponseKind.HttpResponseKind<ObservationType> =
+const ObservationListResponseKind: HttpResponseKind.HttpResponseKind<Observation.Type> =
   HttpResponseKind.make({
     name: 'ObservationListResponseKind',
     tryRecognize: recognizeFhirRoot(observationListUrl),

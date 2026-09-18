@@ -37,10 +37,6 @@ const UCUM_DAY = { code: 'd', unit: 'day' } as const
 /** The namespace FHIR R4 requires on a `Narrative.div`, which is typed `xhtml`. */
 const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
 
-type MedicationRequestType = typeof MedicationRequest.Schema.Type
-type MedicationDispenseType = typeof MedicationDispense.Schema.Type
-type QuantityType = typeof Quantity.Schema.Type
-
 const decodeReference = Schema.decodeUnknownOption(
   Schema.typeSchema(IdentifierAndReference.ReferenceSchema)
 )
@@ -116,7 +112,7 @@ const withoutConsumed = (
  * both are days. Only fills a quantity that carries a value and names no unit
  * of its own — a source that starts sending units is left alone.
  */
-const withDayUnit = (quantity: QuantityType | null): QuantityType | null =>
+const withDayUnit = (quantity: Quantity.Type | null): Quantity.Type | null =>
   quantity === null || quantity.value === null || quantity.unit !== null || quantity.code !== null
     ? quantity
     : { ...quantity, unit: UCUM_DAY.unit, system: UCUM_SYSTEM, code: Code.make(UCUM_DAY.code) }
@@ -295,7 +291,7 @@ const containedMedicationLink = (
  * The link is skipped when `medicationReference` already points somewhere that
  * is not a `#fragment`: that is an external Medication nobody here may retarget.
  */
-const promoteMedicationRequest = (request: MedicationRequestType): MedicationRequestType => {
+const promoteMedicationRequest = (request: MedicationRequest.Type): MedicationRequest.Type => {
   const consumed = new Set<number>()
 
   const doNotPerformIndex = indexOfExtension(request.extension, CarebookExtension.DoNotPerform)
@@ -368,7 +364,7 @@ const promoteMedicationRequest = (request: MedicationRequestType): MedicationReq
  * The `contained` pass is symmetry with the request path rather than an
  * observed need — see AGENTS.md under "Extension Promotion".
  */
-const promoteMedicationDispense = (dispense: MedicationDispenseType): MedicationDispenseType => {
+const promoteMedicationDispense = (dispense: MedicationDispense.Type): MedicationDispense.Type => {
   const consumed = new Set<number>()
 
   const processorIndex = indexOfExtension(

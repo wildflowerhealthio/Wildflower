@@ -1,3 +1,4 @@
+// oxlint-disable import/max-dependencies
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -5,7 +6,6 @@ import { userEvent } from '@testing-library/user-event'
 import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import type * as FhirR4React from 'fhir-r4-react'
-import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
 import type { FormatDetector } from 'importer-fundamentals'
@@ -46,7 +46,7 @@ const testDetectors: readonly FormatDetector.Type[] = [harDetector]
 
 vi.mock('fhir-r4-react', async (importOriginal) => {
   const actual = await importOriginal<typeof FhirR4React>()
-  return { ...actual, useRunAuthed: (): RunAuthed => currentRunAuthed }
+  return { ...actual, useRunAuthed: (): FhirR4React.RunAuthed => currentRunAuthed }
 })
 
 const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
@@ -67,7 +67,7 @@ const VALID_HAR = JSON.stringify({
   },
 })
 
-let currentRunAuthed: RunAuthed
+let currentRunAuthed: FhirR4React.RunAuthed
 let sentRequests: HttpClientRequest.HttpClientRequest[] = []
 let queryClient: QueryClient
 

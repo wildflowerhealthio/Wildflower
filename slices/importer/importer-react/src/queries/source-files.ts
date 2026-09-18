@@ -11,7 +11,8 @@ import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { PickedFile, type SourceFile } from 'importer-fundamentals'
+import type { DocumentReference } from 'fhir-r4/resources'
+import { PickedFile } from 'importer-fundamentals'
 
 type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
@@ -138,7 +139,7 @@ interface SourceFilesQueryOptions {
  * `Object.keys(formatRegistry)` order — so the classification is
  * deterministic across engines.
  */
-const classifySourceFile = (resource: SourceFile.DocumentReferenceType): FormatKind | undefined =>
+const classifySourceFile = (resource: DocumentReference.Type): FormatKind | undefined =>
   formatKinds.find((kind) => formatRegistry[kind].isSourceFile(resource))
 
 /**
@@ -158,7 +159,7 @@ const classifySourceFile = (resource: SourceFile.DocumentReferenceType): FormatK
  * pulls a single source file's contents onto the device.
  */
 const rowsOf = (
-  entries: readonly { readonly resource: SourceFile.DocumentReferenceType | null }[]
+  entries: readonly { readonly resource: DocumentReference.Type | null }[]
 ): readonly SourceFileRow[] =>
   Arr.filterMap(entries, (entry): Option.Option<SourceFileRow> => {
     const resource = entry.resource
@@ -179,7 +180,7 @@ const rowsOf = (
  * {@link fetchDocumentReferencePage}) into source-file rows.
  */
 const rowsFromResources = (
-  resources: readonly SourceFile.DocumentReferenceType[]
+  resources: readonly DocumentReference.Type[]
 ): readonly SourceFileRow[] => rowsOf(resources.map((resource) => ({ resource })))
 
 /**
