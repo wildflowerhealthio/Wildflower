@@ -157,17 +157,18 @@ const decodeResource = ParseResult.decodeUnknown(DocumentReference.Schema)
  * @remarks
  * `fileImporter` builds one of these from a binding's config and provides it at
  * the boundary, so no `FileImporter` member — and nothing above this package —
- * ever carries the requirement. Tests of the codec itself provide their own.
+ * ever carries the requirement. It is also the one thing a `FileImporter`
+ * carries as data (`sourceFileFormat`), which is how a binding's test drives
+ * the codec below under the format's real config rather than restating it.
  */
-class FormatContext extends Context.Tag('SourceFileFormatContext')<
-  FormatContext,
-  {
-    readonly coding: Coding
-    readonly contentType: string
-    readonly securityLabel?: readonly Coding[] | undefined
-    readonly descriptionPrefix: string
-  }
->() {}
+interface Format {
+  readonly coding: Coding
+  readonly contentType: string
+  readonly securityLabel?: readonly Coding[] | undefined
+  readonly descriptionPrefix: string
+}
+
+class FormatContext extends Context.Tag('SourceFileFormatContext')<FormatContext, Format>() {}
 
 const toWire = ({
   sourceFile,
@@ -338,12 +339,29 @@ const encodeSourceFile = (
     Effect.mapError(ParseResult.parseError)
   )
 
+/**
+ * Mint a picked file's source file and encode it, in one step —
+ * {@link tryFromNamedBytes} then {@link encodeSourceFile}.
+ *
+ * @param picked - The picked file's name and bytes
+ * @param subject - The subject to file it under, when the format names one
+ * @returns The source file's `DocumentReference`
+ */
+const make = (
+  picked: PickedFile.NamedBytes,
+  subject?: Subject
+): Effect.Effect<DocumentReferenceType, ParseResult.ParseError, FormatContext> =>
+  tryFromNamedBytes(picked).pipe(
+    Effect.flatMap((sourceFile) => encodeSourceFile(sourceFile, subject))
+  )
+
 export {
   SECTION_TITLE,
   FormatContext,
   decode,
   idFromReference,
   key,
+  make,
   makeReference,
   prependToDecodedFile,
   tryFromNamedBytes,
@@ -351,4 +369,13 @@ export {
   encodeSourceFile,
   SourceFileSchema as Schema,
 }
-export type { Coding, DecodeOne, PerFileDecodeOptions, Reference, Subject, SubjectFor, Type }
+export type {
+  Coding,
+  DecodeOne,
+  Format,
+  PerFileDecodeOptions,
+  Reference,
+  Subject,
+  SubjectFor,
+  Type,
+}

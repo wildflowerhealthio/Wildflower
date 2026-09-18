@@ -9,21 +9,20 @@ import * as SourceFile from './source-file.ts'
 type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
 /**
- * The two source-file operations {@link fromProvider} drives.
+ * What {@link fromConfig} needs of a format: its tag, its per-file decode, and
+ * — when it files its source file under a subject — its `subjectFor`.
  *
  * @remarks
- * Both still carry the `SourceFile.FormatContext` requirement: the decode built
- * here is bound by `fileImporter`, in one place, rather than by each operation
- * on the way in.
+ * A `FileImporterConfig` is assignable to this, so `fileImporter` hands its own
+ * config straight through. The source-file operations are not parameters: this
+ * module calls `SourceFile.tryFromNamedBytes` and `SourceFile.encodeSourceFile`
+ * directly, unbound, so the decode it builds still carries the
+ * `SourceFile.FormatContext` requirement for `fileImporter` to discharge in one
+ * place.
  */
-interface SourceFileMint {
-  readonly mintSourceFile: (
-    picked: PickedFile.NamedBytes
-  ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError, SourceFile.FormatContext>
-  readonly sourceFileToDocumentReference: (
-    sourceFile: SourceFile.Type,
-    subject?: SourceFile.Subject
-  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError, SourceFile.FormatContext>
+interface Config<TFormat extends string, TSettings> extends SourceFile.PerFileDecodeOptions {
+  readonly format: TFormat
+  readonly decodeOne: SourceFile.DecodeOne<TSettings>
 }
 
 /**
@@ -45,17 +44,16 @@ interface ResolvedSource {
 }
 
 const resolveSource = (
-  mint: SourceFileMint,
   file: PickedFile.PickedFile
 ): Effect.Effect<ResolvedSource, ParseResult.ParseError, SourceFile.FormatContext> => {
   if (file.source._tag === 'server') {
     return Effect.succeed({ reference: file.source.reference, mintResource: undefined })
   }
-  return mint.mintSourceFile(file).pipe(
+  return SourceFile.tryFromNamedBytes(file).pipe(
     Effect.map((sourceFile) => ({
       reference: SourceFile.makeReference(sourceFile.id),
       mintResource: (subject: SourceFile.Subject | undefined) =>
-        mint.sourceFileToDocumentReference(sourceFile, subject),
+        SourceFile.encodeSourceFile(sourceFile, subject),
     }))
   )
 }
@@ -66,16 +64,12 @@ const resolveSource = (
  * sections under its own key namespace, and its own unreadable row when it
  * rejects.
  *
- * @param provider - The format tag and the source-file mint the rows come from
- * @param decodeOne - The format's per-file decode
- * @param options - `subjectFor`, when the format files its source file under a subject
+ * @param config - The format's tag, per-file decode, and optional `subjectFor`
  * @returns The format's batch `decode`, which never fails, still needing its `SourceFile.FormatContext`
  */
-const fromProvider =
+const fromConfig =
   <TFormat extends string, TSettings>(
-    provider: SourceFileMint & { readonly format: TFormat },
-    decodeOne: SourceFile.DecodeOne<TSettings>,
-    options?: SourceFile.PerFileDecodeOptions
+    config: Config<TFormat, TSettings>
   ): WithContext<TSettings, TFormat, SourceFile.FormatContext> =>
   (
     files: readonly PickedFile.PickedFile[],
@@ -86,14 +80,14 @@ const fromProvider =
       (file, index) => {
         const prefix = FormatDecode.keyPrefix(index, file)
         return Effect.gen(function* () {
-          const { reference, mintResource } = yield* resolveSource(provider, file)
-          const decoded = yield* decodeOne(file, settings, reference)
+          const { reference, mintResource } = yield* resolveSource(file)
+          const decoded = yield* config.decodeOne(file, settings, reference)
           const stamped = MetaSource.stampDecoded(
             DecodedFile.namespaceKeys(decoded, prefix),
             reference
           )
           if (mintResource === undefined) return Either.right(stamped)
-          const resource = yield* mintResource(options?.subjectFor?.(file, decoded))
+          const resource = yield* mintResource(config.subjectFor?.(file, decoded))
           return Either.right(
             SourceFile.prependToDecodedFile(stamped, {
               key: `${prefix}${SourceFile.key(file.fileName)}`,
@@ -108,7 +102,7 @@ const fromProvider =
             ): Effect.Effect<Either.Either<DecodedFile.DecodedFile, FormatDecode.UnreadableFile>> =>
               Effect.succeed(
                 Either.left({
-                  id: FormatDecode.makeFileId(provider.format, index, file),
+                  id: FormatDecode.makeFileId(config.format, index, file),
                   title: file.fileName,
                   pickedFile: file,
                   error,
@@ -133,10 +127,10 @@ const fromProvider =
           })
         }
         return {
-          id: FormatDecode.makeId(provider.format, files),
+          id: FormatDecode.makeId(config.format, files),
           title: files.map((f) => f.fileName).join(', '),
           files,
-          format: provider.format,
+          format: config.format,
           decoded: { sections, notes },
           unreadableFiles,
         }
@@ -150,7 +144,7 @@ const fromProvider =
  * @remarks
  * `R` is spelled at every use. A decode a `FileImporter` exposes is bound —
  * `Type<TSettings, TFormat, never>`; one still to be bound, as
- * {@link fromProvider} returns, is
+ * {@link fromConfig} returns, is
  * `Type<TSettings, TFormat, SourceFile.FormatContext>`.
  */
 type Type<TSettings, TFormat extends string> = WithContext<TSettings, TFormat, never>
@@ -160,5 +154,5 @@ type WithContext<TSettings, TFormat extends string, R> = (
   settings: TSettings
 ) => Effect.Effect<FormatDecode.Result<TFormat>, never, R>
 
-export { fromProvider }
-export type { Type, WithContext }
+export { fromConfig }
+export type { Config, Type, WithContext }

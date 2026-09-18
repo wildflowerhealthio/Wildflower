@@ -24,10 +24,14 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   binder**: it builds one `SourceFile.FormatContext` from the config and
   provides it at the boundary, so every member it returns — the
   `SourceFileFromDocumentReference` transform behind
-  `sourceFileFromDocumentReference`, `sourceFileToDocumentReference`,
-  `mintSourceFile`, `buildSourceFile` (mint then encode, in one step), and the
-  batch `decode` it assembles with `DecodeFunction.fromProvider` — requires
-  nothing. What it owns itself is the per-format wrapping: the schema transform
+  `sourceFileFromDocumentReference`, and the
+  batch `decode` it assembles with `DecodeFunction.fromConfig` — requires
+  nothing. The **write direction is not a member**: minting and encoding a
+  source file is something only the batch `decode` does, through
+  `source-file.ts`'s own operations. What the factory carries as data instead is
+  `sourceFileFormat`, the built `SourceFile.Format` — which is how a binding's
+  test drives the codec under that format's real config rather than restating
+  it. What it owns itself is the per-format wrapping: the schema transform
   and its annotations, `isSourceFile`, and `categoryToken`; the codec underneath
   is `source-file.ts`'s. No format
   names another format: a binding supplies only its own coding constants and
@@ -70,9 +74,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   bytes plus the file name through `fhir-r4/identity`'s `localResourceId`, so
   re-importing the same file upserts rather than duplicating and no two formats
   collide), **`encode`** (source file → its `DocumentReference`, optionally
-  under a `Subject`) and **`decode`** (a stored resource → back, or a failure
-  naming the resource and the reason). All three are parameterized by
-  **`FormatContext`**, the `Context.Tag` carrying one format's `coding` /
+  under a `Subject`), **`make`** (the mint then the encode, in one step — what
+  the batch decode drives) and **`decode`** (a stored resource → back, or a failure
+  naming the resource and the reason). All are parameterized by
+  **`FormatContext`**, the `Context.Tag` carrying one format's **`Format`** —
+  its `coding` /
   `contentType` / `securityLabel` / `descriptionPrefix`; `encode` and `decode`
   each take the `ast` to blame, so a failure is reported against the schema the
   caller was working in. Depends only on `decoded-file.ts` and
@@ -81,17 +87,19 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `makeReference`).
 - `src/decode-function.ts` — the **`DecodeFunction`** namespace: **`Type<TSettings, TFormat, R>`**,
   the batch decode's signature (`R` is always spelled — `never` once bound,
-  `SourceFile.FormatContext` while not), and **`fromProvider`**, where the
-  per-file contract becomes the batch one. For each claimed file it resolves the
-  source to a `SourceFile.Reference` (minting for a `local` pick, passing a
+  `SourceFile.FormatContext` while not), and **`fromConfig`**, where the
+  per-file contract becomes the batch one — it takes the binding's own config
+  (its `format`, `decodeOne` and optional `subjectFor`; a `FileImporterConfig`
+  is assignable to it), not a source-file seam. For each claimed file it
+  resolves the source to a `SourceFile.Reference` (minting for a `local` pick, passing a
   `server` pick's existing reference through verbatim), runs the binding's
   `decodeOne` with it, **namespaces the decode's review keys** by the file's slot
   (`FormatDecode.keyPrefix`), stamps every resource's `meta.source` via
   `MetaSource.stampDecoded`, finishes the mint under the subject `subjectFor`
   reads off the decode, prepends it as the file's "Source file" section, and
-  folds a `ParseError` into that file's own `unreadableFiles` entry. It composes
-  from _unbound_ source-file operations, so the decode it returns still carries
-  the `FormatContext` requirement for its assembler to bind.
+  folds a `ParseError` into that file's own `unreadableFiles` entry. It calls
+  `source-file.ts`'s operations directly and _unbound_, so the decode it returns
+  still carries the `FormatContext` requirement for its assembler to bind.
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` is two axes: `excludedResources`
   (per-resource opt-outs, keyed by a `DecodedFile.Resource`'s `key`) and
@@ -159,15 +167,17 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   folds everything that yielded no resources into notes — there is no
   per-format review state and no format review UI. Don't reintroduce either.
 - **`fileImporter` is the only binder of `SourceFile.FormatContext`.** The
-  codec is parameterized by it, `DecodeFunction.fromProvider` passes the
+  codec is parameterized by it, `DecodeFunction.fromConfig` passes the
   requirement through, and the factory discharges it once from the config it was
-  handed. Nothing on `FileImporter` carries it, and nothing above this package
-  ever provides it — see "Bake an internal context requirement to reshape the
+  handed. No `FileImporter` member carries the requirement, and no production
+  code above this package provides it — only a binding's own codec test does,
+  from the `sourceFileFormat` its importer carries. See "Bake an internal
+  context requirement to reshape the
   public type" in the [Effect Patterns Reference](../../../docs/Effect/Patterns%20Reference.md).
   A new source-file operation belongs in `source-file.ts` requiring the tag, not
   in the factory closing over `coding`.
 - **`decode` never fails.** Malformed input is an `unreadableFiles` entry, not
-  an error channel: `DecodeFunction.fromProvider` folds the `ParseError` into the file
+  an error channel: `DecodeFunction.fromConfig` folds the `ParseError` into the file
   it belongs to, so one bad file in a batch leaves the rest reviewable and
   nothing above this package needs a `catchAll`.
 - **The source file is the format's, minted inside `decode`.** What a source
@@ -180,7 +190,7 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   `decodeOne` keys within _one_ file, because that is all it can see; the
   batch merges every claimed file's sections into one format-wide review,
   while the selection, the server-diff verdicts and the write plan are all
-  keyed by `(format, key)`. `DecodeFunction.fromProvider` prefixes each file's keys
+  keyed by `(format, key)`. `DecodeFunction.fromConfig` prefixes each file's keys
   with its slot, which is what makes a fixed key safe. Do not push that
   obligation down into the bindings — a `decodeOne` that tries to be unique
   across a batch cannot be, since it is not given the batch.

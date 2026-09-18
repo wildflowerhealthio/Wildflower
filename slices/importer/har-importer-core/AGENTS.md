@@ -21,7 +21,8 @@ shell's shared `persistBatchBundle`.
   itself is not written here — `har-importer.ts` passes that coding,
   `application/json`, and the web-trace raw `securityLabel` to `fileImporter`
   as data, and gets `categoryToken`, `isSourceFile`,
-  `sourceFileFromDocumentReference`, the mint, and the batch `decode` back.
+  `sourceFileFromDocumentReference`, and the batch `decode` that mints the
+  source file inside itself, back.
   A whole source file lives as one attachment under the `har-archive`
   category, disjoint from a trace on the same axis (this format's
   `isSourceFile` and `isWebTrace` never both hold).

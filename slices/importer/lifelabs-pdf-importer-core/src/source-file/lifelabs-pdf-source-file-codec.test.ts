@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import type { DocumentReferenceType } from 'importer-fundamentals'
+import { type DocumentReferenceType, SourceFile } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { lifeLabsPdfImporter } from '../descriptor.ts'
@@ -9,8 +9,17 @@ import {
   LIFELABS_SYSTEM,
 } from '../source-system.ts'
 
+/**
+ * The source file this format's importer mints for a picked file — the codec
+ * driven under `lifeLabsPdfImporter`'s own format constants, which is the same
+ * context its batch `decode` mints under.
+ */
 const mint = (bytes: Uint8Array, fileName = 'lab-report.pdf'): Promise<DocumentReferenceType> =>
-  Effect.runPromise(lifeLabsPdfImporter.buildSourceFile({ fileName, bytes }))
+  Effect.runPromise(
+    SourceFile.make({ fileName, bytes }).pipe(
+      Effect.provideService(SourceFile.FormatContext, lifeLabsPdfImporter.sourceFileFormat)
+    )
+  )
 
 describe('LifeLabs PDF source file coding', () => {
   it('carries the LifeLabs coding on type and category, no security label, and pdf content', async () => {

@@ -138,18 +138,26 @@ does not write the encoding. You pass `fileImporter` a `coding`
 (`{ system, code }`), a `contentType`, and optionally a `securityLabel`, and it
 derives the whole seam from them:
 
-| Derived field                        | What it is                                                  |
-| ------------------------------------ | ----------------------------------------------------------- |
-| `categoryToken`                      | the `system\|code` search token the shell unions per format |
-| `isSourceFile`                       | the disjoint predicate a server row is classified through   |
-| `sourceFileFromDocumentReference`    | the bytes-and-name reader a preview or a re-pick calls      |
-| `sourceFileToDocumentReference`      | its inverse, optionally filing it under a subject           |
-| `mintSourceFile` / `buildSourceFile` | the deterministic mint the batch decode drives              |
+| Derived field                     | What it is                                                  |
+| --------------------------------- | ----------------------------------------------------------- |
+| `categoryToken`                   | the `system\|code` search token the shell unions per format |
+| `isSourceFile`                    | the disjoint predicate a server row is classified through   |
+| `sourceFileFromDocumentReference` | the bytes-and-name reader a preview or a re-pick calls      |
+| `sourceFileFormat`                | those constants as data, for the codec to be driven under   |
 
-`mintSourceFile` decides the source file itself — `{ id, fileName, uploadedAt,
-bytes }` — and `sourceFileToDocumentReference` encodes one; `buildSourceFile` is
-the two in one call, which is what the batch decode does either side of a
-`decodeOne` so the resource can be filed under a subject the decode named.
+The write direction is not a field on the importer: minting and encoding a
+source file is what the batch `decode` does either side of a `decodeOne`, so the
+resource can be filed under a subject the decode named. `SourceFile.make`
+(mint then encode) and its halves `SourceFile.tryFromNamedBytes` /
+`SourceFile.encodeSourceFile` are what it calls, each requiring the codec's
+`SourceFile.FormatContext`. `sourceFileFormat` is that context's value, which is
+how a binding's test drives the codec under the format's real config:
+
+```ts
+SourceFile.make({ fileName, bytes }).pipe(
+  Effect.provideService(SourceFile.FormatContext, myImporter.sourceFileFormat)
+)
+```
 
 The mint derives its id from the bytes' SHA-256 and the file name through
 `fhir-r4/identity`'s `localResourceId`, so re-importing the same file under the

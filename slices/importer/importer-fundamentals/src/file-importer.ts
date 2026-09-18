@@ -57,23 +57,15 @@ interface FileImporter<TSettings, TFormat extends string> {
   readonly contentType: string
   /** Whether a `DocumentReference` off the server is one of this format's source files. */
   readonly isSourceFile: (resource: DocumentReferenceType) => boolean
+  /**
+   * The format's source-file constants, as the codec's `FormatContext` takes
+   * them — the one piece of that binding this importer carries as data rather
+   * than as a closure over it.
+   */
+  readonly sourceFileFormat: SourceFile.Format
   readonly sourceFileFromDocumentReference: (
     resource: DocumentReferenceType
   ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
-  /** Encode a source file as its `DocumentReference`, optionally filed under a subject. */
-  readonly sourceFileToDocumentReference: (
-    sourceFile: SourceFile.Type,
-    subject?: SourceFile.Subject
-  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
-  /** Decide a picked file's deterministic source file — its id, name, and upload instant. */
-  readonly mintSourceFile: (
-    picked: PickedFile.NamedBytes
-  ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
-  /** Mint a picked file and encode it in one step — {@link mintSourceFile} then {@link sourceFileToDocumentReference}. */
-  readonly buildSourceFile: (
-    picked: PickedFile.NamedBytes,
-    options?: { readonly subject?: SourceFile.Subject }
-  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
 }
 
 /**
@@ -100,22 +92,15 @@ const fileImporter = <TFormat extends string, TSettings>(
   const { coding, contentType, securityLabel } = config
   const descriptionPrefix = `${config.display.title}: `
 
-  const provideSourceFileFormat = Effect.provideService(SourceFile.FormatContext, {
+  const sourceFileFormat: SourceFile.Format = {
     coding,
     contentType,
     securityLabel,
     descriptionPrefix,
-  })
+  }
+  const provideSourceFileFormat = Effect.provideService(SourceFile.FormatContext, sourceFileFormat)
 
-  const batchDecode = DecodeFunction.fromProvider(
-    {
-      format: config.format,
-      mintSourceFile: SourceFile.tryFromNamedBytes,
-      sourceFileToDocumentReference: SourceFile.encodeSourceFile,
-    },
-    config.decodeOne,
-    { subjectFor: config.subjectFor }
-  )
+  const batchDecode = DecodeFunction.fromConfig(config)
 
   return {
     format: config.format,
@@ -123,6 +108,7 @@ const fileImporter = <TFormat extends string, TSettings>(
     detect: config.detect,
     defaultSettings: config.defaultSettings,
     contentType,
+    sourceFileFormat,
     categoryToken: `${coding.system}|${coding.code}`,
     isSourceFile: (resource) =>
       resource.category.some((category) =>
@@ -134,17 +120,6 @@ const fileImporter = <TFormat extends string, TSettings>(
       Schema.decode(SourceFile.FromDocumentReferenceSchema),
       provideSourceFileFormat
     ),
-    // Spelled out rather than `Func.compose`d: `compose` is unary, so composing
-    // would silently drop `subject` at every call site.
-    sourceFileToDocumentReference: (sourceFile, subject) =>
-      provideSourceFileFormat(SourceFile.encodeSourceFile(sourceFile, subject)),
-    mintSourceFile: Func.compose(SourceFile.tryFromNamedBytes, provideSourceFileFormat),
-    buildSourceFile: (picked, options) =>
-      Func.pipe(
-        SourceFile.tryFromNamedBytes(picked),
-        Effect.flatMap((sourceFile) => SourceFile.encodeSourceFile(sourceFile, options?.subject)),
-        provideSourceFileFormat
-      ),
     decode: (files, settings) => batchDecode(files, settings).pipe(provideSourceFileFormat),
   }
 }

@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import type { DocumentReferenceType } from 'importer-fundamentals'
+import { type DocumentReferenceType, SourceFile } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporter } from '../descriptor.ts'
@@ -9,8 +9,17 @@ import {
   DICOM_SYSTEM,
 } from '../source-system.ts'
 
+/**
+ * The source file this format's importer mints for a picked file — the codec
+ * driven under `dicomImporter`'s own format constants, which is the same
+ * context its batch `decode` mints under.
+ */
 const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<DocumentReferenceType> =>
-  Effect.runPromise(dicomImporter.buildSourceFile({ fileName, bytes }))
+  Effect.runPromise(
+    SourceFile.make({ fileName, bytes }).pipe(
+      Effect.provideService(SourceFile.FormatContext, dicomImporter.sourceFileFormat)
+    )
+  )
 
 describe('DICOM source file coding', () => {
   it('carries the DICOM coding on type and category, and application/dicom content', async () => {

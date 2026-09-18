@@ -95,7 +95,7 @@ function.
   here — `descriptor.ts` passes those constants to `fileImporter` as data
   (PDF content type, LifeLabs coding under
   `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no web-trace security label) and
-  gets the mint and the read-back derived from them. Nothing parses the PDF on
+  gets the read-back, and a `decode` that mints, derived from them. Nothing parses the PDF on
   that path; the bytes are carried, hashed, and handed back exactly as they
   arrived. The mint derives a deterministic id from the file's SHA-256 and
   name, stamps the upload instant, and encodes to a `DocumentReference` —
