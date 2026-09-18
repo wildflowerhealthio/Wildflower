@@ -19,7 +19,7 @@
       "default": "./dist/index.js"
     },
     "./source-file": {
-      "source": "./src/source-file/index.ts",
+      "source": "./src/source-file.ts",
       "default": "./dist/source-file.js"
     },
     "./package.json": "./package.json"

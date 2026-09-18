@@ -35,6 +35,13 @@ import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
 import { sha256Base64 } from './sha256.ts'
 
+/**
+ * A validated `DocumentReference` — the resource a source file is stored as.
+ *
+ * @remarks
+ * Declared here, the module that owns the source-file/`DocumentReference`
+ * relationship, rather than re-spelled in each module that touches one.
+ */
 type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
 // ─── Source File ────────────────────────────────────────────────────────────
@@ -382,4 +389,13 @@ export {
   FromDocumentReferenceSchema,
   SourceFileSchema as Schema,
 }
-export type { Coding, Format, PerFileDecodeOptions, Reference, Subject, SubjectFor, Type }
+export type {
+  Coding,
+  DocumentReferenceType,
+  Format,
+  PerFileDecodeOptions,
+  Reference,
+  Subject,
+  SubjectFor,
+  Type,
+}

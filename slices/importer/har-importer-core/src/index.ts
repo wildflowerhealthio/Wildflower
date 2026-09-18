@@ -13,7 +13,10 @@
  *
  * @packageDocumentation
  */
-export { harImporter, HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from './har-importer.ts'
+// The HAR source-file coding constants are web-trace's, and reach consumers
+// through the `./source-file` subpath (the seam every binding has) — not from
+// here, and not through `har-importer.ts`, which only reads them.
+export { harImporter } from './har-importer.ts'
 export { decodeHar, toInput } from './decode-har.ts'
 export { detectHar, looksLikeJson } from './detect-har.ts'
 export { fhirSources } from './fhir-pool.ts'

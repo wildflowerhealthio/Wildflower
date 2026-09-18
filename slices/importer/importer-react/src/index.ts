@@ -24,6 +24,6 @@
  * @packageDocumentation
  */
 export { ImporterScreen } from './importer-screen.tsx'
-export { PREVIEW_HEADING } from './preview/preview-panel.tsx'
+export { PREVIEW_HEADING } from './preview/preview-text.ts'
 export { COMPLETE_HEADING } from './results/import-results.tsx'
 export { ServerSourceFileList } from './sources/server-source-file-list.tsx'

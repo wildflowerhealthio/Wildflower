@@ -13,4 +13,3 @@
  * @packageDocumentation
  */
 export { HarSettingsPicker } from './settings-picker.tsx'
-export type { SettingsPickerProps } from 'importer-fundamentals'

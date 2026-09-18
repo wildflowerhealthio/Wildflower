@@ -87,11 +87,7 @@ interface PreviewPanelProps {
   readonly confirmDisabled?: boolean
 }
 
-/**
- * One format's settings form. The registry's construction guarantees the
- * picker's settings type matches `FormatSettings[kind]`; the cast bridges
- * a correlation TypeScript cannot prove through a union-keyed index.
- */
+/** One format's settings form, picked out of the registry by kind. */
 const FormatSettingsForm = <TFormat extends FormatKind>({
   kind,
   settings,
@@ -103,10 +99,6 @@ const FormatSettingsForm = <TFormat extends FormatKind>({
   readonly settingsRegistry: SettingsRegistry
   readonly onSettingsChange: SettingsChangeHandler<TFormat>
 }): JSX.Element => {
-  // The registry's typed construction guarantees the picker's TSettings and
-  // settings[kind] are the same concrete type for any given kind. TS cannot
-  // prove this through a union-keyed index, so we widen the picker to accept
-  // any registered format's settings.
   const Picker = settingsRegistry[kind].SettingsPicker
 
   return <Picker settings={settings[kind]} onChange={(next) => onSettingsChange(kind, next)} />
@@ -271,10 +263,3 @@ const PreviewPanel = ({
 }
 
 export { PreviewPanel, type PreviewPanelProps, type SettingsRegistry }
-export {
-  NO_RESOURCES_MESSAGE,
-  NOTHING_TO_IMPORT_HEADING,
-  PREVIEW_HEADING,
-  UNREADABLE_FILE_MESSAGE,
-  UNRECOGNIZED_FILE_MESSAGE,
-} from './preview-text.ts'

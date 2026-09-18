@@ -1,18 +1,6 @@
 import { Effect, type ParseResult, Schema, Function as Func } from 'effect'
-import { type DocumentReference } from 'fhir-r4/resources'
 import type * as DecodeFunction from './decode-function.ts'
 import * as SourceFile from './source-file.ts'
-
-type DocumentReferenceType = typeof DocumentReference.Schema.Type
-
-// ─── Shared Types ───────────────────────────────────────────────────────────
-
-interface SettingsPickerProps<TSettings> {
-  readonly settings: TSettings
-  readonly onChange: (settings: TSettings) => void
-}
-
-// ─── FileImporter ───────────────────────────────────────────────────────────
 
 /**
  * The constructor config a format binding supplies.
@@ -71,7 +59,7 @@ interface Type<TSettings, TFormat extends string> {
   /** The stored attachment's content type — what picks a preview's renderer. */
   readonly contentType: string
   /** Whether a `DocumentReference` off the server is one of this format's source files. */
-  readonly isSourceFile: (resource: DocumentReferenceType) => boolean
+  readonly isSourceFile: (resource: SourceFile.DocumentReferenceType) => boolean
   /**
    * The format's source-file constants, as the codec's `FormatContext` takes
    * them — the one piece of that binding this importer carries as data rather
@@ -79,7 +67,7 @@ interface Type<TSettings, TFormat extends string> {
    */
   readonly sourceFileFormat: SourceFile.Format
   readonly sourceFileFromDocumentReference: (
-    resource: DocumentReferenceType
+    resource: SourceFile.DocumentReferenceType
   ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
 }
 
@@ -131,4 +119,4 @@ const make = <TFormat extends string, TSettings>(
 }
 
 export { make }
-export type { Type, DocumentReferenceType, FileImporterConfig, SettingsPickerProps }
+export type { Type, FileImporterConfig }

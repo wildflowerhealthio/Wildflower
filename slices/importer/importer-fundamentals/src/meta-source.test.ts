@@ -5,6 +5,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as MetaSource from './meta-source.ts'
+import * as SourceFile from './source-file.ts'
 
 const fakeResource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
@@ -60,7 +61,7 @@ describe('MetaSource.stampDecoded', () => {
             ),
           })
         ),
-        fc.string({ minLength: 1 }),
+        fc.string({ minLength: 1 }).map(SourceFile.makeReference),
         (sections, source) => {
           const stamped = MetaSource.stampDecoded({ sections, notes: [] }, source)
           expect(stamped.sections.map((section) => section.title)).toEqual(

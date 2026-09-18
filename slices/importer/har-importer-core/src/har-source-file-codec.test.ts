@@ -4,7 +4,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 
 import { emitHar, HarFromJson, HttpArchive } from 'http-archive'
-import { type DocumentReferenceType, SourceFile } from 'importer-fundamentals'
+import { SourceFile } from 'importer-fundamentals'
 import {
   HAR_ARCHIVE_CODE,
   isWebTrace,
@@ -15,14 +15,17 @@ import {
 } from 'web-trace-core/codec'
 import { arbitraries } from 'web-trace-core/test-helpers'
 
-import { harImporter } from '../har-importer.ts'
+import { harImporter } from './har-importer.ts'
 
 /**
  * The source file this format's importer mints for a picked file — the codec
  * driven under `harImporter`'s own format constants, which is the same context
  * its batch `decode` mints under.
  */
-const mint = (bytes: Uint8Array, fileName = 'portal-session.har'): Promise<DocumentReferenceType> =>
+const mint = (
+  bytes: Uint8Array,
+  fileName = 'portal-session.har'
+): Promise<SourceFile.DocumentReferenceType> =>
   Effect.runPromise(
     SourceFile.mintResource({ fileName, bytes }).pipe(
       Effect.provideService(SourceFile.FormatContext, harImporter.sourceFileFormat)

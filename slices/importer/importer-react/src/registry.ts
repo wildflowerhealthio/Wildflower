@@ -2,9 +2,7 @@ import { DicomSettingsPicker } from 'dicom-importer-react'
 import { HarSettingsPicker } from 'har-importer-react'
 import {
   type BoundFormat as CoreBoundFormat,
-  defaultFormatSettings,
   type FormatKind,
-  formatKinds,
   formatRegistry as coreRegistry,
   type FormatSettings,
 } from 'importer-core'
@@ -59,5 +57,9 @@ const formatRegistry: { readonly [K in FormatKind]: FormatWithPicker<K> } = {
   dicom: withSettingsPicker(coreRegistry.dicom, DicomSettingsPicker),
 }
 
-export { defaultFormatSettings, formatKinds, formatRegistry, withSettingsPicker }
-export type { FormatWithPicker, FormatKind, FormatSettings }
+// Only what this module adds. `formatKinds`, `defaultFormatSettings`,
+// `FormatKind` and `FormatSettings` are `importer-core`'s and are imported
+// from there directly — re-exporting them here gave the package two routes to
+// the same symbol, and it used both.
+export { formatRegistry, withSettingsPicker }
+export type { FormatWithPicker }

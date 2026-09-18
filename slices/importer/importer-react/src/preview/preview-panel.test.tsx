@@ -13,17 +13,15 @@ import { StagedImport, FormatDecode, type DecodedFile, PickedFile } from 'import
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { defaultFormatSettings } from '../registry.ts'
+import { defaultFormatSettings } from 'importer-core'
+import { PreviewPanel, type PreviewPanelProps, type SettingsRegistry } from './preview-panel.tsx'
 import {
   NO_RESOURCES_MESSAGE,
   NOTHING_TO_IMPORT_HEADING,
   PREVIEW_HEADING,
-  PreviewPanel,
-  type PreviewPanelProps,
-  type SettingsRegistry,
   UNREADABLE_FILE_MESSAGE,
   UNRECOGNIZED_FILE_MESSAGE,
-} from './preview-panel.tsx'
+} from './preview-text.ts'
 
 /**
  * The preview panel renders every format's review under one confirm.

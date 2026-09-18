@@ -1,12 +1,9 @@
 import { Effect, Either, type ParseResult } from 'effect'
-import { type DocumentReference } from 'fhir-r4/resources'
 import * as DecodedFile from './decoded-file.ts'
 import * as FormatDecode from './format-decode.ts'
 import * as MetaSource from './meta-source.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as SourceFile from './source-file.ts'
-
-type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
 /**
  * What {@link fromPerFile} needs of a format: its tag, its per-file decode, and
@@ -64,7 +61,11 @@ interface ResolvedSource {
   readonly mintResource:
     | ((
         subject: SourceFile.Subject | undefined
-      ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError, SourceFile.FormatContext>)
+      ) => Effect.Effect<
+        SourceFile.DocumentReferenceType,
+        ParseResult.ParseError,
+        SourceFile.FormatContext
+      >)
     | undefined
 }
 

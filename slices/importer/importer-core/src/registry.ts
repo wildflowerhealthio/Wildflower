@@ -50,7 +50,19 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
   dicom: dicomImporter,
 }
 
-/** The default settings of every registered format — the state a fresh import seeds. */
+/**
+ * The default settings of every registered format — the state a fresh import
+ * seeds.
+ *
+ * @remarks
+ * Spelled per format on purpose, though it looks like something
+ * `Object.fromEntries` could derive. It cannot, soundly: `fromEntries` erases
+ * the key-to-value correlation this record's type states, so the derived
+ * version needs an `as FormatSettings` and checks nothing. Written out, a
+ * format missing from here is a compile error — which is the whole reason this
+ * slot exists rather than reading `defaultSettings` off the registry at each
+ * use site.
+ */
 const defaultFormatSettings: FormatSettings = {
   har: formatRegistry.har.defaultSettings,
   'lifelabs-pdf': formatRegistry['lifelabs-pdf'].defaultSettings,

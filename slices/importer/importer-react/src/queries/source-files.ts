@@ -11,11 +11,13 @@ import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { type DocumentReferenceType, PickedFile } from 'importer-fundamentals'
+import { PickedFile, type SourceFile } from 'importer-fundamentals'
 
 type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
-import { formatKinds, formatRegistry, type FormatKind } from '../registry.ts'
+import { formatKinds, type FormatKind } from 'importer-core'
+
+import { formatRegistry } from '../registry.ts'
 import { SOURCE_FILES_QUERY_KEY } from './keys.ts'
 import { nextPageToken } from './page-token.ts'
 
@@ -136,7 +138,7 @@ interface SourceFilesQueryOptions {
  * `Object.keys(formatRegistry)` order — so the classification is
  * deterministic across engines.
  */
-const classifySourceFile = (resource: DocumentReferenceType): FormatKind | undefined =>
+const classifySourceFile = (resource: SourceFile.DocumentReferenceType): FormatKind | undefined =>
   formatKinds.find((kind) => formatRegistry[kind].isSourceFile(resource))
 
 /**
@@ -156,7 +158,7 @@ const classifySourceFile = (resource: DocumentReferenceType): FormatKind | undef
  * pulls a single source file's contents onto the device.
  */
 const rowsOf = (
-  entries: readonly { readonly resource: DocumentReferenceType | null }[]
+  entries: readonly { readonly resource: SourceFile.DocumentReferenceType | null }[]
 ): readonly SourceFileRow[] =>
   Arr.filterMap(entries, (entry): Option.Option<SourceFileRow> => {
     const resource = entry.resource
@@ -176,8 +178,9 @@ const rowsOf = (
  * Projects decoded `DocumentReference` resources (as returned by
  * {@link fetchDocumentReferencePage}) into source-file rows.
  */
-const rowsFromResources = (resources: readonly DocumentReferenceType[]): readonly SourceFileRow[] =>
-  rowsOf(resources.map((resource) => ({ resource })))
+const rowsFromResources = (
+  resources: readonly SourceFile.DocumentReferenceType[]
+): readonly SourceFileRow[] => rowsOf(resources.map((resource) => ({ resource })))
 
 /**
  * Query options for the paged source-file read, for a caller that drives the

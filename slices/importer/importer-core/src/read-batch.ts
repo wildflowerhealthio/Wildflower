@@ -31,13 +31,13 @@ import { type BoundFormat, type FormatKind, formatKinds, type FormatSettings } f
  */
 
 /**
- * The registry surface the read half needs: each format's `detect` (to
- * identify a pick) and `decode` (to read it). Not the whole
+ * The registry surface the read half needs: each format's `format` and
+ * `detect` (to identify a pick) and `decode` (to read it). Not the whole
  * {@link BoundFormat}, so a test can stand up a fake registry with just
  * these fields.
  */
 type ReadRegistry = {
-  readonly [K in FormatKind]: BoundFormat<K>
+  readonly [K in FormatKind]: Pick<BoundFormat<K>, 'format' | 'detect' | 'decode'>
 }
 
 /** A picked batch split by the format that claimed each file. */

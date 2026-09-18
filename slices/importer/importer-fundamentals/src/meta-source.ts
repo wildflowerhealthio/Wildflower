@@ -3,18 +3,28 @@
  * {@link stamp} and the batch {@link stampDecoded} that walks every resource
  * in a decoded file's sections.
  *
+ * @remarks
+ * Both take a `SourceFile.Reference` rather than a bare `string` — the slice's
+ * one currency for "which source file", so the only place it could be laundered
+ * back into an unconstrained string is closed. A types-only import, so no
+ * runtime cycle with `source-file.ts`.
+ *
  * @packageDocumentation
  */
 
 import type { Meta } from 'fhir-r4/data-types'
 
 import type * as DecodedFile from './decoded-file.ts'
+import type * as SourceFile from './source-file.ts'
 
 interface Sourceable {
   readonly meta: typeof Meta.Schema.Type | null
 }
 
-const stamp = <TResource extends Sourceable>(resource: TResource, source: string): TResource => ({
+const stamp = <TResource extends Sourceable>(
+  resource: TResource,
+  source: SourceFile.Reference
+): TResource => ({
   ...resource,
   meta: {
     lastUpdated: null,
@@ -29,7 +39,7 @@ const stamp = <TResource extends Sourceable>(resource: TResource, source: string
 
 const stampDecoded = (
   decoded: DecodedFile.DecodedFile,
-  source: string
+  source: SourceFile.Reference
 ): DecodedFile.DecodedFile => ({
   ...decoded,
   sections: decoded.sections.map((section) => ({

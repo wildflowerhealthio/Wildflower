@@ -1,5 +1,0 @@
-export {
-  LIFELABS_PDF_SOURCE_FILE_CODE,
-  LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
-  LIFELABS_SYSTEM,
-} from '../source-system.ts'

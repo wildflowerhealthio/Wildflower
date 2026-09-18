@@ -1,5 +1,0 @@
-export {
-  DICOM_SOURCE_FILE_CODE,
-  DICOM_SOURCE_FILE_CONTENT_TYPE,
-  DICOM_SYSTEM,
-} from '../source-system.ts'

@@ -65,5 +65,7 @@ const emptyResult = <K extends string>(kind: K): Result<K> => ({
   unreadableFiles: [],
 })
 
-export { emptyResult, fileSlot, keyPrefix, makeFileId, makeId }
+// `fileSlot` stays private: it is the shared derivation the three id builders
+// below are written in terms of, not a unit anything outside composes with.
+export { emptyResult, keyPrefix, makeFileId, makeId }
 export type { Result, UnreadableFile }
