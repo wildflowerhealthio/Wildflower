@@ -17,7 +17,7 @@ import {
 } from './preview-text.ts'
 import { ResourceEditor } from './resource-editor.tsx'
 import type { FormatComparisons } from './use-server-diff.ts'
-import styles from './preview-panel.module.css'
+import panelStyles from './preview-panel.module.css'
 
 /**
  * The preview view: an interactive per-resource review of exactly what
@@ -120,12 +120,22 @@ const PreviewActions = ({
   readonly confirming: boolean
   readonly disabled: boolean
 }): JSX.Element => (
-  <div className={styles.actions}>
-    <button type="button" className={styles.cancel} onClick={onCancel} disabled={disabled}>
+  <div className={panelStyles['preview-panel__actions']}>
+    <button
+      type="button"
+      className={panelStyles['preview-panel__cancel']}
+      onClick={onCancel}
+      disabled={disabled}
+    >
       Cancel
     </button>
     {writableCount > 0 && (
-      <button type="button" className={styles.confirm} onClick={onConfirm} disabled={disabled}>
+      <button
+        type="button"
+        className={panelStyles['preview-panel__confirm']}
+        onClick={onConfirm}
+        disabled={disabled}
+      >
         {confirmLabel(writableCount, excludedCount, confirming)}
       </button>
     )}
@@ -196,26 +206,28 @@ const PreviewPanel = ({
   const activeFormats = useMemo(() => claimedFormats(batch), [batch])
 
   return (
-    <section aria-label="Import preview" className={styles.panel}>
-      <h2 className={styles.heading}>
+    <section aria-label="Import preview" className={panelStyles['preview-panel']}>
+      <h2 className={panelStyles['preview-panel__heading']}>
         {writableCount > 0 ? PREVIEW_HEADING : NOTHING_TO_IMPORT_HEADING}
       </h2>
       {totalFiles > 1 && writableCount > 0 && (
-        <p role="status" className={styles.batchSummary}>
+        <p role="status" className={panelStyles['preview-panel__batch-summary']}>
           {`${writableCount} ${plural(writableCount, 'resource')} across ${totalFiles} files`}
         </p>
       )}
-      <div className={styles.formatGroups}>
+      <div className={panelStyles['preview-panel__format-groups']}>
         {activeFormats.map((kind) => {
           const result = batch[kind]
           return (
             <section
               key={kind}
-              className={styles.formatGroup}
+              className={panelStyles['preview-panel__format-group']}
               aria-label={settingsRegistry[kind].display.title}
             >
-              <h3 className={styles.formatHeading}>{settingsRegistry[kind].display.title}</h3>
-              <div className={styles.settingsForm}>
+              <h3 className={panelStyles['preview-panel__format-heading']}>
+                {settingsRegistry[kind].display.title}
+              </h3>
+              <div className={panelStyles['preview-panel__settings-form']}>
                 <FormatSettingsForm
                   kind={kind}
                   settings={settings}
@@ -223,7 +235,7 @@ const PreviewPanel = ({
                   onSettingsChange={onSettingsChange}
                 />
               </div>
-              <div className={styles.fileSections}>
+              <div className={panelStyles['preview-panel__file-sections']}>
                 <FormatReviewBody
                   result={result}
                   selection={selectionFor(kind)}
@@ -236,9 +248,13 @@ const PreviewPanel = ({
           )
         })}
         {batch.unrecognizedFiles.map((file) => (
-          <section key={file.id} className={styles.fileSection} aria-label={file.title}>
-            <h3 className={styles.fileHeading}>{file.title}</h3>
-            <p role="alert" className={styles.emptyMessage}>
+          <section
+            key={file.id}
+            className={panelStyles['preview-panel__file-section']}
+            aria-label={file.title}
+          >
+            <h3 className={panelStyles['preview-panel__file-heading']}>{file.title}</h3>
+            <p role="alert" className={panelStyles['preview-panel__empty']}>
               {UNRECOGNIZED_FILE_MESSAGE}
             </p>
           </section>

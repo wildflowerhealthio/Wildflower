@@ -14,7 +14,7 @@ import { type JSX, useState } from 'react'
 import { Chip } from 'react-tundraish'
 
 import { plural } from './preview-text.ts'
-import styles from './preview-panel.module.css'
+import styles from './diff-badge.module.css'
 
 /**
  * The server-diff badge a previewed resource row carries, and the interactive
@@ -65,20 +65,20 @@ const DiffFieldList = ({
   readonly current: unknown
   readonly onKeepServerValue: (resource: FhirResource) => void
 }): JSX.Element => (
-  <ul className={styles.diffFieldList} role="group" aria-label="Field differences">
+  <ul className={styles['diff-badge__field-list']} role="group" aria-label="Field differences">
     {fields.map((field) => {
       const path = formatPath(field.path)
       return (
-        <li key={path} className={styles.diffField}>
-          <code className={styles.diffPath}>{path}</code>
-          <span className={styles.diffServer}>{formatSlot(field.server)}</span>
-          <span className={styles.diffArrow} aria-hidden="true">
+        <li key={path} className={styles['diff-badge__field']}>
+          <code className={styles['diff-badge__path']}>{path}</code>
+          <span className={styles['diff-badge__server']}>{formatSlot(field.server)}</span>
+          <span className={styles['diff-badge__arrow']} aria-hidden="true">
             →
           </span>
-          <span className={styles.diffIncoming}>{formatSlot(field.incoming)}</span>
+          <span className={styles['diff-badge__incoming']}>{formatSlot(field.incoming)}</span>
           <button
             type="button"
-            className={styles.keepServerButton}
+            className={styles['diff-badge__keep-server']}
             aria-label={`Keep the server value for ${path}`}
             onClick={() =>
               Option.match(resetFieldToServer(current, field), {
@@ -130,7 +130,7 @@ const DiffBadge = ({
     const { status } = comparison
     return (
       <Chip
-        className={styles[`diffBadge_${status}`] ?? styles.diffBadge}
+        className={styles[`diff-badge--${status}`] ?? styles['diff-badge']}
         data-diff-status={status}
         aria-label={DIFF_STATUS_LABEL[status]}
       >
@@ -142,7 +142,7 @@ const DiffBadge = ({
   if (fields.length === 0) {
     return (
       <Chip
-        className={styles.diffBadge_unchanged ?? styles.diffBadge}
+        className={styles['diff-badge--unchanged'] ?? styles['diff-badge']}
         data-diff-status="unchanged"
         aria-label={DIFF_STATUS_LABEL.unchanged}
       >
@@ -154,13 +154,13 @@ const DiffBadge = ({
   const label = `${DIFF_STATUS_LABEL.changed}: ${fields.length} ${plural(fields.length, 'field')}`
   return (
     <span
-      className={styles.diffContainer}
+      className={styles['diff-badge__container']}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <button
         type="button"
-        className={styles.diffBadge_changed ?? styles.diffBadge}
+        className={styles['diff-badge--changed'] ?? styles['diff-badge']}
         data-diff-status="changed"
         aria-expanded={open}
         aria-label={`${label}; show differences`}
@@ -169,7 +169,7 @@ const DiffBadge = ({
         {label}
       </button>
       {open && (
-        <div className={styles.diffDetails}>
+        <div className={styles['diff-badge__details']}>
           <DiffFieldList fields={fields} current={current} onKeepServerValue={onKeepServerValue} />
         </div>
       )}

@@ -8,7 +8,7 @@ import { Chip } from 'react-tundraish'
 import { describeResource, resourceTypeOf } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
 import { NO_RESOURCES_MESSAGE, plural, UNREADABLE_FILE_MESSAGE } from './preview-text.ts'
-import styles from './preview-panel.module.css'
+import styles from './format-review-body.module.css'
 
 /**
  * One format's review body — the generalized per-resource review every format
@@ -87,18 +87,30 @@ const ResourceRow = ({
   const included = StagedImport.isResourceIncluded(selection, resourceKey)
   const isEdited = StagedImport.isResourceEdited(selection, resourceKey)
   return (
-    <li className={styles.resourceRow}>
-      <label className={styles.resourceLabel}>
+    <li className={styles['review-body__resource-row']}>
+      <label className={styles['review-body__resource-label']}>
         <input
           type="checkbox"
           checked={included}
           aria-label={`Include ${description.type} ${description.summary}`}
           onChange={() => onToggle(resourceKey)}
         />
-        <span className={included ? styles.resourceType : styles.resourceExcluded}>
+        <span
+          className={
+            included
+              ? styles['review-body__resource-type']
+              : styles['review-body__resource-excluded']
+          }
+        >
           {description.type}
         </span>
-        <span className={included ? styles.resourceSummary : styles.resourceExcluded}>
+        <span
+          className={
+            included
+              ? styles['review-body__resource-summary']
+              : styles['review-body__resource-excluded']
+          }
+        >
           {description.summary}
         </span>
       </label>
@@ -107,10 +119,10 @@ const ResourceRow = ({
         current={edited}
         onKeepServerValue={(next) => onKeepServerValue(resourceKey, next)}
       />
-      {isEdited && <Chip className={styles.editedChip}>Edited</Chip>}
+      {isEdited && <Chip className={styles['review-body__edited-chip']}>Edited</Chip>}
       <button
         type="button"
-        className={styles.editButton}
+        className={styles['review-body__edit-button']}
         onClick={() => onEdit(resourceKey, edited)}
         aria-label={`Edit ${description.type} ${description.summary}`}
       >
@@ -119,7 +131,7 @@ const ResourceRow = ({
       {isEdited && (
         <button
           type="button"
-          className={styles.revertButton}
+          className={styles['review-body__revert-button']}
           onClick={() => onRevert(resourceKey)}
           aria-label={`Revert edit to ${description.type} ${description.summary}`}
         >
@@ -161,7 +173,7 @@ const SectionToggle = ({
     if (checkbox.current !== null) checkbox.current.indeterminate = !allIncluded && !noneIncluded
   }, [allIncluded, noneIncluded])
   return (
-    <label className={styles.sectionHeadingLabel}>
+    <label className={styles['review-body__section-label']}>
       <input
         ref={checkbox}
         type="checkbox"
@@ -173,7 +185,7 @@ const SectionToggle = ({
           )
         }}
       />
-      <h4 className={styles.sectionHeading}>{title}</h4>
+      <h4 className={styles['review-body__section-heading']}>{title}</h4>
     </label>
   )
 }
@@ -203,19 +215,19 @@ const FormatReviewBody = ({
     [result.decoded, selection]
   )
   return (
-    <div className={styles.readBody}>
+    <div className={styles['review-body']}>
       {tallies.length > 0 && (
-        <p role="status" className={styles.tally}>
+        <p role="status" className={styles['review-body__tally']}>
           {tallies.map(tallyLabel).join(' · ')}
         </p>
       )}
       {sections.length === 0 && result.unreadableFiles.length === 0 && (
-        <p className={styles.emptyMessage}>{NO_RESOURCES_MESSAGE}</p>
+        <p className={styles['review-body__empty']}>{NO_RESOURCES_MESSAGE}</p>
       )}
       {result.unreadableFiles.length > 0 && (
-        <ul className={styles.noteList}>
+        <ul className={styles['review-body__note-list']}>
           {result.unreadableFiles.map((file) => (
-            <li key={file.id} className={styles.note}>
+            <li key={file.id} className={styles['review-body__note']}>
               {file.title}: {UNREADABLE_FILE_MESSAGE}
             </li>
           ))}
@@ -228,7 +240,7 @@ const FormatReviewBody = ({
           // which lets a section's first resource identify it even when two
           // files contribute sections of the same title.
           key={section.resources[0]?.key ?? section.title}
-          className={styles.decodeSection}
+          className={styles['review-body__section']}
           aria-label={section.title}
         >
           <SectionToggle
@@ -237,7 +249,7 @@ const FormatReviewBody = ({
             selection={selection}
             onSelectionChange={onSelectionChange}
           />
-          <ul className={styles.resourceList}>
+          <ul className={styles['review-body__resource-list']}>
             {section.resources.map((resource) => (
               <ResourceRow
                 key={resource.key}
@@ -257,13 +269,13 @@ const FormatReviewBody = ({
         </section>
       ))}
       {notes.length > 0 && (
-        <details className={styles.notes}>
-          <summary className={styles.notesSummary}>
+        <details className={styles['review-body__notes']}>
+          <summary className={styles['review-body__notes-summary']}>
             {`${notes.length} ${plural(notes.length, 'note')}`}
           </summary>
-          <ul className={styles.noteList}>
+          <ul className={styles['review-body__note-list']}>
             {notes.map((note) => (
-              <li key={note} className={styles.note}>
+              <li key={note} className={styles['review-body__note']}>
                 {note}
               </li>
             ))}

@@ -1,0 +1,115 @@
+.review-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.review-body__tally {
+  margin: 0;
+  color: var(--color-neutral-4);
+  font-size: var(--font-size-2);
+}
+
+.review-body__empty {
+  margin: 0;
+  color: var(--color-neutral-9);
+}
+
+.review-body__section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.review-body__section-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.review-body__section-heading {
+  margin: 0;
+  font-size: var(--font-size-2);
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+.review-body__resource-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.review-body__resource-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.review-body__resource-label {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.review-body__resource-type {
+  font-weight: var(--font-weight-3);
+}
+
+.review-body__resource-summary {
+  color: var(--color-neutral-4);
+}
+
+.review-body__resource-excluded {
+  text-decoration: line-through;
+  color: var(--color-neutral-4);
+}
+
+.review-body__edited-chip {
+  font-size: var(--font-size-1);
+}
+
+.review-body__edit-button,
+.review-body__revert-button {
+  font: inherit;
+  font-size: var(--font-size-1);
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+  color: inherit;
+}
+
+.review-body__notes {
+  border-top: 1px solid var(--color-divider);
+  padding-top: var(--space-2);
+}
+
+.review-body__notes-summary {
+  cursor: pointer;
+  color: var(--color-neutral-4);
+  font-size: var(--font-size-2);
+}
+
+.review-body__note-list {
+  list-style: none;
+  margin: 0;
+  padding: var(--space-2) 0 0 var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.review-body__note {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-4);
+  word-break: break-all;
+}

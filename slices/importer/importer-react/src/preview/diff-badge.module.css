@@ -1,0 +1,87 @@
+/*
+ * Diff badges on each resource row — the pre-fetched server comparison status:
+ *   --new         an id the server does not hold; the write creates fresh
+ *   --unchanged   the server already holds an equivalent copy (default excluded)
+ *   --changed     the server holds a copy that differs; click/hover to see fields
+ */
+
+.diff-badge,
+.diff-badge--new,
+.diff-badge--unchanged,
+.diff-badge--changed {
+  font-size: var(--font-size-1);
+}
+
+.diff-badge__container {
+  position: relative;
+  display: inline-flex;
+}
+
+.diff-badge--changed {
+  font: inherit;
+  font-size: var(--font-size-1);
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+  color: inherit;
+}
+
+.diff-badge__details {
+  position: absolute;
+  top: calc(100% + var(--space-1));
+  left: 0;
+  z-index: 1;
+  min-width: 16rem;
+  max-width: 32rem;
+  max-height: 20rem;
+  overflow: auto;
+  padding: var(--space-2);
+  background: var(--color-background);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+}
+
+.diff-badge__field-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.diff-badge__field {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-size: var(--font-size-1);
+}
+
+.diff-badge__path {
+  font-family: var(--font-mono);
+  color: var(--color-neutral-11);
+}
+
+.diff-badge__server,
+.diff-badge__incoming {
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
+
+.diff-badge__arrow {
+  color: var(--color-neutral-4);
+}
+
+.diff-badge__keep-server {
+  font: inherit;
+  font-size: var(--font-size-1);
+  padding: 0 var(--space-2);
+  background: transparent;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-1);
+  cursor: pointer;
+  color: inherit;
+}
