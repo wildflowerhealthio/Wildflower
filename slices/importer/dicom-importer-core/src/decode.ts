@@ -10,7 +10,8 @@ import { parseDicomFile } from 'dicom'
 import { DateTime, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { DecodedFile, PickedFile, SourceFile } from 'importer-fundamentals'
+import { SourceFile } from 'importer-fundamentals'
+import type { DecodedFile, PickedFile } from 'importer-fundamentals'
 
 import { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
 import type { DicomSettings } from './settings.ts'
@@ -73,18 +74,19 @@ const sectionTitle = (header: DicomHeader): string => {
  * @param file - The picked `.dcm` file, name and raw bytes
  * @param settings - The import's settings; its `timeZone` is what every
  *   `ImagingStudy.started` is resolved against
- * @param source - The file's resolved source-file `DocumentReference`; its
- *   `id` is what the `ImagingStudy` instance carries as its `gridfsFileId`
- *   extension, so the link names the resource the shell writes
+ * @param sourceFile - The reference to the file's source-file
+ *   `DocumentReference`; its id is what the `ImagingStudy` instance carries as
+ *   its `gridfsFileId` extension, so the link names the resource the shell
+ *   writes
  * @returns One section when the file carries at least a patient, plus notes
  *   for anything that could not be extracted; fails with a `ParseError` when
  *   the bytes cannot be parsed as DICOM, or when `settings.timeZone` is not an
  *   IANA time zone name
  */
 const decodeDicom = (
-  file: PickedFile,
+  file: PickedFile.PickedFile,
   settings: DicomSettings,
-  source: SourceFile.Ref
+  sourceFile: SourceFile.Reference
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
@@ -106,7 +108,11 @@ const decodeDicom = (
       notes.push('No AccessionNumber — no ServiceRequest will be created.')
     }
 
-    const resources = yield* toFhirResources(header, settings, source.id)
+    const resources = yield* toFhirResources(
+      header,
+      settings,
+      SourceFile.idFromReference(sourceFile)
+    )
     const labeled: DecodedFile.Resource[] = []
 
     for (const resource of resources) {

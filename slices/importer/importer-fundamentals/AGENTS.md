@@ -24,21 +24,23 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   from the coding and content type alone: the per-format `SourceFile` schema
   and its `SourceFileFromDocumentReference` transform, `isSourceFile`,
   `sourceFileFromDocumentReference` / `sourceFileToDocumentReference`,
-  `categoryToken`, the deterministic mint (`mintSourceFile` decides the id — a
-  SHA-256 of the bytes plus the file name via `fhir-r4/identity`'s
-  `localResourceId`, so re-importing the same file upserts rather than
-  duplicating — and defers the `DocumentReference`; `buildSourceFile` does
-  both at once), and `decode` itself. That last one, `buildPerFileDecode`, is
+  `categoryToken`, the deterministic mint (`mintSourceFile` decides the
+  `SourceFile.Type` — its id a SHA-256 of the bytes plus the file name via
+  `fhir-r4/identity`'s `localResourceId`, so re-importing the same file upserts
+  rather than duplicating — and `sourceFileToDocumentReference` encodes one,
+  optionally under a `Subject`; `buildSourceFile` does both at once), and
+  `decode` itself. That last one, `buildPerFileDecode`, is
   where the per-file contract becomes the batch one: for each claimed file it
-  resolves the source (mint for a `local` pick, read the reference back for a
-  `server` one), runs the binding's `decodeOne` with the resolved id,
+  resolves the source to a `SourceFile.Reference` (minting for a `local` pick,
+  passing a `server` pick's existing reference through verbatim), runs the
+  binding's `decodeOne` with it,
   **namespaces the decode's review keys** by the file's slot
   (`FormatDecode.keyPrefix`), stamps every resource's `meta.source` via
   `MetaSource.stampDecoded`, finishes the mint under the subject `subjectFor`
   reads off the decode, prepends it as the file's "Source file" section, and
   folds a `ParseError` into that file's own `unreadableFiles` entry. No format
   names another format: a binding supplies only its own coding constants and
-  `decodeOne`. Also holds `Coding`, `Subject`, `MintedSourceFile`,
+  `decodeOne`. Also holds `Coding`,
   `DocumentReferenceType`, `FileImporterConfig`,
   `SettingsPickerProps<TSettings>` (the `{ settings, onChange }` contract
   every format's settings picker renders against, below every format's React
@@ -57,16 +59,19 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   format claimed.
 - `src/source-file.ts` — the **`SourceFile`** namespace every binding and the
   shell import: **`Type`** (a decoded source file's `id` / `fileName` /
-  `uploadedAt` / `bytes`), **`Ref`** (the resolved per-decode id a
-  `DecodeOne` receives), **`Reference`** (the typed
+  `uploadedAt` / `bytes`), **`Reference`** (the typed
   `` `DocumentReference/${string}` `` a stamped resource's `meta.source`
-  points at, plus `makeReference` / `idFromReference` / `isReference`),
-  **`DecodeOne<TSettings>`** (one format's per-file decode signature —
-  `(file, settings, source: Ref) => Effect<DecodedFile.DecodedFile, ParseError>`),
-  **`SubjectFor`** (how a format names the subject its minted source file is
-  filed under — called with the file's _decode_, so a format reads the subject
-  off the resources it already extracted rather than parsing the file twice),
-  **`PerFileDecodeOptions`**, and **`SECTION_TITLE`** / **`key`**
+  points at, plus `makeReference` / `idFromReference`) — the **single currency
+  for "which source file"**, which a `DecodeOne` receives, which a `server` pick
+  already carries, and which `idFromReference` unwraps only where a format needs
+  the bare id (DICOM's `gridfsFileId`), **`DecodeOne<TSettings>`** (one format's
+  per-file decode signature —
+  `(file, settings, sourceFile: Reference) => Effect<DecodedFile.DecodedFile, ParseError>`),
+  **`Subject`** / **`SubjectFor`** (how a format names the subject its minted
+  source file is filed under — called with the file's _decode_, so a format reads
+  the subject off the resources it already extracted rather than parsing the file
+  twice), **`PerFileDecodeOptions`**, `prependToDecodedFile`, and
+  **`SECTION_TITLE`** / **`key`**
   (the review section title and the stable per-file row key a minted source
   file is reviewed under). Depends only on `decoded-file.ts` and
   `picked-file.ts` (types only, so no runtime cycle even though
@@ -94,7 +99,11 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   the type inside it is `Source` rather than `PickedFileSource` — one name
   meaning two things at the same import site is what that avoids. Bytes rather
   than text so the picker stays format-blind; the provenance rides along
-  because minting or not minting a source file is the decode's decision.
+  because minting or not minting a source file is the decode's decision. Also
+  **`NamedBytes`** (`{ fileName, bytes }`), the provenance-free half
+  `PickedFile` extends — one name for the shape the source-file mint, the
+  read of a stored source file's contents, and `identify` all take, instead of
+  three structural copies of it.
 - `src/sha256.ts` — **`sha256Base64`** (+ `DigestUnavailable`), the base64
   SHA-256 the source file attachment's `hash` carries, over Web Crypto. A verbatim
   copy of `web-trace-core`'s helper (the standard digest, no project-specific

@@ -1,3 +1,4 @@
+// oxlint-disable import/group-exports
 /**
  * The one value every picker source converges on and every format's `decode`
  * receives: a file's name, its raw bytes, and where it came from.
@@ -15,35 +16,48 @@
 
 import * as SourceFile from './source-file.ts'
 
+namespace Source {
+  /**
+   * Where a {@link PickedFile} came from: a `local` file the device holds, or a
+   * `server` file already stored as a `DocumentReference` on the FHIR server.
+   *
+   * @remarks
+   * Named `Source`, not `PickedFileSource`, because this module is consumed as
+   * the `PickedFileSource` namespace: one name meaning both a namespace and a
+   * type at the same import site is what that avoids.
+   */
+  export type Type =
+    | { readonly _tag: 'local' }
+    | { readonly _tag: 'server'; readonly reference: SourceFile.Reference }
+
+  export const local: Type = { _tag: 'local' }
+
+  export const server = (id: string): Type => ({
+    _tag: 'server',
+    reference: SourceFile.makeReference(id),
+  })
+}
+
 /**
- * Where a {@link PickedFile} came from: a `local` file the device holds, or a
- * `server` file already stored as a `DocumentReference` on the FHIR server.
+ * A named blob of bytes — the part of a {@link PickedFile} that a step which
+ * does not care where the file came from needs.
  *
  * @remarks
- * Named `Source`, not `PickedFileSource`, because this module is consumed as
- * the `PickedFileSource` namespace: one name meaning both a namespace and a
- * type at the same import site is what that avoids.
+ * Named so the source-file mint, the read of a stored source file's contents,
+ * and `identify` all spell one shape instead of three structural copies of it.
  */
-type Source =
-  | { readonly _tag: 'local' }
-  | { readonly _tag: 'server'; readonly reference: SourceFile.Reference }
-
-const local: Source = { _tag: 'local' }
-
-const server = (id: string): Source => ({
-  _tag: 'server',
-  reference: SourceFile.makeReference(id),
-})
-
-/** A file chosen from one of the picker's sources, ready to hand on. */
-interface PickedFile {
+interface NamedBytes {
   /** The file's name, for display and for an eventual upload's title. */
   readonly fileName: string
   /** The file's raw bytes, exactly as they were read. */
   readonly bytes: Uint8Array
-  /** Which source produced this pick. */
-  readonly source: Source
 }
 
-export { local, server }
-export type { PickedFile, Source }
+/** A file chosen from one of the picker's sources, ready to hand on. */
+interface PickedFile extends NamedBytes {
+  /** Which source produced this pick. */
+  readonly source: Source.Type
+}
+
+export { Source }
+export type { NamedBytes, PickedFile }

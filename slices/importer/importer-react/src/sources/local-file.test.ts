@@ -1,13 +1,13 @@
 import { Effect, Either } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
+import type { PickedFile } from 'importer-fundamentals'
 import {
   acceptLocalFile,
   type IdentifiableDescriptor,
   type ReadableFile,
   REJECTION_MESSAGE,
 } from './local-file.ts'
-import type { PickedFile } from './picked-file.ts'
 
 /**
  * `acceptLocalFile` is the gate every local pick passes: reads the bytes,
@@ -48,7 +48,7 @@ const pdfDescriptor: IdentifiableDescriptor = {
 
 const descriptors: readonly IdentifiableDescriptor[] = [pdfDescriptor, harDescriptor]
 
-const runAccept = (file: ReadableFile): Promise<Either.Either<PickedFile, string>> =>
+const runAccept = (file: ReadableFile): Promise<Either.Either<PickedFile.PickedFile, string>> =>
   Effect.runPromise(Effect.either(acceptLocalFile(descriptors, file)))
 
 describe('acceptLocalFile', () => {

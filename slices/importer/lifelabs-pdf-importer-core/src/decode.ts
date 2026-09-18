@@ -145,9 +145,9 @@ const decodeLifeLabsPdfDocument = (
  * JSON download.
  */
 const decodeLifeLabsPdf = (
-  file: PickedFile,
+  file: PickedFile.PickedFile,
   settings: LifeLabsPdfSettings,
-  _source: SourceFile.Ref
+  _sourceFile: SourceFile.Reference
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.tryPromise({
     try: () => extractPositionedText(file.bytes),

@@ -78,7 +78,9 @@ decode yields one section per file when the header carries a patient identity.
   its `decodeOne`, and `subjectFor: patientSubjectOf`. The batch decode
   `fileImporter` returns mints each local pick's source file, lists it as its
   own "Source file" section, stamps every extracted resource's `meta.source`
-  with it, and hands its id to `decodeDicom`. **`patientSubjectOf`** (exported)
+  with it, and hands its reference to `decodeDicom` (which unwraps the bare id
+  through `SourceFile.idFromReference` for the `gridfsFileId` extension).
+  **`patientSubjectOf`** (exported)
   is the one format-specific knob: it reads the `Patient` off the _decode's own
   resources_ and returns its `Patient/<id>` reference, so the raw image is
   filed in that patient's record — and the file is parsed once, not twice. A

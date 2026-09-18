@@ -13,14 +13,4 @@ describe('SourceFile reference', () => {
       { numRuns: numRunsFor({ base: 100 }) }
     )
   })
-
-  it('should reject a reference to any other resource type, and an empty id', () => {
-    expect(SourceFile.isReference('Patient/p-1')).toBe(false)
-    expect(SourceFile.isReference('DocumentReference/')).toBe(false)
-    expect(SourceFile.isReference('')).toBe(false)
-  })
-
-  it('should accept a well-formed DocumentReference reference', () => {
-    expect(SourceFile.isReference('DocumentReference/doc-1')).toBe(true)
-  })
 })

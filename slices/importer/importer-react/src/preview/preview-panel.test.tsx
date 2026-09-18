@@ -9,12 +9,11 @@ import {
   type FormatSettings,
   type UnrecognizedFile,
 } from 'importer-core'
-import { StagedImport, FormatDecode, type DecodedFile } from 'importer-fundamentals'
+import { StagedImport, FormatDecode, type DecodedFile, PickedFile } from 'importer-fundamentals'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { defaultFormatSettings } from '../registry.ts'
-import { PickedFileSource, type PickedFile } from '../sources/picked-file.ts'
 import {
   NO_RESOURCES_MESSAGE,
   NOTHING_TO_IMPORT_HEADING,
@@ -423,10 +422,10 @@ const patientWire = (wire: Record<string, unknown>): unknown =>
   )
 
 /** A `local` pick with the given name. */
-const pickedFile = (fileName: string): PickedFile => ({
+const pickedFile = (fileName: string): PickedFile.PickedFile => ({
   fileName,
   bytes: new TextEncoder().encode('{}'),
-  source: PickedFileSource.local,
+  source: PickedFile.Source.local,
 })
 
 /**

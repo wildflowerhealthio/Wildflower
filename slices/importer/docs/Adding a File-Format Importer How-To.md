@@ -54,7 +54,7 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 
 ## 1. The decode
 
-You write **one file at a time**. `decodeOne(file, settings, source)` takes a
+You write **one file at a time**. `decodeOne(file, settings, sourceFile)` takes a
 single `PickedFile` — a `{ fileName, bytes, source }`, the `source` being a
 `local` pick or a `server` one naming a source file already on the device — and
 yields a `DecodedFile`: titled sections of labeled resources, plus file-level
@@ -64,16 +64,17 @@ diagnostic notes.
 const decodeMyFormat = (
   file: PickedFile,
   settings: MySettings,
-  source: SourceFile.Ref
+  sourceFile: SourceFile.Reference
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> => …
 ```
 
 `fileImporter` lifts that into the batch `decode(files, settings)` the shell
 runs across every file the format claimed. That lifted decode is what:
 
-- resolves each file's source file — minting a `DocumentReference` for a `local`
-  pick and handing `decodeOne` its `id` before the decode runs, or reading the
-  id straight off a `server` pick's existing reference, minting nothing;
+- resolves each file's source file — minting one for a `local` pick and handing
+  `decodeOne` its `DocumentReference/<id>` reference before the decode runs, or
+  passing a `server` pick's existing reference through verbatim, minting
+  nothing;
 - prepends the minted row as its own **"Source file"** section;
 - stamps every extracted resource's `meta.source` with that reference;
 - **namespaces every review key** with the file's slot in the batch, so two
@@ -85,9 +86,11 @@ nothing — so a preview can never reach the write client by construction, and o
 bad file in a batch of five leaves the other four reviewable. The whole opt-in
 seam rests on this.
 
-The `source` argument carries the resolved source file's `id`, so a format whose
-synthesized resources name the stored file (DICOM's `ImagingStudy`
-`gridfsFileId` extension) reads it there rather than recomputing it.
+The `sourceFile` argument is the resolved source file's reference, which is both
+what every extracted resource's `meta.source` will carry and — through
+`SourceFile.idFromReference` — where a format whose synthesized resources name
+the stored file (DICOM's `ImagingStudy` `gridfsFileId` extension) reads the bare
+id, rather than recomputing it.
 
 Three obligations:
 
@@ -140,8 +143,13 @@ derives the whole seam from them:
 | `categoryToken`                      | the `system\|code` search token the shell unions per format |
 | `isSourceFile`                       | the disjoint predicate a server row is classified through   |
 | `sourceFileFromDocumentReference`    | the bytes-and-name reader a preview or a re-pick calls      |
-| `sourceFileToDocumentReference`      | its inverse                                                 |
+| `sourceFileToDocumentReference`      | its inverse, optionally filing it under a subject           |
 | `mintSourceFile` / `buildSourceFile` | the deterministic mint the batch decode drives              |
+
+`mintSourceFile` decides the source file itself — `{ id, fileName, uploadedAt,
+bytes }` — and `sourceFileToDocumentReference` encodes one; `buildSourceFile` is
+the two in one call, which is what the batch decode does either side of a
+`decodeOne` so the resource can be filed under a subject the decode named.
 
 The mint derives its id from the bytes' SHA-256 and the file name through
 `fhir-r4/identity`'s `localResourceId`, so re-importing the same file under the

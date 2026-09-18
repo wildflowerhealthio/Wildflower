@@ -11,11 +11,7 @@ import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import {
-  type DocumentReferenceType,
-  type PickedFile,
-  PickedFileSource,
-} from 'importer-fundamentals'
+import { type DocumentReferenceType, PickedFile } from 'importer-fundamentals'
 
 type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
@@ -349,7 +345,7 @@ const useSmartSourceFilesQuery = (
 const fetchSourceFile = (
   runAuthed: RunAuthed,
   row: { readonly id: string; readonly format: FormatKind }
-): Promise<PickedFile> =>
+): Promise<PickedFile.PickedFile> =>
   runAuthed(
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
@@ -359,7 +355,7 @@ const fetchSourceFile = (
       return {
         fileName,
         bytes,
-        source: PickedFileSource.server(row.id),
+        source: PickedFile.Source.server(row.id),
       }
     })
   )
@@ -382,7 +378,7 @@ const fetchSourceFile = (
 const fetchSourceFileContents = (
   runAuthed: RunAuthed,
   row: { readonly id: string; readonly format: FormatKind }
-): Promise<{ readonly fileName: string; readonly bytes: Uint8Array }> =>
+): Promise<PickedFile.NamedBytes> =>
   runAuthed(
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient

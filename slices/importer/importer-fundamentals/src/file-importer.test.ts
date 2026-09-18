@@ -6,8 +6,7 @@ import { describe, expect, it, test } from 'vite-plus/test'
 import * as DecodedFile from './decoded-file.ts'
 import { fileImporter, type DocumentReferenceType } from './file-importer.ts'
 import * as FormatDecode from './format-decode.ts'
-import * as PickedFileSource from './picked-file.ts'
-import type { PickedFile } from './picked-file.ts'
+import * as PickedFile from './picked-file.ts'
 import * as SourceFile from './source-file.ts'
 
 const SYSTEM = 'https://example.test/fhir/CodeSystem/source-file'
@@ -99,14 +98,56 @@ describe('the codec as a schema', () => {
     expect((await roundTrip(sourceFile)).bytes).toEqual(sourceFile.bytes)
   })
 
-  test('property: subject is absent, keeping source files out of Patient/$everything', async () => {
+  test('property: subject is absent unless one is named, keeping source files out of Patient/$everything', async () => {
     await fc.assert(
       fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
         expect(
           (await Effect.runPromise(labelled.sourceFileToDocumentReference(sourceFile))).subject
-        ).toBeUndefined()
+        ).toBeNull()
       }),
       { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  test('property: the subject-bearing encode files the resource under exactly that reference', async () => {
+    await fc.assert(
+      fc.asyncProperty(sourceFileArbitrary, fc.uuid(), async (sourceFile, patientId) => {
+        const resource = await Effect.runPromise(
+          labelled.sourceFileToDocumentReference(sourceFile, { reference: `Patient/${patientId}` })
+        )
+        expect(resource.subject?.reference).toBe(`Patient/${patientId}`)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  test('property: both encode paths agree, so a minted row and a re-encoded one are the same shape', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.record({
+          fileName: fc.stringMatching(/^[a-z0-9]{1,8}\.bin$/u),
+          bytes: fc.uint8Array({ maxLength: 64 }),
+        }),
+        async (picked) => {
+          // `buildSourceFile` mints then encodes; encoding the mint by hand must
+          // land on the identical resource — the two used to disagree on every
+          // absent optional field (`undefined` from one, `null` from the other).
+          // One fixed instant, since both paths read the clock for `uploadedAt`.
+          const [built, encoded] = await Effect.runPromise(
+            Effect.gen(function* () {
+              yield* TestClock.setTime(UPLOAD_FLOOR)
+              return [
+                yield* labelled.buildSourceFile(picked),
+                yield* labelled.sourceFileToDocumentReference(
+                  yield* labelled.mintSourceFile(picked)
+                ),
+              ]
+            }).pipe(Effect.provide(TestContext.TestContext))
+          )
+          expect(encoded).toEqual(built)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
     )
   })
 
@@ -211,14 +252,14 @@ describe('buildSourceFile — the deterministic mint', () => {
 const fakeResource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
 
-const localFile = (fileName: string, bytes: Uint8Array): PickedFile => ({
+const localFile = (fileName: string, bytes: Uint8Array): PickedFile.PickedFile => ({
   fileName,
   bytes,
-  source: PickedFileSource.local,
+  source: PickedFile.Source.local,
 })
 
 const decodeBytes = (
-  file: PickedFile,
+  file: PickedFile.PickedFile,
   _settings: null
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   file.bytes.length === 0
@@ -251,12 +292,12 @@ const importer = fileImporter({
   decodeOne: decodeBytes,
 })
 
-const fileArbitrary: fc.Arbitrary<PickedFile> = fc.record({
+const fileArbitrary: fc.Arbitrary<PickedFile.PickedFile> = fc.record({
   fileName: fc.stringMatching(/^[a-z0-9]{1,12}\.bin$/u),
   bytes: fc.uint8Array({ maxLength: 6 }),
   source: fc.oneof(
-    fc.constant(PickedFileSource.local),
-    fc.stringMatching(/^[a-z0-9]{1,8}$/u).map(PickedFileSource.server)
+    fc.constant(PickedFile.Source.local),
+    fc.stringMatching(/^[a-z0-9]{1,8}$/u).map(PickedFile.Source.server)
   ),
 })
 
@@ -296,7 +337,7 @@ describe('resolve (tested through decode)', () => {
           {
             fileName: 'old.bin',
             bytes: new Uint8Array([1]),
-            source: PickedFileSource.server('doc-1'),
+            source: PickedFile.Source.server('doc-1'),
           },
         ],
         null
@@ -359,7 +400,7 @@ describe('decode (batch behavior)', () => {
     )
   })
 
-  it('should hand the per-file decode the resolved source id', async () => {
+  it('should hand the per-file decode the resolved source reference', async () => {
     const seen: string[] = []
     const spyImporter = fileImporter({
       format: 'test',
@@ -368,8 +409,8 @@ describe('decode (batch behavior)', () => {
       display: { title: 'Example', description: 'Test format' },
       detect: () => false,
       defaultSettings: null,
-      decodeOne: (file, settings: null, source) => {
-        seen.push(SourceFile.makeReference(source.id))
+      decodeOne: (file, settings: null, sourceFile) => {
+        seen.push(sourceFile)
         return decodeBytes(file, settings)
       },
     })
@@ -380,7 +421,7 @@ describe('decode (batch behavior)', () => {
           {
             fileName: 'b.bin',
             bytes: new Uint8Array([2]),
-            source: PickedFileSource.server('doc-b'),
+            source: PickedFile.Source.server('doc-b'),
           },
         ],
         null

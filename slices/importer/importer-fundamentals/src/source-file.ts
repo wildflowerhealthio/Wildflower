@@ -1,9 +1,16 @@
 /**
  * The source-file vocabulary every format binding shares: the `Type` a
- * format's `decode` mints or resolves, the deterministic `Ref` a `DecodeOne`
- * receives, the `SECTION_TITLE` / `key` the review prepends a minted row
- * under, and the `Reference` — `DocumentReference/<id>` — a stamped
- * resource's `meta.source` points at.
+ * format's `decode` mints or resolves, the `Reference` —
+ * `DocumentReference/<id>` — that a `DecodeOne` receives and a stamped
+ * resource's `meta.source` points at, the `Subject` a minted source file may be
+ * filed under, and the `SECTION_TITLE` / `key` the review prepends a minted row
+ * under.
+ *
+ * @remarks
+ * `Reference` is the single currency for "which source file": a `server` pick
+ * already carries one, a `local` pick's mint produces an id `makeReference`
+ * wraps, and `idFromReference` is for the one format (DICOM) that needs the
+ * bare id to build a resource link out of.
  *
  * @packageDocumentation
  */
@@ -38,22 +45,23 @@ const makeReference = (id: string): Reference => `${REFERENCE_PREFIX}${id}`
 
 const idFromReference = (ref: Reference): string => ref.slice(REFERENCE_PREFIX.length)
 
-const isReference = (value: string): value is Reference =>
-  value.startsWith(REFERENCE_PREFIX) && value.length > REFERENCE_PREFIX.length
-
 // ─── Decode ─────────────────────────────────────────────────────────────────
 
-/** The resolved source id a `DecodeOne` receives — minted for a `local` pick, read back for a `server` one. */
-interface Ref {
-  readonly id: string
-}
-
-/** One format's per-file decode step, given the file, its settings, and the resolved source. */
+/**
+ * One format's per-file decode step, given the file, its settings, and the
+ * reference to the source file every resource it yields will be stamped with —
+ * minted for a `local` pick, the existing one for a `server` pick.
+ */
 type DecodeOne<TSettings> = (
   file: PickedFile,
   settings: TSettings,
-  source: Ref
+  sourceFile: Reference
 ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError>
+
+/** A subject a minted source file is filed under, when the format names one. */
+interface Subject {
+  readonly reference: string
+}
 
 /**
  * How a format names the subject its minted source file is filed under.
@@ -64,10 +72,7 @@ type DecodeOne<TSettings> = (
  * twice. `undefined` leaves the source file with no `subject` — the default,
  * which keeps an engineering artifact out of `Patient/$everything`.
  */
-type SubjectFor = (
-  file: PickedFile,
-  decoded: DecodedFile.DecodedFile
-) => { readonly reference: string } | undefined
+type SubjectFor = (file: PickedFile, decoded: DecodedFile.DecodedFile) => Subject | undefined
 
 interface PerFileDecodeOptions {
   readonly subjectFor?: SubjectFor | undefined
@@ -91,7 +96,5 @@ const prependToDecodedFile = (
   return { ...decoded, sections: [section, ...decoded.sections] }
 }
 
-
-
-export { SECTION_TITLE, idFromReference, isReference, key, makeReference, prependToDecodedFile }
-export type { DecodeOne, PerFileDecodeOptions, Ref, Reference, SubjectFor, Type }
+export { SECTION_TITLE, idFromReference, key, makeReference, prependToDecodedFile }
+export type { DecodeOne, PerFileDecodeOptions, Reference, Subject, SubjectFor, Type }

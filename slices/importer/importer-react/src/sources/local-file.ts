@@ -1,8 +1,6 @@
 import { Effect } from 'effect'
 import type { FileImporter } from 'importer-fundamentals'
-import { identify } from 'importer-fundamentals'
-
-import { PickedFileSource, type PickedFile } from './picked-file.ts'
+import { identify, PickedFile } from 'importer-fundamentals'
 
 /**
  * Reading a file the user dropped or chose, and rejecting one that no
@@ -90,16 +88,16 @@ type IdentifiableDescriptor = Pick<FileImporter<string, never>, 'detect'>
 const acceptLocalFile = (
   descriptors: readonly IdentifiableDescriptor[],
   file: ReadableFile
-): Effect.Effect<PickedFile, string> =>
+): Effect.Effect<PickedFile.PickedFile, string> =>
   Effect.promise(() => file.arrayBuffer()).pipe(
     Effect.flatMap((buffer) => {
       const bytes = new Uint8Array(buffer)
       const claim = identify(descriptors, { fileName: file.name, bytes })
       if (claim === undefined) return Effect.fail(REJECTION_MESSAGE)
-      return Effect.succeed<PickedFile>({
+      return Effect.succeed<PickedFile.PickedFile>({
         fileName: file.name,
         bytes,
-        source: PickedFileSource.local,
+        source: PickedFile.Source.local,
       })
     })
   )

@@ -3,12 +3,7 @@ import { writeDicom } from 'dicom/test-helpers'
 import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
 import { Patient } from 'fhir-r4/resources'
-import {
-  PickedFileSource,
-  SourceFile,
-  type FormatDecode,
-  type PickedFile,
-} from 'importer-fundamentals'
+import { PickedFile, SourceFile, type FormatDecode } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporter, patientSubjectOf } from './descriptor.ts'
@@ -63,7 +58,7 @@ describe('dicomImporter', () => {
       return `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}`
     }
 
-    const readUnit = async (file: PickedFile): Promise<FormatDecode.Result<string>> => {
+    const readUnit = async (file: PickedFile.PickedFile): Promise<FormatDecode.Result<string>> => {
       const result = await Effect.runPromise(dicomImporter.decode([file], defaultDicomSettings))
       if (result.unreadableFiles.length > 0) throw new Error('expected a readable result')
       return result
@@ -96,7 +91,11 @@ describe('dicomImporter', () => {
 
     it('mints a source file subject to the header-derived Patient for a local pick', async () => {
       const bytes = sampleDicomBytes()
-      const unit = await readUnit({ fileName: 'sample.dcm', bytes, source: PickedFileSource.local })
+      const unit = await readUnit({
+        fileName: 'sample.dcm',
+        bytes,
+        source: PickedFile.Source.local,
+      })
       const [section] = unit.decoded.sections
       expect(section.title).toBe(SourceFile.SECTION_TITLE)
       const [row] = section.resources
@@ -110,7 +109,7 @@ describe('dicomImporter', () => {
       const unit = await readUnit({
         fileName: 'sample.dcm',
         bytes: sampleDicomBytes(),
-        source: PickedFileSource.local,
+        source: PickedFile.Source.local,
       })
       const id = sourceFileIdOfUnit(unit)
       const extracted = unit.decoded.sections.slice(1).flatMap((section) => section.resources)
@@ -125,7 +124,7 @@ describe('dicomImporter', () => {
       const unit = await readUnit({
         fileName: 'sample.dcm',
         bytes: sampleDicomBytes(),
-        source: PickedFileSource.server('doc-9'),
+        source: PickedFile.Source.server('doc-9'),
       })
       for (const section of unit.decoded.sections) {
         expect(section.title).not.toBe(SourceFile.SECTION_TITLE)
@@ -143,7 +142,7 @@ describe('dicomImporter', () => {
             {
               fileName: 'sample.dcm',
               bytes: new TextEncoder().encode('not a dicom file'),
-              source: PickedFileSource.local,
+              source: PickedFile.Source.local,
             },
           ],
           defaultDicomSettings
@@ -155,10 +154,10 @@ describe('dicomImporter', () => {
   })
 
   describe('patientSubjectOf', () => {
-    const anyFile: PickedFile = {
+    const anyFile: PickedFile.PickedFile = {
       fileName: 'sample.dcm',
       bytes: new Uint8Array(),
-      source: PickedFileSource.local,
+      source: PickedFile.Source.local,
     }
 
     it('has no subject when the decode synthesized no Patient', () => {

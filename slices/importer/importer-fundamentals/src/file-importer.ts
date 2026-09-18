@@ -1,11 +1,11 @@
-import { DateTime, Effect, Either, Encoding, ParseResult, Schema } from 'effect'
+import { DateTime, Effect, Either, Encoding, ParseResult, Schema, type SchemaAST } from 'effect'
 import { joinIdComponents, localResourceId } from 'fhir-r4/identity'
 import { DocumentReference } from 'fhir-r4/resources'
 import type * as FhirR4 from 'fhir/r4.d.ts'
 import * as DecodedFile from './decoded-file.ts'
 import * as FormatDecode from './format-decode.ts'
 import * as MetaSource from './meta-source.ts'
-import type { PickedFile } from './picked-file.ts'
+import type { NamedBytes, PickedFile } from './picked-file.ts'
 import { sha256Base64 } from './sha256.ts'
 import * as SourceFile from './source-file.ts'
 
@@ -25,57 +25,51 @@ interface Coding {
   readonly code: string
 }
 
-/** A subject the minted source file is filed under, when the format names one. */
-interface Subject {
-  readonly reference: string
-}
-
-/**
- * A source file whose id is decided but whose `DocumentReference` is not yet
- * built.
- *
- * @remarks
- * Split because the halves are needed at different points of a decode: the id
- * is an *input* to it, while the subject the resource is filed under is only
- * known after it. One hash of the bytes covers both.
- */
-interface MintedSourceFile {
-  /** The deterministic id, from the bytes' SHA-256 and the file name. */
-  readonly id: string
-  /** Build the `DocumentReference` for this mint, optionally filed under a subject. */
-  readonly toDocumentReference: (
-    subject: Subject | undefined
+/** The two source-file operations `buildPerFileDecode` drives, as a `FileImporter` supplies them. */
+interface SourceFileMint {
+  readonly mintSourceFile: (
+    picked: NamedBytes
+  ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
+  readonly sourceFileToDocumentReference: (
+    sourceFile: SourceFile.Type,
+    subject?: SourceFile.Subject
   ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
 }
 
-/** Mint a source file's id for a picked file, deferring its `DocumentReference`. */
-type MintSourceFile = (picked: {
-  readonly fileName: string
-  readonly bytes: Uint8Array
-}) => Effect.Effect<MintedSourceFile, ParseResult.ParseError>
-
-type BuildSourceFile = (
-  picked: { readonly fileName: string; readonly bytes: Uint8Array },
-  options?: { readonly subject?: Subject }
-) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
-
 // ─── Per-File Decode ────────────────────────────────────────────────────────
 
-/** What one file resolved to before its decode ran: its source id, and the mint to finish if it was a `local` pick. */
+/**
+ * What one file resolved to before its decode ran.
+ *
+ * @remarks
+ * A `local` pick's source file is minted here but built *after* the decode, so
+ * it can be filed under the subject `subjectFor` reads off the decode's own
+ * resources. `mintResource` is that deferred build — `undefined` for a `server`
+ * pick, whose resource is already stored.
+ */
 interface ResolvedSource {
-  readonly ref: SourceFile.Ref
-  readonly minted: MintedSourceFile | undefined
+  readonly reference: SourceFile.Reference
+  readonly mintResource:
+    | ((
+        subject: SourceFile.Subject | undefined
+      ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>)
+    | undefined
 }
 
 const resolveSource = (
-  mintSourceFile: MintSourceFile,
+  mint: SourceFileMint,
   file: PickedFile
 ): Effect.Effect<ResolvedSource, ParseResult.ParseError> => {
   if (file.source._tag === 'server') {
-    const { reference } = file.source
-    return Effect.succeed({ ref: { id: SourceFile.idFromReference(reference) }, minted: undefined })
+    return Effect.succeed({ reference: file.source.reference, mintResource: undefined })
   }
-  return mintSourceFile(file).pipe(Effect.map((minted) => ({ ref: { id: minted.id }, minted })))
+  return mint.mintSourceFile(file).pipe(
+    Effect.map((sourceFile) => ({
+      reference: SourceFile.makeReference(sourceFile.id),
+      mintResource: (subject: SourceFile.Subject | undefined) =>
+        mint.sourceFileToDocumentReference(sourceFile, subject),
+    }))
+  )
 }
 
 /**
@@ -91,10 +85,7 @@ const resolveSource = (
  */
 const buildPerFileDecode =
   <TFormat extends string, TSettings>(
-    provider: {
-      readonly format: TFormat
-      readonly mintSourceFile: MintSourceFile
-    },
+    provider: SourceFileMint & { readonly format: TFormat },
     decodeOne: SourceFile.DecodeOne<TSettings>,
     options?: SourceFile.PerFileDecodeOptions
   ) =>
@@ -107,14 +98,14 @@ const buildPerFileDecode =
       (file, index) => {
         const prefix = FormatDecode.keyPrefix(index, file)
         return Effect.gen(function* () {
-          const { ref, minted } = yield* resolveSource(provider.mintSourceFile, file)
-          const decoded = yield* decodeOne(file, settings, ref)
+          const { reference, mintResource } = yield* resolveSource(provider, file)
+          const decoded = yield* decodeOne(file, settings, reference)
           const stamped = MetaSource.stampDecoded(
             DecodedFile.namespaceKeys(decoded, prefix),
-            SourceFile.makeReference(ref.id)
+            reference
           )
-          if (minted === undefined) return Either.right(stamped)
-          const resource = yield* minted.toDocumentReference(options?.subjectFor?.(file, decoded))
+          if (mintResource === undefined) return Either.right(stamped)
+          const resource = yield* mintResource(options?.subjectFor?.(file, decoded))
           return Either.right(
             SourceFile.prependToDecodedFile(stamped, {
               key: `${prefix}${SourceFile.key(file.fileName)}`,
@@ -218,13 +209,20 @@ interface FileImporter<TFormat extends string, TSettings> {
   readonly sourceFileFromDocumentReference: (
     resource: DocumentReferenceType
   ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
+  /** Encode a source file as its `DocumentReference`, optionally filed under a subject. */
   readonly sourceFileToDocumentReference: (
-    sourceFile: SourceFile.Type
+    sourceFile: SourceFile.Type,
+    subject?: SourceFile.Subject
   ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
-  /** Decide a picked file's deterministic source-file id, deferring its resource. */
-  readonly mintSourceFile: MintSourceFile
-  /** Mint a picked file's source-file `DocumentReference` outright. */
-  readonly buildSourceFile: BuildSourceFile
+  /** Decide a picked file's deterministic source file — its id, name, and upload instant. */
+  readonly mintSourceFile: (
+    picked: NamedBytes
+  ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
+  /** Mint a picked file and encode it in one step — {@link mintSourceFile} then {@link sourceFileToDocumentReference}. */
+  readonly buildSourceFile: (
+    picked: NamedBytes,
+    options?: { readonly subject?: SourceFile.Subject }
+  ) => Effect.Effect<DocumentReferenceType, ParseResult.ParseError>
 }
 
 /**
@@ -275,7 +273,7 @@ const fileImporter = <TFormat extends string, TSettings>(
   }: {
     readonly sourceFile: SourceFile.Type
     readonly hash: string
-    readonly subject: Subject | undefined
+    readonly subject: SourceFile.Subject | undefined
   }): FhirR4.DocumentReference => {
     const uploadedAt = DateTime.formatIso(sourceFile.uploadedAt)
     return {
@@ -325,6 +323,24 @@ const fileImporter = <TFormat extends string, TSettings>(
     })
   }
 
+  /**
+   * Hash the bytes and build the source file's `DocumentReference`.
+   *
+   * @remarks
+   * Takes the `ast` to blame so both callers — the codec's own `encode`, and the
+   * subject-bearing `sourceFileToDocumentReference` below — report a digest
+   * failure against the schema the caller was working in.
+   */
+  const encodeSourceFile = (
+    sourceFile: SourceFile.Type,
+    subject: SourceFile.Subject | undefined,
+    ast: SchemaAST.AST
+  ): Effect.Effect<DocumentReferenceType, ParseResult.ParseIssue> =>
+    sha256Base64(new Uint8Array(sourceFile.bytes)).pipe(
+      Effect.mapError((error) => new ParseResult.Type(ast, sourceFile, error.reason)),
+      Effect.flatMap((hash) => decodeResource(toWire({ sourceFile, hash, subject })))
+    )
+
   const SourceFileFromDocumentReference: Schema.Schema<SourceFile.Type, DocumentReferenceType> =
     Schema.transformOrFail(
       Schema.typeSchema(DocumentReference.Schema),
@@ -343,20 +359,16 @@ const fileImporter = <TFormat extends string, TSettings>(
               })
             )
           ),
-        encode: (sourceFile, _options, ast) =>
-          sha256Base64(new Uint8Array(sourceFile.bytes)).pipe(
-            Effect.mapError((error) => new ParseResult.Type(ast, sourceFile, error.reason)),
-            Effect.flatMap((hash) =>
-              decodeResource(toWire({ sourceFile, hash, subject: undefined }))
-            )
-          ),
+        encode: (sourceFile, _options, ast) => encodeSourceFile(sourceFile, undefined, ast),
       }
     ).annotations({
       identifier: `${sourceFileName}FromDocumentReference`,
       description: `One uploaded ${config.display.title.toLowerCase()} source file, encoded as a FHIR R4 DocumentReference.`,
     })
 
-  const mintSourceFile: MintSourceFile = (picked) =>
+  const mintSourceFile = (
+    picked: NamedBytes
+  ): Effect.Effect<SourceFile.Type, ParseResult.ParseError> =>
     Effect.gen(function* () {
       const bytes = new Uint8Array(picked.bytes)
       const hash = yield* sha256Base64(bytes).pipe(
@@ -370,18 +382,21 @@ const fileImporter = <TFormat extends string, TSettings>(
         'DocumentReference',
         joinIdComponents([hash, picked.fileName])
       )
-      return {
-        id,
-        toDocumentReference: (subject) =>
-          decodeResource(
-            toWire({
-              sourceFile: { id, fileName: picked.fileName, uploadedAt, bytes },
-              hash,
-              subject,
-            })
-          ).pipe(Effect.mapError(ParseResult.parseError)),
-      }
+      return { id, fileName: picked.fileName, uploadedAt, bytes }
     })
+
+  const validateSourceFile = ParseResult.validate(Schema.typeSchema(SourceFileSchema))
+
+  const sourceFileToDocumentReference = (
+    sourceFile: SourceFile.Type,
+    subject?: SourceFile.Subject
+  ): Effect.Effect<DocumentReferenceType, ParseResult.ParseError> =>
+    validateSourceFile(sourceFile).pipe(
+      Effect.flatMap((valid) =>
+        encodeSourceFile(valid, subject, SourceFileFromDocumentReference.ast)
+      ),
+      Effect.mapError(ParseResult.parseError)
+    )
 
   return {
     format: config.format,
@@ -397,15 +412,17 @@ const fileImporter = <TFormat extends string, TSettings>(
         )
       ),
     sourceFileFromDocumentReference: Schema.decode(SourceFileFromDocumentReference),
-    sourceFileToDocumentReference: Schema.encode(SourceFileFromDocumentReference),
+    sourceFileToDocumentReference,
     mintSourceFile,
     buildSourceFile: (picked, options) =>
       mintSourceFile(picked).pipe(
-        Effect.flatMap((minted) => minted.toDocumentReference(options?.subject))
+        Effect.flatMap((sourceFile) => sourceFileToDocumentReference(sourceFile, options?.subject))
       ),
-    decode: buildPerFileDecode({ format: config.format, mintSourceFile }, config.decodeOne, {
-      subjectFor: config.subjectFor,
-    }),
+    decode: buildPerFileDecode(
+      { format: config.format, mintSourceFile, sourceFileToDocumentReference },
+      config.decodeOne,
+      { subjectFor: config.subjectFor }
+    ),
   }
 }
 
@@ -417,18 +434,15 @@ interface Detectable {
 /** The first candidate whose `detect` claims the file, in the order given. */
 const identify = <D extends Detectable>(
   candidates: readonly D[],
-  file: { readonly fileName: string; readonly bytes: Uint8Array }
+  file: NamedBytes
 ): D | undefined => candidates.find((candidate) => candidate.detect(file.bytes, file.fileName))
 
 export { fileImporter, identify }
 export type {
-  BuildSourceFile,
   Coding,
   Detectable,
   FileImporter,
   DocumentReferenceType,
   FileImporterConfig,
-  MintedSourceFile,
   SettingsPickerProps,
-  Subject,
 }

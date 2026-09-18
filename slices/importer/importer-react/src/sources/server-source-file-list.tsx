@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { DateTime, Match } from 'effect'
 import { useRunAuthed } from 'fhir-r4-react'
+import type { PickedFile } from 'importer-fundamentals'
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { Dialog } from 'react-tundraish'
 
@@ -12,7 +13,6 @@ import {
   useSmartSourceFilesQuery,
 } from '../queries/source-files.ts'
 import { formatRegistry } from '../registry.ts'
-import type { PickedFile } from './picked-file.ts'
 import styles from './server-source-file-list.module.css'
 
 /**
@@ -53,7 +53,7 @@ const JSON_PREVIEW_SIZE_LIMIT = 5 * 1024 * 1024
 /** Props for {@link ServerSourceFileList}. */
 interface ServerSourceFileListProps {
   /** Called with the fetched source file once a selected row resolves. */
-  readonly onPick: (picked: PickedFile) => void
+  readonly onPick: (picked: PickedFile.PickedFile) => void
 }
 
 /** Props for {@link SourceFileListContent}. */

@@ -3,8 +3,7 @@ import * as fc from 'fast-check'
 import {
   type FileImporter,
   fileImporter,
-  PickedFileSource,
-  type PickedFile,
+  PickedFile,
   DecodedFile,
   SourceFile,
   FormatDecode,
@@ -57,7 +56,7 @@ const importerForReports = (
     display: { title: 'LifeLabs report', description: 'Test' },
     detect: detectLifeLabsPdf,
     defaultSettings: SETTINGS,
-    decodeOne: (_file: PickedFile, settings: typeof SETTINGS) =>
+    decodeOne: (_file: PickedFile.PickedFile, settings: typeof SETTINGS) =>
       decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
   })
 
@@ -76,10 +75,10 @@ describe('lifeLabsPdfImporter decode', () => {
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
         async (reports) => {
-          const file: PickedFile = {
+          const file: PickedFile.PickedFile = {
             fileName: 'Reports.pdf',
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
-            source: PickedFileSource.local,
+            source: PickedFile.Source.local,
           }
 
           const decoded = readUnit(
@@ -110,10 +109,10 @@ describe('lifeLabsPdfImporter decode', () => {
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
         async (reports) => {
-          const file: PickedFile = {
+          const file: PickedFile.PickedFile = {
             fileName: 'Reports.pdf',
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
-            source: PickedFileSource.server('wf-already-uploaded'),
+            source: PickedFile.Source.server('wf-already-uploaded'),
           }
 
           const decoded = readUnit(
@@ -135,10 +134,10 @@ describe('lifeLabsPdfImporter decode', () => {
   })
 
   it('collects an unreadable file for bytes that are not a PDF', async () => {
-    const file: PickedFile = {
+    const file: PickedFile.PickedFile = {
       fileName: 'not-a-report.pdf',
       bytes: new TextEncoder().encode('this is not a PDF at all'),
-      source: PickedFileSource.local,
+      source: PickedFile.Source.local,
     }
 
     const result = await Effect.runPromise(

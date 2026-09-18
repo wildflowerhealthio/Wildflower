@@ -1,6 +1,6 @@
 import { writeDicom } from 'dicom/test-helpers'
 import { Effect, Either } from 'effect'
-import { PickedFileSource, type PickedFile, type SourceFile } from 'importer-fundamentals'
+import { PickedFile, type SourceFile } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { decodeDicom } from './decode.ts'
@@ -14,17 +14,17 @@ import { type DicomSettings } from './settings.ts'
 const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
 
 /** A local pick of the given bytes — what the picker hands every decode. */
-const pick = (bytes: Uint8Array): PickedFile => ({
+const pick = (bytes: Uint8Array): PickedFile.PickedFile => ({
   fileName: 'sample.dcm',
   bytes,
-  source: PickedFileSource.local,
+  source: PickedFile.Source.local,
 })
 
 /**
  * The source file the importer resolves before calling this decode; the
- * decode reads its `id` and recomputes nothing, so a stand-in id is enough.
+ * decode reads its id and recomputes nothing, so a stand-in id is enough.
  */
-const source: SourceFile.Ref = { id: 'doc-1' }
+const source: SourceFile.Reference = 'DocumentReference/doc-1'
 
 const sampleDicomBytes = (): Uint8Array =>
   writeDicom({
