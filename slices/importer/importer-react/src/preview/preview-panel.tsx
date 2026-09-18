@@ -6,7 +6,8 @@ import { type JSX, useMemo, useState } from 'react'
 import type { BatchDecodeResult, FormatKind, FormatSettings } from 'importer-core'
 import { claimedFormats, formatKinds } from 'importer-core'
 
-import type { BoundFormat } from '../registry.ts'
+import type { FormatWithPicker } from '../registry.ts'
+import { FormatReviewBody } from './format-review-body.tsx'
 import {
   confirmLabel,
   NOTHING_TO_IMPORT_HEADING,
@@ -14,7 +15,6 @@ import {
   PREVIEW_HEADING,
   UNRECOGNIZED_FILE_MESSAGE,
 } from './preview-text.ts'
-import { ReadFileBody } from './read-file-body.tsx'
 import { ResourceEditor } from './resource-editor.tsx'
 import type { FormatComparisons } from './use-server-diff.ts'
 import styles from './preview-panel.module.css'
@@ -44,7 +44,7 @@ import styles from './preview-panel.module.css'
  * strings for the group heading and the `SettingsPicker` for its form.
  */
 type SettingsRegistry = {
-  readonly [K in FormatKind]: Pick<BoundFormat<K>, 'display' | 'SettingsPicker'>
+  readonly [K in FormatKind]: Pick<FormatWithPicker<K>, 'display' | 'SettingsPicker'>
 }
 
 type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatSettings[K]) => void
@@ -232,7 +232,7 @@ const PreviewPanel = ({
                 />
               </div>
               <div className={styles.fileSections}>
-                <ReadFileBody
+                <FormatReviewBody
                   result={result}
                   selection={selectionFor(kind)}
                   comparisons={comparisons.get(kind)}

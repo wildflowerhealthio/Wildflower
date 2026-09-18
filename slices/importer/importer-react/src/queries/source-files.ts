@@ -29,7 +29,7 @@ import { nextPageToken } from './page-token.ts'
  * One search per page over every registered format's source-file category
  * token, joined with FHIR's comma-OR (`category=t1,t2`), so the whole
  * cross-format listing is one round trip per page. Each returned resource is
- * classified by dispatching every descriptor's `isSourceFile` predicate in
+ * classified by dispatching every importer's `isSourceFile` predicate in
  * registry order; predicates are disjoint by construction (HAR under
  * `WEB_TRACE_CODE_SYSTEM`, LifeLabs under `LIFELABS_SYSTEM`) so at most one
  * claims any row, and a row no predicate claims (the coding matched the
@@ -75,7 +75,7 @@ const SOURCE_FILES_CATEGORY_TOKEN = formatKinds
  * One source file as the list shows it: enough to name and date a row, its
  * id so a selection can fetch the whole source file and build its `server`
  * source, and the format tag the row was classified as so a preview or
- * pick dispatches to the right descriptor.
+ * pick dispatches to the right importer.
  *
  * @remarks
  * Deliberately not the source file itself. The bytes are the file,
@@ -147,7 +147,7 @@ const classifySourceFile = (resource: DocumentReferenceType): FormatKind | undef
  *   registered format and has an id
  *
  * @remarks
- * A resource no descriptor's `isSourceFile` claims is dropped — the category
+ * A resource no importer's `isSourceFile` claims is dropped — the category
  * search returned it (the coding matched), but the format is not
  * registered here, so the shell has no reader for it. A source file with no
  * logical id is dropped too: a row exists to be selected, and a selection

@@ -1,13 +1,14 @@
 import { DicomSettingsPicker } from 'dicom-importer-react'
 import { HarSettingsPicker } from 'har-importer-react'
 import {
+  type BoundFormat as CoreBoundFormat,
   defaultFormatSettings,
   type FormatKind,
   formatKinds,
   formatRegistry as coreRegistry,
   type FormatSettings,
 } from 'importer-core'
-import { type FileImporter, type SettingsPickerProps } from 'importer-fundamentals'
+import { type SettingsPickerProps } from 'importer-fundamentals'
 import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
 
@@ -21,15 +22,21 @@ import type { JSX } from 'react'
  */
 
 /**
- * One registered format: its core importer extended with its settings picker.
+ * One registered format as the shell sees it: `importer-core`'s
+ * {@link CoreBoundFormat} extended with its settings picker.
  *
  * @remarks
+ * Named for what it adds, rather than reusing `importer-core`'s `BoundFormat`:
+ * the two are different types — that one is the importer alone — and one name
+ * for both meant the shell had to alias its import of the core registry to
+ * keep them apart.
+ *
  * An intersection built by spreading the core importer, not a subclass: a
  * subclass had to hand-copy every field through a copy constructor, so a field
  * added to `FileImporter` would have been dropped here with no type error
  * anywhere. `FileImporter` has no prototype, so the spread is total.
  */
-type BoundFormat<K extends FormatKind> = FileImporter.Type<FormatSettings[K], K> & {
+type FormatWithPicker<K extends FormatKind> = CoreBoundFormat<K> & {
   readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
 }
 
@@ -41,16 +48,16 @@ type BoundFormat<K extends FormatKind> = FileImporter.Type<FormatSettings[K], K>
  * @returns The shell's registry entry for that format
  */
 const withSettingsPicker = <K extends FormatKind>(
-  importer: FileImporter.Type<FormatSettings[K], K>,
+  importer: CoreBoundFormat<K>,
   SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
-): BoundFormat<K> => ({ ...importer, SettingsPicker })
+): FormatWithPicker<K> => ({ ...importer, SettingsPicker })
 
 /** The closed registry; its keys are the {@link FormatKind} union. */
-const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
+const formatRegistry: { readonly [K in FormatKind]: FormatWithPicker<K> } = {
   har: withSettingsPicker(coreRegistry.har, HarSettingsPicker),
   'lifelabs-pdf': withSettingsPicker(coreRegistry['lifelabs-pdf'], LifeLabsPdfSettingsPicker),
   dicom: withSettingsPicker(coreRegistry.dicom, DicomSettingsPicker),
 }
 
 export { defaultFormatSettings, formatKinds, formatRegistry, withSettingsPicker }
-export type { BoundFormat, FormatKind, FormatSettings }
+export type { FormatWithPicker, FormatKind, FormatSettings }

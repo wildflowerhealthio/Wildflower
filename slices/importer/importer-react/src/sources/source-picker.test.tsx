@@ -21,15 +21,15 @@ import { REJECTION_MESSAGE } from './local-file.ts'
 import { SourcePicker } from './source-picker.tsx'
 
 /**
- * A minimal HAR descriptor stub — extension `.har` or JSON-object shape.
+ * A minimal HAR detector stub — extension `.har` or JSON-object shape.
  * Matches `har-importer-core`'s `detectHar` semantics; kept inline here so
  * the picker test does not depend on the concrete binding.
  */
-const harDescriptor: FormatDetector.Type = {
+const harDetector: FormatDetector.Type = {
   format: 'har',
   detect: (bytes, name) => name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
 }
-const testDescriptors: readonly FormatDetector.Type[] = [harDescriptor]
+const testDetectors: readonly FormatDetector.Type[] = [harDetector]
 
 /**
  * The whole picker, driven over the real
@@ -90,12 +90,9 @@ describe('SourcePicker', () => {
       harTextById: { 'archive-1': VALID_HAR },
     })
     const picks: Array<{ fileName: string; bytes: Uint8Array; source: unknown }> = []
-    render(
-      <SourcePicker descriptors={testDescriptors} onPick={(chosen) => picks.push(...chosen)} />,
-      {
-        wrapper: withQueryClient,
-      }
-    )
+    render(<SourcePicker detectors={testDetectors} onPick={(chosen) => picks.push(...chosen)} />, {
+      wrapper: withQueryClient,
+    })
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Use portal-session.har as source' })).toBeDefined()
     })
@@ -133,12 +130,9 @@ describe('SourcePicker', () => {
       harTextById: { 'archive-1': VALID_HAR },
     })
     let picked: { bytes: Uint8Array; source: unknown } | undefined
-    render(
-      <SourcePicker descriptors={testDescriptors} onPick={(chosen) => (picked = chosen[0])} />,
-      {
-        wrapper: withQueryClient,
-      }
-    )
+    render(<SourcePicker detectors={testDetectors} onPick={(chosen) => (picked = chosen[0])} />, {
+      wrapper: withQueryClient,
+    })
 
     // Assert — the row shows the title and the upload date
     await waitFor(() => {
@@ -177,7 +171,7 @@ describe('SourcePicker', () => {
       ],
       harTextById: {},
     })
-    render(<SourcePicker descriptors={testDescriptors} onPick={() => undefined} />, {
+    render(<SourcePicker detectors={testDetectors} onPick={() => undefined} />, {
       wrapper: withQueryClient,
     })
     await waitFor(() => {
@@ -198,7 +192,7 @@ describe('SourcePicker', () => {
   it('should expose the drop zone as a labeled button and the file input as a named control', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
-    render(<SourcePicker descriptors={testDescriptors} onPick={() => undefined} />, {
+    render(<SourcePicker detectors={testDetectors} onPick={() => undefined} />, {
       wrapper: withQueryClient,
     })
 
@@ -215,12 +209,9 @@ describe('SourcePicker', () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
     const picks: unknown[] = []
-    render(
-      <SourcePicker descriptors={testDescriptors} onPick={(chosen) => picks.push(...chosen)} />,
-      {
-        wrapper: withQueryClient,
-      }
-    )
+    render(<SourcePicker detectors={testDetectors} onPick={(chosen) => picks.push(...chosen)} />, {
+      wrapper: withQueryClient,
+    })
 
     // Act — a text file, not a HAR
     fireEvent.drop(zone(), {
@@ -243,7 +234,7 @@ describe('SourcePicker', () => {
     const calls: string[][] = []
     render(
       <SourcePicker
-        descriptors={testDescriptors}
+        detectors={testDetectors}
         onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))}
       />,
       { wrapper: withQueryClient }
@@ -268,7 +259,7 @@ describe('SourcePicker', () => {
     const picks: string[] = []
     render(
       <SourcePicker
-        descriptors={testDescriptors}
+        detectors={testDetectors}
         onPick={(chosen) => picks.push(...chosen.map((one) => one.fileName))}
       />,
       { wrapper: withQueryClient }

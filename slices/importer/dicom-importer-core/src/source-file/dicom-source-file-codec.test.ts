@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { type DocumentReferenceType, SourceFile } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { dicomImporter } from '../descriptor.ts'
+import { dicomImporter } from '../dicom-importer.ts'
 import {
   DICOM_SOURCE_FILE_CODE,
   DICOM_SOURCE_FILE_CONTENT_TYPE,

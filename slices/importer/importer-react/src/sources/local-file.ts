@@ -12,8 +12,8 @@ import { FormatDetector, PickedFile } from 'importer-fundamentals'
  * parse still happens in that format's `decode`, one step downstream — so a
  * file the picker accepts is one a decode will *attempt*, and a rejection
  * lands next to the control the user just used rather than surfacing three
- * steps later. This module never imports the format cores; it takes the
- * descriptor shapes as data.
+ * steps later. This module never imports the format cores; it takes
+ * `FormatDetector.Type`s as data.
  *
  * @packageDocumentation
  */
@@ -59,36 +59,36 @@ interface RejectedFile {
   readonly message: string
 }
 
-/** The rejection payload for a file no descriptor's `detect` claims. */
+/** The rejection payload for a file no detector claims. */
 const unrecognizedRejection = (file: ReadableFile): RejectedFile => ({
   name: file.name,
   message: REJECTION_MESSAGE,
 })
 
 /**
- * Reads a local file's bytes and rejects it if no registered descriptor's
- * `detect` claims them.
+ * Reads a local file's bytes and rejects it if no registered detector claims
+ * them.
  *
- * @param descriptors - The registered descriptors, in registry priority order
+ * @param detectors - The registered formats' detectors, in registry priority order
  * @param file - The dropped or chosen file
  * @returns A lazy `Effect` that yields the accepted {@link PickedFile} carrying
  *   a `local` source, or fails with the reason the file was rejected
  *
  * @remarks
- * Validation is syntactic — `FormatDetector.claiming` runs each descriptor's
+ * Validation is syntactic — `FormatDetector.claiming` runs each detector's
  * `detect` against the bytes and the file name — so a full parse never runs at
  * the picker. That is what makes the gate cheap to run on every drop. The bytes
  * are wrapped as `new Uint8Array(buffer)` so downstream consumers hold a
  * concrete view rather than a `SharedArrayBuffer`-compatible one.
  */
 const acceptLocalFile = (
-  descriptors: readonly FormatDetector.Type[],
+  detectors: readonly FormatDetector.Type[],
   file: ReadableFile
 ): Effect.Effect<PickedFile.Type, string> =>
   Effect.promise(() => file.arrayBuffer()).pipe(
     Effect.flatMap((buffer) => {
       const bytes = new Uint8Array(buffer)
-      const claim = FormatDetector.claiming(descriptors, { fileName: file.name, bytes })
+      const claim = FormatDetector.claiming(detectors, { fileName: file.name, bytes })
       if (claim === undefined) return Effect.fail(REJECTION_MESSAGE)
       return Effect.succeed<PickedFile.Type>({
         fileName: file.name,

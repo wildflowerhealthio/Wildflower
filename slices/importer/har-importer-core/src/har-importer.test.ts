@@ -13,7 +13,7 @@ import { harImporter } from './har-importer.ts'
 import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 
 /**
- * Covers the descriptor's whole read half: `decode` folds each picked HAR's
+ * Covers the importer's whole read half: `decode` folds each picked HAR's
  * recognized responses into per-URL sections of labeled resources plus one
  * diagnostic note per response that yielded nothing, with the settings' kind
  * toggles deciding which kinds parse — and owns the source file, minting one

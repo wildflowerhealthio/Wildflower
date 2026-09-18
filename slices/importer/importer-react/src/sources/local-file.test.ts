@@ -6,9 +6,9 @@ import { acceptLocalFile, type ReadableFile, REJECTION_MESSAGE } from './local-f
 
 /**
  * `acceptLocalFile` is the gate every local pick passes: reads the bytes,
- * asks each registered descriptor's `detect` in turn, rejects when none
- * claims. The gate is syntactic — the full parse runs in `decode`, so no
- * format's decoder runs at pick time.
+ * asks each registered detector in turn, rejects when none claims. The gate is
+ * syntactic — the full parse runs in `decode`, so no format's decoder runs at
+ * pick time.
  */
 
 const bytesOf = (text: string): Uint8Array => new TextEncoder().encode(text)
@@ -24,14 +24,14 @@ const fileOf = (name: string, bytes: Uint8Array): ReadableFile => ({
   },
 })
 
-/** A HAR descriptor stub — extension `.har` or JSON-object shape. */
-const harDescriptor: FormatDetector.Type = {
+/** A HAR detector stub — extension `.har` or JSON-object shape. */
+const harDetector: FormatDetector.Type = {
   format: 'har',
   detect: (bytes, name) => name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
 }
 
-/** A LifeLabs PDF descriptor stub — extension `.pdf` or `%PDF-` magic. */
-const pdfDescriptor: FormatDetector.Type = {
+/** A LifeLabs PDF detector stub — extension `.pdf` or `%PDF-` magic. */
+const pdfDetector: FormatDetector.Type = {
   format: 'lifelabs-pdf',
   detect: (bytes, name) =>
     name.toLowerCase().endsWith('.pdf') ||
@@ -43,10 +43,10 @@ const pdfDescriptor: FormatDetector.Type = {
       bytes[4] === 0x2d),
 }
 
-const descriptors: readonly FormatDetector.Type[] = [pdfDescriptor, harDescriptor]
+const detectors: readonly FormatDetector.Type[] = [pdfDetector, harDetector]
 
 const runAccept = (file: ReadableFile): Promise<Either.Either<PickedFile.Type, string>> =>
-  Effect.runPromise(Effect.either(acceptLocalFile(descriptors, file)))
+  Effect.runPromise(Effect.either(acceptLocalFile(detectors, file)))
 
 describe('acceptLocalFile', () => {
   /** Byte-array equality that survives jsdom's cross-realm `Uint8Array`. */
@@ -76,21 +76,21 @@ describe('acceptLocalFile', () => {
     sameBytes(result.right.bytes, bytes)
   })
 
-  it('rejects a file no descriptor claims with the registered message', async () => {
+  it('rejects a file no detector claims with the registered message', async () => {
     const result = await runAccept(fileOf('notes.txt', bytesOf('this is not a HAR or a PDF')))
 
     if (Either.isRight(result)) throw new Error('expected a rejection')
     expect(result.left).toBe(REJECTION_MESSAGE)
   })
 
-  it('picks the first descriptor whose detect claims the file, in registry order', async () => {
-    // A file the two descriptors both would claim by name — a .pdf named .har — is
+  it('picks the first detector that claims the file, in registry order', async () => {
+    // A file the two detectors both would claim by name — a .pdf named .har — is
     // an edge case that never appears; verify the ordering with a byte-shape overlap.
     // JSON-shaped bytes with a `.har` name go to HAR (extension wins after PDF magic).
     const jsonHar = fileOf('capture.har', bytesOf('{"log":{}}'))
     const result = await runAccept(jsonHar)
     if (Either.isLeft(result)) throw new Error('expected an accepted pick')
-    // Both descriptors would claim; the picker itself does not tag with the format
+    // Both detectors would claim; the picker itself does not tag with the format
     // — that is `useImportRun`'s job — so we just assert the file was accepted.
     expect(result.right.fileName).toBe('capture.har')
   })

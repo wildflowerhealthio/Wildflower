@@ -4,11 +4,11 @@ import { StagedImport, DecodedFile } from 'importer-fundamentals'
 import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
-import { useConfirmImport } from './preview/use-confirm-import.ts'
-import { useImportRun } from './preview/use-import-run.ts'
 import { initialExclusionsFor, useServerDiff } from './preview/use-server-diff.ts'
 import { formatRegistry } from './registry.ts'
 import { ImportResults } from './results/import-results.tsx'
+import { useConfirmImport } from './run/use-confirm-import.ts'
+import { useImportRun } from './run/use-import-run.ts'
 import { SourcePicker } from './sources/source-picker.tsx'
 import styles from './importer-screen.module.css'
 
@@ -24,7 +24,7 @@ import styles from './importer-screen.module.css'
  * them, that the reviewer can exclude or edit — and only the explicit
  * confirm reaches the write half (`useConfirmImport` — one batch bundle per
  * format, verbatim from the preview, best-effort). A batch may span formats:
- * the picker identifies each file against the registered descriptors,
+ * the picker identifies each file against the registered detectors,
  * `importer-core` groups and decodes by format, and the preview mounts one
  * settings form per format present — a settings change re-decodes that
  * format through `useImportRun.applySettings`. Per-resource selections are
@@ -52,8 +52,8 @@ const CHECKING_SERVER_MESSAGE = 'Checking the server for existing copies…'
 const SERVER_DIFF_ERROR_MESSAGE =
   'Could not check the server for existing copies. Duplicate detection is unavailable — all resources will appear as new.'
 
-/** The bound descriptors, one per registered format, in registry order. */
-const registeredDescriptors = Object.values(formatRegistry)
+/** The registered formats' detectors, in registry (priority) order. */
+const registeredDetectors = Object.values(formatRegistry)
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
@@ -115,7 +115,7 @@ const ImporterScreen = (): JSX.Element => {
 
   const body = ((): JSX.Element => {
     if (runState._tag === 'idle')
-      return <SourcePicker descriptors={registeredDescriptors} onPick={importRun.run} />
+      return <SourcePicker detectors={registeredDetectors} onPick={importRun.run} />
     if (runState._tag === 'reading') {
       return (
         <p role="status" className={styles.status}>

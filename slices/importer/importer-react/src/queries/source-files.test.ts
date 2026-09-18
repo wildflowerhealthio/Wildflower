@@ -30,7 +30,7 @@ import {
  *     round trip per page;
  *   - a mixed searchset (a HAR source file plus a LifeLabs PDF source file)
  *     surfaces as rows tagged with the format each was classified as by
- *     the descriptor's `isSourceFile` predicate;
+ *     the importer's `isSourceFile` predicate;
  *   - a resource whose category coding is neither format's is dropped
  *     from the rows.
  */

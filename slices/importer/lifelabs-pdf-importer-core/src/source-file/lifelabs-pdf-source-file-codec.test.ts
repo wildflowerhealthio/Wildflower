@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 import { type DocumentReferenceType, SourceFile } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { lifeLabsPdfImporter } from '../descriptor.ts'
+import { lifeLabsPdfImporter } from '../lifelabs-pdf-importer.ts'
 import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,

@@ -184,7 +184,7 @@ const SectionToggle = ({
  * section with per-resource rows, and the format's diagnostic notes folded
  * into a collapsed details block.
  */
-const ReadFileBody = ({
+const FormatReviewBody = ({
   result,
   selection,
   comparisons,
@@ -274,4 +274,4 @@ const ReadFileBody = ({
   )
 }
 
-export { ReadFileBody }
+export { FormatReviewBody }

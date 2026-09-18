@@ -6,7 +6,7 @@ import { Patient } from 'fhir-r4/resources'
 import { PickedFile, SourceFile, type FormatDecode } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { dicomImporter, patientSubjectOf } from './descriptor.ts'
+import { dicomImporter, patientSubjectOf } from './dicom-importer.ts'
 import { patientOriginalId } from './fhir/to-fhir.ts'
 import { defaultDicomSettings } from './settings.ts'
 import { DICOM_SYSTEM } from './source-system.ts'

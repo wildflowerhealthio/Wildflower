@@ -29,7 +29,7 @@ const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.Pars
 /**
  * Wrap the report-parse's `UnrecognizedLifeLabsDocument` as a `ParseError` so
  * `decodeLifeLabsPdf` keeps a single, format-shaped error channel — the
- * descriptor contract's `ParseError`. `Forbidden` is the right issue kind: the
+ * importer contract's `ParseError`. `Forbidden` is the right issue kind: the
  * PDF's text extracted successfully, but the transform to a LifeLabs report
  * refused it.
  */
@@ -40,7 +40,7 @@ const unrecognizedAsParseError = (e: Report.UnrecognizedLifeLabsDocument): Parse
 
 /**
  * A pdfjs extraction failure — the bytes were not a PDF the extractor could
- * open — surfaces as a `ParseError` too, so the descriptor's decode has one
+ * open — surfaces as a `ParseError` too, so the importer's decode has one
  * failure channel.
  */
 const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
@@ -122,7 +122,7 @@ const decodeLifeLabsPdfDocument = (
 
 /**
  * Decode one picked LifeLabs report PDF into per-report sections of adopted,
- * labeled FHIR resources — the per-file decode the descriptor's `decode`
+ * labeled FHIR resources — the per-file decode the importer's `decode`
  * lifts through its per-file decode.
  *
  * @param file - The picked file, whose `bytes` are a LifeLabs "Reports" PDF
