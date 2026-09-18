@@ -78,18 +78,6 @@ const resolveSource = (
   return mintSourceFile(file).pipe(Effect.map((minted) => ({ ref: { id: minted.id }, minted })))
 }
 
-const withSourceSection = (
-  decoded: DecodedFile.DecodedFile,
-  sourceFile: DecodedFile.Resource | undefined
-): DecodedFile.DecodedFile => {
-  if (sourceFile === undefined) return decoded
-  const section: DecodedFile.Section = {
-    title: SourceFile.SECTION_TITLE,
-    resources: [sourceFile],
-  }
-  return { ...decoded, sections: [section, ...decoded.sections] }
-}
-
 /**
  * Lift one format's per-file `decodeOne` into the batch `decode` the shell
  * runs: one file at a time, each contributing its own "Source file" row, its
@@ -128,7 +116,7 @@ const buildPerFileDecode =
           if (minted === undefined) return Either.right(stamped)
           const resource = yield* minted.toDocumentReference(options?.subjectFor?.(file, decoded))
           return Either.right(
-            withSourceSection(stamped, {
+            SourceFile.prependToDecodedFile(stamped, {
               key: `${prefix}${SourceFile.key(file.fileName)}`,
               title: file.fileName,
               resource,

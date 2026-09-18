@@ -79,5 +79,19 @@ const key = (fileName: string): string => `source-file/${fileName}`
 /** The section title every minted source-file row is reviewed under. */
 const SECTION_TITLE = 'Source file'
 
-export { SECTION_TITLE, idFromReference, isReference, key, makeReference }
+const prependToDecodedFile = (
+  decoded: DecodedFile.DecodedFile,
+  sourceFile: DecodedFile.Resource | undefined
+): DecodedFile.DecodedFile => {
+  if (sourceFile === undefined) return decoded
+  const section: DecodedFile.Section = {
+    title: SECTION_TITLE,
+    resources: [sourceFile],
+  }
+  return { ...decoded, sections: [section, ...decoded.sections] }
+}
+
+
+
+export { SECTION_TITLE, idFromReference, isReference, key, makeReference, prependToDecodedFile }
 export type { DecodeOne, PerFileDecodeOptions, Ref, Reference, SubjectFor, Type }
