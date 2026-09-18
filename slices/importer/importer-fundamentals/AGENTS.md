@@ -12,9 +12,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 
 ## Shape
 
-- `src/file-importer.ts` — **`FileImporter<TFormat, TSettings>`**, "a
+- `src/file-importer.ts` — **`FileImporter.Type<TFormat, TSettings>`**, "a
   file-format importer" as one first-class value a closed registry lists, and
-  **`fileImporter(config)`**, which builds one from a binding's config
+  **`FileImporter.make(config)`**, which builds one from a binding's config
   (`sourceFileFormat: SourceFile.Format`,
   `decodeFunctionConfig: DecodeFunction.Config`, `display`, `detect`,
   `defaultSettings`). Each seam arrives as **one value in the shape its

@@ -89,19 +89,24 @@ const fakeDecode =
         })),
     })
 
+// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion
 const fakeRegistry: ReadRegistry = {
-  har: { format: 'har', detect: (_b, name) => kindOf(name) === 'har', decode: fakeDecode('har') },
+  har: {
+    format: 'har',
+    detect: (_b: Uint8Array, name: string) => kindOf(name) === 'har',
+    decode: fakeDecode('har'),
+  },
   'lifelabs-pdf': {
     format: 'lifelabs-pdf',
-    detect: (_b, name) => kindOf(name) === 'lifelabs-pdf',
+    detect: (_b: Uint8Array, name: string) => kindOf(name) === 'lifelabs-pdf',
     decode: fakeDecode('lifelabs-pdf'),
   },
   dicom: {
     format: 'dicom',
-    detect: (_b, name) => kindOf(name) === 'dicom',
+    detect: (_b: Uint8Array, name: string) => kindOf(name) === 'dicom',
     decode: fakeDecode('dicom'),
   },
-}
+} as unknown as ReadRegistry
 
 describe('groupByFormat', () => {
   it('property: every pick lands in exactly one group (or unrecognized), pick order kept within each', () => {

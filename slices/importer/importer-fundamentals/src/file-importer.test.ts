@@ -1,14 +1,16 @@
 import { DateTime, Effect, ParseResult, Schema, TestClock, TestContext } from 'effect'
 import * as fc from 'fast-check'
-import { type FhirResource, Patient } from 'fhir-r4/resources'
+import { type FhirResource, type DocumentReference, Patient } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import * as DecodeFunction from './decode-function.ts'
 import * as DecodedFile from './decoded-file.ts'
-import { fileImporter, type DocumentReferenceType, type FileImporter } from './file-importer.ts'
+import * as FileImporter from './file-importer.ts'
 import * as FormatDecode from './format-decode.ts'
 import * as PickedFile from './picked-file.ts'
 import * as SourceFile from './source-file.ts'
+
+type DocumentReferenceType = typeof DocumentReference.Schema.Type
 
 // The source-file codec itself — the mint, the encode, the read-back — is
 // `source-file.ts`'s and is tested there, directly under a `FormatContext`.
@@ -66,7 +68,7 @@ const decodeFunctionConfig = {
   decodeOne: decodeBytes,
 } as const
 
-const importer = fileImporter({
+const importer = FileImporter.make({
   format: testFormat,
   display,
   sourceFileFormat,
@@ -102,7 +104,7 @@ const otherSourceFileFormat = {
 const otherDecodeFunctionConfig = { ...decodeFunctionConfig, format: 'other' } as const
 
 /** A second format over the same system, to check that recognition is per-coding. */
-const otherImporter = fileImporter({
+const otherImporter = FileImporter.make({
   format: testFormat,
   display: otherDisplay,
   sourceFileFormat: otherSourceFileFormat,
@@ -116,7 +118,7 @@ const otherImporter = fileImporter({
 
 /** The source-file row a single-local-pick decode leads with. */
 const mintedSourceFile = async <TFormat extends string>(
-  format: FileImporter<null, TFormat>,
+  format: FileImporter.Type<null, TFormat>,
   file: PickedFile.PickedFile
 ): Promise<DocumentReferenceType> => {
   const result = await atFixedInstant(format.decode([file], null))
@@ -256,7 +258,7 @@ describe('decode (batch behavior)', () => {
         return decodeBytes(file, settings)
       },
     } as const
-    const spyImporter = fileImporter({
+    const spyImporter = FileImporter.make({
       format,
       display,
       sourceFileFormat,
@@ -359,7 +361,7 @@ describe('decode (batch behavior)', () => {
         return first === undefined ? undefined : { reference: `Patient/${first.resource.id}` }
       },
     }
-    const subjectImporter = fileImporter({
+    const subjectImporter = FileImporter.make({
       format: subjectDecodeFunctionConfig.format,
       display,
       sourceFileFormat,

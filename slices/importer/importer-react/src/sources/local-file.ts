@@ -1,6 +1,5 @@
 import { Effect } from 'effect'
-import type { FileImporter } from 'importer-fundamentals'
-import { identify, PickedFile } from 'importer-fundamentals'
+import { FileImporter, PickedFile } from 'importer-fundamentals'
 
 /**
  * Reading a file the user dropped or chose, and rejecting one that no
@@ -66,9 +65,6 @@ const unrecognizedRejection = (file: ReadableFile): RejectedFile => ({
   message: REJECTION_MESSAGE,
 })
 
-/** Descriptors carry only `detect` through this gate. */
-type IdentifiableDescriptor = Pick<FileImporter<never, string>, 'detect'>
-
 /**
  * Reads a local file's bytes and rejects it if no registered descriptor's
  * `detect` claims them.
@@ -86,13 +82,16 @@ type IdentifiableDescriptor = Pick<FileImporter<never, string>, 'detect'>
  * concrete view rather than a `SharedArrayBuffer`-compatible one.
  */
 const acceptLocalFile = (
-  descriptors: readonly IdentifiableDescriptor[],
+  descriptors: readonly FileImporter.Unknown[],
   file: ReadableFile
 ): Effect.Effect<PickedFile.PickedFile, string> =>
   Effect.promise(() => file.arrayBuffer()).pipe(
     Effect.flatMap((buffer) => {
       const bytes = new Uint8Array(buffer)
-      const claim = identify(descriptors, { fileName: file.name, bytes })
+      const claim = FileImporter.thatDetectsFile<FileImporter.Unknown>(descriptors, {
+        fileName: file.name,
+        bytes,
+      })
       if (claim === undefined) return Effect.fail(REJECTION_MESSAGE)
       return Effect.succeed<PickedFile.PickedFile>({
         fileName: file.name,
@@ -104,7 +103,6 @@ const acceptLocalFile = (
 
 export {
   acceptLocalFile,
-  type IdentifiableDescriptor,
   type ReadableFile,
   REJECTION_MESSAGE,
   type RejectedFile,

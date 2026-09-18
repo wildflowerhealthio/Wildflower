@@ -1,8 +1,7 @@
 import { Effect, ParseResult } from 'effect'
 import * as fc from 'fast-check'
 import {
-  type FileImporter,
-  fileImporter,
+  FileImporter,
   PickedFile,
   DecodedFile,
   SourceFile,
@@ -55,7 +54,7 @@ const sourceFileFormat = {
 
 const importerForReports = (
   reports: readonly Report.Type[]
-): FileImporter<typeof SETTINGS, 'lifelabs-pdf'> => {
+): FileImporter.Type<typeof SETTINGS, 'lifelabs-pdf'> => {
   const format = 'lifelabs-pdf'
   // Closes over `reports`, so it is built per call rather than at module scope.
   const decodeFunctionConfig = {
@@ -63,7 +62,7 @@ const importerForReports = (
     decodeOne: (_file: PickedFile.PickedFile, settings: typeof SETTINGS) =>
       decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
   } as const
-  return fileImporter({
+  return FileImporter.make({
     format,
     sourceFileFormat,
     decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),

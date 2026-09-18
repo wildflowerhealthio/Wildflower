@@ -8,6 +8,7 @@ import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
+import type { FileImporter } from 'importer-fundamentals'
 import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_SYSTEM,
@@ -16,7 +17,7 @@ import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { SOURCE_FILES_CATEGORY_TOKEN } from '../queries/source-files.ts'
-import { REJECTION_MESSAGE, type IdentifiableDescriptor } from './local-file.ts'
+import { REJECTION_MESSAGE } from './local-file.ts'
 import { SourcePicker } from './source-picker.tsx'
 
 /**
@@ -24,11 +25,12 @@ import { SourcePicker } from './source-picker.tsx'
  * Matches `har-importer-core`'s `detectHar` semantics; kept inline here so
  * the picker test does not depend on the concrete binding.
  */
-const harDescriptor: IdentifiableDescriptor = {
-  detect: (bytes, name) => name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
+const harDescriptor = {
+  detect: (bytes: Uint8Array, name: string) =>
+    name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
 }
-
-const testDescriptors: readonly IdentifiableDescriptor[] = [harDescriptor]
+// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-explicit-any
+const testDescriptors = [harDescriptor] as any as readonly FileImporter.Unknown[]
 
 /**
  * The whole picker, driven over the real

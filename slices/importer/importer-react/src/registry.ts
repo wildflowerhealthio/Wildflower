@@ -29,7 +29,7 @@ import type { JSX } from 'react'
  * added to `FileImporter` would have been dropped here with no type error
  * anywhere. `FileImporter` has no prototype, so the spread is total.
  */
-type BoundFormat<K extends FormatKind> = FileImporter<FormatSettings[K], K> & {
+type BoundFormat<K extends FormatKind> = FileImporter.Type<FormatSettings[K], K> & {
   readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
 }
 
@@ -41,7 +41,7 @@ type BoundFormat<K extends FormatKind> = FileImporter<FormatSettings[K], K> & {
  * @returns The shell's registry entry for that format
  */
 const withSettingsPicker = <K extends FormatKind>(
-  importer: FileImporter<FormatSettings[K], K>,
+  importer: FileImporter.Type<FormatSettings[K], K>,
   SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
 ): BoundFormat<K> => ({ ...importer, SettingsPicker })
 

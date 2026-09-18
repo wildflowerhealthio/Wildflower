@@ -344,11 +344,26 @@ const make = (
     Effect.flatMap((sourceFile) => encodeSourceFile(sourceFile, subject))
   )
 
+const inFormatsCategory = (
+  documentReference: DocumentReferenceType
+): Effect.Effect<boolean, never, FormatContext> =>
+  Effect.map(FormatContext, ({ coding }) =>
+    documentReference.category.some((category) =>
+      category.coding.some(
+        (one) => one.system?.toString() === coding.system && one.code === coding.code
+      )
+    )
+  )
+
+const categoryToken = Effect.map(FormatContext, ({ coding }) => `${coding.system}|${coding.code}`)
+
 export {
   SECTION_TITLE,
   FormatContext,
+  categoryToken,
   decode,
   idFromReference,
+  inFormatsCategory,
   key,
   make,
   makeReference,

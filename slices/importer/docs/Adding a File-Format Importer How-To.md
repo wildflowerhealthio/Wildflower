@@ -31,7 +31,7 @@ resources, plus a note per thing that did not become a resource.
 | --------------- | ---------------------------------------------- | ------------------------------------------------------------- |
 | Decode dialect  | a pure dialect package (below both transports) | the format's document → structural records                    |
 | Response kinds  | `slices/http-extraction/*-source/`             | `HttpResponseKind` — recognize + parse (only if HTTP-shaped)  |
-| Importer        | `*-importer-core/src/descriptor.ts`            | one `fileImporter({ … })` call                                |
+| Importer        | `*-importer-core/src/descriptor.ts`            | one `FileImporter.make({ … })` call                           |
 | Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (an empty record if none)     |
 | Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
 | Source file     | the `sourceFileFormat` you pass in             | derived by `fileImporter`, minted inside `decode`             |
@@ -210,7 +210,7 @@ const decodeFunctionConfig = {
   subjectFor: mySubjectOf,
 } as const
 
-const myImporter = fileImporter({
+const myImporter = FileImporter.make({
   display,
   sourceFileFormat,
   decodeFunctionConfig,

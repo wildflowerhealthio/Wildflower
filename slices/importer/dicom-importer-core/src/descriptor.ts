@@ -1,4 +1,4 @@
-import { DecodedFile, fileImporter, type SourceFile, DecodeFunction } from 'importer-fundamentals'
+import { DecodedFile, FileImporter, type SourceFile, DecodeFunction } from 'importer-fundamentals'
 
 import { decodeDicom } from './decode.ts'
 import { detectDicom } from './detect.ts'
@@ -41,7 +41,7 @@ const decodeFunctionConfig = {
   subjectFor: patientSubjectOf,
 } as const
 
-const dicomImporter = fileImporter({
+const dicomImporter = FileImporter.make({
   display,
   sourceFileFormat,
   format,

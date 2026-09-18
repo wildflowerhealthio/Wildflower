@@ -25,7 +25,7 @@ interface SettingsPickerProps<TSettings> {
  * by), and the batch decode's inputs as one `DecodeFunction.Config` (the value
  * `DecodeFunction.fromConfig` takes), the format tag among them. Nothing here
  * is spelled twice. `descriptionPrefix` is the binding's too — conventionally
- * `` `${display.title}: ` ``, spelled at the call site so a format that wants a
+ * `${display.title}: `, spelled at the call site so a format that wants a
  * different prefix simply writes one.
  */
 interface FileImporterConfig<TFormat extends string, TSettings> {
@@ -53,7 +53,7 @@ interface FileImporterConfig<TFormat extends string, TSettings> {
  * `SourceFile.FormatContext` is bound by {@link fileImporter}, so no consumer
  * carries it.
  */
-interface FileImporter<TSettings, TFormat extends string> {
+interface Type<TSettings, TFormat extends string> {
   readonly format: TFormat
   readonly display: { readonly title: string; readonly description: string }
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
@@ -77,8 +77,10 @@ interface FileImporter<TSettings, TFormat extends string> {
   ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
 }
 
+// oxlint-disable-next-line no-explicit-any
+type Unknown = Omit<Type<any, string>, 'defaultSettings' | 'decode'>
 /**
- * Build a format's {@link FileImporter} from its coding constants and its
+ * Build a format's {@link Type} from its coding constants and its
  * per-file decode.
  *
  * @remarks
@@ -95,11 +97,11 @@ interface FileImporter<TSettings, TFormat extends string> {
  * @param config - The format's source-file constants, decode config, display strings, `detect` and settings
  * @returns The format's importer, ready for the registry
  */
-const fileImporter = <TFormat extends string, TSettings>(
+const make = <TFormat extends string, TSettings>(
   config: FileImporterConfig<TFormat, TSettings>
-): FileImporter<TSettings, TFormat> => {
+): Type<TSettings, TFormat> => {
   const { sourceFileFormat } = config
-  const { coding, contentType } = sourceFileFormat
+  const { contentType } = sourceFileFormat
 
   const provideSourceFileFormat = Effect.provideService(SourceFile.FormatContext, sourceFileFormat)
 
@@ -110,13 +112,11 @@ const fileImporter = <TFormat extends string, TSettings>(
     defaultSettings: config.defaultSettings,
     contentType,
     sourceFileFormat,
-    categoryToken: `${coding.system}|${coding.code}`,
-    isSourceFile: (resource) =>
-      resource.category.some((category) =>
-        category.coding.some(
-          (one) => one.system?.toString() === coding.system && one.code === coding.code
-        )
-      ),
+    categoryToken: Func.pipe(SourceFile.categoryToken, provideSourceFileFormat, Effect.runSync),
+    isSourceFile: Func.compose(
+      Func.compose(SourceFile.inFormatsCategory, provideSourceFileFormat),
+      Effect.runSync
+    ),
     sourceFileFromDocumentReference: Func.compose(
       Schema.decode(SourceFile.FromDocumentReferenceSchema),
       provideSourceFileFormat
@@ -125,22 +125,12 @@ const fileImporter = <TFormat extends string, TSettings>(
   }
 }
 
-/** The one thing {@link identify} needs of a candidate: a syntactic `detect`. */
-interface Detectable {
-  readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
-}
-
-/** The first candidate whose `detect` claims the file, in the order given. */
-const identify = <D extends Detectable>(
-  candidates: readonly D[],
+// oxlint:disable-next-line: no-explicit-any
+const thatDetectsFile = <TImporter extends Unknown>(
+  fileImporters: readonly TImporter[],
   file: PickedFile.NamedBytes
-): D | undefined => candidates.find((candidate) => candidate.detect(file.bytes, file.fileName))
+): TImporter | undefined =>
+  fileImporters.find((candidate) => candidate.detect(file.bytes, file.fileName))
 
-export { fileImporter, identify }
-export type {
-  Detectable,
-  FileImporter,
-  DocumentReferenceType,
-  FileImporterConfig,
-  SettingsPickerProps,
-}
+export { make, thatDetectsFile }
+export type { Type, Unknown, DocumentReferenceType, FileImporterConfig, SettingsPickerProps }

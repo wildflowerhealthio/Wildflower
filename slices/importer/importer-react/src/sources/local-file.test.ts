@@ -1,13 +1,8 @@
 import { Effect, Either } from 'effect'
 import { describe, expect, it } from 'vite-plus/test'
 
-import type { PickedFile } from 'importer-fundamentals'
-import {
-  acceptLocalFile,
-  type IdentifiableDescriptor,
-  type ReadableFile,
-  REJECTION_MESSAGE,
-} from './local-file.ts'
+import type { PickedFile, FileImporter } from 'importer-fundamentals'
+import { acceptLocalFile, type ReadableFile, REJECTION_MESSAGE } from './local-file.ts'
 
 /**
  * `acceptLocalFile` is the gate every local pick passes: reads the bytes,
@@ -29,13 +24,17 @@ const fileOf = (name: string, bytes: Uint8Array): ReadableFile => ({
   },
 })
 
+/* oxlint-disable typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-explicit-any --
+   `acceptLocalFile` reads only `detect` off a descriptor, so these stubs state only that member;
+   the `satisfies` keeps it honest and the cast supplies the members no code path here touches. */
+
 /** A HAR descriptor stub — extension `.har` or JSON-object shape. */
-const harDescriptor: IdentifiableDescriptor = {
+const harDescriptor = {
   detect: (bytes, name) => name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
-}
+} satisfies Pick<FileImporter.Unknown, 'detect'> as any as FileImporter.Unknown
 
 /** A LifeLabs PDF descriptor stub — extension `.pdf` or `%PDF-` magic. */
-const pdfDescriptor: IdentifiableDescriptor = {
+const pdfDescriptor = {
   detect: (bytes, name) =>
     name.toLowerCase().endsWith('.pdf') ||
     (bytes.length >= 5 &&
@@ -44,9 +43,11 @@ const pdfDescriptor: IdentifiableDescriptor = {
       bytes[2] === 0x44 &&
       bytes[3] === 0x46 &&
       bytes[4] === 0x2d),
-}
+} satisfies Pick<FileImporter.Unknown, 'detect'> as any as FileImporter.Unknown
 
-const descriptors: readonly IdentifiableDescriptor[] = [pdfDescriptor, harDescriptor]
+/* oxlint-enable typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-explicit-any */
+
+const descriptors: readonly FileImporter.Unknown[] = [pdfDescriptor, harDescriptor]
 
 const runAccept = (file: ReadableFile): Promise<Either.Either<PickedFile.PickedFile, string>> =>
   Effect.runPromise(Effect.either(acceptLocalFile(descriptors, file)))

@@ -163,9 +163,9 @@ const fromCombinableDecodeConfig =
  * {@link fromCombinableDecodeConfig} returns, is
  * `Type<TSettings, TFormat, SourceFile.FormatContext>`.
  */
-type Type<TSettings, TFormat extends string> = WithContext<TSettings, TFormat, never>
+type Type<in TSettings, TFormat extends string> = WithContext<TSettings, TFormat, never>
 
-type WithContext<TSettings, TFormat extends string, R> = (
+type WithContext<in TSettings, TFormat extends string, R> = (
   files: readonly PickedFile.PickedFile[],
   settings: TSettings
 ) => Effect.Effect<FormatDecode.Result<TFormat>, never, R>
