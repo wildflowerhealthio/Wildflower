@@ -1,5 +1,5 @@
 import { Effect, Option, pipe } from 'effect'
-import { FormatDecode, FileImporter, type PickedFile } from 'importer-fundamentals'
+import { FormatDecode, FormatDetector, type PickedFile } from 'importer-fundamentals'
 
 import { type BoundFormat, type FormatKind, formatKinds, type FormatSettings } from './registry.ts'
 
@@ -90,7 +90,7 @@ type BatchDecodeResult = FormatResults & {
 const identifyPick = (
   registry: ReadRegistry,
   pick: PickedFile.PickedFile
-): FormatKind | undefined => FileImporter.thatDetectsFile(Object.values(registry), pick)?.format
+): FormatKind | undefined => FormatDetector.claiming(Object.values(registry), pick)?.format
 
 /**
  * Split a picked batch by the format that claims each file.

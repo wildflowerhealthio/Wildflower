@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { FileImporter, PickedFile } from 'importer-fundamentals'
+import { FormatDetector, PickedFile } from 'importer-fundamentals'
 
 /**
  * Reading a file the user dropped or chose, and rejecting one that no
@@ -75,23 +75,20 @@ const unrecognizedRejection = (file: ReadableFile): RejectedFile => ({
  *   a `local` source, or fails with the reason the file was rejected
  *
  * @remarks
- * Validation is syntactic — {@link identify} runs each descriptor's `detect`
- * against the bytes and the file name — so a full parse never runs at the
- * picker. That is what makes the gate cheap to run on every drop. The bytes
+ * Validation is syntactic — `FormatDetector.claiming` runs each descriptor's
+ * `detect` against the bytes and the file name — so a full parse never runs at
+ * the picker. That is what makes the gate cheap to run on every drop. The bytes
  * are wrapped as `new Uint8Array(buffer)` so downstream consumers hold a
  * concrete view rather than a `SharedArrayBuffer`-compatible one.
  */
 const acceptLocalFile = (
-  descriptors: readonly FileImporter.Unknown[],
+  descriptors: readonly FormatDetector.Type[],
   file: ReadableFile
 ): Effect.Effect<PickedFile.PickedFile, string> =>
   Effect.promise(() => file.arrayBuffer()).pipe(
     Effect.flatMap((buffer) => {
       const bytes = new Uint8Array(buffer)
-      const claim = FileImporter.thatDetectsFile<FileImporter.Unknown>(descriptors, {
-        fileName: file.name,
-        bytes,
-      })
+      const claim = FormatDetector.claiming(descriptors, { fileName: file.name, bytes })
       if (claim === undefined) return Effect.fail(REJECTION_MESSAGE)
       return Effect.succeed<PickedFile.PickedFile>({
         fileName: file.name,

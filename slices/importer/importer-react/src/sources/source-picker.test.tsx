@@ -8,7 +8,7 @@ import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
-import type { FileImporter } from 'importer-fundamentals'
+import type { FormatDetector } from 'importer-fundamentals'
 import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_SYSTEM,
@@ -25,12 +25,11 @@ import { SourcePicker } from './source-picker.tsx'
  * Matches `har-importer-core`'s `detectHar` semantics; kept inline here so
  * the picker test does not depend on the concrete binding.
  */
-const harDescriptor = {
-  detect: (bytes: Uint8Array, name: string) =>
-    name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
+const harDescriptor: FormatDetector.Type = {
+  format: 'har',
+  detect: (bytes, name) => name.toLowerCase().endsWith('.har') || bytes[0] === 0x7b,
 }
-// oxlint-disable-next-line typescript-eslint/no-unsafe-type-assertion, typescript-eslint/no-explicit-any
-const testDescriptors = [harDescriptor] as any as readonly FileImporter.Unknown[]
+const testDescriptors: readonly FormatDetector.Type[] = [harDescriptor]
 
 /**
  * The whole picker, driven over the real

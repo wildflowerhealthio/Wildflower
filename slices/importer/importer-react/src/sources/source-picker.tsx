@@ -1,7 +1,7 @@
 import { Array as Arr, Effect } from 'effect'
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 
-import type { PickedFile, FileImporter } from 'importer-fundamentals'
+import type { PickedFile, FormatDetector } from 'importer-fundamentals'
 import { acceptLocalFile, type ReadableFile, type RejectedFile } from './local-file.ts'
 import { ServerSourceFileList } from './server-source-file-list.tsx'
 import styles from './source-picker.module.css'
@@ -51,7 +51,7 @@ interface SourcePickerProps {
    * the first descriptor whose `detect` claims the file wins. Only its
    * `detect` is read here — the picker never runs a descriptor's `decode`.
    */
-  readonly descriptors: readonly FileImporter.Unknown[]
+  readonly descriptors: readonly FormatDetector.Type[]
   /**
    * Called with the chosen files once a source resolves to at least one.
    *

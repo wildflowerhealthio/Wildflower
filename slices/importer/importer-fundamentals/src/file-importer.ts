@@ -1,7 +1,6 @@
 import { Effect, type ParseResult, Schema, Function as Func } from 'effect'
 import { type DocumentReference } from 'fhir-r4/resources'
 import type * as DecodeFunction from './decode-function.ts'
-import type * as PickedFile from './picked-file.ts'
 import * as SourceFile from './source-file.ts'
 
 type DocumentReferenceType = typeof DocumentReference.Schema.Type
@@ -61,6 +60,7 @@ interface FileImporterConfig<TFormat extends string, TSettings> {
 interface Type<TSettings, TFormat extends string> {
   readonly format: TFormat
   readonly display: { readonly title: string; readonly description: string }
+  /** Claims a picked file — `format` and this together satisfy `FormatDetector.Type`. */
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: TSettings
   /** The batch decode the shell runs: one file at a time, never failing. */
@@ -82,8 +82,6 @@ interface Type<TSettings, TFormat extends string> {
   ) => Effect.Effect<SourceFile.Type, ParseResult.ParseError>
 }
 
-// oxlint-disable-next-line no-explicit-any
-type Unknown = Omit<Type<any, string>, 'defaultSettings' | 'decode'>
 /**
  * Build a format's {@link Type} from its coding constants and its
  * per-file decode.
@@ -131,12 +129,5 @@ const make = <TFormat extends string, TSettings>(
   }
 }
 
-// oxlint:disable-next-line: no-explicit-any
-const thatDetectsFile = <TImporter extends Unknown>(
-  fileImporters: readonly TImporter[],
-  file: PickedFile.NamedBytes
-): TImporter | undefined =>
-  fileImporters.find((candidate) => candidate.detect(file.bytes, file.fileName))
-
-export { make, thatDetectsFile }
-export type { Type, Unknown, DocumentReferenceType, FileImporterConfig, SettingsPickerProps }
+export { make }
+export type { Type, DocumentReferenceType, FileImporterConfig, SettingsPickerProps }

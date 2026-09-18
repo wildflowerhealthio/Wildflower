@@ -1,3 +1,4 @@
+export * as FormatDetector from './format-detector.ts'
 export * as MetaSource from './meta-source.ts'
 export * as PickedFile from './picked-file.ts'
 export * as SourceFile from './source-file.ts'
