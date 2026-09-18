@@ -14,12 +14,16 @@ shell's shared `persistBatchBundle`.
   subpath of this package until it was hoisted into the `file-formats` slice so
   the anonymizer could consume it without reaching into the importer. This
   binding consumes it from `decode-har.ts`.
-- `src/source-file/` — **the coding axis an uploaded `.har` file is stored
-  under**, and nothing more: a barrel re-exporting `HAR_ARCHIVE_CODE` and
+- `src/source-file.ts` — **the coding axis an uploaded `.har` file is stored
+  under**, and nothing more: a re-export of `HAR_ARCHIVE_CODE` and
   `WEB_TRACE_CODE_SYSTEM` so a downstream reader can build the search token
-  from one import. Exported as the `/source-file` subpath. The FHIR encoding
+  from one import. Exported as the `/source-file` subpath — the seam every
+  binding has, so a reader asks each format the same question; HAR's answer
+  happens to be web-trace's, which is why these two constants are re-exported
+  rather than declared. This binding owns the _choice_ of axis, not the axis.
+  The FHIR encoding
   itself is not written here — `har-importer.ts` passes that coding,
-  `application/json`, and the web-trace raw `securityLabel` to `fileImporter`
+  `application/json`, and the web-trace raw `securityLabel` to `FileImporter.make`
   as one `sourceFileFormat`, and gets `categoryToken`, `isSourceFile`,
   `sourceFileFromDocumentReference`, and the batch `decode` that mints the
   source file inside itself, back.
@@ -27,7 +31,7 @@ shell's shared `persistBatchBundle`.
   category, disjoint from a trace on the same axis (this format's
   `isSourceFile` and `isWebTrace` never both hold).
 - **The source file is minted inside `decode`.** The batch decode
-  `fileImporter` built mints a `local` pick's source-file `DocumentReference`
+  `FileImporter.make` built mints a `local` pick's source-file `DocumentReference`
   — a deterministic id from the file's SHA-256 and name, the upload instant
   stamped, **no PUT** — prepends it as its own "Source file" section, and
   stamps every extracted resource's `meta.source` with
@@ -48,7 +52,7 @@ shell's shared `persistBatchBundle`.
   leaving the batch's other files reviewable. Resource keys are
   `responseId:index` — independent of the kind toggles, so a settings change
   re-decodes to the same keys for the resources that survive it. They are keyed
-  **within one archive**; `fileImporter` prefixes each file's keys with its slot
+  **within one archive**; `FileImporter.make` prefixes each file's keys with its slot
   in the batch, so two archives in one pick cannot collide on
   `responseId:index`.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses,

@@ -64,20 +64,22 @@ decode yields one section per file when the header carries a patient identity.
   stored resource name the same thing by construction. One section titled
   `<Modality> <StudyDescription> · <StudyDate>` with stable keys `patient`,
   `service-request`, `imaging-study`. Those keys are fixed _within one file_ —
-  safe only because `fileImporter` prefixes each file's keys with its slot in
+  safe only because `FileImporter.make` prefixes each file's keys with its slot in
   the batch, which is what keeps eight picked images from all colliding on
   `patient`. Notes for missing patient identity or absent AccessionNumber. A
   `dicom-parser` failure is a `ParseError`.
-- `src/source-file/index.ts` — barrel re-exporting the coding constants
-  (`DICOM_SYSTEM`, `DICOM_SOURCE_FILE_CODE`,
-  `DICOM_SOURCE_FILE_CONTENT_TYPE`). The FHIR encoding is not written here —
-  `descriptor.ts` passes those constants to `fileImporter` as its
+- `src/source-file.ts` — the `/source-file` subpath: a narrowing of
+  `source-system.ts` to just the coding constants (`DICOM_SYSTEM`,
+  `DICOM_SOURCE_FILE_CODE`, `DICOM_SOURCE_FILE_CONTENT_TYPE`), so a reader
+  building the cross-format search token imports one narrow thing rather than
+  this package's whole surface. The FHIR encoding is not written here —
+  `dicom-importer.ts` passes those constants to `FileImporter.make` as its
   `sourceFileFormat`.
-- `src/descriptor.ts` — **`dicomImporter`**, the `fileImporter` call for format
+- `src/dicom-importer.ts` — **`dicomImporter`**, the `FileImporter.make` call for format
   `'dicom'`: the DICOM coding (`DICOM_SYSTEM|dicom-source-file`), content type
   `application/dicom`, `detectDicom`, the default settings, `decodeDicom` as
   its `decodeOne`, and `subjectFor: patientSubjectOf`. The batch decode
-  `fileImporter` returns mints each local pick's source file, lists it as its
+  `FileImporter.make` returns mints each local pick's source file, lists it as its
   own "Source file" section, stamps every extracted resource's `meta.source`
   with it, and hands its reference to `decodeDicom` (which unwraps the bare id
   through `SourceFile.idFromReference` for the `gridfsFileId` extension).
@@ -92,7 +94,7 @@ decode yields one section per file when the header carries a patient identity.
 ## Layering
 
 - **Depends on**: `dicom` (DICOM tag parsing), `importer-fundamentals`
-  (the `FileImporter` contract and its `fileImporter` factory), `fhir-r4`
+  (the `FileImporter` contract and its `FileImporter.make` factory), `fhir-r4`
   (resource types + identity), `kitchen-sink` (`fnv1a64`), `effect`.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).

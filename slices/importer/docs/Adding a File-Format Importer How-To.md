@@ -12,7 +12,7 @@ A format is registered with exactly **two static edits** — its importer entry 
 `importer-react`'s registry on top of it — because the slice has no runtime
 registry. Everything before those edits lives in a new `*-importer-core` binding
 (and its `*-importer-react` settings UI) built on `importer-fundamentals`'
-`fileImporter`.
+`FileImporter.make`.
 
 ## What you're building
 
@@ -31,10 +31,10 @@ resources, plus a note per thing that did not become a resource.
 | --------------- | ---------------------------------------------- | ------------------------------------------------------------- |
 | Decode dialect  | a pure dialect package (below both transports) | the format's document → structural records                    |
 | Response kinds  | `slices/http-extraction/*-source/`             | `HttpResponseKind` — recognize + parse (only if HTTP-shaped)  |
-| Importer        | `*-importer-core/src/descriptor.ts`            | one `FileImporter.make({ … })` call                           |
+| Importer        | `*-importer-core/src/<format>-importer.ts`     | one `FileImporter.make({ … })` call                           |
 | Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (an empty record if none)     |
 | Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
-| Source file     | the `sourceFileFormat` you pass in             | derived by `fileImporter`, minted inside `decode`             |
+| Source file     | the `sourceFileFormat` you pass in             | derived by `FileImporter.make`, minted inside `decode`        |
 | Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)    |
 | Registry entry  | `importer-core/src/registry.ts`                | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
 | Picker entry    | `importer-react/src/registry.ts`               | the same key's `SettingsPicker`                               |
@@ -68,8 +68,8 @@ const decodeMyFormat = (
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> => …
 ```
 
-`fileImporter` lifts that into the batch `decode(files, settings)` the shell
-runs across every file the format claimed. That lifted decode is what:
+`DecodeFunction.fromPerFile` lifts that into the batch `decode(files, settings)`
+the shell runs across every file the format claimed. That lifted decode is what:
 
 - resolves each file's source file — minting one for a `local` pick and handing
   `decodeOne` its `DocumentReference/<id>` reference before the decode runs, or
@@ -99,7 +99,7 @@ Three obligations:
   by `responseId:index`, DICOM by the resource's role), because the reviewer's
   per-resource exclusions and inline edits are keyed by it and must survive a
   settings re-decode. Key **within one file** and do not try to make keys unique
-  across the batch yourself — `fileImporter` prefixes each file's keys with its
+  across the batch yourself — `fromPerFile` prefixes each file's keys with its
   slot (`FormatDecode.keyPrefix`), which is what makes a fixed key like
   `patient` safe when the reviewer picked eight images at once.
 - **Sections are the display.** Pick a sectioning that means something to the
@@ -134,7 +134,7 @@ links are already there, stamped by the decode.
 
 A source file is the picked file itself, stored as a FHIR `DocumentReference`
 with the bytes verbatim. It is **the format's**, not the shell's — but a binding
-does not write the encoding. You pass `fileImporter` one **`sourceFileFormat`**
+does not write the encoding. You pass `FileImporter.make` one **`sourceFileFormat`**
 — a `SourceFile.Format`, the same value the codec is parameterized by: a
 `coding` (`{ system, code }`), a `contentType`, a `descriptionPrefix`
 (conventionally `` `${display.title}: ` ``), and optionally a `securityLabel`.
@@ -149,14 +149,15 @@ It derives the whole seam from that:
 
 The write direction is not a field on the importer: minting and encoding a
 source file is what the batch `decode` does either side of a `decodeOne`, so the
-resource can be filed under a subject the decode named. `SourceFile.make`
-(mint then encode) and its halves `SourceFile.tryFromNamedBytes` /
-`SourceFile.encodeSourceFile` are what it calls, each requiring the codec's
+resource can be filed under a subject the decode named. `SourceFile.mintResource`
+(mint then encode, named for its result — the stored resource) and its halves
+`SourceFile.tryFromNamedBytes` / `SourceFile.encode` are what it calls, each
+requiring the codec's
 `SourceFile.FormatContext`. `sourceFileFormat` is that context's value, which is
 how a binding's test drives the codec under the format's real config:
 
 ```ts
-SourceFile.make({ fileName, bytes }).pipe(
+SourceFile.mintResource({ fileName, bytes }).pipe(
   Effect.provideService(SourceFile.FormatContext, myImporter.sourceFileFormat)
 )
 ```
@@ -203,31 +204,49 @@ const sourceFileFormat = {
   securityLabel: [{ system: MY_REDACTION_SYSTEM, code: 'raw' }],
 }
 
-const decodeFunctionConfig = {
-  format: 'my-format',
+const format = 'my-format'
+
+const decodeConfig = {
+  format,
   decodeOne: decodeMyFormat,
   // optional:
   subjectFor: mySubjectOf,
 } as const
 
 const myImporter = FileImporter.make({
+  format,
   display,
   sourceFileFormat,
-  decodeFunctionConfig,
+  decode: DecodeFunction.fromPerFile(decodeConfig),
   detect: (bytes, fileName) => fileName.toLowerCase().endsWith('.myfmt') || myMagic(bytes),
   defaultSettings: defaultMySettings,
 })
 ```
+
+`DecodeFunction.fromPerFile` returns a decode that still **needs** the
+source-file context; `FileImporter.make` is what provides it, from the
+`sourceFileFormat` in the same call. That is why you pass those constants once
+and only once — the decode's mint and the importer's `categoryToken` /
+`isSourceFile` then read the same copy by construction.
+
+**`fromPerFile` is one constructor, not the only one.** _Per-file_ is a real
+assumption: your `decodeOne` is handed one file and cannot see the others, and
+the per-file results sum into the batch's. If your format's files must be read
+_together_ — a multi-part archive, a manifest naming its siblings — it is not
+per-file, and needs a new constructor in `decode-function.ts` rather than a
+widened version of this one. Do not smuggle cross-file state through `settings`.
 
 The result is a plain record, not a class instance — which is what lets
 `importer-react`'s registry extend it with a `SettingsPicker` by spreading it,
 with nothing on a prototype to lose.
 
 `detect` is the routing decision at the picker: the shell tries every registered
-format's `detect` on the picked bytes, and the first match wins (`identify` in
-`importer-fundamentals`, `groupByFormat` in `importer-core`). Keep it
-syntactic — an extension or a magic-bytes sniff — so the full parse still runs
-only in `decodeOne`.
+format's `detect` on the picked bytes, and the first match wins
+(`FormatDetector.claiming` in `importer-fundamentals`, `groupByFormat` in
+`importer-core`). Keep it syntactic — an extension or a magic-bytes sniff — so
+the full parse still runs only in `decodeOne`. Your `format` and `detect`
+together are all `FormatDetector.Type` asks for, which is how the picker sniffs
+a file without naming your settings type.
 
 ## 6. Register
 

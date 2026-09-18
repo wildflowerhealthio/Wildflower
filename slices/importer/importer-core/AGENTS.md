@@ -21,23 +21,32 @@ write plan with this package alone.
   seed a fresh import starts from, and **`formatKinds`** the typed
   registry-order walk, _derived_ from `formatRegistry` rather than listed,
   because a hand-written `readonly FormatKind[]` was the one slot a missing
-  format could slip through silently. Adding a format is one `FormatSettings`
+  format could slip through silently. `defaultFormatSettings`, by contrast, is
+  written out per format on purpose: `Object.fromEntries` erases the
+  key-to-value correlation the record's type states, so a derived version needs
+  an `as FormatSettings` and checks nothing, while the literal makes a missing
+  format a compile error. Adding a format is one `FormatSettings`
   entry, one registry entry, one default — and `collectFormats` below. All
   four are mapped or exhaustive types over `FormatKind`, so missing any of
   them is a compile error.
 - `src/read-batch.ts` — the read half as pure functions over a
-  **`ReadRegistry`** (each format's `detect` + `decode`): **`groupByFormat`**
-  splits a pick by the first claiming `detect`; **`decodeFormat`** runs one
-  format's batch `decode` under its settings — generic in `K` so
-  `registry[kind]` and `settings[kind]` stay correlated with no per-format
-  `Match` branch; **`readBatch`** decodes every group concurrently into a
-  **`BatchDecodeResult`** — one `FormatDecode.Result<K>` per registered
-  format (an `emptyResult` for a format that claimed nothing) plus the
-  **`UnrecognizedFile`**s, plain data for the picks no `detect` claimed;
-  **`claimedFormats`** names the formats that actually took part, the one
-  predicate the preview and the confirm both read; **`redecodeFormat`**
-  re-runs one format's files from their retained picks under new settings
-  (ids are deterministic, so no id-preservation logic is needed).
+  **`ReadRegistry`** (`Pick<BoundFormat<K>, 'format' | 'detect' | 'decode'>` per
+  format — deliberately not the whole `BoundFormat`, so a test can stand up a
+  fake registry with just those fields). **`readBatch`** groups a pick by format
+  and decodes every group concurrently into a **`BatchDecodeResult`** — one
+  `FormatDecode.Result<K>` per registered format (an `emptyResult` for a format
+  that claimed nothing) plus the **`UnrecognizedFile`**s, plain data for the
+  picks no `detect` claimed; **`claimedFormats`** names the formats that
+  actually took part, the one predicate the preview and the confirm both read;
+  **`redecodeFormat`** re-runs one format's files from their retained picks
+  under new settings (ids are deterministic, so no id-preservation logic is
+  needed).
+  Its three internal steps — `identifyPick` (the first claiming detector, via
+  `FormatDetector.claiming`), `groupByFormat`, and `decodeFormat` (generic in
+  `K` so `registry[kind]` and `settings[kind]` stay correlated with no
+  per-format `Match` branch) — are module-level exports for this package's own
+  tests and are **not** re-exported from `index.ts`: the shell drives the whole
+  read, never a leg of it.
   **`collectFormats`** is the one place the registry is enumerated by name,
   and its remarks say why: TypeScript drops the correlation between a computed
   union key and its value, so a record assembled from a `kind` variable is
@@ -63,7 +72,7 @@ nothing from `slices/collector` or `slices/http-extraction`.
 - **No source-file knowledge here.** What a source file is, which resources
   point at it, and what happens to those links when the reviewer excludes it
   are each format's decisions, made inside its `decode` by
-  `importer-fundamentals`' `fileImporter`. `readBatch` and `planFormatWrite`
+  `importer-fundamentals`' `FileImporter.make`. `readBatch` and `planFormatWrite`
   treat the source-file row as any other resource. Do not reintroduce a
   shell-side mint, a side map of source files, or a "primary file".
 - **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from
@@ -72,7 +81,7 @@ nothing from `slices/collector` or `slices/http-extraction`.
   the same `files` array back, so the same ids come out and the reviewer's
   selection keeps applying.
 - **`decode` never fails.** A malformed file is an `unreadableFiles` entry,
-  folded by `fileImporter`; there is no `catchAll` in the read half, and a
+  folded by `DecodeFunction.fromPerFile`; there is no `catchAll` in the read half, and a
   format that raised would be a contract bug, not a case to handle here.
 - **Dispatch generically, not by `Match`.** Indexing the registry by a
   `FormatKind` union loses the per-format correlation; a generic

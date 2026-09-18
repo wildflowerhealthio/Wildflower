@@ -88,11 +88,13 @@ function.
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition
   is `decode`.
-- `src/source-file/` — **the coding axis an uploaded LifeLabs report PDF is
-  stored under**, exported as the `/source-file` subpath: a barrel re-exporting
-  `LIFELABS_SYSTEM`, `LIFELABS_PDF_SOURCE_FILE_CODE`, and
-  `LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE`. The FHIR encoding is not written
-  here — `descriptor.ts` passes those constants to `fileImporter` as its
+- `src/source-file.ts` — **the coding axis an uploaded LifeLabs report PDF is
+  stored under**, exported as the `/source-file` subpath: a narrowing of
+  `source-system.ts` to `LIFELABS_SYSTEM`, `LIFELABS_PDF_SOURCE_FILE_CODE`, and
+  `LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE` — not `LifeLabsIdentifierSystem`,
+  which the FHIR synthesis uses and this seam has no business exposing. The
+  FHIR encoding is not written
+  here — `lifelabs-pdf-importer.ts` passes those constants to `FileImporter.make` as its
   `sourceFileFormat` (PDF content type, LifeLabs coding under
   `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no web-trace security label) and
   gets the read-back, and a `decode` that mints, derived from them. Nothing parses the PDF on
@@ -101,7 +103,7 @@ function.
   name, stamps the upload instant, and encodes to a `DocumentReference` —
   **no PUT**; the shell writes it in the same `persistBatchBundle` as the
   synthesized resources. Same shape as HAR's.
-- `src/descriptor.ts` — **`lifeLabsPdfImporter`**, the `fileImporter` call for
+- `src/lifelabs-pdf-importer.ts` — **`lifeLabsPdfImporter`**, the `FileImporter.make` call for
   format `'lifelabs-pdf'`, with `decodeLifeLabsPdf` as its `decodeOne`. The
   batch decode it returns mints a `local` pick's source-file
   `DocumentReference` and reviews it as its own "Source file" section, stamps
@@ -127,7 +129,7 @@ Depends on `positioned-text` (the positioned-text schema — the neutral seam
 between extraction and the dialect), `positioned-text-web`
 (`extractPositionedText`, the shared pdfjs seam the anonymizer also drives),
 `fhir-r4` (resource schemas, `joinIdComponents`, `adoptResource`),
-`importer-fundamentals` (`fileImporter`, `DecodedFile`, `PickedFile`,
+`importer-fundamentals` (`FileImporter.make`, `DecodedFile`, `PickedFile`,
 `SourceFile`), `kitchen-sink`
 (`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a

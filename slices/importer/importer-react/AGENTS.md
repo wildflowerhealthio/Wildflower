@@ -64,12 +64,15 @@ to each entry by `withSettingsPicker`, a **spread**, not a subclass: a
 `FileImporter` is a plain record with no prototype, so the spread is total and
 a field added to it cannot be silently dropped on the way through. The importer
 half is registered in `importer-core/src/registry.ts`; this file is the single
-edit point for a format's UI. `BoundFormat<K>` keeps per-format concrete types
-against `FormatSettings[K]`, so a picker typed against another format's
-settings fails to compile here. `har`, `lifelabs-pdf`, and `dicom` are
-registered. `defaultFormatSettings` (the `FormatSettings` record a fresh import
-seeds) and `formatKinds` (the typed registry-order walk) are re-exported from
-the core registry unchanged. There is no format-specific review UI slot: the
+edit point for a format's UI. **`FormatWithPicker<K>`** — named for what it
+adds, and defined as `importer-core`'s `BoundFormat<K>` intersected with the
+picker rather than restating it — keeps per-format concrete types against
+`FormatSettings[K]`, so a picker typed against another format's settings fails
+to compile here. `har`, `lifelabs-pdf`, and `dicom` are registered.
+This module exports **only what it adds**: `defaultFormatSettings`,
+`formatKinds`, `FormatKind` and `FormatSettings` are `importer-core`'s and are
+imported from there directly, since re-exporting them here gave the package two
+routes to the same symbol and it used both. There is no format-specific review UI slot: the
 `PreviewPanel` renders every format the same way, from its decoded sections.
 The importer has no HTTP wire union to derive, so there is no separate
 `importer-registry` package the collector slice needs.
@@ -85,8 +88,10 @@ The importer has no HTTP wire union to derive, so there is no separate
   another" discards the read, every review edit, and any confirm outcome, and
   returns to the picker; the per-format settings persist across it.
 - **`src/registry.ts`** — the React half of the closed format registry (above).
-- **`src/preview/`** — the read half's React state, the review view, and the
-  write action.
+- **`src/run/`** — the two hooks that drive the flow's halves, held apart from
+  the view they feed: the read (`use-import-run.ts`) and the opt-in write
+  (`use-confirm-import.ts`). The confirm hook is the write half and does not
+  belong under `preview/`.
   `use-import-run.ts` is React state around `importer-core`: `run` calls
   `readBatch` (through `useRunAuthed`) over the whole pick and holds the
   resulting `BatchDecodeResult`, `applySettings` calls `redecodeFormat` for the
@@ -97,12 +102,13 @@ The importer has no HTTP wire union to derive, so there is no separate
   result. It imports the registry rather than taking it as a parameter, so its
   dependency arrays say what they mean. Grouping, decoding, and folding
   outcomes all happen in the core.
+- **`src/preview/`** — the review view and the state it needs.
   `use-server-diff.ts` pre-classifies every previewed resource against the
   server (`new` / `unchanged` / `changed`) for the row badges and the "already
   there, so pre-excluded" seed, keyed **by format kind and then by resource
   key** (`FormatComparisons`) — two formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
-  format the keys are already distinct, because `fileImporter` namespaces each
+  format the keys are already distinct, because `FileImporter.make` namespaces each
   claimed file's keys by its slot in the batch. The screen blocks the
   first paint on it but **not** on the re-classification a settings change
   triggers, since unmounting the panel mid-review would drop the focus of
@@ -113,11 +119,15 @@ The importer has no HTTP wire union to derive, so there is no separate
   per-resource review — under one shared confirm, gated on the batch having at
   least one **included** resource. It is the panel, the actions and the editor
   dialog only; the review body it renders per format is
-  `read-file-body.tsx` (per-type tallies, one titled section per decoded
-  section with include checkbox and one-line `describeResource` summary,
-  Edit/Revert, unreadable-file rows, and the notes folded into a collapsed
-  details block), the server-diff badge and its field-level disclosure are
-  `diff-badge.tsx`, and every user-visible string is `preview-text.ts`.
+  `format-review-body.tsx` — named for what it covers, one _format's_ review
+  across every file that format claimed (per-type tallies, one titled section
+  per decoded section with include checkbox and one-line `describeResource`
+  summary, Edit/Revert, unreadable-file rows, and the notes folded into a
+  collapsed details block). The server-diff badge and its field-level
+  disclosure are `diff-badge.tsx`, and every user-visible string is
+  `preview-text.ts` — imported from there by everything that shows one,
+  including this package's `index.ts`, rather than re-exported through the
+  panel.
   `use-confirm-import.ts` is the opt-in write action, per **claimed** format,
   best-effort: `planFormatWrite` (in `importer-core`) then one
   `persistBatchBundle` of exactly those resources. It adds nothing to any
@@ -174,7 +184,7 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   the query-key roots.
 - **The source file is a reviewed resource the format minted.** A `local`
   pick's source-file `DocumentReference` is minted inside that format's
-  `decode` (by the batch decode `fileImporter` built) and arrives as its own
+  `decode` (by the batch decode `FileImporter.make` built) and arrives as its own
   "Source file" section ahead of that file's extracted ones, keyed
   `<slot>/source-file/<fileName>`. The shell neither mints it nor
   keys it, and dispatches on no format tag to get it: it reviews the row like
@@ -307,7 +317,7 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   editing — a preview is inspection, not another entry point to the
   review flow.
 - **A source file's id is derived from its bytes and name, so re-importing upserts.**
-  The mint `fileImporter` derives, which each format's `decode` drives,
+  The mint `FileImporter.make` derives, which each format's `decode` drives,
   derives the resource id with `localResourceId` over the file's SHA-256 and
   name — deterministic, not a per-pick uuid — so its bundle entry is a PUT to a
   stable `DocumentReference/<id>` and re-importing the same file under the same

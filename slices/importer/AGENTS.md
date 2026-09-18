@@ -23,14 +23,17 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
   (resource-agnostic, format-agnostic) — the `FileImporter` contract and the
-  `fileImporter` factory that builds one: a binding gives a
-  `decodeFunctionConfig` (its format tag and per-file `decodeOne`) and a
-  `sourceFileFormat` (its coding constants), and gets back the batch `decode` the
-  shell runs (one `FormatDecode.Result` per format: the merged sections and
-  notes, plus an `unreadableFiles` row per file that rejected), the
+  `FileImporter.make` factory that builds one: a binding gives a
+  `sourceFileFormat` (its coding constants) and a batch `decode` still needing
+  that format's context — typically `DecodeFunction.fromPerFile` over its format
+  tag and per-file `decodeOne` — and gets back a bound importer whose `decode`
+  the shell runs (one `FormatDecode.Result` per format: the merged sections and
+  notes, plus an `unreadableFiles` row per file that rejected), plus the
   deterministic source-file mint and its server-read seam, and the per-file
   review-key namespacing that keeps one claimed file's keys from colliding
-  with another's. Also the `PickedFile` vocabulary, the `SourceFile`
+  with another's. The factory binding the context is what keeps
+  `sourceFileFormat` spelled once per binding. Also the `PickedFile`
+  vocabulary, the `FormatDetector` seam the picker sniffs with, the `SourceFile`
   reference/decode vocabulary, and the pure per-resource `StagedImport` model.
   There is no `persist` sink: the write is the shell's one
   `persistBatchBundle`.
@@ -168,7 +171,7 @@ sits above `http-extraction` and below every binding, exactly as
   or another imaging import decodes a _document_: its decode belongs in a pure dialect package
   (the way rexall's carebook dialect and `web-trace-core`'s codec work), wrapped
   here by a sibling `*-importer-core` binding built on the same
-  `fileImporter`. The dialect sits below both transports, which is what
+  `FileImporter.make`. The dialect sits below both transports, which is what
   keeps the graph acyclic.
 
 ## References
