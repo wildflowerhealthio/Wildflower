@@ -1,7 +1,8 @@
-import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
+import { Effect, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import type { DecodedFile, PickedFile, SourceFile } from 'importer-fundamentals'
+import { checkTimeZone } from 'kitchen-sink'
 import type { Document } from 'positioned-text'
 import { extractPositionedText } from 'positioned-text-web'
 
@@ -11,20 +12,6 @@ import type { LifeLabsPdfSettings } from './settings.ts'
 import { LIFELABS_SYSTEM } from './source-system.ts'
 
 const adopt = adoptResource({ system: LIFELABS_SYSTEM })
-
-/** A zone name the runtime does not know is a parse failure, not a defect. */
-const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.ParseError> => {
-  if (Option.isSome(DateTime.zoneMakeNamed(timeZone))) return Effect.succeed(timeZone)
-  return Effect.fail(
-    new ParseResult.ParseError({
-      issue: new ParseResult.Type(
-        Schema.String.ast,
-        timeZone,
-        `"${timeZone}" is not an IANA time zone name`
-      ),
-    })
-  )
-}
 
 /**
  * Wrap the report-parse's `UnrecognizedLifeLabsDocument` as a `ParseError` so

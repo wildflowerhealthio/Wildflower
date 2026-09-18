@@ -7,11 +7,12 @@
  */
 import type { DicomHeader } from 'dicom'
 import { parseDicomFile } from 'dicom'
-import { DateTime, Effect, Either, Option, ParseResult, Schema } from 'effect'
+import { Effect, Either, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
 import { SourceFile } from 'importer-fundamentals'
 import type { DecodedFile, PickedFile } from 'importer-fundamentals'
+import { checkTimeZone } from 'kitchen-sink'
 
 import { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
 import type { DicomSettings } from './settings.ts'
@@ -23,25 +24,6 @@ const dicomParseAsParseError = (reason: string): ParseResult.ParseError =>
   new ParseResult.ParseError({
     issue: new ParseResult.Forbidden(Schema.Unknown.ast, undefined, reason),
   })
-
-/**
- * A zone name the runtime does not know is a parse failure, not a defect: the
- * setting is user-typed, and every `ImagingStudy.started` this decode emits is
- * resolved against it, so guessing a substitute would write instants hours
- * away from the ones the equipment recorded.
- */
-const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.ParseError> => {
-  if (Option.isSome(DateTime.zoneMakeNamed(timeZone))) return Effect.succeed(timeZone)
-  return Effect.fail(
-    new ParseResult.ParseError({
-      issue: new ParseResult.Type(
-        Schema.String.ast,
-        timeZone,
-        `"${timeZone}" is not an IANA time zone name`
-      ),
-    })
-  )
-}
 
 const labelAdopted = (resource: FhirResource, key: string, title: string): DecodedFile.Resource => {
   const adopted = adopt(resource)

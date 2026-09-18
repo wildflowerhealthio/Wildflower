@@ -55,7 +55,7 @@ decode yields one section per file when the header carries a patient identity.
   file, the import's settings, and the source-file id the importer's batch
   `decode` resolved for it (minted for a local pick, read off the existing
   reference for a server pick). It rejects a `settings.timeZone` the runtime cannot
-  resolve up front (`checkTimeZone`, a `ParseError`) rather than substituting
+  resolve up front (`checkTimeZone` from `kitchen-sink`, a `ParseError`) rather than substituting
   one — every `started` it emits is resolved against that zone, so a guess
   would write instants hours away from what the equipment recorded. The
   `source.id` is what `toFhirResources` stamps onto the `ImagingStudy`
