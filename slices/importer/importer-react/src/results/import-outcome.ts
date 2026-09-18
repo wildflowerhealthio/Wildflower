@@ -1,4 +1,5 @@
 import type { BatchEntryOutcome, WriteIssue } from 'fhir-r4/clients'
+import type { SkipReason } from 'importer-core'
 
 /**
  * What a confirmed import wrote, and what it could not — the value the results
@@ -16,23 +17,17 @@ import type { BatchEntryOutcome, WriteIssue } from 'fhir-r4/clients'
  */
 
 /**
- * One submitted resource's outcome, tagged with the file and provenance it
- * belongs to — a {@link BatchEntryOutcome} lifted to batch scope so the
- * results view can group every file's resources together by status while still
- * naming each row's file and the archive it wrote against.
+ * One submitted resource's outcome, tagged with the unit it belongs to — a
+ * {@link BatchEntryOutcome} lifted to batch scope so the results view can
+ * group every unit's resources together by status while still naming each
+ * row's unit.
  */
 interface ResourceResult extends BatchEntryOutcome {
-  /** The file this resource was decoded from. */
-  readonly fileName: string
-  /**
-   * The `DocumentReference/<id>` its `meta.source` names, or `undefined` when
-   * the reviewer skipped this file's source-file archive so nothing was
-   * stamped onto its extracted resources.
-   */
-  readonly sourceRef: string | undefined
+  /** The title of the unit this resource was decoded from (its file name, for a single-file format). */
+  readonly title: string
 }
 
-/** The tally a confirmed, written file resolves with. */
+/** The tally a confirmed, written unit resolves with. */
 interface ImportOutcome {
   /** How many resources the confirmed review chose to write. */
   readonly attempted: number
@@ -41,39 +36,29 @@ interface ImportOutcome {
    * reported for symmetry with `attempted`.
    */
   readonly excluded: number
-  /**
-   * The `DocumentReference/<id>` every extracted resource's `meta.source`
-   * names, or `undefined` when the source-file archive was skipped so nothing
-   * was stamped.
-   */
-  readonly sourceRef: string | undefined
   /** One result per attempted resource, in submit order — successes and failures alike. */
   readonly results: readonly ResourceResult[]
 }
 
 /**
- * Fold a file's attempted write into an {@link ImportOutcome}, tagging each
- * per-entry outcome with the file name and provenance ref.
+ * Fold a unit's attempted write into an {@link ImportOutcome}, tagging each
+ * per-entry outcome with the unit's title.
  *
  * @param attempted - How many resources the confirm attempted to write
- * @param sourceRef - The archive reference stamped onto every extracted
- *   resource, or `undefined` when the archive was skipped
- * @param fileName - The file the resources were decoded from
+ * @param title - The unit the resources were decoded from
  * @param entries - The write sink's per-entry outcomes, in submit order
  * @param excluded - How many previewed resources the reviewer opted out (default 0)
  * @returns The tally, with `results` carrying every entry's status + diagnostics
  */
 const importOutcome = (
   attempted: number,
-  sourceRef: string | undefined,
-  fileName: string,
+  title: string,
   entries: readonly BatchEntryOutcome[],
   excluded = 0
 ): ImportOutcome => ({
   attempted,
   excluded,
-  sourceRef,
-  results: entries.map((entry) => ({ ...entry, fileName, sourceRef })),
+  results: entries.map((entry) => ({ ...entry, title })),
 })
 
 /** How many of a file's resources the server accepted (a 2xx status). */
@@ -90,48 +75,35 @@ const isPartialOutcome = (outcome: ImportOutcome): boolean =>
   outcome.results.some((result) => !result.ok)
 
 /**
- * Why a file in a batch contributed no written resources without that being a
- * failure.
+ * What a single unit in a confirmed batch resolved to.
  *
  * @remarks
- * The read half's non-writing outcome, plus the rare unreadable file: a
- * `nothing` file previewed no resources to import (its traffic matched no kind,
- * or matched but decoded nothing — one collapsed outcome under per-URL
- * recognition), and an `unreadable` file did not parse as a HAR at all. Neither
- * is a failure — an empty preview is ordinary data, not an error — but each is
- * reported so a reader knows why a file they picked wrote nothing.
- */
-type SkipReason = 'nothing' | 'unreadable'
-
-/**
- * What a single file in a confirmed batch resolved to.
- *
- * @remarks
- * Best-effort per the batch semantics: one file's failure never stops the rest,
- * so every file lands on exactly one of these. `imported` carries the file's own
- * {@link ImportOutcome} (which may itself be partial — some of its resources,
- * the source-file archive among them, failed to write); `skipped` is a file
- * that had nothing to write. There is no `uploadFailed` case: the archive is
- * no longer uploaded on its own, so its write is just one of the `imported`
- * file's per-entry results. `fileName` names the file in every case, and `id`
- * is the picked file's stable identity, carried from its `FileReadOutcome` for
- * a React `key` since two files in a batch can share a name.
+ * Best-effort per the batch semantics: one unit's failure never stops the
+ * rest, so every unit lands on exactly one of these. `imported` carries the
+ * unit's own {@link ImportOutcome} (which may itself be partial — some of its
+ * resources, the source file among them, failed to write); `skipped` is a
+ * unit that had nothing to write, with `importer-core`'s {@link SkipReason}.
+ * The source file writes in the same bundle as the resources it names, so
+ * its write is just one of the `imported` unit's per-entry results. `title`
+ * names the unit in every case (its file name, for a single-file format),
+ * and `id` is the unit's stable identity, carried from its `FormatDecode.Result`
+ * for a React `key` since two units in a batch can share a title.
  */
 type FileImportResult =
   | {
       readonly _tag: 'imported'
       readonly id: string
-      readonly fileName: string
+      readonly title: string
       readonly outcome: ImportOutcome
     }
   | {
       readonly _tag: 'skipped'
       readonly id: string
-      readonly fileName: string
-      readonly reason: SkipReason
+      readonly title: string
+      readonly reason: SkipReason | 'unrecognized'
     }
 
-/** A confirmed batch: one {@link FileImportResult} per file the user confirmed. */
+/** A confirmed batch: one {@link FileImportResult} per unit the user confirmed. */
 type BatchOutcome = readonly FileImportResult[]
 
 /** Every written-or-attempted resource across the batch, flattened out of the imported files. */
@@ -230,8 +202,8 @@ const summarizeBatch = (batch: BatchOutcome): BatchSummary =>
  *
  * @remarks
  * The `collectImportSummary` semantics, lifted to the batch: **any** rejected
- * resource — the source-file archive included, since it now writes in the same
- * batch — makes the whole batch partial. A `skipped` file is not a failure
+ * resource — the source file included, since it writes in the same batch —
+ * makes the whole batch partial. A `skipped` file is not a failure
  * (an empty preview is ordinary data), so it does not make a batch partial on
  * its own.
  */

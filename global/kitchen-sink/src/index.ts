@@ -1,3 +1,4 @@
+export { checkTimeZone } from './check-time-zone.ts'
 export { deepFreeze } from './deep-freeze.ts'
 export { FNV_1A_64_OFFSET_BASIS, FNV_64_PRIME, fnv1a64 } from './fnv1a.ts'
 export { formatBytes } from './format-bytes.ts'

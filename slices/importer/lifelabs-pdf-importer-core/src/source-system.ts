@@ -3,7 +3,7 @@
  * Wildflower-minted `sid` URI naming LifeLabs. **Persisted wire format:** the
  * hash domain for every derived local id and the `Identifier.system` beside
  * every source id, so changing it orphans everything already imported. Its
- * own leaf module so the descriptor, the response kind and the FHIR synthesis
+ * own leaf module so the importer, the response kind and the FHIR synthesis
  * import it without a cycle.
  */
 const LIFELABS_SYSTEM = 'https://wildflowerhealth.io/fhir/sid/lifelabs'
@@ -24,4 +24,13 @@ const LifeLabsIdentifierSystem = {
   OntarioHealthCardNumber: 'https://fhir.infoway-inforoute.ca/NamingSystem/ca-on-patient-hcn',
 } as const
 
-export { LIFELABS_SYSTEM, LifeLabsIdentifierSystem }
+const LIFELABS_PDF_SOURCE_FILE_CODE = 'lifelabs-pdf-archive'
+
+const LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE = 'application/pdf'
+
+export {
+  LIFELABS_PDF_SOURCE_FILE_CODE,
+  LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
+  LIFELABS_SYSTEM,
+  LifeLabsIdentifierSystem,
+}

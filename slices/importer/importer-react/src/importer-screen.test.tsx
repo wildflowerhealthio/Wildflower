@@ -14,6 +14,7 @@ import type { TraceBody } from 'web-trace-core'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
+import { SKIPPED_HEADING } from './results/import-results.tsx'
 
 /**
  * The whole preview-then-confirm flow, driven end-to-end over the real
@@ -33,8 +34,10 @@ import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
  *   carrying `meta.source` naming that archive (a server-sourced HAR shows no
  *   archive section, uploads nothing, and links to the document it was fetched
  *   from);
- * - **skipping the archive strips `meta.source`** — unticking the "Source file"
- *   row writes the resources with no provenance stamp and no `DocumentReference`;
+ * - **skipping the archive keeps `meta.source`** — unticking the "Source file"
+ *   row writes no `DocumentReference`, and the resources still name it (the
+ *   format stamped them at decode; the id is deterministic in the file, so a
+ *   later upload of the same file resolves the link);
  * - **a failing write folds into a partial result** (a rejected archive is just
  *   one failed row, not a gate on the rest), and **cancel discards with no
  *   writes**.
@@ -136,6 +139,12 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
     expect(writes().length).toBeGreaterThan(0)
+    // The results name only the formats that claimed a file. The batch has one
+    // HAR and nothing else, so the "nothing to import" section must be absent
+    // entirely — a confirm that planned a write per *registered* format instead
+    // reported one titleless skipped row per unused format.
+    expect(screen.queryByRole('heading', { name: SKIPPED_HEADING })).toBeNull()
+    expect(screen.getByRole('status').textContent).toMatch(/Wrote 4 of 4 resources/)
   })
 
   it('writes the source-file archive in the same batch, first, and stamps every resource with it', async () => {
@@ -374,7 +383,7 @@ describe('ImporterScreen', () => {
     expect(body).toMatchObject({ resourceType: 'Patient', gender: 'female' })
   })
 
-  it('skips the source-file archive when unticked — resources write with no meta.source', async () => {
+  it('skips the source-file archive when unticked — resources still write with meta.source', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -394,13 +403,14 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — no archive `DocumentReference` write, and the three resources wrote
-    // with no `meta.source` (nothing to point at once the archive is skipped).
+    // Assert — no archive `DocumentReference` write, and the three resources
+    // still name the archive: the format stamped `meta.source` at decode, and
+    // skipping the row changes what is written, not what was decoded.
     expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
     const resourceWrites = writes().filter(isResourceWrite)
     expect(resourceWrites).toHaveLength(3)
     for (const write of resourceWrites) {
-      expect(hasMetaSource(write.body)).toBe(false)
+      expect(metaSourceOf(write.body)).toMatch(/^DocumentReference\/.+/)
     }
   })
 
@@ -546,17 +556,6 @@ const isResourceWrite = (write: RecordedRequest): boolean =>
 const MetaSourceWire = Schema.Struct({ meta: Schema.Struct({ source: Schema.String }) })
 const metaSourceOf = (body: string): string =>
   Schema.decodeUnknownSync(MetaSourceWire)(JSON.parse(body)).meta.source
-
-/** Whether a written resource carries a non-null `meta.source` — false when the archive was skipped. */
-const OptionalMetaSourceWire = Schema.Struct({
-  meta: Schema.optional(
-    Schema.NullOr(Schema.Struct({ source: Schema.optional(Schema.NullOr(Schema.String)) }))
-  ),
-})
-const hasMetaSource = (body: string): boolean => {
-  const meta = Schema.decodeUnknownSync(OptionalMetaSourceWire)(JSON.parse(body)).meta
-  return meta != null && meta.source != null
-}
 
 /** The last path segment of a request URL — a resource's logical id on a PUT/GetById. */
 const idFromUrl = (url: string): string => {

@@ -173,4 +173,8 @@ const DocumentReferenceSchema: Schema.Schema<
   never
 > = DocumentReferenceStruct
 
+/** A decoded `DocumentReference` — the type {@link DocumentReferenceSchema} produces. */
+type Type = typeof DocumentReferenceSchema.Type
+
 export { DocumentReferenceSchema as Schema, StatusSchema, DocStatusSchema }
+export type { Type }

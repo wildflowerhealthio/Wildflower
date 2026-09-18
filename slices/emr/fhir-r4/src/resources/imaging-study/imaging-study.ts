@@ -204,4 +204,8 @@ const ImagingStudySchema: Schema.Schema<
   never
 > = ImagingStudyStruct
 
+/** A decoded `ImagingStudy` — the type {@link ImagingStudySchema} produces. */
+type Type = typeof ImagingStudySchema.Type
+
 export { ImagingStudySchema as Schema, StatusSchema }
+export type { Type }

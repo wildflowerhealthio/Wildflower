@@ -1,7 +1,8 @@
 import { DateTime, Effect, Option, ParseResult } from 'effect'
+import type { DocumentReference } from 'fhir-r4/resources'
 import { HttpResponseKind, Specificity } from 'http-extraction-fundamentals'
 import { TraceExchange } from 'web-trace-core'
-import { type DocumentReferenceType, toDocumentReference } from 'web-trace-core/codec'
+import { toDocumentReference } from 'web-trace-core/codec'
 import { toExchangeFields } from 'web-trace-core/provenance'
 
 import type { BodyDigestUnavailable } from 'web-trace-core/capture'
@@ -59,7 +60,7 @@ interface RawExchangeResponseKindOptions {
  */
 const makeRawExchangeResponseKind = (
   options: RawExchangeResponseKindOptions
-): HttpResponseKind.HttpResponseKind<DocumentReferenceType> =>
+): HttpResponseKind.HttpResponseKind<DocumentReference.Type> =>
   HttpResponseKind.make({
     name: 'RawExchangeResponseKind',
     // Total catch-all: `Some` for every URL, no `source`, never throws — see the

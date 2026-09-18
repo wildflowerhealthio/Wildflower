@@ -23,7 +23,7 @@ const startsWithPdfMagic = (bytes: Uint8Array): boolean => {
 }
 
 /**
- * `FileImporterDescriptor.detect` for the LifeLabs PDF format: `%PDF-` magic
+ * `FileImporter`'s `detect` for the LifeLabs PDF format: `%PDF-` magic
  * bytes or an extension of `.pdf`.
  */
 const detectLifeLabsPdf = (fileBytes: Uint8Array, fileName: string): boolean =>

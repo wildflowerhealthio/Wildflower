@@ -1,13 +1,14 @@
-import type { FhirResource } from 'fhir-r4/resources'
-import { StagedImport, sectionResources } from 'importer-fundamentals'
-import { type JSX, useCallback, useState } from 'react'
+import type { FormatKind } from 'importer-core'
+import { formatKinds } from 'importer-core'
+import { StagedImport, DecodedFile } from 'importer-fundamentals'
+import { type JSX, useCallback, useMemo, useState } from 'react'
 
 import { PreviewPanel } from './preview/preview-panel.tsx'
-import { useConfirmImport } from './preview/use-confirm-import.ts'
-import { useImportRun } from './preview/use-import-run.ts'
 import { initialExclusionsFor, useServerDiff } from './preview/use-server-diff.ts'
 import { formatRegistry } from './registry.ts'
 import { ImportResults } from './results/import-results.tsx'
+import { useConfirmImport } from './run/use-confirm-import.ts'
+import { useImportRun } from './run/use-import-run.ts'
 import { SourcePicker } from './sources/source-picker.tsx'
 import styles from './importer-screen.module.css'
 
@@ -19,16 +20,16 @@ import styles from './importer-screen.module.css'
  * @remarks
  * The screen is the opt-in seam made visible: the read half
  * (`SourcePicker` → `useImportRun` → `PreviewPanel`) writes nothing — each
- * file decodes to sections of labeled resources the reviewer can exclude or
- * edit — and only the explicit confirm reaches the write half
- * (`useConfirmImport` — upload-then-persist, per file, verbatim from the
- * preview, best-effort). A batch may span formats: the picker identifies
- * each file against the registered descriptors, every downstream step
- * dispatches on the file's `format` tag, and the preview mounts one
+ * file decodes to resources grouped by format, its own source file among
+ * them, that the reviewer can exclude or edit — and only the explicit
+ * confirm reaches the write half (`useConfirmImport` — one batch bundle per
+ * format, verbatim from the preview, best-effort). A batch may span formats:
+ * the picker identifies each file against the registered detectors,
+ * `importer-core` groups and decodes by format, and the preview mounts one
  * settings form per format present — a settings change re-decodes that
- * format's files through `useImportRun.applySettings`. Per-resource
- * selections are keyed by stable resource keys, so they survive a
- * re-decode where the resource does.
+ * format through `useImportRun.applySettings`. Per-resource selections are
+ * keyed by format kind and stable resource key, so they survive a re-decode
+ * where the resource does.
  *
  * The slice owns every level of this flow rather than the host app: an app
  * mounts only this screen. Mount it inside the host's router and
@@ -51,50 +52,46 @@ const CHECKING_SERVER_MESSAGE = 'Checking the server for existing copies…'
 const SERVER_DIFF_ERROR_MESSAGE =
   'Could not check the server for existing copies. Duplicate detection is unavailable — all resources will appear as new.'
 
-/** The bound descriptors, one per registered format, in registry order. */
-const registeredDescriptors = Object.values(formatRegistry)
+/** The registered formats' detectors, in registry (priority) order. */
+const registeredDetectors = Object.values(formatRegistry)
 
 /** The importer flow. Takes no props — it reads everything from router context. */
 const ImporterScreen = (): JSX.Element => {
-  const importRun = useImportRun(formatRegistry)
+  const importRun = useImportRun()
   const confirm = useConfirmImport()
 
-  const [selections, setSelections] = useState<
-    ReadonlyMap<string, StagedImport.Selection<FhirResource>>
-  >(new Map())
+  const [selections, setSelections] = useState<ReadonlyMap<FormatKind, StagedImport.Selection>>(
+    new Map()
+  )
 
   const runState = importRun.state
-  const readFiles = runState._tag === 'ready' ? runState.files : undefined
-  const diff = useServerDiff(readFiles, runState._tag === 'ready' ? runState.batchId : 0)
+  const batch = runState._tag === 'ready' ? runState.batch : undefined
+  const diff = useServerDiff(batch, runState._tag === 'ready' ? runState.batchId : 0)
+
+  const initialSelections = useMemo((): ReadonlyMap<FormatKind, StagedImport.Selection> => {
+    if (diff._tag === 'loading' || batch === undefined) return new Map()
+    const entries: [FormatKind, StagedImport.Selection][] = []
+    for (const kind of formatKinds) {
+      const result = batch[kind]
+      if (result.files.length === 0) continue
+      const labeled = DecodedFile.resources(result.decoded)
+      const excluded = initialExclusionsFor(labeled, diff.comparisons.get(kind))
+      if (excluded.size > 0) {
+        entries.push([kind, { excludedResources: excluded, resourceOverrides: new Map() }])
+      }
+    }
+    return new Map(entries)
+  }, [diff, batch])
 
   const selectionFor = useCallback(
-    (fileId: string): StagedImport.Selection<FhirResource> => {
-      const user = selections.get(fileId)
-      if (user !== undefined) return user
-      // Seed the initial selection from the server-diff status: an
-      // `unchanged` resource is pre-excluded so a re-import writes nothing
-      // by default. As soon as the reviewer toggles anything,
-      // `selections.get(fileId)` wins and this seed is out of the picture.
-      if (diff._tag === 'loading' || readFiles === undefined) {
-        return StagedImport.initial<FhirResource>()
-      }
-      const file = readFiles.find(
-        (candidate) => candidate.id === fileId && candidate._tag === 'read'
-      )
-      if (file === undefined || file._tag !== 'read') return StagedImport.initial<FhirResource>()
-      const labeled = sectionResources(file.decoded.sections)
-      if (labeled.length === 0) return StagedImport.initial<FhirResource>()
-      return {
-        excludedResources: initialExclusionsFor(labeled, diff.comparisons),
-        resourceOverrides: new Map(),
-      }
-    },
-    [selections, diff, readFiles]
+    (format: FormatKind): StagedImport.Selection =>
+      selections.get(format) ?? initialSelections.get(format) ?? StagedImport.initial(),
+    [selections, initialSelections]
   )
 
   const onSelectionChange = useCallback(
-    (fileId: string, selection: StagedImport.Selection<FhirResource>): void => {
-      setSelections((previous) => new Map(previous).set(fileId, selection))
+    (format: FormatKind, selection: StagedImport.Selection): void => {
+      setSelections((previous) => new Map(previous).set(format, selection))
     },
     []
   )
@@ -118,7 +115,7 @@ const ImporterScreen = (): JSX.Element => {
 
   const body = ((): JSX.Element => {
     if (runState._tag === 'idle')
-      return <SourcePicker descriptors={registeredDescriptors} onPick={importRun.run} />
+      return <SourcePicker detectors={registeredDetectors} onPick={importRun.run} />
     if (runState._tag === 'reading') {
       return (
         <p role="status" className={styles.status}>
@@ -147,7 +144,7 @@ const ImporterScreen = (): JSX.Element => {
           </p>
         )}
         <PreviewPanel
-          files={runState.files}
+          batch={runState.batch}
           settings={importRun.settings}
           settingsRegistry={formatRegistry}
           selectionFor={selectionFor}
@@ -157,7 +154,7 @@ const ImporterScreen = (): JSX.Element => {
           confirming={confirming}
           confirmDisabled={confirmBlocked}
           onCancel={startOver}
-          onConfirm={() => confirm.confirm(runState.files, selectionFor)}
+          onConfirm={() => confirm.confirm(runState.batch, selectionFor)}
         />
       </>
     )

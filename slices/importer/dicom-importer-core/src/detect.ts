@@ -26,7 +26,7 @@ const hasDicmMagic = (bytes: Uint8Array): boolean => {
 }
 
 /**
- * `FileImporterDescriptor.detect` for the DICOM format: `DICM` at byte offset
+ * `FileImporter`'s `detect` for the DICOM format: `DICM` at byte offset
  * 128 or an extension of `.dcm`.
  */
 const detectDicom = (fileBytes: Uint8Array, fileName: string): boolean =>

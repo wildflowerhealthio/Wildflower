@@ -1,63 +1,78 @@
 # AGENTS.md — slices/importer/importer-react
 
 The browser UI adapter of the importer slice, and its **shell**: the whole
-pick-review-confirm flow plus the closed `format → { descriptor,
-SettingsPicker }` registry. One surface a host app mounts, reading the authed
-runner out of router context:
+pick-review-confirm flow, plus the React half of the closed format registry.
+One surface a host app mounts, reading the authed runner out of router context:
 
 - **`ImporterScreen`** — pick one or more files (local files dropped or
-  chosen, or a single HAR source file already on the device's FHIR server),
-  review exactly what every file would write in one combined, **generalized**
-  view — each file's decoded sections with per-resource include/edit, under
-  its format's settings form — confirm once to write the reviewed, included
-  resources across the batch (uploading each local file's source file first), and
-  read the per-file results. Local picking is a **batch**; the server list is
+  chosen, or a single source file already on the device's FHIR server), review
+  exactly what every format would write in one combined, **generalized**
+  view — each format's decoded sections with per-resource include/edit, under
+  its own settings form — confirm once to write the reviewed, included
+  resources across the batch (every file's source file among them), and read
+  the per-format results. Local picking is a **batch**; the server list is
   single-select.
+
+The whole read half — grouping a pick by format, running each format's
+`decode`, re-decoding under new settings, and planning a format's write — is
+`importer-core`'s, and pure. This package is the React state, the views, and
+the two authed actions around it.
 
 The anonymize surface is the anonymizer slice's shell
 ([anonymizer-react](../../anonymizer/anonymizer-react/AGENTS.md)), not part of
 this package. This package exports `ServerSourceFileList` — the
-uploaded-source-files pick source, spanning every registered format's source files
-(HAR, LifeLabs PDF) — which a host passes into that shell's `serverSource`
-slot.
+uploaded-source-files pick source, spanning every registered format's source
+files (HAR, LifeLabs PDF, DICOM) — which a host passes into that shell's
+`serverSource` slot.
 
 ## Layering
 
 `importer-react` is an adapter and follows the rule in
 [slices/AGENTS.md](../../AGENTS.md): it depends on its sources, never the reverse.
-It depends on `importer-fundamentals` (the `FileImporterDescriptor` contract and
-the pure `StagedImport` model), `har-importer-core` (the `harImporterDescriptor`,
-`HarSettings`, and `HttpArchive.LogFromHarJson`), `har-importer-react`
-(`ReviewBody`, `HarSettingsPicker`), `http-archive` (the `HttpArchive`
-projection), `web-trace-core` (the HAR archive codec under `/codec` and the HAR
-parser under `/har`), `fhir-r4` (the typed client and `ResourceWriteFailure`),
-and `fhir-r4-react` (the authed runner and the slice runtime layer).
+It depends on `importer-core` (the importer registry, `readBatch` /
+`redecodeFormat` / `claimedFormats` / `planFormatWrite`, and the
+`BatchDecodeResult` model), `importer-fundamentals` (the `PickedFile`
+vocabulary, the `FormatDecode.Result` and `DecodedFile` shapes, and the pure
+`StagedImport` model), each format's
+React package for its settings picker only (`har-importer-react`,
+`lifelabs-pdf-importer-react`, `dicom-importer-react`), `fhir-r4` (the typed
+client, `persistBatchBundle`, and the server-diff classifier), `fhir-r4-react`
+(the authed runner and the slice runtime layer), and `react-tundraish`. It
+names no format's core package and no `web-trace-core` at runtime — HAR
+fixtures in `importer-screen.test.tsx` are the only place `http-archive` and
+`web-trace-core` appear at all.
 
-The seam between this package and a format binding is the **descriptor** and the
-`StagedImport` model: the read half runs the descriptor's `decode` (no services, no
-writes) into sections + notes, the review drives `StagedImport`'s pure per-resource
-transitions over the flattened sections, and the write half runs
-`StagedImport.chosenResources` through the shell's shared `persistBatchBundle`. If a component needs
-more than the descriptor and `StagedImport` expose, widen those rather than reaching
-around them.
+The seam between this package and a format is its **`FileImporter`** (reached
+through `importer-core`'s registry) and the `StagedImport` model: the read half
+runs `readBatch` (no writes) into one result per format — sections + notes —
+the review drives `StagedImport`'s pure per-resource transitions over the
+flattened sections, and the write half runs `planFormatWrite`'s resources
+through the shared `persistBatchBundle`. If a component needs more than those expose, widen them
+rather than reaching around them.
 
-**Presentation and interaction only.** Nothing here parses HAR, encodes a
-source file, runs entities, or writes resources. The parsers, the source file codecs,
-`decode` (including each format's recognition), and the write sink (`persist` →
-`fhir-r4`'s `persistResources`) all live below this package; it drives them and
+**Presentation and interaction only.** Nothing here parses a file, mints or
+encodes a source file, runs entities, or writes resources. The parsers, the
+source-file mint, `decode` (including each format's recognition),
+and the batch machinery all live below this package; it drives them and
 reimplements none.
 
 ## The registry
 
-`src/registry.ts` is the closed, compile-time `format → BoundFormat<K>` map —
-the single edit point for wiring a file-format importer into the shell. A
-`BoundFormat` bundles the descriptor's fields (typed per format through the
-`FormatVariant` type-level map, so per-format concrete types survive without
-casts) plus the one React part a format contributes: its `SettingsPicker`. A
-format missing a part fails to compile here. `har` and `lifelabs-pdf` are
-registered. `defaultFormatSettings` collects every format's `defaultSettings`
-into the `FormatSettings` record the shell holds, and `formatKinds` is the
-typed registry-order walk. There is no format-specific review UI slot: the
+`src/registry.ts` is `importer-core`'s closed `format → FileImporter` registry
+with the one React part a format contributes — its `SettingsPicker` — attached
+to each entry by `withSettingsPicker`, a **spread**, not a subclass: a
+`FileImporter` is a plain record with no prototype, so the spread is total and
+a field added to it cannot be silently dropped on the way through. The importer
+half is registered in `importer-core/src/registry.ts`; this file is the single
+edit point for a format's UI. **`FormatWithPicker<K>`** — named for what it
+adds, and defined as `importer-core`'s `BoundFormat<K>` intersected with the
+picker rather than restating it — keeps per-format concrete types against
+`FormatSettings[K]`, so a picker typed against another format's settings fails
+to compile here. `har`, `lifelabs-pdf`, and `dicom` are registered.
+This module exports **only what it adds**: `defaultFormatSettings`,
+`formatKinds`, `FormatKind` and `FormatSettings` are `importer-core`'s and are
+imported from there directly, since re-exporting them here gave the package two
+routes to the same symbol and it used both. There is no format-specific review UI slot: the
 `PreviewPanel` renders every format the same way, from its decoded sections.
 The importer has no HTTP wire union to derive, so there is no separate
 `importer-registry` package the collector slice needs.
@@ -66,78 +81,100 @@ The importer has no HTTP wire union to derive, so there is no separate
 
 - **`src/importer-screen.tsx`** — the flow, top to bottom. Reads everything from
   router context (no props): `SourcePicker` → `useImportRun` → `PreviewPanel` →
-  `useConfirmImport` → `ImportResults`. It holds each read file's
-  `StagedImport.Selection`, keyed by the file's stable id (absent = the default,
-  every resource included, so an untouched file still imports everything its
-  decode yielded). A cancel or "import another" discards the read, every
-  review edit, and any confirm outcome, and returns to the picker; the
-  per-format settings persist across it.
-- **`src/registry.ts`** — the closed format registry (above).
-- **`src/preview/`** — the read half, the review view, and the write action.
-  `use-import-run.ts` runs the descriptor's `decode` (via `useRunAuthed`) once
-  per picked file under that format's current settings, holds the batch of
-  `FileReadOutcome`s (each a `read` — its `DecodedFile` of sections + notes —
-  an `unreadable`, or an `unrecognized` file), owns the `FormatSettings`
-  record, and re-decodes a format's files from their retained bytes when
-  `applySettings` changes that format's settings (file ids survive, so keyed
-  selections keep applying); `use-server-diff.ts` pre-classifies every
-  previewed resource against the server (`new` / `unchanged` / `changed`) for
-  the row badges and the "already there, so pre-excluded" seed — the screen
-  blocks the first paint on it (`firstLoad`) but **not** on the
-  re-classification a settings change triggers, since unmounting the panel
-  mid-review would drop the focus of whatever settings control the reviewer is
-  using; `preview-panel.tsx` renders the batch grouped by
-  format — the format's settings form (dispatched `Match.exhaustive` on the
-  format tag, so registering a format without a branch fails to compile rather
-  than silently binding its group to a sibling's picker) over each of its
-  files' sectioned,
-  per-resource reviews (include checkbox, one-line `describeResource`
-  summary, Edit/Revert with the `ResourceEditor` dialog, per-type tallies,
-  and the file's notes folded into a collapsed details block) — under one
-  shared confirm, gated on the batch having at least one **included**
-  resource; `use-confirm-import.ts` is the opt-in write action, per file,
-  best-effort — one `persistBatchBundle` of each file's `StagedImport.chosenResources`
-  (its source file among them, when the reviewer kept it), each
-  extracted resource stamped with the source file's reference and the source file's own
-  id locked so an edit can't drift the link; a skipped source file leaves the
-  resources unstamped. One file's failure never stops the rest, and a rejected
-  source file is just one failed entry — there is no separate upload step to fail.
-  `resource-editor.tsx` (+
-  `resource-editor-helpers.ts`) is the inline JSON editor: **Keep** parses
-  the text, decodes through `Schema.decodeUnknown(FhirResourceSchema)`, and
-  refuses the edit unless it parses and preserves `resourceType` / `id`;
-  `describe-resource.ts` is the pure one-line summary per resource type.
-  Both moved here from `har-importer-react` when the review display was
-  generalized.
+  `useConfirmImport` → `ImportResults`. It holds each format's
+  `StagedImport.Selection`, keyed by format kind (absent = the server-diff
+  seed, every `new` or `changed` resource included, so an untouched format
+  still imports everything its decode yielded). A cancel or "import
+  another" discards the read, every review edit, and any confirm outcome, and
+  returns to the picker; the per-format settings persist across it.
+- **`src/registry.ts`** — the React half of the closed format registry (above).
+- **`src/run/`** — the two hooks that drive the flow's halves, held apart from
+  the view they feed: the read (`use-import-run.ts`) and the opt-in write
+  (`use-confirm-import.ts`). The confirm hook is the write half and does not
+  belong under `preview/`.
+  `use-import-run.ts` is React state around `importer-core`: `run` calls
+  `readBatch` (through `useRunAuthed`) over the whole pick and holds the
+  resulting `BatchDecodeResult`, `applySettings` calls `redecodeFormat` for the
+  one format whose settings changed — from that format's retained
+  `PickedFile`s, keeping every id and review key, so keyed selections keep
+  applying — and it owns the `FormatSettings` record, the `batchId` that tells
+  a fresh pick from a re-decode, and the in-flight ticket that drops a stale
+  result. It imports the registry rather than taking it as a parameter, so its
+  dependency arrays say what they mean. Grouping, decoding, and folding
+  outcomes all happen in the core.
+- **`src/preview/`** — the review view and the state it needs.
+  `use-server-diff.ts` pre-classifies every previewed resource against the
+  server (`new` / `unchanged` / `changed`) for the row badges and the "already
+  there, so pre-excluded" seed, keyed **by format kind and then by resource
+  key** (`FormatComparisons`) — two formats can carry the same resource key, so
+  a flat map would let one format's verdict overwrite another's. Within one
+  format the keys are already distinct, because `FileImporter.make` namespaces each
+  claimed file's keys by its slot in the batch. The screen blocks the
+  first paint on it but **not** on the re-classification a settings change
+  triggers, since unmounting the panel mid-review would drop the focus of
+  whatever settings control the reviewer is using.
+  `preview-panel.tsx` renders the batch grouped by format — one group per
+  `claimedFormats` entry, its settings form (the registry's own
+  `SettingsPicker`, indexed by the format tag) over that format's sectioned,
+  per-resource review — under one shared confirm, gated on the batch having at
+  least one **included** resource. It is the panel, the actions and the editor
+  dialog only; the review body it renders per format is
+  `format-review-body.tsx` — named for what it covers, one _format's_ review
+  across every file that format claimed (per-type tallies, one titled section
+  per decoded section with include checkbox and one-line `describeResource`
+  summary, Edit/Revert, unreadable-file rows, and the notes folded into a
+  collapsed details block). The server-diff badge and its field-level
+  disclosure are `diff-badge.tsx`, and every user-visible string is
+  `preview-text.ts` — imported from there by everything that shows one,
+  including this package's `index.ts`, rather than re-exported through the
+  panel.
+  `use-confirm-import.ts` is the opt-in write action, per **claimed** format,
+  best-effort: `planFormatWrite` (in `importer-core`) then one
+  `persistBatchBundle` of exactly those resources. It adds nothing to any
+  resource — no id locking, no provenance stamping — because the format's
+  `decode` already minted the source file and stamped every extracted
+  resource's `meta.source`. One format's failure never stops the rest, and a
+  rejected source file is just one failed entry; there is no separate upload
+  step to fail.
+  `resource-editor.tsx` (+ `resource-editor-helpers.ts`) is the inline JSON
+  editor: **Keep** parses the text, decodes through
+  `Schema.decodeUnknown(FhirResourceSchema)`, and refuses the edit unless it
+  parses and preserves `resourceType` / `id`; `describe-resource.ts` is the
+  pure one-line summary per resource type. Both moved here from
+  `har-importer-react` when the review display was generalized.
 - **`src/results/`** — the outcome. `import-outcome.ts` is the pure fold: the
-  per-file `ImportOutcome` and the `FileImportResult`/`BatchOutcome` aggregate
-  (`summarizeBatch`, `isPartialBatch`), all on `collectImportSummary` semantics
-  (any failure ⇒ partial); `import-results.tsx` renders the batch grouped by
-  response code — every submitted resource (the source file included)
-  with its status, plus the files that had nothing to import — under one
-  aggregate tally. There is no upload-failed section: a rejected source file is an
-  ordinary failure row.
-- **`src/sources/`** — the picker. `picked-file.ts` is the vocabulary
-  (`PickedFile` — `{ fileName, bytes, source }` — the `local` / `server`
-  `PickedFileSource`, and `sourceFileReference` — the one spelling of a
-  `DocumentReference/<id>` reference, format-blind); `local-file.ts` is
-  the format-blind "read a local file's bytes and identify it against
-  the registered descriptors' `detect`" gate — no descriptor's `decode`
-  runs at pick time; `server-source-file-list.tsx` is the uploaded-source-files
-  pick source (rows, paging, per-row explicit **Preview** + **Use as
-  source** buttons, the raw-contents modal each Preview opens), spanning
-  every registered format via the descriptor source file seam, and exported
-  for the anonymizer shell's `serverSource` slot as much as used here;
-  `source-picker.tsx` composes the drop-and-pick zone, the file input it
-  opens, and that server list. Two modes: `'batch'` (default; the importer
-  flow) accepts several files in one pick; `'single'` trims the accepted
-  list to the first file and drops the OS dialog's `multiple` attribute —
-  the server list is single-select in both.
+  per-format `ImportOutcome` and the `FileImportResult`/`BatchOutcome`
+  aggregate (`summarizeBatch`, `isPartialBatch`), every row carrying the
+  format result's `title` (its claimed file names) rather than a file name of
+  its own, all on `collectImportSummary` semantics (any failure ⇒ partial);
+  `import-results.tsx` renders the batch grouped by response code — every
+  submitted resource (the source file included) with its status, plus the
+  formats that had nothing to import — under one aggregate tally. Only claimed
+  formats appear: a format that took no files is not a "nothing to import"
+  row. There is no
+  upload-failed section: a rejected source file is an ordinary failure row.
+- **`src/sources/`** — the picker. `picked-file.ts` is a re-export shim of
+  `importer-fundamentals`' vocabulary (`PickedFile` — `{ fileName, bytes,
+source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
+  `serverSource`, and `sourceFileReference`); nothing here redefines it, since
+  every format's `decode` reads the same type. `local-file.ts` is the
+  format-blind "read a local file's bytes and identify it against the
+  registered formats' `detect`" gate — no format's `decode` runs at
+  pick time; `server-source-file-list.tsx` is the uploaded-source-files pick
+  source (rows, paging, per-row explicit **Preview** + **Use as source**
+  buttons, the raw-contents modal each Preview opens), spanning every
+  registered format via its importer's server-read seam, and exported for the
+  anonymizer shell's `serverSource` slot as much as used here;
+  `source-picker.tsx` composes the drop-and-pick zone, the file input it opens,
+  and that server list. Two modes: `'batch'` (default; the importer flow)
+  accepts several files in one pick; `'single'` trims the accepted list to the
+  first file and drops the OS dialog's `multiple` attribute — the server list
+  is single-select in both.
 - **`src/queries/`** — the reads. `source-files.ts` is the paged, format-blind
   `DocumentReference` search: one request per page with `category` set to
   the comma-joined `system|code` tokens of every registered format
   (`SOURCE_FILES_CATEGORY_TOKEN`), each returned resource classified by
-  dispatching every descriptor's `isSourceFile` predicate in registry order
+  dispatching every format's `isSourceFile` predicate in registry order
   (disjoint by construction) so rows are tagged with the format they
   came from; plus `fetchSourceFile` — the row-select's fetch-and-decode
   through the row's format's `sourceFileFromDocumentReference` — and
@@ -145,23 +182,24 @@ The importer has no HTTP wire union to derive, so there is no separate
   `page-token.ts` pulls the continuation cursor out of a bundle's `next`
   link (a copy of the web-trace viewer's, see the trap); `keys.ts` holds
   the query-key roots.
-- **The source file is a reviewed resource, built at read time.**
-  `useImportRun` mints a `local` pick's source file `DocumentReference` once
-  (`descriptor.buildSourceFile`, `Match.type<FormatKind>()`-dispatched) and
-  injects it as its own "Source file" `LabeledSection` (stable key
-  `source-file`) ahead of the extracted sections, so the reviewer can rename
-  its JSON or skip it like any resource; a settings re-decode reuses the same
-  source file rather than minting a fresh one, so its id and the reviewer's edit
-  stay put. The source file list query is invalidated once at end-of-batch (a fresh
-  source file is a new `DocumentReference` the picker should see next pick — cheap
-  even when none wrote).
+- **The source file is a reviewed resource the format minted.** A `local`
+  pick's source-file `DocumentReference` is minted inside that format's
+  `decode` (by the batch decode `FileImporter.make` built) and arrives as its own
+  "Source file" section ahead of that file's extracted ones, keyed
+  `<slot>/source-file/<fileName>`. The shell neither mints it nor
+  keys it, and dispatches on no format tag to get it: it reviews the row like
+  any other resource, so the reviewer can edit its JSON or skip it. A settings
+  re-decode re-mints it at the same deterministic id, so the review key and the
+  `meta.source` links survive. The source-file list query is invalidated once at
+  end-of-batch (a fresh source file is a new `DocumentReference` the picker
+  should see next pick — cheap even when none wrote).
 
 ## Traps
 
 - **The read half writes nothing, and the split is the whole product.** Reaching
   a review issues no writes — `decode` requires no services and is run for its
   data only, and the confirm writes exactly the reviewed objects
-  (`StagedImport.chosenResources` over the file's decoded sections) with no
+  (`planFormatWrite` over the format's decoded sections) with no
   re-parse. A test pins this on the wire (zero writes to reach a review); do
   not add a write to the read path (e.g. an "auto-upload on pick") that would
   collapse the opt-in seam. A settings change re-runs `decode` — still the
@@ -173,34 +211,38 @@ The importer has no HTTP wire union to derive, so there is no separate
   modal is deliberately not editable, either.
 - **Selection state lives in the screen, not the panel.** `PreviewPanel` is
   controlled — the screen passes `selectionFor` in and receives every change
-  via `onSelectionChange`, holding the canonical `Map<fileId, Selection>` so
-  it can hand the confirm the exact selection each file was reviewed with
-  (`StagedImport.chosenResources` over the file's own decoded sections). Same for
+  via `onSelectionChange`, holding the canonical
+  `Map<FormatKind, Selection>` so it can hand the confirm the exact selection
+  each format was reviewed with (`planFormatWrite` over that format's own
+  decoded sections). Same for
   settings: the panel renders `settings` and reports `onSettingsChange`;
   `useImportRun` owns the record and the re-decode. Don't move either down
   into the panel, or the shell and the view can disagree.
-- **A file's confirm is one `persistBatchBundle`, source file included.** Since the
-  source file is one of the reviewed resources, a `local` pick's write set is
-  `[sourceFile, ...extracted]` in one bundle — no upload-then-persist sequence, no
-  ordering to protect. `importOneFile` finds the source file in the chosen set by
-  its stable review key (not by re-recognizing its coding, so an inline edit
-  can't change how it is treated), locks its id to the minted value, and stamps
-  every _other_ chosen resource's `meta.source` with the source file reference.
-  `sourceRef` is: a `server` pick's existing reference; the local source file's
-  reference when it is kept; or **absent** when the reviewer skipped it, in
-  which case the extracted resources are written **without** `meta.source`. The
-  batch is one Effect (`Effect.forEach` at unbounded concurrency) run through
-  `runAuthed`; cross-file interleaving is fine because each resource is stamped
-  with its own file's reference. `useConfirmImport` needs nothing from the
-  registry — persistence and stamping are format-blind.
+- **A format's confirm is one `persistBatchBundle`, and nothing is stamped at
+  confirm.** `planFormatWrite` (in `importer-core`) turns the format's decoded
+  sections plus the reviewer's selection into the exact resource list — a
+  `local` pick's set leads with its source file in the same bundle as its
+  extracted resources, no upload-then-persist sequence and no ordering to
+  protect. `importOneFormat` hands that list straight to
+  `persistBatchBundle`: it does not look for the
+  source file, lock an id, or write `meta.source`, because the format's
+  `decode` already minted the source file at a deterministic id and stamped
+  every extracted resource with its reference. A source-file row the reviewer
+  **excluded** is simply not written, and the resources keep their
+  `meta.source` — the link points at a `DocumentReference` this batch chose not
+  to upload, which is the reviewer's decision, not a rewrite the shell makes.
+  The batch is one Effect (`Effect.forEach` at unbounded concurrency) run
+  through `runAuthed`; cross-format interleaving is fine because each resource
+  carries its own file's reference. `useConfirmImport` needs nothing from the
+  registry — persistence is format-blind.
 - **The batch is best-effort, and there is no upload-failed case.**
   `persistBatchBundle`'s error channel is `never`, so a rejected resource —
-  the source file included — is a per-entry outcome, not a raised error; one file's
-  failures never stop the rest. A file whose review chose nothing (no kind
-  recognized it, or every matching kind toggled off) or that was `unreadable` is
-  `skipped`, never a failure. `isPartialBatch` lifts `collectImportSummary` to
-  the batch: any rejected resource makes it partial; a `skipped` file alone does
-  not. There is **no** whole-flow `errored` state and no `uploadFailed` result —
+  the source file included — is a per-entry outcome, not a raised error; one
+  format's failures never stop the rest. A claimed format whose review chose
+  nothing (no kind recognized it, or every matching kind toggled off) or whose
+  every file was unreadable is `skipped`, never a failure. `isPartialBatch`
+  lifts `collectImportSummary` to the batch: any rejected resource makes it
+  partial; a `skipped` format alone does not. There is **no** whole-flow `errored` state and no `uploadFailed` result —
   a failed source file is an ordinary row in the results, its cause the server's own
   response. Note the trade-off the fold-in accepts: if the source file is included
   but its write fails while the resources succeed, those resources carry a
@@ -209,19 +251,22 @@ The importer has no HTTP wire union to derive, so there is no separate
   bundle. The failed source file row makes this visible rather than silent.
 - **The confirm affordance is gated on the batch having an included resource to
   write.** `PreviewPanel` shows the single confirm button only when
-  `StagedImport.includedCount` summed across the read files is positive; unreadable
-  files and read files whose decode yielded nothing render their own section
-  but add nothing to write. `useConfirmImport` re-checks each file (skipping
-  the ones with nothing included) — the gate is the affordance, the per-file
-  check is the safety.
+  `StagedImport.includedCount` summed across the **claimed** formats is
+  positive; unreadable files and formats whose decode yielded nothing render
+  their own section but add nothing to write. Both that sum and the group list
+  come off `claimedFormats`, the one predicate for "did this format take part",
+  which the confirm reads too — a format that claimed nothing is not planned,
+  tallied, or reported. `useConfirmImport` re-checks each claimed format
+  (skipping the ones with nothing included) — the gate is the affordance, the
+  per-format check is the safety.
 - **The source file list is format-blind and disjoint from web traces on the
   same axis.** The list searches `category` for `SOURCE_FILES_CATEGORY_TOKEN` —
   the comma-joined `system|code` tokens of every registered format's
-  source file coding (`WEB_TRACE_CODE_SYSTEM|har-archive` for HAR,
-  `LIFELABS_SYSTEM|lifelabs-pdf-archive` for LifeLabs), built at module
-  load from each descriptor's `sourceFileCategoryToken` so it cannot drift
-  from what the codec writes. Each returned resource is classified in
-  registry order through each descriptor's `isSourceFile`; the predicates
+  source file coding (`WEB_TRACE_CODE_SYSTEM|har-archive` for HAR, the LifeLabs and DICOM
+  systems for theirs), built at module
+  load from each format's `categoryToken` so it cannot drift from what the
+  mint writes. Each returned resource is classified in
+  registry order through each format's `isSourceFile`; the predicates
   are disjoint by construction (each tests a different `system|code`),
   so at most one claims any row and a row no predicate claims is
   dropped. The web-trace viewer lists traces under a different category
@@ -229,16 +274,16 @@ The importer has no HTTP wire union to derive, so there is no separate
   never both hold. The list must never surface a trace, and the trace
   viewer must never surface a source file.
 - **The picker identifies each local file syntactically through the
-  registered descriptors' `detect`, not a full parse.** `acceptLocalFile`
-  runs `importer-fundamentals`' `identify` over the registered descriptors,
+  registered formats' `detect`, not a full parse.** `acceptLocalFile`
+  runs `importer-fundamentals`' `identify` over the registered importers,
   so every format's `detect` runs on every drop — cheap on purpose — and a
-  file no descriptor claims is rejected _at the picker_, next to the control
+  file no format claims is rejected _at the picker_, next to the control
   the user just used. In a batch the accepted files are handed on together
   and the rejected ones are named in the notice; a **lone** rejected file
   with nothing accepted keeps its own rejection message. The full parse
   still runs in that format's `decode` one step downstream, so a file the
   picker accepted whose bytes are malformed lands in the preview as its own
-  `unreadable` row rather than a batch-wide error.
+  unreadable row rather than a batch-wide error.
 - **`page-token.ts` is a copy of `web-trace-react`'s, deliberately.** The two
   slices page the same FHIR server the same way, but the importer must not depend
   on the web-trace viewer to do it — an adapter reaching into another adapter is
@@ -251,9 +296,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   `fetchSourceFile` (row select) and `fetchSourceFileContents` (preview modal)
   each read the one source file the user chose. Listing the bytes to render a
   title would pull every source file onto the device to draw a list.
-- **A row selection decodes through its format's source file codec and keeps
+- **A row selection decodes through its format's source-file reader and keeps
   the bytes verbatim.** `fetchSourceFile` dispatches to the row's format's
-  `sourceFileFromDocumentReference` (per the descriptor source file seam) — a
+  `sourceFileFromDocumentReference` (the importer's server-read seam) — a
   resource that is not a source file of that format fails as a `ParseError`,
   never yields nonsense — and returns the source file's `bytes` on the
   `PickedFile`. Every downstream step reads bytes (`decode`, and the
@@ -264,27 +309,27 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **A row's Preview action opens a read-only raw-contents modal that
   renders the file itself.** The modal fetches through
   `fetchSourceFileContents` (the same reader as a pick, minus the source
-  synthesis) and picks its renderer from the format's
-  `sourceFileContentType`: PDF via a `<iframe>` at a `blob:` URL over the
+  synthesis) and picks its renderer from the format's `contentType`: PDF via
+  a `<iframe>` at a `blob:` URL over the
   bytes (revoked on unmount), JSON pretty-printed inside a `<pre>`
   capped at `JSON_PREVIEW_SIZE_LIMIT` (5 MiB) with a "Download raw"
   fallback for a giant source file. The modal writes nothing and offers no
   editing — a preview is inspection, not another entry point to the
   review flow.
 - **A source file's id is derived from its bytes and name, so re-importing upserts.**
-  Each format's `buildSourceFile` (the shared `sourceFileCodec.buildSourceFile`)
+  The mint `FileImporter.make` derives, which each format's `decode` drives,
   derives the resource id with `localResourceId` over the file's SHA-256 and
   name — deterministic, not a per-pick uuid — so its bundle entry is a PUT to a
   stable `DocumentReference/<id>` and re-importing the same file under the same
   name overwrites in place rather than piling up duplicates. The attachment's
-  `hash` and `size` still describe the bytes. (The per-pick `crypto.randomUUID()`
-  in `use-import-run.ts` is the client-side batch/run id for a file, not the
-  source file resource id.)
-- **Upload takes bytes, not text.** The source file codec stores the file
+  `hash` and `size` still describe the bytes. (Result ids are also
+  deterministic — `FormatDecode.makeId` over the format tag and each picked
+  file's slot — so there is no client-side `crypto.randomUUID()` anywhere in
+  the flow.)
+- **Upload takes bytes, not text.** The source-file mint stores the file
   verbatim so a truncated or mis-encoded upload is preserved and the
-  attachment `hash` means something. `UploadHarInput.bytes` is `Uint8Array`;
-  every `PickedFile` already carries its bytes, so the caller hands them
-  through unchanged.
+  attachment `hash` means something. `PickedFile.bytes` is a `Uint8Array` from
+  the picker all the way to the mint, and nothing in between re-encodes it.
 - **The drop zone is a button, so drop is an enhancement rather than the only
   path.** The zone itself opens the file picker on click, so the whole
   surface is keyboard-reachable and screen-reader named; the
@@ -319,20 +364,21 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
 - `importer-screen.test.tsx` is the end-to-end one: it replaces only the router
   seam and drives the whole flow over a recording stub `HttpClient`, reading one
   ordered write log back. It pins the opt-in seam (zero writes to reach a review),
-  the confirm ordering (the source file create lands before the first resource write,
-  every resource write carries `meta.source`), the server-source case, the
-  multi-file batch, the per-file upload failure, the partial-write fold, and
+  the confirm (the source file and the extracted resources go out in one
+  bundle, every resource write carrying the `meta.source` its decode stamped),
+  the server-source case, the
+  multi-file batch, the per-file source-file failure, the partial-write fold,
+  that a single-format import reports no blank "nothing to import" rows, and
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
   jsdom single-realm workaround; the production encode stays `new
 TextEncoder().encode(text)`).
 - `preview/preview-panel.test.tsx` drives the pure panel by props — no router —
-  and pins that a read file renders its `ReviewBody`, an unreadable file renders
-  its own alert, that a mixed batch sums to one confirm over every file's section,
-  and that the confirm appears only when at least one file has a chosen response.
-  `results/import-outcome.test.ts` is the property/example test for the folds. The
-  interactive review's own behaviour (default pick = top specificity, toggling a
-  kind re-recognizes, the no-match fold) is pinned in `har-importer-react`'s
-  `review-body.test.tsx`.
+  and pins that a claimed format renders each decoded section under its own
+  title with per-resource checkboxes, that an unreadable file renders its own
+  alert, that a mixed batch sums to one confirm over every claimed format's
+  sections, that each registered format mounts its own settings picker, and
+  that the confirm appears only when at least one resource is included.
+  `results/import-outcome.test.ts` is the property/example test for the folds.
 
 ## References
 
@@ -340,16 +386,18 @@ TextEncoder().encode(text)`).
   guardrails, and the per-URL pick-review-confirm pipeline this package's flow
   drives.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
-  `FileImporterDescriptor` contract and the `StagedImport` model this shell drives.
+  `FileImporter` contract and the `StagedImport` model this shell drives.
+- [importer-core AGENTS.md](../importer-core/AGENTS.md) — the importer
+  registry and the batch machinery these hooks wrap.
 - [har-importer-core AGENTS.md](../har-importer-core/AGENTS.md) — the HAR
-  descriptor (`decode`, `sources`, `persist`) the registry lists.
+  importer (`decode` plus the server-read seam) the core registry lists.
 - [har-importer-react AGENTS.md](../har-importer-react/AGENTS.md) — the
-  interactive `ReviewBody` this shell mounts per file.
+  `HarSettingsPicker` this shell mounts per HAR group.
 - [slices AGENTS.md](../../AGENTS.md) — the slice layering rules this package
   follows.
-- [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the HAR
-  archive codec and the HAR parser this package drives, and the disjointness of
-  traces and source files.
+- [web-trace-core AGENTS.md](../../web-trace/web-trace-core/AGENTS.md) — the
+  coding a HAR source file shares an axis with, and the disjointness of traces
+  and source files (a test-fixture dependency here, nothing at runtime).
 - [web-trace-react AGENTS.md](../../web-trace/web-trace-react/AGENTS.md) — the
   paged-read and router-seam patterns this package clones.
 - [emr AGENTS.md](../../emr/AGENTS.md) — `fhir-r4`'s typed client and

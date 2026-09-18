@@ -1,13 +1,8 @@
 import { Array as Arr, Effect } from 'effect'
 import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
 
-import {
-  acceptLocalFile,
-  type IdentifiableDescriptor,
-  type ReadableFile,
-  type RejectedFile,
-} from './local-file.ts'
-import type { PickedFile } from './picked-file.ts'
+import type { PickedFile, FormatDetector } from 'importer-fundamentals'
+import { acceptLocalFile, type ReadableFile, type RejectedFile } from './local-file.ts'
 import { ServerSourceFileList } from './server-source-file-list.tsx'
 import styles from './source-picker.module.css'
 
@@ -20,7 +15,7 @@ import styles from './source-picker.module.css'
  * Drop is an enhancement, not the only path: the zone is itself a button that
  * opens the file picker, so the whole surface is reachable by keyboard and
  * named for a screen reader. A local file — dropped or chosen — is
- * identified against the registered format descriptors' `detect` at the
+ * identified against the registered formats' detectors at the
  * picker, so a file no format claims is rejected *here*, next to the control
  * the user just used, rather than surfacing downstream. The server picks come
  * from {@link ServerSourceFileList}, which lists every registered format's
@@ -51,12 +46,13 @@ type SourcePickerMode = 'batch' | 'single'
 /** Props for {@link SourcePicker}. */
 interface SourcePickerProps {
   /**
-   * The registered file-format descriptors, in registry priority order.
+   * The registered formats' detectors, in registry priority order.
    * Each dropped or chosen file is identified against them at the picker;
-   * the first descriptor whose `detect` claims the file wins. Only its
-   * `detect` is read here — the picker never runs a descriptor's `decode`.
+   * the first detector that claims the file wins. Detection is all the picker
+   * needs — it never reaches a format's `decode`, which is why this is a
+   * `FormatDetector.Type` rather than a whole `FileImporter`.
    */
-  readonly descriptors: readonly IdentifiableDescriptor[]
+  readonly detectors: readonly FormatDetector.Type[]
   /**
    * Called with the chosen files once a source resolves to at least one.
    *
@@ -69,7 +65,7 @@ interface SourcePickerProps {
    * was accepted; a re-pick replaces the previous batch. The picker holds
    * no selection of its own; the caller owns what happens next.
    */
-  readonly onPick: (picks: readonly PickedFile[]) => void
+  readonly onPick: (picks: readonly PickedFile.Type[]) => void
   /**
    * Whether the caller consumes a batch of files or a single file at a
    * time. Defaults to `'batch'`. See {@link SourcePickerMode}.
@@ -108,12 +104,12 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
  * The picker: a drop-and-pick zone, the file input it opens, a rejection
  * notice, and the server archive list.
  */
-const SourcePicker = ({ descriptors, onPick, mode = 'batch' }: SourcePickerProps): JSX.Element => {
+const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps): JSX.Element => {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
 
-  // Identify every picked file against the registered descriptors' `detect`
+  // Identify every picked file against the registered detectors
   // concurrently, then split the outcomes with `Array.separate`: accepted
   // picks are handed on as a batch, rejected ones reported. A lone rejected
   // file keeps its rejection message (the case worth debugging); a mix
@@ -125,7 +121,7 @@ const SourcePicker = ({ descriptors, onPick, mode = 'batch' }: SourcePickerProps
       Effect.forEach(
         files,
         (file) =>
-          acceptLocalFile(descriptors, file).pipe(
+          acceptLocalFile(detectors, file).pipe(
             Effect.mapError((message): RejectedFile => ({ name: file.name, message })),
             Effect.either
           ),

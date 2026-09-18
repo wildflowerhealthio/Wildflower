@@ -1,6 +1,6 @@
 import { Effect, Either, ParseResult } from 'effect'
 import * as fc from 'fast-check'
-import { sectionResources } from 'importer-fundamentals'
+import { DecodedFile } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -12,7 +12,7 @@ import { layoutDocument } from './test-helpers.ts'
 /**
  * `decodeLifeLabsPdfDocument` is the pure "positioned-text document ↦
  * per-report sections of labeled FHIR resources" leg of the LifeLabs
- * importer's `decode`. The outer `decodeLifeLabsPdf(pdfBytes, ...)` wraps
+ * importer's `decode`. The outer `decodeLifeLabsPdf(file, ...)` wraps
  * this with pdfjs extraction; that seam is untested-by-design (see the
  * anonymizer's PDF descriptor), so the property tests here drive
  * `decodeLifeLabsPdfDocument` directly against `layoutDocument`'s printed
@@ -33,7 +33,7 @@ describe('decodeLifeLabsPdfDocument', () => {
         expect(decoded.sections.map((section) => section.title)).toEqual(
           reports.map(reportSectionTitle)
         )
-        const labeled = sectionResources(decoded.sections)
+        const labeled = DecodedFile.resources(decoded)
         expect(labeled.length).toBeGreaterThan(0)
         for (const item of labeled) {
           expect(item).toHaveProperty('key')
@@ -52,7 +52,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const item of sectionResources(decoded.sections)) {
+        for (const item of DecodedFile.resources(decoded)) {
           const type = item.resource.resourceType
           const id = item.resource.id
           expect(id).not.toBeNull()
@@ -72,7 +72,7 @@ describe('decodeLifeLabsPdfDocument', () => {
 
         const decoded = Effect.runSync(decodeLifeLabsPdfDocument(document, SETTINGS))
 
-        for (const item of sectionResources(decoded.sections)) {
+        for (const item of DecodedFile.resources(decoded)) {
           const resource = item.resource
           // Adopted resources receive a derived local id with the 'wf-' prefix
           expect(resource.id).toMatch(/^wf-[0-9a-f]{32}$/)

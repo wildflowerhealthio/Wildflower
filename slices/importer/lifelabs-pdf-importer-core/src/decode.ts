@@ -1,7 +1,8 @@
-import { DateTime, Effect, Option, ParseResult, Schema } from 'effect'
+import { Effect, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { DecodedFile, LabeledResource, LabeledSection } from 'importer-fundamentals'
+import type { DecodedFile, PickedFile, SourceFile } from 'importer-fundamentals'
+import { checkTimeZone } from 'kitchen-sink'
 import type { Document } from 'positioned-text'
 import { extractPositionedText } from 'positioned-text-web'
 
@@ -12,24 +13,10 @@ import { LIFELABS_SYSTEM } from './source-system.ts'
 
 const adopt = adoptResource({ system: LIFELABS_SYSTEM })
 
-/** A zone name the runtime does not know is a parse failure, not a defect. */
-const checkTimeZone = (timeZone: string): Effect.Effect<string, ParseResult.ParseError> => {
-  if (Option.isSome(DateTime.zoneMakeNamed(timeZone))) return Effect.succeed(timeZone)
-  return Effect.fail(
-    new ParseResult.ParseError({
-      issue: new ParseResult.Type(
-        Schema.String.ast,
-        timeZone,
-        `"${timeZone}" is not an IANA time zone name`
-      ),
-    })
-  )
-}
-
 /**
  * Wrap the report-parse's `UnrecognizedLifeLabsDocument` as a `ParseError` so
  * `decodeLifeLabsPdf` keeps a single, format-shaped error channel — the
- * descriptor contract's `ParseError`. `Forbidden` is the right issue kind: the
+ * importer contract's `ParseError`. `Forbidden` is the right issue kind: the
  * PDF's text extracted successfully, but the transform to a LifeLabs report
  * refused it.
  */
@@ -40,7 +27,7 @@ const unrecognizedAsParseError = (e: Report.UnrecognizedLifeLabsDocument): Parse
 
 /**
  * A pdfjs extraction failure — the bytes were not a PDF the extractor could
- * open — surfaces as a `ParseError` too, so the descriptor's decode has one
+ * open — surfaces as a `ParseError` too, so the importer's decode has one
  * failure channel.
  */
 const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
@@ -59,7 +46,7 @@ const extractionAsParseError = (cause: unknown): ParseResult.ParseError =>
  * rather than paper over it with a shared `'?'` key that would collide across
  * resources and defeat `StagedImport.Selection`.
  */
-const labelAdopted = (resource: FhirResource): LabeledResource<FhirResource> => {
+const labelAdopted = (resource: FhirResource): DecodedFile.Resource => {
   const adopted = adopt(resource)
   const type = adopted.resourceType
   const id = adopted.id
@@ -106,14 +93,14 @@ const reportSectionTitle = (report: Report.Type): string => {
 const decodeLifeLabsPdfDocument = (
   document: Document.Type,
   settings: LifeLabsPdfSettings
-): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
     const timeZone = yield* checkTimeZone(settings.timeZone)
     const reports = yield* Report.tryFromDocument(document).pipe(
       Effect.mapError(unrecognizedAsParseError)
     )
     const groups = yield* toFhirResources(reports, { timeZone })
-    const sections = groups.map((group): LabeledSection<FhirResource> => ({
+    const sections = groups.map((group): DecodedFile.Section => ({
       title: reportSectionTitle(group.report),
       resources: group.resources.map(labelAdopted),
     }))
@@ -121,12 +108,16 @@ const decodeLifeLabsPdfDocument = (
   })
 
 /**
- * Decode a LifeLabs report PDF's raw bytes into per-report sections of
- * adopted, labeled FHIR resources — the descriptor's `decode`.
+ * Decode one picked LifeLabs report PDF into per-report sections of adopted,
+ * labeled FHIR resources — the per-file decode the importer's `decode`
+ * lifts through its per-file decode.
  *
- * @param pdfBytes - The raw bytes of a LifeLabs "Reports" PDF, exactly as the
- *   picker read them from disk
+ * @param file - The picked file, whose `bytes` are a LifeLabs "Reports" PDF
+ *   exactly as the picker read them
  * @param settings - The import's settings (time zone for date interpretation)
+ * @param _source - The file's source-file reference, unused: this format's
+ *   resources carry no id derived from their source file, and `FileImporter`
+ *   stamps `meta.source` itself
  * @returns One section of `LabeledResource`s per report, no notes; fails only
  *   with a `ParseError` when the bytes are not a PDF the extractor can open or
  *   the extracted text is not a recognized LifeLabs report; requires nothing
@@ -141,12 +132,12 @@ const decodeLifeLabsPdfDocument = (
  * JSON download.
  */
 const decodeLifeLabsPdf = (
-  pdfBytes: Uint8Array,
-  _fileName: string,
-  settings: LifeLabsPdfSettings
-): Effect.Effect<DecodedFile<FhirResource>, ParseResult.ParseError> =>
+  file: PickedFile.Type,
+  settings: LifeLabsPdfSettings,
+  _sourceFile: SourceFile.Reference
+): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.tryPromise({
-    try: () => extractPositionedText(pdfBytes),
+    try: () => extractPositionedText(file.bytes),
     catch: extractionAsParseError,
   }).pipe(Effect.flatMap((document) => decodeLifeLabsPdfDocument(document, settings)))
 

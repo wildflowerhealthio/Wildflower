@@ -314,6 +314,9 @@ importers:
       fhir-r4-react:
         specifier: workspace:*
         version: link:../../slices/emr/fhir-r4-react
+      importer-core:
+        specifier: workspace:*
+        version: link:../../slices/importer/importer-core
       importer-react:
         specifier: workspace:*
         version: link:../../slices/importer/importer-react
@@ -3163,6 +3166,54 @@ importers:
         specifier: 'catalog:'
         version: 0.3.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
 
+  slices/importer/importer-core:
+    devDependencies:
+      '@effect/platform':
+        specifier: 0.96.1
+        version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
+      '@types/node':
+        specifier: ^26
+        version: 26.1.0
+      '@typescript/native-preview':
+        specifier: 'catalog:'
+        version: 7.0.0-dev.20260707.2
+      dicom:
+        specifier: workspace:*
+        version: link:../../file-formats/dicom
+      dicom-importer-core:
+        specifier: workspace:*
+        version: link:../dicom-importer-core
+      effect:
+        specifier: 3.21.4
+        version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      fast-check:
+        specifier: 'catalog:'
+        version: 3.23.2
+      fhir-r4:
+        specifier: workspace:*
+        version: link:../../emr/fhir-r4
+      har-importer-core:
+        specifier: workspace:*
+        version: link:../har-importer-core
+      importer-fundamentals:
+        specifier: workspace:*
+        version: link:../importer-fundamentals
+      kitchen-sink:
+        specifier: workspace:*
+        version: link:../../../global/kitchen-sink
+      lifelabs-pdf-importer-core:
+        specifier: workspace:*
+        version: link:../lifelabs-pdf-importer-core
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 'catalog:'
+        version: '@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
+      vite-plus:
+        specifier: 'catalog:'
+        version: 0.3.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
+
   slices/importer/importer-fundamentals:
     devDependencies:
       '@effect/platform':
@@ -3252,6 +3303,9 @@ importers:
       http-extraction-fundamentals:
         specifier: workspace:*
         version: link:../../http-extraction/http-extraction-fundamentals
+      importer-core:
+        specifier: workspace:*
+        version: link:../importer-core
       importer-fundamentals:
         specifier: workspace:*
         version: link:../importer-fundamentals
@@ -3327,9 +3381,6 @@ importers:
       vite-plus:
         specifier: 'catalog:'
         version: 0.3.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)
-      web-trace-core:
-        specifier: workspace:*
-        version: link:../../web-trace/web-trace-core
 
   slices/importer/lifelabs-pdf-importer-react:
     devDependencies:

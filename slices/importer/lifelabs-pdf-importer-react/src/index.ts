@@ -7,7 +7,6 @@
  *
  * @packageDocumentation
  */
-export { type SettingsPickerProps } from 'importer-fundamentals'
 export {
   LifeLabsPdfSettingsPicker,
   SUGGESTED_TIME_ZONES,

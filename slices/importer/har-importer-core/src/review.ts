@@ -5,7 +5,7 @@ import { Extraction, type HttpResponseKind } from 'http-extraction-fundamentals'
 /**
  * The HAR-specific preview pipeline: given decoded responses and the enabled
  * kind names, recognize each response against the kind pool and parse the
- * chosen ones into previewed resources. The descriptor's decode folds these
+ * chosen ones into previewed resources. The importer's decode folds these
  * previews into the sections and notes the shell reviews; the per-resource
  * selection (exclude/edit) lives in `importer-fundamentals`' `StagedImport`
  * namespace.

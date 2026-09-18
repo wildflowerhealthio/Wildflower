@@ -25,7 +25,7 @@ import styles from './import-results.module.css'
  * successes fold away, failures open to the server's own messages. Files that
  * had nothing to write are reported in their own section. A partial import is a
  * first-class outcome, not a failure banner: any rejected resource (the
- * source-file archive included, since it writes in the same batch) frames the
+ * source file included, since it writes in the same batch) frames the
  * batch as partial, while everything that wrote is already on the device.
  *
  * @packageDocumentation
@@ -52,8 +52,9 @@ const SKIPPED_HEADING = 'Files with nothing to import'
 const plural = (count: number, noun: string): string => (count === 1 ? noun : `${noun}s`)
 
 /** Why a skipped file wrote nothing, in words a reader can act on. */
-const skipReasonText = (reason: SkipReason): string => {
+const skipReasonText = (reason: SkipReason | 'unrecognized'): string => {
   if (reason === 'nothing') return 'Nothing here to import.'
+  if (reason === 'unrecognized') return 'File type not recognized.'
   return 'Could not be read.'
 }
 
@@ -75,7 +76,7 @@ const IssueLine = ({ issue }: { readonly issue: WriteIssue }): JSX.Element => (
 const ResultRow = ({ result }: { readonly result: ResourceResult }): JSX.Element => (
   <li className={styles.resultRow}>
     <span className={styles.target}>{targetLabel(result)}</span>
-    <span className={styles.fileName}>{result.fileName}</span>
+    <span className={styles.fileName}>{result.title}</span>
     {result.issues.length > 0 && (
       <ul className={styles.issueList}>
         {result.issues.map((issue) => (
@@ -103,14 +104,10 @@ const StatusSection = ({ group }: { readonly group: StatusGroup }): JSX.Element 
     </summary>
     <ul className={styles.resultList}>
       {group.results.map((result) => (
-        // Two files can write the same Type/id (shared content across a batch),
+        // Two units can write the same Type/id (shared content across a batch),
         // so the target alone is not unique within a group — pair it with the
-        // file's provenance ref (distinct per uploaded archive; empty when the
-        // archive was skipped) and name.
-        <ResultRow
-          key={`${result.sourceRef ?? ''}:${result.fileName}:${targetLabel(result)}`}
-          result={result}
-        />
+        // unit's title.
+        <ResultRow key={`${result.title}:${targetLabel(result)}`} result={result} />
       ))}
     </ul>
   </details>
@@ -149,7 +146,7 @@ const ImportResults = ({ batch, onStartOver }: ImportResultsProps): JSX.Element 
           <ul className={styles.fileList}>
             {skipped.map((file) => (
               <li key={file.id} className={styles.fileRow}>
-                <span className={styles.fileName}>{file.fileName}</span>
+                <span className={styles.fileName}>{file.title}</span>
                 <span className={styles.fileNote}>{skipReasonText(file.reason)}</span>
               </li>
             ))}

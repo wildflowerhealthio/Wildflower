@@ -2,7 +2,7 @@
   "name": "har-importer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The HAR format's UI for the importer slice: the HarSettingsPicker's whole-import response-kind toggles, grouped by source. Presentation and interaction only — the shell re-decodes through the descriptor when the settings change.",
+  "description": "The HAR format's UI for the importer slice: the HarSettingsPicker's whole-import response-kind toggles, grouped by source. Presentation and interaction only — the shell re-decodes through the format's importer when the settings change.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",

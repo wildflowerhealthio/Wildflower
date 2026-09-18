@@ -1,17 +1,24 @@
 import { Effect, Schema } from 'effect'
+import * as fc from 'fast-check'
 import { HarFromJson, emitHar } from 'http-archive'
-import { describe, expect, it } from 'vite-plus/test'
+import { SourceDescriptor } from 'http-extraction-fundamentals'
+import { PickedFile, SourceFile, FormatDecode, type DecodedFile } from 'importer-fundamentals'
+import { numRunsFor } from 'kitchen-sink/test'
+import { describe, expect, it, test } from 'vite-plus/test'
 import { type TraceBody, type TraceExchange } from 'web-trace-core'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
-import { harImporterDescriptor } from './har-importer.ts'
-import { defaultHarSettings } from './har-settings.ts'
+import { fhirSources } from './fhir-pool.ts'
+import { harImporter } from './har-importer.ts'
+import { defaultHarSettings, type HarSettings } from './har-settings.ts'
 
 /**
- * Covers the descriptor's whole read half: `decode` folds a HAR's recognized
- * responses into per-URL sections of labeled resources plus one diagnostic
- * note per response that yielded nothing, with the settings' kind toggles
- * deciding which kinds parse.
+ * Covers the importer's whole read half: `decode` folds each picked HAR's
+ * recognized responses into per-URL sections of labeled resources plus one
+ * diagnostic note per response that yielded nothing, with the settings' kind
+ * toggles deciding which kinds parse — and owns the source file, minting one
+ * per `local` pick, listing it as its own section, and stamping every
+ * extracted resource's `meta.source` with it.
  */
 
 /** A base64 SHA-256; the importer never reads it, so any valid digest serves. */
@@ -88,76 +95,148 @@ const RECOGNIZED_WITH_NOISE = harBytesOf([
   }),
 ])
 
-describe('harImporterDescriptor.decode', () => {
-  it('should fold a recognized archive into one section per URL, in first-seen order', () => {
-    const decoded = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
-    )
+/** The kind names the settings can turn off — the whole pool recognition routes against. */
+const POOL_KIND_NAMES: string[] = SourceDescriptor.poolOf(fhirSources).map((kind) => kind.name)
 
-    expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL, OBSERVATION_URL])
-    expect(decoded.sections[0]?.resources.map((entry) => entry.title)).toEqual([
+/** The two kinds that claim the archive's Observation response. */
+const OBSERVATION_KINDS = ['ObservationListResponseKind', 'ObservationResponseKind']
+
+/** The fixture archive, picked from `source` under one file name. */
+const pickedHar = (source: PickedFile.Source.Type): PickedFile.Type => ({
+  fileName: 'archive.har',
+  bytes: RECOGNIZED_WITH_NOISE,
+  source,
+})
+
+/**
+ * Decode one pick and take the single unit it yields, which must have been
+ * read. Asynchronous because minting a local pick's source file hashes its
+ * bytes through Web Crypto.
+ */
+const readOne = async (
+  file: PickedFile.Type,
+  settings: HarSettings = defaultHarSettings
+): Promise<FormatDecode.Result<string>> => {
+  const result = await Effect.runPromise(harImporter.decode([file], settings))
+  if (result.unreadableFiles.length > 0) {
+    throw new Error(
+      `Expected a readable result, got ${result.unreadableFiles.length} unreadable files`
+    )
+  }
+  return result
+}
+
+/** The format's own sections — everything but the minted source file's. */
+const extractedSections = (
+  sections: readonly DecodedFile.Section[]
+): readonly DecodedFile.Section[] => sections.filter((section) => section.title !== 'Source file')
+
+/** Every `meta.source` across the given sections, in section order. */
+const metaSourcesOf = (
+  sections: readonly DecodedFile.Section[]
+): readonly (string | null | undefined)[] =>
+  sections.flatMap((section) => section.resources.map((entry) => entry.resource.meta?.source))
+
+describe('harImporter.decode', () => {
+  it('should fold a recognized archive into one section per URL, in first-seen order', async () => {
+    const decoded = (await readOne(pickedHar(PickedFile.Source.local))).decoded
+
+    expect(decoded.sections.map((section) => section.title)).toEqual([
+      'Source file',
+      PATIENT_URL,
+      OBSERVATION_URL,
+    ])
+    expect(extractedSections(decoded.sections)[0]?.resources.map((entry) => entry.title)).toEqual([
       expect.stringMatching(/^Patient\//),
     ])
-    expect(decoded.sections[1]?.resources.map((entry) => entry.title)).toEqual([
+    expect(extractedSections(decoded.sections)[1]?.resources.map((entry) => entry.title)).toEqual([
       expect.stringMatching(/^Observation\//),
       expect.stringMatching(/^Observation\//),
     ])
   })
 
-  it('should note the response no kind claimed instead of dropping it silently', () => {
-    const decoded = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
-    )
+  it('should note the response no kind claimed instead of dropping it silently', async () => {
+    const decoded = (await readOne(pickedHar(PickedFile.Source.local))).decoded
 
     expect(decoded.notes).toEqual([`Matched no importer: ${NOISE_URL}`])
   })
 
-  it('should fold a disabled kind’s responses into notes instead of sections', () => {
-    // Disabling the two Observation kinds leaves the Patient section standing
-    // and turns the Observation response into an excluded-by-settings note.
-    const settings = {
-      disabledKinds: ['ObservationListResponseKind', 'ObservationResponseKind'],
-    }
+  it("should fold a disabled kind's responses into notes instead of sections", async () => {
+    const decoded = (
+      await readOne(pickedHar(PickedFile.Source.local), { disabledKinds: OBSERVATION_KINDS })
+    ).decoded
 
-    const decoded = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', settings)
-    )
-
-    expect(decoded.sections.map((section) => section.title)).toEqual([PATIENT_URL])
+    expect(extractedSections(decoded.sections).map((section) => section.title)).toEqual([
+      PATIENT_URL,
+    ])
     expect(decoded.notes).toContain(
       `Excluded — every matching kind is turned off in the settings: ${OBSERVATION_URL}`
     )
   })
 
-  it('should keep the surviving resource keys identical across a settings change', () => {
-    // The whole point of `responseId:index` keys: a reviewer's per-resource
-    // exclusions and edits keep applying after a kind toggle re-decodes.
-    const withAll = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', defaultHarSettings)
-    )
-    const withoutObservations = Effect.runSync(
-      harImporterDescriptor.decode(RECOGNIZED_WITH_NOISE, 'archive.har', {
-        disabledKinds: ['ObservationListResponseKind', 'ObservationResponseKind'],
-      })
+  it('should keep the surviving resource keys identical across a settings change', async () => {
+    const file = pickedHar(PickedFile.Source.local)
+    const withAll = extractedSections((await readOne(file)).decoded.sections)
+    const withoutObservations = extractedSections(
+      (await readOne(file, { disabledKinds: OBSERVATION_KINDS })).decoded.sections
     )
 
-    const patientKeysBefore = withAll.sections[0]?.resources.map((entry) => entry.key)
-    const patientKeysAfter = withoutObservations.sections[0]?.resources.map((entry) => entry.key)
-    expect(patientKeysAfter).toEqual(patientKeysBefore)
+    expect(withoutObservations[0]?.resources.map((entry) => entry.key)).toEqual(
+      withAll[0]?.resources.map((entry) => entry.key)
+    )
   })
 
-  it('should fail with a ParseError for bytes that are not a well-formed HAR', () => {
-    const result = Effect.runSync(
-      Effect.either(
-        harImporterDescriptor.decode(
-          new TextEncoder().encode('{ not a har }'),
-          'archive.har',
-          defaultHarSettings
-        )
-      )
-    )
+  it("should list a local pick's minted source file as its own first section", async () => {
+    const decoded = (await readOne(pickedHar(PickedFile.Source.local))).decoded
+    const sourceSection = decoded.sections[0]
 
-    expect(result._tag).toBe('Left')
-    if (result._tag === 'Left') expect(result.left._tag).toBe('ParseError')
+    expect(sourceSection?.title).toBe('Source file')
+    // The key is namespaced by the file's slot in the batch, so two archives
+    // in one pick cannot collide on it.
+    expect(sourceSection?.resources.map((entry) => entry.key)).toEqual([
+      `${FormatDecode.keyPrefix(0, pickedHar(PickedFile.Source.local))}source-file/archive.har`,
+    ])
+    expect(sourceSection?.resources[0]?.resource.resourceType).toBe('DocumentReference')
+  })
+
+  it('should mint no source file for a server pick and stamp the reference it was picked by', async () => {
+    const decoded = (await readOne(pickedHar(PickedFile.Source.server('doc-1')))).decoded
+
+    const sources = metaSourcesOf(decoded.sections)
+
+    expect(decoded.sections.map((section) => section.title)).not.toContain('Source file')
+    expect(sources.length).toBeGreaterThan(0)
+    expect(sources).toEqual(sources.map(() => SourceFile.makeReference('doc-1')))
+  })
+
+  test('property: every extracted resource names the minted source file, under any kind toggles', async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.subarray(POOL_KIND_NAMES), async (disabledKinds) => {
+        const decoded = (await readOne(pickedHar(PickedFile.Source.local), { disabledKinds }))
+          .decoded
+        const minted = decoded.sections[0]?.resources[0]?.resource
+
+        expect(decoded.sections[0]?.title).toBe('Source file')
+        expect(minted?.id).toEqual(expect.any(String))
+        for (const source of metaSourcesOf(extractedSections(decoded.sections))) {
+          expect(source).toBe(SourceFile.makeReference(minted?.id ?? ''))
+        }
+      }),
+      { numRuns: numRunsFor({ base: 25 }) }
+    )
+  })
+
+  it('should report bytes that are not a well-formed HAR as one unreadable unit', async () => {
+    const file: PickedFile.Type = {
+      fileName: 'archive.har',
+      bytes: new TextEncoder().encode('{ not a har }'),
+      source: PickedFile.Source.local,
+    }
+    const result = await Effect.runPromise(harImporter.decode([file], defaultHarSettings))
+
+    expect(result.decoded.sections).toHaveLength(0)
+    expect(result.unreadableFiles).toHaveLength(1)
+    expect(result.unreadableFiles[0]?.title).toBe('archive.har')
+    expect(result.unreadableFiles[0]?.error._tag).toBe('ParseError')
   })
 })

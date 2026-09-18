@@ -35,8 +35,6 @@ import {
  * @packageDocumentation
  */
 
-type DocumentReferenceType = typeof DocumentReference.Schema.Type
-
 /**
  * The exchange minus its timings.
  *
@@ -336,7 +334,7 @@ const readEncodedExchange = (
  * against {@link DurationFromFhirDuration}. Compose it, refine it, or put it in
  * a struct like any other schema.
  */
-const TraceExchangeFromDocumentReference: Schema.Schema<TraceExchange, DocumentReferenceType> =
+const TraceExchangeFromDocumentReference: Schema.Schema<TraceExchange, DocumentReference.Type> =
   Schema.transformOrFail(
     Schema.typeSchema(DocumentReference.Schema),
     Schema.typeSchema(TraceExchange),
@@ -412,7 +410,7 @@ const fromDocumentReference = Schema.decode(TraceExchangeFromDocumentReference)
  * `category` is the axis the viewer filters on and the axis a clinical browser
  * excludes, so this predicate is the one place that decision is spelled out.
  */
-const isWebTrace = (resource: DocumentReferenceType): boolean =>
+const isWebTrace = (resource: DocumentReference.Type): boolean =>
   resource.category.some((category) =>
     category.coding.some(
       (coding) =>
@@ -422,7 +420,6 @@ const isWebTrace = (resource: DocumentReferenceType): boolean =>
   )
 
 export {
-  type DocumentReferenceType,
   fromDocumentReference,
   isWebTrace,
   toDocumentReference,

@@ -2,7 +2,7 @@
   "name": "importer-react",
   "version": "0.0.0",
   "private": true,
-  "description": "Browser UI adapter for the importer slice: the source picker that hands the importer one or more files to import. A file dropped or picked on device (HAR or LifeLabs PDF), or a previously uploaded HAR archive read back off the device's own FHIR server, all converge on one PickedFile carrying bytes. The picker identifies each file syntactically against the registered format descriptors; the full parse runs in that format's decode one step downstream. Presentation and interaction only.",
+  "description": "Browser UI adapter for the importer slice: the source picker that hands the importer one or more files to import. A file dropped or picked on device (HAR, LifeLabs PDF or DICOM), or a previously uploaded source file read back off the device's own FHIR server, all converge on one PickedFile carrying bytes. The picker identifies each file syntactically against the registered formats' detect; the full parse runs in that format's decode one step downstream. Presentation and interaction only.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
@@ -45,6 +45,7 @@
     "har-importer-react": "workspace:*",
     "http-archive": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
+    "importer-core": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "jsdom": "catalog:",
     "lifelabs-pdf-importer-core": "workspace:*",
@@ -70,11 +71,11 @@
     "har-importer-react": "workspace:*",
     "http-archive": "workspace:*",
     "http-extraction-fundamentals": "workspace:*",
+    "importer-core": "workspace:*",
     "importer-fundamentals": "workspace:*",
     "lifelabs-pdf-importer-core": "workspace:*",
     "lifelabs-pdf-importer-react": "workspace:*",
     "react": "catalog:",
-    "react-tundraish": "workspace:*",
-    "web-trace-core": "workspace:*"
+    "react-tundraish": "workspace:*"
   }
 }

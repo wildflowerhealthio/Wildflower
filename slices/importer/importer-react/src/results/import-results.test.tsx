@@ -76,7 +76,7 @@ describe('ImportResults', () => {
   it('notes a file that had nothing to import without framing the batch as partial', () => {
     const batch: BatchOutcome = [
       importedFile('a', [ok('Patient/p1', '201 Created')]),
-      { _tag: 'skipped', id: 'c', fileName: 'c.har', reason: 'nothing' },
+      { _tag: 'skipped', id: 'c', title: 'c.har', reason: 'nothing' },
     ]
 
     render(<ImportResults batch={batch} onStartOver={vi.fn()} />)
@@ -112,6 +112,6 @@ const entry = (
 const importedFile = (id: string, entries: readonly BatchEntryOutcome[]): FileImportResult => ({
   _tag: 'imported',
   id,
-  fileName: `${id}.har`,
-  outcome: importOutcome(entries.length, `DocumentReference/${id}`, `${id}.har`, entries),
+  title: `${id}.har`,
+  outcome: importOutcome(entries.length, `${id}.har`, entries),
 })

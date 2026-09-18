@@ -23,7 +23,6 @@
  * @packageDocumentation
  */
 export {
-  type DocumentReferenceType,
   fromDocumentReference,
   isWebTrace,
   toDocumentReference,

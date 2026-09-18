@@ -2,8 +2,8 @@
 
 The **DICOM binding** of the importer slice (core layer): DICOM tag parsing
 via the `dicom` file-formats package, FHIR R4 synthesis (Patient,
-ServiceRequest, ImagingStudy), byte-level `.dcm` detection, and the source
-file codec that stores a DICOM file as a FHIR `DocumentReference`.
+ServiceRequest, ImagingStudy), byte-level `.dcm` detection, and the
+source-file coding that stores a DICOM file as a FHIR `DocumentReference`.
 
 The core stays pure in the layering sense — no DOM, no `fs`, no React. A
 `.dcm` file's raw bytes in, Patient / ServiceRequest / ImagingStudy out. The
@@ -51,35 +51,50 @@ decode yields one section per file when the header carries a patient identity.
   synthesized instance back to the raw source file.
 - `src/decode.ts` — **`decodeDicom`**: parses the DICOM file via
   `parseDicomFile`, synthesizes FHIR resources via `toFhirResources`, adopts
-  them under `DICOM_SYSTEM`. Takes `(fileBytes, fileName, settings)`. It
-  rejects a `settings.timeZone` the runtime cannot resolve up front
-  (`checkTimeZone`, a `ParseError`) rather than substituting one — every
-  `started` it emits is resolved against that zone, so a guess would write
-  instants hours away from what the equipment recorded. The `fileName` is not
-  read for section content, only recombined with the
-  bytes' SHA-256 (via the shared `sha256Base64` + `localResourceId`
-  derivation `buildSourceFile` also uses) to recompute the exact id
-  `buildSourceFile` will mint for this file's `DocumentReference`, which
-  `toFhirResources` stamps onto the `ImagingStudy` instance. One section
-  titled `<Modality> <StudyDescription> · <StudyDate>` with stable keys
-  `patient`, `service-request`, `imaging-study`. Notes for missing patient
-  identity or absent AccessionNumber. A `dicom-parser` failure is a
-  `ParseError`.
-- `src/source-file/dicom-source-file-codec.ts` — thin config over
-  `sourceFileCodec` with the DICOM coding
-  (`DICOM_SYSTEM|dicom-source-file`), content type `application/dicom`.
-- `src/source-file/index.ts` — barrel re-exporting codec + `DICOM_SYSTEM`.
-- `src/descriptor.ts` — the `FileImporterDescriptor` for format `'dicom'`.
-  `buildSourceFile` parses the DICOM header to derive a Patient reference
-  and sets `subject` on the archive `DocumentReference` when `PatientID`
-  is present. That derivation is the _fallback_: a `subject` the caller
-  passes through `options` wins and is forwarded unchanged.
+  them under `DICOM_SYSTEM`. Takes `(file, settings, source)` — the picked
+  file, the import's settings, and the source-file id the importer's batch
+  `decode` resolved for it (minted for a local pick, read off the existing
+  reference for a server pick). It rejects a `settings.timeZone` the runtime cannot
+  resolve up front (`checkTimeZone` from `kitchen-sink`, a `ParseError`) rather than substituting
+  one — every `started` it emits is resolved against that zone, so a guess
+  would write instants hours away from what the equipment recorded. The
+  `source.id` is what `toFhirResources` stamps onto the `ImagingStudy`
+  instance as its `gridfsFileId` extension: the decode reads the id off the
+  resolved source file and derives nothing from the bytes, so the link and the
+  stored resource name the same thing by construction. One section titled
+  `<Modality> <StudyDescription> · <StudyDate>` with stable keys `patient`,
+  `service-request`, `imaging-study`. Those keys are fixed _within one file_ —
+  safe only because `FileImporter.make` prefixes each file's keys with its slot in
+  the batch, which is what keeps eight picked images from all colliding on
+  `patient`. Notes for missing patient identity or absent AccessionNumber. A
+  `dicom-parser` failure is a `ParseError`.
+- `src/source-file.ts` — the `/source-file` subpath: a narrowing of
+  `source-system.ts` to just the coding constants (`DICOM_SYSTEM`,
+  `DICOM_SOURCE_FILE_CODE`, `DICOM_SOURCE_FILE_CONTENT_TYPE`), so a reader
+  building the cross-format search token imports one narrow thing rather than
+  this package's whole surface. The FHIR encoding is not written here —
+  `dicom-importer.ts` passes those constants to `FileImporter.make` as its
+  `sourceFileFormat`.
+- `src/dicom-importer.ts` — **`dicomImporter`**, the `FileImporter.make` call for format
+  `'dicom'`: the DICOM coding (`DICOM_SYSTEM|dicom-source-file`), content type
+  `application/dicom`, `detectDicom`, the default settings, `decodeDicom` as
+  its `decodeOne`, and `subjectFor: patientSubjectOf`. The batch decode
+  `FileImporter.make` returns mints each local pick's source file, lists it as its
+  own "Source file" section, stamps every extracted resource's `meta.source`
+  with it, and hands its reference to `decodeDicom` (which unwraps the bare id
+  through `SourceFile.idFromReference` for the `gridfsFileId` extension).
+  **`patientSubjectOf`** (exported)
+  is the one format-specific knob: it reads the `Patient` off the _decode's own
+  resources_ and returns its `Patient/<id>` reference, so the raw image is
+  filed in that patient's record — and the file is parsed once, not twice. A
+  header with no patient identity decodes to no `Patient` and so gets no
+  subject.
 - `src/index.ts` — public API barrel.
 
 ## Layering
 
 - **Depends on**: `dicom` (DICOM tag parsing), `importer-fundamentals`
-  (the `FileImporterDescriptor` contract, `sourceFileCodec`), `fhir-r4`
+  (the `FileImporter` contract and its `FileImporter.make` factory), `fhir-r4`
   (resource types + identity), `kitchen-sink` (`fnv1a64`), `effect`.
 - **Depended on by**: `dicom-importer-react` (settings picker),
   `importer-react` (registry entry).

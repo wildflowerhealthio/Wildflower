@@ -6,7 +6,7 @@ import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 import { traceResourceId } from 'web-trace-core'
-import { type DocumentReferenceType, fromDocumentReference, isWebTrace } from 'web-trace-core/codec'
+import { fromDocumentReference, isWebTrace } from 'web-trace-core/codec'
 
 import { BodyDigestUnavailable } from 'web-trace-core/capture'
 
@@ -37,14 +37,14 @@ const entity = makeRawExchangeResponseKind({ sessionId: SESSION_ID, policy: defa
 const parse = (
   overrides: Parameters<typeof makeHttpResponse>[0] = {},
   definition = entity
-): Promise<readonly DocumentReferenceType[]> =>
+): Promise<readonly DocumentReference.Type[]> =>
   Effect.runPromise(definition.parse(makeHttpResponse({ startedAt: STARTED_AT, ...overrides })))
 
 /** The single resource a parse of one exchange produces. */
 const parseOne = async (
   overrides: Parameters<typeof makeHttpResponse>[0] = {},
   definition = entity
-): Promise<DocumentReferenceType> => {
+): Promise<DocumentReference.Type> => {
   const resources = await parse(overrides, definition)
   expect(resources).toHaveLength(1)
   const [resource] = resources

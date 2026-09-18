@@ -18,8 +18,8 @@ import {
  * The pure fold from a file's per-entry write outcomes to its tally, plus the
  * batch-wide grouping the results view reads. The `collectImportSummary`
  * semantics hold: **any** non-2xx makes the import partial, `written` is exactly
- * the count of accepted entries, and every result is tagged with its file and
- * provenance so the batch-wide view can group by status while still naming rows.
+ * the count of accepted entries, and every result is tagged with its unit's
+ * title so the batch-wide view can group by status while still naming rows.
  */
 
 describe('importOutcome', () => {
@@ -29,20 +29,15 @@ describe('importOutcome', () => {
         fc.nat({ max: 30 }),
         fc.nat({ max: 30 }),
         fc.string({ minLength: 1 }),
-        (okCount, failCount, sourceRef) => {
+        (okCount, failCount, title) => {
           const entries = entriesOf(okCount, failCount)
-          const outcome = importOutcome(okCount + failCount, sourceRef, 'session.har', entries)
+          const outcome = importOutcome(okCount + failCount, title, entries)
 
           expect(outcome.attempted).toBe(okCount + failCount)
           expect(writtenCount(outcome)).toBe(okCount)
-          expect(outcome.sourceRef).toBe(sourceRef)
           expect(isPartialOutcome(outcome)).toBe(failCount > 0)
-          // Every result is tagged with its file and provenance for the batch view.
-          expect(
-            outcome.results.every(
-              (result) => result.fileName === 'session.har' && result.sourceRef === sourceRef
-            )
-          ).toBe(true)
+          // Every result is tagged with its unit's title for the batch view.
+          expect(outcome.results.every((result) => result.title === title)).toBe(true)
         }
       ),
       { numRuns: numRunsFor({ base: 200 }) }
@@ -50,12 +45,8 @@ describe('importOutcome', () => {
   })
 
   it('is complete when every entry is 2xx, partial with any non-2xx', () => {
-    expect(
-      isPartialOutcome(importOutcome(2, 'DocumentReference/a', 'a.har', entriesOf(2, 0)))
-    ).toBe(false)
-    expect(
-      isPartialOutcome(importOutcome(2, 'DocumentReference/a', 'a.har', entriesOf(1, 1)))
-    ).toBe(true)
+    expect(isPartialOutcome(importOutcome(2, 'a.har', entriesOf(2, 0)))).toBe(false)
+    expect(isPartialOutcome(importOutcome(2, 'a.har', entriesOf(1, 1)))).toBe(true)
   })
 })
 
@@ -64,7 +55,7 @@ describe('summarizeBatch and isPartialBatch', () => {
     const batch: FileImportResult[] = [
       imported('a', 3, 0, 2),
       imported('b', 1, 1, 0),
-      { _tag: 'skipped', id: 'd', fileName: 'd.har', reason: 'nothing' },
+      { _tag: 'skipped', id: 'd', title: 'd.har', reason: 'nothing' },
     ]
     const summary = summarizeBatch(batch)
     expect(summary.written).toBe(4) // 3 + 1
@@ -80,7 +71,7 @@ describe('summarizeBatch and isPartialBatch', () => {
     expect(
       isPartialBatch([
         imported('a', 3, 0),
-        { _tag: 'skipped', id: 'b', fileName: 'b.har', reason: 'nothing' },
+        { _tag: 'skipped', id: 'b', title: 'b.har', reason: 'nothing' },
       ])
     ).toBe(false)
     // A rejected resource (the source-file archive counts, since it writes in
@@ -120,7 +111,7 @@ describe('groupResultsByStatus', () => {
   it('flattens only the imported files, skipping skipped files', () => {
     const batch: FileImportResult[] = [
       fileWith('a', [outcome('Patient/p1', '201 Created', true)]),
-      { _tag: 'skipped', id: 'c', fileName: 'c.har', reason: 'nothing' },
+      { _tag: 'skipped', id: 'c', title: 'c.har', reason: 'nothing' },
     ]
     expect(allResults(batch)).toHaveLength(1)
     expect(groupResultsByStatus(batch).map((group) => group.status)).toEqual(['201 Created'])
@@ -160,20 +151,14 @@ const imported = (
 ): FileImportResult => ({
   _tag: 'imported',
   id,
-  fileName: `${id}.har`,
-  outcome: importOutcome(
-    okCount + failCount,
-    `DocumentReference/${id}`,
-    `${id}.har`,
-    entriesOf(okCount, failCount),
-    excluded
-  ),
+  title: `${id}.har`,
+  outcome: importOutcome(okCount + failCount, `${id}.har`, entriesOf(okCount, failCount), excluded),
 })
 
 /** An `imported` file result carrying the given explicit per-entry outcomes. */
 const fileWith = (id: string, entries: readonly BatchEntryOutcome[]): FileImportResult => ({
   _tag: 'imported',
   id,
-  fileName: `${id}.har`,
-  outcome: importOutcome(entries.length, `DocumentReference/${id}`, `${id}.har`, entries),
+  title: `${id}.har`,
+  outcome: importOutcome(entries.length, `${id}.har`, entries),
 })

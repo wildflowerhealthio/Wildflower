@@ -218,4 +218,8 @@ const DiagnosticReportSchema: Schema.Schema<
   never
 > = DiagnosticReportStruct
 
+/** A decoded `DiagnosticReport` — the type {@link DiagnosticReportSchema} produces. */
+type Type = typeof DiagnosticReportSchema.Type
+
 export { DiagnosticReportSchema as Schema, StatusSchema }
+export type { Type }

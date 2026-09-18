@@ -1,56 +1,54 @@
-.panel {
+.preview-panel {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
 
-.heading {
+.preview-panel__heading {
   margin: 0;
   font-size: var(--font-size-4);
 }
 
-.emptyMessage {
+.preview-panel__empty {
   margin: 0;
   color: var(--color-neutral-9);
 }
 
-.batchSummary {
+.preview-panel__batch-summary {
   margin: 0;
   color: var(--color-neutral-4);
 }
 
-/* The formats in a batch, stacked so each group reads as its own unit. */
-.formatGroups {
+.preview-panel__format-groups {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
 
-.formatGroup {
+.preview-panel__format-group {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
 }
 
-.formatHeading {
+.preview-panel__format-heading {
   margin: 0;
   font-size: var(--font-size-3);
 }
 
-/* The format's settings form, boxed so it reads as controls over the files below. */
-.settingsForm {
+.preview-panel__settings-form {
   padding: var(--space-3) var(--space-4);
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-2);
 }
 
-.fileSections {
+.preview-panel__file-sections {
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
 }
 
-.fileSection {
+.preview-panel__file-section {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
@@ -58,247 +56,45 @@
   border-top: 1px solid var(--color-divider);
 }
 
-.fileHeading {
+.preview-panel__file-heading {
   margin: 0;
   font-size: var(--font-size-3);
   font-family: var(--font-mono);
   word-break: break-all;
 }
 
-.readBody {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.tally {
-  margin: 0;
-  color: var(--color-neutral-4);
-  font-size: var(--font-size-2);
-}
-
-.decodeSection {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.sectionHeadingLabel {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  cursor: pointer;
-}
-
-.sectionHeading {
-  margin: 0;
-  font-size: var(--font-size-2);
-  font-family: var(--font-mono);
-  word-break: break-all;
-}
-
-.resourceList {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.resourceRow {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-}
-
-.resourceLabel {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  cursor: pointer;
-}
-
-.resourceType {
-  font-weight: var(--font-weight-3);
-}
-
-.resourceSummary {
-  color: var(--color-neutral-4);
-}
-
-.resourceExcluded {
-  text-decoration: line-through;
-  color: var(--color-neutral-4);
-}
-
-.editedChip {
-  font-size: var(--font-size-1);
-}
-
-/*
- * Diff badges on each row — the pre-fetched server status:
- *   .diffBadge_new       an id the server does not hold; the write creates fresh
- *   .diffBadge_unchanged the server already holds an equivalent copy (default excluded)
- *   .diffBadge_changed   the server holds a copy that differs; click/hover to see fields
- */
-.diffBadge,
-.diffBadge_new,
-.diffBadge_unchanged,
-.diffBadge_changed {
-  font-size: var(--font-size-1);
-}
-
-/* The `changed` badge is a disclosure: the badge button plus its popover. */
-.diffContainer {
-  position: relative;
-  display: inline-flex;
-}
-
-/* The `changed` badge, styled as a clickable chip. */
-.diffBadge_changed {
-  font: inherit;
-  font-size: var(--font-size-1);
-  padding: 0 var(--space-2);
-  background: transparent;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-1);
-  cursor: pointer;
-  color: inherit;
-}
-
-/* The field-diff popover, anchored under the badge. */
-.diffDetails {
-  position: absolute;
-  top: calc(100% + var(--space-1));
-  left: 0;
-  z-index: 1;
-  min-width: 16rem;
-  max-width: 32rem;
-  max-height: 20rem;
-  overflow: auto;
-  padding: var(--space-2);
-  background: var(--color-background);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-2);
-}
-
-.diffFieldList {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.diffField {
-  display: flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  flex-wrap: wrap;
-  font-size: var(--font-size-1);
-}
-
-.diffPath {
-  font-family: var(--font-mono);
-  color: var(--color-neutral-11);
-}
-
-.diffServer,
-.diffIncoming {
-  font-family: var(--font-mono);
-  overflow-wrap: anywhere;
-}
-
-.diffArrow {
-  color: var(--color-neutral-4);
-}
-
-.keepServerButton {
-  font: inherit;
-  font-size: var(--font-size-1);
-  padding: 0 var(--space-2);
-  background: transparent;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-1);
-  cursor: pointer;
-  color: inherit;
-}
-
-.editButton,
-.revertButton {
-  font: inherit;
-  font-size: var(--font-size-1);
-  padding: 0 var(--space-2);
-  background: transparent;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-1);
-  cursor: pointer;
-  color: inherit;
-}
-
-/* The file's diagnostic notes, folded away — browser noise, not review work. */
-.notes {
-  border-top: 1px solid var(--color-divider);
-  padding-top: var(--space-2);
-}
-
-.notesSummary {
-  cursor: pointer;
-  color: var(--color-neutral-4);
-  font-size: var(--font-size-2);
-}
-
-.noteList {
-  list-style: none;
-  margin: 0;
-  padding: var(--space-2) 0 0 var(--space-3);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.note {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  color: var(--color-neutral-4);
-  word-break: break-all;
-}
-
-.actions {
+.preview-panel__actions {
   display: flex;
   gap: var(--space-3);
   justify-content: flex-end;
 }
 
-.confirm,
-.cancel {
+.preview-panel__confirm,
+.preview-panel__cancel {
   padding: var(--space-2) var(--space-5);
   border-radius: var(--radius-2);
   font: inherit;
   cursor: pointer;
 }
 
-.confirm {
+.preview-panel__confirm {
   border: 1px solid transparent;
   background: var(--color-neutral-9);
   color: var(--color-neutral-0);
 }
 
-.confirm:disabled {
+.preview-panel__confirm:disabled {
   cursor: default;
   opacity: 0.6;
 }
 
-.cancel {
+.preview-panel__cancel {
   border: 1px solid var(--color-divider);
   background: transparent;
   color: inherit;
 }
 
-.cancel:disabled {
+.preview-panel__cancel:disabled {
   cursor: default;
   opacity: 0.6;
 }

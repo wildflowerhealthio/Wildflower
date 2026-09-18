@@ -11,12 +11,14 @@ import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import type { DocumentReferenceType } from 'importer-fundamentals'
+import type { DocumentReference } from 'fhir-r4/resources'
+import { PickedFile } from 'importer-fundamentals'
 
 type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
-import { formatKinds, formatRegistry, type FormatKind } from '../registry.ts'
-import { type PickedFile, serverSource } from '../sources/picked-file.ts'
+import { formatKinds, type FormatKind } from 'importer-core'
+
+import { formatRegistry } from '../registry.ts'
 import { SOURCE_FILES_QUERY_KEY } from './keys.ts'
 import { nextPageToken } from './page-token.ts'
 
@@ -30,7 +32,7 @@ import { nextPageToken } from './page-token.ts'
  * One search per page over every registered format's source-file category
  * token, joined with FHIR's comma-OR (`category=t1,t2`), so the whole
  * cross-format listing is one round trip per page. Each returned resource is
- * classified by dispatching every descriptor's `isSourceFile` predicate in
+ * classified by dispatching every importer's `isSourceFile` predicate in
  * registry order; predicates are disjoint by construction (HAR under
  * `WEB_TRACE_CODE_SYSTEM`, LifeLabs under `LIFELABS_SYSTEM`) so at most one
  * claims any row, and a row no predicate claims (the coding matched the
@@ -69,14 +71,14 @@ const DEFAULT_PAGE_SIZE = 50
  * `DocumentReference` matching *any* of the tokens.
  */
 const SOURCE_FILES_CATEGORY_TOKEN = formatKinds
-  .map((kind) => formatRegistry[kind].sourceFileCategoryToken)
+  .map((kind) => formatRegistry[kind].categoryToken)
   .join(',')
 
 /**
  * One source file as the list shows it: enough to name and date a row, its
  * id so a selection can fetch the whole source file and build its `server`
  * source, and the format tag the row was classified as so a preview or
- * pick dispatches to the right descriptor.
+ * pick dispatches to the right importer.
  *
  * @remarks
  * Deliberately not the source file itself. The bytes are the file,
@@ -137,7 +139,7 @@ interface SourceFilesQueryOptions {
  * `Object.keys(formatRegistry)` order — so the classification is
  * deterministic across engines.
  */
-const classifySourceFile = (resource: DocumentReferenceType): FormatKind | undefined =>
+const classifySourceFile = (resource: DocumentReference.Type): FormatKind | undefined =>
   formatKinds.find((kind) => formatRegistry[kind].isSourceFile(resource))
 
 /**
@@ -148,7 +150,7 @@ const classifySourceFile = (resource: DocumentReferenceType): FormatKind | undef
  *   registered format and has an id
  *
  * @remarks
- * A resource no descriptor's `isSourceFile` claims is dropped — the category
+ * A resource no importer's `isSourceFile` claims is dropped — the category
  * search returned it (the coding matched), but the format is not
  * registered here, so the shell has no reader for it. A source file with no
  * logical id is dropped too: a row exists to be selected, and a selection
@@ -157,7 +159,7 @@ const classifySourceFile = (resource: DocumentReferenceType): FormatKind | undef
  * pulls a single source file's contents onto the device.
  */
 const rowsOf = (
-  entries: readonly { readonly resource: DocumentReferenceType | null }[]
+  entries: readonly { readonly resource: DocumentReference.Type | null }[]
 ): readonly SourceFileRow[] =>
   Arr.filterMap(entries, (entry): Option.Option<SourceFileRow> => {
     const resource = entry.resource
@@ -177,8 +179,9 @@ const rowsOf = (
  * Projects decoded `DocumentReference` resources (as returned by
  * {@link fetchDocumentReferencePage}) into source-file rows.
  */
-const rowsFromResources = (resources: readonly DocumentReferenceType[]): readonly SourceFileRow[] =>
-  rowsOf(resources.map((resource) => ({ resource })))
+const rowsFromResources = (
+  resources: readonly DocumentReference.Type[]
+): readonly SourceFileRow[] => rowsOf(resources.map((resource) => ({ resource })))
 
 /**
  * Query options for the paged source-file read, for a caller that drives the
@@ -346,16 +349,17 @@ const useSmartSourceFilesQuery = (
 const fetchSourceFile = (
   runAuthed: RunAuthed,
   row: { readonly id: string; readonly format: FormatKind }
-): Promise<PickedFile> =>
+): Promise<PickedFile.Type> =>
   runAuthed(
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
       const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      const sourceFile = yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
+      const { fileName, bytes } =
+        yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
       return {
-        fileName: sourceFile.fileName,
-        bytes: sourceFile.bytes,
-        source: serverSource(row.id),
+        fileName,
+        bytes,
+        source: PickedFile.Source.server(row.id),
       }
     })
   )
@@ -378,12 +382,14 @@ const fetchSourceFile = (
 const fetchSourceFileContents = (
   runAuthed: RunAuthed,
   row: { readonly id: string; readonly format: FormatKind }
-): Promise<{ readonly fileName: string; readonly bytes: Uint8Array }> =>
+): Promise<PickedFile.NamedBytes> =>
   runAuthed(
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
       const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      return yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
+      const { fileName, bytes } =
+        yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
+      return { fileName, bytes }
     })
   )
 

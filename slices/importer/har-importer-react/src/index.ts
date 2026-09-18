@@ -6,11 +6,10 @@
  * @remarks
  * Presentation and interaction only — a view over `har-importer-core`'s
  * sources and settings. Nothing here decodes a HAR, recognizes traffic, or
- * writes resources; the shell re-decodes through the descriptor when the
+ * writes resources; the shell re-decodes through the importer when the
  * settings change. The format needs no review UI of its own — the shell's
  * generalized sectioned review (per-resource include/edit) covers it.
  *
  * @packageDocumentation
  */
 export { HarSettingsPicker } from './settings-picker.tsx'
-export type { SettingsPickerProps } from 'importer-fundamentals'

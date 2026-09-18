@@ -296,4 +296,8 @@ const ServiceRequestSchema: Schema.Schema<
   never
 > = ServiceRequestStruct
 
+/** A decoded `ServiceRequest` — the type {@link ServiceRequestSchema} produces. */
+type Type = typeof ServiceRequestSchema.Type
+
 export { ServiceRequestSchema as Schema, StatusSchema, IntentSchema }
+export type { Type }
