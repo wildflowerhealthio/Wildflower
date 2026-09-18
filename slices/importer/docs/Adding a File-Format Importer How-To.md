@@ -250,10 +250,20 @@ a file without naming your settings type.
 
 ## 6. Register
 
-**The importer half, in `importer-core/src/registry.ts`.** Add the binding
-package as a dependency of `importer-core`, run `vp install`, and extend the
-three registry constructs — the `FormatSettings` type-level map, the
-`formatRegistry` literal, and the `defaultFormatSettings` record:
+**The importer half, in `importer-core`.** Add the binding package as a
+dependency of `importer-core`, run `vp install`, and extend four constructs —
+all mapped or exhaustive types over `FormatKind`, so a format missed in any of
+them **fails to compile**:
+
+1. **`FormatSettings`** (`registry.ts`) — the type-level map from format to
+   settings type.
+2. **`formatRegistry`** (`registry.ts`) — the literal registry of importers.
+3. **`defaultFormatSettings`** (`registry.ts`) — the default settings record.
+4. **`collectFormats`** (`read-batch.ts`) — the one place that names every
+   format literally, because TypeScript drops the correlation between a
+   computed union key and its value (its remarks explain why).
+
+`formatKinds` does **not** need an entry — it is derived from `formatRegistry`.
 
 ```ts
 type FormatSettings = {
@@ -270,14 +280,6 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
   'my-format': myImporter,
 }
 ```
-
-`defaultFormatSettings` gains the matching slot. `formatKinds` does **not** — it
-is derived from `formatRegistry`. One more edit lives outside that file:
-`collectFormats` in `read-batch.ts` names every format literally, for the reason
-its remarks give (TypeScript drops the correlation between a computed union key
-and its value, so a record assembled from a `kind` variable is checked against
-nothing). All four are mapped or exhaustive types over `FormatKind`, so a format
-added to `FormatSettings` and missed anywhere else **fails to compile**.
 
 **The UI half, in `importer-react/src/registry.ts`.** Add the
 `*-importer-react` package as a dependency of `importer-react`, run
