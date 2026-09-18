@@ -1,6 +1,6 @@
 import { Effect, type ParseResult, Schema, Function as Func } from 'effect'
 import { type DocumentReference } from 'fhir-r4/resources'
-import * as DecodeFunction from './decode-function.ts'
+import type * as DecodeFunction from './decode-function.ts'
 import type * as PickedFile from './picked-file.ts'
 import * as SourceFile from './source-file.ts'
 
@@ -15,17 +15,26 @@ interface SettingsPickerProps<TSettings> {
 
 // ─── FileImporter ───────────────────────────────────────────────────────────
 
-/** The constructor config a format binding supplies. */
+/**
+ * The constructor config a format binding supplies.
+ *
+ * @remarks
+ * A binding writes each seam in the shape the thing that consumes it reads,
+ * rather than as loose fields the factory would assemble: the source-file
+ * constants as one `SourceFile.Format` (the value the codec is parameterized
+ * by), and the batch decode's inputs as one `DecodeFunction.Config` (the value
+ * `DecodeFunction.fromConfig` takes), the format tag among them. Nothing here
+ * is spelled twice. `descriptionPrefix` is the binding's too — conventionally
+ * `` `${display.title}: ` ``, spelled at the call site so a format that wants a
+ * different prefix simply writes one.
+ */
 interface FileImporterConfig<TFormat extends string, TSettings> {
   readonly format: TFormat
-  readonly coding: SourceFile.Coding
-  readonly contentType: string
+  readonly sourceFileFormat: SourceFile.Format
+  readonly decode: DecodeFunction.Type<TSettings, TFormat>
   readonly display: { readonly title: string; readonly description: string }
   readonly detect: (fileBytes: Uint8Array, fileName: string) => boolean
   readonly defaultSettings: TSettings
-  readonly decodeOne: SourceFile.DecodeOne<TSettings>
-  readonly securityLabel?: readonly SourceFile.Coding[] | undefined
-  readonly subjectFor?: SourceFile.SubjectFor
 }
 
 /**
@@ -78,29 +87,21 @@ interface FileImporter<TSettings, TFormat extends string> {
  * `DocumentReference` with one attachment carrying the bytes verbatim, keyed
  * under a per-format `type`/`category` coding. The codec itself lives in
  * `source-file.ts`, parameterized by a `SourceFile.FormatContext`; this is
- * where that context is bound, once, from the config — so the schemas, the
- * deterministic mint, the read-back and the batch decode all come out of the
- * factory requiring nothing. A binding supplies its coding constants and a
+ * where the config's `sourceFileFormat` is provided as that context, once — so
+ * the schemas, the read-back and the batch decode all come out of the
+ * factory requiring nothing. A binding supplies those constants and a
  * per-file decode function, nothing else.
  *
- * @param config - The format's tags, display strings, `detect`, settings and `decodeOne`
+ * @param config - The format's source-file constants, decode config, display strings, `detect` and settings
  * @returns The format's importer, ready for the registry
  */
 const fileImporter = <TFormat extends string, TSettings>(
   config: FileImporterConfig<TFormat, TSettings>
 ): FileImporter<TSettings, TFormat> => {
-  const { coding, contentType, securityLabel } = config
-  const descriptionPrefix = `${config.display.title}: `
+  const { sourceFileFormat } = config
+  const { coding, contentType } = sourceFileFormat
 
-  const sourceFileFormat: SourceFile.Format = {
-    coding,
-    contentType,
-    securityLabel,
-    descriptionPrefix,
-  }
   const provideSourceFileFormat = Effect.provideService(SourceFile.FormatContext, sourceFileFormat)
-
-  const batchDecode = DecodeFunction.fromConfig(config)
 
   return {
     format: config.format,
@@ -120,7 +121,7 @@ const fileImporter = <TFormat extends string, TSettings>(
       Schema.decode(SourceFile.FromDocumentReferenceSchema),
       provideSourceFileFormat
     ),
-    decode: (files, settings) => batchDecode(files, settings).pipe(provideSourceFileFormat),
+    decode: config.decode,
   }
 }
 

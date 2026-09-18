@@ -34,7 +34,7 @@ resources, plus a note per thing that did not become a resource.
 | Importer        | `*-importer-core/src/descriptor.ts`            | one `fileImporter({ … })` call                                |
 | Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (an empty record if none)     |
 | Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
-| Source file     | the `coding` / `contentType` you pass in       | derived by `fileImporter`, minted inside `decode`             |
+| Source file     | the `sourceFileFormat` you pass in             | derived by `fileImporter`, minted inside `decode`             |
 | Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)    |
 | Registry entry  | `importer-core/src/registry.ts`                | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
 | Picker entry    | `importer-react/src/registry.ts`               | the same key's `SettingsPicker`                               |
@@ -134,9 +134,11 @@ links are already there, stamped by the decode.
 
 A source file is the picked file itself, stored as a FHIR `DocumentReference`
 with the bytes verbatim. It is **the format's**, not the shell's — but a binding
-does not write the encoding. You pass `fileImporter` a `coding`
-(`{ system, code }`), a `contentType`, and optionally a `securityLabel`, and it
-derives the whole seam from them:
+does not write the encoding. You pass `fileImporter` one **`sourceFileFormat`**
+— a `SourceFile.Format`, the same value the codec is parameterized by: a
+`coding` (`{ system, code }`), a `contentType`, a `descriptionPrefix`
+(conventionally `` `${display.title}: ` ``), and optionally a `securityLabel`.
+It derives the whole seam from that:
 
 | Derived field                     | What it is                                                  |
 | --------------------------------- | ----------------------------------------------------------- |
@@ -191,17 +193,29 @@ downstream rewrites them.
 ## 5. Assemble the importer
 
 ```ts
-const myImporter = fileImporter({
-  format: 'my-format',
+const display = { title: '…', description: '…' }
+
+const sourceFileFormat = {
   coding: { system: MY_SYSTEM, code: MY_SOURCE_FILE_CODE },
   contentType: 'application/x-my-format',
-  display: { title: '…', description: '…' },
-  detect: (bytes, fileName) => fileName.toLowerCase().endsWith('.myfmt') || myMagic(bytes),
-  defaultSettings: defaultMySettings,
-  decodeOne: decodeMyFormat,
+  descriptionPrefix: `${display.title}: `,
   // optional:
   securityLabel: [{ system: MY_REDACTION_SYSTEM, code: 'raw' }],
+}
+
+const decodeFunctionConfig = {
+  format: 'my-format',
+  decodeOne: decodeMyFormat,
+  // optional:
   subjectFor: mySubjectOf,
+} as const
+
+const myImporter = fileImporter({
+  display,
+  sourceFileFormat,
+  decodeFunctionConfig,
+  detect: (bytes, fileName) => fileName.toLowerCase().endsWith('.myfmt') || myMagic(bytes),
+  defaultSettings: defaultMySettings,
 })
 ```
 

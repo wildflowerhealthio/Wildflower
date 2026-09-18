@@ -15,9 +15,18 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
 - `src/file-importer.ts` — **`FileImporter<TFormat, TSettings>`**, "a
   file-format importer" as one first-class value a closed registry lists, and
   **`fileImporter(config)`**, which builds one from a binding's config
-  (`format`, `coding`, `contentType`, `display`, `detect`, `defaultSettings`,
-  `decodeOne: SourceFile.DecodeOne<TSettings>`, optional `securityLabel` /
-  `subjectFor`). A `FileImporter` is a **plain record, not a class instance**:
+  (`sourceFileFormat: SourceFile.Format`,
+  `decodeFunctionConfig: DecodeFunction.Config`, `display`, `detect`,
+  `defaultSettings`). Each seam arrives as **one value in the shape its
+  consumer reads** rather than as loose fields the factory would assemble: the
+  source-file constants as the `SourceFile.Format` the codec is parameterized
+  by (`coding` / `contentType` / `securityLabel` / `descriptionPrefix` — the
+  last spelled by the binding, conventionally `` `${display.title}: ` ``,
+  rather than derived here), and the batch decode's inputs as the
+  `DecodeFunction.Config` `fromConfig` takes (`format`, `decodeOne`, optional
+  `subjectFor`). The **format tag is declared once**, inside that decode
+  config; `FileImporter.format` is read back off it.
+  A `FileImporter` is a **plain record, not a class instance**:
   an adapter layer extends one by spreading it (which is how
   `importer-react`'s registry attaches each format's `SettingsPicker`), and a
   spread is only total when there is no prototype to lose. **The factory is the

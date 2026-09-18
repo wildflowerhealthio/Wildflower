@@ -7,6 +7,7 @@ import {
   DecodedFile,
   SourceFile,
   FormatDecode,
+  DecodeFunction,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -46,19 +47,31 @@ describe('lifeLabsPdfImporter', () => {
 
 const SETTINGS = { timeZone: 'America/Vancouver' }
 
+const sourceFileFormat = {
+  coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
+  contentType: 'application/pdf',
+  descriptionPrefix: 'LifeLabs report: ',
+}
+
 const importerForReports = (
   reports: readonly Report.Type[]
-): FileImporter<typeof SETTINGS, 'lifelabs-pdf'> =>
-  fileImporter({
-    format: 'lifelabs-pdf' as const,
-    coding: { system: LIFELABS_SYSTEM, code: LIFELABS_PDF_SOURCE_FILE_CODE },
-    contentType: 'application/pdf',
+): FileImporter<typeof SETTINGS, 'lifelabs-pdf'> => {
+  const format = 'lifelabs-pdf'
+  // Closes over `reports`, so it is built per call rather than at module scope.
+  const decodeFunctionConfig = {
+    format,
+    decodeOne: (_file: PickedFile.PickedFile, settings: typeof SETTINGS) =>
+      decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
+  } as const
+  return fileImporter({
+    format,
+    sourceFileFormat,
+    decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),
     display: { title: 'LifeLabs report', description: 'Test' },
     detect: detectLifeLabsPdf,
     defaultSettings: SETTINGS,
-    decodeOne: (_file: PickedFile.PickedFile, settings: typeof SETTINGS) =>
-      decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
   })
+}
 
 const readUnit = (result: FormatDecode.Result<string>): FormatDecode.Result<string>['decoded'] => {
   if (result.unreadableFiles.length > 0) {

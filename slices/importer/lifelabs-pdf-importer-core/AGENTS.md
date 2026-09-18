@@ -92,8 +92,8 @@ function.
   stored under**, exported as the `/source-file` subpath: a barrel re-exporting
   `LIFELABS_SYSTEM`, `LIFELABS_PDF_SOURCE_FILE_CODE`, and
   `LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE`. The FHIR encoding is not written
-  here — `descriptor.ts` passes those constants to `fileImporter` as data
-  (PDF content type, LifeLabs coding under
+  here — `descriptor.ts` passes those constants to `fileImporter` as its
+  `sourceFileFormat` (PDF content type, LifeLabs coding under
   `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no web-trace security label) and
   gets the read-back, and a `decode` that mints, derived from them. Nothing parses the PDF on
   that path; the bytes are carried, hashed, and handed back exactly as they

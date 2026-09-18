@@ -71,7 +71,8 @@ decode yields one section per file when the header carries a patient identity.
 - `src/source-file/index.ts` — barrel re-exporting the coding constants
   (`DICOM_SYSTEM`, `DICOM_SOURCE_FILE_CODE`,
   `DICOM_SOURCE_FILE_CONTENT_TYPE`). The FHIR encoding is not written here —
-  `descriptor.ts` passes those constants to `fileImporter` as data.
+  `descriptor.ts` passes those constants to `fileImporter` as its
+  `sourceFileFormat`.
 - `src/descriptor.ts` — **`dicomImporter`**, the `fileImporter` call for format
   `'dicom'`: the DICOM coding (`DICOM_SYSTEM|dicom-source-file`), content type
   `application/dicom`, `detectDicom`, the default settings, `decodeDicom` as

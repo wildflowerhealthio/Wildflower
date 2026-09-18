@@ -3,6 +3,7 @@ import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
+import * as DecodeFunction from './decode-function.ts'
 import * as DecodedFile from './decoded-file.ts'
 import { fileImporter, type DocumentReferenceType, type FileImporter } from './file-importer.ts'
 import * as FormatDecode from './format-decode.ts'
@@ -53,14 +54,25 @@ const decodeBytes = (
         notes: [],
       })
 
-const importer = fileImporter({
-  format: 'test',
+const testFormat = 'test'
+const display = { title: 'Example', description: 'Test format' }
+const sourceFileFormat = {
   coding: { system: SYSTEM, code: 'example' },
   contentType: 'application/octet-stream',
-  display: { title: 'Example', description: 'Test format' },
+  descriptionPrefix: `${display.title}: `,
+}
+const decodeFunctionConfig = {
+  format: testFormat,
+  decodeOne: decodeBytes,
+} as const
+
+const importer = fileImporter({
+  format: testFormat,
+  display,
+  sourceFileFormat,
+  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),
   detect: () => false,
   defaultSettings: null,
-  decodeOne: decodeBytes,
 })
 
 const fileArbitrary: fc.Arbitrary<PickedFile.PickedFile> = fc.record({
@@ -82,15 +94,24 @@ const atFixedInstant = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
     }).pipe(Effect.provide(TestContext.TestContext))
   )
 
+const otherDisplay = { title: 'Other', description: 'Test format' }
+const otherSourceFileFormat = {
+  ...sourceFileFormat,
+  coding: { system: SYSTEM, code: 'other-example' },
+}
+const otherDecodeFunctionConfig = { ...decodeFunctionConfig, format: 'other' } as const
+
 /** A second format over the same system, to check that recognition is per-coding. */
 const otherImporter = fileImporter({
-  format: 'other',
-  coding: { system: SYSTEM, code: 'other-example' },
-  contentType: 'application/octet-stream',
-  display: { title: 'Other', description: 'Test format' },
+  format: testFormat,
+  display: otherDisplay,
+  sourceFileFormat: otherSourceFileFormat,
+  decode: DecodeFunction.fromCombinableDecodeConfig(
+    otherDecodeFunctionConfig,
+    otherSourceFileFormat
+  ),
   detect: () => false,
   defaultSettings: null,
-  decodeOne: decodeBytes,
 })
 
 /** The source-file row a single-local-pick decode leads with. */
@@ -223,17 +244,25 @@ describe('decode (batch behavior)', () => {
 
   it('should hand the per-file decode the resolved source reference', async () => {
     const seen: string[] = []
-    const spyImporter = fileImporter({
-      format: 'test',
-      coding: { system: SYSTEM, code: 'example' },
-      contentType: 'application/octet-stream',
-      display: { title: 'Example', description: 'Test format' },
-      detect: () => false,
-      defaultSettings: null,
-      decodeOne: (file, settings: null, sourceFile) => {
+    const format = 'test'
+    const spyDecodeFunctionConfig = {
+      format,
+      decodeOne: (
+        file: PickedFile.PickedFile,
+        settings: null,
+        sourceFile: SourceFile.Reference
+      ) => {
         seen.push(sourceFile)
         return decodeBytes(file, settings)
       },
+    } as const
+    const spyImporter = fileImporter({
+      format,
+      display,
+      sourceFileFormat,
+      decode: DecodeFunction.fromCombinableDecodeConfig(spyDecodeFunctionConfig, sourceFileFormat),
+      detect: () => false,
+      defaultSettings: null,
     })
     const result = await Effect.runPromise(
       spyImporter.decode(
@@ -321,20 +350,25 @@ describe('decode (batch behavior)', () => {
   })
 
   it('should file the minted source file under the subject the decode named', async () => {
-    const subjectImporter = fileImporter({
-      format: 'test',
-      coding: { system: SYSTEM, code: 'example' },
-      contentType: 'application/octet-stream',
-      display: { title: 'Example', description: 'Test format' },
-      detect: () => false,
-      defaultSettings: null,
-      decodeOne: decodeBytes,
+    const subjectDecodeFunctionConfig = {
+      ...decodeFunctionConfig,
       // The decode's own resources name the subject, so a format never parses
       // its file twice to derive one.
-      subjectFor: (_file, decoded) => {
+      subjectFor: (_file: PickedFile.PickedFile, decoded: DecodedFile.DecodedFile) => {
         const first = DecodedFile.resources(decoded)[0]
         return first === undefined ? undefined : { reference: `Patient/${first.resource.id}` }
       },
+    }
+    const subjectImporter = fileImporter({
+      format: subjectDecodeFunctionConfig.format,
+      display,
+      sourceFileFormat,
+      decode: DecodeFunction.fromCombinableDecodeConfig(
+        subjectDecodeFunctionConfig,
+        sourceFileFormat
+      ),
+      detect: () => false,
+      defaultSettings: null,
     })
     const result = await Effect.runPromise(
       subjectImporter.decode([localFile('scan.bin', new Uint8Array([9]))], null)

@@ -23,8 +23,9 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
   (resource-agnostic, format-agnostic) — the `FileImporter` contract and the
-  `fileImporter` factory that builds one: a binding gives a per-file
-  `decodeOne` and its coding constants, and gets back the batch `decode` the
+  `fileImporter` factory that builds one: a binding gives a
+  `decodeFunctionConfig` (its format tag and per-file `decodeOne`) and a
+  `sourceFileFormat` (its coding constants), and gets back the batch `decode` the
   shell runs (one `FormatDecode.Result` per format: the merged sections and
   notes, plus an `unreadableFiles` row per file that rejected), the
   deterministic source-file mint and its server-read seam, and the per-file

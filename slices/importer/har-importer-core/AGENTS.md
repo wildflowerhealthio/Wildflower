@@ -20,7 +20,7 @@ shell's shared `persistBatchBundle`.
   from one import. Exported as the `/source-file` subpath. The FHIR encoding
   itself is not written here — `har-importer.ts` passes that coding,
   `application/json`, and the web-trace raw `securityLabel` to `fileImporter`
-  as data, and gets `categoryToken`, `isSourceFile`,
+  as one `sourceFileFormat`, and gets `categoryToken`, `isSourceFile`,
   `sourceFileFromDocumentReference`, and the batch `decode` that mints the
   source file inside itself, back.
   A whole source file lives as one attachment under the `har-archive`

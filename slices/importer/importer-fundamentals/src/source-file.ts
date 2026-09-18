@@ -70,17 +70,6 @@ const idFromReference = (ref: Reference): string => ref.slice(REFERENCE_PREFIX.l
 
 // ─── Decode ─────────────────────────────────────────────────────────────────
 
-/**
- * One format's per-file decode step, given the file, its settings, and the
- * reference to the source file every resource it yields will be stamped with —
- * minted for a `local` pick, the existing one for a `server` pick.
- */
-type DecodeOne<TSettings> = (
-  file: PickedFile.PickedFile,
-  settings: TSettings,
-  sourceFile: Reference
-) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError>
-
 /** A subject a minted source file is filed under, when the format names one. */
 interface Subject {
   readonly reference: string
@@ -369,13 +358,4 @@ export {
   encodeSourceFile,
   SourceFileSchema as Schema,
 }
-export type {
-  Coding,
-  DecodeOne,
-  Format,
-  PerFileDecodeOptions,
-  Reference,
-  Subject,
-  SubjectFor,
-  Type,
-}
+export type { Coding, Format, PerFileDecodeOptions, Reference, Subject, SubjectFor, Type }

@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
-import { fileImporter, type DecodedFile } from 'importer-fundamentals'
+import { fileImporter, DecodeFunction, type DecodedFile } from 'importer-fundamentals'
 
 import {
   HAR_ARCHIVE_CODE,
@@ -60,17 +60,20 @@ const notesFor = (previews: readonly FhirPreview[]): readonly string[] =>
   })
 const format = 'har'
 
-const harImporter = fileImporter({
-  format,
+const display = {
+  title: 'HAR archive',
+  description: 'Import FHIR records from a captured browsing session.',
+}
+
+const sourceFileFormat = {
   coding: { system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE },
   contentType: 'application/json',
   securityLabel: [{ system: WEB_TRACE_REDACTION_SYSTEM, code: WEB_TRACE_RAW_CODE }],
-  display: {
-    title: 'HAR archive',
-    description: 'Import FHIR records from a captured browsing session.',
-  },
-  detect: detectHar,
-  defaultSettings: defaultHarSettings,
+  descriptionPrefix: `${display.title}: `,
+}
+
+const decodeFunctionConfig: DecodeFunction.CombinableDecodeConfig<typeof format, HarSettings> = {
+  format,
   decodeOne: (file, settings) =>
     decodeHar(file.bytes, settings).pipe(
       Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
@@ -79,6 +82,15 @@ const harImporter = fileImporter({
         notes: notesFor(previews),
       }))
     ),
+}
+
+const harImporter = fileImporter({
+  format,
+  display,
+  sourceFileFormat,
+  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),
+  detect: detectHar,
+  defaultSettings: defaultHarSettings,
 })
 
 export { harImporter, fhirSources }

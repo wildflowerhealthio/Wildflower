@@ -1,4 +1,4 @@
-import { DecodedFile, fileImporter, type SourceFile } from 'importer-fundamentals'
+import { DecodedFile, fileImporter, type SourceFile, DecodeFunction } from 'importer-fundamentals'
 
 import { decodeDicom } from './decode.ts'
 import { detectDicom } from './detect.ts'
@@ -24,18 +24,30 @@ const patientSubjectOf: SourceFile.SubjectFor = (_file, decoded) => {
   return { reference: `Patient/${id}` }
 }
 
-const dicomImporter = fileImporter({
-  format: 'dicom',
+const format = 'dicom'
+
+const display = {
+  title: 'DICOM image',
+  description: 'Import a DICOM (.dcm) file.',
+}
+const sourceFileFormat = {
   coding: { system: DICOM_SYSTEM, code: DICOM_SOURCE_FILE_CODE },
   contentType: 'application/dicom',
-  display: {
-    title: 'DICOM image',
-    description: 'Import a DICOM (.dcm) file.',
-  },
-  detect: detectDicom,
-  defaultSettings: defaultDicomSettings,
+  descriptionPrefix: `${display.title}: `,
+}
+const decodeFunctionConfig = {
+  format,
   decodeOne: decodeDicom,
   subjectFor: patientSubjectOf,
+} as const
+
+const dicomImporter = fileImporter({
+  display,
+  sourceFileFormat,
+  format,
+  decode: DecodeFunction.fromCombinableDecodeConfig(decodeFunctionConfig, sourceFileFormat),
+  detect: detectDicom,
+  defaultSettings: defaultDicomSettings,
 })
 
 export { dicomImporter, patientSubjectOf }
