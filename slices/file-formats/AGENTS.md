@@ -32,6 +32,12 @@ consumer slices.
   `dicom-parser` only. The `test-helpers` subpath exports `writeDicom` (a
   minimal explicit-VR little-endian writer) and fast-check arbitraries for
   synthesizing DICOM fixtures in tests.
+- **[`dicom-react`](./dicom-react/AGENTS.md)** — browser-side DICOM rendering:
+  `DicomArchivePreview` (identifying patient and study tags beside a
+  cornerstone-rendered image pane) and the `renderInstance` seam. Depends on
+  `dicom` for tag parsing, `@cornerstonejs/core` and
+  `@cornerstonejs/dicom-image-loader` for image rendering. The `-react` adapter
+  for the `dicom` parser, consumed by `dicom-importer-react`.
 
 The deferred positioned-text preview viewer (React `RunsView`) would join as a
 `positioned-text-react` when it is extracted from `pdf-anonymizer-react`.
@@ -41,9 +47,11 @@ The deferred positioned-text preview viewer (React `RunsView`) would join as a
 - **Cores here are pure** — no DOM, no `fs`, no platform imports
   (`platform: 'neutral'`). Browser-only pieces live in an adapter:
   `positioned-text-web` carries the `pdfjs-dist` extraction seam (a `-web`, not
-  `-react`, package — it touches no React).
-- **Consumers depend down.** Nothing in this slice imports `slices/importer`,
-  `slices/anonymizer`, or a React package.
+  `-react`, package — it touches no React); `dicom-react` carries the
+  cornerstone rendering adapter (a `-react` package — it depends on React and
+  on `@cornerstonejs/*`, but not on any importer slice).
+- **Consumers depend down.** Nothing in this slice imports `slices/importer`
+  or `slices/anonymizer`.
 
 ## References
 

@@ -247,12 +247,14 @@ const PreviewBody = ({
       </p>
     )
   }
+  const entry = formatRegistry[row.format]
   return (
     <PreviewContents
       fileName={query.data.fileName}
       bytes={query.data.bytes}
-      contentType={formatRegistry[row.format].contentType}
+      contentType={entry.contentType}
       onClose={onClose}
+      ArchivePreview={entry.ArchivePreview}
     />
   )
 }
@@ -263,24 +265,33 @@ interface PreviewContentsProps {
   readonly bytes: Uint8Array
   readonly contentType: string
   readonly onClose: () => void
+  readonly ArchivePreview?:
+    | ((props: { fileName: string; bytes: Uint8Array }) => JSX.Element)
+    | undefined
 }
 
 /**
- * The format-specific preview body, chosen by content type: PDF renders in an
- * iframe, JSON/HAR pretty-prints, and anything else (DICOM, images) shows a
- * binary notice with the file size.
+ * The format-specific preview body. When the format supplies an
+ * `ArchivePreview` component, it renders instead of the content-type
+ * dispatch; otherwise PDF renders in an iframe, JSON/HAR pretty-prints,
+ * and anything else shows a binary notice with the file size.
  */
 const PreviewContentBody = ({
   contentType,
   blobUrl,
   fileName,
   bytes,
+  ArchivePreview,
 }: {
   readonly contentType: string
   readonly blobUrl: string
   readonly fileName: string
   readonly bytes: Uint8Array
+  readonly ArchivePreview?:
+    | ((props: { fileName: string; bytes: Uint8Array }) => JSX.Element)
+    | undefined
 }): JSX.Element => {
+  if (ArchivePreview !== undefined) return <ArchivePreview fileName={fileName} bytes={bytes} />
   if (contentType === 'application/pdf') return <PdfBody blobUrl={blobUrl} fileName={fileName} />
   if (contentType === 'application/json' || contentType === 'application/har+json') {
     return <JsonBody bytes={bytes} />
@@ -298,6 +309,7 @@ const PreviewContents = ({
   bytes,
   contentType,
   onClose,
+  ArchivePreview,
 }: PreviewContentsProps): JSX.Element => {
   const blobUrl = useBlobUrl(bytes, contentType)
   return (
@@ -310,6 +322,7 @@ const PreviewContents = ({
         blobUrl={blobUrl}
         fileName={fileName}
         bytes={bytes}
+        ArchivePreview={ArchivePreview}
       />
       <div className={styles.previewActions}>
         <a
