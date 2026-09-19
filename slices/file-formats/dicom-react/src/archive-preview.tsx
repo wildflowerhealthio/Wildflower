@@ -1,6 +1,7 @@
 /**
  * DICOM archive preview: identifying patient and study tags from the parsed
- * header beside a cornerstone-rendered image pane.
+ * header, plus how the instance is encoded, beside a cornerstone-rendered
+ * image pane.
  *
  * @packageDocumentation
  */
@@ -9,7 +10,8 @@ import { type DicomHeader, parseDicomFile } from 'dicom'
 import { Either } from 'effect'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 
-import { renderInstance, type RenderOutcome } from './render-instance.ts'
+import { encodingRows } from './encoding-rows.ts'
+import { observeViewportResize, renderInstance, type RenderOutcome } from './render-instance.ts'
 
 const ABSENT = '—'
 
@@ -18,22 +20,30 @@ interface DicomArchivePreviewProps {
   readonly fileName: string
   readonly bytes: Uint8Array
   readonly renderDicomInstance?: typeof renderInstance
+  readonly observeDicomViewportResize?: typeof observeViewportResize
 }
 
 /**
- * Parse the DICOM file and render its identifying tags alongside the image.
- * A parse failure renders an inline error; a non-image instance (or a codec
- * failure) shows a "No renderable image" placeholder.
+ * Parse the DICOM file and render its identifying tags, and how the instance
+ * is encoded, alongside the image. A parse failure renders an inline error; a
+ * non-image instance (or a codec failure) shows a "No renderable image"
+ * placeholder, which the Encoding block is there to explain.
  */
 const DicomArchivePreview = ({
   bytes,
   renderDicomInstance = renderInstance,
+  observeDicomViewportResize = observeViewportResize,
 }: DicomArchivePreviewProps): JSX.Element => {
   const parsed = useMemo(() => parseDicomFile(bytes), [bytes])
   return Either.match(parsed, {
     onLeft: (error) => <ParseError reason={error.reason} />,
     onRight: (header) => (
-      <TagsAndImage header={header} bytes={bytes} renderDicomInstance={renderDicomInstance} />
+      <TagsAndImage
+        header={header}
+        bytes={bytes}
+        renderDicomInstance={renderDicomInstance}
+        observeDicomViewportResize={observeDicomViewportResize}
+      />
     ),
   })
 }
@@ -48,10 +58,12 @@ const TagsAndImage = ({
   header,
   bytes,
   renderDicomInstance,
+  observeDicomViewportResize,
 }: {
   readonly header: DicomHeader
   readonly bytes: Uint8Array
   readonly renderDicomInstance: typeof renderInstance
+  readonly observeDicomViewportResize: typeof observeViewportResize
 }): JSX.Element => (
   <div style={inlineStyles.container}>
     <div style={inlineStyles.tags}>
@@ -68,8 +80,17 @@ const TagsAndImage = ({
         <TagRow label="Study Instance UID" value={header.studyInstanceUid} />
         <TagRow label="Modality" value={header.modality} />
       </TagBlock>
+      <TagBlock title="Encoding">
+        {encodingRows(header).map((row) => (
+          <TagRow key={row.label} label={row.label} value={row.value} detail={row.detail} />
+        ))}
+      </TagBlock>
     </div>
-    <ImagePane bytes={bytes} renderDicomInstance={renderDicomInstance} />
+    <ImagePane
+      bytes={bytes}
+      renderDicomInstance={renderDicomInstance}
+      observeDicomViewportResize={observeDicomViewportResize}
+    />
   </div>
 )
 
@@ -89,22 +110,29 @@ const TagBlock = ({
 const TagRow = ({
   label,
   value,
+  detail,
 }: {
   readonly label: string
   readonly value: string | undefined
+  readonly detail?: string | undefined
 }): JSX.Element => (
   <>
     <dt style={inlineStyles.dt}>{label}</dt>
-    <dd style={inlineStyles.dd}>{value ?? ABSENT}</dd>
+    <dd style={inlineStyles.dd}>
+      {value ?? ABSENT}
+      {detail !== undefined && <span style={inlineStyles.detail}>{detail}</span>}
+    </dd>
   </>
 )
 
 const ImagePane = ({
   bytes,
   renderDicomInstance,
+  observeDicomViewportResize,
 }: {
   readonly bytes: Uint8Array
   readonly renderDicomInstance: typeof renderInstance
+  readonly observeDicomViewportResize: typeof observeViewportResize
 }): JSX.Element => {
   const elementRef = useRef<HTMLDivElement>(null)
   const [outcome, setOutcome] = useState<RenderOutcome | null>(null)
@@ -116,10 +144,16 @@ const ImagePane = ({
     void renderDicomInstance(bytes, element).then((result) => {
       if (!cancelled) setOutcome(result)
     })
+    // Started alongside the render rather than after it: the observer's first
+    // callback is what corrects a canvas sized before the pane had a box, and
+    // waiting for a multi-megabyte decode to finish would leave that first
+    // frame stretched until the next resize.
+    const stopObservingResize = observeDicomViewportResize(element)
     return (): void => {
       cancelled = true
+      stopObservingResize()
     }
-  }, [bytes, renderDicomInstance])
+  }, [bytes, renderDicomInstance, observeDicomViewportResize])
 
   return (
     <div style={inlineStyles.imagePane}>
@@ -142,7 +176,9 @@ const inlineStyles = {
   tags: {
     flex: '0 0 auto',
     minWidth: '220px',
-    maxWidth: '320px',
+    // Wider than the two identifying blocks needed: the Encoding block's
+    // detail lines are prose, and a 64-character UID sits above them.
+    maxWidth: '360px',
     overflow: 'auto',
   } satisfies React.CSSProperties,
   tagBlock: {
@@ -168,6 +204,15 @@ const inlineStyles = {
   dd: {
     margin: 0,
     wordBreak: 'break-all' as const,
+  } satisfies React.CSSProperties,
+  detail: {
+    display: 'block',
+    fontSize: '0.75rem',
+    color: 'var(--color-neutral-4, #888)',
+    // The dd breaks mid-word so a 64-character UID cannot overflow the column.
+    // A detail line is prose, so it wraps on word boundaries instead.
+    wordBreak: 'normal' as const,
+    overflowWrap: 'anywhere' as const,
   } satisfies React.CSSProperties,
   imagePane: {
     flex: '1 1 0',

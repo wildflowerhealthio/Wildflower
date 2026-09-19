@@ -1,6 +1,7 @@
 /**
  * The cornerstone rendering seam: initialize once, register a DICOM file's
- * bytes, create a stack viewport in the supplied element, and render.
+ * bytes, create a stack viewport in the supplied element, render, and keep the
+ * canvas square with its box as that box changes.
  *
  * @remarks
  * All cornerstone imports are dynamic so the wasm codecs and vtk.js tree-shake
@@ -156,5 +157,42 @@ async function renderInstance(bytes: Uint8Array, element: HTMLDivElement): Promi
   }
 }
 
+/**
+ * Keep the viewport's canvas backing store the same shape as the box it is
+ * painted into, for as long as the returned disposer is uncalled.
+ *
+ * @remarks
+ * Cornerstone sizes that backing store only at `enableElement` and never
+ * re-reads the box, so without this the image is permanently stretched
+ * whenever the two disagree. Why that is the normal case, and why the
+ * arguments are `keepCamera: false`, is in the
+ * {@link ../../docs/Cornerstone Rendering Explanation.md | Cornerstone Rendering Explanation}.
+ *
+ * @returns A disposer; calling it stops the observation.
+ */
+function observeViewportResize(element: HTMLDivElement): () => void {
+  // jsdom has no ResizeObserver, so the component's tests exercise this call
+  // and get an inert disposer rather than a crash.
+  if (typeof ResizeObserver === 'undefined') return (): void => {}
+
+  let observer: ResizeObserver | undefined = undefined
+  let disposed = false
+
+  void import('@cornerstonejs/core').then((cornerstoneCore) => {
+    // The engine may not exist yet — this runs alongside `renderInstance`, not
+    // after it — so it is looked up per callback rather than captured here.
+    if (disposed) return
+    observer = new ResizeObserver(() => {
+      cornerstoneCore.getRenderingEngine(RENDERING_ENGINE_ID)?.resize(true, false)
+    })
+    observer.observe(element)
+  })
+
+  return (): void => {
+    disposed = true
+    observer?.disconnect()
+  }
+}
+
 export type { RenderOutcome }
-export { renderInstance }
+export { observeViewportResize, renderInstance }

@@ -58,6 +58,56 @@ describe('DicomArchivePreview', () => {
     expect(screen.getByText('DX')).toBeTruthy()
   })
 
+  it('renders an Encoding block with every row from the parsed header', () => {
+    const bytes = writeDicom({
+      ...MINIMAL_TAGS,
+      TransferSyntaxUID: '1.2.840.10008.1.2.4.90',
+      SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
+      Rows: 512,
+      Columns: 512,
+      PhotometricInterpretation: 'MONOCHROME2',
+      BitsAllocated: 16,
+      BitsStored: 12,
+      HighBit: 11,
+      PixelData: { kind: 'encapsulated', fragmentLengths: [2048] },
+    })
+
+    render(
+      <DicomArchivePreview
+        fileName="ct.dcm"
+        bytes={bytes}
+        renderDicomInstance={stubRenderer(rendered)}
+      />
+    )
+
+    expect(screen.getByText('Encoding')).toBeTruthy()
+    // The rows' own formatting is covered in encoding-rows.test.ts; what this
+    // asserts is that the block is wired to the parsed header at all.
+    expect(screen.getByText('1.2.840.10008.1.2.4.90')).toBeTruthy()
+    expect(screen.getByText('JPEG 2000 Lossless')).toBeTruthy()
+    expect(screen.getByText('CT Image Storage')).toBeTruthy()
+    expect(screen.getByText('512 × 512 (w × h)')).toBeTruthy()
+    expect(screen.getByText('MONOCHROME2')).toBeTruthy()
+    expect(screen.getByText('16 allocated, 12 stored, high bit 11')).toBeTruthy()
+    // 2,072 = basic offset table item (8) + the fragment's header and bytes
+    // (8 + 2048) + the sequence delimiter (8).
+    expect(screen.getByText('OB, encapsulated, 1 fragment, 2,072 bytes')).toBeTruthy()
+  })
+
+  it('reports an absent pixel data element, the usual cause of a blank pane', () => {
+    const bytes = writeDicom(MINIMAL_TAGS)
+
+    render(
+      <DicomArchivePreview
+        fileName="sr.dcm"
+        bytes={bytes}
+        renderDicomInstance={stubRenderer(rendered)}
+      />
+    )
+
+    expect(screen.getByText('No (7FE0,0010) element — this instance carries no image')).toBeTruthy()
+  })
+
   it('renders em-dash for missing optional tags', () => {
     const bytes = writeDicom(MINIMAL_TAGS)
 
@@ -117,6 +167,34 @@ describe('DicomArchivePreview', () => {
 
     await waitFor(() => {
       expect(screen.queryByTestId('dicom-unrenderable')).toBeNull()
+    })
+  })
+
+  it('observes the viewport for resizes and stops on unmount', async () => {
+    const bytes = writeDicom(MINIMAL_TAGS)
+    const stopObserving = vi.fn()
+    const observe = vi.fn((_element: HTMLDivElement) => stopObserving)
+
+    const { unmount } = render(
+      <DicomArchivePreview
+        fileName="test.dcm"
+        bytes={bytes}
+        renderDicomInstance={stubRenderer(rendered)}
+        observeDicomViewportResize={observe}
+      />
+    )
+
+    // Observation starts with the mount, not after the decode: the first
+    // callback is what corrects a canvas sized before the pane had a box.
+    expect(observe).toHaveBeenCalledOnce()
+    expect(observe.mock.calls[0][0]).toBe(screen.getByTestId('dicom-viewport'))
+    expect(stopObserving).not.toHaveBeenCalled()
+
+    unmount()
+
+    // A live ResizeObserver on a detached element would pin the whole mount.
+    await waitFor(() => {
+      expect(stopObserving).toHaveBeenCalledOnce()
     })
   })
 
