@@ -37,6 +37,23 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   resolve: { ...base.resolve, alias: { events: eventsShim } },
+  /**
+   * Pre-bundling breaks the DICOM preview's decode worker and WASM codec URLs;
+   * `include` lists the CommonJS dependencies reached through the excluded
+   * package. Both halves, and the misleading symptom they produce, are in the
+   * {@link ../../slices/file-formats/docs/Cornerstone Rendering Explanation.md | Cornerstone Rendering Explanation}.
+   */
+  optimizeDeps: {
+    exclude: ['@cornerstonejs/dicom-image-loader'],
+    include: [
+      'dicom-parser',
+      '@cornerstonejs/codec-charls/decodewasmjs',
+      '@cornerstonejs/codec-libjpeg-turbo-8bit/decodewasmjs',
+      '@cornerstonejs/codec-openjpeg/decodewasmjs',
+      '@cornerstonejs/codec-openjph/wasmjs',
+    ],
+  },
+  worker: { format: 'es' },
   // The homescreen's "Importer (Dev)" tile launches this port's
   // `/launch.html`, so the dev server must hold exactly it. Run with
   // `vp run -F wildflower-importer dev`.
