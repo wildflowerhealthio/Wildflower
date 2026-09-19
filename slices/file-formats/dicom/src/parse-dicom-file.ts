@@ -7,7 +7,7 @@
 import { parseDicom, type DataSet } from 'dicom-parser'
 import { Either } from 'effect'
 
-import type { DicomHeader, PersonName } from './dicom-header.ts'
+import type { DicomHeader, PersonName, PixelDataDescription } from './dicom-header.ts'
 
 const Tag = {
   // Patient
@@ -39,6 +39,19 @@ const Tag = {
   Columns: 'x00280011',
   NumberOfFrames: 'x00280008',
   TransferSyntaxUID: 'x00020010',
+  // Image Pixel
+  SamplesPerPixel: 'x00280002',
+  PhotometricInterpretation: 'x00280004',
+  PlanarConfiguration: 'x00280006',
+  BitsAllocated: 'x00280100',
+  BitsStored: 'x00280101',
+  HighBit: 'x00280102',
+  PixelRepresentation: 'x00280103',
+  WindowCenter: 'x00281050',
+  WindowWidth: 'x00281051',
+  RescaleIntercept: 'x00281052',
+  RescaleSlope: 'x00281053',
+  PixelData: 'x7fe00010',
   // Equipment
   Manufacturer: 'x00080070',
   ManufacturerModelName: 'x00081090',
@@ -103,11 +116,50 @@ const readString = (dataSet: DataSet, tag: string): string | undefined => {
   return value === undefined ? undefined : value.trim() || undefined
 }
 
+/**
+ * Read a numeric-string tag — DS (Decimal String) via `floatString`, IS
+ * (Integer String) via `intString` — as a number, or `undefined`.
+ *
+ * @remarks
+ * Both `dicom-parser` readers are `parseFloat`/`parseInt` over the raw value,
+ * so a present-but-blank element — a padded `"  "`, which writers emit for an
+ * attribute they hold no value for — yields `NaN`. `NaN` is not nullish, so it
+ * survives a `?? undefined` and reaches FHIR synthesis as a number the file
+ * does not carry. Absent is the honest reading of an unparseable value.
+ */
+const readNumeric = (
+  read: (tag: string) => number | undefined,
+  tag: string
+): number | undefined => {
+  const value = read(tag)
+  return value === undefined || Number.isNaN(value) ? undefined : value
+}
+
 /** Read a PN tag as a PersonName. */
 const readPn = (dataSet: DataSet, tag: string): PersonName | undefined => {
   const value = dataSet.string(tag)
   if (value === undefined) return undefined
   return parsePersonName(value)
+}
+
+/**
+ * Describe the Pixel Data element (7FE0,0010) without decoding it.
+ *
+ * @remarks
+ * `undefined` means the file carries no pixel data element at all. That is the
+ * honest answer for a Structured Report or a Presentation State, and it is
+ * what a viewer needs to distinguish "no image here" from "an image I could
+ * not decode". See {@link PixelDataDescription} for what `length` spans.
+ */
+const describePixelData = (dataSet: DataSet): PixelDataDescription | undefined => {
+  const element = dataSet.elements[Tag.PixelData]
+  if (element === undefined) return undefined
+  return {
+    vr: element.vr,
+    length: element.length,
+    encapsulated: element.encapsulatedPixelData === true,
+    fragmentCount: element.fragments?.length,
+  }
 }
 
 /**
@@ -160,22 +212,37 @@ const parseDicomFile = (bytes: Uint8Array): Either.Either<DicomHeader, DicomPars
     hasRequestAttributesSequence,
 
     seriesInstanceUid,
-    seriesNumber: dataSet.intString(Tag.SeriesNumber) ?? undefined,
+    seriesNumber: readNumeric((t) => dataSet.intString(t), Tag.SeriesNumber),
     seriesDescription: readString(dataSet, Tag.SeriesDescription),
     modality: readString(dataSet, Tag.Modality),
     bodyPartExamined: readString(dataSet, Tag.BodyPartExamined),
 
     sopInstanceUid,
     sopClassUid: readUi(dataSet, Tag.SOPClassUID),
-    instanceNumber: dataSet.intString(Tag.InstanceNumber) ?? undefined,
+    instanceNumber: readNumeric((t) => dataSet.intString(t), Tag.InstanceNumber),
     rows: dataSet.uint16(Tag.Rows) ?? undefined,
     columns: dataSet.uint16(Tag.Columns) ?? undefined,
-    numberOfFrames: dataSet.intString(Tag.NumberOfFrames) ?? undefined,
+    numberOfFrames: readNumeric((t) => dataSet.intString(t), Tag.NumberOfFrames),
     transferSyntaxUid: readUi(dataSet, Tag.TransferSyntaxUID),
+
+    samplesPerPixel: dataSet.uint16(Tag.SamplesPerPixel) ?? undefined,
+    photometricInterpretation: readString(dataSet, Tag.PhotometricInterpretation),
+    planarConfiguration: dataSet.uint16(Tag.PlanarConfiguration) ?? undefined,
+    bitsAllocated: dataSet.uint16(Tag.BitsAllocated) ?? undefined,
+    bitsStored: dataSet.uint16(Tag.BitsStored) ?? undefined,
+    highBit: dataSet.uint16(Tag.HighBit) ?? undefined,
+    pixelRepresentation: dataSet.uint16(Tag.PixelRepresentation) ?? undefined,
+    rescaleIntercept: readNumeric((t) => dataSet.floatString(t), Tag.RescaleIntercept),
+    rescaleSlope: readNumeric((t) => dataSet.floatString(t), Tag.RescaleSlope),
+    windowCenter: readString(dataSet, Tag.WindowCenter),
+    windowWidth: readString(dataSet, Tag.WindowWidth),
+    pixelData: describePixelData(dataSet),
 
     manufacturer: readString(dataSet, Tag.Manufacturer),
     manufacturerModelName: readString(dataSet, Tag.ManufacturerModelName),
     institutionName: readString(dataSet, Tag.InstitutionName),
+
+    parserWarnings: [...dataSet.warnings],
   }
 
   return Either.right(header)
