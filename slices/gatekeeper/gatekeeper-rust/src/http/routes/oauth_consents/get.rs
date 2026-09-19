@@ -4,10 +4,13 @@ use axum::extract::Path;
 use axum::routing::{get, MethodRouter};
 use axum::Json;
 use serde::Serialize;
+use utoipa::ToSchema;
 
 use crate::domain::capabilities::{OAuthConsentView, Scoped};
+use crate::domain::client_registration::ClientRegistration;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::http::state::GatekeeperState;
+use crate::http::ServedOrigin;
 use crate::live_bindings::LiveConsentReader;
 
 /// Body returned to the Owner UI when it loads an authorization-code consent
@@ -27,6 +30,50 @@ pub(crate) struct OAuthConsent {
     pub(crate) redirect_uri: url::Url,
     pub(crate) pre_approved_scopes: Vec<String>,
     pub(crate) patient: Option<String>,
+    /// How this request compares against the client's registration **right
+    /// now** — the warning the consent UI leads with, and the flag that makes
+    /// its acknowledgement checkbox mandatory.
+    pub(crate) registration: ClientRegistrationBody,
+}
+
+/// Wire shape of [`OAuthConsent::registration`] — the
+/// [`ClientRegistration`] verdict, `status`-tagged.
+///
+/// `{"status":"registered"}` for a request that matches the registration,
+/// `{"status":"new"}` for a client this gatekeeper has never seen, and
+/// `{"status":"changed","redirectUriIsNew":…,"newScopes":[…]}` when a known
+/// client steps outside its registration.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "status", rename_all = "lowercase")]
+pub(crate) enum ClientRegistrationBody {
+    Registered,
+    New,
+    Changed {
+        /// The presented `redirect_uri` is on no allowlist entry.
+        #[serde(rename = "redirectUriIsNew")]
+        redirect_uri_is_new: bool,
+        /// The requested scopes the registration does not cover, in request
+        /// order.
+        #[serde(rename = "newScopes")]
+        new_scopes: Vec<String>,
+    },
+}
+
+/// Render the domain verdict onto the wire.
+impl From<ClientRegistration> for ClientRegistrationBody {
+    fn from(registration: ClientRegistration) -> Self {
+        match registration {
+            ClientRegistration::Registered => ClientRegistrationBody::Registered,
+            ClientRegistration::New => ClientRegistrationBody::New,
+            ClientRegistration::Changed {
+                redirect_uri_is_new,
+                new_scopes,
+            } => ClientRegistrationBody::Changed {
+                redirect_uri_is_new,
+                new_scopes,
+            },
+        }
+    }
 }
 
 /// `GET /oauth-consents/{id}` — load a pending authorization-code consent
@@ -37,13 +84,15 @@ pub(super) fn route() -> MethodRouter<Arc<GatekeeperState>> {
 
 async fn handle_get_oauth_consent(
     consents: Scoped<LiveConsentReader>,
+    origin: ServedOrigin,
     Path(id): Path<String>,
 ) -> Result<Json<OAuthConsent>, GatekeeperError> {
     let OAuthConsentView {
         request,
         redirect_uri,
         client_name,
-    } = consents.oauth_consent(&id)?;
+        registration,
+    } = consents.oauth_consent(&id, &origin)?;
     Ok(Json(OAuthConsent {
         id: id.clone(),
         client_id: request.client_id,
@@ -52,5 +101,6 @@ async fn handle_get_oauth_consent(
         redirect_uri,
         pre_approved_scopes: request.pre_approved_scopes,
         patient: request.patient,
+        registration: registration.into(),
     }))
 }

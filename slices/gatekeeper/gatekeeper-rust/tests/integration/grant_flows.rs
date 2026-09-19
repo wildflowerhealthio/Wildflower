@@ -38,7 +38,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}"))
             .header("content-type", "application/json"),
-        Body::from(r#"{"approvedScopes":["read"]}"#),
+        Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#),
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -218,7 +218,9 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
             .header("host", "127.0.0.1")
             .header("authorization", format!("Bearer {host_owner_token}"))
             .header("content-type", "application/json"),
-        Body::from(r#"{"approvedScopes":["patient/Observation.s"]}"#),
+        Body::from(
+            r#"{"approvedScopes":["patient/Observation.s"],"acknowledgedRegistration":false}"#,
+        ),
     );
     let res = g.router.clone().oneshot(approve).await.expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
@@ -270,7 +272,7 @@ async fn minted_jwt_scope_claim_carries_alternate_canonical_forms() {
         &host_owner_token,
         "test-app",
         "patient%2FObservation.read",
-        r#"{"approvedScopes":["patient/Observation.read"]}"#,
+        r#"{"approvedScopes":["patient/Observation.read"],"acknowledgedRegistration":false}"#,
     )
     .await;
 
@@ -337,7 +339,7 @@ async fn consent_approval_persists_grant() {
         &host_owner_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"]}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
     )
     .await;
 
@@ -385,7 +387,7 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
         &host_owner_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"]}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
     )
     .await;
 
@@ -442,7 +444,7 @@ async fn consent_approvals_union_scopes_into_grant() {
         &host_owner_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"]}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
     )
     .await;
     // Second request asks for both, but the Owner only approves `write` —
@@ -452,7 +454,7 @@ async fn consent_approvals_union_scopes_into_grant() {
         &host_owner_token,
         "test-app",
         "read%20write",
-        r#"{"approvedScopes":["write"]}"#,
+        r#"{"approvedScopes":["write"],"acknowledgedRegistration":false}"#,
     )
     .await;
 

@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
@@ -191,6 +191,29 @@ describe('OAuthConsentForm — flags', () => {
     await user.click(screen.getByRole('button', { name: 'Allow access' }))
     expect(lastApprovedScopes()).toEqual(['patient/Observation.r'])
   })
+
+  // The server no longer filters scopes against a grammar, so `scopes` can carry
+  // arbitrary strings with no established shape — neither the FHIR/Wildflower
+  // resource grammar nor a known flag. `Grant.parse`'s total-parse fallback
+  // (`UnknownScope`) and the picker's opaque-toggle row must handle these without
+  // throwing or silently dropping them.
+  test('unparseable scope strings render as opaque named toggles without throwing', async () => {
+    let user!: ReturnType<typeof userEvent.setup>
+    expect(() => {
+      ;({ user } = renderForm(
+        makeConsent({ scopes: ['patient/Observation.r', 'totally/unknown.thing', 'weird'] }),
+        vi.fn()
+      ))
+    }).not.toThrow()
+
+    expect(screen.getByRole('switch', { name: /totally\/unknown\.thing/ })).toBeDefined()
+    expect(screen.getByRole('switch', { name: /weird/ })).toBeDefined()
+
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+    expect(lastApprovedScopes()).toEqual(
+      expect.arrayContaining(['patient/Observation.r', 'totally/unknown.thing', 'weird'])
+    )
+  })
 })
 
 describe('OAuthConsentForm — exclusions', () => {
@@ -274,6 +297,137 @@ describe('OAuthConsentForm — empty grant', () => {
     await user.click(screen.getByRole('switch', { name: /Confirm who you are/ }))
 
     expect(allow().disabled).toBe(true)
+  })
+})
+
+describe('OAuthConsentForm — registration warning', () => {
+  test('a registered app shows no callout and no checkbox, and Approve works as before', async () => {
+    const { user } = renderForm(
+      makeConsent({ scopes: ['patient/Observation.r'], registration: { status: 'registered' } }),
+      vi.fn()
+    )
+
+    expect(screen.queryByRole('note')).toBeNull()
+    expect(screen.queryByRole('checkbox', { name: /recognise/ })).toBeNull()
+
+    await user.click(screen.getByRole('button', { name: 'Allow access' }))
+    expect(lastApprovedScopes()).toEqual(['patient/Observation.r'])
+    const lastCall = mutate.mock.calls.at(-1)?.[0]
+    expect(lastCall).toMatchObject({
+      kind: 'approve',
+      payload: { acknowledgedRegistration: false },
+    })
+  })
+
+  test('a new app names the client id and redirect origin, and blocks Approve until acknowledged', async () => {
+    const { user } = renderForm(
+      makeConsent({
+        scopes: ['patient/Observation.r'],
+        clientId: 'unknown-app.example',
+        redirectUri: 'https://unknown-app.example/callback',
+        registration: { status: 'new' },
+      }),
+      vi.fn()
+    )
+
+    const callout = within(screen.getByRole('note'))
+    expect(callout.getByText('This app has never been seen before')).toBeDefined()
+    expect(callout.getByText('unknown-app.example')).toBeDefined()
+    expect(callout.getByText('https://unknown-app.example')).toBeDefined()
+    expect(callout.getByText('https://unknown-app.example/callback')).toBeDefined()
+
+    const allow = screen.getByRole<HTMLButtonElement>('button', { name: 'Allow access' })
+    expect(allow.disabled).toBe(true)
+
+    await user.click(screen.getByRole('checkbox', { name: /recognise this app/ }))
+    expect(allow.disabled).toBe(false)
+
+    await user.click(allow)
+    const lastCall = mutate.mock.calls.at(-1)?.[0]
+    expect(lastCall).toMatchObject({
+      kind: 'approve',
+      payload: { acknowledgedRegistration: true },
+    })
+  })
+
+  test('a changed redirect shows the new origin and full uri', () => {
+    renderForm(
+      makeConsent({
+        scopes: ['patient/Observation.r'],
+        redirectUri: 'https://app.example/new-callback',
+        registration: {
+          status: 'changed',
+          redirectUriIsNew: true,
+          newScopes: [],
+        },
+      }),
+      vi.fn()
+    )
+
+    const callout = within(screen.getByRole('note'))
+    expect(callout.getByText("This app's request differs from its registration")).toBeDefined()
+    expect(callout.getByText('https://app.example')).toBeDefined()
+    expect(callout.getByText('https://app.example/new-callback')).toBeDefined()
+  })
+
+  test('changed scopes render as a list, falling back to the raw string for a resource scope', () => {
+    renderForm(
+      makeConsent({
+        scopes: ['patient/Observation.r', 'openid'],
+        registration: {
+          status: 'changed',
+          redirectUriIsNew: false,
+          newScopes: ['patient/Observation.r', 'openid'],
+        },
+      }),
+      vi.fn()
+    )
+
+    // `openid` is a known flag with a plain-language label; the resource scope
+    // has no single-line label outside the picker grid, so it falls back to raw.
+    const callout = within(screen.getByRole('note'))
+    expect(callout.getByText('Confirm who you are')).toBeDefined()
+    expect(callout.getByText('patient/Observation.r')).toBeDefined()
+  })
+
+  test('unticking the checkbox after approving re-disables Approve', async () => {
+    const { user } = renderForm(
+      makeConsent({ scopes: ['patient/Observation.r'], registration: { status: 'new' } }),
+      vi.fn()
+    )
+    const checkbox = screen.getByRole('checkbox', { name: /recognise this app/ })
+    const allow = screen.getByRole<HTMLButtonElement>('button', { name: 'Allow access' })
+
+    await user.click(checkbox)
+    expect(allow.disabled).toBe(false)
+
+    await user.click(checkbox)
+    expect(allow.disabled).toBe(true)
+  })
+
+  const newScopesArb = fc.uniqueArray(scopeStringArb, { minLength: 1, maxLength: 5 })
+
+  test('every changed newScope appears in the callout', () => {
+    fc.assert(
+      fc.property(newScopesArb, (newScopes) => {
+        const { unmount } = render(
+          <OAuthConsentForm
+            consent={makeConsent({
+              scopes: newScopes,
+              registration: { status: 'changed', redirectUriIsNew: false, newScopes },
+            })}
+            onDone={vi.fn()}
+          />
+        )
+
+        for (const scope of newScopes) {
+          expect(screen.getAllByText(scope).length).toBeGreaterThan(0)
+        }
+
+        unmount()
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
   })
 })
 
@@ -371,6 +525,7 @@ const makeConsent = (
   redirectUri: 'https://app.example/cb',
   preApprovedScopes: [],
   patient: null,
+  registration: { status: 'registered' },
   ...overrides,
 })
 
