@@ -1,7 +1,26 @@
+import { createRequire } from 'node:module'
+
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite-plus'
 
 import base, { devAppServer } from '../../vite.config.base.ts'
+
+/**
+ * Node's `events`, which Vite externalizes to a stub that warns and yields
+ * `undefined` for every property. One module in this app's graph needs the real
+ * thing at evaluation time:
+ *
+ * `@cornerstonejs/core` (the DICOM preview's renderer) → `cache/classes/Mesh.js`
+ * → vtk.js `IO/XML/XMLPolyDataReader` → `XMLReader` → `xmlbuilder2`, which is
+ * CJS and does `class XMLBuilderCBImpl extends events_1.EventEmitter` at module
+ * scope. Against the stub that throws "class heritage ... is not an object or
+ * null" while core is still evaluating, so the whole package fails to import and
+ * the preview reports every file as unrenderable.
+ *
+ * Resolved to a file path rather than left bare, so the alias does not simply
+ * re-match the builtin it is replacing.
+ */
+const eventsShim = createRequire(import.meta.url).resolve('events/')
 
 /**
  * A SMART-on-FHIR app served as a self-hosted bundle. Two HTML entries:
@@ -17,6 +36,7 @@ export default defineConfig({
   ...base,
   base: './',
   plugins: [react()],
+  resolve: { ...base.resolve, alias: { events: eventsShim } },
   // The homescreen's "Importer (Dev)" tile launches this port's
   // `/launch.html`, so the dev server must hold exactly it. Run with
   // `vp run -F wildflower-importer dev`.
