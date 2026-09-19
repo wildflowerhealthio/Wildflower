@@ -129,9 +129,8 @@ async function renderInstance(bytes: Uint8Array, element: HTMLDivElement): Promi
 
     return rendered
   } catch (error) {
-    // The reason is carried out rather than logged: it is rendered in the pane
-    // beside the Encoding block that explains it, which is where a reader is
-    // already looking when nothing appeared.
+    // Carried out rather than logged: the pane renders it beside the Encoding
+    // block that explains it, which is where a reader is already looking.
     const reason = error instanceof Error ? error.message : String(error)
     return unrenderable(reason)
   }

@@ -70,12 +70,9 @@ const dimensionsRow = (header: DicomHeader): EncodingRow => {
 }
 
 /**
- * `2 (colour-by-plane)`, or just `2` for a value outside the enumeration.
- *
- * @remarks
- * The enumerations themselves are the `dicom` package's — they are what the
- * standard says the values mean, not a choice this view makes. All this does
- * is put the raw value and its meaning on one line.
+ * `2 (colour-by-plane)`, or just `2` for a value outside the enumeration. The
+ * enumerations themselves belong to `dicom` — what the standard says a value
+ * means is not this view's choice.
  */
 const enumeratedRow = (
   label: string,

@@ -31,10 +31,9 @@ import type { JSX } from 'react'
  * for both meant the shell had to alias its import of the core registry to
  * keep them apart.
  *
- * The preview's props are `PickedFile.NamedBytes` rather than a props type of
- * their own: a preview is handed a file's name and bytes, which is exactly that
- * shape, and a second interface saying so would only be a structural copy of it
- * that could drift.
+ * The preview's props are `PickedFile.NamedBytes` rather than a type of their
+ * own: a preview is handed a file's name and bytes, which is exactly that
+ * shape, and a second interface saying so could only drift from it.
  *
  * An intersection built by spreading the core importer, not a subclass: a
  * subclass had to hand-copy every field through a copy constructor, so a field

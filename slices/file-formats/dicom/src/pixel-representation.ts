@@ -6,10 +6,8 @@
 
 /**
  * The enumerated values PS3.3 C.7.6.3.1.5 defines.
- *
- * @remarks
- * A `Map` rather than an object literal: the value is read straight out of an
- * untrusted file, and a `Map` has no inherited keys for it to land on.
+ * A `Map`, not an object literal: the value comes from an untrusted file and a
+ * `Map` has no inherited keys for it to land on.
  */
 const MEANINGS: ReadonlyMap<number, string> = new Map([
   [0, 'unsigned'],

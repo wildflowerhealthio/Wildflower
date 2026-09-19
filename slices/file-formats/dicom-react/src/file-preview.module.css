@@ -1,11 +1,4 @@
-/*
- * The preview stacks rather than sitting side by side: the dialog is wider
- * than it is tall, so giving the image the full width is what keeps it
- * proportioned instead of squeezed into a column beside the tags. The block
- * caps its own height — the dialog supplies none — so the image takes the room
- * it can and the tag list scrolls underneath rather than pushing the dialog
- * past the viewport.
- */
+/* Why the preview stacks and caps its height: see the package's AGENTS.md. */
 .dicom-preview {
   display: flex;
   flex-direction: column;
@@ -16,16 +9,13 @@
 
 .dicom-preview__image {
   position: relative;
-  /*
-   * Grows into the space the tags do not take, with a floor so a short
-   * viewport still shows an image rather than a sliver.
-   */
   flex: 1 1 auto;
+  /* A floor, so a short viewport shows an image rather than a sliver. */
   min-height: 240px;
   /*
    * Viewer black, deliberately not a theme token: cornerstone paints the
-   * image's own greyscale onto this, and a surface that followed the colour
-   * scheme would change what the pixels look like against it.
+   * image's own greyscale onto this, and a themed surface would change what
+   * the pixels look like against it.
    */
   background: #000;
   border-radius: var(--radius-2);
@@ -50,10 +40,6 @@
   text-align: center;
 }
 
-/*
- * Blocks flow into as many columns as fit and the whole list scrolls, so the
- * Encoding block's length costs the image no height.
- */
 .dicom-preview__tags {
   flex: 0 1 auto;
   min-height: 0;
@@ -94,10 +80,7 @@
   display: block;
   font-size: var(--font-size-1);
   color: var(--color-neutral-5);
-  /*
-   * The value above breaks mid-word for UIDs; a detail line is prose, so it
-   * wraps on word boundaries instead.
-   */
+  /* The value above breaks mid-word for UIDs; a detail line is prose. */
   word-break: normal;
   overflow-wrap: anywhere;
 }

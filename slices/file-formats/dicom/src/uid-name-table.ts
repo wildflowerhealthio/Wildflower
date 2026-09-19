@@ -12,9 +12,6 @@
  * so a bare lookup answers inherited keys — `'constructor'` would come back as
  * a function that a caller would then render as a transfer syntax name. The
  * UID is untrusted input read straight out of a file.
- *
- * Flat rather than a namespace: it is one helper the two UID namespaces share,
- * not a concept of its own, and nothing outside this package names it.
  */
 const lookupUidName = (table: Readonly<Record<string, string>>, uid: string): string | undefined =>
   Object.hasOwn(table, uid) ? table[uid] : undefined

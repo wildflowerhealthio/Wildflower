@@ -8,10 +8,8 @@
 /**
  * The enumerated values PS3.3 C.7.6.3.1.3 defines. Only meaningful when
  * Samples per Pixel is greater than one.
- *
- * @remarks
- * A `Map` rather than an object literal: the value is read straight out of an
- * untrusted file, and a `Map` has no inherited keys for it to land on.
+ * A `Map`, not an object literal: the value comes from an untrusted file and a
+ * `Map` has no inherited keys for it to land on.
  */
 const MEANINGS: ReadonlyMap<number, string> = new Map([
   [0, 'colour-by-pixel'],

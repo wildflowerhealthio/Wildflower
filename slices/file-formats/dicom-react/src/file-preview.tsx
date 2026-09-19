@@ -17,14 +17,10 @@ import styles from './file-preview.module.css'
 const ABSENT = '—'
 
 /**
- * Props for {@link DicomFilePreview}.
- *
- * @remarks
- * Only the bytes: the shell's preview dialog renders the file's name in its own
- * header, so a copy here would be the same string twice. The shape is a subset
- * of the `NamedBytes` the shell's preview slot passes, which is what lets this
- * component fill that slot without `dicom-react` depending on the importer
- * slice.
+ * Props for {@link DicomFilePreview}: the bytes alone, since the shell's
+ * preview dialog renders the file's name in its own header. A subset of the
+ * `NamedBytes` that slot passes, so filling it costs no dependency on the
+ * importer slice.
  */
 interface DicomFilePreviewProps {
   readonly bytes: Uint8Array
