@@ -2,7 +2,7 @@
   "name": "dicom",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure DICOM Part 10 tag reader: parseDicomFile wraps dicom-parser into a typed DicomHeader of the tags the importer cares about. No DOM, no fs, no React.",
+  "description": "Pure DICOM Part 10 tag reader: parseDicomFile wraps dicom-parser into a typed DicomHeader — the identifying tags an importer synthesizes FHIR from, plus the Image Pixel and Pixel Data encoding a preview needs to explain a file that will not render. No DOM, no fs, no React.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
