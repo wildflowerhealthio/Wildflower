@@ -1,6 +1,6 @@
 /**
- * DICOM archive preview: identifying patient and study tags from the parsed
- * header, plus how the instance is encoded, beside a cornerstone-rendered
+ * DICOM file preview: identifying patient and study tags from the parsed
+ * header, plus how the instance is encoded, under a cornerstone-rendered
  * image pane.
  *
  * @packageDocumentation
@@ -12,12 +12,21 @@ import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 
 import { encodingRows } from './encoding-rows.ts'
 import { observeViewportResize, renderInstance, type RenderOutcome } from './render-instance.ts'
+import styles from './file-preview.module.css'
 
 const ABSENT = '—'
 
-/** Props for {@link DicomArchivePreview}. */
-interface DicomArchivePreviewProps {
-  readonly fileName: string
+/**
+ * Props for {@link DicomFilePreview}.
+ *
+ * @remarks
+ * Only the bytes: the shell's preview dialog renders the file's name in its own
+ * header, so a copy here would be the same string twice. The shape is a subset
+ * of the `NamedBytes` the shell's preview slot passes, which is what lets this
+ * component fill that slot without `dicom-react` depending on the importer
+ * slice.
+ */
+interface DicomFilePreviewProps {
   readonly bytes: Uint8Array
   readonly renderDicomInstance?: typeof renderInstance
   readonly observeDicomViewportResize?: typeof observeViewportResize
@@ -25,20 +34,20 @@ interface DicomArchivePreviewProps {
 
 /**
  * Parse the DICOM file and render its identifying tags, and how the instance
- * is encoded, alongside the image. A parse failure renders an inline error; a
+ * is encoded, under the image. A parse failure renders an inline error; a
  * non-image instance (or a codec failure) shows a "No renderable image"
  * placeholder, which the Encoding block is there to explain.
  */
-const DicomArchivePreview = ({
+const DicomFilePreview = ({
   bytes,
   renderDicomInstance = renderInstance,
   observeDicomViewportResize = observeViewportResize,
-}: DicomArchivePreviewProps): JSX.Element => {
+}: DicomFilePreviewProps): JSX.Element => {
   const parsed = useMemo(() => parseDicomFile(bytes), [bytes])
   return Either.match(parsed, {
     onLeft: (error) => <ParseError reason={error.reason} />,
     onRight: (header) => (
-      <TagsAndImage
+      <ImageAndTags
         header={header}
         bytes={bytes}
         renderDicomInstance={renderDicomInstance}
@@ -49,12 +58,12 @@ const DicomArchivePreview = ({
 }
 
 const ParseError = ({ reason }: { readonly reason: string }): JSX.Element => (
-  <p role="alert" style={inlineStyles.error}>
+  <p role="alert" className={styles['dicom-preview__error']}>
     Could not parse this file as DICOM: {reason}
   </p>
 )
 
-const TagsAndImage = ({
+const ImageAndTags = ({
   header,
   bytes,
   renderDicomInstance,
@@ -65,8 +74,13 @@ const TagsAndImage = ({
   readonly renderDicomInstance: typeof renderInstance
   readonly observeDicomViewportResize: typeof observeViewportResize
 }): JSX.Element => (
-  <div style={inlineStyles.container}>
-    <div style={inlineStyles.tags}>
+  <div className={styles['dicom-preview']}>
+    <ImagePane
+      bytes={bytes}
+      renderDicomInstance={renderDicomInstance}
+      observeDicomViewportResize={observeDicomViewportResize}
+    />
+    <div className={styles['dicom-preview__tags']}>
       <TagBlock title="Patient">
         <TagRow label="Patient Name" value={header.patientName?.text} />
         <TagRow label="Patient ID" value={header.patientId} />
@@ -86,11 +100,6 @@ const TagsAndImage = ({
         ))}
       </TagBlock>
     </div>
-    <ImagePane
-      bytes={bytes}
-      renderDicomInstance={renderDicomInstance}
-      observeDicomViewportResize={observeDicomViewportResize}
-    />
   </div>
 )
 
@@ -101,9 +110,9 @@ const TagBlock = ({
   readonly title: string
   readonly children: JSX.Element | JSX.Element[]
 }): JSX.Element => (
-  <div style={inlineStyles.tagBlock}>
-    <h4 style={inlineStyles.tagBlockTitle}>{title}</h4>
-    <dl style={inlineStyles.dl}>{children}</dl>
+  <div>
+    <h4 className={styles['dicom-preview__tag-block-title']}>{title}</h4>
+    <dl className={styles['dicom-preview__tag-list']}>{children}</dl>
   </div>
 )
 
@@ -117,10 +126,12 @@ const TagRow = ({
   readonly detail?: string | undefined
 }): JSX.Element => (
   <>
-    <dt style={inlineStyles.dt}>{label}</dt>
-    <dd style={inlineStyles.dd}>
+    <dt className={styles['dicom-preview__tag-label']}>{label}</dt>
+    <dd className={styles['dicom-preview__tag-value']}>
       {value ?? ABSENT}
-      {detail !== undefined && <span style={inlineStyles.detail}>{detail}</span>}
+      {detail !== undefined && (
+        <span className={styles['dicom-preview__tag-detail']}>{detail}</span>
+      )}
     </dd>
   </>
 )
@@ -156,10 +167,14 @@ const ImagePane = ({
   }, [bytes, renderDicomInstance, observeDicomViewportResize])
 
   return (
-    <div style={inlineStyles.imagePane}>
-      <div ref={elementRef} style={inlineStyles.viewport} data-testid="dicom-viewport" />
+    <div className={styles['dicom-preview__image']}>
+      <div
+        ref={elementRef}
+        className={styles['dicom-preview__viewport']}
+        data-testid="dicom-viewport"
+      />
       {outcome?._tag === 'unrenderable' && (
-        <p style={inlineStyles.placeholder} data-testid="dicom-unrenderable">
+        <p className={styles['dicom-preview__placeholder']} data-testid="dicom-unrenderable">
           No renderable image: {outcome.reason}
         </p>
       )}
@@ -167,84 +182,5 @@ const ImagePane = ({
   )
 }
 
-const inlineStyles = {
-  container: {
-    display: 'flex',
-    gap: '1rem',
-    minHeight: '300px',
-  } satisfies React.CSSProperties,
-  tags: {
-    flex: '0 0 auto',
-    minWidth: '220px',
-    // Wider than the two identifying blocks needed: the Encoding block's
-    // detail lines are prose, and a 64-character UID sits above them.
-    maxWidth: '360px',
-    overflow: 'auto',
-  } satisfies React.CSSProperties,
-  tagBlock: {
-    marginBottom: '0.75rem',
-  } satisfies React.CSSProperties,
-  tagBlockTitle: {
-    margin: '0 0 0.25rem 0',
-    fontSize: '0.875rem',
-    fontWeight: 600,
-  } satisfies React.CSSProperties,
-  dl: {
-    margin: 0,
-    display: 'grid',
-    gridTemplateColumns: 'auto 1fr',
-    gap: '0.125rem 0.5rem',
-    fontSize: '0.8125rem',
-  } satisfies React.CSSProperties,
-  dt: {
-    fontWeight: 500,
-    color: 'var(--color-neutral-4, #888)',
-    whiteSpace: 'nowrap' as const,
-  } satisfies React.CSSProperties,
-  dd: {
-    margin: 0,
-    wordBreak: 'break-all' as const,
-  } satisfies React.CSSProperties,
-  detail: {
-    display: 'block',
-    fontSize: '0.75rem',
-    color: 'var(--color-neutral-4, #888)',
-    // The dd breaks mid-word so a 64-character UID cannot overflow the column.
-    // A detail line is prose, so it wraps on word boundaries instead.
-    wordBreak: 'normal' as const,
-    overflowWrap: 'anywhere' as const,
-  } satisfies React.CSSProperties,
-  imagePane: {
-    flex: '1 1 0',
-    position: 'relative' as const,
-    minHeight: '300px',
-    background: '#000',
-    borderRadius: '4px',
-    overflow: 'hidden',
-  } satisfies React.CSSProperties,
-  viewport: {
-    width: '100%',
-    height: '100%',
-    minHeight: '300px',
-  } satisfies React.CSSProperties,
-  placeholder: {
-    position: 'absolute' as const,
-    inset: 0,
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    color: '#999',
-    fontSize: '0.875rem',
-    margin: 0,
-    padding: '1rem',
-    textAlign: 'center' as const,
-  } satisfies React.CSSProperties,
-  error: {
-    color: 'var(--color-neutral-2, #c00)',
-    fontSize: '0.875rem',
-    margin: '0.5rem 0',
-  } satisfies React.CSSProperties,
-} as const
-
-export { DicomArchivePreview }
-export type { DicomArchivePreviewProps }
+export { DicomFilePreview }
+export type { DicomFilePreviewProps }

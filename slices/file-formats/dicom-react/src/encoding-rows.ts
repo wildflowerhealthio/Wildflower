@@ -12,8 +12,10 @@
  */
 
 import {
-  sopClassName,
-  transferSyntaxName,
+  PixelRepresentation,
+  PlanarConfiguration,
+  SopClass,
+  TransferSyntax,
   type DicomHeader,
   type PixelDataDescription,
 } from 'dicom'
@@ -67,27 +69,24 @@ const dimensionsRow = (header: DicomHeader): EncodingRow => {
   return { label: 'Dimensions', value: joined([size, frames]), detail: undefined }
 }
 
-const PLANAR_CONFIGURATIONS: Readonly<Record<number, string>> = {
-  0: 'colour-by-pixel',
-  1: 'colour-by-plane',
-}
-
-const PIXEL_REPRESENTATIONS: Readonly<Record<number, string>> = {
-  0: 'unsigned',
-  1: 'signed (two’s complement)',
-}
-
-/** `2 (colour-by-plane)`, or just `2` for a value outside the enumeration. */
+/**
+ * `2 (colour-by-plane)`, or just `2` for a value outside the enumeration.
+ *
+ * @remarks
+ * The enumerations themselves are the `dicom` package's — they are what the
+ * standard says the values mean, not a choice this view makes. All this does
+ * is put the raw value and its meaning on one line.
+ */
 const enumeratedRow = (
   label: string,
   value: number | undefined,
-  meanings: Readonly<Record<number, string>>
+  meaning: (value: number) => string | undefined
 ): EncodingRow => {
   if (value === undefined) return { label, value: undefined, detail: undefined }
-  const meaning = Object.hasOwn(meanings, value) ? meanings[value] : undefined
+  const meant = meaning(value)
   return {
     label,
-    value: meaning === undefined ? String(value) : `${value} (${meaning})`,
+    value: meant === undefined ? String(value) : `${value} (${meant})`,
     detail: undefined,
   }
 }
@@ -140,14 +139,14 @@ const warningsRow = (warnings: readonly string[]): EncodingRow => ({
 
 /** Build the Encoding section's rows, in display order. */
 const encodingRows = (header: DicomHeader): readonly EncodingRow[] => [
-  uidRow('Transfer Syntax', header.transferSyntaxUid, transferSyntaxName),
-  uidRow('SOP Class', header.sopClassUid, sopClassName),
+  uidRow('Transfer Syntax', header.transferSyntaxUid, TransferSyntax.name),
+  uidRow('SOP Class', header.sopClassUid, SopClass.name),
   dimensionsRow(header),
   { label: 'Samples / Pixel', value: header.samplesPerPixel?.toString(), detail: undefined },
   { label: 'Photometric', value: header.photometricInterpretation, detail: undefined },
-  enumeratedRow('Planar Config', header.planarConfiguration, PLANAR_CONFIGURATIONS),
+  enumeratedRow('Planar Config', header.planarConfiguration, PlanarConfiguration.meaning),
   bitDepthRow(header),
-  enumeratedRow('Pixel Repr.', header.pixelRepresentation, PIXEL_REPRESENTATIONS),
+  enumeratedRow('Pixel Repr.', header.pixelRepresentation, PixelRepresentation.meaning),
   {
     label: 'Rescale',
     value: joined([

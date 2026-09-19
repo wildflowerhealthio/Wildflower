@@ -31,16 +31,21 @@ consumer slices.
   about (patient, study, series, instance, equipment modules) plus the Image
   Pixel module and a `PixelDataDescription` of the (7FE0,0010) element — the
   decode-debug half, which nothing in the FHIR synthesis reads and a preview
-  needs to explain why a viewer showed nothing. `transferSyntaxName` /
-  `sopClassName` name a UID for display; they derive from a UID rather than
-  reading a tag, so they are functions beside the header, not fields in it.
+  needs to explain why a viewer showed nothing. Each model is its own module,
+  and the display names of the values a header carries sit beside them as
+  namespaces: `TransferSyntax.name` / `SopClass.name` for the UIDs,
+  `PlanarConfiguration.meaning` / `PixelRepresentation.meaning` for the Image
+  Pixel enumerations. All four derive from a value rather than reading a tag,
+  so they are functions beside the header, not fields in it — and they live
+  here, not in a view, because what the standard says a value means is not a
+  presentation choice.
   `effect` + `dicom-parser` only. The `test-helpers` subpath exports
   `writeDicom` (a minimal explicit-VR little-endian writer, which also emits
   native or encapsulated Pixel Data) and fast-check arbitraries for
   synthesizing DICOM fixtures in tests.
 - **[`dicom-react`](./dicom-react/AGENTS.md)** — browser-side DICOM rendering:
-  `DicomArchivePreview` (identifying patient and study tags, plus an Encoding
-  block, beside a cornerstone-rendered image pane) and the `renderInstance`
+  `DicomFilePreview` (identifying patient and study tags, plus an Encoding
+  block, under a cornerstone-rendered image pane) and the `renderInstance`
   seam. Depends on `dicom` for tag parsing, `@cornerstonejs/core` and
   `@cornerstonejs/dicom-image-loader` for image rendering. The `-react` adapter
   for the `dicom` parser, consumed by `dicom-importer-react`.

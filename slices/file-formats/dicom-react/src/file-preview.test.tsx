@@ -2,7 +2,7 @@ import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { writeDicom } from 'dicom/test-helpers'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { DicomArchivePreview } from './archive-preview.tsx'
+import { DicomFilePreview } from './file-preview.tsx'
 import type { RenderOutcome } from './render-instance.ts'
 
 const rendered: RenderOutcome = { _tag: 'rendered' }
@@ -19,7 +19,7 @@ const MINIMAL_TAGS = {
   SOPInstanceUID: '1.2.3.4.7',
 } as const
 
-describe('DicomArchivePreview', () => {
+describe('DicomFilePreview', () => {
   afterEach(cleanup)
 
   it('renders patient and study tags from a parsed DICOM file', () => {
@@ -35,13 +35,7 @@ describe('DicomArchivePreview', () => {
       Modality: 'DX',
     })
 
-    render(
-      <DicomArchivePreview
-        fileName="test.dcm"
-        bytes={bytes}
-        renderDicomInstance={stubRenderer(rendered)}
-      />
-    )
+    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
 
     expect(screen.getByText('Patient')).toBeTruthy()
     expect(screen.getByText('Study')).toBeTruthy()
@@ -72,13 +66,7 @@ describe('DicomArchivePreview', () => {
       PixelData: { kind: 'encapsulated', fragmentLengths: [2048] },
     })
 
-    render(
-      <DicomArchivePreview
-        fileName="ct.dcm"
-        bytes={bytes}
-        renderDicomInstance={stubRenderer(rendered)}
-      />
-    )
+    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
 
     expect(screen.getByText('Encoding')).toBeTruthy()
     // The rows' own formatting is covered in encoding-rows.test.ts; what this
@@ -97,13 +85,7 @@ describe('DicomArchivePreview', () => {
   it('reports an absent pixel data element, the usual cause of a blank pane', () => {
     const bytes = writeDicom(MINIMAL_TAGS)
 
-    render(
-      <DicomArchivePreview
-        fileName="sr.dcm"
-        bytes={bytes}
-        renderDicomInstance={stubRenderer(rendered)}
-      />
-    )
+    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
 
     expect(screen.getByText('No (7FE0,0010) element — this instance carries no image')).toBeTruthy()
   })
@@ -111,13 +93,7 @@ describe('DicomArchivePreview', () => {
   it('renders em-dash for missing optional tags', () => {
     const bytes = writeDicom(MINIMAL_TAGS)
 
-    render(
-      <DicomArchivePreview
-        fileName="minimal.dcm"
-        bytes={bytes}
-        renderDicomInstance={stubRenderer(rendered)}
-      />
-    )
+    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
 
     const dashes = screen.getAllByText('—')
     expect(dashes.length).toBeGreaterThanOrEqual(8)
@@ -126,13 +102,7 @@ describe('DicomArchivePreview', () => {
   it('renders a parse error for non-DICOM bytes', () => {
     const garbage = new Uint8Array([0, 1, 2, 3])
 
-    render(
-      <DicomArchivePreview
-        fileName="bad.dcm"
-        bytes={garbage}
-        renderDicomInstance={stubRenderer(rendered)}
-      />
-    )
+    render(<DicomFilePreview bytes={garbage} renderDicomInstance={stubRenderer(rendered)} />)
 
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain('Could not parse this file as DICOM')
@@ -142,8 +112,7 @@ describe('DicomArchivePreview', () => {
     const bytes = writeDicom(MINIMAL_TAGS)
 
     render(
-      <DicomArchivePreview
-        fileName="test.dcm"
+      <DicomFilePreview
         bytes={bytes}
         renderDicomInstance={stubRenderer(unrenderable('no pixel data'))}
       />
@@ -157,13 +126,7 @@ describe('DicomArchivePreview', () => {
   it('does not show the unrenderable placeholder when rendering succeeds', async () => {
     const bytes = writeDicom(MINIMAL_TAGS)
 
-    render(
-      <DicomArchivePreview
-        fileName="test.dcm"
-        bytes={bytes}
-        renderDicomInstance={stubRenderer(rendered)}
-      />
-    )
+    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
 
     await waitFor(() => {
       expect(screen.queryByTestId('dicom-unrenderable')).toBeNull()
@@ -176,8 +139,7 @@ describe('DicomArchivePreview', () => {
     const observe = vi.fn((_element: HTMLDivElement) => stopObserving)
 
     const { unmount } = render(
-      <DicomArchivePreview
-        fileName="test.dcm"
+      <DicomFilePreview
         bytes={bytes}
         renderDicomInstance={stubRenderer(rendered)}
         observeDicomViewportResize={observe}
@@ -202,9 +164,7 @@ describe('DicomArchivePreview', () => {
     const bytes = writeDicom(MINIMAL_TAGS)
     const stub = vi.fn(stubRenderer(rendered))
 
-    const { unmount } = render(
-      <DicomArchivePreview fileName="test.dcm" bytes={bytes} renderDicomInstance={stub} />
-    )
+    const { unmount } = render(<DicomFilePreview bytes={bytes} renderDicomInstance={stub} />)
 
     await waitFor(() => {
       expect(stub).toHaveBeenCalledOnce()

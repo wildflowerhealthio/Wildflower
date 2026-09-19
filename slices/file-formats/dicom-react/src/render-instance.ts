@@ -116,12 +116,6 @@ async function renderInstance(bytes: Uint8Array, element: HTMLDivElement): Promi
       element,
     })
 
-    // TEMPORARY diagnostic — paired with the two below, this says which stage we
-    // reached: no line at all means the effect never ran, `loading` with nothing
-    // after it means the decode never settled, and `failed` names the error that
-    // the catch otherwise hides inside the on-screen placeholder.
-    console.info('[dicom-preview] loading', imageId)
-
     // Load before displaying, so a decode failure lands in this function's catch
     // and becomes an `unrenderable` the pane can show. `setStack` resolves once
     // the stack is *set*, not once the frame is decoded, so relying on it alone
@@ -133,25 +127,11 @@ async function renderInstance(bytes: Uint8Array, element: HTMLDivElement): Promi
     await viewport.setStack([imageId])
     viewport.render()
 
-    // TEMPORARY diagnostic for the blank-preview investigation — remove once the
-    // cause is pinned. Distinguishes "decoded but painted nothing" from "painted
-    // into a zero-sized canvas".
-    const imageData = viewport.getImageData()
-    console.info('[dicom-preview] rendered', {
-      elementSize: [element.clientWidth, element.clientHeight],
-      canvasSize: [viewport.canvas?.width, viewport.canvas?.height],
-      currentImageId: viewport.getCurrentImageId(),
-      dimensions: imageData?.dimensions,
-      scalarLength: imageData?.scalarData?.length,
-      voiRange: viewport.getProperties().voiRange,
-      cpuRendering: cornerstoneCore.getShouldUseCPURendering(),
-    })
-
     return rendered
   } catch (error) {
-    // TEMPORARY diagnostic — the returned reason only ever reaches the pane, so
-    // without this a failure is invisible in the console.
-    console.warn('[dicom-preview] failed', error)
+    // The reason is carried out rather than logged: it is rendered in the pane
+    // beside the Encoding block that explains it, which is where a reader is
+    // already looking when nothing appeared.
     const reason = error instanceof Error ? error.message : String(error)
     return unrenderable(reason)
   }

@@ -7,7 +7,9 @@
  */
 import * as fc from 'fast-check'
 
-import type { DicomHeader, PersonName, PixelDataDescription } from './dicom-header.ts'
+import type { DicomHeader } from './dicom-header.ts'
+import type { PersonName } from './person-name.ts'
+import type { PixelDataDescription } from './pixel-data-description.ts'
 
 // ---------------------------------------------------------------------------
 // Minimal explicit-VR little-endian DICOM writer

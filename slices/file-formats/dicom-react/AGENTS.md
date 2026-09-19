@@ -1,20 +1,36 @@
 # AGENTS.md — slices/file-formats/dicom-react
 
-Browser-side DICOM rendering: the `DicomArchivePreview` component (identifying
-patient and study tags, plus how the instance is encoded, beside a
+Browser-side DICOM rendering: the `DicomFilePreview` component (identifying
+patient and study tags, plus how the instance is encoded, under a
 cornerstone-rendered image pane) and the `renderInstance` seam that drives
 cornerstone initialization and viewport rendering. Sits alongside the pure
 `dicom` parser, adding the React + cornerstone browser adapter.
 
 ## Shape
 
-- `src/archive-preview.tsx` — `DicomArchivePreview`: parses the file with
-  `parseDicomFile` from `dicom` and renders Patient, Study and Encoding tag
-  blocks beside an image pane. A parse failure renders an inline error; an
-  unrenderable instance (no pixel data, codec failure) shows a placeholder.
-  The `renderDicomInstance` prop defaults to the real `renderInstance` but is
-  injectable for testing under jsdom (no WebGL). Missing tags display as an
-  em-dash.
+- `src/file-preview.tsx` / `src/file-preview.module.css` — `DicomFilePreview`:
+  parses the file with `parseDicomFile` from `dicom` and renders Patient, Study
+  and Encoding tag blocks under an image pane. A parse failure renders an
+  inline error; an unrenderable instance (no pixel data, codec failure) shows a
+  placeholder. The `renderDicomInstance` prop defaults to the real
+  `renderInstance` but is injectable for testing under jsdom (no WebGL). Missing
+  tags display as an em-dash.
+
+  The layout stacks rather than sitting side by side: the preview dialog is
+  wider than it is tall, so the image gets the full width and the tag blocks
+  flow into as many columns as fit underneath. The block caps its own height —
+  the dialog supplies none — so the image takes the room it can and the tag
+  list scrolls rather than pushing the dialog past the viewport. The only
+  unthemed colour is the viewport's black: cornerstone paints the image's own
+  greyscale onto it, and a surface that followed the colour scheme would change
+  what the pixels look like.
+
+  Props are the bytes alone. The shell's preview dialog renders the file name in
+  its own header, so a `fileName` here would be the same string twice; the shape
+  is a subset of the `PickedFile.NamedBytes` that the shell's preview slot
+  passes, which is what lets this component fill that slot without `dicom-react`
+  depending on the importer slice.
+
 - `src/encoding-rows.ts` — `encodingRows`: the Encoding block's rows (transfer
   syntax and SOP class with their names, pixel layout, bit depth, rescale and
   windowing, the Pixel Data element, parser warnings), formatted from a
@@ -27,9 +43,10 @@ cornerstone initialization and viewport rendering. Sits alongside the pure
   rather than "not present". And an absent Pixel Data element gets a sentence
   rather than an em-dash, because "this instance carries no image" (a
   Structured Report, a Presentation State) is the most common answer and the
-  one an em-dash would hide. Renderer-side facts — what cornerstone decoded,
-  the canvas size, the CPU-rendering flag — are deliberately _not_ here; they
-  stay in `renderInstance`'s console diagnostics.
+  one an em-dash would hide. The enumerated values it names (planar
+  configuration, pixel representation) are the `dicom` package's — they are what
+  the standard says, not a choice this view makes; all this module does is put
+  the raw value and its meaning on one line.
 
 - `src/render-instance.ts` — `renderInstance`: the cornerstone rendering seam.
   Initializes cornerstone once (lazy, idempotent), registers DICOM bytes via
@@ -73,8 +90,8 @@ has the dispatch table that causes it and how to tell the two apart.
 - **Depends on**: `dicom` (tag parser), `@cornerstonejs/core` and
   `@cornerstonejs/dicom-image-loader` (image rendering), `effect` (`Either`),
   `react`.
-- **Depended on by**: `dicom-importer-react` (re-exports
-  `DicomArchivePreview`), `importer-react` (via `dicom-importer-react`).
+- **Depended on by**: `dicom-importer-react` (re-exports `DicomFilePreview`),
+  `importer-react` (via `dicom-importer-react`).
 
 ## References
 

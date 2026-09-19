@@ -1,0 +1,109 @@
+/*
+ * The preview stacks rather than sitting side by side: the dialog is wider
+ * than it is tall, so giving the image the full width is what keeps it
+ * proportioned instead of squeezed into a column beside the tags. The block
+ * caps its own height — the dialog supplies none — so the image takes the room
+ * it can and the tag list scrolls underneath rather than pushing the dialog
+ * past the viewport.
+ */
+.dicom-preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 0;
+  max-height: min(70vh, 720px);
+}
+
+.dicom-preview__image {
+  position: relative;
+  /*
+   * Grows into the space the tags do not take, with a floor so a short
+   * viewport still shows an image rather than a sliver.
+   */
+  flex: 1 1 auto;
+  min-height: 240px;
+  /*
+   * Viewer black, deliberately not a theme token: cornerstone paints the
+   * image's own greyscale onto this, and a surface that followed the colour
+   * scheme would change what the pixels look like against it.
+   */
+  background: #000;
+  border-radius: var(--radius-2);
+  overflow: hidden;
+}
+
+.dicom-preview__viewport {
+  width: 100%;
+  height: 100%;
+}
+
+.dicom-preview__placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: var(--space-7);
+  color: var(--color-neutral-5);
+  font-size: var(--font-size-3);
+  text-align: center;
+}
+
+/*
+ * Blocks flow into as many columns as fit and the whole list scrolls, so the
+ * Encoding block's length costs the image no height.
+ */
+.dicom-preview__tags {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  align-content: start;
+  gap: var(--space-5) var(--space-7);
+}
+
+.dicom-preview__tag-block-title {
+  margin: 0 0 var(--space-2) 0;
+  font-size: var(--font-size-3);
+  font-weight: var(--font-weight-3);
+}
+
+.dicom-preview__tag-list {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--font-size-2);
+}
+
+.dicom-preview__tag-label {
+  font-weight: var(--font-weight-2);
+  color: var(--color-neutral-4);
+  white-space: nowrap;
+}
+
+.dicom-preview__tag-value {
+  margin: 0;
+  /* So a 64-character UID cannot overflow its column. */
+  word-break: break-all;
+}
+
+.dicom-preview__tag-detail {
+  display: block;
+  font-size: var(--font-size-1);
+  color: var(--color-neutral-5);
+  /*
+   * The value above breaks mid-word for UIDs; a detail line is prose, so it
+   * wraps on word boundaries instead.
+   */
+  word-break: normal;
+  overflow-wrap: anywhere;
+}
+
+.dicom-preview__error {
+  margin: var(--space-4) 0;
+  color: var(--color-red-3);
+  font-size: var(--font-size-3);
+}

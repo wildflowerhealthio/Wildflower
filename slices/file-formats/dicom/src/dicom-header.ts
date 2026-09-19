@@ -1,39 +1,11 @@
-/** @packageDocumentation */
-
 /**
- * DICOM Person Name: `family^given` from the PN grammar.
+ * The DICOM tags this package reads, as one typed record.
  *
- * `text` is always non-empty — `parsePersonName` returns `undefined` rather
- * than a name with nothing in it, so a delimiters-only PN (`"^^^"`) reads as an
- * absent name. `family` and `given` may each still be empty.
+ * @packageDocumentation
  */
-interface PersonName {
-  readonly family: string
-  readonly given: string
-  readonly text: string
-}
 
-/**
- * How the Pixel Data element (7FE0,0010) is laid out in the file, as distinct
- * from the pixels it encodes.
- *
- * @remarks
- * When a viewer shows a blank pane the answer is usually here. The whole value
- * being `undefined` means the file has no pixels at all — a Structured Report
- * or Presentation State. `encapsulated` means the frames are compressed, so a
- * codec must claim {@link DicomHeader.transferSyntaxUid} before anything
- * renders.
- *
- * `length` spans more than the frames for an encapsulated element: the basic
- * offset table, each fragment's item header and bytes, and the sequence
- * delimiter.
- */
-interface PixelDataDescription {
-  readonly vr: string | undefined
-  readonly length: number
-  readonly encapsulated: boolean
-  readonly fragmentCount: number | undefined
-}
+import type { PersonName } from './person-name.ts'
+import type { PixelDataDescription } from './pixel-data-description.ts'
 
 /**
  * The DICOM tags this package reads, grouped by module.
@@ -86,11 +58,12 @@ interface DicomHeader {
   // Image Pixel module — how the frames are encoded, for decode debugging
   readonly samplesPerPixel: number | undefined
   readonly photometricInterpretation: string | undefined
+  /** See `PlanarConfiguration.meaning` for the enumerated values. */
   readonly planarConfiguration: number | undefined
   readonly bitsAllocated: number | undefined
   readonly bitsStored: number | undefined
   readonly highBit: number | undefined
-  /** 0 = unsigned, 1 = two's-complement signed. */
+  /** See `PixelRepresentation.meaning` for the enumerated values. */
   readonly pixelRepresentation: number | undefined
   readonly rescaleIntercept: number | undefined
   readonly rescaleSlope: number | undefined
@@ -117,4 +90,4 @@ interface DicomHeader {
   readonly parserWarnings: readonly string[]
 }
 
-export type { DicomHeader, PersonName, PixelDataDescription }
+export type { DicomHeader }

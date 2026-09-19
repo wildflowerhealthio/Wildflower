@@ -1,4 +1,4 @@
-import { DicomArchivePreview, DicomSettingsPicker } from 'dicom-importer-react'
+import { DicomFilePreview, DicomSettingsPicker } from 'dicom-importer-react'
 import { HarSettingsPicker } from 'har-importer-react'
 import {
   type BoundFormat as CoreBoundFormat,
@@ -6,14 +6,14 @@ import {
   formatRegistry as coreRegistry,
   type FormatSettings,
 } from 'importer-core'
-import { type ArchivePreviewProps, type SettingsPickerProps } from 'importer-fundamentals'
+import { type PickedFile, type SettingsPickerProps } from 'importer-fundamentals'
 import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
 
 /**
  * The shell's view of the closed format registry: each entry is the format's
  * core {@link FileImporter} plus the React parts a format contributes — its
- * `SettingsPicker` and an optional `ArchivePreview` for the server source file
+ * `SettingsPicker` and an optional `FilePreview` for the server source file
  * list's preview dialog. The single edit point for wiring a format's UI into
  * the shell; the importer half is registered in `importer-core`.
  *
@@ -23,13 +23,18 @@ import type { JSX } from 'react'
 /**
  * One registered format as the shell sees it: `importer-core`'s
  * {@link CoreBoundFormat} extended with its settings picker and an optional
- * archive preview.
+ * file preview.
  *
  * @remarks
  * Named for what it adds, rather than reusing `importer-core`'s `BoundFormat`:
  * the two are different types — that one is the importer alone — and one name
  * for both meant the shell had to alias its import of the core registry to
  * keep them apart.
+ *
+ * The preview's props are `PickedFile.NamedBytes` rather than a props type of
+ * their own: a preview is handed a file's name and bytes, which is exactly that
+ * shape, and a second interface saying so would only be a structural copy of it
+ * that could drift.
  *
  * An intersection built by spreading the core importer, not a subclass: a
  * subclass had to hand-copy every field through a copy constructor, so a field
@@ -38,21 +43,21 @@ import type { JSX } from 'react'
  */
 type FormatWithPicker<K extends FormatKind> = CoreBoundFormat<K> & {
   readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
-  readonly ArchivePreview?: ((props: ArchivePreviewProps) => JSX.Element) | undefined
+  readonly FilePreview?: ((props: PickedFile.NamedBytes) => JSX.Element) | undefined
 }
 
 /**
  * Attach a format's React slots to its core importer.
  *
  * @param importer - The format's entry in `importer-core`'s registry
- * @param slots - The format's settings form and optional archive preview
+ * @param slots - The format's settings form and optional file preview
  * @returns The shell's registry entry for that format
  */
 const withSlots = <K extends FormatKind>(
   importer: CoreBoundFormat<K>,
   slots: {
     readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
-    readonly ArchivePreview?: ((props: ArchivePreviewProps) => JSX.Element) | undefined
+    readonly FilePreview?: ((props: PickedFile.NamedBytes) => JSX.Element) | undefined
   }
 ): FormatWithPicker<K> => ({ ...importer, ...slots })
 
@@ -64,7 +69,7 @@ const formatRegistry: { readonly [K in FormatKind]: FormatWithPicker<K> } = {
   }),
   dicom: withSlots(coreRegistry.dicom, {
     SettingsPicker: DicomSettingsPicker,
-    ArchivePreview: DicomArchivePreview,
+    FilePreview: DicomFilePreview,
   }),
 }
 

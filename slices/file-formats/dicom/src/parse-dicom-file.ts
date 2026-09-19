@@ -7,7 +7,9 @@
 import { parseDicom, type DataSet } from 'dicom-parser'
 import { Either } from 'effect'
 
-import type { DicomHeader, PersonName, PixelDataDescription } from './dicom-header.ts'
+import type { DicomHeader } from './dicom-header.ts'
+import type { PersonName } from './person-name.ts'
+import type { PixelDataDescription } from './pixel-data-description.ts'
 
 const Tag = {
   // Patient

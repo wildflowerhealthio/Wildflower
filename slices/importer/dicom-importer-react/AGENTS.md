@@ -2,7 +2,7 @@
 
 The **DICOM UI** for the importer slice: the `DicomSettingsPicker` (the
 equipment time zone — the one knob the format has) and the
-`DicomArchivePreview` (re-exported from `dicom-react`: identifying tags beside
+`DicomFilePreview` (re-exported from `dicom-react`: identifying tags under
 a cornerstone-rendered image) for the server source file list's preview dialog.
 The DICOM format needs no interactive review body; the shell's generalized
 sectioned review covers it.
@@ -40,7 +40,7 @@ package's `src/fhir/dates.ts`.
 ## Layering
 
 - **Depends on**: `dicom-importer-core` (the `DicomSettings` type and
-  `runtimeTimeZone`), `dicom-react` (`DicomArchivePreview` re-export),
+  `runtimeTimeZone`), `dicom-react` (`DicomFilePreview` re-export),
   `importer-fundamentals` (`SettingsPickerProps`),
   `react-kitchen-sink` (`useDebouncedCallback`), `effect`
   (`DateTime.zoneMakeNamed`, to tell a known zone from a typo), `react`.

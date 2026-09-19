@@ -254,7 +254,7 @@ const PreviewBody = ({
       bytes={query.data.bytes}
       contentType={entry.contentType}
       onClose={onClose}
-      ArchivePreview={entry.ArchivePreview}
+      FilePreview={entry.FilePreview}
     />
   )
 }
@@ -265,33 +265,29 @@ interface PreviewContentsProps {
   readonly bytes: Uint8Array
   readonly contentType: string
   readonly onClose: () => void
-  readonly ArchivePreview?:
-    | ((props: { fileName: string; bytes: Uint8Array }) => JSX.Element)
-    | undefined
+  readonly FilePreview?: ((props: PickedFile.NamedBytes) => JSX.Element) | undefined
 }
 
 /**
- * The format-specific preview body. When the format supplies an
- * `ArchivePreview` component, it renders instead of the content-type
- * dispatch; otherwise PDF renders in an iframe, JSON/HAR pretty-prints,
- * and anything else shows a binary notice with the file size.
+ * The format-specific preview body. When the format supplies a `FilePreview`
+ * component, it renders instead of the content-type dispatch; otherwise PDF
+ * renders in an iframe, JSON/HAR pretty-prints, and anything else shows a
+ * binary notice with the file size.
  */
 const PreviewContentBody = ({
   contentType,
   blobUrl,
   fileName,
   bytes,
-  ArchivePreview,
+  FilePreview,
 }: {
   readonly contentType: string
   readonly blobUrl: string
   readonly fileName: string
   readonly bytes: Uint8Array
-  readonly ArchivePreview?:
-    | ((props: { fileName: string; bytes: Uint8Array }) => JSX.Element)
-    | undefined
+  readonly FilePreview?: ((props: PickedFile.NamedBytes) => JSX.Element) | undefined
 }): JSX.Element => {
-  if (ArchivePreview !== undefined) return <ArchivePreview fileName={fileName} bytes={bytes} />
+  if (FilePreview !== undefined) return <FilePreview fileName={fileName} bytes={bytes} />
   if (contentType === 'application/pdf') return <PdfBody blobUrl={blobUrl} fileName={fileName} />
   if (contentType === 'application/json' || contentType === 'application/har+json') {
     return <JsonBody bytes={bytes} />
@@ -309,7 +305,7 @@ const PreviewContents = ({
   bytes,
   contentType,
   onClose,
-  ArchivePreview,
+  FilePreview,
 }: PreviewContentsProps): JSX.Element => {
   const blobUrl = useBlobUrl(bytes, contentType)
   return (
@@ -322,7 +318,7 @@ const PreviewContents = ({
         blobUrl={blobUrl}
         fileName={fileName}
         bytes={bytes}
-        ArchivePreview={ArchivePreview}
+        FilePreview={FilePreview}
       />
       <div className={styles.previewActions}>
         <a
