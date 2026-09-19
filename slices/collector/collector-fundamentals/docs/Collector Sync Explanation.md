@@ -22,6 +22,12 @@ runtime.run(context => buildImportEffect({ context, ...wiring }))
 buildImportEffect  ── the drive Stream ─►  CollectorBridgeMessageHandler
    │   pulls parsed resources off a mailbox,        (sniffs pages, decodes
    │   writes each batch, folds the failures         responses to Resources)
+   │                                                        │
+   │                                           RunRecorder ◄┘
+   │                                           (optional; captures every
+   │                                            settled response as an
+   │                                            Extraction.Input, minus
+   │                                            omitted content types)
    ▼
 persistResources(batch)                the descriptor's batch write sink
    │        (fhir-r4: retries + spans around fhir-r4's upsertResource,
