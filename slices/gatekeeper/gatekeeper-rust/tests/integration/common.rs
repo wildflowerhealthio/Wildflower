@@ -277,6 +277,87 @@ pub fn decode_jwt_payload(token: &str) -> serde_json::Value {
     serde_json::from_slice(&bytes).expect("payload json")
 }
 
+/// The `/oauth/authorize` query for the shared `https://app.example/cb` redirect
+/// and [`CODE_VERIFIER`]'s real S256 challenge, so a request reaches the
+/// registration checks rather than failing PKCE validation first.
+pub fn authorize_query(client_id: &str, scope_query: &str) -> String {
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    format!(
+        "response_type=code&code_challenge_method=S256&client_id={client_id}&scope={scope_query}&\
+         code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+    )
+}
+
+/// `GET /oauth/authorize?{query}` on a fresh oneshot of `router`.
+pub async fn get_authorize(router: &axum::Router, query: &str) -> axum::response::Response {
+    router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot")
+}
+
+/// The `Location` of a 302, as a string.
+pub fn location_of(res: &axum::response::Response) -> String {
+    res.headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location header")
+        .to_string()
+}
+
+/// Assert `res` is a 302 to the Owner UI's polling page and return the pending
+/// request id it names — the shape every parked `/authorize` request takes.
+pub fn parked_request_id(res: &axum::response::Response) -> String {
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = location_of(res);
+    assert!(
+        location.contains("/gatekeeper/") && !location.contains("error="),
+        "expected a polling-page redirect, got {location}"
+    );
+    location.rsplit('/').next().expect("request id").to_string()
+}
+
+/// Load the Owner-facing consent prompt for `request_id` as JSON.
+pub async fn get_oauth_consent(g: &Gatekeeper, host_owner_token: &str, request_id: &str) -> Value {
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/access/oauth-consents/{request_id}"))
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    body_json(res.into_body()).await
+}
+
+/// `POST /access/oauth-consents/{id}/approve` with an owned JSON body.
+pub async fn approve_oauth_consent(
+    g: &Gatekeeper,
+    host_owner_token: &str,
+    request_id: &str,
+    body: String,
+) -> axum::response::Response {
+    g.router
+        .clone()
+        .oneshot(loopback_request(
+            Request::post(format!("/access/oauth-consents/{request_id}/approve"))
+                .header("host", "127.0.0.1")
+                .header("authorization", format!("Bearer {host_owner_token}"))
+                .header("content-type", "application/json"),
+            Body::from(body),
+        ))
+        .await
+        .expect("oneshot")
+}
+
 /// Drive `/authorize` → Owner consent approve for one request, returning the
 /// pending request id. Callers assert on the *consequences* (grant rows,
 /// fast-path behaviour, refresh issuance); the flow itself is proven by
