@@ -17,6 +17,7 @@ use crate::domain::client::Client;
 use crate::domain::client_redirect::{
     build_client_error_redirect_url, build_client_redirect_url, redirect_is_allowlisted,
 };
+use crate::domain::client_registration::{classify_registration, PendingRegistration};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
 use crate::domain::GatekeeperStore;
@@ -24,7 +25,6 @@ use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
-use crate::ports::SelfHostedRedirectTopology;
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
@@ -61,10 +61,12 @@ fn found_redirect(location: &str) -> Response {
 /// `Response`) so `Result<_, AuthorizeError>` doesn't trip
 /// `clippy::result_large_err`.
 pub(super) enum AuthorizeError {
-    /// Failure before `client_id` / `redirect_uri` are trusted (unknown or
-    /// disabled client, malformed/un-allowlisted `redirect_uri`). Renders a
-    /// local HTML page — redirecting to an unvalidated URI would be an open
-    /// redirect (RFC 6749 §4.1.2.1).
+    /// A failure on a request whose `redirect_uri` is not trusted — a disabled
+    /// client, a malformed or non-http(s) URI, an unregistered redirect for the
+    /// first-party client, or (because the client is new to this gatekeeper or
+    /// the redirect is not on its registration) any later validation failure.
+    /// Renders a local HTML page — redirecting to an unvouched-for URI would be
+    /// an open redirect (RFC 6749 §4.1.2.1).
     LocalPage(OAuthErrorKind),
     /// A spec'd error once `redirect_uri` is validated — 302 back to the
     /// client. Carries the already-built `Location` (the client `redirect_uri`
@@ -179,6 +181,15 @@ pub struct AuthorizeParams {
 /// 3. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
+///
+/// Clients other than the first-party host are **trusted on first use**: an
+/// unknown `client_id`, an unregistered `redirect_uri`, and scopes outside the
+/// registration are all carried to the Owner's prompt as a registration warning
+/// rather than rejected here, and nothing is written to the `clients` table
+/// until the Owner approves. Such a request never takes the grant fast path,
+/// and while its redirect is untrusted every other failure renders the local
+/// HTML page instead of redirecting. `wildflower-host` keeps the strict
+/// treatment, and a disabled client is rejected either way.
 #[utoipa::path(
     get,
     tag = "OAuth 2.0",
@@ -186,7 +197,7 @@ pub struct AuthorizeParams {
     params(AuthorizeParams),
     responses(
         (status = 302, description = "Redirect to the client redirect_uri or the owner approval UI"),
-        (status = 400, description = "Local HTML error page (untrusted client / redirect_uri)"),
+        (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
         (status = 503, description = "No active signing key")
     )
 )]
@@ -209,25 +220,77 @@ pub(super) async fn handle_authorize_request(
         );
     }
 
-    // Validate in two phases: client/redirect_uri first (failures render a
-    // local page), then the redirectable params (failures 302 back). Each
-    // helper returns the values the rest of the flow needs or the matching
-    // `AuthorizeError`.
-    let client = validate_and_load_client(&state, &params)?;
+    // Validate in two phases: client/redirect_uri first (failures always render a
+    // local page), then the redirectable params — which 302 back only once the
+    // redirect is trusted. Each helper returns the values the rest of the flow
+    // needs or the matching `AuthorizeError`.
+    let is_first_party = params.client_id.as_str() == &*state.first_party_client_id;
+    let client = load_client(&state, &params, is_first_party)?;
     // A self-hosted app registers an app-relative redirect entry; resolve its
-    // topology so `validate_redirect_url` can expand it against this request's
+    // topology so the allowlist check can expand it against this request's
     // provenance. `None` for a non-self-hosted client, whose relative entries (if
     // any) then match nothing.
     let redirect_topology = state.self_hosted_redirects.resolve(&params.client_id);
-    let parsed_redirect =
-        validate_redirect_url(&params, &client, &origin, redirect_topology.as_ref())?;
-    validate_code(&params, &parsed_redirect)?;
-    let requested_scopes = validate_requested_scopes(&params, &client, &parsed_redirect)?;
+    let parsed_redirect = parse_redirect_url(&params)?;
+    // The served origin comes from the trusted extractor; if it somehow can't
+    // parse, no app-relative entry resolves (absolute entries still match).
+    let served = Url::parse(&origin).ok();
+    let redirect_allowlisted = client.as_ref().is_some_and(|client| {
+        redirect_is_allowlisted(
+            client,
+            &parsed_redirect,
+            served.as_ref(),
+            redirect_topology.as_ref(),
+        )
+    });
+    if is_first_party && !redirect_allowlisted {
+        // The first-party host is NOT trusted on first use: an unregistered
+        // redirect for it is still the local "not allowed" page.
+        tracing::warn!(
+            client_id = %params.client_id,
+            redirect_uri = %params.redirect_uri,
+            "redirect_uri not allowed for the first-party client"
+        );
+        return Err(AuthorizeError::LocalPage(
+            OAuthErrorKind::RedirectUriNotAllowed,
+        ));
+    }
+    // A redirect is trustworthy only when a client we already know already
+    // registered it. Until the Owner approves, every later failure on such a
+    // request renders locally instead of 302ing to a URI we can't vouch for
+    // (RFC 6749 §4.1.2.1).
+    validate_code(&params, &parsed_redirect, redirect_allowlisted)?;
+    let requested_scopes: Vec<String> = params
+        .scope
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    // Only the first-party host is held to its allowlist here; `load_client`
+    // already rejected an unknown first-party `client_id`, so the `Some` always
+    // matches when `is_first_party`.
+    if let (true, Some(host)) = (is_first_party, client.as_ref()) {
+        ensure_first_party_scopes_allowed(&params, host, &parsed_redirect, &requested_scopes)?;
+    }
+
+    // How this request compares against the registration as it stands now — the
+    // warning the consent prompt renders, and the gate on the fast path below.
+    let registration = classify_registration(&PendingRegistration {
+        client: client.as_ref(),
+        redirect_uri: &parsed_redirect,
+        requested_scopes: &requested_scopes,
+        served_origin: served.as_ref(),
+        topology: redirect_topology.as_ref(),
+    });
 
     // Check for an existing grant that pre-approves some or all scopes for
-    // this (client, redirect_uri) pair.
-    let grant_coverage =
-        resolve_existing_grant_coverage(&state, &params, &parsed_redirect, &requested_scopes)?;
+    // this (client, redirect_uri) pair. A request that steps outside the
+    // registration never fast-paths, however well an old grant covers it: the
+    // Owner has not yet seen *this* app/redirect/scope combination.
+    let grant_coverage = if registration.is_registered() {
+        resolve_existing_grant_coverage(&state, &params, &parsed_redirect, &requested_scopes)?
+    } else {
+        ExistingGrantCoverage::none()
+    };
 
     // Persist the pending request — every path from here on out references
     // it by `request_id`.
@@ -276,128 +339,133 @@ fn ensure_active_signing_key(state: &GatekeeperState) -> Result<(), AuthorizeErr
     }
 }
 
-/// Load the client and validate it exists and is enabled (RFC 6749 §4.1.2.1).
-/// An unknown or disabled client can't be trusted as a redirect target, so the
-/// failure renders a local HTML page rather than a redirect.
-fn validate_and_load_client(
+/// Load the client row named by the request, if any.
+///
+/// A **disabled** client is rejected outright with the local HTML page, as is an
+/// unknown `client_id` for the first-party host (`is_first_party`). Every other
+/// unknown `client_id` returns `None` — a `New` registration verdict for the
+/// consent prompt; nothing is persisted for it here.
+fn load_client(
     state: &GatekeeperState,
     params: &AuthorizeParams,
-) -> Result<Client, AuthorizeError> {
-    let client = state
-        .store
-        .client_by_id(&params.client_id)?
-        .ok_or(AuthorizeError::LocalPage(OAuthErrorKind::UnknownClient))?;
+    is_first_party: bool,
+) -> Result<Option<Client>, AuthorizeError> {
+    let Some(client) = state.store.client_by_id(&params.client_id)? else {
+        return if is_first_party {
+            Err(AuthorizeError::LocalPage(OAuthErrorKind::UnknownClient))
+        } else {
+            Ok(None)
+        };
+    };
     if client.disabled_at.is_some() {
         return Err(AuthorizeError::LocalPage(OAuthErrorKind::DisabledClient));
     }
-    Ok(client)
+    Ok(Some(client))
 }
 
-/// Validate the `redirect_uri` against `client`: a well-formed http/https URL
-/// (RFC 6749 §4.1.2.1) that matches the client's allowlist, as resolved for
-/// this request's provenance by
-/// [`redirect_is_allowlisted`](crate::domain::client_redirect::redirect_is_allowlisted)
-/// — so one registration covers both the on-device and tunneled launch origins
-/// without either being knowable at seed time. A `redirect_uri` that isn't
-/// trusted can't be a redirect target, so failures render a local HTML page.
-/// Returns the parsed URL the redirect flow uses thereafter.
-fn validate_redirect_url(
-    params: &AuthorizeParams,
-    client: &Client,
-    served_origin: &str,
-    topology: Option<&SelfHostedRedirectTopology>,
-) -> Result<Url, AuthorizeError> {
+/// Parse the presented `redirect_uri` and check its scheme: it must be a
+/// well-formed http/https URL (RFC 6749 §4.1.2.1). These two failures are
+/// unconditional local HTML pages — a URI we can't even parse (or that names a
+/// scheme we won't emit) is never a redirect target.
+///
+/// Whether the parsed URI is one the client *registered* is a separate question
+/// ([`redirect_is_allowlisted`]) that feeds the registration verdict rather than
+/// rejecting the request — see [`client_registration`](crate::domain::client_registration).
+fn parse_redirect_url(params: &AuthorizeParams) -> Result<Url, AuthorizeError> {
     let parsed_redirect = Url::parse(&params.redirect_uri)
         .map_err(|_| AuthorizeError::LocalPage(OAuthErrorKind::InvalidRedirectUri))?;
     if parsed_redirect.scheme() != "http" && parsed_redirect.scheme() != "https" {
         return Err(AuthorizeError::LocalPage(OAuthErrorKind::InvalidScheme));
     }
-    // The served origin comes from the trusted extractor; if it somehow can't
-    // parse, no app-relative entry resolves (absolute entries still match).
-    let served = Url::parse(served_origin).ok();
-    if !redirect_is_allowlisted(client, &parsed_redirect, served.as_ref(), topology) {
-        tracing::warn!(
-            client_id = %params.client_id,
-            redirect_uri = %params.redirect_uri,
-            registered_redirect_uris = ?client.redirect_uris,
-            "redirect_uri not allowed for this client"
-        );
-        return Err(AuthorizeError::LocalPage(
-            OAuthErrorKind::RedirectUriNotAllowed,
-        ));
-    }
     Ok(parsed_redirect)
 }
 
-/// Validate the response type and PKCE challenge. With `redirect_uri` +
-/// `client_id` already validated, these spec'd errors go back to the client
-/// per RFC 6749 §4.1.2.1 with `error` + `state`.
-fn validate_code(params: &AuthorizeParams, parsed_redirect: &Url) -> Result<(), AuthorizeError> {
+/// Validate the response type and PKCE challenge — the spec'd errors that are
+/// *delivered* differently depending on whether the `redirect_uri` can be
+/// trusted.
+///
+/// With `redirect_trusted` (a known client whose registration lists this
+/// `redirect_uri`) each failure goes back to the client per RFC 6749 §4.1.2.1
+/// with `error` + `state`. Otherwise — a client new to this gatekeeper, or a
+/// redirect it never registered — the same failure renders a local HTML page:
+/// redirecting an error to a URI nobody has vouched for is exactly the open
+/// redirect §4.1.2.1 forbids.
+fn validate_code(
+    params: &AuthorizeParams,
+    parsed_redirect: &Url,
+    redirect_trusted: bool,
+) -> Result<(), AuthorizeError> {
+    // Deliver a spec'd failure the way this request's trust level allows.
+    let fail = |error: OAuthErrorCode, local: OAuthErrorKind| {
+        if redirect_trusted {
+            AuthorizeError::redirect(parsed_redirect, error, &params.state)
+        } else {
+            AuthorizeError::LocalPage(local)
+        }
+    };
+
     // Only the authorization-code grant is implemented; any other value is
     // `unsupported_response_type` (RFC 6749 §4.1.1 makes the parameter
     // REQUIRED, §4.1.2.1 names the error code).
     if params.response_type != "code" {
-        return Err(AuthorizeError::redirect(
-            parsed_redirect,
+        return Err(fail(
             OAuthErrorCode::UnsupportedResponseType,
-            &params.state,
+            OAuthErrorKind::UnsupportedResponseType,
         ));
     }
 
     // Only S256 PKCE is supported. An unsupported `code_challenge_method` is
     // `invalid_request` (RFC 7636 §4.4.1).
     if params.code_challenge_method != "S256" {
-        return Err(AuthorizeError::redirect(
-            parsed_redirect,
+        return Err(fail(
             OAuthErrorCode::InvalidRequest,
-            &params.state,
+            OAuthErrorKind::UnsupportedCodeChallengeMethod,
         ));
     }
     // The `code_challenge` must be a well-formed S256 challenge (RFC 7636
     // §4.3); a malformed one is `invalid_request` (RFC 7636 §4.4.1).
     if !is_valid_s256_code_challenge(&params.code_challenge) {
-        return Err(AuthorizeError::redirect(
-            parsed_redirect,
+        return Err(fail(
             OAuthErrorCode::InvalidRequest,
-            &params.state,
+            OAuthErrorKind::InvalidCodeChallenge,
         ));
     }
 
     Ok(())
 }
 
-/// Validate that every requested scope is on the client's allowlist
-/// (`invalid_scope`, RFC 6749 §4.1.2.1). Returns the whitespace-split scopes.
-fn validate_requested_scopes(
+/// Reject a **first-party** request for a scope outside the host client's
+/// allowlist (`invalid_scope`, RFC 6749 §4.1.2.1).
+///
+/// Only `wildflower-host` is held to its allowlist here; every other client's
+/// unregistered scope becomes part of its registration verdict instead (see
+/// [`client_registration`](crate::domain::client_registration)).
+///
+/// The check is coverage-aware, not exact string membership: a client allowed a
+/// broad scope (e.g. `patient/*.rs`) also admits a narrower same-grammar request
+/// it covers (`patient/Observation.r`). Coverage never crosses the v1 word / v2
+/// letter grammars — a registration in one grammar authorizes requests in that
+/// grammar only.
+fn ensure_first_party_scopes_allowed(
     params: &AuthorizeParams,
     client: &Client,
     parsed_redirect: &Url,
-) -> Result<Vec<String>, AuthorizeError> {
-    let requested_scopes: Vec<String> = params
-        .scope
-        .split_whitespace()
-        .map(str::to_string)
-        .collect();
-    // Coverage-aware allowlist check, not exact string membership: a client
-    // allowed a broad scope (e.g. `patient/*.rs`) also admits a narrower
-    // same-grammar request it covers (`patient/Observation.r`). Coverage never
-    // crosses the v1 word / v2 letter grammars — a registration in one grammar
-    // authorizes requests in that grammar only. Mirrors the consent path's
-    // `grantable_scopes`; the same intersection runs again there.
-    if !requested_scopes.iter().all(|requested| {
+    requested_scopes: &[String],
+) -> Result<(), AuthorizeError> {
+    if requested_scopes.iter().all(|requested| {
         client
             .allowed_scopes
             .iter()
             .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
     }) {
-        return Err(AuthorizeError::redirect(
+        Ok(())
+    } else {
+        Err(AuthorizeError::redirect(
             parsed_redirect,
             OAuthErrorCode::InvalidScope,
             &params.state,
-        ));
+        ))
     }
-
-    Ok(requested_scopes)
 }
 
 /// The subset of requested scopes an existing grant already covers, plus

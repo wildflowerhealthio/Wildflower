@@ -43,10 +43,13 @@ an event, or a Tag.
 
 ### Client
 
-A registered OAuth client. Every `client_id` accepted on
-`/oauth/authorize`, `/oauth/token`, or `/oauth/device_authorization` must
-resolve to a row in this table — unknown ids are rejected at the
-boundary.
+A registered OAuth client. Every `client_id` accepted on `/oauth/token` or
+`/oauth/device_authorization` must resolve to a row in this table — unknown
+ids are rejected at the boundary. `/oauth/authorize` is the exception: an
+unknown `client_id` (or a known one whose request steps outside its
+registration) is carried to the Owner's consent prompt with a warning, and
+the row is created or widened only when the Owner approves — see
+[Trust on first use](#trust-on-first-use).
 
 - **Table:** `clients`
 - **Identifier:** `clientId` (string PK, not a generated id — the
@@ -55,7 +58,11 @@ boundary.
   `secretHash` (SHA-256) and must present `client_secret` on
   `/oauth/token`, verified by `timingSafeEqual`.
 - **Allowlists:** `redirectUris` (exact match) and `allowedScopes`
-  (hard cap on what this client can request).
+  (what this client may request without the Owner being warned). For every
+  client but `wildflower-host` these are the _registered_ set, not a hard
+  cap: a request outside them reaches consent as a
+  [registration verdict](#trust-on-first-use) of `changed`, and approval
+  widens the row.
 - **Lifecycle:** `clientRegistered` → `clientUpdated` → `clientDisabled`
   (soft delete via `disabledAt`).
 
@@ -64,6 +71,54 @@ auto-seeded by the server at startup, with
 `kind: 'public'`, empty `redirectUris` (it gets its token via the device
 flow or a host mint — see [bootstrap URL](#bootstrap-url) — not OAuth
 redirects), and `allowedScopes: ['owner']`.
+
+### Trust on first use
+
+`/oauth/authorize` compares an authorization-code request against the
+current [`clients`](#client) row and computes a **registration verdict**:
+
+- **`registered`** — the row exists, the `redirect_uri` resolves to an
+  allowlist entry, and every requested scope is covered by `allowedScopes`.
+  Only this verdict may take the existing-[`Grant`](#grant) fast path.
+- **`new`** — no row exists. The consent prompt names the app by its
+  `client_id` and shows the redirect origin.
+- **`changed`** — the row exists but the `redirect_uri` is not allowlisted
+  and/or some requested scopes (`newScopes`) fall outside `allowedScopes`.
+
+The verdict is computed at read time (both at `/authorize` and on
+`GET /access/oauth-consents/:id`, which returns it as `registration`), never
+stored, so two prompts for the same app agree with whatever the row says
+now. Nothing is persisted for a `new` client until approval; a denied or
+expired prompt leaves no trace of it.
+
+Approving a `new` or `changed` prompt requires the Owner's explicit
+`acknowledgedRegistration` (the consent UI's "I recognise this app and this
+redirect address" checkbox) — the server rejects the approval without it.
+On approval the row is created (`kind: 'public'`, every grant type, name
+equal to the `client_id`, the one redirect, the granted scopes) or widened:
+the exact `redirect_uri` is added to `redirectUris` and the **granted** (not
+requested) scopes are unioned into `allowedScopes`, so a later identical
+request is `registered` and fast-paths. The clamp on such an approval is
+`allowedScopes ∪ requestedScopes`; the approving Owner still cannot delegate
+a scope they do not hold themselves.
+
+While the redirect is untrusted (verdict `new`, or `changed` with a new
+redirect) every later validation failure at `/authorize` — bad scheme,
+non-`code` `response_type`, bad PKCE — renders the local error page rather
+than redirecting, exactly as an unknown client's failure does on the other
+endpoints (RFC 6749 §4.1.2.1's open-redirect rule). Scope strings are not
+validated against a grammar on this path: an unparseable scope is carried to
+the prompt as an opaque named scope that matches only itself.
+
+The first-party `wildflower-host` client is exempt: an unregistered redirect
+or scope for it is rejected at the boundary, and approval never widens its
+row. Disabled clients are rejected on every endpoint regardless of verdict.
+
+> **Trade-off:** any page can present a _known_ `client_id` with its own
+> redirect, and the Owner sees a `changed` prompt under a trusted app's name.
+> The prompt's prominent redirect origin and the acknowledgment checkbox are
+> the mitigation; the Owner is the trust anchor, as with any TOFU scheme.
+> The device flow stays strict.
 
 ### AuthorizationRequest
 
@@ -274,21 +329,28 @@ it shows up" for the call sites.
 ### `client_id`
 
 Identifier of the OAuth client. Form-supplied at `/oauth/authorize`,
-`/oauth/token`, and `/oauth/device_authorization`. Every accepted value
-must resolve to a row in [`clients`](#client). Unknown or disabled
-clients are rejected at the boundary.
+`/oauth/token`, and `/oauth/device_authorization`. On the latter two every
+accepted value must resolve to a row in [`clients`](#client); on
+`/oauth/authorize` an unknown value reaches consent as a `new`
+[registration verdict](#trust-on-first-use). Disabled clients are rejected
+everywhere.
 
 ### `redirect_uri`
 
 Where the OAuth client wants the authorization code delivered after
-approval. Validated to be `http(s)` and to match an entry in the
-client's `redirectUris` allowlist (exact match — no prefix games).
+approval. Validated to be `http(s)`; matched against the client's
+`redirectUris` allowlist (exact match — no prefix games). A miss is not a
+rejection but a `changed` [registration verdict](#trust-on-first-use)
+(`wildflower-host` excepted), and until the Owner approves, the URI is
+untrusted — no error redirects to it.
 
 ### `scope`
 
 Space-delimited list of permission strings the OAuth client is asking
-for. Capped per-client by `client.allowedScopes`; the request is
-rejected if any requested scope falls outside. Stored on
+for. Compared against `client.allowedScopes`; a scope outside that set makes
+the request a `changed` [registration verdict](#trust-on-first-use) that the
+Owner is warned about (`wildflower-host` excepted — its requests are
+rejected with `invalid_scope`). Stored on
 `AuthorizationRequest.requestedScopes`,
 `AuthorizationCode.grantedScopes`, and `Grant.scopes`.
 

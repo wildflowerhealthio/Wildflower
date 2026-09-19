@@ -1,18 +1,118 @@
 use crate::common::*;
 
+/// Trust on first use: a `client_id` this gatekeeper has never seen is no longer
+/// rejected at the door. Its request is parked like any other and the browser is
+/// sent to the Owner's prompt — and **nothing** is written to the `clients`
+/// table, so a request nobody approves leaves no trace of the app.
 #[tokio::test]
-async fn authorize_unknown_client_returns_html_bad_request() {
-    let (g, _host_owner_token, _db) = spin_up();
-    let query = "response_type=code&code_challenge_method=S256&client_id=ghost&scope=read&\
-                 code_challenge=abc&redirect_uri=http%3A%2F%2Fexample.com%2Fcb&state=xyz";
-    let req = loopback_request(
-        Request::get(format!("/oauth/authorize?{query}")),
-        Body::empty(),
+async fn authorize_unknown_client_parks_a_pending_request() {
+    let (g, _host_owner_token, db) = spin_up();
+    let res = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
+    let request_id = parked_request_id(&res);
+
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize/{request_id}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::OK);
+    assert_eq!(body_json(res.into_body()).await["status"], "pending");
+    assert!(
+        store_handle(&db)
+            .client_by_id("ghost")
+            .expect("client query")
+            .is_none(),
+        "/authorize must not register an unknown client",
     );
-    let res = g.router.oneshot(req).await.expect("oneshot");
+}
+
+/// The redirect of an unknown client is untrusted, so a later validation failure
+/// may NOT be 302'd to it (RFC 6749 §4.1.2.1's open-redirect rule): a malformed
+/// PKCE challenge and a non-`code` `response_type` both render the local HTML
+/// page instead.
+#[tokio::test]
+async fn authorize_unknown_client_renders_later_failures_locally() {
+    let (g, _host_owner_token, _db) = spin_up();
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    for (query, expected) in [
+        (
+            "response_type=code&code_challenge_method=S256&client_id=ghost&scope=read&\
+             code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+                .to_string(),
+            "Invalid PKCE code challenge",
+        ),
+        (
+            "response_type=code&code_challenge_method=plain&client_id=ghost&scope=read&\
+             code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+                .to_string(),
+            "Unsupported PKCE method",
+        ),
+        (
+            format!(
+                "response_type=token&code_challenge_method=S256&client_id=ghost&scope=read&\
+                 code_challenge={challenge}&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
+            ),
+            "Unsupported response type",
+        ),
+    ] {
+        let res = get_authorize(&g.router, &query).await;
+        assert_eq!(res.status(), StatusCode::BAD_REQUEST, "query = {query}");
+        let body = body_string(res.into_body()).await;
+        assert!(body.contains(expected), "body = {body}");
+    }
+}
+
+/// A **known** client presenting a redirect it never registered is treated the
+/// same way: the request is parked for the Owner, and until they approve that
+/// redirect is untrusted, so a bad PKCE challenge renders locally rather than
+/// 302ing to it.
+#[tokio::test]
+async fn authorize_unregistered_redirect_parks_and_keeps_the_redirect_untrusted() {
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://elsewhere.example/cb", &["read"]);
+    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    parked_request_id(&res);
+
+    let query = "response_type=code&code_challenge_method=S256&client_id=test-app&scope=read&\
+                 code_challenge=abc&redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
+    let res = get_authorize(&g.router, query).await;
     assert_eq!(res.status(), StatusCode::BAD_REQUEST);
     let body = body_string(res.into_body()).await;
-    assert!(body.contains("Unknown client"), "body = {body}");
+    assert!(
+        body.contains("Invalid PKCE code challenge"),
+        "body = {body}"
+    );
+}
+
+/// A disabled client is rejected on every endpoint, verdict or no verdict — the
+/// one client-level rejection trust-on-first-use does not relax.
+#[tokio::test]
+async fn authorize_disabled_client_is_still_rejected() {
+    let (g, _host_owner_token, db) = spin_up();
+    // Inserted disabled: `upsert_client` deliberately preserves `disabled_at`,
+    // so the flag has to be set on the row's first write.
+    store_handle(&db)
+        .upsert_client(&Client {
+            client_id: "test-app".to_string(),
+            name: "Disabled Test Client".to_string(),
+            kind: ClientKind::Public,
+            redirect_uris: vec![Url::parse("https://app.example/cb").unwrap().into()],
+            allowed_scopes: vec!["read".to_string()],
+            allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+            secret_hash: None,
+            registered_at: Utc::now(),
+            disabled_at: Some(Utc::now()),
+        })
+        .expect("register a disabled client");
+
+    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    assert_eq!(res.status(), StatusCode::BAD_REQUEST);
+    let body = body_string(res.into_body()).await;
+    assert!(body.contains("Disabled client"), "body = {body}");
 }
 
 #[tokio::test]
@@ -80,24 +180,52 @@ async fn authorize_unsupported_pkce_method_redirects_invalid_request() {
     );
 }
 
+/// A scope outside a (non-first-party) client's registration no longer fails the
+/// request: it is carried to the Owner's prompt as a `changed` registration
+/// naming exactly the scopes that stepped outside. The registered redirect stays
+/// trusted, so a *different* failure on the same request still 302s back (see
+/// `authorize_unsupported_pkce_method_redirects_invalid_request`).
 #[tokio::test]
-async fn authorize_disallowed_scope_redirects_invalid_scope() {
-    let (g, _host_owner_token, db) = spin_up();
+async fn authorize_disallowed_scope_parks_a_pending_request() {
+    let (g, host_owner_token, db) = spin_up();
     seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
-    // The challenge must be shape-valid (43 base64url chars) so the request
-    // reaches the scope check.
-    let query = "response_type=code&code_challenge_method=S256&client_id=test-app&scope=write&\
-                 code_challenge=abcdefghijklmnopqrstuvwxyzABCDEF0123456789-&\
-                 redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz";
-    let req = loopback_request(
-        Request::get(format!("/oauth/authorize?{query}")),
-        Body::empty(),
-    );
-    let res = g.router.oneshot(req).await.expect("oneshot");
-    assert_eq!(res.status(), StatusCode::FOUND);
-    let location = res.headers().get("location").expect("location header");
+    let res = get_authorize(&g.router, &authorize_query("test-app", "read%20write")).await;
+    let request_id = parked_request_id(&res);
+
+    let consent = get_oauth_consent(&g, &host_owner_token, &request_id).await;
     assert_eq!(
-        location,
+        consent["registration"],
+        serde_json::json!({
+            "status": "changed",
+            "redirectUriIsNew": false,
+            "newScopes": ["write"],
+        }),
+    );
+}
+
+/// The first-party host is NOT trusted on first use: an unregistered scope for
+/// `wildflower-host` is still the `invalid_scope` redirect back to its
+/// (registered) redirect_uri, exactly as before.
+#[tokio::test]
+async fn authorize_first_party_disallowed_scope_still_redirects_invalid_scope() {
+    let (g, _host_owner_token, db) = spin_up();
+    // Give the host client a redirect so the request reaches the scope check.
+    let store = store_handle(&db);
+    let mut host = store
+        .client_by_id("wildflower-host")
+        .unwrap()
+        .expect("the seeded first-party client");
+    host.redirect_uris = vec![Url::parse("https://app.example/cb").unwrap().into()];
+    store.upsert_client(&host).expect("allowlist a redirect");
+
+    let res = get_authorize(
+        &g.router,
+        &authorize_query("wildflower-host", "definitely_not_granted"),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::FOUND);
+    assert_eq!(
+        location_of(&res),
         "https://app.example/cb?error=invalid_scope&state=xyz"
     );
 }
@@ -142,12 +270,12 @@ async fn authorize_allows_scope_covered_by_a_broader_allowed_scope() {
 }
 
 #[tokio::test]
-async fn authorize_rejects_cross_grammar_scope_requests() {
+async fn authorize_treats_a_cross_grammar_scope_request_as_new() {
     // Deliberate decision: coverage never bridges the SMART v1 word and v2
     // letter grammars (mirroring scopes-core). A client registered with the v1
-    // `patient/Observation.read` does NOT admit a request for the
+    // `patient/Observation.read` does NOT cover a request for the
     // letter-equivalent `patient/Observation.rs` — v1 apps request v1 scopes.
-    let (g, _host_owner_token, db) = spin_up();
+    let (g, host_owner_token, db) = spin_up();
     seed_client_with_redirect(
         &db,
         "test-app",
@@ -160,19 +288,14 @@ async fn authorize_rejects_cross_grammar_scope_requests() {
          scope=patient%2FObservation.rs&code_challenge={challenge}&\
          redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=xyz"
     );
-    let res = g
-        .router
-        .oneshot(loopback_request(
-            Request::get(format!("/oauth/authorize?{query}")),
-            Body::empty(),
-        ))
-        .await
-        .expect("oneshot");
-    assert_eq!(res.status(), StatusCode::FOUND);
-    let location = res.headers().get("location").expect("location header");
+    let res = get_authorize(&g.router, &query).await;
+    // Not covered → not `registered`; the request is parked for the Owner rather
+    // than rejected, and the prompt names the uncovered spelling.
+    let request_id = parked_request_id(&res);
+    let consent = get_oauth_consent(&g, &host_owner_token, &request_id).await;
     assert_eq!(
-        location,
-        "https://app.example/cb?error=invalid_scope&state=xyz"
+        consent["registration"]["newScopes"],
+        serde_json::json!(["patient/Observation.rs"]),
     );
 }
 
