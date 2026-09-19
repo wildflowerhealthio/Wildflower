@@ -77,7 +77,18 @@ any) with the parsed resources and the settled `CollectorHttpResponse`, and hand
 to `handleGeneratedSteps`; then, for a non-empty parse on a plan that states a
 `captureProvenance` hook, it invokes the hook to build the settled
 `SniffedBatch` (`resources` possibly link-annotated, plus best-effort
-`diagnostics`) — so the full order is **generate → capture → drop → offer**.
+`diagnostics`) — so the full order is **generate → capture → record → drop →
+offer**. The **record** step, between capture and drop, invokes the optional
+`RunRecorder` ([run-recorder.ts](../src/handler/run-recorder.ts)) — when
+present, every settled response (both `ResponseFinished` and `RequestError`)
+is captured as an `Extraction.Input` before the tracked id is dropped. The
+recorder filters out omitted content types (scripts, styles, media) internally
+via `isOmittedContentType` from `http-extraction-fundamentals`, so the
+call-site is unconditional. Recording runs after capture so a provenance
+hook's side-effects are complete before the response is snapshot, and before
+the drop so the `CollectorHttpResponse` is still live. The `RequestError`
+path records via the same `recorder.record(response)` call, in an
+`Effect.gen` wrapper before `offerSniffResultAndUntrack`.
 Capture running _after_ generation is what guarantees `followUpSteps` never
 sees a hook-rewritten batch; a failing or dying hook is WARN-logged and the
 parse output flows on unchanged, with no diagnostics. The
