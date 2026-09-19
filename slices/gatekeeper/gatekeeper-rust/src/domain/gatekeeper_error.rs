@@ -32,6 +32,13 @@ pub enum GatekeeperError {
     /// cover ("you can't delegate more permission than you have"). Semantic and
     /// client-facing: the approver must step up (or narrow their approval).
     InsufficientApproverScope { missing_scopes: Vec<String> },
+    /// The Owner approved an authorization-code consent whose client is new to
+    /// this gatekeeper (or whose redirect / scopes step outside its
+    /// registration) without acknowledging that warning — the consent approve
+    /// surface's **409**. Semantic and client-facing: the Owner UI must show the
+    /// registration warning and send
+    /// `acknowledgedRegistration: true`. Nothing is written when it is raised.
+    RegistrationNotAcknowledged { id: String },
     /// An infrastructure failure in the backing store (a lock, query, or
     /// mapping error) — opaque to clients: the HTTP layer logs `context` +
     /// `source` and answers an empty 500. The cause is captured as text so
@@ -64,6 +71,13 @@ impl std::fmt::Display for GatekeeperError {
                     f,
                     "approver cannot delegate scopes they do not hold: {}",
                     missing_scopes.join(" ")
+                )
+            }
+            GatekeeperError::RegistrationNotAcknowledged { id } => {
+                write!(
+                    f,
+                    "consent {id} names an unregistered client, redirect, or scope and was \
+                     approved without acknowledging it"
                 )
             }
             GatekeeperError::Infrastructure { context, source } => {

@@ -1,8 +1,9 @@
 //! `/oauth-consents/{id}` routes — the Owner-facing consent prompt for the
 //! authorization-code flow. One module per route (`get`, `approve`, `deny`),
-//! each exposing a `MethodRouter`; the DTOs shared with the device flow
-//! (`ApproveBody`, `ConsentResult`) live in [`crate::http::wire_representations`],
-//! the `get` response shape beside its route, and the consent logic in
+//! each exposing a `MethodRouter`; the DTO shared with the device flow
+//! (`ConsentResult`) lives in [`crate::http::wire_representations`], the `get`
+//! response shape and the approve body beside their routes (both carry the
+//! registration verdict this flow alone has), and the consent logic in
 //! `domain::capabilities`. `router()` is the only path table.
 
 mod approve;

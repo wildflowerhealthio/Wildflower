@@ -23,7 +23,7 @@ use crate::ports::SelfHostedRedirectTopology;
 /// How a pending authorization-code request compares against the current
 /// `clients` row — the Owner-facing warning the consent prompt renders.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum ClientRegistration {
+pub(crate) enum ClientRegistration {
     /// The row exists, the `redirect_uri` resolves to an allowlist entry, and
     /// every requested scope is covered by `allowed_scopes`. The only verdict
     /// that may take the existing-grant fast path at `/authorize`.
@@ -44,13 +44,13 @@ pub enum ClientRegistration {
 impl ClientRegistration {
     /// Whether this request matches the registration exactly — the gate on the
     /// `/authorize` standing-grant fast path.
-    pub fn is_registered(&self) -> bool {
+    pub(crate) fn is_registered(&self) -> bool {
         matches!(self, ClientRegistration::Registered)
     }
 
     /// Whether approving this request needs the Owner's explicit acknowledgement
     /// that the app (or its redirect / scopes) is new to them.
-    pub fn needs_acknowledgement(&self) -> bool {
+    pub(crate) fn needs_acknowledgement(&self) -> bool {
         !self.is_registered()
     }
 }
@@ -58,21 +58,21 @@ impl ClientRegistration {
 /// The pending authorization-code request to classify, paired with the client
 /// row it names and the provenance needed to resolve an app-relative redirect
 /// entry.
-pub struct PendingRegistration<'a> {
+pub(crate) struct PendingRegistration<'a> {
     /// The current `clients` row, or `None` when the `client_id` is unknown.
-    pub client: Option<&'a Client>,
+    pub(crate) client: Option<&'a Client>,
     /// The `redirect_uri` the request presented, already parsed.
-    pub redirect_uri: &'a Url,
+    pub(crate) redirect_uri: &'a Url,
     /// The whitespace-split requested scopes, in request order.
-    pub requested_scopes: &'a [String],
+    pub(crate) requested_scopes: &'a [String],
     /// The request's served origin, parsed — the base an app-relative allowlist
     /// entry resolves against. `None` when it could not be parsed, which simply
     /// makes every relative entry resolve to nothing.
-    pub served_origin: Option<&'a Url>,
+    pub(crate) served_origin: Option<&'a Url>,
     /// The self-hosted app's redirect topology, from the
     /// [`SelfHostedRedirectResolver`](crate::ports::SelfHostedRedirectResolver)
     /// seam; `None` for a client that is not a self-hosted app.
-    pub topology: Option<&'a SelfHostedRedirectTopology>,
+    pub(crate) topology: Option<&'a SelfHostedRedirectTopology>,
 }
 
 /// Classify `pending` against its current client row.
@@ -89,7 +89,7 @@ pub struct PendingRegistration<'a> {
 /// `Unknown` scope that only covers itself, so it is reported as new unless the
 /// registration lists it verbatim — deliberately, since the Owner should see an
 /// unrecognized scope string.
-pub fn classify_registration(pending: &PendingRegistration<'_>) -> ClientRegistration {
+pub(crate) fn classify_registration(pending: &PendingRegistration<'_>) -> ClientRegistration {
     let Some(client) = pending.client else {
         return ClientRegistration::New;
     };
@@ -111,7 +111,7 @@ pub fn classify_registration(pending: &PendingRegistration<'_>) -> ClientRegistr
 }
 
 /// The `requested` scopes that no `allowed` entry covers, in request order.
-pub fn uncovered_scopes(allowed: &[String], requested: &[String]) -> Vec<String> {
+pub(crate) fn uncovered_scopes(allowed: &[String], requested: &[String]) -> Vec<String> {
     requested
         .iter()
         .filter(|requested| {

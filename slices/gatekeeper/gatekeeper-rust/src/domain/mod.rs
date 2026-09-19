@@ -33,7 +33,7 @@ pub mod client_redirect;
 // The trust-on-first-use registration verdict: how a pending authorization-code
 // request compares against the `clients` row it names right now. Derived on every
 // read, never stored, so `/authorize` and the consent surfaces agree.
-pub mod client_registration;
+pub(crate) mod client_registration;
 // The domain's failure vocabulary (collector's `RemoteError` is the model):
 // semantic client-facing variants plus the opaque `Infrastructure`.
 pub mod gatekeeper_error;

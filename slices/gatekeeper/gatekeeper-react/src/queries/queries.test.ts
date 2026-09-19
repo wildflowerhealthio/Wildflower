@@ -70,6 +70,7 @@ const OAUTH_CONSENT_BODY = {
   redirectUri: 'https://example.com/cb',
   preApprovedScopes: [],
   patient: null,
+  registration: { status: 'registered' },
 }
 
 const jsonResponse = (body: unknown): Response =>

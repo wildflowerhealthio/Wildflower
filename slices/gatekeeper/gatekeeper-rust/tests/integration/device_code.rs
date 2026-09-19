@@ -503,7 +503,7 @@ async fn offline_access_issues_rotating_refresh_token() {
         &host_owner_token,
         "test-app",
         "read%20offline_access",
-        r#"{"approvedScopes":["read","offline_access"]}"#,
+        r#"{"approvedScopes":["read","offline_access"],"acknowledgedRegistration":false}"#,
     )
     .await;
 
@@ -731,7 +731,7 @@ async fn revoking_grant_revokes_refresh_tokens() {
         &host_owner_token,
         "test-app",
         "read",
-        r#"{"approvedScopes":["read"]}"#,
+        r#"{"approvedScopes":["read"],"acknowledgedRegistration":false}"#,
     )
     .await;
     let store = store_handle(&db);

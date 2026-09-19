@@ -101,6 +101,15 @@ pub(crate) struct OAuthConsentNotFoundBody {
     pub(crate) id: String,
 }
 
+/// Wire shape for `RegistrationNotAcknowledged` (409) — the approval named a
+/// client, redirect, or scope outside the current registration and did not carry
+/// the Owner's acknowledgement.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct RegistrationNotAcknowledgedBody {
+    pub(crate) error: &'static str,
+    pub(crate) id: String,
+}
+
 /// Wire shape for `DeviceConsentNotFound` (404) — no pending device-code consent
 /// has this user code. Keyed by `userCode`, unlike the id-keyed siblings.
 #[derive(Debug, Serialize, ToSchema)]
@@ -156,6 +165,14 @@ impl IntoResponse for GatekeeperError {
                 StatusCode::NOT_FOUND,
                 Json(AuthorizationRequestNotFoundBody {
                     error: "AuthorizationRequestNotFound",
+                    id,
+                }),
+            )
+                .into_response(),
+            GatekeeperError::RegistrationNotAcknowledged { id } => (
+                StatusCode::CONFLICT,
+                Json(RegistrationNotAcknowledgedBody {
+                    error: "RegistrationNotAcknowledged",
                     id,
                 }),
             )

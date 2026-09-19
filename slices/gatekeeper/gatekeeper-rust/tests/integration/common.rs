@@ -282,6 +282,10 @@ pub fn decode_jwt_payload(token: &str) -> serde_json::Value {
 /// fast-path behaviour, refresh issuance); the flow itself is proven by
 /// `auth_code_grant_happy_path_end_to_end`. Uses the shared
 /// `https://app.example/cb` redirect and [`CODE_VERIFIER`]'s challenge.
+///
+/// `approve_body` carries `acknowledgedRegistration` like any real approval;
+/// callers seed a client whose registration already covers the request, so the
+/// flag is ignored.
 pub async fn authorize_and_approve(
     g: &Gatekeeper,
     host_owner_token: &str,

@@ -1,7 +1,7 @@
 //! Request/response wire shapes shared across the gatekeeper's route trees —
 //! the JSON bodies the OAuth surface and the Owner UI post and read. Routes and
 //! loaders import their DTOs from here instead of a sibling `internal.rs`, so a
-//! shape shared by two surfaces (e.g. [`ApproveBody`] across both consent
+//! shape shared by two surfaces (e.g. [`ConsentResult`] across both consent
 //! flows) has one home and the trees can't drift.
 //!
 //! Also home to [`CacheSuppressed`], the RFC 6749 §5.1/§5.2 cache-suppression
@@ -77,10 +77,14 @@ impl OAuthError {
     }
 }
 
-/// Body posted by the Owner UI to approve a consent prompt: the scopes the
-/// Owner ticked, plus an optional patient context to bind to the grant. The
-/// device flow sends no `patient` today, so it deserializes to `None`; the
-/// field is shared in anticipation of device-flow patient selection.
+/// Body posted by the Owner UI to approve a **device-code** consent prompt: the
+/// scopes the Owner ticked, plus an optional patient context to bind to the
+/// grant. The device flow sends no `patient` today, so it deserializes to
+/// `None`; the field is kept in anticipation of device-flow patient selection.
+///
+/// The code flow posts its own
+/// `ApproveOAuthConsentBody` instead — only that surface can show a
+/// registration warning, and only its body carries the acknowledgement.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ApproveBody {
