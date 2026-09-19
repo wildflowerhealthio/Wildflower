@@ -17,10 +17,20 @@ cornerstone browser adapter.
   em-dash.
 - `src/render-instance.ts` — `renderInstance`: the cornerstone rendering seam.
   Initializes cornerstone once (lazy, idempotent), registers DICOM bytes via
-  `@cornerstonejs/dicom-image-loader`'s file manager, creates a stack viewport,
+  `@cornerstonejs/dicom-image-loader`'s file manager, binds a stack viewport,
   and renders. Returns a `RenderOutcome` tagged union (`rendered` |
   `unrenderable(reason)`). All cornerstone imports are dynamic so the wasm
   codecs tree-shake out of non-browser builds.
+
+  Two details are load-bearing and easy to regress. **Both** initializers run —
+  core's _and_ the image loader's, the latter being what registers the
+  `wadouri:` scheme — and the initialization is memoized as a _promise_, not a
+  boolean, so StrictMode's double effect shares one run instead of registering
+  the decode worker twice. The rendering engine and viewport use **constant
+  ids**, so every render reuses one engine rather than leaking a WebGL context
+  per call; `enableElement` rebinds the shared viewport to the current mount's
+  element on its own.
+
 - `src/index.ts` — public API barrel.
 
 ## Layering
