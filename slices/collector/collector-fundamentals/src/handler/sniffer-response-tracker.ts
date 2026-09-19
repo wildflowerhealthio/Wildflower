@@ -18,6 +18,7 @@ import type * as CollectorHttpResponseKind from '../model/collector-http-respons
 import { CollectorHttpResponse } from '../model/index.ts'
 import type * as Step from '../model/step.ts'
 import * as Telemetry from '../telemetry/index.ts'
+import type { RunRecorder } from './run-recorder.ts'
 
 type Service = MessageHandler.HandlersFor<CollectorBridge['HostToWeb']>
 
@@ -138,6 +139,7 @@ const make = <TParsed>({
   handleNewSniffResult,
   handleGeneratedSteps,
   captureProvenance,
+  recorder,
 }: {
   matchResponseKind: (
     url: string,
@@ -158,6 +160,14 @@ const make = <TParsed>({
     response: CollectorHttpResponse,
     produced: readonly TParsed[]
   ) => Effect.Effect<SniffedBatch<TParsed>, unknown>
+  /**
+   * Run-scoped recorder that captures every settled response (minus omitted
+   * content types) as an `Extraction.Input`. Invoked at every settle point
+   * (`ResponseFinished` / `RequestError`) before the parse runs, so a parse
+   * failure does not drop the record. Omitted when the runner does not need a
+   * recording (the recorder is a run property, not a plan property).
+   */
+  recorder?: RunRecorder
   /**
    * Publish one settled {@link SniffResult} onto the {@link RunLifecycleState}'s
    * stream. Offers the result, then runs the lifecycle's stream-close check —
@@ -304,6 +314,7 @@ const make = <TParsed>({
     const handleResponseFinished: Service['ResponseFinished'] = (event) =>
       withTracked('ResponseFinished', event.id, ({ response, responseKind }) =>
         Effect.gen(function* () {
+          recorder?.record(response)
           // `url.path` is a path-only OTel semconv key: strip scheme/host/query
           // from the captured full URL, falling back to the raw string if it
           // doesn't parse as an absolute URL.
@@ -397,11 +408,14 @@ const make = <TParsed>({
       // load-bearing (the start URL stays on `response.url` for the
       // consumer). See the [Handler Explanation](../../docs/Handler%20Explanation.md).
       withTracked('RequestError', event.id, ({ response }) =>
-        offerSniffResultAndUntrack(
-          event.id,
-          response,
-          Either.left(new UnknownException(event.message))
-        )
+        Effect.gen(function* () {
+          recorder?.record(response)
+          yield* offerSniffResultAndUntrack(
+            event.id,
+            response,
+            Either.left(new UnknownException(event.message))
+          )
+        })
       )
 
     const handleCancelled: Service['Cancelled'] = (event) =>
