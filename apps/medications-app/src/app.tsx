@@ -3,6 +3,7 @@ import { Effect, Match } from 'effect'
 import {
   fetchMedicationRequestPage,
   type MedicationRequestCursor,
+  useLaunchFailureRedirect,
   useSmartHandshake,
 } from 'fhir-r4-react/smart'
 import { CalendarView } from 'medication-calendar-react'
@@ -18,6 +19,7 @@ import type { JSX } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ChunkBar,
+  ErrorBanner,
   GateCard,
   PartialBanner,
   SegmentedToggle,
@@ -117,6 +119,9 @@ export const App = (): JSX.Element => {
   // Set once, never unset — on completion the page is simply finished.
   const [showPartial, setShowPartial] = useState(false)
   const handshake = useSmartHandshake()
+  // A failed exchange has nothing to retry here (the code is single-use), so
+  // carry the reason to the app root, which can offer the connect menu.
+  useLaunchFailureRedirect(handshake)
   const client = handshake.kind === 'ready' ? handshake.client : undefined
 
   const medications = useInfiniteQuery({
@@ -399,7 +404,7 @@ export const App = (): JSX.Element => {
     tab,
   }).pipe(
     Match.when({ handshakeError: Match.defined }, ({ handshakeError }): JSX.Element => (
-      <ErrorLine error={handshakeError} />
+      <ErrorBanner error={handshakeError} />
     )),
     Match.when({ firstPageError: Match.defined }, ({ firstPageError }): JSX.Element => (
       <ErrorLine error={firstPageError} />

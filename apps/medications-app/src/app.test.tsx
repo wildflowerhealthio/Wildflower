@@ -13,15 +13,19 @@ import type { MedicationRequestPage, SmartHandshake } from 'fhir-r4-react/smart'
 // control it). The real `useSmartHandshake` dedup is covered in the slice;
 // here we drive its result to exercise `App`'s own query wiring, paging, the
 // load-everything driver, and error surfacing.
-const { handshakeMock, fetchMock, catalogMock } = vi.hoisted(() => ({
+const { handshakeMock, fetchMock, catalogMock, launchFailureRedirectMock } = vi.hoisted(() => ({
   handshakeMock: vi.fn<() => SmartHandshake>(),
   fetchMock: vi.fn<() => Promise<MedicationRequestPage>>(),
   catalogMock: vi.fn<() => Promise<unknown>>(),
+  launchFailureRedirectMock: vi.fn<(handshake: SmartHandshake) => void>(),
 }))
 vi.mock('fhir-r4-react/smart', async () => {
   const { Effect } = await import('effect')
   return {
     useSmartHandshake: () => handshakeMock(),
+    useLaunchFailureRedirect: (handshake: SmartHandshake) => {
+      launchFailureRedirectMock(handshake)
+    },
     fetchMedicationRequestPage: () => Effect.promise(() => fetchMock()),
   }
 })
@@ -97,6 +101,7 @@ afterEach(() => {
   handshakeMock.mockReset()
   fetchMock.mockReset()
   catalogMock.mockReset()
+  launchFailureRedirectMock.mockReset()
   // Unresolved by default: interaction tests opt into a resolved catalog.
   catalogMock.mockReturnValue(new Promise(() => {}))
 })
@@ -135,9 +140,14 @@ describe('App', () => {
     // Act
     renderApp()
 
-    // Assert
-    expect(screen.getByText('Could not load medications: token exchange failed')).toBeDefined()
+    // Assert — the failure is announced as an alert, not a bare line
+    expect(screen.getByRole('alert').textContent).toContain('token exchange failed')
     expect(fetchMock).not.toHaveBeenCalled()
+
+    // ...and it is carried to the app root, which can offer the connect menu;
+    // there is nothing to retry here, because the auth code is single-use.
+    const [carried] = launchFailureRedirectMock.mock.calls[0] ?? []
+    expect(carried?.kind).toBe('error')
   })
 
   it('should surface a failed MedicationRequest read', async () => {

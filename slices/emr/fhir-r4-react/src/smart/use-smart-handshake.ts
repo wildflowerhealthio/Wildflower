@@ -1,6 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
 import type Client from 'fhirclient/lib/Client'
+import { useEffect } from 'react'
 
+import { launchErrorBodyFor, launchErrorRedirect } from './launch-error.ts'
 import { readySmartClient } from './smart-launch.ts'
 
 /**
@@ -54,4 +56,38 @@ const useSmartHandshake = (): SmartHandshake => {
   return { kind: 'connecting' }
 }
 
-export { SMART_HANDSHAKE_QUERY_KEY, useSmartHandshake, type SmartHandshake }
+/**
+ * Send a failed handshake back to the app root, carrying its reason as
+ * `?launchError` for the root's `ErrorBanner` to render.
+ *
+ * @remarks
+ * A token exchange that fails leaves the user on the launched branch with a
+ * consumed authorization code — there is nothing to retry *there*, because the
+ * code is single-use and `useSmartHandshake` will not re-POST it. The app root
+ * is the screen that can actually offer a way forward (the connect menu), so
+ * the failure is carried to it rather than reported in a dead end.
+ *
+ * The target comes from {@link launchErrorRedirect}, which drops the OAuth
+ * callback parameters — without that, the app root would re-enter the launched
+ * branch and loop. The effect is deliberately not guarded against firing twice:
+ * `location.replace` is idempotent for this purpose, and the handshake query is
+ * `retry: false`, so the error state settles once.
+ */
+const useLaunchFailureRedirect = (handshake: SmartHandshake): void => {
+  const failed = handshake.kind === 'error'
+  const error = handshake.kind === 'error' ? handshake.error : undefined
+  useEffect(() => {
+    if (!failed) return
+    const appRoot = new URL('.', window.location.href).href
+    window.location.replace(
+      launchErrorRedirect(appRoot, launchErrorBodyFor('HandshakeFailed', error))
+    )
+  }, [failed, error])
+}
+
+export {
+  SMART_HANDSHAKE_QUERY_KEY,
+  useLaunchFailureRedirect,
+  useSmartHandshake,
+  type SmartHandshake,
+}
