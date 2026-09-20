@@ -23,14 +23,42 @@
 # deliberately unsigned build); exit 1 on any misconfiguration.
 set -euo pipefail
 
+# GitHub Actions turns these into clickable annotations; plain text elsewhere.
+fail() { echo "::error::$*" >&2; exit 1; }
+warn() { echo "::warning::$*" >&2; }
+
+# notarytool exits 1 for causes whose fixes are unrelated, so the message has
+# to name the right one: rotating an app-specific password does nothing for a
+# malformed command line, and editing this script does nothing for an expired
+# one. Echoes usage | auth | network | unknown.
+#
+# Order matters. A usage dump lists notarytool's own flags, `[--password
+# <password>]` among them, so the auth patterns would match one — usage is
+# tested first and wins.
+classify_notary_failure() {
+  case "$1" in
+    *"Unknown option"*|*"Unexpected argument"*|*"Missing expected argument"*|*"Usage:"*)
+      echo usage ;;
+    *"HTTP status code: 401"*|*"HTTP status code: 403"*|*"Unable to authenticate"*|\
+    *"Invalid credentials"*|*"invalid credentials"*|*"Apple ID or password"*)
+      echo auth ;;
+    *"Could not connect"*|*"could not be reached"*|*"timed out"*|*"Timed out"*|\
+    *"network connection"*|*"HTTP status code: 5"*)
+      echo network ;;
+    *)
+      echo unknown ;;
+  esac
+}
+
+# Sourcing the script defines the helpers above and stops: that is how
+# scripts/checks/apple-signing-preflight.test.ts exercises
+# `classify_notary_failure` on a Linux CI box, where nothing below can run.
+(return 0 2>/dev/null) && return 0
+
 if [[ "$(uname -s)" != "Darwin" ]]; then
   echo "checks/apple-signing-preflight: needs macOS (\`security\`, \`codesign\`) — skipping."
   exit 0
 fi
-
-# GitHub Actions turns these into clickable annotations; plain text elsewhere.
-fail() { echo "::error::$*" >&2; exit 1; }
-warn() { echo "::warning::$*" >&2; }
 
 cert_b64="${APPLE_CERTIFICATE:-}"
 cert_password="${APPLE_CERTIFICATE_PASSWORD:-}"
@@ -96,15 +124,37 @@ if [[ -z "${APPLE_ID:-}" || -z "${APPLE_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" 
   warn "APPLE_ID, APPLE_PASSWORD or APPLE_TEAM_ID is unset: the bundle will be signed but not notarized, so Gatekeeper will refuse to open it on other Macs."
 else
   echo "Validating notarization credentials…"
+  # No --page-size: `notarytool history` has no such option, and passing one
+  # made notarytool exit on a usage error before it ever contacted Apple —
+  # which this check then reported as "credentials are invalid", sending
+  # people to rotate an app-specific password that was working fine. The
+  # default page is small and we discard it; we only care about the exit code.
   if ! xcrun notarytool history \
     --apple-id "$APPLE_ID" \
     --password "$APPLE_PASSWORD" \
     --team-id "$APPLE_TEAM_ID" \
-    --page-size 0 >/dev/null 2>"$workdir/notary.err"; then
+    >/dev/null 2>"$workdir/notary.err"; then
     notary_err="$(tr '\n' ' ' < "$workdir/notary.err")"
-    fail "Notarization credentials are invalid (APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID). Generate a new app-specific password at appleid.apple.com and update the APPLE_PASSWORD secret. Error: $notary_err"
+    case "$(classify_notary_failure "$notary_err")" in
+      usage)
+        fail "This check invoked notarytool incorrectly, so the credentials were never tested — fix the command in scripts/checks/apple-signing-preflight.sh, not the APPLE_* secrets. notarytool said: $notary_err"
+        ;;
+      auth)
+        fail "Notarization credentials rejected by Apple (APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID). Generate a new app-specific password at appleid.apple.com and update the APPLE_PASSWORD secret. notarytool said: $notary_err"
+        ;;
+      network)
+        # A blip reaching Apple is not a bad secret, and failing the release
+        # for one wastes the whole build. tauri-action notarizes for real
+        # later; let that be the arbiter.
+        warn "Could not reach the notary service, so the credentials are unverified — continuing. notarytool said: $notary_err"
+        ;;
+      *)
+        fail "notarytool failed for a reason this check does not recognise. The credentials may or may not be at fault. notarytool said: $notary_err"
+        ;;
+    esac
+  else
+    echo "Notarization credentials OK."
   fi
-  echo "Notarization credentials OK."
 fi
 
 echo "checks/apple-signing-preflight: OK — APPLE_SIGNING_IDENTITY resolves to '$matched_name'."
