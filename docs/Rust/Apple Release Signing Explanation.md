@@ -25,12 +25,12 @@ the certificate names the `.p12` actually contains.
 
 The preflight also validates the notarization credentials with `xcrun notarytool
 history`. This check was previously written as `notarytool history … --page-size
-0`. No such option exists, so notarytool exited on a *usage* error without ever
+0`. No such option exists, so notarytool exited on a _usage_ error without ever
 contacting Apple — and the check reported `Notarization credentials are invalid
 … Generate a new app-specific password`. The step could not pass regardless of
 whether the secrets were good, and it sent people to rotate a working password.
 
-A validation step must therefore establish *why* a tool failed before naming a
+A validation step must therefore establish _why_ a tool failed before naming a
 cause. When writing such a classifier for notarytool specifically, note that it
 answers a bad flag by printing its full usage — which includes `[--password
 <password>]`. A classifier that searches for credential keywords first will
@@ -43,11 +43,11 @@ treats a network failure as a warning rather than burning a release on a blip.
 iOS signing is not configured in the repository at all. The Tauri CLI does it,
 and reads exactly three environment variables in `signing_from_env()`:
 
-| Variable                   | Holds                                        |
-| -------------------------- | -------------------------------------------- |
-| `IOS_CERTIFICATE`          | base64 of the Apple Distribution `.p12`      |
-| `IOS_CERTIFICATE_PASSWORD` | the password used to export that `.p12`      |
-| `IOS_MOBILE_PROVISION`     | base64 of the App Store `.mobileprovision`   |
+| Variable                   | Holds                                      |
+| -------------------------- | ------------------------------------------ |
+| `IOS_CERTIFICATE`          | base64 of the Apple Distribution `.p12`    |
+| `IOS_CERTIFICATE_PASSWORD` | the password used to export that `.p12`    |
+| `IOS_MOBILE_PROVISION`     | base64 of the App Store `.mobileprovision` |
 
 Only when all three are present does `synchronize_project_config()` rewrite the
 generated Xcode project with `CODE_SIGN_STYLE=Manual` plus the matching
@@ -64,7 +64,7 @@ iOS App Development provisioning profiles matching '<bundle id>'.
 ```
 
 Neither line mentions an environment variable, and the second is actively
-misleading: it asks for a *development* profile during an App Store build,
+misleading: it asks for a _development_ profile during an App Store build,
 because that is what automatic signing falls back to looking for. The fix is
 never to supply a development profile — it is to supply the three variables so
 manual signing takes over.
