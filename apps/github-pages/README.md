@@ -20,6 +20,22 @@ The `destPath` of every section is derived from `SECTION_PATHS` (exported by
 drift-guard test in `assembly.test.ts` asserts that the set of `destPath`s
 matches `Object.values(SECTION_PATHS)` and pins the literal values.
 
+## The 404 redirect
+
+GitHub Pages serves one `404.html` for every path it has no file for, so a deep
+link into any section (`/web-trace-app/captures`, `/ohif-viewer/fhir-viewer?iss=…`)
+would otherwise land on an error page. `404.html` — staged into the artifact
+root by `assemble.ts`, not by any section — probes ancestor directories for an
+`index.html`, redirects to the deepest one that answers, and hands the leftover
+route over as `?redirect=<route>` alongside whatever query the link carried.
+
+Completing that redirect is the app's half of the contract. Every first-party
+SPA calls `restoreRedirectedUrl(window)` (from `branding-core`) as the first
+statement of its entry module, which rewrites the address bar with
+`history.replaceState` before the router or the SMART callback check reads the
+URL. `ohif-viewer` is a prebuilt bundle with no entry module of ours, so its
+`config/app-config.js` hand-rolls the same steps.
+
 ## Why a separate package
 
 GitHub Pages publishes exactly one artifact per site, so everything served from

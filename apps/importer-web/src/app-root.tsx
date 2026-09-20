@@ -1,8 +1,13 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AppLanding, BrandBar, fromApp, SiteFooter, SiteHeader } from 'branding-react'
 import { ConnectMenu } from 'fhir-r4-react/connect'
-import { buildSmartQueryClient, shouldCompleteSmartLaunch } from 'fhir-r4-react/smart'
+import {
+  buildSmartQueryClient,
+  launchErrorFrom,
+  shouldCompleteSmartLaunch,
+} from 'fhir-r4-react/smart'
 import { useState, type JSX } from 'react'
+import { ErrorBanner } from 'react-tundraish'
 
 import { App } from './app.tsx'
 import { standaloneSmartConfig } from './config.ts'
@@ -31,6 +36,13 @@ import styles from './app.module.css'
 function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
   const [isLaunched] = useState(() => launched ?? shouldCompleteSmartLaunch())
 
+  // A failed launch lands back here carrying its reason — our own `?launchError`
+  // from the launch page or the token exchange, or the authorization server's
+  // own OAuth `?error`. Latched on mount for the same reason as `isLaunched`:
+  // completing a handshake rewrites the URL, and the banner must not vanish
+  // because of it.
+  const [launchFailure] = useState(() => launchErrorFrom())
+
   // One QueryClient for the whole page: `App` completes the SMART handshake as a
   // query on it (via `useSmartHandshake`), then hands this same instance to its
   // router context, so the exchange and every app read/write share one cache.
@@ -54,6 +66,7 @@ function AppRoot({ launched }: { readonly launched?: boolean }): JSX.Element {
           <SiteHeader nav={fromApp} />
           <main className={styles['connect-page']}>
             <AppLanding app="importer">
+              <ErrorBanner error={launchFailure} />
               <ConnectMenu
                 clientId={standaloneSmartConfig.clientId}
                 scope={standaloneSmartConfig.scope}

@@ -3,6 +3,7 @@ import { APP_DESCRIPTIONS } from 'branding-core'
 import { StrictMode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
+import { encodeLaunchError } from 'fhir-r4-react/smart'
 import type * as SmartModule from 'fhir-r4-react/smart'
 
 // Stub the two leaf components `AppRoot` branches between (the SMART app and the
@@ -32,6 +33,7 @@ const MARKETING_ORIGIN = 'https://wildflowerhealth.io/'
 afterEach(() => {
   cleanup()
   shouldCompleteSmartLaunchMock.mockReset()
+  window.history.replaceState({}, '', '/')
 })
 
 describe('AppRoot', () => {
@@ -141,6 +143,51 @@ describe('AppRoot', () => {
     // Assert — still the launched branch
     expect(screen.queryByTestId('app')).not.toBeNull()
     expect(screen.queryByTestId('connect-menu')).toBeNull()
+  })
+
+  it('should report a failed launch in an alert beside the connect menu', () => {
+    // Arrange — the URL the launch page redirects to when `authorizeSmartLaunch`
+    // rejects (an unreachable or CORS-blocked `iss`).
+    const encoded = encodeLaunchError({
+      error: 'AuthorizeFailed',
+      message: 'Failed to fetch',
+      iss: 'https://ruth.wildflowerhealth.io/fhir-r4',
+    })
+    window.history.replaceState({}, '', `/?launchError=${encoded}`)
+
+    // Act
+    renderAppRoot({ launched: false })
+
+    // Assert — the failure is announced, and names the thing that went wrong
+    // rather than leaving the user on a bare connect menu.
+    const alert = screen.getByRole('alert')
+    expect(alert.textContent).toContain('Failed to fetch')
+    // The retry is still right there.
+    expect(screen.queryByTestId('connect-menu')).not.toBeNull()
+  })
+
+  it('should report the authorization server’s own OAuth error return', () => {
+    // Arrange — `shouldCompleteSmartLaunch` deliberately ignores an `error=`
+    // return, which is exactly what used to make this landing silent.
+    window.history.replaceState(
+      {},
+      '',
+      '/?error=access_denied&error_description=The+user+declined&state=xyz'
+    )
+
+    // Act
+    renderAppRoot({ launched: false })
+
+    // Assert
+    expect(screen.getByRole('alert').textContent).toContain('The user declined')
+  })
+
+  it('should render no alert on a plain visit', () => {
+    // Arrange / Act — the resting state: nothing failed, so nothing is announced.
+    renderAppRoot({ launched: false })
+
+    // Assert
+    expect(screen.queryByRole('alert')).toBeNull()
   })
 })
 

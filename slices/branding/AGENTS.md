@@ -17,12 +17,29 @@ the homepage and absolute from an app.
   resolvers, and `APP_DESCRIPTIONS` — the per-app introduction copy
   (name, tagline, status, first-person "why" paragraphs, homepage anchor, and
   launch link text) that the homepage's app rows and each app's landing page
-  both render.
+  both render. It also owns `restoreRedirectedUrl` — the app half of the GitHub
+  Pages 404 contract (see "The 404 redirect" below).
 - **`branding-react`** — the browser UI adapter: `SiteHeader`, `SiteFooter`,
   `BrandBar`, `AppIcon`, `AppLanding`, and the `branding-react/styles.css`
   layout tokens (`--content-max-width`, `--page-padding-x`, `--header-height`,
   `--radius-pill`, `--prose-max-width`, and the `--shadow-float-panel` used by
   the header's collapsed nav dropdown).
+
+## The 404 redirect
+
+GitHub Pages serves one `404.html` for every path it has no file for.
+`apps/github-pages/404.html` probes ancestor directories for an `index.html`,
+redirects to the deepest one that answers, and passes the leftover route along
+as `?redirect=<route>`. `restoreRedirectedUrl(window)` is the other half: each
+first-party SPA entry (`apps/medications-app`, `apps/importer-web`,
+`apps/web-trace`, `apps/wildflower-server-docs`) calls it as its first statement,
+before the router, the SMART callback check, or the `?server=` read — it puts
+the route back in the address bar with `history.replaceState` and drops the
+`redirect` parameter, leaving every other parameter and the fragment alone.
+
+`apps/ohif-viewer` is the exception: it is a prebuilt bundle with no entry
+module of ours, so `config/app-config.js` hand-rolls the same steps. The two
+must stay in step — `spa-redirect.ts` is the reference.
 
 ## The app landing page
 

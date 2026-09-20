@@ -19,3 +19,5 @@ export type {
 } from './nav.ts'
 export { SECTION_PATHS, SITE_ORIGIN, sectionRootPath, sectionUrl } from './site.ts'
 export type { SectionId } from './site.ts'
+export { REDIRECT_PARAM, basenameOf, restoreRedirectedUrl, restoredUrl } from './spa-redirect.ts'
+export type { RestorableHistory, RestorableLocation, RestorationTarget } from './spa-redirect.ts'
