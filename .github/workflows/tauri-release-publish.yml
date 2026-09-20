@@ -368,37 +368,17 @@ jobs:
         with:
           ref: refs/tags/${{ needs.prepare.outputs.tag }}
 
-      - name: Install Apple certificate and provisioning profile
+      - name: Verify Apple iOS signing inputs
+        # Same env the build step receives, so it vets what the build will
+        # use — and names the input at fault, which xcodebuild's own "No
+        # Accounts" / "No profiles for ..." errors do not.
         env:
           IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          IOS_PROVISIONING_PROFILE: ${{ vars.IOS_PROVISIONING_PROFILE }}
-        run: |
-          set -euo pipefail
-
-          KEYCHAIN_PATH="$RUNNER_TEMP/ios-signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          CERT_PATH="$RUNNER_TEMP/certificate.p12"
-          echo "$IOS_CERTIFICATE" | base64 --decode > "$CERT_PATH"
-          security import "$CERT_PATH" \
-            -P "$IOS_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-
-          PP_PATH="$RUNNER_TEMP/profile.mobileprovision"
-          echo "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$PP_PATH"
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          PP_UUID="$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< \
-            "$(security cms -D -i "$PP_PATH")")"
-          cp "$PP_PATH" \
-            ~/Library/MobileDevice/Provisioning\ Profiles/"$PP_UUID.mobileprovision"
+          IOS_MOBILE_PROVISION: ${{ vars.IOS_PROVISIONING_PROFILE }}
+          APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_TEAM_ID }}
+          BUNDLE_IDENTIFIER: com.wildflower-tauri.app
+        run: ./scripts/checks/apple-ios-signing-preflight.sh
 
       - name: Set up App Store Connect API key
         env:
@@ -435,6 +415,20 @@ jobs:
 
       - name: Build iOS app
         working-directory: apps/wildflower-tauri
+        # Tauri signs iOS only when it finds all three IOS_* variables, and
+        # falls back to an account-based signing mode no runner can satisfy
+        # when one is missing — see docs/Rust/Apple Release Signing
+        # Explanation.md. IOS_MOBILE_PROVISION is Tauri's spelling; the
+        # repository variable is IOS_PROVISIONING_PROFILE.
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_MOBILE_PROVISION: ${{ vars.IOS_PROVISIONING_PROFILE }}
+          APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_TEAM_ID }}
+          # Used by the export step to talk to App Store Connect.
+          APPLE_API_KEY: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          APPLE_API_ISSUER: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_API_KEY_PATH: ~/.appstoreconnect/private_keys/AuthKey_${{ vars.APP_STORE_CONNECT_KEY_ID }}.p8
         run: vp run tauri ios build --export-method app-store-connect
 
       - name: Upload to TestFlight
@@ -442,15 +436,26 @@ jobs:
           APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
+          set -euo pipefail
+
+          # The IPA takes the target's PRODUCT_NAME, regenerated from
+          # `productName` each build, so hardcoding a spelling turned a rename
+          # into altool reporting a missing file rather than the cause.
+          BUILD_DIR=src-tauri/gen/apple/build/arm64
+          shopt -s nullglob
+          ipas=("apps/wildflower-tauri/$BUILD_DIR"/*.ipa)
+          if [[ ${#ipas[@]} -eq 0 ]]; then
+            echo "::error::No .ipa in $BUILD_DIR. Contents:"
+            ls -la "apps/wildflower-tauri/$BUILD_DIR" 2>&1 || echo "  (directory does not exist)"
+            exit 1
+          fi
+          if [[ ${#ipas[@]} -gt 1 ]]; then
+            echo "::error::Expected one .ipa in $BUILD_DIR, found ${#ipas[@]}: ${ipas[*]}"
+            exit 1
+          fi
+
+          echo "Uploading ${ipas[0]}"
           xcrun altool --upload-app --type ios \
-            --file apps/wildflower-tauri/src-tauri/gen/apple/build/arm64/Wildflower.ipa \
+            --file "${ipas[0]}" \
             --apiKey "$APP_STORE_CONNECT_KEY_ID" \
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
-
-      - name: Clean up keychain
-        if: always()
-        run: |
-          KEYCHAIN_PATH="$RUNNER_TEMP/ios-signing.keychain-db"
-          if [[ -f "$KEYCHAIN_PATH" ]]; then
-            security delete-keychain "$KEYCHAIN_PATH"
-          fi

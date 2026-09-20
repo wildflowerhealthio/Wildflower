@@ -28,13 +28,10 @@ fail() { echo "::error::$*" >&2; exit 1; }
 warn() { echo "::warning::$*" >&2; }
 
 # notarytool exits 1 for causes whose fixes are unrelated, so the message has
-# to name the right one: rotating an app-specific password does nothing for a
-# malformed command line, and editing this script does nothing for an expired
-# one. Echoes usage | auth | network | unknown.
+# to name the right one. Echoes usage | auth | network | unknown.
 #
-# Order matters. A usage dump lists notarytool's own flags, `[--password
-# <password>]` among them, so the auth patterns would match one — usage is
-# tested first and wins.
+# Order matters: a usage dump lists notarytool's own flags, `[--password
+# <password>]` among them, so auth patterns would match one — usage wins.
 classify_notary_failure() {
   case "$1" in
     *"Unknown option"*|*"Unexpected argument"*|*"Missing expected argument"*|*"Usage:"*)
@@ -125,10 +122,9 @@ if [[ -z "${APPLE_ID:-}" || -z "${APPLE_PASSWORD:-}" || -z "${APPLE_TEAM_ID:-}" 
 else
   echo "Validating notarization credentials…"
   # No --page-size: `notarytool history` has no such option, and passing one
-  # made notarytool exit on a usage error before it ever contacted Apple —
-  # which this check then reported as "credentials are invalid", sending
-  # people to rotate an app-specific password that was working fine. The
-  # default page is small and we discard it; we only care about the exit code.
+  # made this check report a usage error as bad credentials. Only the exit
+  # code matters, so the default page is fine to discard. See
+  # docs/Rust/Apple Release Signing Explanation.md.
   if ! xcrun notarytool history \
     --apple-id "$APPLE_ID" \
     --password "$APPLE_PASSWORD" \
