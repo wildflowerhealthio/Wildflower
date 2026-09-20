@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Wildflower",
+  "productName": "Wildflower Host",
   "version": "0.2.5",
-  "identifier": "com.wildflower-tauri.app",
+  "identifier": "io.wildflowerhealth.hostapp",
   "build": {
     "beforeDevCommand": "vp run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Wildflower",
+        "title": "Wildflower Host",
         "width": 393,
         "height": 852
       }
