@@ -10,6 +10,11 @@ add prose above or below them if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.2.6 — 2026-09-20
+
+- Add macOS TestFlight distribution and rename the app to Wildflower Host (#701) (541af945)
+- Complete the GitHub Pages 404 redirect in every first-party app (#702) (ffadcff8)
+
 ## v0.2.5 — 2026-09-20
 
 - Fix Apple release signing: notarization preflight and iOS TestFlight build (#699) (4a70c52b)
