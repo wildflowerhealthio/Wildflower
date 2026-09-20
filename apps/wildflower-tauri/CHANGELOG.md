@@ -10,6 +10,11 @@ add prose above or below them if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.2.7 — 2026-09-20
+
+- Fix the macOS App Store preflight's entitlement read and check the app record (#705) (df7bc21e)
+- Put the iOS data directory where the Files app can see it (#704) (0084449e)
+
 ## v0.2.6 — 2026-09-20
 
 - Add macOS TestFlight distribution and rename the app to Wildflower Host (#701) (541af945)
