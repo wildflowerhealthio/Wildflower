@@ -16,8 +16,13 @@ import '@fontsource-variable/atkinson-hyperlegible-next/wght.css'
 import '@fontsource-variable/atkinson-hyperlegible-next/wght-italic.css'
 import '@fontsource-variable/atkinson-hyperlegible-mono/wght.css'
 
+import { restoreRedirectedUrl } from 'branding-core'
 import { addOsColorSchemeListener } from 'react-tundraish'
 import { AppRoot } from './app-root.tsx'
+
+// Complete a GitHub Pages 404 redirect before anything reads the URL — see
+// "The 404 redirect" in `slices/branding/AGENTS.md`.
+restoreRedirectedUrl(window)
 
 // Mirror the OS colour preference onto `data-color-scheme` so tundra's dark
 // palette (keyed off that attribute, not `prefers-color-scheme`) tracks the OS.

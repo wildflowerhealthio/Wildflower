@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@scalar/api-reference": "catalog:",
+    "branding-core": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {
