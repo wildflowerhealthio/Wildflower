@@ -10,6 +10,10 @@ add prose above or below them if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.2.5 — 2026-09-20
+
+- Fix Apple release signing: notarization preflight and iOS TestFlight build (#699) (4a70c52b)
+
 ## v0.2.4 — 2026-09-20
 
 - C1: collector-fundamentals — run recorder that captures every settled response (#687) (8043fb23)
