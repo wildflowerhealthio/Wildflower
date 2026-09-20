@@ -181,6 +181,26 @@ fn current_owner_bearer(trust: &LoopbackOwnerTrust) -> Option<axum::http::Header
     token.and_then(|t| axum::http::HeaderValue::from_str(&format!("Bearer {t}")).ok())
 }
 
+/// Resolves the directory the host keeps its databases and saved files in:
+/// `Documents` on iOS, where it is the only part of the app container the Files
+/// app will show, and Tauri's `app_data_dir()` everywhere else. The iOS bundle
+/// has to opt in as well (see the [Data Directory Explanation] for both halves,
+/// and what each platform resolves to).
+///
+/// Only the platform's own candidate is resolved — `document_dir()` fails
+/// outright on a desktop with no such user directory, and a platform that never
+/// reads it must not be able to fail startup on it.
+///
+/// [Data Directory Explanation]: ../../Data%20Directory%20Explanation.md
+fn resolve_data_dir<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+) -> tauri::Result<std::path::PathBuf> {
+    #[cfg(target_os = "ios")]
+    return app.path().document_dir();
+    #[cfg(not(target_os = "ios"))]
+    return app.path().app_data_dir();
+}
+
 async fn run_server(
     runtime: ServerRuntimeConfig,
     publishers: bridge::BridgePublishers,
@@ -830,7 +850,7 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
-            let app_data_dir = app.path().app_data_dir()?;
+            let app_data_dir = resolve_data_dir(app.handle())?;
             std::fs::create_dir_all(&app_data_dir)?;
 
             // Tauri's bundled-resource dir — resolved here (the path API needs
@@ -924,5 +944,32 @@ mod tests {
         assert!(!should_present_owner_token(true, true, false));
         // Pre-auth public surface (`/oauth`, `/.well-known`) → never.
         assert!(!should_present_owner_token(true, false, true));
+    }
+
+    /// `resolve_data_dir` puts the host's data in the iOS app container's
+    /// `Documents`, which the Files app only exposes when the bundle declares
+    /// `UIFileSharingEnabled` — so the choice of directory is only half the
+    /// feature, and losing the key silently un-does it. The key is declared in
+    /// `Info.ios.plist` (merged over the generated plist by `tauri ios build`)
+    /// and in the generated plist itself (what an Xcode-opened build reads);
+    /// both have to keep it, and this is what stops the pair from drifting.
+    #[test]
+    fn both_ios_plists_declare_file_sharing() {
+        for relative in [
+            "Info.ios.plist",
+            "gen/apple/wildflower-tauri_iOS/Info.plist",
+        ] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+            let plist = std::fs::read_to_string(&path)
+                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+            // Whitespace-insensitive: the key and its value sit on separate,
+            // indented lines in both files.
+            let compact: String = plist.split_whitespace().collect();
+            assert!(
+                compact.contains("<key>UIFileSharingEnabled</key><true/>"),
+                "{relative} must declare UIFileSharingEnabled as true, or the data \
+                 directory stays invisible in the Files app"
+            );
+        }
     }
 }
