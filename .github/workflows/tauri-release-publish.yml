@@ -394,6 +394,18 @@ jobs:
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode \
             > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
 
+      - name: Verify App Store Connect app record
+        # Signing inputs being valid does not mean the upload has anywhere to
+        # go: altool resolves the bundle id to an app record, and without one
+        # it fails with "Cannot determine the Apple ID from Bundle ID" only
+        # after the whole build. Runs after the key is written, which is what
+        # it authenticates with.
+        env:
+          BUNDLE_IDENTIFIER: io.wildflowerhealth.hostapp
+          APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+        run: ./scripts/checks/apple-app-record-preflight.sh
+
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
         with:
@@ -501,6 +513,18 @@ jobs:
           mkdir -p ~/.appstoreconnect/private_keys
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode \
             > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
+
+      - name: Verify App Store Connect app record
+        # Signing inputs being valid does not mean the upload has anywhere to
+        # go: altool resolves the bundle id to an app record, and without one
+        # it fails with "Cannot determine the Apple ID from Bundle ID" only
+        # after the whole build. Runs after the key is written, which is what
+        # it authenticates with.
+        env:
+          BUNDLE_IDENTIFIER: io.wildflowerhealth.hostapp
+          APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+        run: ./scripts/checks/apple-app-record-preflight.sh
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2

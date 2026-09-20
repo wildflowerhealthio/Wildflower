@@ -143,6 +143,51 @@ which also keeps it out of the Developer ID build, where it does not belong.
 Upload is `xcrun altool --upload-app --type macos` against the `.pkg` — the
 same tool as iOS with a different `--type` and a different artifact.
 
+## An app record is not an App ID
+
+Valid signing inputs get you a signed artifact, not an accepted upload. `altool`
+resolves the bundle identifier to the numeric identifier App Store Connect
+assigns an **app record**, and without one the upload ends with:
+
+```text
+ERROR: [altool] Cannot determine the Apple ID from Bundle ID
+'<bundle id>' and platform 'IOS'. (19)
+```
+
+"Apple ID" there means that numeric app identifier, not an account. The record
+is a separate thing from the **App ID** registered in the Developer portal:
+the App ID is what a provisioning profile is issued against, so every signing
+check can pass while no record exists. Each platform needs its own record or
+its own platform on a shared one, so an iOS upload succeeding says nothing
+about macOS.
+
+`scripts/checks/apple-app-record-preflight.sh` asks App Store Connect for the
+record before the build rather than after it. It is deliberately three-valued:
+an answer that names other apps but not this one fails the job, while an answer
+it cannot read at all warns and passes. A check that cannot run must not become
+a new way for a release to fail — the upload still reports the real thing
+minutes later, which is exactly the outcome that holds today without it.
+
+## Reading entitlements out of a profile
+
+The `application-identifier` entitlement carries `<team id>.<bundle id>` and is
+spelled per platform: macOS namespaces it as
+`com.apple.application-identifier`, iOS uses the bare name. A profile carries
+one or the other, so `read_app_identifier` in `apple-signing-lib.sh` tries both
+rather than each preflight knowing only its own.
+
+The macOS spelling needs care that the iOS one does not. `plutil -extract`
+splits a keypath on `.`, so the dots inside a reverse-DNS key have to be
+escaped — `Entitlements.com\.apple\.application-identifier` — or plutil walks
+four nested keys that do not exist and returns nothing. `plist_keypath` builds
+the keypath and does the escaping, taking one argument per path component so
+that an array index stays a separator.
+
+An entitlement that cannot be read is reported as its own fault rather than
+compared against the expected bundle identifier. The two have different fixes,
+and an unreadable value compared against a real one reads as a mismatched
+profile — advice to regenerate a profile that is correct.
+
 ## See Also
 
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the cache keys these release jobs share
@@ -150,4 +195,5 @@ same tool as iOS with a different `--type` and a different artifact.
 - `scripts/checks/apple-signing-preflight.sh` — the macOS check
 - `scripts/checks/apple-ios-signing-preflight.sh` — the iOS check
 - `scripts/checks/apple-macos-appstore-preflight.sh` — the macOS TestFlight check
-- `scripts/checks/apple-signing-lib.sh` — certificate and profile classification shared by both
+- `scripts/checks/apple-app-record-preflight.sh` — the App Store Connect app record check, run by both TestFlight jobs
+- `scripts/checks/apple-signing-lib.sh` — certificate, profile and entitlement helpers shared by all of them

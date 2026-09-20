@@ -136,8 +136,9 @@ plist_value() { plutil -extract "$1" raw -o - "$workdir/profile.plist" 2>/dev/nu
 profile_name="$(plist_value Name)"
 profile_team="$(plist_value 'TeamIdentifier.0')"
 profile_expires="$(plist_value ExpirationDate)"
-profile_app_id="$(plist_value 'Entitlements.com.apple.application-identifier')"
-[[ -n "$profile_app_id" ]] || profile_app_id="$(plist_value 'Entitlements.application-identifier')"
+# `|| true` because an absent identifier is reported by the named check
+# below, not as an unexplained `set -e` abort.
+profile_app_id="$(read_app_identifier plist_value || true)"
 provisions_all="$(plist_value ProvisionsAllDevices)"; [[ "$provisions_all" == true ]] || provisions_all=false
 get_task_allow="$(plist_value 'Entitlements.get-task-allow')"; [[ "$get_task_allow" == true ]] || get_task_allow=false
 has_devices=true; [[ -z "$(plist_value 'ProvisionedDevices.0')" ]] && has_devices=false
@@ -155,6 +156,12 @@ fi
 
 # The profile's application-identifier is "<team id>.<bundle id>", and the
 # bundle id half may end in a wildcard.
+# An unreadable entitlement and a wrong one have different fixes; see
+# "Reading entitlements out of a profile" in the Apple Release Signing doc.
+if [[ -z "$profile_app_id" ]]; then
+  fail "MACOS_PROVISIONING_PROFILE decodes as a valid profile but carries no application-identifier entitlement this check can read. That is a bug in this script or a profile shape it does not know, not a reason to regenerate the profile."
+fi
+
 if [[ -n "$bundle_identifier" ]]; then
   profile_bundle_id="${profile_app_id#*.}"
   if [[ "$profile_bundle_id" != "$bundle_identifier" && "$profile_bundle_id" != *'*' ]]; then
