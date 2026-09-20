@@ -2,15 +2,11 @@
 # Pre-flight for the TestFlight uploads: prove App Store Connect holds an app
 # record for the bundle identifier BEFORE the long compile.
 #
-# Signing credentials being perfect is not enough to upload. `altool` resolves
-# the bundle id to the numeric app identifier App Store Connect assigns an app
-# record, and with no such record it fails after the build with:
-#
-#   Cannot determine the Apple ID from Bundle ID '<bundle id>' and platform 'IOS'. (19)
-#
-# An App ID registered in the Developer portal is a different thing: it is
-# enough to build and sign, so the profile checks all pass and the first sign
-# of trouble is ~30 minutes in, at the upload. Asking here costs seconds.
+# Valid signing inputs do not mean the upload has anywhere to go, and without
+# an app record altool fails ~30 minutes in with "Cannot determine the Apple
+# ID from Bundle ID". Why a record differs from a Developer portal App ID, and
+# why this check is three-valued: "An app record is not an App ID" in
+# docs/Rust/Apple Release Signing Explanation.md.
 #
 # Run it on any Mac with the same environment:
 #
@@ -30,9 +26,8 @@ set -euo pipefail
 fail() { echo "::error::$*" >&2; exit 1; }
 warn() { echo "::warning::$*" >&2; }
 
-# app_record_verdict is shared with nothing else today, but it lives in the
-# library because it is the part with the branching and the library is what
-# the Linux test suite can exercise.
+# app_record_verdict lives in the library because that is what the Linux test
+# suite can exercise.
 # shellcheck source=./apple-signing-lib.sh
 source "${BASH_SOURCE[0]%/*}/apple-signing-lib.sh"
 
@@ -57,10 +52,8 @@ issuer_id="${APP_STORE_CONNECT_ISSUER_ID:-}"
 workdir="$(mktemp -d)"
 trap 'rm -rf "$workdir"' EXIT
 
-# Everything from here to the verdict is best-effort. This check exists to
-# turn a 30-minute failure into a 5-second one, and a check that cannot run
-# must not become a new way for a release to fail — so every path that does
-# not produce a definite answer warns and exits 0.
+# Best-effort from here: every path that does not produce a definite answer
+# warns and exits 0, so a check that cannot run never fails a release.
 if ! xcrun altool --list-apps \
   --apiKey "$key_id" \
   --apiIssuer "$issuer_id" \
@@ -74,10 +67,9 @@ if ! command -v python3 >/dev/null 2>&1; then
   exit 0
 fi
 
-# Walk the whole document for bundleId rather than pinning altool's JSON
-# shape: the shape is undocumented and has moved between Xcode releases, and
-# a wrong guess here would read as "no apps" — which app_record_verdict
-# deliberately treats as unknown rather than absent.
+# Walk the document for bundleId rather than pinning altool's undocumented
+# JSON shape; a wrong guess reads as "no apps", which app_record_verdict
+# treats as unknown rather than absent.
 bundle_ids="$(python3 - "$workdir/apps.json" <<'PY' 2>/dev/null || true
 import json, sys
 

@@ -52,16 +52,12 @@ profile_kind() {
   fi
 }
 
-# Builds a `plutil -extract` keypath from literal key names.
+# Builds a `plutil -extract` keypath, escaping the dots inside each key name
+# so plutil reads it as one key rather than a nesting — see "Reading
+# entitlements out of a profile" in docs/Rust/Apple Release Signing
+# Explanation.md.
 #
-# plutil treats `.` as the keypath separator, so a key that itself contains
-# dots has to have them escaped or plutil walks a nesting that does not exist
-# and returns nothing. macOS entitlement keys are reverse-DNS namespaced
-# (`com.apple.application-identifier`), so every one of them needs this; the
-# iOS spelling (`application-identifier`) has no dots and is unaffected, which
-# is why passing keys through unescaped only ever failed on the macOS side.
-#
-# Args: one or more literal key names, outermost first. Echoes the keypath.
+# Args: one key name per path component, outermost first. Echoes the keypath.
 plist_keypath() {
   local keypath="" key
   for key in "$@"; do
@@ -70,28 +66,22 @@ plist_keypath() {
   printf '%s\n' "$keypath"
 }
 
-# The application-identifier entitlement that carries "<team id>.<bundle id>"
-# is spelled differently per platform: macOS namespaces it as
-# `com.apple.application-identifier`, iOS uses the bare
-# `application-identifier`. A profile carries one or the other, never both, so
-# both preflights try both spellings rather than each knowing only its own.
-#
-# Echoes the keypaths to try, most specific first, one per line.
+# The per-platform spellings of the application-identifier entitlement, most
+# specific first, one keypath per line.
 app_identifier_keypaths() {
   plist_keypath Entitlements com.apple.application-identifier
   plist_keypath Entitlements application-identifier
 }
 
 # Reads the "<team id>.<bundle id>" application-identifier out of a decoded
-# profile by trying each platform's spelling in turn.
+# profile, trying each spelling in turn.
 #
-# The plist reader is injected rather than called directly so this, the part
-# with the branching, is exercised by the Linux test suite; the preflights
-# pass their plutil-backed `plist_value`. Args: the reader command name, which
-# is called with one keypath and echoes the value there (empty when absent).
+# The reader is injected so this branching runs under the Linux test suite
+# rather than only on macOS; the preflights pass their plutil-backed
+# `plist_value`. Args: a command called with one keypath that echoes the value
+# there, empty when absent.
 #
-# Echoes the identifier and returns 0, or echoes nothing and returns 1 when no
-# spelling matched.
+# Echoes the identifier and returns 0, or returns 1 when no spelling matched.
 read_app_identifier() {
   local reader="$1" keypath value
   while IFS= read -r keypath; do
@@ -104,15 +94,12 @@ read_app_identifier() {
   return 1
 }
 
-# Decides whether an app record for $1 exists, given the bundle ids $2 that
-# were read back from App Store Connect (newline-separated, possibly empty).
+# Decides whether an app record for $1 exists, given the newline-separated
+# bundle ids $2 read back from App Store Connect.
 #
-# Three-valued on purpose. `altool --list-apps` is the only cheap way to ask
-# this question, and an empty or unparseable answer means "the question could
-# not be asked" — a network blip, an output shape this does not know — not
-# "the app does not exist". Reporting that as `absent` would block a release
-# over a check that itself failed, so it is `unknown` and the caller warns
-# instead of failing.
+# An empty answer is `unknown`, not `absent`: it means the question could not
+# be asked, and failing a release over that is the trap described in "An app
+# record is not an App ID" in docs/Rust/Apple Release Signing Explanation.md.
 #
 # Echoes present | absent | unknown.
 app_record_verdict() {

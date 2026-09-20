@@ -156,10 +156,8 @@ fi
 
 # The profile's application-identifier is "<team id>.<bundle id>", and the
 # bundle id half may end in a wildcard.
-# An unreadable entitlement and a wrong one are different faults with
-# different fixes, and conflating them is what made a keypath bug read as
-# "is for bundle identifier ''" — advice to regenerate a profile that was
-# correct all along. Name it as the read failure it is.
+# An unreadable entitlement and a wrong one have different fixes; see
+# "Reading entitlements out of a profile" in the Apple Release Signing doc.
 if [[ -z "$profile_app_id" ]]; then
   fail "MACOS_PROVISIONING_PROFILE decodes as a valid profile but carries no application-identifier entitlement this check can read. That is a bug in this script or a profile shape it does not know, not a reason to regenerate the profile."
 fi
