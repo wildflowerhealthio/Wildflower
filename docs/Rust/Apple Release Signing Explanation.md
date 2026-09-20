@@ -3,10 +3,21 @@
 Why the macOS and iOS halves of `tauri-release-publish.yml` are configured so
 differently, and why both failed in ways that named the wrong cause.
 
-The two platforms look like one problem — Apple credentials in GitHub secrets —
-but nothing is shared between them. They use different certificate kinds,
-different tools, and different mechanisms for reaching the build. Treating
-them as one thing is what produced the misleading errors described below.
+There are three channels, not two, and they look like one problem — Apple
+credentials in GitHub secrets — while sharing almost nothing. Each uses a
+different certificate kind, different tools, and a different mechanism for
+reaching the build. Treating them as one thing is what produced the misleading
+errors described below.
+
+| Channel               | Certificate                                         | Ships as             |
+| --------------------- | --------------------------------------------------- | -------------------- |
+| macOS direct download | Developer ID Application                            | notarized `.app`/dmg |
+| macOS TestFlight      | Apple Distribution **+** Mac Installer Distribution | sandboxed `.pkg`     |
+| iOS TestFlight        | Apple Distribution                                  | `.ipa`               |
+
+The two macOS rows are the pair most easily confused: same platform, same
+runner, entirely different credentials, and a Developer ID certificate offered
+to the App Store is rejected only after upload.
 
 ## macOS: the bundler resolves an identity, `notarytool` checks credentials
 
@@ -89,8 +100,53 @@ expiry, and that the profile actually lists the certificate it is paired with �
 a pair that is individually valid but unrelated is the failure mode that reads
 as "no signing certificate" with nothing explaining why.
 
+## macOS TestFlight is a separate channel from the notarized build
+
+TestFlight for macOS means Mac App Store distribution, which differs from the
+Developer ID build in three ways that are not negotiable.
+
+**Two certificates, not one.** An Apple Distribution certificate signs the
+`.app`; a Mac Installer Distribution certificate signs the `.pkg` that
+`productbuild` wraps it in. Neither substitutes for the other, and neither is
+the Developer ID certificate the GitHub Release build uses. Because an
+installer certificate carries no codesigning policy, `security find-identity -p
+codesigning` cannot see it at all — the preflight resolves it under `-p basic`,
+or it would report a valid certificate as missing.
+
+**The App Sandbox is mandatory.** `com.apple.security.app-sandbox` is required
+for App Store distribution, and it changes how the host runs:
+
+- the loopback listener in `src/lib.rs` needs `com.apple.security.network.server`
+  — loopback is not exempt from the sandbox
+- the tunnel client, its `/health` probe and the collectors need
+  `com.apple.security.network.client`
+- the importer's file picker needs `com.apple.security.files.user-selected.read-write`
+- the data directory moves to `~/Library/Containers/<identifier>/Data/`, so a
+  sandboxed build does not see a non-sandboxed one's databases
+
+That last point is why the entitlements live in `Entitlements.appstore.plist`
+and are applied through `tauri.appstore.conf.json`, an overlay passed as
+`tauri build --config`, rather than in `tauri.conf.json`. Putting them in the
+default config would sandbox the Developer ID build too, silently relocating
+the data directory of every direct-download install.
+
+The team identifier is written literally into that plist rather than read from
+`APPLE_TEAM_ID`. Entitlements are baked into the signature at build time and
+cannot read the environment; a team id is not a secret, and is readable in any
+signed binary Apple distributes.
+
+**The profile is embedded, not installed.** `bundle.macOS.files` copies the
+profile to `Contents/embedded.provisionprofile` inside the bundle. The workflow
+writes it from `MACOS_PROVISIONING_PROFILE` at build time and it is gitignored,
+which also keeps it out of the Developer ID build, where it does not belong.
+
+Upload is `xcrun altool --upload-app --type macos` against the `.pkg` — the
+same tool as iOS with a different `--type` and a different artifact.
+
 ## See Also
 
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the cache keys these release jobs share
 - `scripts/checks/apple-signing-preflight.sh` — the macOS check
 - `scripts/checks/apple-ios-signing-preflight.sh` — the iOS check
+- `scripts/checks/apple-macos-appstore-preflight.sh` — the macOS TestFlight check
+- `scripts/checks/apple-signing-lib.sh` — certificate and profile classification shared by both

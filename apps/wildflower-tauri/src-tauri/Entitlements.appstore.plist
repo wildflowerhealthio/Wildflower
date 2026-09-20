@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <!-- Mandatory for the Mac App Store. Applied only to the App Store build,
+       via tauri.appstore.conf.json — the Developer ID build that ships on the
+       GitHub Release is deliberately left unsandboxed, since sandboxing it
+       would move its data directory and change its behaviour for existing
+       users who never asked for it. -->
+  <key>com.apple.security.app-sandbox</key>
+  <true/>
+
+  <!-- The host binds a loopback TCP listener (src/lib.rs) to serve the FHIR,
+       OHIF, apps and gatekeeper routes. Under the sandbox, accepting any
+       connection needs this — loopback is not exempt. -->
+  <key>com.apple.security.network.server</key>
+  <true/>
+
+  <!-- Outbound: the rathole tunnel client, the tunnel /health probe, and the
+       collectors' upstream fetches. -->
+  <key>com.apple.security.network.client</key>
+  <true/>
+
+  <!-- The importer reads archives the user picks (HAR, PDF). Inside the
+       sandbox a file chooser grants access only with this entitlement. -->
+  <key>com.apple.security.files.user-selected.read-write</key>
+  <true/>
+
+  <!-- Both are the literal team id rather than a variable: entitlements are
+       baked into the signature at build time and cannot read the
+       environment. A team id is not a secret — it is readable in any signed
+       binary Apple distributes. -->
+  <key>com.apple.application-identifier</key>
+  <string>29QHKJX9V7.io.wildflowerhealth.hostapp</string>
+  <key>com.apple.developer.team-identifier</key>
+  <string>29QHKJX9V7</string>
+</dict>
+</plist>

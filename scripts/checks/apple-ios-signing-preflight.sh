@@ -24,36 +24,10 @@ set -euo pipefail
 fail() { echo "::error::$*" >&2; exit 1; }
 warn() { echo "::warning::$*" >&2; }
 
-# Apple renamed its certificate kinds but still issues and accepts the old
-# names, so both spellings of each kind map to one answer. Echoes
-# distribution | development | developer-id | other.
-identity_kind() {
-  case "$1" in
-    "Apple Distribution: "*|"iPhone Distribution: "*) echo distribution ;;
-    "Apple Development: "*|"iPhone Developer: "*)     echo development ;;
-    "Developer ID Application: "*)                    echo developer-id ;;
-    *)                                                echo other ;;
-  esac
-}
-
-# A .mobileprovision does not state its kind; it is inferred from three keys.
-# Order matters: an enterprise profile also omits ProvisionedDevices, so it
-# has to be ruled out before the App Store case, or the two look identical.
-# Args: provisions_all_devices(true|false) has_provisioned_devices(true|false)
-#       get_task_allow(true|false). Echoes enterprise | app-store |
-#       development | ad-hoc.
-profile_kind() {
-  local provisions_all="$1" has_devices="$2" get_task_allow="$3"
-  if [[ "$provisions_all" == true ]]; then
-    echo enterprise
-  elif [[ "$has_devices" == false ]]; then
-    echo app-store
-  elif [[ "$get_task_allow" == true ]]; then
-    echo development
-  else
-    echo ad-hoc
-  fi
-}
+# Certificate and profile classification is shared with the macOS App Store
+# preflight, which has to tell the same kinds apart.
+# shellcheck source=./apple-signing-lib.sh
+source "${BASH_SOURCE[0]%/*}/apple-signing-lib.sh"
 
 # Sourcing defines the helpers above and stops, so
 # scripts/checks/apple-ios-signing-preflight.test.ts can exercise them on a
