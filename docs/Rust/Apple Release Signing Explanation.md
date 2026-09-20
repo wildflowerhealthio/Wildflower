@@ -146,6 +146,7 @@ same tool as iOS with a different `--type` and a different artifact.
 ## See Also
 
 - [CI Build Cache Explanation](./CI%20Build%20Cache%20Explanation.md) — the cache keys these release jobs share
+- [Data Directory Explanation](../../apps/wildflower-tauri/Data%20Directory%20Explanation.md) — where each platform puts the host's databases, including what the sandbox does to it on macOS and why iOS uses `Documents`
 - `scripts/checks/apple-signing-preflight.sh` — the macOS check
 - `scripts/checks/apple-ios-signing-preflight.sh` — the iOS check
 - `scripts/checks/apple-macos-appstore-preflight.sh` — the macOS TestFlight check
