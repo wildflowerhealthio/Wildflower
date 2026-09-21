@@ -12,18 +12,11 @@ import {
 /** A decoded FHIR R4 `Observation` — what this adapter is handed. */
 type ObservationResource = Observation.Type
 
-// The fields this adapter reads — the `value[x]` / `effective[x]` choice slots
-// above all — are typed loosely (often `any`) on a decoded resource, because
-// they resolve through fhir-r4's datatype registry. Rather than read `any`, the
-// resource is taken as `unknown` and decoded through the permissive local
-// schema below, naming only what the viewer plots. Effect's `Struct` ignores
-// excess keys on decode, so a narrow schema happily reads a much larger object.
-//
-// The unions are not defensiveness for its own sake: a FHIR `uri` is a plain
-// string on the wire but a `URL` on a fully-typed decoded resource, and a FHIR
-// `dateTime` is an ISO string on the wire but an Effect `DateTime.Utc` once
-// decoded. Accepting both shapes is what lets this adapter read either — see
-// fhir-r4's Consumer Gotchas Reference.
+// The `value[x]` / `effective[x]` choice slots type as `any` on a decoded
+// resource, and each union below absorbs a wire-vs-decoded asymmetry
+// (`uri` → `URL`, `dateTime` → `DateTime.Utc`). Both traps, and why the fix is
+// to re-decode through a permissive local schema rather than read `any`, are
+// fhir-r4's Consumer Gotchas Reference; `medication-core/fhir` does the same.
 const nullableString = Schema.optional(Schema.NullOr(Schema.String))
 const nullableNumber = Schema.optional(Schema.NullOr(Schema.Number))
 const nullableBoolean = Schema.optional(Schema.NullOr(Schema.Boolean))
