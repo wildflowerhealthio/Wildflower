@@ -62,4 +62,22 @@ export {
   type SmartSession,
 } from './self-hosted-runtime.ts'
 
-export { useSmartHandshake, type SmartHandshake } from './use-smart-handshake.ts'
+export {
+  useLaunchFailureRedirect,
+  useSmartHandshake,
+  type SmartHandshake,
+} from './use-smart-handshake.ts'
+
+export {
+  FALLBACK_LAUNCH_MESSAGE,
+  LAUNCH_ERROR_MESSAGES,
+  LAUNCH_ERROR_PARAM,
+  decodeLaunchError,
+  encodeLaunchError,
+  launchError,
+  launchErrorBodyFor,
+  launchErrorFrom,
+  launchErrorRedirect,
+  launchErrorTag,
+  type LaunchErrorBody,
+} from './launch-error.ts'

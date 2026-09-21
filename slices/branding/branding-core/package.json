@@ -2,7 +2,7 @@
   "name": "branding-core",
   "version": "0.0.0",
   "private": true,
-  "description": "Pure branding constants for Wildflower Health: site origin, section paths (the deploy contract), navigation link data, anchor-href resolution, and the per-app introduction copy shared by the homepage and the apps' landing pages. No DOM, no platform imports.",
+  "description": "Pure branding constants for Wildflower Health: site origin, section paths (the deploy contract), navigation link data, anchor-href resolution, and the per-app introduction copy shared by the homepage and the apps' landing pages. Also the GitHub Pages 404 redirect restoration, which takes the `location`/`history` it acts on as a parameter. No DOM, no platform imports.",
   "license": "MIT",
   "type": "module",
   "exports": {

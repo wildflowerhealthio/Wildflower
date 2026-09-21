@@ -1,4 +1,5 @@
 import { createApiReference } from '@scalar/api-reference'
+import { restoreRedirectedUrl } from 'branding-core'
 import { Effect, Option } from 'effect'
 
 import '@scalar/api-reference/style.css'
@@ -44,6 +45,12 @@ const requireElement = <T extends Element>(
   }
   return element
 }
+
+// Complete a GitHub Pages 404 redirect before anything reads the URL — see
+// "The 404 redirect" in `slices/branding/AGENTS.md`.
+// Ahead of the `?server=` read and the OAuth-callback check below, both of
+// which parse `window.location.search`.
+restoreRedirectedUrl(window)
 
 const referenceContainer = requireElement('#reference', HTMLElement)
 const serverForm = requireElement('#server-form', HTMLFormElement)

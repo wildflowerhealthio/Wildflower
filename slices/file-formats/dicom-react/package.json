@@ -1,0 +1,56 @@
+{
+  "name": "dicom-react",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Browser-side DICOM rendering: cornerstone viewport, tag display, and archive preview components. Depends on @cornerstonejs for image decoding and display; the pure tag parser lives in the sibling `dicom` package.",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Assessment-is/wildflower.git",
+    "directory": "slices/file-formats/dicom-react"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "dependencies": {
+    "@cornerstonejs/core": "catalog:",
+    "@cornerstonejs/dicom-image-loader": "catalog:"
+  },
+  "devDependencies": {
+    "@testing-library/dom": "catalog:",
+    "@testing-library/react": "catalog:",
+    "@testing-library/user-event": "catalog:",
+    "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "dicom": "workspace:*",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "jsdom": "catalog:",
+    "react": "catalog:",
+    "react-dom": "catalog:",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "dicom": "workspace:*",
+    "effect": "catalog:",
+    "react": "catalog:"
+  }
+}

@@ -10,6 +10,51 @@ add prose above or below them if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.2.7 — 2026-09-20
+
+- Fix the macOS App Store preflight's entitlement read and check the app record (#705) (df7bc21e)
+- Put the iOS data directory where the Files app can see it (#704) (0084449e)
+
+## v0.2.6 — 2026-09-20
+
+- Add macOS TestFlight distribution and rename the app to Wildflower Host (#701) (541af945)
+- Complete the GitHub Pages 404 redirect in every first-party app (#702) (ffadcff8)
+
+## v0.2.5 — 2026-09-20
+
+- Fix Apple release signing: notarization preflight and iOS TestFlight build (#699) (4a70c52b)
+
+## v0.2.4 — 2026-09-20
+
+- C1: collector-fundamentals — run recorder that captures every settled response (#687) (8043fb23)
+- D5: file-group importers — decode owns the source file; importer-core holds the pure batch logic (#676) (83a408a3)
+- 1D: fhir-r4-react/smart — generic paged resource read; Observation + Patient reads (#682) (b391131a)
+- ci: share one Rust build cache across cargo jobs, keyed on Cargo.lock (#684) (ba5abdbb)
+- 1E: medication-core takes fhir-r4; move the MedicationRequest adapters into it (#681) (078daee5)
+- telemetry-core: inject the platform ContextManager instead of importing the web OTel SDK (#683) (f32669b5)
+- docs: clear every vp run lint:comments warning (#677) (9da4e040)
+- 1B: shared dev-port reader for the app vite configs (#678) (3328bd1e)
+- 1F: react-tundraish — four validated categorical series tokens (#679) (d63bc7ae)
+- Route every fc.assert through numRunsFor and add a recurrence guard (#680) (05b78575)
+- HAR Recorder: Rust save path, React UI, app wiring (#654) (652dedb6)
+- D3: DICOM tag parsing, FHIR synthesis, and source-file subject linking (#673) (6445c77d)
+- HAR Recorder: core domain model and http-archive extensions (#657) (5e8f47c8)
+- Add GitHub Pages 404.html SPA redirect and OHIF redirect restoration (#674) (72c7ca81)
+- Dependabot/npm and yarn/js minor patch 6365896c90 (#672) (126abb0f)
+- Fix MAX_FHIR_BODY_BYTES constant definition (9fbcd67d)
+- D2: dicom-importer-core/-react — .dcm archive: detect, DocumentReference codec, registry entry (#667) (5e2ea023)
+- chore(deps): bump the github-actions group with 3 updates (#668) (ad9722d7)
+- chore(deps): bump uuid in the cargo-minor-patch group (#669) (097eef15)
+- native-webview: per-instance download directory (#656) (2afedeb3)
+- D1: fhir-r4 — ServiceRequest and ImagingStudy schemas, search params, HttpApi groups (#666) (d8412c5c)
+- Ruthmarks/importer tweaks and cleanup (#655) (940ffe91)
+- Add the OHIF FHIR viewer as apps/ohif-viewer, published at /ohif-viewer (#653) (ce0dfb64)
+- Wire LifeLabs PDF importer: decode, descriptor, persist, React settings (#641) (c84792b4)
+- Register loopback dev redirect URI for wildflower-server-docs sign-in (#650) (f525ceea)
+- Speed up LifeLabs report property test: swap stringMatching for a pool (#648) (12bb95b4)
+- Importer: FormatVariant type mapping, HarSelection namespace, concrete types (#647) (ef611353)
+- fix(ci): fix iOS build arg parsing + allow multi-platform selection (#646) (44dfa3f0)
+
 ## v0.2.3 — 2026-09-11
 
 - fix(ci): reference Apple/ASC config as vars, not secrets (#644) (3b6dc0b3)

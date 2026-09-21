@@ -7,7 +7,9 @@ name: PR Preview
 #
 # Prerequisites (one-time):
 #   - The `wildflowerhealthio/staging` repo exists and has GitHub Pages
-#     configured to serve from `main` at `/`.
+#     configured to serve from `main` at `/`. Serving from a branch means Pages
+#     runs Jekyll over it, which the `.nojekyll` step below turns off — see
+#     there for why the published site breaks without it.
 #   - A GitHub App exists in the `wildflowerhealthio` org and is installed on
 #     `wildflowerhealthio/staging` with `Contents: Read and write`. The App's
 #     numeric ID goes in the `STAGING_APP_ID` secret; its private key (the
@@ -95,6 +97,38 @@ jobs:
       - name: Strip production CNAME from preview
         if: github.event.action != 'closed'
         run: rm -f apps/github-pages/dist/CNAME
+
+      # The staging repo serves Pages **from a branch**, so GitHub builds it
+      # with Jekyll — and Jekyll drops every path whose name starts with an
+      # underscore. The assembled site ships one the app actually loads:
+      # Vite names its stub for an externalized Node builtin
+      # `__vite-browser-external-<hash>.js`, and the importer app's entry chunk
+      # imports it, so the preview 404s on it and the app never boots. (The
+      # production deploy is immune — `actions/deploy-pages` serves the uploaded
+      # artifact as-is and runs no Jekyll.)
+      #
+      # `.nojekyll` turns the Jekyll build off. Like CNAME above, Pages reads it
+      # only from the branch root, so it cannot ride along in the artifact this
+      # workflow publishes into `pr-<n>/` — it has to exist in the target repo.
+      # Creating it here rather than leaving it a one-time manual step means a
+      # rebuilt or restored staging repo cannot silently lose it. JamesIves'
+      # deploy action cleans only its target folder, so the file survives every
+      # later preview.
+      - name: Ensure .nojekyll at the staging site root
+        if: github.event.action != 'closed'
+        env:
+          GH_TOKEN: ${{ steps.staging-token.outputs.token }}
+        run: |
+          if gh api "repos/wildflowerhealthio/staging/contents/.nojekyll?ref=main" --silent 2>/dev/null; then
+            echo '.nojekyll already present at the staging site root'
+          else
+            echo 'Creating .nojekyll at the staging site root'
+            gh api "repos/wildflowerhealthio/staging/contents/.nojekyll" \
+              --method PUT \
+              --field message='Add .nojekyll so Pages serves underscore-prefixed assets' \
+              --field content='Cg==' \
+              --field branch=main
+          fi
 
       - name: Deploy preview
         uses: rossjrw/pr-preview-action@v1.8.1

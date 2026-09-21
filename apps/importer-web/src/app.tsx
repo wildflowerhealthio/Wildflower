@@ -10,11 +10,15 @@ import {
 import type { PickedFile } from 'anonymizer-fundamentals'
 import { AnonymizerScreen } from 'anonymizer-react'
 import { type FhirR4ResourcesRouterContext } from 'fhir-r4-react'
-import { buildSmartRouterContext, useSmartHandshake } from 'fhir-r4-react/smart'
+import {
+  buildSmartRouterContext,
+  useLaunchFailureRedirect,
+  useSmartHandshake,
+} from 'fhir-r4-react/smart'
 import { ImporterScreen, ServerSourceFileList } from 'importer-react'
 import { useMemo, useState, type JSX } from 'react'
 import { cn } from 'react-kitchen-sink'
-import { PageLoading, SegmentedToggle } from 'react-tundraish'
+import { ErrorBanner, PageLoading, SegmentedToggle } from 'react-tundraish'
 
 import styles from './app.module.css'
 
@@ -161,6 +165,9 @@ const ImporterApp = ({ context }: ImporterAppProps): JSX.Element => {
 const App = (): JSX.Element => {
   const queryClient = useQueryClient()
   const handshake = useSmartHandshake()
+  // A failed exchange has nothing to retry here (the code is single-use), so
+  // carry the reason to the app root, which can offer the connect menu.
+  useLaunchFailureRedirect(handshake)
 
   // Memoised on the (stable) resolved client so a re-render neither rebuilds the
   // context nor, through `ImporterApp`'s own memo, the router beneath it.
@@ -191,12 +198,7 @@ const App = (): JSX.Element => {
   return (
     <main className={styles['app']}>
       {handshake.kind === 'connecting' && <PageLoading message="Connecting…" />}
-      {handshake.kind === 'error' && (
-        <p className={styles['error']}>
-          Could not connect to the FHIR server:{' '}
-          {handshake.error instanceof Error ? handshake.error.message : String(handshake.error)}
-        </p>
-      )}
+      {handshake.kind === 'error' && <ErrorBanner error={handshake.error} />}
       {context !== undefined && <ImporterApp context={context} />}
     </main>
   )

@@ -296,3 +296,41 @@ the only drift guard for those shapes today.
 nothing in the crate can _set_ it: a test for "disabled clients are rejected"
 has to insert the row already disabled. An admin disable surface needs its own
 store method.
+
+## Tauri owns iOS signing: it reads `IOS_MOBILE_PROVISION`, and rewrites `gen/apple` every build
+
+**Discovered during**: claude/mac-notarization-error-hgxawr (iOS TestFlight job)
+**Learning**: `tauri ios build` failed on CI with `No Accounts: Add a new account in Accounts settings` and `No profiles for '<bundle id>' were found ... matching iOS App Development provisioning profiles`. Neither names the cause: Tauri signs iOS only when `IOS_CERTIFICATE`, `IOS_CERTIFICATE_PASSWORD` and `IOS_MOBILE_PROVISION` are all set, and our job set none on the build step — it imported the certificate into a keychain Tauri ignores and passed the profile under `IOS_PROVISIONING_PROFILE`, a name Tauri never reads. Two corollaries worth knowing before debugging this again: importing certificates into your own keychain accomplishes nothing, and committing signing settings under `src-tauri/gen/apple` accomplishes nothing because the project is regenerated every build. Written up in [Apple Release Signing Explanation](../Rust/Apple%20Release%20Signing%20Explanation.md).
+**Suggested destination**: already written up; drop on next triage
+
+## `notarytool history` has no `--page-size`, and the preflight blamed the secrets for saying so
+
+**Discovered during**: claude/mac-notarization-error-hgxawr
+**Learning**: The macOS preflight validated credentials with `notarytool history … --page-size 0`. No such option exists, so notarytool exited on a usage error without contacting Apple, and the check reported `Notarization credentials are invalid … Generate a new app-specific password` — for credentials it never tested. The generalizable part: a validation step must classify _why_ a tool failed before naming a cause, and notarytool answers a bad flag by printing its usage, which includes `[--password <password>]` — so a classifier that looks for credential keywords first reads every usage error as an auth failure. Written up in [Apple Release Signing Explanation](../Rust/Apple%20Release%20Signing%20Explanation.md).
+**Suggested destination**: already written up; drop on next triage
+
+## Tauri's mobile `app_data_dir()` is invisible on both phones, and `Info.ios.plist` is the seam for plist keys
+
+**Discovered during**: claude/app-data-directory-visibility-9z52ac (iOS data directory in the Files app)
+**Learning**: `app.path().app_data_dir()` resolves through two entirely different code paths on the two mobile targets, and neither lands anywhere the user can see. iOS goes through `tauri/src/path/desktop.rs` → the `dirs` crate's `mac.rs`, giving `<container>/Library/Application Support/<identifier>`; Android goes through `tauri/src/path/android.rs` → the Kotlin `PathPlugin`, where `getDataDir` is `activity.dataDir`. The reachable ones are `document_dir()`: on iOS `<container>/Documents`, the only part of the container the Files app ever shows — and only if the bundle also sets `UIFileSharingEnabled`, without which the change looks like it did nothing; on Android `getExternalFilesDir(DIRECTORY_DOCUMENTS)`, which Android 11+ hides from the stock Files app anyway because it sits under `Android/data`. Second half, and a correction to the shorthand in the entry above: `tauri ios build` does **not** regenerate `gen/apple` wholesale — `ensure_init` only errors or renames, the identifier and product name are patched into the existing pbxproj, and the Info.plist is _merged_ (`merge_plist` in tauri-cli, last writer wins) from the generated plist, then `src-tauri/Info.plist`, then `src-tauri/Info.ios.plist`. So a plist key belongs in `Info.ios.plist`, where it survives a regenerated Xcode project; the generated plist is still what an Xcode-opened build reads, and the release-prepare workflow `sed`s only its two version keys. Written up in [Data Directory Explanation](../../apps/wildflower-tauri/Data%20Directory%20Explanation.md).
+**Suggested destination**: already written up; drop on next triage
+
+## `@cornerstonejs/core` needs an `events` shim aliased in, and both of its init functions
+
+**Discovered during**: claude/github-issue-664-4vf2gg (DICOM archive preview showed "No renderable image")
+**Learning**: Two independent faults, the second hidden behind the first. (1) Importing `@cornerstonejs/core` **at all** fails in a Vite browser build: `core`'s index reaches `cache/classes/Mesh.js` → vtk.js `IO/XML/XMLPolyDataReader` → `XMLReader` → `xmlbuilder2`, which is CJS and does `class XMLBuilderCBImpl extends events_1.EventEmitter` at module scope. Vite externalizes Node's `events` to a stub that `console.warn`s and returns `undefined` for every property, so the class heritage throws (`class heritage events_1.EventEmitter is not an object or null`) while core is still evaluating. Nothing in cornerstone's install docs mentions it. The fix is `resolve: { ...base.resolve, alias: { events: createRequire(import.meta.url).resolve('events/') } }` — resolved to a **file path**, because a bare `{ events: 'events' }` just re-matches the builtin. It is not dev-only: `vp build` externalizes browser-platform builtins the same way, so the shipped bundle fails identically. Verify by grepping the served dep chunk (`curl "$ORIGIN/@id/@cornerstonejs/core"` → follow its one `from "/node_modules/.vite/deps/…"`) for `has been externalized`; a stale dev server keeps the old `?v=` hash, so check on a fresh one. (2) `coreInit()` alone is not enough — `@cornerstonejs/dicom-image-loader`'s own `init()` is what calls `registerLoaders`, registering the `wadouri:` scheme and the decode worker, so without it `setStack` gets an image id no loader claims. The basic-stack tutorial calls both; it is easy to copy only the core one.
+**Suggested destination**: Strategies / frontend build notes
+
+## Cornerstone's WASM codecs and decode worker break under Vite's dep pre-bundling
+
+**Discovered during**: claude/github-issue-664-4vf2gg (some DICOM files previewed, others showed nothing)
+**Learning**: Written up in the [Cornerstone Rendering Explanation](../../slices/file-formats/docs/Cornerstone%20Rendering%20Explanation.md), which this entry exists to flag rather than restate. The transferable shape: when a library locates a worker or a WASM binary with `new URL(..., import.meta.url)`, Vite's dep pre-bundler moves `import.meta.url` and rewrites the URL to a path that does not exist, so the package has to leave `optimizeDeps` — and then every CommonJS dependency reached _through_ it has to be named back in, or it reaches the browser as raw CJS with no `default` export. Grepping the cached chunk in `node_modules/.vite/deps/` shows the rewritten URL directly.
+
+The reason it cost a day is worth keeping separately: the failure did not look like a build failure. Cornerstone decodes exactly one transfer syntax on the main thread with `new Image()`, so that one family of files kept rendering while everything else failed, which reads as missing codec support. Generalize to: before concluding a library lacks support for an input, check whether the inputs that work share a code path the broken ones skip.
+**Suggested destination**: Strategies / frontend build notes
+
+## Cornerstone stretches its image unless something re-reads the element's box
+
+**Discovered during**: claude/github-issue-664-4vf2gg (DICOM preview distorted the image)
+**Learning**: Written up in the [Cornerstone Rendering Explanation](../../slices/file-formats/docs/Cornerstone%20Rendering%20Explanation.md). The transferable shape: a canvas sized in device pixels _once_ but laid out with `width: 100%; height: 100%` is rescaled into its CSS box on every paint, so the two silently diverge and the image is stretched from then on — a `ResizeObserver` driving the library's own resize call is the fix, and it repairs the initial frame too because an observer delivers one callback when it starts observing.
+**Suggested destination**: Strategies / frontend build notes

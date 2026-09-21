@@ -69,6 +69,11 @@ in `config/app-config.js` reads that parameter and rewrites the URL with
 `history.replaceState` before the OHIF router initialises, so deep links like
 `/ohif-viewer/fhir-viewer?iss=…` work on a fresh page load.
 
+The first-party apps do the same through `restoreRedirectedUrl` in
+`branding-core` (`spa-redirect.ts`). This viewer cannot: the bundle is
+downloaded prebuilt and has no entry module of ours to call it from, so the
+block here is a hand-rolled copy of those steps and has to track them.
+
 `?iss=` without `launch` sets the FHIR server without an OAuth redirect, for
 standalone testing.
 

@@ -1,13 +1,15 @@
 /**
  * Test-only DICOM Part 10 writer and fast-check arbitraries for
- * {@link DicomHeader}. Every DICOM test in the repo synthesizes fixtures
+ * {@link DicomHeader.Type}. Every DICOM test in the repo synthesizes fixtures
  * from these helpers; no `.dcm` files are committed.
  *
  * @packageDocumentation
  */
 import * as fc from 'fast-check'
 
-import type { DicomHeader, PersonName } from './dicom-header.ts'
+import type * as DicomHeader from './dicom-header.ts'
+import type * as PersonName from './person-name.ts'
+import type * as PixelDataDescription from './pixel-data-description.ts'
 
 // ---------------------------------------------------------------------------
 // Minimal explicit-VR little-endian DICOM writer
@@ -91,9 +93,113 @@ const writeUsElement = (tagHex: string, value: number): Uint8Array => {
   return writeElement(tag, 'US', valueBytes)
 }
 
+/**
+ * A numeric-string (IS or DS) fixture value.
+ *
+ * @remarks
+ * A `string` writes the value verbatim, which is how a test produces the
+ * malformed shapes a real file carries — a padded `'  '` for an attribute the
+ * writer held no value for — and which `String(number)` cannot express. A
+ * writer that can only emit well-formed values cannot exercise the parser's
+ * handling of ill-formed ones.
+ */
+type NumericString = number | string
+
 /** Write an IS (integer string) element. */
-const writeIsElement = (tagHex: string, value: number): Uint8Array =>
+const writeIsElement = (tagHex: string, value: NumericString): Uint8Array =>
   writeStringElement(tagHex, 'IS', String(value))
+
+/** Write a DS (decimal string) element. */
+const writeDsElement = (tagHex: string, value: NumericString): Uint8Array =>
+  writeStringElement(tagHex, 'DS', String(value))
+
+const PIXEL_DATA_TAG = 'x7fe00010'
+
+/**
+ * How `writeDicom` should emit Pixel Data (7FE0,0010).
+ *
+ * @remarks
+ * `native` is the uncompressed layout every uncompressed transfer syntax uses:
+ * one OB element whose value is the pixel payload. `encapsulated` is the
+ * undefined-length layout every *compressed* syntax uses — an empty basic
+ * offset table item, one item per fragment, then a sequence delimiter — which
+ * is the shape a decode-debug view has to be able to report on. Byte counts
+ * are padded up to even, as DICOM requires of every value length.
+ */
+type PixelDataFixture =
+  | { readonly kind: 'native'; readonly byteLength: number }
+  | { readonly kind: 'encapsulated'; readonly fragmentLengths: readonly number[] }
+
+/** Round a DICOM value length up to the required even number of bytes. */
+const evenLength = (length: number): number => length + (length % 2)
+
+/** Write an encapsulation item header — `(FFFE,E000)` or `(FFFE,E0DD)` plus a 4-byte length. */
+const writeItemHeader = (element: number, length: number): Uint8Array => {
+  const bytes = new Uint8Array(8)
+  const view = new DataView(bytes.buffer)
+  view.setUint16(0, 0xfffe, true)
+  view.setUint16(2, element, true)
+  view.setUint32(4, length, true)
+  return bytes
+}
+
+/**
+ * Write the Pixel Data element for a {@link PixelDataFixture}. Payload bytes
+ * are a fixed filler — nothing here decodes them, only measures them.
+ */
+const writePixelDataElement = (fixture: PixelDataFixture): Uint8Array => {
+  if (fixture.kind === 'native') {
+    const payload = new Uint8Array(evenLength(fixture.byteLength)).fill(0x7f)
+    return writeElement(parseTag(PIXEL_DATA_TAG), 'OB', payload)
+  }
+
+  // OB with an undefined length (0xFFFFFFFF), which is what makes
+  // `dicom-parser` treat what follows as encapsulation items.
+  const header = new Uint8Array(12)
+  const headerView = new DataView(header.buffer)
+  headerView.setUint16(0, 0x7fe0, true)
+  headerView.setUint16(2, 0x0010, true)
+  header[4] = 0x4f // 'O'
+  header[5] = 0x42 // 'B'
+  headerView.setUint32(8, 0xffffffff, true)
+
+  const parts: Uint8Array[] = [header, writeItemHeader(0xe000, 0)]
+  for (const length of fixture.fragmentLengths) {
+    const padded = evenLength(length)
+    parts.push(writeItemHeader(0xe000, padded), new Uint8Array(padded).fill(0x7f))
+  }
+  parts.push(writeItemHeader(0xe0dd, 0))
+  return concatArrays(parts)
+}
+
+/**
+ * The {@link PixelDataDescription.Type} `DicomHeader.tryFromDicomFile` must
+ * report for a fixture `writeDicom` emitted — an oracle derived from the
+ * writer's byte layout, so a test can assert the parsed value whole.
+ *
+ * @remarks
+ * The encapsulated `length` is what `dicom-parser` measures from the element's
+ * data offset to the end of the sequence delimiter's header: the empty basic
+ * offset table item (8 bytes), each fragment's item header plus its padded
+ * bytes, and the delimiter's own 8-byte header.
+ */
+const describePixelDataFixture = (fixture: PixelDataFixture): PixelDataDescription.Type =>
+  fixture.kind === 'native'
+    ? {
+        vr: 'OB',
+        length: evenLength(fixture.byteLength),
+        encapsulated: false,
+        fragmentCount: undefined,
+      }
+    : {
+        vr: 'OB',
+        length:
+          8 +
+          fixture.fragmentLengths.reduce((total, length) => total + 8 + evenLength(length), 0) +
+          8,
+        encapsulated: true,
+        fragmentCount: fixture.fragmentLengths.length,
+      }
 
 /** Write an empty SQ (sequence) element to signal presence. */
 const writeSqElement = (tagHex: string): Uint8Array => {
@@ -102,7 +208,7 @@ const writeSqElement = (tagHex: string): Uint8Array => {
 }
 
 /** Format a PersonName as a DICOM PN value. */
-const formatPersonName = (pn: PersonName): string => {
+const formatPersonName = (pn: PersonName.Type): string => {
   if (pn.family === '' && pn.given === '') return pn.text
   return pn.given === '' ? pn.family : `${pn.family}^${pn.given}`
 }
@@ -110,7 +216,7 @@ const formatPersonName = (pn: PersonName): string => {
 /** A map of DICOM tag hex → value for `writeDicom`. */
 type DicomTagMap = Partial<{
   // Patient
-  PatientName: PersonName
+  PatientName: PersonName.Type
   PatientID: string
   IssuerOfPatientID: string
   PatientBirthDate: string
@@ -121,23 +227,36 @@ type DicomTagMap = Partial<{
   StudyTime: string
   StudyDescription: string
   AccessionNumber: string
-  ReferringPhysicianName: PersonName
+  ReferringPhysicianName: PersonName.Type
   RequestedProcedureDescription: string
   RequestAttributesSequence: true
   // Series
   SeriesInstanceUID: string
-  SeriesNumber: number
+  SeriesNumber: NumericString
   SeriesDescription: string
   Modality: string
   BodyPartExamined: string
   // Instance
   SOPInstanceUID: string
   SOPClassUID: string
-  InstanceNumber: number
+  InstanceNumber: NumericString
   Rows: number
   Columns: number
-  NumberOfFrames: number
+  NumberOfFrames: NumericString
   TransferSyntaxUID: string
+  // Image Pixel
+  SamplesPerPixel: number
+  PhotometricInterpretation: string
+  PlanarConfiguration: number
+  BitsAllocated: number
+  BitsStored: number
+  HighBit: number
+  PixelRepresentation: number
+  WindowCenter: string
+  WindowWidth: string
+  RescaleIntercept: NumericString
+  RescaleSlope: NumericString
+  PixelData: PixelDataFixture
   // Equipment
   Manufacturer: string
   ManufacturerModelName: string
@@ -156,11 +275,16 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
 
   // File meta information group (group 0002)
   const metaElements: Uint8Array[] = []
-  // Transfer Syntax UID in the file meta always says Explicit VR Little
-  // Endian — that is how this writer encodes the dataset. The header's
-  // TransferSyntaxUID field (0002,0010) is read back by the parser from
-  // this position, so it round-trips the value we write here.
-  metaElements.push(writeStringElement('x00020010', 'UI', '1.2.840.10008.1.2.1'))
+  // Transfer Syntax UID (0002,0010). This writer always encodes the *dataset*
+  // as Explicit VR Little Endian, which every encapsulated syntax also uses —
+  // a compressed syntax changes only how Pixel Data is carried. So declaring
+  // e.g. JPEG 2000 here alongside an encapsulated PixelData fixture produces a
+  // genuinely well-formed file. Implicit VR (1.2.840.10008.1.2), Explicit VR
+  // Big Endian and the deflated syntax would each need a different dataset
+  // encoding, and this writer cannot produce them.
+  metaElements.push(
+    writeStringElement('x00020010', 'UI', tags.TransferSyntaxUID ?? '1.2.840.10008.1.2.1')
+  )
   if (tags.SOPClassUID !== undefined) {
     metaElements.push(writeStringElement('x00020002', 'UI', tags.SOPClassUID))
   }
@@ -186,7 +310,7 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
     if (value !== undefined)
       datasetElements.push({ tag: tagHex, bytes: writeStringElement(tagHex, vr, value) })
   }
-  const addPn = (tagHex: string, pn: PersonName | undefined): void => {
+  const addPn = (tagHex: string, pn: PersonName.Type | undefined): void => {
     if (pn !== undefined)
       datasetElements.push({
         tag: tagHex,
@@ -197,9 +321,13 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
     if (value !== undefined)
       datasetElements.push({ tag: tagHex, bytes: writeUsElement(tagHex, value) })
   }
-  const addIs = (tagHex: string, value: number | undefined): void => {
+  const addIs = (tagHex: string, value: NumericString | undefined): void => {
     if (value !== undefined)
       datasetElements.push({ tag: tagHex, bytes: writeIsElement(tagHex, value) })
+  }
+  const addDs = (tagHex: string, value: NumericString | undefined): void => {
+    if (value !== undefined)
+      datasetElements.push({ tag: tagHex, bytes: writeDsElement(tagHex, value) })
   }
 
   // SOP Class UID (0008,0016)
@@ -246,17 +374,48 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
   addIs('x00200013', tags.InstanceNumber)
   // Series Number (0020,0011)
   addIs('x00200011', tags.SeriesNumber)
+  // Samples per Pixel (0028,0002)
+  addUs('x00280002', tags.SamplesPerPixel)
+  // Photometric Interpretation (0028,0004)
+  addString('x00280004', 'CS', tags.PhotometricInterpretation)
+  // Planar Configuration (0028,0006)
+  addUs('x00280006', tags.PlanarConfiguration)
   // Number of Frames (0028,0008)
   addIs('x00280008', tags.NumberOfFrames)
   // Rows (0028,0010)
   addUs('x00280010', tags.Rows)
   // Columns (0028,0011)
   addUs('x00280011', tags.Columns)
+  // Bits Allocated (0028,0100)
+  addUs('x00280100', tags.BitsAllocated)
+  // Bits Stored (0028,0101)
+  addUs('x00280101', tags.BitsStored)
+  // High Bit (0028,0102)
+  addUs('x00280102', tags.HighBit)
+  // Pixel Representation (0028,0103)
+  addUs('x00280103', tags.PixelRepresentation)
+  // Window Center (0028,1050)
+  addDs('x00281050', tags.WindowCenter)
+  // Window Width (0028,1051)
+  addDs('x00281051', tags.WindowWidth)
+  // Rescale Intercept (0028,1052)
+  addDs('x00281052', tags.RescaleIntercept)
+  // Rescale Slope (0028,1053)
+  addDs('x00281053', tags.RescaleSlope)
   // Requested Procedure Description (0032,1060)
   addString('x00321060', 'LO', tags.RequestedProcedureDescription)
   // Request Attributes Sequence (0040,0275)
   if (tags.RequestAttributesSequence === true) {
     datasetElements.push({ tag: 'x00400275', bytes: writeSqElement('x00400275') })
+  }
+  // Pixel Data (7FE0,0010) — last by tag, which is also where it has to sit:
+  // an undefined-length element runs until its sequence delimiter, so anything
+  // written after it would be read as one of its fragments.
+  if (tags.PixelData !== undefined) {
+    datasetElements.push({
+      tag: PIXEL_DATA_TAG,
+      bytes: writePixelDataElement(tags.PixelData),
+    })
   }
 
   // Sort by tag to ensure proper DICOM ordering
@@ -321,7 +480,7 @@ const dicomTimeArb = (): fc.Arbitrary<string> =>
         `${String(h).padStart(2, '0')}${String(m).padStart(2, '0')}${String(s).padStart(2, '0')}`
     )
 
-const personNameArb = (): fc.Arbitrary<PersonName> =>
+const personNameArb = (): fc.Arbitrary<PersonName.Type> =>
   fc
     .tuple(
       fc.string({
@@ -335,7 +494,7 @@ const personNameArb = (): fc.Arbitrary<PersonName> =>
         unit: fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz '.split('')),
       })
     )
-    .map(([family, given]): PersonName => {
+    .map(([family, given]): PersonName.Type => {
       const f = family.trim() || 'Doe'
       const g = given.trim()
       const text = g === '' ? f : `${f} ${g}`
@@ -359,7 +518,30 @@ const dicomTextArb = (maxLength: number): fc.Arbitrary<string> =>
     )
     .map(([first, rest]) => (first + rest).trimEnd())
 
-const dicomHeaderArb = (): fc.Arbitrary<DicomHeader> =>
+/**
+ * Fragment byte lengths for an encapsulated Pixel Data fixture — at least one
+ * fragment, since an encapsulated element with none carries no frames.
+ */
+const pixelDataFragmentLengthsArb = (): fc.Arbitrary<readonly number[]> =>
+  fc.array(fc.integer({ min: 0, max: 4096 }), { minLength: 1, maxLength: 8 })
+
+/**
+ * A native (uncompressed) Pixel Data fixture.
+ *
+ * @remarks
+ * Encapsulated fixtures are deliberately absent here. {@link headerToTagMap}
+ * has to turn a parsed {@link PixelDataDescription.Type} back into the fixture
+ * that produced it, and an encapsulated element's `length` folds every
+ * fragment's size into one total that no longer says how the fragments were
+ * split. The encapsulated layout is covered directly, over
+ * {@link pixelDataFragmentLengthsArb}, in `dicom-header.test.ts`.
+ */
+const nativePixelDataArb = (): fc.Arbitrary<PixelDataFixture> =>
+  fc
+    .integer({ min: 0, max: 8192 })
+    .map((byteLength): PixelDataFixture => ({ kind: 'native', byteLength: evenLength(byteLength) }))
+
+const dicomHeaderArb = (): fc.Arbitrary<DicomHeader.Type> =>
   fc.record({
     patientName: fc.option(personNameArb(), { nil: undefined }),
     patientId: fc.option(
@@ -411,12 +593,35 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader> =>
     rows: fc.option(fc.integer({ min: 64, max: 4096 }), { nil: undefined }),
     columns: fc.option(fc.integer({ min: 64, max: 4096 }), { nil: undefined }),
     numberOfFrames: fc.option(fc.integer({ min: 1, max: 100 }), { nil: undefined }),
-    // writeDicom always encodes as Explicit VR Little Endian — the file
-    // meta's Transfer Syntax UID is always 1.2.840.10008.1.2.1 and that is
-    // what parseDicomFile reads back. The arbitrary is fixed to that value
-    // so the round-trip holds; other transfer syntaxes would require a
-    // different writer.
-    transferSyntaxUid: fc.option(fc.constant('1.2.840.10008.1.2.1'), { nil: undefined }),
+    // Never absent: writeDicom always emits (0002,0010), so a header claiming
+    // no transfer syntax could not round-trip. The values are the ones whose
+    // *dataset* is Explicit VR Little Endian, which is all this writer emits —
+    // see the Transfer Syntax UID comment in `writeDicom`.
+    transferSyntaxUid: fc.constantFrom(
+      '1.2.840.10008.1.2.1',
+      '1.2.840.10008.1.2.4.50',
+      '1.2.840.10008.1.2.4.90',
+      '1.2.840.10008.1.2.5'
+    ),
+
+    samplesPerPixel: fc.option(fc.constantFrom(1, 3), { nil: undefined }),
+    photometricInterpretation: fc.option(
+      fc.constantFrom('MONOCHROME1', 'MONOCHROME2', 'RGB', 'PALETTE COLOR', 'YBR_FULL_422'),
+      { nil: undefined }
+    ),
+    planarConfiguration: fc.option(fc.constantFrom(0, 1), { nil: undefined }),
+    bitsAllocated: fc.option(fc.constantFrom(8, 16, 32), { nil: undefined }),
+    bitsStored: fc.option(fc.integer({ min: 1, max: 32 }), { nil: undefined }),
+    highBit: fc.option(fc.integer({ min: 0, max: 31 }), { nil: undefined }),
+    pixelRepresentation: fc.option(fc.constantFrom(0, 1), { nil: undefined }),
+    // DS is a decimal string, so only values whose `String(...)` form parses
+    // back identically round-trip. Integers and halves do; 0.1 + 0.2 does not.
+    rescaleIntercept: fc.option(fc.integer({ min: -4096, max: 4096 }), { nil: undefined }),
+    rescaleSlope: fc.option(fc.constantFrom(0.5, 1, 2, 2.5), { nil: undefined }),
+    // Read back as the raw DS string, multi-valued presets included.
+    windowCenter: fc.option(fc.constantFrom('40', '-600', '40\\300'), { nil: undefined }),
+    windowWidth: fc.option(fc.constantFrom('400', '1500', '400\\600'), { nil: undefined }),
+    pixelData: fc.option(nativePixelDataArb().map(describePixelDataFixture), { nil: undefined }),
 
     manufacturer: fc.option(
       fc.constantFrom('GE MEDICAL SYSTEMS', 'SIEMENS', 'Philips', 'FUJIFILM'),
@@ -424,10 +629,38 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader> =>
     ),
     manufacturerModelName: fc.option(dicomTextArb(20), { nil: undefined }),
     institutionName: fc.option(dicomTextArb(30), { nil: undefined }),
+
+    // `writeDicom` emits well-formed files, so there is nothing for
+    // `dicom-parser` to warn about. A file that does warn is malformed in a
+    // way this writer cannot express.
+    parserWarnings: fc.constant([]),
   })
 
+/**
+ * The fixture that would produce `description`.
+ *
+ * @remarks
+ * Only the native layout inverts: an encapsulated element's `length` is one
+ * total across every fragment and both item headers, so the split that made it
+ * is not recoverable. Rather than quietly writing a native element for an
+ * encapsulated description — a fixture that no longer matches what the caller
+ * asked for — this throws, and encapsulated cases build their fixture directly.
+ */
+const pixelDataFixtureFrom = (
+  description: PixelDataDescription.Type | undefined
+): PixelDataFixture | undefined => {
+  if (description === undefined) return undefined
+  if (description.encapsulated) {
+    throw new Error(
+      'headerToTagMap cannot invert an encapsulated PixelDataDescription — ' +
+        'build a { kind: "encapsulated", fragmentLengths } fixture directly'
+    )
+  }
+  return { kind: 'native', byteLength: description.length }
+}
+
 /** Build a `DicomTagMap` from a `DicomHeader` for round-trip testing. */
-const headerToTagMap = (header: DicomHeader): DicomTagMap => ({
+const headerToTagMap = (header: DicomHeader.Type): DicomTagMap => ({
   PatientName: header.patientName ?? undefined,
   PatientID: header.patientId,
   IssuerOfPatientID: header.issuerOfPatientId,
@@ -453,12 +686,25 @@ const headerToTagMap = (header: DicomHeader): DicomTagMap => ({
   Columns: header.columns,
   NumberOfFrames: header.numberOfFrames,
   TransferSyntaxUID: header.transferSyntaxUid,
+  SamplesPerPixel: header.samplesPerPixel,
+  PhotometricInterpretation: header.photometricInterpretation,
+  PlanarConfiguration: header.planarConfiguration,
+  BitsAllocated: header.bitsAllocated,
+  BitsStored: header.bitsStored,
+  HighBit: header.highBit,
+  PixelRepresentation: header.pixelRepresentation,
+  WindowCenter: header.windowCenter,
+  WindowWidth: header.windowWidth,
+  RescaleIntercept: header.rescaleIntercept,
+  RescaleSlope: header.rescaleSlope,
+  PixelData: pixelDataFixtureFrom(header.pixelData),
   Manufacturer: header.manufacturer,
   ManufacturerModelName: header.manufacturerModelName,
   InstitutionName: header.institutionName,
 })
 
 export {
+  describePixelDataFixture,
   dicomDateArb,
   dicomHeaderArb,
   dicomTimeArb,
@@ -466,6 +712,9 @@ export {
   type DicomTagMap,
   formatPersonName,
   headerToTagMap,
+  nativePixelDataArb,
   personNameArb,
+  type PixelDataFixture,
+  pixelDataFragmentLengthsArb,
   writeDicom,
 }

@@ -15,13 +15,15 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.2.3</string>
+	<string>0.2.7</string>
 	<key>CFBundleVersion</key>
-	<string>0.2.3</string>
+	<string>0.2.7</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>In development mode, Wildflower can load its UI from a development server on the local network.</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

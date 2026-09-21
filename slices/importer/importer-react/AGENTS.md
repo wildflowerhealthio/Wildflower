@@ -59,16 +59,22 @@ reimplements none.
 ## The registry
 
 `src/registry.ts` is `importer-core`'s closed `format → FileImporter` registry
-with the one React part a format contributes — its `SettingsPicker` — attached
-to each entry by `withSettingsPicker`, a **spread**, not a subclass: a
+with the React parts a format contributes — its `SettingsPicker`, and an
+optional `FilePreview` the server source file list's preview dialog renders in
+place of its content-type dispatch — attached to each entry by `withComponents`, a
+**spread**, not a subclass: a
 `FileImporter` is a plain record with no prototype, so the spread is total and
 a field added to it cannot be silently dropped on the way through. The importer
 half is registered in `importer-core/src/registry.ts`; this file is the single
-edit point for a format's UI. **`FormatWithPicker<K>`** — named for what it
+edit point for a format's UI. **`FormatWithComponents<K>`** — named for what it
 adds, and defined as `importer-core`'s `BoundFormat<K>` intersected with the
 picker rather than restating it — keeps per-format concrete types against
 `FormatSettings[K]`, so a picker typed against another format's settings fails
-to compile here. `har`, `lifelabs-pdf`, and `dicom` are registered.
+to compile here. A `FilePreview`'s props are `PickedFile.NamedBytes` rather
+than a props type of their own: a preview is handed a file's name and bytes,
+which is exactly that shape, and a second interface saying so would only be a
+structural copy that could drift. `har`, `lifelabs-pdf`, and `dicom` are
+registered; `dicom` is the only one with a `FilePreview` today.
 This module exports **only what it adds**: `defaultFormatSettings`,
 `formatKinds`, `FormatKind` and `FormatSettings` are `importer-core`'s and are
 imported from there directly, since re-exporting them here gave the package two

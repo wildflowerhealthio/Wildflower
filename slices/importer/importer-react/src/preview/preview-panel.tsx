@@ -6,7 +6,7 @@ import { type JSX, useMemo, useState } from 'react'
 import type { BatchDecodeResult, FormatKind, FormatSettings } from 'importer-core'
 import { claimedFormats, formatKinds } from 'importer-core'
 
-import type { FormatWithPicker } from '../registry.ts'
+import type { FormatWithComponents } from '../registry.ts'
 import { FormatReviewBody } from './format-review-body.tsx'
 import {
   confirmLabel,
@@ -44,7 +44,7 @@ import panelStyles from './preview-panel.module.css'
  * strings for the group heading and the `SettingsPicker` for its form.
  */
 type SettingsRegistry = {
-  readonly [K in FormatKind]: Pick<FormatWithPicker<K>, 'display' | 'SettingsPicker'>
+  readonly [K in FormatKind]: Pick<FormatWithComponents<K>, 'display' | 'SettingsPicker'>
 }
 
 type SettingsChangeHandler<K extends FormatKind> = (format: K, settings: FormatSettings[K]) => void

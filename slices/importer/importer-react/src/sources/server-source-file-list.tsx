@@ -5,6 +5,7 @@ import type { PickedFile } from 'importer-fundamentals'
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { Dialog } from 'react-tundraish'
 
+import { DicomFilePreview } from 'dicom-importer-react'
 import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {
   type SourceFileRow,
@@ -247,11 +248,12 @@ const PreviewBody = ({
       </p>
     )
   }
+  const entry = formatRegistry[row.format]
   return (
     <PreviewContents
       fileName={query.data.fileName}
       bytes={query.data.bytes}
-      contentType={formatRegistry[row.format].contentType}
+      contentType={entry.contentType}
       onClose={onClose}
     />
   )
@@ -266,8 +268,9 @@ interface PreviewContentsProps {
 }
 
 /**
- * The format-specific preview body, chosen by content type: PDF renders in an
- * iframe, JSON/HAR pretty-prints, and anything else (DICOM, images) shows a
+ * The format-specific preview body. When the format supplies a `FilePreview`
+ * component, it renders instead of the content-type dispatch; otherwise PDF
+ * renders in an iframe, JSON/HAR pretty-prints, and anything else shows a
  * binary notice with the file size.
  */
 const PreviewContentBody = ({
@@ -281,6 +284,8 @@ const PreviewContentBody = ({
   readonly fileName: string
   readonly bytes: Uint8Array
 }): JSX.Element => {
+  if (contentType === 'application/dicom')
+    return <DicomFilePreview bytes={bytes} fileName={fileName} />
   if (contentType === 'application/pdf') return <PdfBody blobUrl={blobUrl} fileName={fileName} />
   if (contentType === 'application/json' || contentType === 'application/har+json') {
     return <JsonBody bytes={bytes} />
@@ -381,8 +386,8 @@ const PdfBody = ({
 }): JSX.Element => (
   <iframe
     className={styles.previewFrame}
-    title={`Preview of ${fileName}`}
     src={blobUrl}
+    title={`Preview of ${fileName}`}
     sandbox="allow-scripts"
     data-testid="preview-pdf-frame"
   >

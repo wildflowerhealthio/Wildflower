@@ -6,8 +6,12 @@ name: Tauri Release — Publish
 # a `v<version>` tag on the merged commit, then fans out to macOS (universal),
 # Windows and Linux runners. `tauri-apps/tauri-action` uploads platform bundles
 # to a GitHub Release created as a draft prerelease — publish it manually once
-# the assets look right. An iOS build runs in parallel, signing the IPA with
-# an Apple Distribution certificate and uploading it to TestFlight via `altool`.
+# the assets look right. Two TestFlight builds run in parallel with it, one
+# iOS and one macOS, each signed with an Apple Distribution certificate and
+# uploaded via `altool`. The macOS TestFlight build is a separate channel
+# from the notarized Developer ID bundle above: it is sandboxed and signed
+# with different certificates — see docs/Rust/Apple Release Signing
+# Explanation.md.
 #
 # Also exposes `workflow_dispatch` for two manual cases:
 #   - Re-trigger a merge that never ran (e.g. a runner outage ate the original
@@ -36,7 +40,7 @@ on:
         required: false
         type: string
       platforms:
-        description: 'Comma-separated platform keys to build (macos, windows, linux, ios), or "all". e.g. "macos,ios" to rebuild only those two.'
+        description: 'Comma-separated platform keys to build (macos, macos-testflight, windows, linux, ios), or "all". e.g. "macos,ios" to rebuild only those two.'
         required: false
         default: all
         type: string
@@ -368,37 +372,17 @@ jobs:
         with:
           ref: refs/tags/${{ needs.prepare.outputs.tag }}
 
-      - name: Install Apple certificate and provisioning profile
+      - name: Verify Apple iOS signing inputs
+        # Same env the build step receives, so it vets what the build will
+        # use — and names the input at fault, which xcodebuild's own "No
+        # Accounts" / "No profiles for ..." errors do not.
         env:
           IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
-          IOS_PROVISIONING_PROFILE: ${{ vars.IOS_PROVISIONING_PROFILE }}
-        run: |
-          set -euo pipefail
-
-          KEYCHAIN_PATH="$RUNNER_TEMP/ios-signing.keychain-db"
-          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
-          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-
-          CERT_PATH="$RUNNER_TEMP/certificate.p12"
-          echo "$IOS_CERTIFICATE" | base64 --decode > "$CERT_PATH"
-          security import "$CERT_PATH" \
-            -P "$IOS_CERTIFICATE_PASSWORD" \
-            -A -t cert -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: \
-            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
-          security list-keychain -d user -s "$KEYCHAIN_PATH"
-
-          PP_PATH="$RUNNER_TEMP/profile.mobileprovision"
-          echo "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$PP_PATH"
-          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          PP_UUID="$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< \
-            "$(security cms -D -i "$PP_PATH")")"
-          cp "$PP_PATH" \
-            ~/Library/MobileDevice/Provisioning\ Profiles/"$PP_UUID.mobileprovision"
+          IOS_MOBILE_PROVISION: ${{ vars.IOS_PROVISIONING_PROFILE }}
+          APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_TEAM_ID }}
+          BUNDLE_IDENTIFIER: io.wildflowerhealth.hostapp
+        run: ./scripts/checks/apple-ios-signing-preflight.sh
 
       - name: Set up App Store Connect API key
         env:
@@ -409,6 +393,18 @@ jobs:
           mkdir -p ~/.appstoreconnect/private_keys
           echo "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode \
             > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
+
+      - name: Verify App Store Connect app record
+        # Signing inputs being valid does not mean the upload has anywhere to
+        # go: altool resolves the bundle id to an app record, and without one
+        # it fails with "Cannot determine the Apple ID from Bundle ID" only
+        # after the whole build. Runs after the key is written, which is what
+        # it authenticates with.
+        env:
+          BUNDLE_IDENTIFIER: io.wildflowerhealth.hostapp
+          APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+        run: ./scripts/checks/apple-app-record-preflight.sh
 
       - name: Set up Rust toolchain
         uses: actions-rust-lang/setup-rust-toolchain@v2
@@ -435,6 +431,20 @@ jobs:
 
       - name: Build iOS app
         working-directory: apps/wildflower-tauri
+        # Tauri signs iOS only when it finds all three IOS_* variables, and
+        # falls back to an account-based signing mode no runner can satisfy
+        # when one is missing — see docs/Rust/Apple Release Signing
+        # Explanation.md. IOS_MOBILE_PROVISION is Tauri's spelling; the
+        # repository variable is IOS_PROVISIONING_PROFILE.
+        env:
+          IOS_CERTIFICATE: ${{ secrets.IOS_CERTIFICATE }}
+          IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
+          IOS_MOBILE_PROVISION: ${{ vars.IOS_PROVISIONING_PROFILE }}
+          APPLE_DEVELOPMENT_TEAM: ${{ vars.APPLE_TEAM_ID }}
+          # Used by the export step to talk to App Store Connect.
+          APPLE_API_KEY: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          APPLE_API_ISSUER: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+          APPLE_API_KEY_PATH: ~/.appstoreconnect/private_keys/AuthKey_${{ vars.APP_STORE_CONNECT_KEY_ID }}.p8
         run: vp run tauri ios build --export-method app-store-connect
 
       - name: Upload to TestFlight
@@ -442,15 +452,181 @@ jobs:
           APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
           APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
+          set -euo pipefail
+
+          # The IPA takes the target's PRODUCT_NAME, regenerated from
+          # `productName` each build, so hardcoding a spelling turned a rename
+          # into altool reporting a missing file rather than the cause.
+          BUILD_DIR=src-tauri/gen/apple/build/arm64
+          shopt -s nullglob
+          ipas=("apps/wildflower-tauri/$BUILD_DIR"/*.ipa)
+          if [[ ${#ipas[@]} -eq 0 ]]; then
+            echo "::error::No .ipa in $BUILD_DIR. Contents:"
+            ls -la "apps/wildflower-tauri/$BUILD_DIR" 2>&1 || echo "  (directory does not exist)"
+            exit 1
+          fi
+          if [[ ${#ipas[@]} -gt 1 ]]; then
+            echo "::error::Expected one .ipa in $BUILD_DIR, found ${#ipas[@]}: ${ipas[*]}"
+            exit 1
+          fi
+
+          echo "Uploading ${ipas[0]}"
           xcrun altool --upload-app --type ios \
-            --file apps/wildflower-tauri/src-tauri/gen/apple/build/arm64/Wildflower.ipa \
+            --file "${ipas[0]}" \
+            --apiKey "$APP_STORE_CONNECT_KEY_ID" \
+            --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
+
+  build-macos-testflight:
+    name: Build macOS + TestFlight
+    needs: prepare
+    if: >-
+      github.event_name != 'workflow_dispatch' ||
+      contains(inputs.platforms, 'all') ||
+      contains(inputs.platforms, 'macos-testflight')
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ needs.prepare.outputs.tag }}
+
+      - name: Verify Apple macOS App Store signing inputs
+        # Same env the build steps receive. Distinct from the Developer ID
+        # secrets the GitHub Release job uses: the App Store channel needs an
+        # Apple Distribution certificate for the app and a Mac Installer
+        # Distribution one for the pkg, neither interchangeable with it.
+        env:
+          MACOS_APPSTORE_CERTIFICATE: ${{ secrets.MACOS_APPSTORE_CERTIFICATE }}
+          MACOS_APPSTORE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_APPSTORE_CERTIFICATE_PASSWORD }}
+          MACOS_INSTALLER_CERTIFICATE: ${{ secrets.MACOS_INSTALLER_CERTIFICATE }}
+          MACOS_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
+          MACOS_PROVISIONING_PROFILE: ${{ vars.MACOS_PROVISIONING_PROFILE }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+          BUNDLE_IDENTIFIER: io.wildflowerhealth.hostapp
+        run: ./scripts/checks/apple-macos-appstore-preflight.sh
+
+      - name: Set up App Store Connect API key
+        env:
+          APP_STORE_CONNECT_PRIVATE_KEY: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.appstoreconnect/private_keys
+          echo "$APP_STORE_CONNECT_PRIVATE_KEY" | base64 --decode \
+            > ~/.appstoreconnect/private_keys/AuthKey_${APP_STORE_CONNECT_KEY_ID}.p8
+
+      - name: Verify App Store Connect app record
+        # Signing inputs being valid does not mean the upload has anywhere to
+        # go: altool resolves the bundle id to an app record, and without one
+        # it fails with "Cannot determine the Apple ID from Bundle ID" only
+        # after the whole build. Runs after the key is written, which is what
+        # it authenticates with.
+        env:
+          BUNDLE_IDENTIFIER: io.wildflowerhealth.hostapp
+          APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+        run: ./scripts/checks/apple-app-record-preflight.sh
+
+      - name: Set up Rust toolchain
+        uses: actions-rust-lang/setup-rust-toolchain@v2
+        with:
+          target: aarch64-apple-darwin,x86_64-apple-darwin
+          rustflags: '-D warnings'
+          # Its own key: this build is sandboxed and signed differently from
+          # the Developer ID one, and the two run concurrently on macos-latest,
+          # so sharing a key would make them race to save incomplete targets.
+          cache-shared-key: release-macos-appstore
+          cache-on-failure: true
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.20.0
+        with:
+          cache: true
+
+      - name: Install workspace dependencies
+        run: vp install
+
+      - name: Build workspace (vp run pack)
+        run: vp run pack
+
+      - name: Install provisioning profile
+        # tauri.appstore.conf.json copies this into the bundle as
+        # Contents/embedded.provisionprofile. It is written rather than
+        # committed, so it stays out of the repo and out of the Developer ID
+        # build, which must not carry it.
+        env:
+          MACOS_PROVISIONING_PROFILE: ${{ vars.MACOS_PROVISIONING_PROFILE }}
+        run: |
+          set -euo pipefail
+          echo "$MACOS_PROVISIONING_PROFILE" | base64 --decode \
+            > apps/wildflower-tauri/src-tauri/embedded.provisionprofile
+
+      - name: Build sandboxed .app
+        working-directory: apps/wildflower-tauri
+        # `--bundles app` only: the App Store channel ships the .app inside a
+        # pkg built below, never a dmg. The overlay config adds the sandbox
+        # entitlements and the embedded profile without touching the default
+        # config the Developer ID build uses.
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.MACOS_APPSTORE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_APPSTORE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ vars.MACOS_APPSTORE_SIGNING_IDENTITY }}
+        run: |
+          vp run tauri build \
+            --config src-tauri/tauri.appstore.conf.json \
+            --bundles app \
+            --target universal-apple-darwin
+
+      - name: Package and upload to TestFlight
+        env:
+          MACOS_INSTALLER_CERTIFICATE: ${{ secrets.MACOS_INSTALLER_CERTIFICATE }}
+          MACOS_INSTALLER_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_INSTALLER_CERTIFICATE_PASSWORD }}
+          MACOS_INSTALLER_SIGNING_IDENTITY: ${{ vars.MACOS_INSTALLER_SIGNING_IDENTITY }}
+          APP_STORE_CONNECT_KEY_ID: ${{ vars.APP_STORE_CONNECT_KEY_ID }}
+          APP_STORE_CONNECT_ISSUER_ID: ${{ vars.APP_STORE_CONNECT_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+
+          # The .app is named after productName, which is regenerated from
+          # tauri.conf.json each build, so find it rather than spelling it.
+          BUILD_DIR=target/universal-apple-darwin/release/bundle/macos
+          shopt -s nullglob
+          apps=("$BUILD_DIR"/*.app)
+          if [[ ${#apps[@]} -ne 1 ]]; then
+            echo "::error::Expected exactly one .app in $BUILD_DIR, found ${#apps[@]}. Contents:"
+            ls -la "$BUILD_DIR" 2>&1 || echo "  (directory does not exist)"
+            exit 1
+          fi
+
+          # productbuild needs the installer certificate in a keychain it can
+          # see; the app-signing one Tauri imported cannot sign a pkg.
+          KEYCHAIN="$RUNNER_TEMP/installer.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          echo "$MACOS_INSTALLER_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+          security import "$RUNNER_TEMP/installer.p12" -k "$KEYCHAIN" \
+            -P "$MACOS_INSTALLER_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/productbuild -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple: \
+            -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" >/dev/null
+          security list-keychain -d user -s "$KEYCHAIN" $(security list-keychain -d user | tr -d '"')
+
+          PKG="$RUNNER_TEMP/WildflowerHost.pkg"
+          xcrun productbuild \
+            --sign "$MACOS_INSTALLER_SIGNING_IDENTITY" \
+            --component "${apps[0]}" /Applications \
+            "$PKG"
+
+          xcrun altool --upload-app --type macos \
+            --file "$PKG" \
             --apiKey "$APP_STORE_CONNECT_KEY_ID" \
             --apiIssuer "$APP_STORE_CONNECT_ISSUER_ID"
 
       - name: Clean up keychain
         if: always()
         run: |
-          KEYCHAIN_PATH="$RUNNER_TEMP/ios-signing.keychain-db"
-          if [[ -f "$KEYCHAIN_PATH" ]]; then
-            security delete-keychain "$KEYCHAIN_PATH"
+          KEYCHAIN="$RUNNER_TEMP/installer.keychain-db"
+          if [[ -f "$KEYCHAIN" ]]; then
+            security delete-keychain "$KEYCHAIN"
           fi

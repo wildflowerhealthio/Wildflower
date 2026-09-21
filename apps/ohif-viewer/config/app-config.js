@@ -20,6 +20,9 @@
 
   // SPA redirect: if we arrived via a 404.html redirect (the site's own or
   // ohif-viewer-dist's), restore the original route so the router picks it up.
+  // The first-party apps call `restoreRedirectedUrl` from `branding-core`
+  // (`spa-redirect.ts`) for this; a prebuilt bundle has no entry module of ours
+  // to call it from, so these are the same steps by hand — keep them in step.
   var params = new URLSearchParams(window.location.search)
   var redirectPath = params.get('redirect')
   if (redirectPath) {
