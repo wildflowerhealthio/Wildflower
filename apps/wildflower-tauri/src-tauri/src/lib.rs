@@ -981,6 +981,38 @@ mod tests {
         }
     }
 
+    /// Every `<key>` either overlay declares, nested ones included, reading the
+    /// compacted text rather than parsing XML.
+    fn declared_keys(relative: &str) -> Vec<String> {
+        let compact = compact_apple_plist(relative);
+        compact
+            .split("<key>")
+            .skip(1)
+            .filter_map(|rest| rest.split_once("</key>"))
+            .map(|(key, _)| key.to_owned())
+            .collect()
+    }
+
+    /// The generated iOS plist is a hand-maintained copy of what the overlays
+    /// declare — `tauri ios build` merges them, but an Xcode-opened build of
+    /// `gen/apple/wildflower-tauri.xcodeproj` reads the generated file alone.
+    /// Rather than let the copies drift, derive the expectation from the
+    /// overlays: every key they declare has to appear in the generated plist,
+    /// so a key added to an overlay later can't be silently left out of it.
+    #[test]
+    fn overlay_keys_reach_the_generated_ios_plist() {
+        let generated = compact_apple_plist("gen/apple/wildflower-tauri_iOS/Info.plist");
+        for overlay in ["Info.plist", "Info.ios.plist"] {
+            for key in declared_keys(overlay) {
+                assert!(
+                    generated.contains(&format!("<key>{key}</key>")),
+                    "{overlay} declares {key}, which the generated iOS plist must \
+                     declare too — an Xcode-opened build never runs the merge"
+                );
+            }
+        }
+    }
+
     /// The host loads cleartext HTTP off loopback and, in a debug build, off a
     /// LAN dev server; without these keys the OS blocks both, the local-network
     /// one without even prompting. The negative assertion is the load-bearing

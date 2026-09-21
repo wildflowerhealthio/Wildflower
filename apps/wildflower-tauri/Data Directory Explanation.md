@@ -48,26 +48,21 @@ Three things have to be true for that folder to appear, and none works alone:
 2. The bundle has to opt in, with `UIFileSharingEnabled`.
 3. The bundle has to opt in **again**, with `LSSupportsOpeningDocumentsInPlace`.
 
-The third one is the surprise, and it is why this originally shipped looking like
-it had done nothing. `UIFileSharingEnabled` on its own exposes `Documents` only to
-Finder/iTunes file sharing over a cable; the **on-device** Files app lists a
-folder under "On My iPhone" only when the bundle also declares
-`LSSupportsOpeningDocumentsInPlace`. Miss either key and `Documents` is still
-where the data lives — it is simply invisible on the device, which reads exactly
-like the data directory change never happened.
+The third is the one that catches people. `UIFileSharingEnabled` on its own
+exposes `Documents` to Finder/iTunes file sharing over a cable and nothing more;
+the **on-device** Files app lists a folder under "On My iPhone" only when the
+bundle also declares `LSSupportsOpeningDocumentsInPlace`. With either key
+missing, `Documents` is still where the data lives — it is simply invisible on
+the device, which is indistinguishable from the data directory pointing
+somewhere else entirely.
 
-That second key is what makes the folder a real document container: other apps
-can open and save files inside it in place, rather than taking a copy. That
-includes the live SQLite databases, which is the reason to know it is set — a
-`.sqlite` opened in place by another app while the host has it open is a
-corruption risk, not a supported workflow. The exposure was asked for anyway: the
-point of the folder is that a user can copy a database off the device or drop a
-file in without the app growing a transfer feature. Nothing about the key invites
-in-place editing of the databases; it just no longer forbids it.
-
-A unit test (`both_ios_plists_declare_files_app_keys`) holds **both** keys in
-**both** iOS plists, since losing either from either would quietly undo the
-feature.
+`LSSupportsOpeningDocumentsInPlace` is what makes the folder a real document
+container: other apps open and save files inside it in place rather than taking a
+copy, and that includes the live SQLite databases. Opening a `.sqlite` in place
+from another app while the host holds it open is a corruption risk and is not a
+supported workflow — the key admits it, it does not invite it. The visibility is
+worth that: the point of the folder is that a user can copy a database off the
+device or drop a file in without the app carrying a transfer feature.
 
 Both keys live in [`src-tauri/Info.ios.plist`](./src-tauri/Info.ios.plist) rather
 than only in the generated `gen/apple/wildflower-tauri_iOS/Info.plist`:
@@ -76,6 +71,14 @@ than only in the generated `gen/apple/wildflower-tauri_iOS/Info.plist`:
 generated plist carries them too — it is committed, and it is what an
 Xcode-opened build of `gen/apple/wildflower-tauri.xcodeproj` reads directly,
 without the merge step.
+
+Three unit tests hold that arrangement together.
+`both_ios_plists_declare_files_app_keys` pins both keys, as `true`, in both iOS
+plists. `apple_plists_declare_local_network_access` does the same for the network
+keys below. `overlay_keys_reach_the_generated_ios_plist` is the general guard:
+rather than pinning a list, it reads every key the overlays declare and requires
+the generated plist to declare it too, so a key added to an overlay later cannot
+be left out of the copy an Xcode build reads.
 
 Nothing migrates. An install that already holds databases under
 `Library/Application Support` keeps them there, untouched and unread, and comes
@@ -107,8 +110,7 @@ The Files-app pair above is iOS-only. The network pair below is shared.
 
 ## Reaching the network at all
 
-Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist), covered by
-`apple_plists_declare_local_network_access`:
+Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist):
 
 - **`NSLocalNetworkUsageDescription`** — the string the system shows in its
   local-network permission prompt, required on macOS 15+ and iOS 14+ for any
