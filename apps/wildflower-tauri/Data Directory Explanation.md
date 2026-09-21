@@ -76,9 +76,10 @@ Three unit tests hold that arrangement together.
 `both_ios_plists_declare_files_app_keys` pins both keys, as `true`, in both iOS
 plists. `apple_plists_declare_local_network_access` does the same for the network
 keys below. `overlay_keys_reach_the_generated_ios_plist` is the general guard:
-rather than pinning a list, it reads every key the overlays declare and requires
-the generated plist to declare it too, so a key added to an overlay later cannot
-be left out of the copy an Xcode build reads.
+rather than pinning a list, it reads every key the overlays declare — with the
+value each one carries — and requires the generated plist to declare the same
+pair, so neither a key added to an overlay later nor a reworded string can drift
+out of the copy an Xcode build reads.
 
 Nothing migrates. An install that already holds databases under
 `Library/Application Support` keeps them there, untouched and unread, and comes
@@ -129,11 +130,17 @@ Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist):
   replaces Tauri's own `bundle.macOS.exceptionDomain` default wholesale).
 
   `NSAllowsArbitraryLoads`, the blanket switch, is deliberately absent, and the
-  test asserts its absence. It is the key Apple asks for written justification
-  about at App Store review, the scoped keys above take precedence over it on the
-  deployment targets here (iOS 14, macOS 10.13), and leaving ATS on means the
-  Rust-side traffic — the rathole tunnel client, the tunnel `/health` probe, the
-  collectors' upstream fetches — stays enforced.
+  test asserts its absence in all three plists. It is the key Apple asks for
+  written justification about at App Store review, and the scoped keys above
+  take precedence over it on the deployment targets here (iOS 14, macOS 10.13),
+  so setting it would buy nothing and cost a review conversation.
+
+  ATS reaches only what goes through CFNetwork/`URLSession` — the web views and
+  the WebKit content above. It has no say over the Rust side: `reqwest` here is
+  built `default-features = false` with `rustls-tls`, so the rathole tunnel
+  client, the tunnel `/health` probe and the collectors' upstream fetches open
+  their own sockets and speak their own TLS. Whatever those are allowed to
+  reach is a question for that code, not for this plist.
 
 ## Android is still private
 

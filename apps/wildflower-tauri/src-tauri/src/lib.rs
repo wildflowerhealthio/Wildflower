@@ -981,15 +981,28 @@ mod tests {
         }
     }
 
-    /// Every `<key>` either overlay declares, nested ones included, reading the
-    /// compacted text rather than parsing XML.
-    fn declared_keys(relative: &str) -> Vec<String> {
+    /// Every `<key>` either overlay declares, nested ones included, paired with
+    /// the value token that follows it — reading the compacted text rather than
+    /// parsing XML. The value is the whole `<string>…</string>` for a string,
+    /// the self-closing `<true/>`/`<false/>` for a boolean, and the opening tag
+    /// alone for a container (`<dict>`, `<array>`), whose own keys arrive as
+    /// entries of their own.
+    fn declared_entries(relative: &str) -> Vec<(String, String)> {
         let compact = compact_apple_plist(relative);
         compact
             .split("<key>")
             .skip(1)
             .filter_map(|rest| rest.split_once("</key>"))
-            .map(|(key, _)| key.to_owned())
+            .map(|(key, after)| {
+                let end = if after.starts_with("<string>") {
+                    after.find("</string>").map(|at| at + "</string>".len())
+                } else {
+                    // `<true/>`, `<dict>`, … — everything up to the first `>`.
+                    after.find('>').map(|at| at + 1)
+                };
+                let value = &after[..end.unwrap_or(after.len())];
+                (key.to_owned(), value.to_owned())
+            })
             .collect()
     }
 
@@ -997,17 +1010,19 @@ mod tests {
     /// declare — `tauri ios build` merges them, but an Xcode-opened build of
     /// `gen/apple/wildflower-tauri.xcodeproj` reads the generated file alone.
     /// Rather than let the copies drift, derive the expectation from the
-    /// overlays: every key they declare has to appear in the generated plist,
-    /// so a key added to an overlay later can't be silently left out of it.
+    /// overlays: every key they declare has to appear in the generated plist
+    /// *with the same value*, so neither a key added to an overlay later nor a
+    /// reworded string can be silently left out of it.
     #[test]
     fn overlay_keys_reach_the_generated_ios_plist() {
         let generated = compact_apple_plist("gen/apple/wildflower-tauri_iOS/Info.plist");
         for overlay in ["Info.plist", "Info.ios.plist"] {
-            for key in declared_keys(overlay) {
+            for (key, value) in declared_entries(overlay) {
                 assert!(
-                    generated.contains(&format!("<key>{key}</key>")),
-                    "{overlay} declares {key}, which the generated iOS plist must \
-                     declare too — an Xcode-opened build never runs the merge"
+                    generated.contains(&format!("<key>{key}</key>{value}")),
+                    "{overlay} declares {key} as {value}, which the generated iOS \
+                     plist must declare identically — an Xcode-opened build never \
+                     runs the merge, so a drifted copy ships as it stands"
                 );
             }
         }
@@ -1044,10 +1059,20 @@ mod tests {
                      NSAppTransportSecurity"
                 );
             }
-            // The blanket switch: superseded by the scoped keys above on these
-            // deployment targets, and the one App Store review asks about.
+        }
+
+        // The blanket switch: superseded by the scoped keys above on these
+        // deployment targets, and the one App Store review asks about. Checked
+        // over all three plists, `Info.ios.plist` included — it carries no ATS
+        // keys today, but it is the overlay `tauri ios build` merges *last*, so
+        // a blanket switch added there would win on the shipped iOS bundle.
+        for relative in [
+            "Info.plist",
+            "Info.ios.plist",
+            "gen/apple/wildflower-tauri_iOS/Info.plist",
+        ] {
             assert!(
-                !compact.contains("<key>NSAllowsArbitraryLoads</key>"),
+                !compact_apple_plist(relative).contains("<key>NSAllowsArbitraryLoads</key>"),
                 "{relative} must not disable ATS wholesale — the scoped keys cover \
                  what the host actually loads"
             );
