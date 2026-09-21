@@ -35,14 +35,13 @@ const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/wildflower-server-d
  * Sent alongside the published URI so a developer can drive the whole sign-in
  * flow without deploying.
  *
- * **This one is not seeded.** Unlike {@link REGISTERED_REDIRECT_URI}, no
- * migration lists it: `0007_seed_wildflower_server_docs_client`'s
- * `redirect_uris` carries the published URL alone. It is here because a
- * Wildflower server is expected to accept a loopback developer redirect on
- * first use, through the Owner's trust-on-first-use consent (#688–#690); until
- * that lands, a server that has not had this entry added by hand answers the
- * dev-server sign-in with `invalid_request` at `/oauth/authorize`. Do not
- * describe it as registered — the seed is the authority for what is.
+ * **This one is not seeded.** No migration lists it —
+ * `0007_seed_wildflower_server_docs_client`'s `redirect_uris` carries the
+ * published URL alone — because a server is expected to accept a loopback
+ * developer redirect on first use through the Owner's trust-on-first-use
+ * consent (#688–#690). Until that lands, a server without this entry added by
+ * hand answers the dev-server sign-in with `invalid_request`. The seed is the
+ * authority for what is registered, so do not describe this as registered.
  */
 const LOCAL_DEV_REDIRECT_URI = 'http://127.0.0.1:5192'
 
@@ -82,13 +81,10 @@ const REQUESTED_SCOPES: readonly string[] = [
 const requestedScopeParameter = (): string => REQUESTED_SCOPES.join(' ')
 
 /**
- * The `sessionStorage` key this console's pending-authorization record lives at.
- *
- * Namespaced with the console's own name because the flow in
- * `gatekeeper-core/smart-client` is shared: the published console and the hosted
- * owner UI are both served from `wildflowerhealth.io`, so an unqualified key
- * would be one key for both, and one page's return leg could consume the other's
- * request.
+ * The `sessionStorage` key this console's pending-authorization record lives at,
+ * namespaced because the console shares both the flow in
+ * `gatekeeper-core/smart-client` and the `wildflowerhealth.io` origin with the
+ * hosted owner UI.
  */
 const PENDING_AUTHORIZATION_KEY = 'wildflower-server-docs.pending-authorization'
 
@@ -123,14 +119,12 @@ const knownRedirectUriFor = (href: string): string | undefined => {
  * Whether the console can complete a sign-in from `href`, the redirect URI it
  * would return to when it can, and why not when it cannot.
  *
- * `/oauth/authorize` matches the redirect by exact URL equality against the
- * client's `redirect_uris`, and this console knows two entries a server may
- * hold: the seeded published URL and the loopback dev server the Owner approves
- * on first use. A copy served anywhere else (a preview build, a fork's Pages
- * site, an unpinned dev port) has no URI here to send — that is a statement
- * about what this page knows, **not** a claim that the copy is unregistered, and
- * the reason below says so. Detecting it is what lets the header bar disable its
- * button with an explanation instead of sending the reader to an
+ * `/oauth/authorize` matches the redirect by exact URL equality, and
+ * {@link KNOWN_REDIRECT_URIS} is what this console knows to send. A copy served
+ * anywhere else (a preview build, a fork's Pages site, an unpinned dev port) has
+ * none — a statement about what this page knows, **not** a claim that the copy
+ * is unregistered, which it cannot know. Detecting it lets the header bar
+ * disable its button with an explanation instead of sending the reader to an
  * `invalid_request` page.
  */
 const signInAvailability = (

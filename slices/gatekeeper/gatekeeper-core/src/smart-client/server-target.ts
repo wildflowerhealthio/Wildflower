@@ -8,12 +8,11 @@
  * one. That target lives in the URL (so a configured page is a shareable link)
  * and is parsed here.
  *
- * Everything in this module is pure string work; the DOM/history wiring that
- * uses it belongs to the app. The *default* target is the app's too: a console
- * shipped beside a desktop host falls back to that host's loopback origin,
- * which this package has no business knowing, so there is no `DEFAULT_SERVER_URL`
- * here — {@link normalizeServerUrl} returning `undefined` is where an app
- * substitutes its own.
+ * Everything here is pure string work; the DOM/history wiring belongs to the
+ * app, and so does the fallback target — a console shipped beside a desktop
+ * host falls back to that host's loopback origin, which this package has no
+ * business knowing. Hence no `DEFAULT_SERVER_URL`: an `undefined` result is
+ * where an app substitutes its own.
  */
 
 /**

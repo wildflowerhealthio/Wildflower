@@ -89,13 +89,10 @@ interface SignInEnvironment {
   readonly subtle: DigestSource
   readonly store: PendingStore
   /**
-   * The `sessionStorage` key the pending record lives at.
-   *
-   * Injected rather than fixed here because every Wildflower page that signs in
-   * this way shares an origin with the others: a key this package chose would be
-   * one key for all of them, and one tab's return leg could consume a record
-   * another tab was still waiting on. Namespace it with the app's own name — e.g.
-   * `wildflower-server-docs.pending-authorization`.
+   * The `sessionStorage` key the pending record lives at. Namespace it with the
+   * app's own name (`wildflower-server-docs.pending-authorization`): these pages
+   * share an origin, so a key chosen here would be one key for all of them, and
+   * one tab's return leg could consume a record another tab was waiting on.
    */
   readonly pendingKey: string
   /** The `client_id` this app is registered as. */

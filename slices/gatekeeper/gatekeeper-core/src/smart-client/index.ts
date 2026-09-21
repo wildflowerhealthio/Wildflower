@@ -1,21 +1,9 @@
 /**
- * The browser side of the SMART standalone launch `gatekeeper-rust` serves.
- *
- * A static Wildflower page — `apps/wildflower-server-docs` today, the hosted
- * owner UI next — points itself at whichever server the reader runs
- * (`server-target.ts`), asks that server how to sign in
- * (`smart-discovery.ts`), mints a PKCE pair (`pkce.ts`), leaves for
- * `/oauth/authorize` and picks the flow back up on the way home
- * (`authorization-flow.ts`, `sign-in.ts`).
- *
- * Everything here is pure or takes its impure edges — `fetch`, Web Crypto,
- * `sessionStorage` — as an injected `SignInEnvironment`, so the package stays
- * inside the `-core` layering rule and the whole flow is drivable from a unit
- * test. Nothing app-specific lives here: the client id, the scopes, the
- * redirect URI and the `sessionStorage` key are the app's to supply.
- *
- * This is **not** the fhirclient-based launch in
- * `slices/emr/fhir-r4-react/src/smart/*`, which the self-hosted React apps use.
+ * The browser side of the SMART standalone launch `gatekeeper-rust` serves,
+ * shared by every static Wildflower page that signs in to a reader-chosen
+ * server — see "The SMART standalone-launch client" in the package README for
+ * the shape of the flow, what the app supplies, and why this is not the
+ * fhirclient-based launch in `slices/emr/fhir-r4-react/src/smart/*`.
  */
 
 export {

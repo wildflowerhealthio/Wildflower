@@ -1,11 +1,7 @@
 /**
- * The ambient-`crypto` reading of the PKCE challenge.
- *
- * There is one S256 implementation in this package — `smart-client/pkce.ts`'s
- * {@link codeChallengeS256}, which takes its digest source as an argument so it
- * can be tested against a refusing `crypto.subtle`. This wrapper binds that
- * argument to the global Web Crypto and keeps the `UnknownException` error type
- * its existing callers expect.
+ * {@link codeChallengeS256} — the package's one S256 implementation — bound to
+ * the ambient Web Crypto, keeping the `UnknownException` error type this
+ * wrapper's callers expect.
  */
 
 import { Effect } from 'effect'
