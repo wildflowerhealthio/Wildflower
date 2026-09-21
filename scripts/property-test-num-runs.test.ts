@@ -13,7 +13,6 @@ const IGNORED_DIRECTORIES = new Set([
   'node_modules',
   'dist',
   'dist-html',
-  'dist-web',
   'coverage',
   'target',
   'vendor',

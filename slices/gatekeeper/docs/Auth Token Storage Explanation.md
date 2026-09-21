@@ -72,27 +72,29 @@ sets the cookie.
 
 ## `makeEmbeddedAuthStateStore` — in-memory only
 
-Used by the in-WebView SPA (`main-embedded`). Seeded `Unauthed`, no
+Used by the SPA running inside the Tauri host's webview, whose entry is
+`apps/wildflower-tauri/src/main.tsx`. Seeded `Unauthed`, no
 `localStorage` read, no persistence subscriber, no cross-tab listener.
 The host's `AuthTokenIssued` bridge handler is the sole writer — it
 publishes `HostAuthed` (the host holds the credential; the page never
 does).
 
 The embedded store must **never** surface a `localStorage` value because
-the embedded WebView's `WKWebsiteDataStore` outlives the host's JS
-context: a Metro reload and, depending on iOS policy, even a force-kill
-leave the previous session's token in storage. The LHS daemon mints a
-fresh token and re-pushes it on every boot via the gatekeeper bridge, so
-a `localStorage`-cached value can only ever be stale and racing the
-host's fresh push. A stale value surfacing as the store's initial signal
-would resolve the auth-ready gate early and pin TanStack Query loaders
-on cached 401s.
+the webview's persistent data store outlives the host's JS context: a
+dev-server reload, and on some platforms a relaunch of the app itself,
+leave the previous session's token in storage. The Tauri host mints a
+fresh token and re-pushes it on every boot via the gatekeeper bridge
+(the contentless `AuthTokenIssued` notify it emits on each
+`bridge:__Ready` and on re-mint), so a `localStorage`-cached value can
+only ever be stale and racing the host's fresh push. A stale value
+surfacing as the store's initial signal would resolve the auth-ready
+gate early and pin TanStack Query loaders on cached 401s.
 
 ## Why authed loaders gate on `beforeLoad`, not a component or a loader
 
-On embedded the token does not exist at first paint — it arrives via the
-host `AuthTokenIssued` bridge handler, which fires only **after** the
-transport handshake (`transport.flushed`) completes. A TanStack `loader`
+In the Tauri host's webview the token does not exist at first paint — it
+arrives via the host `AuthTokenIssued` bridge handler, which fires only
+**after** the transport handshake (`transport.flushed`) completes. A TanStack `loader`
 runs during routing, so an authed loader that fired on first paint would
 `401` before the token landed.
 

@@ -125,7 +125,8 @@ const makeAwaitWebAuthReady =
     withFiberFailureUnwrap(() => Effect.runPromise(webAuthReadyEffect(subscribable, returnTo)))
 
 /**
- * Embedded (`main-embedded`) auth-readiness factory. The host flips the
+ * Embedded auth-readiness factory, used by the host webview entry
+ * (`apps/wildflower-tauri/src/main.tsx`). The host flips the
  * SPA's auth signal over the gatekeeper bridge once the page-side transport
  * calls `transport.signalReady`, so on first paint the embedded
  * `AuthStateStore.subscribable` is `Unauthed` AND the transport may not yet be

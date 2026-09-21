@@ -23,8 +23,9 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
  * `setAuthState` is the gatekeeper bridge's only piece of state — the
  * entry's `AuthStateStore` constructs it (`makeWebAuthStateStore`
  * derives the auth signal from the `wf_auth_exp` cookie;
- * `makeEmbeddedAuthStateStore` is in-memory, fed by the host) and the
- * page-bridge handler flips it on every `AuthTokenIssued`.
+ * `makeEmbeddedAuthStateStore`, which the Tauri host entry
+ * `apps/wildflower-tauri/src/main.tsx` uses, is in-memory, fed by the
+ * host) and the page-bridge handler flips it on every `AuthTokenIssued`.
  *
  * The navigation bridge's `SafeAreaInsetsChanged` and
  * `HostColorSchemeChanged` are wired to `applyRootInsets` and

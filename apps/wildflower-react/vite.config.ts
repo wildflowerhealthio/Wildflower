@@ -3,27 +3,14 @@ import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite-plus'
 import baseConfig from './vite.config.base.ts'
 
-// Test-only config. The bundle builds run through `vite.config.web.ts` /
-// `vite.config.single-web.ts`; this file exists so `vp test` has a default
-// to load.
+// Test-only config. The single bundle build runs through
+// `vite.config.single-web.ts` (`vite.config.web.ts` is the dev server); this
+// file exists so `vp test` has a default to load. There is no `pack` block:
+// the only consumer of this package, `apps/wildflower-tauri`, resolves
+// `wildflower-react/*` through the `source` export condition, so a built
+// `dist/` would never be resolved.
 export default defineConfig({
   ...baseConfig,
-  pack: {
-    deps: { resolveDepSubpath: true },
-    // `tsconfig.pack.json` drops `customConditions: ['source']` so tsgo
-    // resolves workspace deps through their built `dist/*.d.ts` instead of
-    // walking into each slice's `src/`. Without that override, tsgo treats
-    // every transitively-imported slice source file as a project input and
-    // writes `.d.ts` siblings next to them across the monorepo.
-    dts: { generator: 'tsgo', tsgo: {}, tsconfig: './tsconfig.pack.json' },
-    platform: 'browser',
-    exports: false,
-    entry: {
-      'app-root': 'src/app-root.tsx',
-      'web-entry': 'src/web-entry.ts',
-      instrument: 'src/instrument.ts',
-    },
-  },
   test: {
     ...baseConfig.test,
     environment: 'jsdom',
