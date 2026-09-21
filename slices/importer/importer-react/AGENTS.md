@@ -172,10 +172,20 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   registered format via its importer's server-read seam, and exported for the
   anonymizer shell's `serverSource` slot as much as used here;
   `source-picker.tsx` composes the drop-and-pick zone, the file input it opens,
-  and that server list. Two modes: `'batch'` (default; the importer flow)
-  accepts several files in one pick; `'single'` trims the accepted list to the
-  first file and drops the OS dialog's `multiple` attribute — the server list
-  is single-select in both.
+  a **folder** pick, and that server list. Two modes: `'batch'` (default; the
+  importer flow) accepts several files in one pick; `'single'` trims the
+  accepted list to the first file and drops the OS dialog's `multiple`
+  attribute. The folder pick is `'batch'`-only and is the same batch path —
+  a DICOM study arrives as a directory of hundreds of `.dcm` files, and the
+  files it yields go through the same detectors and the same by-name rejection
+  notice. `group-source-files.ts` is the pure collapse behind the server
+  list's grouping: rows naming the same `context.related` resource (a study's
+  archives naming their `ImagingStudy`) list under one heading with a **Use
+  all as source** action, which picks every file of the unit at once so the
+  decode sees the whole study; a unit of one file stays an ordinary row. That
+  action exists only when the host passes `onPickUnit`, so the `'single'`-file
+  hosts (the anonymizer's `serverSource` slot) still see the grouping but pick
+  one row at a time.
 - **`src/queries/`** — the reads. `source-files.ts` is the paged, format-blind
   `DocumentReference` search: one request per page with `category` set to
   the comma-joined `system|code` tokens of every registered format
@@ -336,12 +346,21 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   verbatim so a truncated or mis-encoded upload is preserved and the
   attachment `hash` means something. `PickedFile.bytes` is a `Uint8Array` from
   the picker all the way to the mint, and nothing in between re-encodes it.
+- **A group format's files are re-picked together or not at all.** Picking one
+  archive of a study off the server yields a one-file study, which is a
+  different `ImagingStudy` than the one that was imported. That is why the
+  server list groups by `context.related` and offers the whole unit — and why
+  the grouping key is `context.related` rather than `subject`, which every
+  file of every study of one patient shares.
 - **The drop zone is a button, so drop is an enhancement rather than the only
   path.** The zone itself opens the file picker on click, so the whole
   surface is keyboard-reachable and screen-reader named; the
   `<input type="file">` it opens is visually hidden but kept a named,
   reachable input (`aria-label="Import file"`), not `display: none` — some
-  upload implementations refuse an invisible input.
+  upload implementations refuse an invisible input. The folder pick's input is
+  the same, named `aria-label="Import folder"`; `webkitdirectory` is set on it
+  through a ref rather than as JSX, since React does not declare the attribute
+  and writing it as a prop would need a cast.
 - **The authed runner comes from router context, one way.** `useSourceFilesQuery`,
   the picker's row-select, and the preview modal's fetch all read
   `useRunAuthed()`; the query also exposes

@@ -159,9 +159,34 @@ describe('the codec as a schema', () => {
     await fc.assert(
       fc.asyncProperty(sourceFileArbitrary, fc.uuid(), async (sourceFile, patientId) => {
         const resource = await run(
-          SourceFileCodec.encode(sourceFile, { reference: `Patient/${patientId}` })
+          SourceFileCodec.encode(sourceFile, { subject: { reference: `Patient/${patientId}` } })
         )
         expect(resource.subject?.reference).toBe(`Patient/${patientId}`)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  test('property: the related-bearing encode names every one of them as context.related', async () => {
+    await fc.assert(
+      fc.asyncProperty(sourceFileArbitrary, fc.uuid(), async (sourceFile, studyId) => {
+        const resource = await run(
+          SourceFileCodec.encode(sourceFile, {
+            related: [{ reference: `ImagingStudy/${studyId}` }],
+          })
+        )
+        expect(resource.context?.related.map((one) => one.reference)).toEqual([
+          `ImagingStudy/${studyId}`,
+        ])
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  test('property: context is absent unless a related resource is named', async () => {
+    await fc.assert(
+      fc.asyncProperty(sourceFileArbitrary, async (sourceFile) => {
+        expect((await run(SourceFileCodec.encode(sourceFile, { related: [] }))).context).toBeNull()
       }),
       { numRuns: numRunsFor({ base: 50 }) }
     )

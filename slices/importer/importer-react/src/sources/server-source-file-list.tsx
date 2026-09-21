@@ -14,6 +14,7 @@ import {
   useSmartSourceFilesQuery,
 } from '../queries/source-files.ts'
 import { formatRegistry } from '../registry.ts'
+import { groupSourceFiles, type ListEntry } from './group-source-files.ts'
 import styles from './server-source-file-list.module.css'
 
 /**
@@ -51,10 +52,23 @@ const SERVER_READ_ERROR = 'That source file could not be read from the server.'
  */
 const JSON_PREVIEW_SIZE_LIMIT = 5 * 1024 * 1024
 
+/** How a group of a study's files is headed. */
+const unitLabel = (count: number): string => `Study · ${count} files`
+
 /** Props for {@link ServerSourceFileList}. */
 interface ServerSourceFileListProps {
   /** Called with the fetched source file once a selected row resolves. */
   readonly onPick: (picked: PickedFile.Type) => void
+  /**
+   * Called with every file of a unit when the reviewer picks the whole thing.
+   *
+   * @remarks
+   * Optional, and the group action exists only when it is given: a host that
+   * consumes one file at a time — the anonymizer's `serverSource` slot — has
+   * nowhere to put a twelve-file pick, so it is offered a list that still
+   * groups the study but only picks a row at a time.
+   */
+  readonly onPickUnit?: ((picked: readonly PickedFile.Type[]) => void) | undefined
 }
 
 /** Props for {@link SourceFileListContent}. */
@@ -64,6 +78,97 @@ interface SourceFileListContentProps {
   readonly rows: readonly SourceFileRow[]
   readonly onPreview: (row: SourceFileRow) => void
   readonly onUse: (row: SourceFileRow) => void
+  readonly onUseUnit: ((rows: readonly SourceFileRow[]) => void) | undefined
+}
+
+/** Props for {@link SourceFileRowItem}. */
+interface SourceFileRowItemProps {
+  readonly row: SourceFileRow
+  readonly onPreview: (row: SourceFileRow) => void
+  readonly onUse: (row: SourceFileRow) => void
+}
+
+/** One source file: its name and upload date, and its two explicit actions. */
+const SourceFileRowItem = ({ row, onPreview, onUse }: SourceFileRowItemProps): JSX.Element => {
+  const title = row.title ?? UNTITLED_LABEL
+  return (
+    <li className={styles.archiveRow}>
+      <div className={styles.archiveMeta}>
+        <span className={styles.archiveTitle}>{title}</span>
+        <span className={styles.archiveDate}>
+          {row.creation === null ? UNDATED_LABEL : DateTime.formatIsoDate(row.creation)}
+        </span>
+      </div>
+      <div className={styles.archiveActions}>
+        <button
+          type="button"
+          className={styles.actionButton}
+          aria-label={`Preview ${title}`}
+          onClick={() => {
+            onPreview(row)
+          }}
+        >
+          Preview
+        </button>
+        <button
+          type="button"
+          className={`${styles.actionButton} ${styles.pickAction}`}
+          aria-label={`Use ${title} as source`}
+          onClick={() => {
+            onUse(row)
+          }}
+        >
+          Use as source
+        </button>
+      </div>
+    </li>
+  )
+}
+
+/** Props for {@link SourceFileUnitItem}. */
+interface SourceFileUnitItemProps {
+  readonly rows: readonly SourceFileRow[]
+  readonly onPreview: (row: SourceFileRow) => void
+  readonly onUse: (row: SourceFileRow) => void
+  readonly onUseUnit: ((rows: readonly SourceFileRow[]) => void) | undefined
+}
+
+/**
+ * The files of one unit under a heading naming it, each row otherwise as it
+ * renders on its own — so picking or previewing a single file of a study stays
+ * exactly where it was.
+ */
+const SourceFileUnitItem = ({
+  rows,
+  onPreview,
+  onUse,
+  onUseUnit,
+}: SourceFileUnitItemProps): JSX.Element => {
+  const label = unitLabel(rows.length)
+  return (
+    <li className={styles.archiveUnit}>
+      <div className={styles.archiveUnitHeading}>
+        <span className={styles.archiveTitle}>{label}</span>
+        {onUseUnit === undefined ? null : (
+          <button
+            type="button"
+            className={`${styles.actionButton} ${styles.pickAction}`}
+            aria-label={`Use all ${rows.length} files of this study as source`}
+            onClick={() => {
+              onUseUnit(rows)
+            }}
+          >
+            Use all as source
+          </button>
+        )}
+      </div>
+      <ul className={styles.archiveList}>
+        {rows.map((row) => (
+          <SourceFileRowItem key={row.id} row={row} onPreview={onPreview} onUse={onUse} />
+        ))}
+      </ul>
+    </li>
+  )
 }
 
 /** The inner list content, rendered via Match over the query state. */
@@ -73,6 +178,7 @@ const SourceFileListContent = ({
   rows,
   onPreview,
   onUse,
+  onUseUnit,
 }: SourceFileListContentProps): JSX.Element =>
   Match.value({ isError, isPending, empty: rows.length === 0 }).pipe(
     Match.when({ isError: true }, () => (
@@ -90,41 +196,24 @@ const SourceFileListContent = ({
     )),
     Match.orElse(() => (
       <ul className={styles.archiveList}>
-        {rows.map((row) => {
-          const title = row.title ?? UNTITLED_LABEL
-          return (
-            <li key={row.id} className={styles.archiveRow}>
-              <div className={styles.archiveMeta}>
-                <span className={styles.archiveTitle}>{title}</span>
-                <span className={styles.archiveDate}>
-                  {row.creation === null ? UNDATED_LABEL : DateTime.formatIsoDate(row.creation)}
-                </span>
-              </div>
-              <div className={styles.archiveActions}>
-                <button
-                  type="button"
-                  className={styles.actionButton}
-                  aria-label={`Preview ${title}`}
-                  onClick={() => {
-                    onPreview(row)
-                  }}
-                >
-                  Preview
-                </button>
-                <button
-                  type="button"
-                  className={`${styles.actionButton} ${styles.pickAction}`}
-                  aria-label={`Use ${title} as source`}
-                  onClick={() => {
-                    onUse(row)
-                  }}
-                >
-                  Use as source
-                </button>
-              </div>
-            </li>
+        {groupSourceFiles(rows).map((entry: ListEntry) =>
+          entry._tag === 'file' ? (
+            <SourceFileRowItem
+              key={entry.row.id}
+              row={entry.row}
+              onPreview={onPreview}
+              onUse={onUse}
+            />
+          ) : (
+            <SourceFileUnitItem
+              key={entry.related}
+              rows={entry.rows}
+              onPreview={onPreview}
+              onUse={onUse}
+              onUseUnit={onUseUnit}
+            />
           )
-        })}
+        )}
       </ul>
     ))
   )
@@ -133,7 +222,7 @@ const SourceFileListContent = ({
  * The uploaded-source-files list, heading and paging included. Explicit
  * **Preview** / **Use as source** actions per row.
  */
-const ServerSourceFileList = ({ onPick }: ServerSourceFileListProps): JSX.Element => {
+const ServerSourceFileList = ({ onPick, onPickUnit }: ServerSourceFileListProps): JSX.Element => {
   const runAuthed = useRunAuthed()
   const sourceFiles = useSmartSourceFilesQuery()
   const [error, setError] = useState<string | null>(null)
@@ -144,6 +233,19 @@ const ServerSourceFileList = ({ onPick }: ServerSourceFileListProps): JSX.Elemen
       const picked = await fetchSourceFile(runAuthed, row)
       setError(null)
       onPick(picked)
+    } catch {
+      setError(SERVER_READ_ERROR)
+    }
+  }
+
+  // A unit's files are fetched together and handed on as one pick, so the
+  // decode sees the whole study and synthesizes the one ImagingStudy it was
+  // imported as — re-picking the files one at a time would not.
+  const pickUnitAsSource = async (unitRows: readonly SourceFileRow[]): Promise<void> => {
+    try {
+      const picked = await Promise.all(unitRows.map((row) => fetchSourceFile(runAuthed, row)))
+      setError(null)
+      onPickUnit?.(picked)
     } catch {
       setError(SERVER_READ_ERROR)
     }
@@ -169,6 +271,13 @@ const ServerSourceFileList = ({ onPick }: ServerSourceFileListProps): JSX.Elemen
         onUse={(row) => {
           void pickAsSource(row)
         }}
+        onUseUnit={
+          onPickUnit === undefined
+            ? undefined
+            : (unitRows) => {
+                void pickUnitAsSource(unitRows)
+              }
+        }
       />
       {sourceFiles.hasNextPage && (
         <button

@@ -9,6 +9,7 @@ export * as DecodedFile from './decoded-file.ts'
 export * as FormatDecode from './format-decode.ts'
 export * as DecodeFunction from './decode-function.ts'
 export * as PerFileDecodeFunction from './per-file-decode-function.ts'
+export * as SourceFileMint from './source-file-mint.ts'
 // Namespaced symbols are reached through their namespace above — a flat
 // re-export here would give each one a second spelling. Only modules that are
 // not namespaces export flat.

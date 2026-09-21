@@ -29,7 +29,7 @@ import { FormatDetector, PickedFile } from 'importer-fundamentals'
  * again.
  */
 const REJECTION_MESSAGE =
-  "That file's format is not one the importer recognizes. Pick a `.har` capture or a LifeLabs `.pdf` report."
+  "That file's format is not one the importer recognizes. Pick a `.har` capture, a LifeLabs `.pdf` report, or a DICOM `.dcm` file."
 
 /**
  * The minimal surface {@link acceptLocalFile} reads off a file.

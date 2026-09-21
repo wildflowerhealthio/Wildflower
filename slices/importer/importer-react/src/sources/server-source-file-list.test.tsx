@@ -2,6 +2,7 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import type * as FhirR4React from 'fhir-r4-react'
 import type { RunAuthed } from 'fhir-r4-react'
@@ -187,6 +188,77 @@ describe('ServerSourceFileList', () => {
     expect(picked?.source).toEqual({ _tag: 'server', reference: 'DocumentReference/har-1' })
   })
 
+  it('should collapse the archives of one study under one heading, with the files still listed', async () => {
+    // Arrange — three DICOM archives, two of them read into one ImagingStudy
+    const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
+    serveArchives([
+      dicomArchiveWire({ id: 'dcm-1', fileName: 'I1.dcm', uploadedAt, study: 'study-a' }),
+      dicomArchiveWire({ id: 'dcm-2', fileName: 'I2.dcm', uploadedAt, study: 'study-a' }),
+      dicomArchiveWire({ id: 'dcm-3', fileName: 'J1.dcm', uploadedAt, study: 'study-b' }),
+    ])
+    render(<ServerSourceFileList onPick={() => undefined} onPickUnit={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
+
+    // Assert — the two-file study is one heading over its two rows; the
+    // lone archive of the other study is an ordinary row with no heading
+    expect(await screen.findByText('Study · 2 files')).toBeDefined()
+    expect(screen.queryByText('Study · 1 files')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Use I1.dcm as source' })).toBeDefined()
+    expect(screen.getByRole('button', { name: 'Use I2.dcm as source' })).toBeDefined()
+    expect(screen.getByText('J1.dcm')).toBeDefined()
+  })
+
+  it('should pick every file of a study when Use-all-as-source is clicked', async () => {
+    // Arrange
+    const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
+    serveArchives([
+      dicomArchiveWire({ id: 'dcm-1', fileName: 'I1.dcm', uploadedAt, study: 'study-a' }),
+      dicomArchiveWire({ id: 'dcm-2', fileName: 'I2.dcm', uploadedAt, study: 'study-a' }),
+    ])
+    let picked: readonly { readonly fileName: string; readonly source: unknown }[] | undefined
+    render(
+      <ServerSourceFileList
+        onPick={() => undefined}
+        onPickUnit={(all) => {
+          picked = all
+        }}
+      />,
+      { wrapper: withQueryClient }
+    )
+    const useAll = await screen.findByRole('button', {
+      name: 'Use all 2 files of this study as source',
+    })
+
+    // Act
+    await userEvent.click(useAll)
+
+    // Assert — one pick carrying both files, each a `server` source, so the
+    // decode downstream sees the whole study rather than two one-file ones
+    await waitFor(() => {
+      expect(picked !== undefined).toBe(true)
+    })
+    expect(picked?.map((one) => one.fileName)).toEqual(['I1.dcm', 'I2.dcm'])
+    expect(picked?.map((one) => one.source)).toEqual([
+      { _tag: 'server', reference: 'DocumentReference/dcm-1' },
+      { _tag: 'server', reference: 'DocumentReference/dcm-2' },
+    ])
+  })
+
+  it('should offer no whole-study pick to a host that takes one file at a time', async () => {
+    // The anonymizer's `serverSource` slot: it still sees the study grouped,
+    // but has nowhere to put a two-file pick, so the action is absent.
+    const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
+    serveArchives([
+      dicomArchiveWire({ id: 'dcm-1', fileName: 'I1.dcm', uploadedAt, study: 'study-a' }),
+      dicomArchiveWire({ id: 'dcm-2', fileName: 'I2.dcm', uploadedAt, study: 'study-a' }),
+    ])
+    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
+
+    expect(await screen.findByText('Study · 2 files')).toBeDefined()
+    expect(screen.queryByRole('button', { name: /Use all/u })).toBeNull()
+  })
+
   it('should render the empty state format-neutrally when the server has no source files', async () => {
     // Arrange
     serveArchives([])
@@ -249,6 +321,36 @@ const lifelabsPdfArchiveWire = (fields: {
         attachment: {
           contentType: 'application/pdf',
           data: base64(PDF_BYTES_TEXT),
+          title: fields.fileName,
+          creation: iso,
+        },
+      },
+    ],
+  }
+}
+
+const dicomArchiveWire = (fields: {
+  readonly id: string
+  readonly fileName: string
+  readonly uploadedAt: DateTime.Utc
+  readonly study: string
+}): unknown => {
+  const iso = DateTime.formatIso(fields.uploadedAt)
+  const coding = [{ system: DICOM_SYSTEM, code: DICOM_SOURCE_FILE_CODE }]
+  return {
+    resourceType: 'DocumentReference',
+    id: fields.id,
+    status: 'current',
+    type: { coding },
+    category: [{ coding }],
+    date: iso,
+    subject: { reference: 'Patient/p-1' },
+    context: { related: [{ reference: `ImagingStudy/${fields.study}` }] },
+    content: [
+      {
+        attachment: {
+          contentType: 'application/dicom',
+          data: base64('DICM stand-in'),
           title: fields.fileName,
           creation: iso,
         },

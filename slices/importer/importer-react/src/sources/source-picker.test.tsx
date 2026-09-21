@@ -253,6 +253,42 @@ describe('SourcePicker', () => {
     expect(calls[0]).toEqual(['one.har', 'two.har'])
   })
 
+  it('should pick a whole folder as one batch, through a directory input', async () => {
+    // Arrange — a study arrives as a directory, not as files chosen by hand
+    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    const calls: string[][] = []
+    render(
+      <SourcePicker
+        detectors={testDetectors}
+        onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))}
+      />,
+      { wrapper: withQueryClient }
+    )
+
+    // The input the folder button opens is a directory input from its first
+    // paint — a file input would silently pick one file at a time.
+    const folderInput = screen.getByLabelText('Import folder')
+    expect(folderInput.hasAttribute('webkitdirectory')).toBe(true)
+
+    // Act
+    await userEvent.upload(folderInput, [harFile('one.har'), harFile('two.har')])
+
+    // Assert — one batch, exactly as a multi-file pick produces
+    await waitFor(() => {
+      expect(calls).toHaveLength(1)
+    })
+    expect(calls[0]).toEqual(['one.har', 'two.har'])
+  })
+
+  it('should offer no folder pick to a caller that consumes one file at a time', () => {
+    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    render(<SourcePicker detectors={testDetectors} onPick={() => undefined} mode="single" />, {
+      wrapper: withQueryClient,
+    })
+    expect(screen.queryByLabelText('Import folder')).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Choose a folder' })).toBeNull()
+  })
+
   it('should pick the valid files in a mixed drop and name the ones that were not HARs', async () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })

@@ -1,12 +1,11 @@
 import { DicomHeader } from 'dicom'
 import { writeDicom } from 'dicom/test-helpers'
-import { DateTime, Effect, Either, Option, Schema } from 'effect'
+import { DateTime, Effect, Either, Option } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
-import { Patient } from 'fhir-r4/resources'
 import { PickedFile, type FormatDecode } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { dicomImporter, patientSubjectOf } from './dicom-importer.ts'
+import { dicomImporter } from './dicom-importer.ts'
 import { patientOriginalId } from './fhir/to-fhir.ts'
 import { defaultDicomSettings } from './settings.ts'
 import { DICOM_SYSTEM } from './source-system.ts'
@@ -150,35 +149,6 @@ describe('dicomImporter', () => {
       )
       expect(result.decoded.sections).toHaveLength(0)
       expect(result.unreadableFiles).toHaveLength(1)
-    })
-  })
-
-  describe('patientSubjectOf', () => {
-    const anyFile: PickedFile.Type = {
-      fileName: 'sample.dcm',
-      bytes: new Uint8Array(),
-      source: PickedFile.Source.local,
-    }
-
-    it('has no subject when the decode synthesized no Patient', () => {
-      // A header with no PatientID and no PatientName decodes to no resources
-      // at all, so there is nothing to file the raw image under.
-      expect(patientSubjectOf(anyFile, { sections: [], notes: [] })).toBeUndefined()
-    })
-
-    it('names the Patient the decode synthesized, without re-parsing the file', () => {
-      const patient = Schema.decodeUnknownSync(Patient.Schema)({
-        resourceType: 'Patient',
-        id: 'wf-patient-1',
-      })
-      expect(
-        patientSubjectOf(anyFile, {
-          sections: [
-            { title: 'CT', resources: [{ key: 'patient', title: 'Patient', resource: patient }] },
-          ],
-          notes: [],
-        })
-      ).toEqual({ reference: 'Patient/wf-patient-1' })
     })
   })
 })

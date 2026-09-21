@@ -240,8 +240,36 @@ assumption that the files are independent. _Per-file_ is a real assumption: your
 `decodeOne` is handed one file and cannot see the others, and the per-file
 results sum into the batch's. If your format's files must be read _together_ — a
 multi-part archive, a manifest naming its siblings — it is not per-file, and
-needs its own sibling module beside `per-file-decode-function.ts` rather than a
-widened version of that one. Do not smuggle cross-file state through `settings`.
+needs its own constructor rather than a widened version of that one. Do not
+smuggle cross-file state through `settings`.
+
+`dicom-importer-core` is the worked example. Its unit is a **study**: the
+files of one `StudyInstanceUID` make up one `ImagingStudy` whose counts,
+modality set and earliest `started` no single file states. Its
+`dicom-decode.ts` writes the `DecodeFunction.WithContext` directly, and what
+it shares with `PerFileDecodeFunction` — resolving a pick to its
+`SourceFile.Reference`, deferring the archive's encode until the decode has
+named how to file it, listing the minted archives as their own section — comes
+from `importer-fundamentals`' **`SourceFileMint`**. Write a group decode the
+same way round: the machinery that is not about _your_ unit belongs in
+`SourceFileMint`; the partition, the synthesis and the notes are yours. Four
+obligations the shell still expects of any decode, which the per-file
+constructor would otherwise have met for you:
+
+- **namespace the unit's review keys** by the slot of the pick that opened it
+  (`FormatDecode.keyPrefix`), so one unit's fixed keys cannot collide with
+  another's;
+- **stamp `meta.source`** on the unit's resources (`MetaSource.stampDecoded`).
+  `meta.source` holds one reference, so a unit spanning files has to choose
+  one archive to stand for it — choose it by the _unit's_ own order rather
+  than the pick's, or the stamp changes with the order the files were picked
+  in;
+- **mint one archive per file**, each filed under a `SourceFileCodec.Filing`.
+  `subject` says whose record the file is in; `related` (`context.related`)
+  says which resources it is a source of, which is what lets the server list
+  show a unit's archives as one unit and re-pick them together;
+- **fold a failing unit into `unreadableFiles`**, one row per file of it, so
+  the other units stay reviewable and `decode` still never fails.
 
 The result is a plain record, not a class instance — which is what lets
 `importer-react`'s registry extend it with a `SettingsPicker` by spreading it,

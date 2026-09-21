@@ -1,5 +1,13 @@
 import { Array as Arr, Effect } from 'effect'
-import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type JSX,
+  type RefObject,
+} from 'react'
 
 import type { PickedFile, FormatDetector } from 'importer-fundamentals'
 import { acceptLocalFile, type ReadableFile, type RejectedFile } from './local-file.ts'
@@ -14,7 +22,12 @@ import styles from './source-picker.module.css'
  * @remarks
  * Drop is an enhancement, not the only path: the zone is itself a button that
  * opens the file picker, so the whole surface is reachable by keyboard and
- * named for a screen reader. A local file — dropped or chosen — is
+ * named for a screen reader. A batch pick also offers a **folder**: a DICOM
+ * study arrives as a directory of hundreds of `.dcm` files, and selecting
+ * them by hand is the kind of thing a folder pick exists for. It is the same
+ * batch path — the files a folder yields go through the same detectors, and
+ * the ones no format claims are reported by name exactly as a file pick's
+ * are. A local file — dropped or chosen — is
  * identified against the registered formats' detectors at the
  * picker, so a file no format claims is rejected *here*, next to the control
  * the user just used, rather than surfacing downstream. The server picks come
@@ -42,6 +55,24 @@ import styles from './source-picker.module.css'
  * first-accepted file, and the OS dialog only offers one file to begin with.
  */
 type SourcePickerMode = 'batch' | 'single'
+
+/**
+ * Turn a file input into a directory input.
+ *
+ * @remarks
+ * Through a ref rather than as JSX: `webkitdirectory` is a non-standard
+ * attribute React's `InputHTMLAttributes` does not declare, and writing it as
+ * a prop would need a cast around the whole element. Setting the attribute
+ * imperatively needs none — and the input is a directory input from its first
+ * paint, before any click can reach it.
+ */
+const useDirectoryInput = (): RefObject<HTMLInputElement | null> => {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    ref.current?.setAttribute('webkitdirectory', '')
+  }, [])
+  return ref
+}
 
 /** Props for {@link SourcePicker}. */
 interface SourcePickerProps {
@@ -106,6 +137,7 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
  */
 const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps): JSX.Element => {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useDirectoryInput()
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
 
@@ -138,6 +170,7 @@ const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps):
     )
 
   const openPicker = (): void => fileInputRef.current?.click()
+  const openFolderPicker = (): void => folderInputRef.current?.click()
 
   const onFileInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const files = Array.from(event.target.files ?? [])
@@ -179,6 +212,21 @@ const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps):
         className={styles.fileInput}
         onChange={onFileInputChange}
       />
+      {mode === 'batch' && (
+        <>
+          <button type="button" className={styles.folderButton} onClick={openFolderPicker}>
+            Choose a folder
+          </button>
+          <input
+            ref={folderInputRef}
+            type="file"
+            aria-label="Import folder"
+            multiple
+            className={styles.fileInput}
+            onChange={onFileInputChange}
+          />
+        </>
+      )}
       {error !== null && (
         <p role="alert" className={styles.error}>
           {error}
@@ -189,6 +237,14 @@ const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps):
           setError(null)
           onPick([picked])
         }}
+        onPickUnit={
+          mode === 'single'
+            ? undefined
+            : (picked) => {
+                setError(null)
+                onPick(picked)
+              }
+        }
       />
     </section>
   )

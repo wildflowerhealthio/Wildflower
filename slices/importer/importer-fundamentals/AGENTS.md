@@ -93,7 +93,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   deterministic mint — the id a SHA-256 of the bytes plus the file name through
   `fhir-r4/identity`'s `localResourceId`, so re-importing the same file upserts
   rather than duplicating and no two formats collide), **`encode`** (source file
-  → its `DocumentReference`, optionally under a **`Subject`**),
+  → its `DocumentReference`, under a **`Filing`**: the **`Subject`** whose
+  record it belongs in, and the `related` resources it is a source of, which
+  the resource carries as `context.related`),
   **`mintResource`** (the mint then the encode, in one step — named for its
   _result_, since unlike `tryFromNamedBytes` it yields the stored resource
   rather than a `SourceFile.Type`), **`decode`** (a stored resource → back, or a
@@ -128,7 +130,9 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   the files can run concurrently and one rejection cannot spoil the rest. A
   format whose files must be read together (a multi-part archive, a manifest
   naming its siblings) is not per-file and needs a **sibling module beside this
-  one**, not a widened version of it.
+  one**, not a widened version of it — `dicom-importer-core`'s study decode is
+  the first, and it lives in that binding rather than here because what is
+  custom about it (a study, its series, its instances) is DICOM's alone.
   For each claimed file `make` resolves the source to a `SourceFile.Reference`
   (minting for a `local` pick, passing a `server` pick's existing reference
   through verbatim), runs the binding's `decodeOne` with it, **namespaces the
@@ -136,16 +140,23 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   every resource's `meta.source` via `MetaSource.stampDecoded`, finishes the mint
   under the subject `subjectFor` reads off the decode, prepends it as the file's
   "Source file" section, and folds a `ParseError` into that file's own
-  `unreadableFiles` entry. That row's shape is this module's too and stays
-  **private** to it — the section title, the per-file row key, and the prepend
-  are each one unexported binding, since nothing outside `make` builds the row
-  and a test that asserted against the constant rather than the literal could not
-  catch it changing. It calls `source-file-codec.ts`'s operations directly and
-  _unbound_, so the decode it returns still carries the `FormatContext`
-  requirement for `FileImporter.make` to bind — and takes no
+  `unreadableFiles` entry. That row's shape is this module's, and it takes no
   `SourceFileCodec.Format` of its own, because a second copy of a format's
   constants here could disagree with the one the importer reads `categoryToken`
   and `isSourceFile` out of.
+- `src/source-file-mint.ts` — the **`SourceFileMint`** namespace: the minting
+  half **every** decode function shares, whatever its unit. **`resolve(file)`**
+  yields a pick's `SourceFile.Reference` — a `server` pick's existing one, or a
+  freshly minted one plus the deferred **`encode(filing)`** that builds the
+  archive _after_ the decode has run, since the `SourceFileCodec.Filing` it is
+  stored under is read off the decode's own resources.
+  **`prependSection(decoded, rows)`** puts the minted archives ahead of the
+  sections read out of them ("Source file", or "Source files" for a unit of
+  several), and **`key(fileName)`** is the row key. Split out of
+  `per-file-decode-function.ts` when a second constructor appeared: none of it
+  is per-file or per-group. Like its caller it goes through the codec
+  _unbound_, so the decode a constructor builds still carries the
+  `FormatContext` requirement for `FileImporter.make` to bind.
 - `src/staged-import.ts` — the **`StagedImport`** namespace, the pure per-resource
   selection model. A `Selection` is two axes: `excludedResources`
   (per-resource opt-outs, keyed by a `DecodedFile.Resource`'s `key`) and
@@ -228,9 +239,10 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   disagree with the ones `categoryToken` and `isSourceFile` were built from, and
   nothing would catch it.
 - **`decode` never fails.** Malformed input is an `unreadableFiles` entry, not
-  an error channel: `PerFileDecodeFunction.make` folds the `ParseError` into the file
-  it belongs to, so one bad file in a batch leaves the rest reviewable and
-  nothing above this package needs a `catchAll`.
+  an error channel: a decode constructor folds the `ParseError` into the file
+  it belongs to (a group format, into one row per file of the failing unit), so
+  one bad file in a batch leaves the rest reviewable and nothing above this
+  package needs a `catchAll`.
 - **Nothing here is re-exported twice.** A symbol has one route: `index.ts`
   exposes each module as its namespace, and a flat re-export beside it would
   give the same symbol a second spelling. Only modules that are _not_
@@ -246,10 +258,11 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   `decodeOne` keys within _one_ file, because that is all it can see; the
   batch merges every claimed file's sections into one format-wide review,
   while the selection, the server-diff verdicts and the write plan are all
-  keyed by `(format, key)`. `PerFileDecodeFunction.make` prefixes each file's keys
-  with its slot, which is what makes a fixed key safe. Do not push that
-  obligation down into the bindings — a `decodeOne` that tries to be unique
-  across a batch cannot be, since it is not given the batch.
+  keyed by `(format, key)`. The decode constructor prefixes each unit's keys
+  with the slot of the pick that opened it (`FormatDecode.keyPrefix`), which is
+  what makes a fixed key safe. Do not push that obligation down into a
+  per-file `decodeOne` — one that tries to be unique across a batch cannot be,
+  since it is not given the batch.
 - **Selection keys by a `DecodedFile.Resource`'s `key`.** Selection state must
   be serializable and survive a settings re-decode, so both axes hold string
   keys; a key that disappears simply stops applying.

@@ -2,6 +2,7 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
+import { writeDicom, type DicomTagMap } from 'dicom/test-helpers'
 import { DateTime, Effect, Layer, Schema } from 'effect'
 import { FhirR4ResourcesRouterContext, type RunAuthed } from 'fhir-r4-react'
 import type * as FhirR4React from 'fhir-r4-react'
@@ -302,6 +303,46 @@ describe('ImporterScreen', () => {
     }
   })
 
+  it('imports a DICOM study of several files as one ImagingStudy with an archive per file', async () => {
+    // Arrange — three files of one study: two instances of one series, one of
+    // another. Decoded per file, this would be three ImagingStudys sharing an
+    // id, each overwriting the last's series list.
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — pick the study's files together, as a folder pick yields them
+    await userEvent.upload(screen.getByLabelText('Import file'), [
+      dicomFile('I1.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I1' }),
+      dicomFile('I2.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I2' }),
+      dicomFile('I3.dcm', { SeriesInstanceUID: 'S2', SeriesNumber: 2, SOPInstanceUID: 'I3' }),
+    ])
+    // Three archives + one Patient + one ServiceRequest + one ImagingStudy.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Import 6 resources/ })).toBeDefined()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Import 6 resources/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+
+    // Assert — one ImagingStudy carrying all three instances, and one archive
+    // per file, each named by the instance it stores
+    const studies = writes().filter((write) => write.url.includes('/ImagingStudy/'))
+    expect(studies).toHaveLength(1)
+    const study = Schema.decodeUnknownSync(ImagingStudyWire)(JSON.parse(studies[0].body))
+    expect(study.numberOfSeries).toBe(2)
+    expect(study.numberOfInstances).toBe(3)
+
+    const archiveIds = writes()
+      .filter((write) => write.url.includes('/DocumentReference/'))
+      .map((write) => idFromUrl(write.url))
+    expect(new Set(archiveIds).size).toBe(3)
+    const instanceFileIds = study.series.flatMap((series) =>
+      series.instance.map((instance) => instance.extension[0]?.valueString)
+    )
+    expect(new Set(instanceFileIds)).toEqual(new Set(archiveIds))
+  })
+
   it('excludes an unchecked resource from the write set — the reviewer opt-out is honoured on the wire', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
@@ -532,6 +573,45 @@ const RECOGNIZED_HAR: string = Effect.runSync(
   // matchers claim these entries, mirroring what a real capture that
   // observed the method would carry through.
 ).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
+
+/** One `.dcm` of the canonical study, as a `File` for the OS-picker path. */
+const dicomFile = (name: string, tags: DicomTagMap): File =>
+  new File(
+    [
+      // Re-wrapped through the ambient `Uint8Array`, the same single-realm
+      // fix `RealmSafeTextEncoder` makes for jsdom's encoder.
+      new Uint8Array(
+        writeDicom({
+          StudyInstanceUID: '1.2.3.4.5',
+          PatientID: 'P001',
+          PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
+          Modality: 'CT',
+          AccessionNumber: 'ACC001',
+          ...tags,
+        })
+      ),
+    ],
+    name,
+    { type: 'application/dicom' }
+  )
+
+/** Just enough of a written `ImagingStudy` to assert its counts and instance links. */
+const ImagingStudyWire = Schema.Struct({
+  numberOfSeries: Schema.Number,
+  numberOfInstances: Schema.Number,
+  series: Schema.Array(
+    Schema.Struct({
+      instance: Schema.Array(
+        Schema.Struct({
+          extension: Schema.optionalWith(
+            Schema.Array(Schema.Struct({ valueString: Schema.optional(Schema.String) })),
+            { default: () => [] }
+          ),
+        })
+      ),
+    })
+  ),
+})
 
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>

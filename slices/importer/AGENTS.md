@@ -62,10 +62,12 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
 - **[`dicom-importer-core`](./dicom-importer-core/AGENTS.md)** (the DICOM
   binding) — `dicomImporter` for format `'dicom'`: byte-level `.dcm`
   detection (DICM magic at offset 128 or `.dcm` extension), the source-file
-  coding that stores a DICOM file as a FHIR `DocumentReference` filed under the
-  Patient the decode synthesized (its `subjectFor` reads that Patient off the
-  decode, so the file is parsed once), header tag parsing, and FHIR R4
-  synthesis (Patient / ServiceRequest / ImagingStudy).
+  coding that stores a DICOM file as a FHIR `DocumentReference` filed under
+  the Patient the decode synthesized and related to the `ImagingStudy` it was
+  read into, header tag parsing, and FHIR R4 synthesis (Patient /
+  ServiceRequest / ImagingStudy). The one format whose **unit is not a file**:
+  its decode partitions a pick by `StudyInstanceUID` and yields one
+  `ImagingStudy` per study, with one archive per file.
 - **[`dicom-importer-react`](./dicom-importer-react/AGENTS.md)** (the DICOM
   UI) — `DicomSettingsPicker` (the acquiring equipment's time zone).
 - **[`importer-core`](./importer-core/AGENTS.md)** (the pure core) — the closed
@@ -145,7 +147,9 @@ sits above `http-extraction` and below every binding, exactly as
   settings. A format's `decode` mints its own source-file `DocumentReference`
   for each `local` pick, lists it among the reviewed sections, and stamps every
   extracted resource's `meta.source` with it; nothing above the binding mints
-  or stamps anything. The write itself is format-blind — one shared
+  or stamps anything. What a format's decode treats as _one unit_ is its own
+  business too: HAR and LifeLabs decode a file at a time, DICOM a whole study
+  — the shell hands every claimed file to one `decode` either way. The write itself is format-blind — one shared
   `persistBatchBundle` at the shell.
 - **The registry is closed and compile-time.** The importer registry is
   `importer-core`'s literal `{ har, 'lifelabs-pdf', dicom }`, and

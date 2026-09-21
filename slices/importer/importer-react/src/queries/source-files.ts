@@ -99,6 +99,18 @@ interface SourceFileRow {
   readonly title: string | null
   /** When the source file was uploaded, or `null` when the resource states no instant. */
   readonly creation: DateTime.Utc | null
+  /**
+   * The resource this source file is one source of — `context.related` — or
+   * `null` when it names none.
+   *
+   * @remarks
+   * What lets the list show a study's files as one study rather than N loose
+   * rows. Only a group format writes it: a DICOM study's archives all name the
+   * `ImagingStudy` they were read into, which is the only thing on the stored
+   * resource that separates two studies of one patient (their `subject` is the
+   * same `Patient`). A format whose files stand alone leaves it `null`.
+   */
+  readonly related: string | null
 }
 
 /** One page of source-file rows, plus the cursor for the next page. */
@@ -172,6 +184,7 @@ const rowsOf = (
       format,
       title: attachment?.title ?? null,
       creation: attachment?.creation ?? null,
+      related: resource.context?.related[0]?.reference ?? null,
     })
   })
 

@@ -38,6 +38,25 @@ interface Subject {
   readonly reference: string
 }
 
+/**
+ * How a minted source file is filed: whose record it belongs in, and which
+ * resources it is one source of.
+ *
+ * @remarks
+ * A one-file format names at most a subject. A format whose files are read
+ * together names `related` as well, so the archives of one unit can be found
+ * from the resource they were read into — every `.dcm` of a study names that
+ * study's `ImagingStudy`, which is the only thing on the stored resource that
+ * separates two studies of one patient (their `subject` is the same
+ * `Patient`).
+ */
+interface Filing {
+  /** Whose record the file belongs in. */
+  readonly subject?: Subject | undefined
+  /** The resources this file is one source of — `context.related`. */
+  readonly related?: readonly Subject[] | undefined
+}
+
 const IdSchema = Schema.NonEmptyString.pipe(Schema.pattern(/^[A-Za-z0-9\-.]{1,64}$/u)).annotations({
   identifier: `ImportSourceFileId`,
   description: `FHIR resource id of an uploaded source file; deterministic in the file hash and name.`,
@@ -89,14 +108,15 @@ class FormatContext extends Context.Tag('SourceFileFormatContext')<FormatContext
 const toWire = ({
   sourceFile,
   hash,
-  subject,
+  filing,
 }: {
   readonly sourceFile: SourceFile.Type
   readonly hash: string
-  readonly subject: Subject | undefined
+  readonly filing: Filing
 }): Effect.Effect<FhirR4.DocumentReference, never, FormatContext> =>
   Effect.map(FormatContext, ({ coding, contentType, securityLabel, descriptionPrefix }) => {
     const uploadedAt = DateTime.formatIso(sourceFile.uploadedAt)
+    const { subject, related } = filing
     return {
       resourceType: 'DocumentReference',
       id: sourceFile.id,
@@ -106,6 +126,9 @@ const toWire = ({
       date: uploadedAt,
       description: `${descriptionPrefix}${sourceFile.fileName}`,
       ...(subject === undefined ? {} : { subject }),
+      ...(related === undefined || related.length === 0
+        ? {}
+        : { context: { related: related.map((one) => ({ ...one })) } }),
       ...(securityLabel === undefined
         ? {}
         : { securityLabel: [{ coding: securityLabel.map((one) => ({ ...one })) }] }),
@@ -133,18 +156,18 @@ const toWire = ({
  * report a digest failure against the schema they were working in.
  *
  * @param sourceFile - The minted source file to store
- * @param subject - The subject to file it under, when the format names one
+ * @param filing - How to file it: its subject and the resources it is a source of
  * @param ast - The schema to blame for a failure
  * @returns The source file's `DocumentReference`
  */
 const hashAndBuild = (
   sourceFile: SourceFile.Type,
-  subject: Subject | undefined,
+  filing: Filing,
   ast: SchemaAST.AST
 ): Effect.Effect<DocumentReference.Type, ParseResult.ParseIssue, FormatContext> =>
   sha256Base64(new Uint8Array(sourceFile.bytes)).pipe(
     Effect.mapError((error) => new ParseResult.Type(ast, sourceFile, error.reason)),
-    Effect.flatMap((hash) => toWire({ sourceFile, hash, subject })),
+    Effect.flatMap((hash) => toWire({ sourceFile, hash, filing })),
     Effect.flatMap(decodeResource)
   )
 
@@ -243,7 +266,7 @@ const FromDocumentReferenceSchema: Schema.Schema<
         encodeResource(resource),
         Effect.flatMap((wire) => decode(wire, ast))
       ),
-    encode: (sourceFile, _options, ast) => hashAndBuild(sourceFile, undefined, ast),
+    encode: (sourceFile, _options, ast) => hashAndBuild(sourceFile, {}, ast),
   }
 ).annotations({
   identifier: `SourceFileFromDocumentReference`,
@@ -257,15 +280,16 @@ const validateSourceFile = ParseResult.validate(Schema.typeSchema(SourceFileSche
  * public mirror of {@link decode}.
  *
  * @param sourceFile - The minted source file to store
- * @param subject - The subject to file it under, when the format names one
+ * @param filing - How to file it: its subject, and the resources it is a source
+ *   of (`context.related`). Empty by default — an archive nothing names.
  * @returns The source file's `DocumentReference`
  */
 const encode = (
   sourceFile: SourceFile.Type,
-  subject?: Subject
+  filing: Filing = {}
 ): Effect.Effect<DocumentReference.Type, ParseResult.ParseError, FormatContext> =>
   validateSourceFile(sourceFile).pipe(
-    Effect.flatMap((valid) => hashAndBuild(valid, subject, FromDocumentReferenceSchema.ast)),
+    Effect.flatMap((valid) => hashAndBuild(valid, filing, FromDocumentReferenceSchema.ast)),
     Effect.mapError(ParseResult.parseError)
   )
 
@@ -280,14 +304,14 @@ const encode = (
  * decode has run.
  *
  * @param picked - The picked file's name and bytes
- * @param subject - The subject to file it under, when the format names one
+ * @param filing - How to file it; see {@link encode}
  * @returns The source file's `DocumentReference`
  */
 const mintResource = (
   picked: PickedFile.NamedBytes,
-  subject?: Subject
+  filing: Filing = {}
 ): Effect.Effect<DocumentReference.Type, ParseResult.ParseError, FormatContext> =>
-  tryFromNamedBytes(picked).pipe(Effect.flatMap((sourceFile) => encode(sourceFile, subject)))
+  tryFromNamedBytes(picked).pipe(Effect.flatMap((sourceFile) => encode(sourceFile, filing)))
 
 const inFormatsCategory = (
   documentReference: DocumentReference.Type
@@ -313,4 +337,4 @@ export {
   tryFromNamedBytes,
   SourceFileSchema as Schema,
 }
-export type { Format, Subject }
+export type { Filing, Format, Subject }

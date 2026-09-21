@@ -171,3 +171,27 @@
   text-decoration: none;
   cursor: pointer;
 }
+
+/*
+ * A unit's files: one heading and the ordinary rows beneath it, indented so
+ * the nesting reads without a second border around every member.
+ */
+.archiveUnit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+}
+
+.archiveUnitHeading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.archiveUnit .archiveList {
+  padding-inline-start: var(--space-4);
+}
