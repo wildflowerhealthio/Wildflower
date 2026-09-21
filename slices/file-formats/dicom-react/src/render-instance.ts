@@ -127,6 +127,33 @@ async function renderInstance(bytes: Uint8Array, element: HTMLDivElement): Promi
     await viewport.setStack([imageId])
     viewport.render()
 
+    // TEMPORARY diagnostic for the "decoded but painted nothing" case — remove
+    // once the cause is pinned. Separates the three ways a rendered image can
+    // still show black: an empty/short scalar array, a VOI window that maps the
+    // whole image outside the display range, and a degenerate canvas.
+    const imageData = viewport.getImageData()
+    const scalars = imageData?.scalarData
+    let scalarMin = Number.POSITIVE_INFINITY
+    let scalarMax = Number.NEGATIVE_INFINITY
+    if (scalars) {
+      for (let i = 0; i < scalars.length; i += 997) {
+        const value = scalars[i] ?? 0
+        if (value < scalarMin) scalarMin = value
+        if (value > scalarMax) scalarMax = value
+      }
+    }
+    console.info('[dicom-preview] painted', {
+      dimensions: imageData?.dimensions,
+      scalarType: scalars?.constructor.name,
+      scalarLength: scalars?.length,
+      scalarSampledRange: [scalarMin, scalarMax],
+      voiRange: viewport.getProperties().voiRange,
+      invert: viewport.getProperties().invert,
+      canvasSize: [viewport.canvas?.width, viewport.canvas?.height],
+      elementSize: [element.clientWidth, element.clientHeight],
+      cpuRendering: cornerstoneCore.getShouldUseCPURendering(),
+    })
+
     return rendered
   } catch (error) {
     // Carried out rather than logged: the pane renders it beside the Encoding
