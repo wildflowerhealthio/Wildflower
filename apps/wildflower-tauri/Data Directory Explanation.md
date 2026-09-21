@@ -37,7 +37,7 @@ alongside the ones Pages, Preview and Firefox get. A user can copy a database
 off the device, back it up, or drop a file in, without the app having to grow a
 transfer feature for it.
 
-Two things have to be true for that folder to appear, and neither works alone:
+Three things have to be true for that folder to appear, and none works alone:
 
 1. The data has to be in `Documents`. `resolve_data_dir` in `src-tauri/src/lib.rs`
    borrows the app handle and asks its path resolver for `document_dir()` on iOS,
@@ -45,17 +45,35 @@ Two things have to be true for that folder to appear, and neither works alone:
    platform's own candidate is ever resolved — `document_dir()` fails outright on
    a desktop that has no such user directory, and a platform that never reads it
    must not be able to fail startup on it.
-2. The bundle has to opt in, with `UIFileSharingEnabled` in the iOS `Info.plist`.
-   Without the key, `Documents` is still where the data lives — it is simply
-   invisible, and the change looks like it did nothing. A unit test
-   (`both_ios_plists_declare_file_sharing`) holds the key in both plists, since
-   losing it from either would quietly undo half the feature.
+2. The bundle has to opt in, with `UIFileSharingEnabled`.
+3. The bundle has to opt in **again**, with `LSSupportsOpeningDocumentsInPlace`.
 
-The key lives in [`src-tauri/Info.ios.plist`](./src-tauri/Info.ios.plist) rather
+The third one is the surprise, and it is why this originally shipped looking like
+it had done nothing. `UIFileSharingEnabled` on its own exposes `Documents` only to
+Finder/iTunes file sharing over a cable; the **on-device** Files app lists a
+folder under "On My iPhone" only when the bundle also declares
+`LSSupportsOpeningDocumentsInPlace`. Miss either key and `Documents` is still
+where the data lives — it is simply invisible on the device, which reads exactly
+like the data directory change never happened.
+
+That second key is what makes the folder a real document container: other apps
+can open and save files inside it in place, rather than taking a copy. That
+includes the live SQLite databases, which is the reason to know it is set — a
+`.sqlite` opened in place by another app while the host has it open is a
+corruption risk, not a supported workflow. The exposure was asked for anyway: the
+point of the folder is that a user can copy a database off the device or drop a
+file in without the app growing a transfer feature. Nothing about the key invites
+in-place editing of the databases; it just no longer forbids it.
+
+A unit test (`both_ios_plists_declare_files_app_keys`) holds **both** keys in
+**both** iOS plists, since losing either from either would quietly undo the
+feature.
+
+Both keys live in [`src-tauri/Info.ios.plist`](./src-tauri/Info.ios.plist) rather
 than only in the generated `gen/apple/wildflower-tauri_iOS/Info.plist`:
 `tauri ios build` merges `Info.ios.plist` over the generated plist on every build
 (last writer wins), so that copy survives a regenerated Xcode project. The
-generated plist carries the key too — it is committed, and it is what an
+generated plist carries them too — it is committed, and it is what an
 Xcode-opened build of `gen/apple/wildflower-tauri.xcodeproj` reads directly,
 without the merge step.
 
@@ -67,10 +85,53 @@ looks like a fresh one.
 The folder is named after the target's `PRODUCT_NAME` (`Wildflower`), not the
 app's `productName` (`Wildflower Host`).
 
-`UIFileSharingEnabled` exposes the directory; it does not make the app a document
-browser. `LSSupportsOpeningDocumentsInPlace`, the key that lets _other_ apps edit
-files there in place, is deliberately not set — nothing here is a document meant
-to be edited by another app, and a live SQLite database least of all.
+## Apple plist layering
+
+There are three plists in play, and which one reaches which bundle is not
+guessable from the filenames. The Tauri CLI's own config schema
+(`node_modules/@tauri-apps/cli/config.schema.json`, under `bundle.macOS.infoPlist`
+and `bundle.iOS.infoPlist`) is the authority:
+
+| File                                        | Merged into                    |
+| ------------------------------------------- | ------------------------------ |
+| `src-tauri/Info.plist`                      | macOS **and** iOS              |
+| `src-tauri/Info.ios.plist`                  | iOS only                       |
+| `gen/apple/wildflower-tauri_iOS/Info.plist` | nothing — it _is_ the iOS base |
+
+So a key both Apple platforms need goes in `Info.plist`; a key only iPhones care
+about goes in `Info.ios.plist`. Either way the generated plist needs its own copy,
+because an Xcode-opened build never runs the merge. There is no
+`Info.macos.plist` — the CLI does not look for one.
+
+The Files-app pair above is iOS-only. The network pair below is shared.
+
+## Reaching the network at all
+
+Two more keys sit in [`src-tauri/Info.plist`](./src-tauri/Info.plist), covered by
+`apple_plists_declare_local_network_access`:
+
+- **`NSLocalNetworkUsageDescription`** — the string the system shows in its
+  local-network permission prompt, required on macOS 15+ and iOS 14+ for any
+  connection off the loopback interface. The `dev:ios` script serves the UI from a
+  LAN address, and the apps launch flow opens self-hosted apps that may live on
+  the same network. Without the key the OS denies the connection outright, and
+  never prompts — so the failure looks like a broken dev server rather than a
+  missing plist entry.
+- **`NSAppTransportSecurity`** — App Transport Security blocks cleartext HTTP by
+  default, and the host serves and loads a lot of it. The exemptions are scoped
+  rather than blanket: `NSAllowsLocalNetworking` for the LAN dev server,
+  `NSAllowsArbitraryLoadsInWebContent` because `resolve_http_url` admits plain
+  `http` before handing a URL to the native-webview plugin, and an
+  `NSExceptionDomains` entry for `localhost` (loopback is not covered by
+  `NSAllowsLocalNetworking`, and stating it here keeps it even if the merge
+  replaces Tauri's own `bundle.macOS.exceptionDomain` default wholesale).
+
+  `NSAllowsArbitraryLoads`, the blanket switch, is deliberately absent, and the
+  test asserts its absence. It is the key Apple asks for written justification
+  about at App Store review, the scoped keys above take precedence over it on the
+  deployment targets here (iOS 14, macOS 10.13), and leaving ATS on means the
+  Rust-side traffic — the rathole tunnel client, the tunnel `/health` probe, the
+  collectors' upstream fetches — stays enforced.
 
 ## Android is still private
 

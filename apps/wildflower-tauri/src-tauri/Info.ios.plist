@@ -2,12 +2,23 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- iOS-only overlay. Keys that both Apple bundles need live in `Info.plist`
+	     next to this file; Tauri merges that one on macOS and iOS alike, and this
+	     one on iOS only. Both are merged over the generated
+	     `gen/apple/wildflower-tauri_iOS/Info.plist` by `tauri ios build`. -->
+
 	<!-- Exposes the app container's `Documents` directory — where `resolve_data_dir`
 	     in `src/lib.rs` puts the host's databases and saved files — to the Files
-	     app, so a "Wildflower" folder appears under "On My iPhone". Merged over the
-	     generated `gen/apple/wildflower-tauri_iOS/Info.plist` by `tauri ios build`.
+	     app, so a "Wildflower" folder appears under "On My iPhone".
 	     See the Data Directory Explanation. -->
 	<key>UIFileSharingEnabled</key>
+	<true/>
+
+	<!-- The other half of that exposure. `UIFileSharingEnabled` alone only opens
+	     `Documents` to Finder/iTunes file sharing over a cable; the on-device
+	     Files app lists the folder under "On My iPhone" only when both keys are
+	     set. See the Data Directory Explanation for what setting it admits. -->
+	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 </dict>
 </plist>

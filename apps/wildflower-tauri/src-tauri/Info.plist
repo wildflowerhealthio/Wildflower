@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Keys shared by the macOS and iOS bundles. Tauri merges this file over the
+	     default Info.plist on BOTH Apple platforms — `Info.ios.plist` next to it
+	     is the iOS-only overlay. See the Apple Plist Layering section of the Data
+	     Directory Explanation for which file reaches which bundle. -->
+
+	<!-- Shown in the system's local-network permission prompt. Required on
+	     macOS 15+ and iOS 14+ for any connection off the loopback interface:
+	     the `dev:ios` script runs `tauri ios dev` with a host flag set to
+	     `ipconfig getifaddr en0`, so the UI is served from a LAN address, and
+	     the apps launch flow opens self-hosted apps that may live on the same
+	     network. Without the key the OS denies the connection outright rather
+	     than prompting. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Wildflower loads its interface and self-hosted apps from servers on your local network, including the development server used by debug builds.</string>
+
+	<!-- App Transport Security. ATS blocks cleartext HTTP by default; the host
+	     serves and loads plenty of it, so the exemptions are spelled out
+	     narrowly rather than by switching ATS off wholesale.
+
+	     `NSAllowsArbitraryLoads` is deliberately absent: on the deployment
+	     targets here (iOS 14, macOS 10.13) the two keys below take precedence
+	     over it anyway, and the blanket key is the one Apple asks for written
+	     justification about at App Store review. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<!-- Unqualified hostnames, `.local` domains and link-local addresses —
+		     the dev server reached over the LAN. Scoped to local networking, so
+		     ATS stays enforced for everything off the network. -->
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+
+		<!-- The WebView may load plain `http://` content. `resolve_http_url` in
+		     shared-structures-tauri-rust admits http as well as https before
+		     handing a URL to the native-webview plugin, so a self-hosted app
+		     served over cleartext has to be loadable. Scoped to web content:
+		     native requests (the rathole tunnel client, the tunnel /health
+		     probe, the collectors' upstream fetches) stay ATS-enforced. -->
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+
+		<!-- The host's own loopback listener (`loopback_hostname`/`loopback_port`
+		     in tauri-shared-config.json). Loopback is not reached by
+		     `NSAllowsLocalNetworking`, and stating the exception here also keeps
+		     it if Tauri's own `bundle.macOS.exceptionDomain` default is replaced
+		     wholesale when this file is merged. -->
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>

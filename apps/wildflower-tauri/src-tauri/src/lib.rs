@@ -946,29 +946,84 @@ mod tests {
         assert!(!should_present_owner_token(true, false, true));
     }
 
+    /// Reads one of the Apple plists next to this crate and flattens it, so a
+    /// key and its value compare as one token however the file indents them.
+    ///
+    /// Comments in these files name keys in backticks rather than as `<key>`
+    /// elements, so flattening a comment can't satisfy an assertion below.
+    fn compact_apple_plist(relative: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+        let plist = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        plist.split_whitespace().collect()
+    }
+
     /// `resolve_data_dir` puts the host's data in the iOS app container's
-    /// `Documents`, which the Files app only exposes when the bundle declares
-    /// `UIFileSharingEnabled` — so the choice of directory is only half the
-    /// feature, and losing the key silently un-does it. The key is declared in
-    /// `Info.ios.plist` (merged over the generated plist by `tauri ios build`)
-    /// and in the generated plist itself (what an Xcode-opened build reads);
-    /// both have to keep it, and this is what stops the pair from drifting.
+    /// `Documents`, which the Files app only lists under "On My iPhone" when the
+    /// bundle declares BOTH `UIFileSharingEnabled` and
+    /// `LSSupportsOpeningDocumentsInPlace` — so the choice of directory is only
+    /// part of the feature, and losing either key silently un-does it. They are
+    /// declared in `Info.ios.plist` (merged over the generated plist by
+    /// `tauri ios build`) and in the generated plist itself (what an
+    /// Xcode-opened build reads); both files have to keep both keys, and this is
+    /// what stops them from drifting.
     #[test]
-    fn both_ios_plists_declare_file_sharing() {
+    fn both_ios_plists_declare_files_app_keys() {
         for relative in [
             "Info.ios.plist",
             "gen/apple/wildflower-tauri_iOS/Info.plist",
         ] {
-            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
-            let plist = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-            // Whitespace-insensitive: the key and its value sit on separate,
-            // indented lines in both files.
-            let compact: String = plist.split_whitespace().collect();
+            let compact = compact_apple_plist(relative);
+            for key in ["UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"] {
+                assert!(
+                    compact.contains(&format!("<key>{key}</key><true/>")),
+                    "{relative} must declare {key} as true, or the data directory \
+                     stays invisible in the Files app"
+                );
+            }
+        }
+    }
+
+    /// The host loads cleartext HTTP off the loopback interface and, in a debug
+    /// build, off a LAN dev server — both of which App Transport Security blocks
+    /// by default, and the latter of which also needs a local-network usage
+    /// string or the OS denies the connection without prompting.
+    ///
+    /// `Info.plist` is the shared overlay Tauri merges on macOS *and* iOS, so it
+    /// is where the pair belongs; the generated iOS plist needs its own copy for
+    /// the same reason the Files-app keys do — an Xcode-opened build of
+    /// `gen/apple/wildflower-tauri.xcodeproj` never runs the merge.
+    #[test]
+    fn apple_plists_declare_local_network_access() {
+        for relative in ["Info.plist", "gen/apple/wildflower-tauri_iOS/Info.plist"] {
+            let compact = compact_apple_plist(relative);
             assert!(
-                compact.contains("<key>UIFileSharingEnabled</key><true/>"),
-                "{relative} must declare UIFileSharingEnabled as true, or the data \
-                 directory stays invisible in the Files app"
+                compact.contains("<key>NSLocalNetworkUsageDescription</key><string>"),
+                "{relative} must declare NSLocalNetworkUsageDescription, or a \
+                 connection off loopback is denied without a prompt"
+            );
+            assert!(
+                compact.contains("<key>NSAppTransportSecurity</key><dict>"),
+                "{relative} must declare NSAppTransportSecurity, or ATS blocks the \
+                 host's own cleartext HTTP"
+            );
+            for key in [
+                "NSAllowsLocalNetworking",
+                "NSAllowsArbitraryLoadsInWebContent",
+            ] {
+                assert!(
+                    compact.contains(&format!("<key>{key}</key><true/>")),
+                    "{relative} must declare {key} as true inside \
+                     NSAppTransportSecurity"
+                );
+            }
+            // `NSAllowsArbitraryLoads` is the blanket switch App Store review
+            // asks for written justification about, and the two scoped keys
+            // above take precedence over it on the deployment targets here.
+            assert!(
+                !compact.contains("<key>NSAllowsArbitraryLoads</key>"),
+                "{relative} must not disable ATS wholesale — the scoped keys cover \
+                 what the host actually loads"
             );
         }
     }
