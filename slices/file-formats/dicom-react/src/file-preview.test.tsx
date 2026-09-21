@@ -35,7 +35,13 @@ describe('DicomFilePreview', () => {
       Modality: 'DX',
     })
 
-    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
+    render(
+      <DicomFilePreview
+        bytes={bytes}
+        fileName="scan.dcm"
+        renderDicomInstance={stubRenderer(rendered)}
+      />
+    )
 
     expect(screen.getByText('Patient')).toBeTruthy()
     expect(screen.getByText('Study')).toBeTruthy()
@@ -66,7 +72,13 @@ describe('DicomFilePreview', () => {
       PixelData: { kind: 'encapsulated', fragmentLengths: [2048] },
     })
 
-    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
+    render(
+      <DicomFilePreview
+        bytes={bytes}
+        fileName="scan.dcm"
+        renderDicomInstance={stubRenderer(rendered)}
+      />
+    )
 
     expect(screen.getByText('Encoding')).toBeTruthy()
     // The rows' own formatting is covered in encoding-rows.test.ts; what this
@@ -85,7 +97,13 @@ describe('DicomFilePreview', () => {
   it('reports an absent pixel data element, the usual cause of a blank pane', () => {
     const bytes = writeDicom(MINIMAL_TAGS)
 
-    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
+    render(
+      <DicomFilePreview
+        bytes={bytes}
+        fileName="scan.dcm"
+        renderDicomInstance={stubRenderer(rendered)}
+      />
+    )
 
     expect(screen.getByText('No (7FE0,0010) element — this instance carries no image')).toBeTruthy()
   })
@@ -93,7 +111,13 @@ describe('DicomFilePreview', () => {
   it('renders em-dash for missing optional tags', () => {
     const bytes = writeDicom(MINIMAL_TAGS)
 
-    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
+    render(
+      <DicomFilePreview
+        bytes={bytes}
+        fileName="scan.dcm"
+        renderDicomInstance={stubRenderer(rendered)}
+      />
+    )
 
     const dashes = screen.getAllByText('—')
     expect(dashes.length).toBeGreaterThanOrEqual(8)
@@ -102,7 +126,13 @@ describe('DicomFilePreview', () => {
   it('renders a parse error for non-DICOM bytes', () => {
     const garbage = new Uint8Array([0, 1, 2, 3])
 
-    render(<DicomFilePreview bytes={garbage} renderDicomInstance={stubRenderer(rendered)} />)
+    render(
+      <DicomFilePreview
+        bytes={garbage}
+        fileName="scan.dcm"
+        renderDicomInstance={stubRenderer(rendered)}
+      />
+    )
 
     const alert = screen.getByRole('alert')
     expect(alert.textContent).toContain('Could not parse this file as DICOM')
@@ -114,6 +144,7 @@ describe('DicomFilePreview', () => {
     render(
       <DicomFilePreview
         bytes={bytes}
+        fileName="scan.dcm"
         renderDicomInstance={stubRenderer(unrenderable('no pixel data'))}
       />
     )
@@ -126,7 +157,13 @@ describe('DicomFilePreview', () => {
   it('does not show the unrenderable placeholder when rendering succeeds', async () => {
     const bytes = writeDicom(MINIMAL_TAGS)
 
-    render(<DicomFilePreview bytes={bytes} renderDicomInstance={stubRenderer(rendered)} />)
+    render(
+      <DicomFilePreview
+        bytes={bytes}
+        fileName="scan.dcm"
+        renderDicomInstance={stubRenderer(rendered)}
+      />
+    )
 
     await waitFor(() => {
       expect(screen.queryByTestId('dicom-unrenderable')).toBeNull()
@@ -141,6 +178,7 @@ describe('DicomFilePreview', () => {
     const { unmount } = render(
       <DicomFilePreview
         bytes={bytes}
+        fileName="scan.dcm"
         renderDicomInstance={stubRenderer(rendered)}
         observeDicomViewportResize={observe}
       />
@@ -164,7 +202,9 @@ describe('DicomFilePreview', () => {
     const bytes = writeDicom(MINIMAL_TAGS)
     const stub = vi.fn(stubRenderer(rendered))
 
-    const { unmount } = render(<DicomFilePreview bytes={bytes} renderDicomInstance={stub} />)
+    const { unmount } = render(
+      <DicomFilePreview bytes={bytes} fileName="scan.dcm" renderDicomInstance={stub} />
+    )
 
     await waitFor(() => {
       expect(stub).toHaveBeenCalledOnce()
