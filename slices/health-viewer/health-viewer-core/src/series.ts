@@ -1,15 +1,13 @@
 import type { DateTime } from 'effect'
 
 /**
- * Identity of an observation-backed series: the code it plots, the coding
- * system that code belongs to, and the unit its values are in.
+ * Identity of an observation-backed series: its code, that code's system, and
+ * the unit its values are in.
  *
  * @remarks
- * `unit` is part of the identity, not metadata: the same LOINC code reported
- * in `mmol/L` and in `mg/dL` is two series, because plotting them on one axis
- * would silently mix scales. `system` is `null` when the source
- * `CodeableConcept` carried no usable coding and the key fell back to its
- * `text`.
+ * `unit` is identity, not metadata — one code in two units is two series, so
+ * an axis never silently mixes scales. `system` is `null` when the key fell
+ * back to the concept's `text`.
  */
 interface ObservationSeriesKey {
   readonly kind: 'observation'
@@ -32,12 +30,8 @@ type SeriesKey = ObservationSeriesKey | MedicationSeriesKey
 type SeriesKind = 'quantity' | 'integer' | 'boolean'
 
 /**
- * One plotted reading: a value at an instant, optionally bracketed by the
- * reference range that applied to it.
- *
- * @remarks
- * `low` / `high` are absent (not `null`) when the source carried no reference
- * range, so a consumer spreads a point without inventing bounds.
+ * One plotted reading, optionally bracketed by the reference range that
+ * applied. `low` / `high` are absent rather than `null` when there was none.
  */
 interface SeriesPoint {
   readonly time: DateTime.Utc
@@ -59,14 +53,13 @@ interface ObservationSeries {
 }
 
 /**
- * One interval over which a single dose of a medication was in effect.
+ * One interval over which a single dose was in effect. Defined here, not
+ * beside the dose-regimen mapping that builds it, so the mapping only has to
+ * produce the shape.
  *
  * @remarks
- * Defined here rather than alongside the dose-regimen mapping that builds it,
- * so the mapping only has to produce this shape. `end` is `null` for a segment
- * that is still open. `perDay` distinguishes a daily total from a per-take
- * dose, and `dashed` marks a segment whose extent is inferred rather than
- * stated, for a renderer to draw as a dashed run.
+ * `end` is `null` while open, `perDay` tells a daily total from a per-take
+ * dose, and `dashed` marks an extent that is inferred rather than stated.
  */
 interface DoseSegment {
   readonly start: DateTime.Utc
@@ -99,12 +92,9 @@ const isMedicationSeries = (series: Series): series is MedicationSeries =>
   series.key.kind === 'medication'
 
 /**
- * The marker standing in for a `null` field inside a series id.
- *
- * @remarks
- * {@link escapeField} doubles every backslash, so an escaped field can never
- * render as a lone backslash followed by `~`. That makes this marker
- * unambiguous against a field whose literal text is `\~`.
+ * The marker standing in for a `null` field. Unambiguous because
+ * {@link escapeField} doubles every backslash, so no escaped field can render
+ * as a lone backslash followed by `~`.
  */
 const NULL_FIELD = '\\~'
 
@@ -122,8 +112,8 @@ const renderField = (value: string | null): string =>
 /**
  * Split an escaped field list on unescaped {@link FIELD_SEPARATOR}s.
  *
- * @returns The still-escaped fields, or `null` when the input ends in a
- *   dangling escape (`"a\\"`), which no {@link escapeField} output can be
+ * @returns The still-escaped fields, or `null` on a dangling escape — which no
+ *   {@link escapeField} output can end in
  */
 const splitFields = (body: string): readonly string[] | null => {
   const fields: string[] = []
@@ -145,25 +135,17 @@ const splitFields = (body: string): readonly string[] | null => {
   return fields
 }
 
-/**
- * Reverse {@link renderField} for one still-escaped field.
- *
- * @returns The field's text, or `null` when it is the null marker
- */
+/** Reverse {@link renderField}; the null marker reads back as `null`. */
 const parseField = (field: string): string | null =>
   field === NULL_FIELD ? null : field.replaceAll('\\|', FIELD_SEPARATOR).replaceAll('\\\\', '\\')
 
 /**
- * The stable string form of a series key — `o:<system>|<code>|<unit>` for an
- * observation, `m:<name>|<unit>` for a medication.
- *
- * @returns An id safe to use as a URL query value, a React key, or a
- *   catalogue row id
+ * The stable string form of a series key — `o:<system>|<code>|<unit>` or
+ * `m:<name>|<unit>` — safe as a URL value, React key or catalogue row id.
  *
  * @remarks
- * This is the wire form the URL codec round-trips through, so it is part of
- * the viewer's external contract: changing the escaping invalidates every
- * shared link. {@link parseSeriesId} is its exact inverse.
+ * External contract: this is what a shared link carries, so changing the
+ * escaping invalidates every link already saved.
  */
 const seriesId = (key: SeriesKey): string =>
   key.kind === 'observation'
@@ -171,15 +153,11 @@ const seriesId = (key: SeriesKey): string =>
     : `m:${escapeField(key.name)}${FIELD_SEPARATOR}${renderField(key.unit)}`
 
 /**
- * Parse the string form {@link seriesId} produces.
+ * Parse the string form {@link seriesId} produces. Never throws — ids arrive
+ * from a user-editable URL, so a bad one is dropped, not raised.
  *
- * @returns The key, or `null` for anything malformed — an unknown prefix, the
- *   wrong field count, a dangling escape, or a null marker in the `code` /
- *   `name` slot, which is never nullable
- *
- * @remarks
- * Never throws: ids reach this from a user-editable URL, so a bad one is
- * dropped rather than failing the whole selection.
+ * @returns `null` for an unknown prefix, the wrong field count, a dangling
+ *   escape, or a null marker in the never-nullable `code` / `name` slot
  */
 const parseSeriesId = (id: string): SeriesKey | null => {
   const prefix = id.slice(0, 2)

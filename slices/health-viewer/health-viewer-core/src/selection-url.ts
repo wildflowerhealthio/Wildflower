@@ -23,15 +23,8 @@ const PATIENT_PARAM = 'patient'
 const DEFAULT_RANGE: RangePreset = 'all'
 
 /**
- * Render a selection as query parameters.
- *
- * @returns Params carrying one `s` per series in order, one `r`, and a
- *   `patient` only when one is set
- *
- * @remarks
- * A `null` patient is an absent key rather than an empty value, so the
- * shortest URL is the common case. {@link decodeSelection} inverts this
- * exactly.
+ * Render a selection as query parameters — one `s` per series in order, one
+ * `r`, and a `patient` only when set, so the shortest URL is the common case.
  */
 const encodeSelection = (selection: Selection): URLSearchParams => {
   const params = new URLSearchParams()
@@ -42,15 +35,12 @@ const encodeSelection = (selection: Selection): URLSearchParams => {
 }
 
 /**
- * Read a selection back out of query parameters.
- *
- * @returns The selection; never throws
+ * Read a selection back out of query parameters. Never throws.
  *
  * @remarks
  * Everything unrecognised is dropped, not rejected: a URL is user-editable and
- * outlives the series it names, so an `s` that no longer parses, or an `r`
- * that is not a preset, must not cost the reader the rest of their link. An
- * absent `r` means {@link DEFAULT_RANGE}.
+ * outlives the series it names, so one stale `s` must not cost the reader the
+ * rest of their link. An absent or bad `r` means {@link DEFAULT_RANGE}.
  */
 const decodeSelection = (params: URLSearchParams): Selection => {
   const series = params

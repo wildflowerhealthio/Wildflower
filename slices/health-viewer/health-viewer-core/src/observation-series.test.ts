@@ -14,61 +14,22 @@ const RUNS = numRunsFor({ base: 100 })
  * A decoded Observation carrying nothing, for overrides to be spread onto.
  *
  * @remarks
- * The shell-spread shape `fhir-r4`'s own suite uses: generating a whole
- * Observation walks the Reference → Identifier cycle and every `value[x]`
- * variant per iteration, and the choice slots' arbitraries are pinned to
- * `null` anyway — so a generated resource would carry no value at all. Each
- * property generates only the fields it is about, from the same component
- * schemas the resource embeds.
+ * Decoded from the minimal wire resource rather than hand-written, so the
+ * schema's own defaults fill every slot and the shell cannot drift from the
+ * resource it stands in for.
+ *
+ * Generating a whole Observation instead would walk the Reference → Identifier
+ * cycle and every `value[x]` variant per iteration — and the choice slots'
+ * arbitraries are pinned to `null` anyway, so a generated resource carries no
+ * value at all. Each property below generates only the fields it is about,
+ * from the same component schemas the resource embeds.
  */
-const shell: typeof Observation.Schema.Type = {
+const shell: typeof Observation.Schema.Type = Schema.decodeUnknownSync(Observation.Schema)({
   resourceType: 'Observation',
   id: 'obs-id',
-  meta: { versionId: '', lastUpdated: null, source: '', profile: [], security: [], tag: [] },
-  implicitRules: null,
-  language: null,
-  text: null,
-  contained: [],
-  extension: [],
-  modifierExtension: [],
-  basedOn: [],
-  bodySite: null,
-  category: [],
-  code: { id: null, extension: [], coding: [], text: 'Glucose' },
-  component: [],
-  dataAbsentReason: null,
-  derivedFrom: [],
-  device: null,
-  effectiveDateTime: null,
-  effectivePeriod: null,
-  effectiveTiming: null,
-  effectiveInstant: null,
-  encounter: null,
-  focus: [],
-  hasMember: [],
-  identifier: [],
-  interpretation: [],
-  issued: null,
-  method: null,
-  note: [],
-  partOf: [],
-  performer: [],
-  referenceRange: [],
-  specimen: null,
   status: 'final',
-  subject: null,
-  valueQuantity: null,
-  valueCodeableConcept: null,
-  valueString: null,
-  valueBoolean: null,
-  valueInteger: null,
-  valueRange: null,
-  valueRatio: null,
-  valueSampledData: null,
-  valueTime: null,
-  valueDateTime: null,
-  valuePeriod: null,
-}
+  code: { coding: [], text: 'Glucose' },
+})
 
 /** A full `Quantity`, so a test states a value rather than hoping one generates. */
 const quantity = (value: number, unit: string | null, code: string | null): Quantity.Type => ({

@@ -25,16 +25,13 @@ type ValueAt =
 /**
  * The point a crosshair reads off an observation series.
  *
- * @param points - Sorted ascending by `time`, as {@link ObservationSeries}
- *   guarantees
- * @returns The last point at or before `time`; the first point after it when
- *   the crosshair sits before the series starts; `null` for an empty series
+ * @param points - Sorted ascending by `time`, as {@link ObservationSeries} guarantees
+ * @returns The last point at or before `time`, the first point after it when
+ *   the crosshair sits before the series starts, or `null` when empty
  *
  * @remarks
- * Binary search, because this runs on every pointer move over a series that
- * can hold thousands of points. The "or after" fallback means a crosshair
- * dragged left of the data still names the series' first reading instead of
- * blanking the readout.
+ * Binary search: this runs on every pointer move over a series that can hold
+ * thousands of points.
  */
 const pointAt = (points: readonly SeriesPoint[], time: DateTime.Utc): SeriesPoint | null => {
   if (points.length === 0) return null
@@ -57,15 +54,12 @@ const pointAt = (points: readonly SeriesPoint[], time: DateTime.Utc): SeriesPoin
 /**
  * The dose segment in effect at `time`.
  *
- * @param segments - Sorted ascending by `start`, as {@link MedicationSeries}
- *   guarantees
- * @returns The latest-starting segment that has begun and not yet ended, or
- *   `null` when the medication was not in effect then
+ * @param segments - Sorted ascending by `start`, as {@link MedicationSeries} guarantees
+ * @returns The latest-starting segment that has begun and not ended, or `null`
  *
  * @remarks
- * Unlike {@link pointAt} there is no fallback: a crosshair outside every
- * segment means the patient was not on the medication, which is a real answer
- * the readout should show as such rather than as the nearest dose.
+ * No fallback, unlike {@link pointAt}: outside every segment the patient was
+ * not on the medication, which is a real answer rather than a nearest dose.
  */
 const segmentAt = (segments: readonly DoseSegment[], time: DateTime.Utc): DoseSegment | null => {
   const target = time.epochMillis

@@ -86,13 +86,12 @@ type ValueSlots = Schema.Schema.Type<typeof ComponentView>
 const decodeObservationView = Schema.decodeUnknownOption(ObservationView)
 
 /**
- * `Observation.status` codes whose readings are never plotted.
+ * `Observation.status` codes whose readings are never plotted — FHIR's own
+ * "this never happened" pair.
  *
  * @remarks
- * FHIR's own "this never happened" statuses. Every other status — including
- * `preliminary`, `registered` and `unknown` — is plotted: a patient-facing
- * viewer that hid unverified results would under-report, and the status stays
- * on the source resource for a renderer that wants to mark them.
+ * Every other status, `preliminary` and `unknown` included, is plotted: a
+ * patient-facing viewer that hid unverified results would under-report.
  */
 const EXCLUDED_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'entered-in-error'])
 
@@ -100,28 +99,18 @@ const EXCLUDED_STATUSES: ReadonlySet<string> = new Set(['cancelled', 'entered-in
 const LOINC_SYSTEM = 'http://loinc.org'
 
 /**
- * Drop trailing slashes from a coding system uri.
- *
- * @remarks
- * `new URL('http://loinc.org').href` is `'http://loinc.org/'`, so a decoded
- * resource's system would not compare equal to {@link LOINC_SYSTEM} without
- * this. Applied on the way into a series key too, so the same code keys
- * identically whether it arrived decoded or off the wire.
+ * Drop trailing slashes from a coding system uri, so a decoded resource's
+ * `URL` form (`'http://loinc.org/'`) compares and keys equal to the wire form.
  */
 const canonicalSystem = (href: string | null): string | null =>
   href === null ? null : href.replace(/\/+$/, '')
 
 /**
- * The `system` / `code` pair a series key is built from.
+ * The `system` / `code` pair a series key is built from: the LOINC coding if
+ * there is one, else the first coding carrying a code, else the concept's
+ * `text` with a `null` system.
  *
- * @returns The preferred coding's system and code, the concept's `text` with a
- *   `null` system when no coding carries a code, or `null` when the concept
- *   says nothing usable
- *
- * @remarks
- * LOINC wins when present — it is the vocabulary the viewer's grouping and
- * labels assume — otherwise the first coding carrying a code, in the order the
- * resource lists them.
+ * @returns `null` when the concept says nothing usable
  */
 const conceptKey = (concept: ConceptValue): { system: string | null; code: string } | null => {
   const coded = (concept.coding ?? []).filter(
@@ -152,17 +141,13 @@ const conceptLabel = (concept: ConceptValue, code: string): string => {
 type ObservationValue = Schema.Schema.Type<typeof ObservationView>
 
 /**
- * The instant a reading is plotted at, by FHIR's own specificity order:
- * `effectiveDateTime`, then `effectivePeriod.start`, then `effectiveInstant`,
- * then `issued`.
+ * The instant a reading is plotted at, in FHIR's own order of specificity.
  *
- * @returns The instant, or `null` when the resource dates itself in none of
- *   those slots
+ * @returns `null` when the resource dates itself in none of the slots
  *
  * @remarks
- * `issued` comes last because it is when the result was *released*, not when
- * it was observed — a usable fallback, never a preference over a stated
- * effective time.
+ * `issued` is last because it is when the result was *released*, not observed
+ * — a usable fallback, never a preference over a stated effective time.
  */
 const effectiveTime = (observation: ObservationValue): DateTime.Utc | null =>
   observation.effectiveDateTime ??
@@ -181,14 +166,12 @@ interface NumericValue {
 /**
  * The plottable number a `value[x]` slot set carries.
  *
- * @returns `null` for a value the viewer cannot plot — a string, a codeable
- *   concept, a range, or no value at all
+ * @returns `null` for anything the viewer cannot plot — a string, a concept, a
+ *   range, or no value at all
  *
  * @remarks
- * A quantity's unit falls back to its UCUM `code` when the human-readable
- * `unit` is absent, so `{ value: 5.4, code: 'mmol/L' }` and
- * `{ value: 5.4, unit: 'mmol/L' }` land in the same series. A boolean plots as
- * 0/1, against the `[0, 1]` axis its series kind earns it.
+ * A quantity's unit falls back to its UCUM `code`, so `{ code: 'mmol/L' }` and
+ * `{ unit: 'mmol/L' }` land in the same series.
  */
 const numericValue = (slots: ValueSlots): NumericValue | null => {
   const quantity = slots.valueQuantity
@@ -225,11 +208,7 @@ const rangeBounds = (
   return { ...(low === null ? {} : { low }), ...(high === null ? {} : { high }) }
 }
 
-/**
- * One plottable reading extracted from an observation or one of its
- * components — everything but the instant, which the caller attaches once it
- * knows the observation is dated at all.
- */
+/** A plottable reading, less the instant — attached once the caller knows it is dated. */
 interface Reading {
   readonly key: ObservationSeriesKey
   readonly label: string
@@ -243,15 +222,12 @@ interface Reading {
  * The readings one observation contributes: one per component, plus one for
  * its own `value[x]` when it carries one.
  *
- * @param observation - An observation already past the status filter
  * @returns Zero readings when nothing plottable is present
  *
  * @remarks
- * A component's reading takes the component's own code, unit and reference
- * range, and a label naming both levels (`"Blood pressure · Systolic"`), so
- * two components of one panel stay distinguishable in the catalogue. An
- * observation may carry both a top-level value and components (a panel with a
- * summary value); both are read, so neither is silently lost.
+ * A component reads its own code, unit and range, under a label naming both
+ * levels (`"Blood pressure · Systolic"`). A panel carrying both a summary
+ * value and components yields both — neither is silently lost.
  */
 const readingsOf = (observation: ObservationValue): readonly Reading[] => {
   const concept = observation.code ?? null
@@ -314,19 +290,13 @@ interface ObservationSeriesResult {
  * Turn decoded FHIR `Observation`s into the plottable series the viewer draws.
  *
  * @param observations - Decoded resources, in any order
- * @returns The series plus the two counts of what did not make it in, so the
- *   UI can say "12 results could not be dated" rather than silently shrinking
+ * @returns The series, plus counts of what did not make it in so the UI can
+ *   say "12 results could not be dated" rather than silently shrinking
  *
  * @remarks
- * Readings group by {@link seriesId} of their key, so the same code reported
- * in two units yields two series rather than one line that jumps scale. A
- * series takes its label, unit, category and kind from its first reading in
- * input order; its points are sorted by time, with equal times keeping input
- * order.
- *
- * Every observation moves at most one counter: an excluded status or no
- * plottable value makes it `dropped`, a plottable value with no time makes it
- * `undated`, and neither moves for one that contributes points.
+ * Readings group by {@link seriesId}, so one code in two units is two series
+ * rather than one line that jumps scale. A series takes its metadata from its
+ * first reading in input order. Every observation moves at most one counter.
  */
 const observationsToSeries = (
   observations: readonly ObservationResource[]

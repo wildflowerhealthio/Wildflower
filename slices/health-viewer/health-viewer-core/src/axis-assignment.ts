@@ -4,10 +4,10 @@ import { type Series, isObservationSeries } from './series.ts'
  * How many series the chart plots at once.
  *
  * @remarks
- * Four is a rendering limit, not a taste one: each series needs its own value
- * axis, and two axes per side is as many as fit beside a chart without the
- * gutters swallowing the plot area. {@link assignAxes} rejects a fifth rather
- * than dropping one silently, so a selection UI caps against this constant.
+ * A rendering limit: each series needs its own value axis, and two per side is
+ * as many as fit without the gutters swallowing the plot. {@link assignAxes}
+ * throws past it rather than dropping one silently, so a selection UI caps
+ * against this constant.
  */
 const AXIS_CAP = 4
 
@@ -25,25 +25,18 @@ interface AxisSlot {
   readonly ticks: readonly number[]
 }
 
-/**
- * A "nice" step at or above `rough` — 1, 2 or 5 times a power of ten.
- *
- * @remarks
- * The three multipliers are the ones that keep tick labels readable in any
- * unit: every tick lands on a value a reader can hold in their head.
- */
+/** Step multipliers that keep tick labels readable in any unit. */
 const NICE_MULTIPLIERS: readonly number[] = [1, 2, 5, 10]
 
+/** A "nice" step at or above `rough` — 1, 2 or 5 times a power of ten. */
 const niceStep = (rough: number): number => {
   if (!(rough > 0) || !Number.isFinite(rough)) return 1
   const magnitude = 10 ** Math.floor(Math.log10(rough))
-  // A subnormal `rough` floors its exponent below the smallest representable
-  // power of ten, so `magnitude` underflows to zero and every value derived
-  // from it is `Infinity` or `NaN`. Fall back to the unrounded step, which is
-  // exact enough at that scale and keeps the arithmetic downstream finite.
+  // A subnormal `rough` floors its exponent past the smallest representable
+  // power of ten, underflowing `magnitude` to zero and poisoning everything
+  // downstream with `Infinity`/`NaN`. The unrounded step is exact enough there.
   if (!(magnitude > 0) || !Number.isFinite(magnitude)) return rough
-  const fraction = rough / magnitude
-  const nice = NICE_MULTIPLIERS.find((multiplier) => fraction <= multiplier) ?? 10
+  const nice = NICE_MULTIPLIERS.find((multiplier) => rough / magnitude <= multiplier) ?? 10
   const step = nice * magnitude
   return step > 0 && Number.isFinite(step) ? step : rough
 }
@@ -54,20 +47,15 @@ const PADDING_FRACTION = 0.05
 /**
  * Round `[low, high]` outward onto tick-sized boundaries, after padding.
  *
- * @param count - Roughly how many tick intervals the domain should span
  * @returns A domain that contains `[low, high]` — guaranteed, not merely
- *   intended: the rounded bounds are re-widened against the inputs so
- *   floating-point rounding can never leave a value outside its own axis
+ *   intended, by the re-widening in {@link roundOutward}
  *
  * @remarks
- * A degenerate input (every value identical) has no extent to round, so it is
- * opened up around the value first — by half its magnitude, or to `[-1, 1]` at
- * zero — rather than collapsing the axis to a point.
+ * A degenerate input (every value identical) is opened up around the value
+ * first rather than collapsing the axis to a point.
  */
 const niceDomain = (low: number, high: number, count: number): Domain => {
   if (!(high > low)) {
-    // `Math.abs(low) / 2` underflows to zero for a denormal, which would leave
-    // the interval just as degenerate, so fall back to a unit half-width.
     const halved = Math.abs(low) / 2
     const half = halved > 0 && Number.isFinite(halved) ? halved : 1
     return roundOutward(low - half, low + half, count, low, low)
@@ -76,13 +64,13 @@ const niceDomain = (low: number, high: number, count: number): Domain => {
 }
 
 /**
- * Pad `[low, high]`, round it outward to a tick-sized step, and re-widen the
- * result to contain `[containLow, containHigh]`.
+ * Pad, round outward to a tick-sized step, then re-widen to contain
+ * `[containLow, containHigh]`.
  *
  * @remarks
- * The final widening is what makes {@link niceDomain}'s containment guarantee
- * hold: `Math.floor(x / step) * step` is mathematically at or below `x`, but
- * the two floating-point operations can round the product back above it.
+ * That last widening is load-bearing: `Math.floor(x / step) * step` is
+ * mathematically at or below `x`, but the two float operations can round the
+ * product back above it, leaving a value outside its own axis.
  */
 const roundOutward = (
   low: number,
@@ -97,19 +85,13 @@ const roundOutward = (
   const step = niceStep((paddedHigh - paddedLow) / count)
   const roundedLow = Math.floor(paddedLow / step) * step
   const roundedHigh = Math.ceil(paddedHigh / step) * step
-  // Rounding at the edges of the float range can overflow to a non-finite
-  // bound; an axis that cannot be drawn is worse than an unrounded one.
   if (!Number.isFinite(roundedLow) || !Number.isFinite(roundedHigh)) {
     return [containLow, containHigh]
   }
   return [Math.min(roundedLow, containLow), Math.max(roundedHigh, containHigh)]
 }
 
-/**
- * Ceiling on generated ticks, so a pathological domain degenerates to its two
- * bounds instead of allocating. A step derived from the domain puts a normal
- * axis well under this.
- */
+/** Ceiling on generated ticks, so a pathological domain degenerates instead of allocating. */
 const MAX_TICKS = 64
 
 /** Default number of tick intervals an axis is rounded and labelled to. */
@@ -118,19 +100,14 @@ const DEFAULT_TICK_COUNT = 5
 /**
  * The round values to label `domain` with.
  *
- * @param count - Roughly how many intervals to divide the domain into
  * @returns Ascending ticks inside `domain`, always at least its two bounds
- *
- * @remarks
- * Because {@link niceDomain} rounds to a step derived the same way, an axis
- * built by {@link assignAxes} normally gets ticks landing exactly on its ends.
  */
 const ticksFor = (domain: Domain, count: number = DEFAULT_TICK_COUNT): readonly number[] => {
   const [low, high] = domain
   if (!(high > low)) return [low]
   const step = niceStep((high - low) / count)
-  // Indexed off the step rather than accumulated, so a fractional step
-  // (`0.1`) cannot drift a later tick off its round value.
+  // Indexed off the step rather than accumulated, so a fractional step (`0.1`)
+  // cannot drift a later tick off its round value.
   const first = Math.ceil(low / step)
   const last = Math.floor(high / step)
   if (!Number.isFinite(first) || !Number.isFinite(last) || last - first > MAX_TICKS) {
@@ -154,15 +131,14 @@ const denormalise = (fraction: number, domain: Domain): number => {
 }
 
 /**
- * The domain a series' own values (and reference ranges) need.
+ * The domain a series' own values — and its reference ranges — need.
  *
  * @remarks
- * Reference-range bounds join the extent so a point sitting inside its normal
- * range still shows the band around it. A boolean series is pinned to
- * `[0, 1]`, and a medication's dose axis starts at zero — a dose is a
- * non-negative magnitude, and a zoomed-in baseline would overstate a change.
- * A series with nothing to plot gets `[0, 1]`, so the axis draws empty rather
- * than not at all.
+ * Range bounds join the extent so a point inside its normal range still shows
+ * the band around it. A dose axis starts at zero because a dose is a
+ * non-negative magnitude and a zoomed-in baseline would overstate a change.
+ * Nothing to plot yields `[0, 1]`, so the axis draws empty rather than not at
+ * all.
  */
 const domainFor = (series: Series): Domain => {
   if (!isObservationSeries(series)) {
@@ -183,15 +159,14 @@ const domainFor = (series: Series): Domain => {
 /**
  * Give each selected series its own value axis.
  *
- * @param selected - The series to plot, in selection order, at most
- *   {@link AXIS_CAP} of them
+ * @param selected - The series to plot, in selection order
  * @returns One slot per input, in the same order
  * @throws When `selected` holds more than {@link AXIS_CAP} series
  *
  * @remarks
- * Sides alternate in selection order — first left, second right, third left —
- * so the two most recently added series never crowd the same gutter, and a
- * series keeps its side as long as nothing before it is removed.
+ * Sides alternate in selection order, so the two most recently added series
+ * never crowd the same gutter and a series keeps its side as long as nothing
+ * before it is removed.
  */
 const assignAxes = (selected: readonly Series[]): readonly AxisSlot[] => {
   if (selected.length > AXIS_CAP) {

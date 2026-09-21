@@ -4,13 +4,8 @@ import { type Series, isObservationSeries, seriesId } from './series.ts'
 import type { TimeDomain } from './time-range.ts'
 
 /**
- * `Observation.category` codes in the order the catalogue panel lists them.
- *
- * @remarks
- * Roughly "how often a reader looks for it": the vitals they know their own
- * numbers for first, then lab results, then the long tail of coded
- * assessments. A category outside this list is not dropped — it falls into the
- * `other` group at the end.
+ * `Observation.category` codes in panel order — roughly how often a reader
+ * looks for them. A category outside this list falls into `other`, never out.
  */
 const CATEGORY_ORDER: readonly string[] = [
   'vital-signs',
@@ -102,14 +97,12 @@ const groupIdFor = (series: Series): string => {
 /**
  * Lay the selectable series out as the catalogue panel's groups.
  *
- * @param series - Every series the record yielded, in any order
- * @returns Non-empty groups only, ordered by {@link CATEGORY_ORDER} with
- *   `other` after the known categories and `medications` last; rows keep their
- *   input order within a group
+ * @returns Non-empty groups only, in {@link CATEGORY_ORDER} with `other` then
+ *   `medications` last; rows keep input order within a group
  *
  * @remarks
- * Empty groups are omitted rather than rendered blank — the panel's headings
- * are a map of what this record actually holds, not of what FHIR defines.
+ * Empty groups are omitted: the headings map what this record holds, not what
+ * FHIR defines.
  */
 const groupForPanel = (series: readonly Series[]): readonly CatalogGroup[] => {
   const order = [...CATEGORY_ORDER, OTHER_GROUP, MEDICATIONS_GROUP]
@@ -132,10 +125,8 @@ const groupForPanel = (series: readonly Series[]): readonly CatalogGroup[] => {
  * Reduce text to lower-case, diacritic-free, single-spaced tokens for search.
  *
  * @remarks
- * Deliberately not `medication-core`'s `normalizeName`, which drops number and
- * dosage-unit tokens as matching noise. Here they are the signal: a reader
- * searching a catalogue types "mmol" or "24h", and a tokenizer that ate those
- * would match nothing.
+ * Deliberately not `medication-core`'s `normalizeName`, which eats number and
+ * dosage-unit tokens as noise. Here `mmol` and `24h` are the signal.
  */
 const normaliseForSearch = (value: string): string =>
   value
@@ -147,15 +138,11 @@ const normaliseForSearch = (value: string): string =>
     .join(' ')
 
 /**
- * Whether a catalogue row matches a search box's contents.
+ * Whether a catalogue row matches a search box's contents. Every query token
+ * must appear in the row's label or unit, so order does not matter and a
+ * partial word still matches.
  *
- * @returns `true` for an empty or whitespace-only query — an unfiltered box
- *   shows everything
- *
- * @remarks
- * Every query token must appear somewhere in the row's label and unit, so
- * order does not matter and a partial word still matches ("gluc" finds
- * "Glucose"). Case and diacritics are normalised away on both sides.
+ * @returns `true` for an empty query — an unfiltered box shows everything
  */
 const matchesSearch = (row: CatalogRow, query: string): boolean => {
   const tokens = normaliseForSearch(query)

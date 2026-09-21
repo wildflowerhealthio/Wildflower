@@ -11,11 +11,9 @@ const isRangePreset = (value: string): value is RangePreset =>
   (RANGE_PRESETS as readonly string[]).includes(value)
 
 /**
- * How far back each bounded preset reaches from `now`.
- *
- * @remarks
- * The year-length presets subtract calendar years, not fixed spans, so "1y"
- * lands on the same date a year earlier regardless of leap days.
+ * How far back each bounded preset reaches from `now`. The year presets
+ * subtract calendar years, not fixed spans, so they are not invertible across
+ * a leap day.
  */
 const PRESET_LOOKBACK: Readonly<
   Record<Exclude<RangePreset, 'all'>, Partial<DateTime.DateTime.PartsForMath>>
@@ -31,17 +29,13 @@ type TimeDomain = readonly [DateTime.Utc, DateTime.Utc]
 /**
  * The x-axis window a preset selects.
  *
- * @param preset - The chosen window
- * @param now - The instant a bounded preset ends at
- * @param dataExtent - The `[first, last]` instants the plotted data spans, or
- *   `null` when nothing is plotted
+ * @param dataExtent - What the plotted data spans, or `null` when nothing is
  * @returns The window to draw
  *
  * @remarks
- * `'all'` is the data's own extent, so the chart fills its width with what
- * there is. With no data at all it falls back to the last year ending at
- * `now`, which gives the axis a sane scale to draw empty rather than
- * collapsing to a single instant.
+ * `'all'` is the data's own extent. With no data it falls back to the last
+ * year ending at `now`, so the axis draws empty rather than collapsing to a
+ * single instant.
  */
 const xDomain = (
   preset: RangePreset,
@@ -54,12 +48,7 @@ const xDomain = (
   return [DateTime.subtract(now, PRESET_LOOKBACK[preset]), now]
 }
 
-/**
- * The points of `points` that fall inside `domain`, endpoints included.
- *
- * @typeParam A - Any dated value; only its `time` is read
- * @returns The matching points, in input order
- */
+/** The points inside `domain`, endpoints included, in input order. */
 const pointsWithin = <A extends { readonly time: DateTime.Utc }>(
   points: readonly A[],
   domain: TimeDomain
