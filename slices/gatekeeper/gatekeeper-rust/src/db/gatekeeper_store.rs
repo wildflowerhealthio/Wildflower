@@ -24,6 +24,7 @@ use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::{GatekeeperStore, GatekeeperTx};
@@ -198,8 +199,10 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
         authorization_requests::pending_authorization_request_by_user_code(self.conn, user_code)
     }
 
-    fn oldest_pending_device_user_code(&mut self) -> Result<Option<String>, GatekeeperError> {
-        authorization_requests::oldest_pending_device_user_code(self.conn)
+    fn oldest_pending_consent_head(
+        &mut self,
+    ) -> Result<Option<PendingConsentHead>, GatekeeperError> {
+        authorization_requests::oldest_pending_consent_head(self.conn)
     }
 
     fn insert_authorization_request(

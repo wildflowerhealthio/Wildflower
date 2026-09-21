@@ -46,6 +46,10 @@ pub mod oauth_error_code;
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
 // drift-tested against `gatekeeper-core/src/page-paths.ts`.
 pub mod page_paths;
+// The head of the single pending-consent queue the host popup surfaces —
+// device-code and authorization-code requests share one FIFO slot, so the head
+// carries whichever key its consent surface reads by.
+pub mod pending_consent;
 pub mod refresh_token;
 // The retention windows for the three accumulating tables plus the sweep that
 // applies them — the policy half of the startup/daily reaper `setup_gatekeeper`

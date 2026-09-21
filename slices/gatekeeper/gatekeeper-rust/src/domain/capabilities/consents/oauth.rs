@@ -20,7 +20,7 @@ use crate::domain::client_registration::ClientRegistration;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent};
 use crate::domain::{GatekeeperStore, GatekeeperTx};
-use crate::ports::DeviceUserCodePublisher;
+use crate::ports::PendingConsentPublisher;
 
 /// Everything an approval needs beyond the prompt itself: who is approving, how
 /// to judge the client's registration, and the instant the writes are stamped
@@ -191,9 +191,9 @@ fn widen_registration(
 /// Approve an authorization-code consent prompt: judge the client's
 /// registration, narrow the approved scopes to the grantable set, transition the
 /// request, mint and persist the authorization code the polling endpoint hands
-/// back, register-or-widen the client and refresh the standing grant, and return
-/// the client callback URL. An approval that grants nothing is applied as a
-/// **deny**.
+/// back, register-or-widen the client and refresh the standing grant, republish
+/// the popup head, and return the client callback URL. An approval that grants
+/// nothing is applied as a **deny**.
 ///
 /// Two authority checks stand between the Owner's click and a grant.
 /// `ctx.approver` is the deciding Owner's granted scopes — the approval can't
@@ -211,7 +211,7 @@ fn widen_registration(
 /// client (the approval then widens the registration to what was granted).
 pub(super) fn approve_oauth_consent(
     store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
+    publisher: &dyn PendingConsentPublisher,
     id: &str,
     input: ApproveOAuthConsentInput,
     generate_code: impl FnOnce() -> String,
@@ -311,6 +311,11 @@ pub(super) fn approve_oauth_consent(
         &registration_write,
     )?;
 
+    // This request was the popup head (or queued behind one) until the approval
+    // above flipped it out of `pending`, so the head has to be recomputed — the
+    // popup must close, or advance to whatever was queued behind it.
+    publisher.republish_active();
+
     let redirect = request.client_state.as_deref().map(|client_state| {
         build_client_redirect_url(&redirect_uri, &authorization_code.code, client_state)
     });
@@ -322,7 +327,7 @@ pub(super) fn approve_oauth_consent(
 /// marks it denied and republishes the popup head.
 pub(super) fn deny_oauth_consent(
     store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
+    publisher: &dyn PendingConsentPublisher,
     id: &str,
 ) -> Result<(), GatekeeperError> {
     load_pending_authorization_code_request(store, id)?;

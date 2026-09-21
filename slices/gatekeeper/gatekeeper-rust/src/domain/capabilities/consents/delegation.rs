@@ -5,15 +5,15 @@ use scopes_rust::{Grant, Scope};
 
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
-use crate::ports::DeviceUserCodePublisher;
+use crate::ports::PendingConsentPublisher;
 
-/// Mark request `request_id` denied and republish the active device-consent head
-/// — the shared tail of every deny path (explicit deny + a nothing-granted
-/// approve). Code-flow denies are no-ops against the device-only query, so this
-/// is called unconditionally.
+/// Mark request `request_id` denied and republish the active consent head — the
+/// shared tail of every deny path (explicit deny + a nothing-granted approve).
+/// The head query spans both grant flows, so a code-flow deny moves it just as a
+/// device deny does.
 pub(super) fn deny_consent(
     store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
+    publisher: &dyn PendingConsentPublisher,
     request_id: &str,
 ) -> Result<(), GatekeeperError> {
     store.deny_authorization_request(request_id)?;

@@ -28,7 +28,7 @@ import { stubTransport } from './bridges/transport-context.ts'
  * - `makeTransport`: pre-resolved stub (no host bridge), so the `_auth`
  *   loader's `await context.transport` is a microtask. Both setters are
  *   ignored — there's no host to push `AuthTokenIssued` or
- *   `DeviceConsentRequested` from on standalone web.
+ *   `PendingConsentRequested` from on standalone web.
  * - `platformSettingsItems`: the web logout row — a same-origin
  *   `POST /access/logout` form. Web-only: on Tauri the session is
  *   connection-provenance, so a cookie logout is a no-op.

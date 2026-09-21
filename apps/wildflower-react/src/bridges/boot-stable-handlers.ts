@@ -1,6 +1,6 @@
 import type { BridgeHandlerRecord } from 'effect-messaging-react'
 import { GatekeeperBridge } from 'gatekeeper-core/bridge'
-import type { ActiveDeviceUserCodeStore } from 'gatekeeper-react'
+import type { ActivePendingConsentStore } from 'gatekeeper-react'
 import { makeGatekeeperWebHandlers } from 'gatekeeper-react/web-bridge'
 import { NavigationBridge } from 'navigation-core'
 import { makeNavigationWebHandlers, type NavTarget } from 'navigation-react'
@@ -38,14 +38,14 @@ import { applyRootInsets } from '../styles/apply-root-insets.ts'
 const makeBootStableInitialHandlers = (
   navigate: (to: NavTarget) => void,
   setAuthState: AuthStateStore['setAuthState'],
-  setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
+  setActivePendingConsent: ActivePendingConsentStore['setActiveHead']
 ): Readonly<Record<string, BridgeHandlerRecord>> => ({
   [NavigationBridge.name]: makeNavigationWebHandlers({
     navigate,
     applyInsets: applyRootInsets,
     applyColorScheme,
   }),
-  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setAuthState, setActiveDeviceUserCode),
+  [GatekeeperBridge.name]: makeGatekeeperWebHandlers(setAuthState, setActivePendingConsent),
 })
 
 export { makeBootStableInitialHandlers }

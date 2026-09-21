@@ -14,6 +14,7 @@ use diesel::sqlite::SqliteConnection;
 use crate::db::shared::{text_enum_column, JsonStrings, UrlText};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::gatekeeper_error::GatekeeperError;
+use crate::domain::pending_consent::PendingConsentHead;
 
 diesel::table! {
     authorization_requests (id) {
@@ -172,36 +173,51 @@ pub(super) fn pending_authorization_request_by_user_code(
         .map(|row| row.map(AuthorizationRequest::from))
 }
 
-/// Return the `user_code` of the oldest pending, non-expired device-code
-/// authorization request — the head the host UI surfaces in its
-/// non-dismissable consent modal. Returns `None` if no such request
-/// exists.
+/// Return the [`PendingConsentHead`] of the oldest pending, non-expired
+/// authorization request across **both** grant flows, or `None` when none
+/// exists. See `slices/gatekeeper/docs/Jargon Explanation.md`
+/// ("Pending-consent queue") for what drives this and who consumes it.
 ///
-/// The host calls this after every transition that may change the head
-/// (a fresh `/oauth/device_authorization` insert; `approve`/`deny` of a
-/// device consent) and pushes the result through a `watch::Sender` to
-/// the webview bridge. The query is intentionally minimal: only the
-/// `user_code` rides the bridge — the SPA reuses the existing
-/// `GET /access/devices/{userCode}` fetch path to hydrate the form,
-/// so this slice doesn't grow a second DTO for the same row.
-///
-/// The `user_code IS NOT NULL` guard exists because a malformed half-row
-/// could otherwise float to the head with `user_code = NULL` and crash
-/// the SPA's `string` decoder.
-pub(super) fn oldest_pending_device_user_code(
+/// The `user_code IS NOT NULL` guard is scoped to the **device** branch, not
+/// applied to the whole query: a code row legitimately has no `user_code` (it is
+/// keyed by `id`), while a device row without one is a malformed half-row that
+/// would float to the head with no key the consent fetch could resolve.
+pub(super) fn oldest_pending_consent_head(
     conn: &mut SqliteConnection,
-) -> Result<Option<String>, GatekeeperError> {
+) -> Result<Option<PendingConsentHead>, GatekeeperError> {
     authorization_requests::table
-        .filter(authorization_requests::grant_type.eq(GrantType::DeviceCode))
         .filter(authorization_requests::status.eq(RequestStatus::Pending))
-        .filter(authorization_requests::user_code.is_not_null())
         .filter(authorization_requests::expires_at.gt(Utc::now()))
+        .filter(
+            authorization_requests::grant_type
+                .eq(GrantType::AuthorizationCode)
+                .or(authorization_requests::grant_type
+                    .eq(GrantType::DeviceCode)
+                    .and(authorization_requests::user_code.is_not_null())),
+        )
         .order(authorization_requests::requested_at.asc())
-        .select(authorization_requests::user_code)
-        .first::<Option<String>>(conn)
+        .select((
+            authorization_requests::grant_type,
+            authorization_requests::id,
+            authorization_requests::user_code,
+        ))
+        .first::<(GrantType, String, Option<String>)>(conn)
         .optional()
-        .map_err(|e| GatekeeperError::infrastructure("oldest_pending_device_user_code failed", e))
-        .map(Option::flatten)
+        .map_err(|e| GatekeeperError::infrastructure("oldest_pending_consent_head failed", e))
+        .map(|row| row.and_then(head_from_row))
+}
+
+/// Build the head from the three selected columns. The `None` arm is
+/// unreachable through [`oldest_pending_consent_head`]'s `WHERE`; reaching it
+/// means the filter drifted, and dropping the head keeps the popup closed rather
+/// than opening it on a key nothing can fetch.
+fn head_from_row(
+    (grant_type, id, user_code): (GrantType, String, Option<String>),
+) -> Option<PendingConsentHead> {
+    match grant_type {
+        GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth { id }),
+        GrantType::DeviceCode => user_code.map(|user_code| PendingConsentHead::Device { user_code }),
+    }
 }
 
 /// Persist a freshly-constructed `AuthorizationRequest`.
@@ -673,18 +689,35 @@ mod tests {
         }
     }
 
-    // FIFO head selector: oldest pending non-expired device-code row wins.
-    // A code-flow row, a non-pending row, and an expired row are all
-    // ignored — proves each filter pulls its weight.
+    /// A pending code-flow row, keyed by `id` and carrying no `user_code` —
+    /// what `/oauth/authorize` parks when a request needs Owner approval.
+    fn code_request(id: &str, status: RequestStatus) -> AuthorizationRequest {
+        AuthorizationRequest {
+            id: id.to_string(),
+            grant_type: GrantType::AuthorizationCode,
+            client_id: "code-client".to_string(),
+            code_challenge: Some("c".repeat(43)),
+            code_challenge_method: Some("S256".to_string()),
+            redirect_uri: Some(
+                url::Url::parse("https://example.com/cb").expect("a valid redirect"),
+            ),
+            client_state: Some("state-1".to_string()),
+            user_code: None,
+            ..device_request(id, "unused", status)
+        }
+    }
+
+    // FIFO head selector across both grant flows: the oldest pending,
+    // non-expired row wins whichever flow it came from, because the two share
+    // one popup slot. A non-pending row and an expired row are both ignored —
+    // proves each filter pulls its weight.
     #[test]
-    fn oldest_pending_device_user_code_picks_the_fifo_head() {
+    fn oldest_pending_consent_head_picks_the_fifo_head_across_both_flows() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
 
         // Empty → None.
         assert_eq!(
-            store
-                .oldest_pending_device_user_code()
-                .expect("query empty"),
+            store.oldest_pending_consent_head().expect("query empty"),
             None
         );
 
@@ -704,43 +737,47 @@ mod tests {
             .expect("insert newer");
 
         assert_eq!(
-            store
-                .oldest_pending_device_user_code()
-                .expect("query")
-                .as_deref(),
-            Some("AAA-111")
+            store.oldest_pending_consent_head().expect("query"),
+            Some(PendingConsentHead::Device {
+                user_code: "AAA-111".to_string()
+            })
         );
 
-        // A code-flow row with an even older requested_at must not become the
-        // head — the query is device-only.
-        let code_row = AuthorizationRequest {
-            id: "code-1".to_string(),
-            grant_type: GrantType::AuthorizationCode,
-            user_code: None,
-            requested_at: now - chrono::Duration::seconds(120),
-            ..device_request("code-1", "unused", RequestStatus::Pending)
-        };
+        // A code-flow row with an older requested_at *does* take the head: the
+        // queue is shared, so a parked `/oauth/authorize` request outranks a
+        // later device pairing. (This is the regression the device-only query
+        // had — a code row could never surface, so its popup never appeared.)
+        let mut code_row = code_request("code-older", RequestStatus::Pending);
+        code_row.requested_at = now - chrono::Duration::seconds(120);
         store
             .insert_authorization_request(&code_row)
             .expect("insert code row");
         assert_eq!(
-            store
-                .oldest_pending_device_user_code()
-                .expect("query")
-                .as_deref(),
-            Some("AAA-111")
+            store.oldest_pending_consent_head().expect("query"),
+            Some(PendingConsentHead::OAuth {
+                id: "code-older".to_string()
+            })
         );
 
-        // Denying the head promotes the next pending row.
+        // Denying the head promotes the next pending row — across flows.
+        store
+            .deny_authorization_request("code-older")
+            .expect("deny code row");
+        assert_eq!(
+            store.oldest_pending_consent_head().expect("query"),
+            Some(PendingConsentHead::Device {
+                user_code: "AAA-111".to_string()
+            })
+        );
+
         store
             .deny_authorization_request("dev-older")
             .expect("deny older");
         assert_eq!(
-            store
-                .oldest_pending_device_user_code()
-                .expect("query")
-                .as_deref(),
-            Some("BBB-222")
+            store.oldest_pending_consent_head().expect("query"),
+            Some(PendingConsentHead::Device {
+                user_code: "BBB-222".to_string()
+            })
         );
 
         // Denying the last pending row leaves no head.
@@ -748,36 +785,87 @@ mod tests {
             .deny_authorization_request("dev-newer")
             .expect("deny newer");
         assert_eq!(
-            store
-                .oldest_pending_device_user_code()
-                .expect("query final"),
+            store.oldest_pending_consent_head().expect("query final"),
             None
         );
     }
 
-    // Expired pending rows are filtered out: the FIFO head must skip a row
-    // whose `expires_at` is in the past. The regular insert prunes via
-    // `expires_at < now`, but a row inserted *first* sits in the table
+    // Expired pending rows are filtered out, in both flows: the FIFO head must
+    // skip a row whose `expires_at` is in the past. The regular insert prunes
+    // via `expires_at < now`, but a row inserted *first* sits in the table
     // until the next insert sweeps it — the popup query must not pick it
     // up in that window either.
     #[test]
-    fn oldest_pending_device_user_code_skips_expired_rows() {
+    fn oldest_pending_consent_head_skips_expired_rows() {
         let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
-        let mut expired = device_request("dev-expired", "EXP-000", RequestStatus::Pending);
-        expired.expires_at = Utc::now() - chrono::Duration::minutes(1);
+        let mut expired_device = device_request("dev-expired", "EXP-000", RequestStatus::Pending);
+        expired_device.expires_at = Utc::now() - chrono::Duration::minutes(1);
+        let mut expired_code = code_request("code-expired", RequestStatus::Pending);
+        expired_code.expires_at = Utc::now() - chrono::Duration::minutes(1);
         store
-            .insert_authorization_request(&expired)
-            .expect("insert expired");
-        // Row is in the table (no other insert has swept it).
+            .insert_authorization_request(&expired_device)
+            .expect("insert expired device");
+        store
+            .insert_authorization_request(&expired_code)
+            .expect("insert expired code");
+        // Both rows are in the table (no other insert has swept them).
         assert!(store
             .authorization_request_by_id("dev-expired")
             .expect("query")
             .is_some());
-        // Popup-head query filters it out.
+        assert!(store
+            .authorization_request_by_id("code-expired")
+            .expect("query")
+            .is_some());
+        // Popup-head query filters them out.
+        assert_eq!(store.oldest_pending_consent_head().expect("query"), None);
+    }
+
+    // A device row whose `user_code` is NULL is malformed: there is no key the
+    // consent surface could fetch by. It must be skipped entirely rather than
+    // surfacing as a head — and in particular must not be misread as a code-flow
+    // head keyed by `id`, which would send the popup to the wrong endpoint.
+    #[test]
+    fn oldest_pending_consent_head_skips_a_device_row_without_a_user_code() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        let now = Utc::now();
+        let mut malformed = device_request("dev-malformed", "unused", RequestStatus::Pending);
+        malformed.user_code = None;
+        malformed.requested_at = now - chrono::Duration::seconds(60);
+        let mut code_row = code_request("code-1", RequestStatus::Pending);
+        code_row.requested_at = now;
+        store
+            .insert_authorization_request(&malformed)
+            .expect("insert malformed device row");
+        store
+            .insert_authorization_request(&code_row)
+            .expect("insert code row");
+
+        // The malformed row is older, so only the guard keeps it off the head.
         assert_eq!(
-            store.oldest_pending_device_user_code().expect("query"),
-            None
+            store.oldest_pending_consent_head().expect("query"),
+            Some(PendingConsentHead::OAuth {
+                id: "code-1".to_string()
+            })
         );
+    }
+
+    // Only `pending` rows are candidates: an approved or denied row of either
+    // flow is a decided request and must never re-raise the popup.
+    #[test]
+    fn oldest_pending_consent_head_ignores_decided_rows() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        store
+            .insert_authorization_request(&device_request(
+                "dev-approved",
+                "AAA-111",
+                RequestStatus::Approved,
+            ))
+            .expect("insert approved device row");
+        store
+            .insert_authorization_request(&code_request("code-denied", RequestStatus::Denied))
+            .expect("insert denied code row");
+        assert_eq!(store.oldest_pending_consent_head().expect("query"), None);
     }
 
     // A request that is not `approved` is never claimable and is left untouched

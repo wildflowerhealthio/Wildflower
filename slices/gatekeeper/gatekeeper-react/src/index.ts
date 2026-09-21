@@ -65,11 +65,11 @@ export {
 } from './client/auth-state-store.ts'
 
 export {
-  ActiveDeviceUserCodeProvider,
-  makeActiveDeviceUserCodeStore,
-  useActiveDeviceUserCode,
-  type ActiveDeviceUserCodeProviderProps,
-  type ActiveDeviceUserCodeStore,
-} from './active-device-consent/index.ts'
+  ActivePendingConsentProvider,
+  makeActivePendingConsentStore,
+  useActivePendingConsent,
+  type ActivePendingConsentProviderProps,
+  type ActivePendingConsentStore,
+} from './active-pending-consent/index.ts'
 
-export { DeviceConsentModalHost } from './screens/device-consent/device-consent-modal-host.tsx'
+export { PendingConsentModalHost } from './screens/pending-consent/pending-consent-modal-host.tsx'

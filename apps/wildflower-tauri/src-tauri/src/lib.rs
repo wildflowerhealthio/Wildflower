@@ -388,14 +388,14 @@ async fn run_server(
     );
 
     // `setup_gatekeeper` publishes the freshly-minted host owner token (and
-    // device-consent heads) through the bridge publishers; `bridge::attach_bridge`
+    // pending-consent heads) through the bridge publishers; `bridge::attach_bridge`
     // documents how the resident task delivers them to the webview.
     let gatekeeper = setup_gatekeeper(
         diesel_pool.clone(),
         revocation_store,
         &gatekeeper_config,
         &publishers.host_owner_token_sender,
-        publishers.active_device_user_code_sender,
+        publishers.active_pending_consent_sender,
         redirect_resolver,
     )
     .context("failed to set up gatekeeper")?;

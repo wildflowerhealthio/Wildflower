@@ -14,7 +14,7 @@ use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::consents::consent_decider_scopes;
 use crate::domain::capabilities::{Capability, ConsentDecider};
 use crate::domain::token::VerifiedClaims;
-use crate::ports::DeviceUserCodePublisher;
+use crate::ports::PendingConsentPublisher;
 
 /// Decide (approve/deny) pending consent prompts.
 pub(crate) type LiveConsentDecider = ConsentDecider<SqliteGatekeeperStore>;
@@ -28,9 +28,9 @@ impl Capability for LiveConsentDecider {
     }
 
     fn build(state: Arc<GatekeeperState>, granted: Grant) -> Self {
-        // `Arc<GatekeeperState>` implements `DeviceUserCodePublisher` (via the bare
+        // `Arc<GatekeeperState>` implements `PendingConsentPublisher` (via the bare
         // state's impl), so it coerces to the port handle the capability holds.
-        let publisher: Arc<dyn DeviceUserCodePublisher> = state.clone();
+        let publisher: Arc<dyn PendingConsentPublisher> = state.clone();
         ConsentDecider::new(
             state.store.clone(),
             publisher,

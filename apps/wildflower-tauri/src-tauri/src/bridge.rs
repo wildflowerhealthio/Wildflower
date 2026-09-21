@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
-use gatekeeper_rust::bridge::GatekeeperHostToWeb;
+use gatekeeper_rust::bridge::{GatekeeperHostToWeb, PendingConsentHeadWire};
+use gatekeeper_rust::PendingConsentHead;
 use serde::Deserialize;
 use shared_structures_rust::bridge::BRIDGE_EVENT;
 use tauri::{AppHandle, Emitter, Listener};
@@ -156,13 +157,14 @@ fn format_log_payload(payload: &[serde_json::Value]) -> String {
 /// crates never see this type, they take a bare `watch::Sender`.
 pub struct BridgePublishers {
     pub host_owner_token_sender: watch::Sender<Option<String>>,
-    pub active_device_user_code_sender: watch::Sender<Option<String>>,
+    pub active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
 }
 
 /// Raise the main webview window to the foreground so a freshly-arrived
-/// device-consent popup is visible to the operator (the whole point of
-/// the popup — a `verification_uri` could pair while the user is in
-/// another app). `unminimize` plus `set_focus` is the desktop pattern;
+/// consent popup is visible to the operator (the whole point of the
+/// popup — a `verification_uri` could pair, or a SMART app could launch
+/// from another device's browser, while the user is in another app).
+/// `unminimize` plus `set_focus` is the desktop pattern;
 /// `is_minimized` short-circuits the unminimize call so we don't reset
 /// a window that's already in view.
 ///
@@ -213,11 +215,12 @@ fn raise_main_window(_handle: &AppHandle) {}
 ///   stored permit collapses a `__Ready` burst into one delivery, and a
 ///   permit stored before the task first polls is not lost, so the boot
 ///   race is covered.
-/// - Device-consent delivery: the same task forwards the active
-///   pending device-consent head (or `null`) as
-///   `bridge:DeviceConsentRequested` on `__Ready` *and* on every
-///   change. The webview side's
-///   [`ActiveDeviceUserCodeStore`](gatekeeper-react) seeds itself off
+/// - Pending-consent delivery: the same task forwards the active
+///   pending-consent head (or `null`) as
+///   `bridge:PendingConsentRequested` on `__Ready` *and* on every
+///   change. The head carries the `kind` that tells the SPA which
+///   consent form to render. The webview side's
+///   [`ActivePendingConsentStore`](gatekeeper-react) seeds itself off
 ///   the `__Ready` re-delivery, just like the token store does. Both
 ///   arms use `borrow_and_update` so the seen-version marker advances
 ///   past the just-delivered value; without that, a `__Ready` that
@@ -245,7 +248,8 @@ fn raise_main_window(_handle: &AppHandle) {}
 /// silently.
 pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
     let (host_owner_token_sender, mut token_rx) = watch::channel::<Option<String>>(None);
-    let (active_device_user_code_sender, mut consent_rx) = watch::channel::<Option<String>>(None);
+    let (active_pending_consent_sender, mut consent_rx) =
+        watch::channel::<Option<PendingConsentHead>>(None);
 
     // The bridge channel is shared across listeners with no automated
     // cross-process tag guard; log this crate's tag set at attach time so
@@ -282,7 +286,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
         // window — focus is for "a brand new popup appeared", not for
         // the user advancing through a queue they are already looking
         // at.
-        let mut last_delivered_consent: Option<String> = None;
+        let mut last_delivered_consent: Option<PendingConsentHead> = None;
         loop {
             // Which arm woke the loop drives whether we re-deliver token,
             // re-deliver consent, and/or focus the window — see the per-
@@ -304,7 +308,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                 changed = consent_rx.changed() => match changed {
                     Ok(()) => Outcome::ConsentChanged,
                     Err(_) => {
-                        log::error!("[bridge] device-consent channel closed; delivery stopped");
+                        log::error!("[bridge] pending-consent channel closed; delivery stopped");
                         return;
                     }
                 },
@@ -320,7 +324,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     // `ConsentChanged` arm (see the doc comment).
                     let consent = consent_rx.borrow_and_update().clone();
                     last_delivered_consent = consent.clone();
-                    emit_device_consent(&handle, &consent);
+                    emit_pending_consent(&handle, &consent);
                 }
                 Outcome::TokenChanged => notify_if_token_present(&handle, &mut token_rx),
                 Outcome::ConsentChanged => {
@@ -328,7 +332,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
                     let was_none = last_delivered_consent.is_none();
                     let is_some = consent.is_some();
                     last_delivered_consent = consent.clone();
-                    emit_device_consent(&handle, &consent);
+                    emit_pending_consent(&handle, &consent);
                     // Raise the window only on `None → Some` — a brand-new
                     // popup. See the doc comment's "Window focus" note.
                     if was_none && is_some {
@@ -341,7 +345,7 @@ pub fn attach_bridge(app: &AppHandle) -> BridgePublishers {
 
     BridgePublishers {
         host_owner_token_sender,
-        active_device_user_code_sender,
+        active_pending_consent_sender,
     }
 }
 
@@ -371,15 +375,15 @@ fn emit_auth_token_notify(handle: &AppHandle) {
     }
 }
 
-fn emit_device_consent(handle: &AppHandle, user_code: &Option<String>) {
-    let message = GatekeeperHostToWeb::DeviceConsentRequested {
-        user_code: user_code.clone(),
+fn emit_pending_consent(handle: &AppHandle, head: &Option<PendingConsentHead>) {
+    let message = GatekeeperHostToWeb::PendingConsentRequested {
+        head: head.clone().map(PendingConsentHeadWire::from),
     };
     match handle.emit(BRIDGE_EVENT, &message) {
-        Ok(()) => log::debug!(
-            "[bridge] DeviceConsentRequested delivered to webview (userCode={user_code:?})"
-        ),
-        Err(error) => log::error!("[bridge] failed to emit DeviceConsentRequested: {error}"),
+        Ok(()) => {
+            log::debug!("[bridge] PendingConsentRequested delivered to webview (head={head:?})");
+        }
+        Err(error) => log::error!("[bridge] failed to emit PendingConsentRequested: {error}"),
     }
 }
 

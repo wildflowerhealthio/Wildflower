@@ -24,7 +24,7 @@ use crate::domain::GatekeeperStore;
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::http::ServedOrigin;
-use crate::ports::DeviceUserCodePublisher;
+use crate::ports::PendingConsentPublisher;
 
 /// Lifetime of a device-flow authorization request — the user has this long
 /// to enter their `user_code` before the flow expires.
@@ -97,7 +97,7 @@ pub(super) async fn handle_device_authorization_request(
 /// `(device_code, user_code)` pair, surfacing every failure as a [`TokenError`].
 fn device_authorization(
     state: &GatekeeperState,
-    device_user_code_publisher: &dyn DeviceUserCodePublisher,
+    pending_consent_publisher: &dyn PendingConsentPublisher,
     origin: &ServedOrigin,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
@@ -158,10 +158,10 @@ fn device_authorization(
     });
     state.store.insert_authorization_request(&request)?;
     // A fresh pending row may have just become the head of the
-    // device-consent queue (it always does, unless an older
-    // non-expired pending request still leads). Republish so the
-    // host webview popup picks it up.
-    device_user_code_publisher.republish_active();
+    // consent queue (it always does, unless an older non-expired
+    // pending request — of either grant flow — still leads).
+    // Republish so the host webview popup picks it up.
+    pending_consent_publisher.republish_active();
     Ok(DeviceAuthorizationResponse {
         device_code,
         user_code: user_code.clone(),

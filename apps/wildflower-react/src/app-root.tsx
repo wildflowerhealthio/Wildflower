@@ -2,11 +2,11 @@ import { QueryClientProvider, type QueryClient } from '@tanstack/react-query'
 import { type AnyRouter, createRouter, type RouterHistory } from '@tanstack/react-router'
 import { Effect, type Fiber, type Subscribable, Stream } from 'effect'
 import {
-  ActiveDeviceUserCodeProvider,
+  ActivePendingConsentProvider,
   buildDeviceLoginTarget,
   DEVICE_LOGIN_ROUTE,
-  makeActiveDeviceUserCodeStore,
-  type ActiveDeviceUserCodeStore,
+  makeActivePendingConsentStore,
+  type ActivePendingConsentStore,
 } from 'gatekeeper-react'
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
@@ -29,19 +29,19 @@ import './styles/fonts.ts'
  * Per-entry transport factory. Receives a stable `navigate` closure
  * that delegates to the router instance (set after `createRouter`),
  * a `writeIssuedToken` writer threaded from the entry's
- * {@link AuthStateStore}, and a `setActiveDeviceUserCode` writer
- * threaded from the in-app {@link ActiveDeviceUserCodeStore}; returns
+ * {@link AuthStateStore}, and a `setActivePendingConsent` writer
+ * threaded from the in-app {@link ActivePendingConsentStore}; returns
  * the page's `BridgeTransport` (narrowed to the React-facing
  * `ReactTransport` surface). Web entries return a pre-resolved stub
  * and ignore both setters (no host bridge to receive `AuthTokenIssued`
- * or `DeviceConsentRequested` from); embedded/Tauri wires both into
+ * or `PendingConsentRequested` from); embedded/Tauri wires both into
  * the gatekeeper page-bridge handler so host pushes land in the
  * corresponding stores.
  */
 type MakeTransport = (
   navigate: (to: NavTarget) => void,
   writeIssuedToken: AuthStateStore['setAuthState'],
-  setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
+  setActivePendingConsent: ActivePendingConsentStore['setActiveHead']
 ) => Promise<ReactTransport>
 
 /**
@@ -255,15 +255,15 @@ const renderApp = ({
   }
 
   // Built once per renderApp. Only the Tauri host ever pushes
-  // `DeviceConsentRequested`, but the store and provider are wired in
+  // `PendingConsentRequested`, but the store and provider are wired in
   // every entry so the modal host's hook contract is identical
   // everywhere (no per-entry guard inside the gatekeeper-react surface).
-  const activeDeviceUserCodeStore = makeActiveDeviceUserCodeStore()
+  const activePendingConsentStore = makeActivePendingConsentStore()
 
   const transportPromise = makeTransport(
     navigate,
     tokenStore.setAuthState,
-    activeDeviceUserCodeStore.setActiveUserCode
+    activePendingConsentStore.setActiveHead
   )
   const transportReady = transportPromise.then(() => undefined)
   const resolvedAwaitAuthReady = awaitAuthReady(transportReady)
@@ -313,14 +313,14 @@ const renderApp = ({
       >
         <QueryClientProvider client={queryClient}>
           <AuthStateProvider store={tokenStore}>
-            <ActiveDeviceUserCodeProvider store={activeDeviceUserCodeStore}>
+            <ActivePendingConsentProvider store={activePendingConsentStore}>
               <AppRootTree
                 router={router}
                 transportPromise={transportPromise}
                 platformSettingsItems={platformSettingsItems}
                 platformTabs={platformTabs}
               />
-            </ActiveDeviceUserCodeProvider>
+            </ActivePendingConsentProvider>
           </AuthStateProvider>
         </QueryClientProvider>
       </ErrorBoundary>
