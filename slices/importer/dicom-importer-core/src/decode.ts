@@ -192,10 +192,8 @@ const referenceTo = (
  * resources.
  *
  * @param members - Every picked `.dcm` of one study, in study order, each with
- *   its parsed header and the reference to the `DocumentReference` storing its
- *   bytes — that id is what the file's `ImagingStudy` instance carries as its
- *   `gridfsFileId` extension, so each instance names the archive it was read
- *   from
+ *   its parsed header and the reference to its archive (what the instance's
+ *   `gridfsFileId` extension names)
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against
  * @returns One section when the study carries a patient, plus notes for what
@@ -208,11 +206,9 @@ const referenceTo = (
  * `imaging-study` — and are unique only *within* one study; the decode
  * function namespaces them by the set's representative pick.
  *
- * The time zone is rejected rather than substituted: every
- * `ImagingStudy.started` is resolved against it, so a guess would write
- * instants hours away from what the equipment recorded. It is one setting for
- * the whole pick, so an unresolvable zone fails every set, and with it every
- * file.
+ * The time zone is rejected rather than substituted — a guess would write
+ * `started` instants hours from what the equipment recorded — and it is one
+ * setting for the whole pick, so an unresolvable zone fails every set.
  */
 const decodeStudy = (
   members: Arr.NonEmptyReadonlyArray<StudyMember>,

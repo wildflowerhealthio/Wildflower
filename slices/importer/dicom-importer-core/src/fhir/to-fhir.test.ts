@@ -75,9 +75,9 @@ const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.T
 })
 
 /**
- * One file's header as the unit the synthesis takes. Most of these cases are
+ * One file's header as the file set the synthesis takes. Most of these cases are
  * about one header's tags, which a one-instance study states exactly as a
- * single file used to; the study-level cases below build units of several.
+ * single file used to; the study-level cases below build sets of several.
  */
 const oneFileStudy = (
   header: DicomHeader.Type,

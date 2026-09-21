@@ -440,8 +440,6 @@ const studySectionTitle = (count: number): string => `Study · ${count} files`
  *
  * Pure, and over the rows already loaded: paging can split a study across
  * pages, in which case its later files join the section as those pages load.
- * A study with one row listed is a section of one, titled by its row — a
- * heading over a single row states nothing the row does not.
  */
 const sourceFileSections = (rows: readonly SourceFileRow[]): readonly SourceFileSection[] => {
   const byRelated = new Map<string, SourceFileRow[]>()

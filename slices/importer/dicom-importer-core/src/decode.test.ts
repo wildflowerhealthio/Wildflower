@@ -389,7 +389,7 @@ describe('the DICOM batch decode', () => {
       file('2', { PatientID: 'P002', SOPInstanceUID: 'I2' }),
     ])
     // Same StudyInstanceUID, so the studies share an id — but they are two
-    // reviewable units under two patients, never one silently merged study.
+    // reviewable file sets under two patients, never one silently merged study.
     expect(studiesOf(result)).toHaveLength(2)
     expect(new Set(of(result, 'Patient').map((one) => one.id)).size).toBe(2)
   })
