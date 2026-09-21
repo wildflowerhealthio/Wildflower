@@ -216,14 +216,14 @@ pub(super) fn approve_oauth_consent(
     } = load_pending_authorization_code_request(store, id)?;
 
     let is_first_party = ctx.registration.is_first_party(&request.client_id);
-    let client = store.client_by_id(&request.client_id)?;
+    let maybe_existing_client = store.client_by_id(&request.client_id)?;
     // The first-party host must be registered; every other client may be new.
-    if is_first_party && client.is_none() {
+    if is_first_party && maybe_existing_client.is_none() {
         return Err(make_consent_not_found());
     }
     let registration = ctx.registration.classify(
         &request.client_id,
-        client.as_ref(),
+        maybe_existing_client.as_ref(),
         &redirect_uri,
         &request.requested_scopes,
     );
@@ -236,7 +236,7 @@ pub(super) fn approve_oauth_consent(
         .iter()
         .map(String::as_str)
         .collect();
-    let registered: Vec<&str> = client
+    let registered: Vec<&str> = maybe_existing_client
         .as_ref()
         .map(|client| client.allowed_scopes.iter().map(String::as_str).collect())
         .unwrap_or_default();

@@ -108,7 +108,7 @@ impl RegistrationContext<'_> {
         // absolute entries still match.
         let served = url::Url::parse(self.served_origin).ok();
         classify_registration(&PendingRegistration {
-            client,
+            maybe_existing_client: client,
             redirect_uri,
             requested_scopes,
             served_origin: served.as_ref(),

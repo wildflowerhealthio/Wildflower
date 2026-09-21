@@ -60,7 +60,7 @@ impl ClientRegistration {
 /// entry.
 pub(crate) struct PendingRegistration<'a> {
     /// The current `clients` row, or `None` when the `client_id` is unknown.
-    pub(crate) client: Option<&'a Client>,
+    pub(crate) maybe_existing_client: Option<&'a Client>,
     /// The `redirect_uri` the request presented, already parsed.
     pub(crate) redirect_uri: &'a Url,
     /// The whitespace-split requested scopes, in request order.
@@ -90,7 +90,7 @@ pub(crate) struct PendingRegistration<'a> {
 /// registration lists it verbatim — deliberately, since the Owner should see an
 /// unrecognized scope string.
 pub(crate) fn classify_registration(pending: &PendingRegistration<'_>) -> ClientRegistration {
-    let Some(client) = pending.client else {
+    let Some(client) = pending.maybe_existing_client else {
         return ClientRegistration::New;
     };
     let redirect_uri_is_new = !redirect_is_allowlisted(
@@ -142,7 +142,7 @@ mod tests {
     ) -> ClientRegistration {
         let requested: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
         classify_registration(&PendingRegistration {
-            client,
+            maybe_existing_client: client,
             redirect_uri,
             requested_scopes: &requested,
             served_origin: None,
@@ -241,7 +241,7 @@ mod tests {
         let requested = vec!["read".to_owned()];
         assert_eq!(
             classify_registration(&PendingRegistration {
-                client: Some(&app),
+                maybe_existing_client: Some(&app),
                 redirect_uri: &callback,
                 requested_scopes: &requested,
                 served_origin: Some(&served),
@@ -251,7 +251,7 @@ mod tests {
         );
         assert_eq!(
             classify_registration(&PendingRegistration {
-                client: Some(&app),
+                maybe_existing_client: Some(&app),
                 redirect_uri: &callback,
                 requested_scopes: &requested,
                 served_origin: Some(&served),
@@ -292,7 +292,7 @@ mod tests {
                 app.redirect_uris = Vec::new();
             }
             let verdict = classify_registration(&PendingRegistration {
-                client: Some(&app),
+                maybe_existing_client: Some(&app),
                 redirect_uri: &redirect(),
                 requested_scopes: &requested,
                 served_origin: None,
@@ -331,7 +331,7 @@ mod tests {
             app.allowed_scopes.extend(requested.iter().cloned());
             prop_assert_eq!(
                 classify_registration(&PendingRegistration {
-                    client: Some(&app),
+                    maybe_existing_client: Some(&app),
                     redirect_uri: &redirect(),
                     requested_scopes: &requested,
                     served_origin: None,
