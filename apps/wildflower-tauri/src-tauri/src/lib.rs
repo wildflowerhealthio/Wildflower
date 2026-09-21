@@ -946,29 +946,135 @@ mod tests {
         assert!(!should_present_owner_token(true, false, true));
     }
 
-    /// `resolve_data_dir` puts the host's data in the iOS app container's
-    /// `Documents`, which the Files app only exposes when the bundle declares
-    /// `UIFileSharingEnabled` — so the choice of directory is only half the
-    /// feature, and losing the key silently un-does it. The key is declared in
-    /// `Info.ios.plist` (merged over the generated plist by `tauri ios build`)
-    /// and in the generated plist itself (what an Xcode-opened build reads);
-    /// both have to keep it, and this is what stops the pair from drifting.
+    /// Reads one of the Apple plists next to this crate and flattens it, so a
+    /// key and its value compare as one token however the file indents them.
+    /// The files' comments name keys in backticks rather than as `<key>`
+    /// elements, so a flattened comment can't satisfy an assertion below.
+    fn compact_apple_plist(relative: &str) -> String {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
+        let plist = std::fs::read_to_string(&path)
+            .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
+        plist.split_whitespace().collect()
+    }
+
+    /// Both keys, in both iOS plists: the Files app lists the host's data
+    /// directory under "On My iPhone" only when the bundle declares each, and
+    /// only the overlay *and* the generated plist together cover both a CLI and
+    /// an Xcode-opened build. Losing any of the four silently un-does the
+    /// feature — see the [Data Directory Explanation].
+    ///
+    /// [Data Directory Explanation]: ../../Data%20Directory%20Explanation.md
     #[test]
-    fn both_ios_plists_declare_file_sharing() {
+    fn both_ios_plists_declare_files_app_keys() {
         for relative in [
             "Info.ios.plist",
             "gen/apple/wildflower-tauri_iOS/Info.plist",
         ] {
-            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
-            let plist = std::fs::read_to_string(&path)
-                .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()));
-            // Whitespace-insensitive: the key and its value sit on separate,
-            // indented lines in both files.
-            let compact: String = plist.split_whitespace().collect();
+            let compact = compact_apple_plist(relative);
+            for key in ["UIFileSharingEnabled", "LSSupportsOpeningDocumentsInPlace"] {
+                assert!(
+                    compact.contains(&format!("<key>{key}</key><true/>")),
+                    "{relative} must declare {key} as true, or the data directory \
+                     stays invisible in the Files app"
+                );
+            }
+        }
+    }
+
+    /// Every `<key>` either overlay declares, nested ones included, paired with
+    /// the value token that follows it — reading the compacted text rather than
+    /// parsing XML. The value is the whole `<string>…</string>` for a string,
+    /// the self-closing `<true/>`/`<false/>` for a boolean, and the opening tag
+    /// alone for a container (`<dict>`, `<array>`), whose own keys arrive as
+    /// entries of their own.
+    fn declared_entries(relative: &str) -> Vec<(String, String)> {
+        let compact = compact_apple_plist(relative);
+        compact
+            .split("<key>")
+            .skip(1)
+            .filter_map(|rest| rest.split_once("</key>"))
+            .map(|(key, after)| {
+                let end = if after.starts_with("<string>") {
+                    after.find("</string>").map(|at| at + "</string>".len())
+                } else {
+                    // `<true/>`, `<dict>`, … — everything up to the first `>`.
+                    after.find('>').map(|at| at + 1)
+                };
+                let value = &after[..end.unwrap_or(after.len())];
+                (key.to_owned(), value.to_owned())
+            })
+            .collect()
+    }
+
+    /// The generated iOS plist is a hand-maintained copy of what the overlays
+    /// declare — `tauri ios build` merges them, but an Xcode-opened build of
+    /// `gen/apple/wildflower-tauri.xcodeproj` reads the generated file alone.
+    /// Rather than let the copies drift, derive the expectation from the
+    /// overlays: every key they declare has to appear in the generated plist
+    /// *with the same value*, so neither a key added to an overlay later nor a
+    /// reworded string can be silently left out of it.
+    #[test]
+    fn overlay_keys_reach_the_generated_ios_plist() {
+        let generated = compact_apple_plist("gen/apple/wildflower-tauri_iOS/Info.plist");
+        for overlay in ["Info.plist", "Info.ios.plist"] {
+            for (key, value) in declared_entries(overlay) {
+                assert!(
+                    generated.contains(&format!("<key>{key}</key>{value}")),
+                    "{overlay} declares {key} as {value}, which the generated iOS \
+                     plist must declare identically — an Xcode-opened build never \
+                     runs the merge, so a drifted copy ships as it stands"
+                );
+            }
+        }
+    }
+
+    /// The host loads cleartext HTTP off loopback and, in a debug build, off a
+    /// LAN dev server; without these keys the OS blocks both, the local-network
+    /// one without even prompting. The negative assertion is the load-bearing
+    /// half — it holds the exemptions scoped, so nobody reaches for the blanket
+    /// switch. See the [Data Directory Explanation].
+    ///
+    /// [Data Directory Explanation]: ../../Data%20Directory%20Explanation.md
+    #[test]
+    fn apple_plists_declare_local_network_access() {
+        for relative in ["Info.plist", "gen/apple/wildflower-tauri_iOS/Info.plist"] {
+            let compact = compact_apple_plist(relative);
             assert!(
-                compact.contains("<key>UIFileSharingEnabled</key><true/>"),
-                "{relative} must declare UIFileSharingEnabled as true, or the data \
-                 directory stays invisible in the Files app"
+                compact.contains("<key>NSLocalNetworkUsageDescription</key><string>"),
+                "{relative} must declare NSLocalNetworkUsageDescription, or a \
+                 connection off loopback is denied without a prompt"
+            );
+            assert!(
+                compact.contains("<key>NSAppTransportSecurity</key><dict>"),
+                "{relative} must declare NSAppTransportSecurity, or ATS blocks the \
+                 host's own cleartext HTTP"
+            );
+            for key in [
+                "NSAllowsLocalNetworking",
+                "NSAllowsArbitraryLoadsInWebContent",
+            ] {
+                assert!(
+                    compact.contains(&format!("<key>{key}</key><true/>")),
+                    "{relative} must declare {key} as true inside \
+                     NSAppTransportSecurity"
+                );
+            }
+        }
+
+        // The blanket switch: superseded by the scoped keys above on these
+        // deployment targets, and the one App Store review asks about. Checked
+        // over all three plists, `Info.ios.plist` included — it carries no ATS
+        // keys today, but it is the overlay `tauri ios build` merges *last*, so
+        // a blanket switch added there would win on the shipped iOS bundle.
+        for relative in [
+            "Info.plist",
+            "Info.ios.plist",
+            "gen/apple/wildflower-tauri_iOS/Info.plist",
+        ] {
+            assert!(
+                !compact_apple_plist(relative).contains("<key>NSAllowsArbitraryLoads</key>"),
+                "{relative} must not disable ATS wholesale — the scoped keys cover \
+                 what the host actually loads"
             );
         }
     }

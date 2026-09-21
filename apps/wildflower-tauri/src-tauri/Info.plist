@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- The overlay Tauri merges on macOS AND iOS; `Info.ios.plist` beside it is
+	     the iOS-only one. Why these two keys, what the scoped ATS exemptions
+	     each cover, and why `NSAllowsArbitraryLoads` is absent: see "Reaching
+	     the network at all" in the Data Directory Explanation. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Wildflower loads its interface and self-hosted apps from servers on your local network, including the development server used by debug builds.</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSAllowsArbitraryLoadsInWebContent</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>

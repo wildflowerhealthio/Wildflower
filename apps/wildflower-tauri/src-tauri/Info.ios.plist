@@ -2,12 +2,13 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Exposes the app container's `Documents` directory — where `resolve_data_dir`
-	     in `src/lib.rs` puts the host's databases and saved files — to the Files
-	     app, so a "Wildflower" folder appears under "On My iPhone". Merged over the
-	     generated `gen/apple/wildflower-tauri_iOS/Info.plist` by `tauri ios build`.
-	     See the Data Directory Explanation. -->
+	<!-- iOS-only overlay; shared keys live in `Info.plist` beside it. Both keys
+	     below are needed for the Files app to list the host's data directory
+	     under "On My iPhone" — neither works alone, and what the second one
+	     admits is a real trade-off. See the Data Directory Explanation. -->
 	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
 </dict>
 </plist>
