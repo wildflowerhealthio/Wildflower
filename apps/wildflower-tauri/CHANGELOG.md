@@ -10,6 +10,13 @@ add prose above or below them if you want to expand on a release.
 
 <!-- release-notes-start -->
 
+## v0.2.8 — 2026-09-21
+
+- gatekeeper: raise the consent popup for /oauth/authorize too (#707) (927123f9)
+- tauri: ATS + local-network plists for iOS/macOS, and make the Files app folder actually appear (#708) (18f41cfd)
+- gatekeeper: trust OAuth clients on first use at /oauth/authorize (TOFU 3/3) (#688) (c2a31526)
+- D4: dicom-react + importer-react — archive preview with identifying tags + cornerstone image (#686) (39e45542)
+
 ## v0.2.7 — 2026-09-20
 
 - Fix the macOS App Store preflight's entitlement read and check the app record (#705) (df7bc21e)
