@@ -40,7 +40,7 @@ import type { JSX } from 'react'
  * added to `FileImporter` would have been dropped here with no type error
  * anywhere. `FileImporter` has no prototype, so the spread is total.
  */
-type FormatWithPicker<K extends FormatKind> = CoreBoundFormat<K> & {
+type FormatWithComponents<K extends FormatKind> = CoreBoundFormat<K> & {
   readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
 }
 
@@ -48,23 +48,23 @@ type FormatWithPicker<K extends FormatKind> = CoreBoundFormat<K> & {
  * Attach a format's React slots to its core importer.
  *
  * @param importer - The format's entry in `importer-core`'s registry
- * @param slots - The format's settings form and optional file preview
+ * @param componentSet - The format's settings form and optional file preview
  * @returns The shell's registry entry for that format
  */
-const withSlots = <K extends FormatKind>(
+const withComponents = <K extends FormatKind>(
   importer: CoreBoundFormat<K>,
-  slots: {
+  componentSet: {
     readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
   }
-): FormatWithPicker<K> => ({ ...importer, ...slots })
+): FormatWithComponents<K> => ({ ...importer, ...componentSet })
 
 /** The closed registry; its keys are the {@link FormatKind} union. */
-const formatRegistry: { readonly [K in FormatKind]: FormatWithPicker<K> } = {
-  har: withSlots(coreRegistry.har, { SettingsPicker: HarSettingsPicker }),
-  'lifelabs-pdf': withSlots(coreRegistry['lifelabs-pdf'], {
+const formatRegistry: { readonly [K in FormatKind]: FormatWithComponents<K> } = {
+  har: withComponents(coreRegistry.har, { SettingsPicker: HarSettingsPicker }),
+  'lifelabs-pdf': withComponents(coreRegistry['lifelabs-pdf'], {
     SettingsPicker: LifeLabsPdfSettingsPicker,
   }),
-  dicom: withSlots(coreRegistry.dicom, {
+  dicom: withComponents(coreRegistry.dicom, {
     SettingsPicker: DicomSettingsPicker,
   }),
 }
@@ -73,5 +73,5 @@ const formatRegistry: { readonly [K in FormatKind]: FormatWithPicker<K> } = {
 // `FormatKind` and `FormatSettings` are `importer-core`'s and are imported
 // from there directly — re-exporting them here gave the package two routes to
 // the same symbol, and it used both.
-export { formatRegistry, withSlots }
-export type { FormatWithPicker }
+export { formatRegistry, withComponents }
+export type { FormatWithComponents }
