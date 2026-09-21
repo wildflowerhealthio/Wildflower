@@ -274,7 +274,7 @@ pub(super) async fn handle_authorize_request(
     // How this request compares against the registration as it stands now — the
     // warning the consent prompt renders, and the gate on the fast path below.
     let registration = classify_registration(&PendingRegistration {
-        client: client.as_ref(),
+        maybe_existing_client: client.as_ref(),
         redirect_uri: &parsed_redirect,
         requested_scopes: &requested_scopes,
         served_origin: served.as_ref(),

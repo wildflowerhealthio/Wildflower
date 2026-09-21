@@ -97,10 +97,17 @@ redirect address" checkbox) — the server rejects the approval without it.
 On approval the row is created (`kind: 'public'`, every grant type, name
 equal to the `client_id`, the one redirect, the granted scopes) or widened:
 the exact `redirect_uri` is added to `redirectUris` and the **granted** (not
-requested) scopes are unioned into `allowedScopes`, so a later identical
-request is `registered` and fast-paths. The clamp on such an approval is
+requested) scopes widen `allowedScopes`, so a later identical request is
+`registered` and fast-paths. The clamp on such an approval is
 `allowedScopes ∪ requestedScopes`; the approving Owner still cannot delegate
 a scope they do not hold themselves.
+
+That widening is by scope, not by string (`scopes_rust::widened_scopes`):
+granting `patient/Patient.cruds` over a registered `patient/Patient.r`
+records the one broader scope instead of both spellings, and `.r` plus a
+later `.s` is recorded as `.rs`. A row created by a first approval and one
+widened into the same state are byte-identical. See
+[Grant](#grant) for the same rule on the standing consent.
 
 While the redirect is untrusted (verdict `new`, or `changed` with a new
 redirect) every later validation failure at `/authorize` — bad scheme,
