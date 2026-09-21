@@ -72,7 +72,7 @@ nothing from `slices/collector` or `slices/http-extraction`.
 - **No source-file knowledge here.** What a source file is, which resources
   point at it, and what happens to those links when the reviewer excludes it
   are each format's decisions, made inside its `decode` by
-  `importer-fundamentals`' `FileImporter.make`. `readBatch` and `planFormatWrite`
+  `importer-fundamentals`' `DecodeFunction.make`. `readBatch` and `planFormatWrite`
   treat the source-file row as any other resource. Do not reintroduce a
   shell-side mint, a side map of source files, or a "primary file".
 - **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from
@@ -81,7 +81,7 @@ nothing from `slices/collector` or `slices/http-extraction`.
   the same `files` array back, so the same ids come out and the reviewer's
   selection keeps applying.
 - **`decode` never fails.** A malformed file is an `unreadableFiles` entry,
-  folded by `PerFileDecodeFunction.make`; there is no `catchAll` in the read half, and a
+  folded by `DecodeFunction.make`; there is no `catchAll` in the read half, and a
   format that raised would be a contract bug, not a case to handle here.
 - **Dispatch generically, not by `Match`.** Indexing the registry by a
   `FormatKind` union loses the per-format correlation; a generic

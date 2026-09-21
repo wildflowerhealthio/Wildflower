@@ -46,9 +46,9 @@
 
 .archiveMeta {
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
   min-width: 0;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .archiveTitle {
@@ -173,10 +173,10 @@
 }
 
 /*
- * A unit's files: one heading and the ordinary rows beneath it, indented so
- * the nesting reads without a second border around every member.
+ * A section of several rows: one heading and the ordinary rows beneath it,
+ * indented so the nesting reads without a second border around every member.
  */
-.archiveUnit {
+.archiveSection {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -185,13 +185,23 @@
   border-radius: var(--radius-2);
 }
 
-.archiveUnitHeading {
+.archiveSectionHeading {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
 }
 
-.archiveUnit .archiveList {
+.archiveSection .archiveList {
   padding-inline-start: var(--space-4);
+}
+
+/* The per-row selection box a batch host offers, beside the row's name. */
+.archiveSelect {
+  margin-inline-end: var(--space-2);
+}
+
+/* The one pick action a batch host offers, under the list. */
+.pickSelected {
+  align-self: flex-start;
 }

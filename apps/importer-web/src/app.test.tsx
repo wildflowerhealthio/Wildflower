@@ -137,10 +137,12 @@ describe('ImporterApp', () => {
     // Arrange — one archive already on the server, carrying the recognized HAR
     mount({ archives: [{ id: 'archive-1', fileName: 'server-session.har' }] })
 
-    // Act — select it from the server list, then confirm
+    // Act — select it in the server list, pick it as the batch's source,
+    // then confirm
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Use server-session.har as source' })
+      await screen.findByRole('checkbox', { name: 'Select server-session.har' })
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
     })

@@ -6,13 +6,13 @@ import {
   type UseInfiniteQueryResult,
 } from '@tanstack/react-query'
 import type { DateTime } from 'effect'
-import { Array as Arr, Effect, Option } from 'effect'
+import { Array as Arr, Effect, Option, Schema } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { DocumentReference } from 'fhir-r4/resources'
-import { PickedFile } from 'importer-fundamentals'
+import { PickedFile, SourceFile } from 'importer-fundamentals'
 
 type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
@@ -58,6 +58,9 @@ import { nextPageToken } from './page-token.ts'
  */
 const DEFAULT_PAGE_SIZE = 50
 
+/** How a source file with no title reads — as a row, and as its own section. */
+const UNTITLED_SOURCE_FILE = 'Untitled source file'
+
 /**
  * The comma-joined `system|code` search value covering every registered
  * format's source-file category token — the one value the server-side search
@@ -71,7 +74,7 @@ const DEFAULT_PAGE_SIZE = 50
  * `DocumentReference` matching *any* of the tokens.
  */
 const SOURCE_FILES_CATEGORY_TOKEN = formatKinds
-  .map((kind) => formatRegistry[kind].categoryToken)
+  .map((kind) => SourceFile.categoryToken(formatRegistry[kind].sourceFileFormat))
   .join(',')
 
 /**
@@ -152,7 +155,9 @@ interface SourceFilesQueryOptions {
  * deterministic across engines.
  */
 const classifySourceFile = (resource: DocumentReference.Type): FormatKind | undefined =>
-  formatKinds.find((kind) => formatRegistry[kind].isSourceFile(resource))
+  formatKinds.find((kind) =>
+    SourceFile.isSourceFile(formatRegistry[kind].sourceFileFormat)(resource)
+  )
 
 /**
  * Projects a searchset bundle's entries into source-file rows.
@@ -351,9 +356,9 @@ const useSmartSourceFilesQuery = (
  * @returns The source file's raw bytes and a `server` source pointing back at it
  *
  * @remarks
- * Dispatches to the row's format's `sourceFileFromDocumentReference`, so a
- * resource that is not a source file of that format fails as a `ParseError`
- * rather than yielding nonsense. The bytes are carried verbatim — every
+ * Decodes through `SourceFile.FromDocumentReference` under the row's format's
+ * own constants, so a resource that is not a source file of that format fails
+ * as a `ParseError` rather than yielding nonsense. The bytes are carried verbatim — every
  * downstream step reads bytes (`decode`, and the confirm's upload if the
  * pick were local) — and the `server` source carries the source file's own
  * reference so a later step links provenance to the stored source file
@@ -367,8 +372,9 @@ const fetchSourceFile = (
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
       const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      const { fileName, bytes } =
-        yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
+      const { fileName, bytes } = yield* Schema.decode(SourceFile.FromDocumentReference)(
+        resource
+      ).pipe(Effect.provideService(SourceFile.Format, formatRegistry[row.format].sourceFileFormat))
       return {
         fileName,
         bytes,
@@ -387,8 +393,8 @@ const fetchSourceFile = (
  *   decoded resource is not this format's source file
  *
  * @remarks
- * Same underlying read as {@link fetchSourceFile}, without the source
- * synthesis: a preview does not pick, so it needs no `server` source. The
+ * Same underlying read as {@link fetchSourceFile}, composed straight to the
+ * name and the bytes: a preview does not pick, so it needs no `server` source. The
  * split is what lets the preview modal live at arm's length from the
  * source pipeline.
  */
@@ -400,17 +406,75 @@ const fetchSourceFileContents = (
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
       const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      const { fileName, bytes } =
-        yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
-      return { fileName, bytes }
+      return yield* Schema.decode(SourceFile.NamedBytesFromDocumentReference)(resource).pipe(
+        Effect.provideService(SourceFile.Format, formatRegistry[row.format].sourceFileFormat)
+      )
     })
   )
+
+/** One entry of the rendered source-file list: a titled section of rows. */
+interface SourceFileSection {
+  /** How the section reads: a study and its size, or the one row's own title. */
+  readonly title: string
+  /** The rows of this section, in the order the server listed them. Never empty. */
+  readonly rows: readonly SourceFileRow[]
+}
+
+/** How a group of a study's files is headed. */
+const studySectionTitle = (count: number): string => `Study · ${count} files`
+
+/**
+ * Group the listed rows into the sections the list renders.
+ *
+ * @param rows - The source files listed so far, in server order
+ * @returns One section per study whose files are listed together, and a
+ *   section of one for every other row, each at the position of its first row
+ *
+ * @remarks
+ * A group format stores one archive per file and links each to the resource
+ * they were read into ({@link SourceFileRow.related}). Listed flat, a
+ * twelve-file DICOM study is twelve rows that say nothing about being one
+ * study. Sectioning is what lets the list name the study and offer its rows
+ * together — it decides nothing about what a study *is*: the rows a reviewer
+ * selects are handed on as one pick, and the format's decode partitions them.
+ *
+ * Pure, and over the rows already loaded: paging can split a study across
+ * pages, in which case its later files join the section as those pages load.
+ * A study with one row listed is a section of one, titled by its row — a
+ * heading over a single row states nothing the row does not.
+ */
+const sourceFileSections = (rows: readonly SourceFileRow[]): readonly SourceFileSection[] => {
+  const byRelated = new Map<string, SourceFileRow[]>()
+  for (const row of rows) {
+    if (row.related === null) continue
+    const members = byRelated.get(row.related)
+    if (members === undefined) byRelated.set(row.related, [row])
+    else members.push(row)
+  }
+
+  const emitted = new Set<string>()
+  const sections: SourceFileSection[] = []
+  for (const row of rows) {
+    const members = row.related === null ? undefined : byRelated.get(row.related)
+    if (row.related === null || members === undefined || members.length < 2) {
+      sections.push({ title: row.title ?? UNTITLED_SOURCE_FILE, rows: [row] })
+      continue
+    }
+    if (emitted.has(row.related)) continue
+    emitted.add(row.related)
+    sections.push({ title: studySectionTitle(members.length), rows: members })
+  }
+  return sections
+}
 
 export {
   DEFAULT_PAGE_SIZE,
   fetchSourceFile,
   fetchSourceFileContents,
   SOURCE_FILES_CATEGORY_TOKEN,
+  sourceFileSections,
+  type SourceFileSection,
+  UNTITLED_SOURCE_FILE,
   type SourceFilePage,
   type SourceFilePageParam,
   type SourceFileRow,

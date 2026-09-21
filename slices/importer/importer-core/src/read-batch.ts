@@ -57,7 +57,7 @@ interface UnrecognizedFile {
   readonly id: string
   /** The file's name, as the preview and the results head the row with. */
   readonly title: string
-  /** The one pick, kept as a list so it reads like every other unit's `files`. */
+  /** The one pick, kept as a list so it reads like every other result's `files`. */
   readonly files: readonly PickedFile.Type[]
 }
 

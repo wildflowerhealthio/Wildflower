@@ -43,7 +43,7 @@ const utf8 = new TextDecoder()
  *
  * @param fileBytes - The bytes of a `.har` file (UTF-8 JSON)
  * @param _settings - The HAR settings (none today; accepted so the signature
- *   matches `FileImporter`'s `decodeOne`)
+ *   matches the importer's `decodeFileSet`)
  * @returns The archive's entries as `Extraction.Input`s, failing only with a
  *   `ParseError` when the bytes are not a well-formed HTTP Archive; requires
  *   nothing, so the write client is unreachable from a decode by construction

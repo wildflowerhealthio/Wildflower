@@ -114,7 +114,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   there, so pre-excluded" seed, keyed **by format kind and then by resource
   key** (`FormatComparisons`) — two formats can carry the same resource key, so
   a flat map would let one format's verdict overwrite another's. Within one
-  format the keys are already distinct, because `FileImporter.make` namespaces each
+  format the keys are already distinct, because `DecodeFunction.make` namespaces each
   claimed file's keys by its slot in the batch. The screen blocks the
   first paint on it but **not** on the re-classification a settings change
   triggers, since unmounting the panel mid-review would drop the focus of
@@ -129,7 +129,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   across every file that format claimed (per-type tallies, one titled section
   per decoded section with include checkbox and one-line `describeResource`
   summary, Edit/Revert, unreadable-file rows, and the notes folded into a
-  collapsed details block). The server-diff badge and its field-level
+  collapsed details block). A section's tri-state heading toggle is
+  `section-toggle.tsx` — `{ title, keys, isIncluded, onSetIncluded }`, the
+  `indeterminate`-via-ref pattern — shared with the server source-file list's
+  study sections, which passes its own selected-id set where the review body
+  passes `StagedImport`. The server-diff badge and its field-level
   disclosure are `diff-badge.tsx`, and every user-visible string is
   `preview-text.ts` — imported from there by everything that shows one,
   including this package's `index.ts`, rather than re-exported through the
@@ -167,10 +171,15 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   format-blind "read a local file's bytes and identify it against the
   registered formats' `detect`" gate — no format's `decode` runs at
   pick time; `server-source-file-list.tsx` is the uploaded-source-files pick
-  source (rows, paging, per-row explicit **Preview** + **Use as source**
-  buttons, the raw-contents modal each Preview opens), spanning every
-  registered format via its importer's server-read seam, and exported for the
-  anonymizer shell's `serverSource` slot as much as used here;
+  source (sections of rows, paging, a per-row explicit **Preview** and the
+  raw-contents modal it opens), spanning every registered format through
+  `SourceFile.FromDocumentReference` under that format's constants, and
+  exported for the anonymizer shell's `serverSource` slot as much as used
+  here. Its own `mode`: `'batch'` gives each row a checkbox, each multi-row
+  section the shared `SectionToggle`, and one **Use selected as source**
+  action that fetches every selected row and hands them on as one list;
+  `'single'` keeps the per-row **Use as source** action and hands on a list of
+  one.
   `source-picker.tsx` composes the drop-and-pick zone, the file input it opens,
   a **folder** pick, and that server list. Two modes: `'batch'` (default; the
   importer flow) accepts several files in one pick; `'single'` trims the
@@ -178,29 +187,29 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   attribute. The folder pick is `'batch'`-only and is the same batch path —
   a DICOM study arrives as a directory of hundreds of `.dcm` files, and the
   files it yields go through the same detectors and the same by-name rejection
-  notice. `group-source-files.ts` is the pure collapse behind the server
-  list's grouping: rows naming the same `context.related` resource (a study's
-  archives naming their `ImagingStudy`) list under one heading with a **Use
-  all as source** action, which picks every file of the unit at once so the
-  decode sees the whole study; a unit of one file stays an ordinary row. That
-  action exists only when the host passes `onPickUnit`, so the `'single'`-file
-  hosts (the anonymizer's `serverSource` slot) still see the grouping but pick
-  one row at a time.
+  notice. `queries/source-files.ts`'s `sourceFileSections` is the pure sectioning behind
+  the list: rows naming the same `context.related` resource (a study's archives
+  naming their `ImagingStudy`) form one section titled `Study · N files`, and
+  every other row is a section of one titled by the row. The list decides
+  nothing about what an import _is_ — it hands the selected rows on as one
+  pick and the format's `decode` partitions them.
 - **`src/queries/`** — the reads. `source-files.ts` is the paged, format-blind
   `DocumentReference` search: one request per page with `category` set to
   the comma-joined `system|code` tokens of every registered format
   (`SOURCE_FILES_CATEGORY_TOKEN`), each returned resource classified by
-  dispatching every format's `isSourceFile` predicate in registry order
-  (disjoint by construction) so rows are tagged with the format they
-  came from; plus `fetchSourceFile` — the row-select's fetch-and-decode
-  through the row's format's `sourceFileFromDocumentReference` — and
-  `fetchSourceFileContents`, the read-only variant the preview modal uses.
+  dispatching `SourceFile.isSourceFile` over every format's `sourceFileFormat`
+  in registry order (disjoint by construction) so rows are tagged with the
+  format they came from; plus `fetchSourceFile` — the row-select's
+  fetch-and-decode through `SourceFile.FromDocumentReference` under that
+  format's constants — `fetchSourceFileContents`, the composed
+  `SourceFile.NamedBytesFromDocumentReference` read the preview modal uses, and
+  `sourceFileSections`.
   `page-token.ts` pulls the continuation cursor out of a bundle's `next`
   link (a copy of the web-trace viewer's, see the trap); `keys.ts` holds
   the query-key roots.
 - **The source file is a reviewed resource the format minted.** A `local`
   pick's source-file `DocumentReference` is minted inside that format's
-  `decode` (by the batch decode `FileImporter.make` built) and arrives as its own
+  `decode` (by the batch decode `DecodeFunction.make` built) and arrives as its own
   "Source file" section ahead of that file's extracted ones, keyed
   `<slot>/source-file/<fileName>`. The shell neither mints it nor
   keys it, and dispatches on no format tag to get it: it reviews the row like
@@ -280,13 +289,13 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   the comma-joined `system|code` tokens of every registered format's
   source file coding (`WEB_TRACE_CODE_SYSTEM|har-archive` for HAR, the LifeLabs and DICOM
   systems for theirs), built at module
-  load from each format's `categoryToken` so it cannot drift from what the
-  mint writes. Each returned resource is classified in
-  registry order through each format's `isSourceFile`; the predicates
+  load from `SourceFile.categoryToken` over each format's `sourceFileFormat`,
+  so it cannot drift from what the mint writes. Each returned resource is
+  classified in registry order through `SourceFile.isSourceFile`; the predicates
   are disjoint by construction (each tests a different `system|code`),
   so at most one claims any row and a row no predicate claims is
   dropped. The web-trace viewer lists traces under a different category
-  code on the same system; `isWebTrace` and any format's `isSourceFile`
+  code on the same system; `isWebTrace` and any format's source-file predicate
   never both hold. The list must never surface a trace, and the trace
   viewer must never surface a source file.
 - **The picker identifies each local file syntactically through the
@@ -312,9 +321,11 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   `fetchSourceFile` (row select) and `fetchSourceFileContents` (preview modal)
   each read the one source file the user chose. Listing the bytes to render a
   title would pull every source file onto the device to draw a list.
-- **A row selection decodes through its format's source-file reader and keeps
-  the bytes verbatim.** `fetchSourceFile` dispatches to the row's format's
-  `sourceFileFromDocumentReference` (the importer's server-read seam) — a
+- **A row selection decodes through its format's source-file schema and keeps
+  the bytes verbatim.** `fetchSourceFile` decodes
+  `SourceFile.FromDocumentReference` with the row's format's
+  `sourceFileFormat` provided as the `SourceFile.Format` service — one of the
+  two places above `importer-fundamentals` that provides it — so a
   resource that is not a source file of that format fails as a `ParseError`,
   never yields nonsense — and returns the source file's `bytes` on the
   `PickedFile`. Every downstream step reads bytes (`decode`, and the
@@ -324,8 +335,9 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   re-uploading.
 - **A row's Preview action opens a read-only raw-contents modal that
   renders the file itself.** The modal fetches through
-  `fetchSourceFileContents` (the same reader as a pick, minus the source
-  synthesis) and picks its renderer from the format's `contentType`: PDF via
+  `fetchSourceFileContents` (the same read as a pick, composed straight to the
+  name and the bytes) and picks its renderer from the format's
+  `sourceFileFormat.contentType`: PDF via
   a `<iframe>` at a `blob:` URL over the
   bytes (revoked on unmount), JSON pretty-printed inside a `<pre>`
   capped at `JSON_PREVIEW_SIZE_LIMIT` (5 MiB) with a "Download raw"
@@ -333,7 +345,7 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   editing — a preview is inspection, not another entry point to the
   review flow.
 - **A source file's id is derived from its bytes and name, so re-importing upserts.**
-  The mint `FileImporter.make` derives, which each format's `decode` drives,
+  The mint `DecodeFunction.make` runs inside each format's `decode`
   derives the resource id with `localResourceId` over the file's SHA-256 and
   name — deterministic, not a per-pick uuid — so its bundle entry is a PUT to a
   stable `DocumentReference/<id>` and re-importing the same file under the same
@@ -349,9 +361,11 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
 - **A group format's files are re-picked together or not at all.** Picking one
   archive of a study off the server yields a one-file study, which is a
   different `ImagingStudy` than the one that was imported. That is why the
-  server list groups by `context.related` and offers the whole unit — and why
-  the grouping key is `context.related` rather than `subject`, which every
-  file of every study of one patient shares.
+  server list sections by `context.related` and hands every selected row on as
+  one pick — and why the sectioning key is `context.related` rather than
+  `subject`, which every file of every study of one patient shares. The
+  sectioning is display and selection only: what the rows make up is the
+  decode's `partition` to decide.
 - **The drop zone is a button, so drop is an enhancement rather than the only
   path.** The zone itself opens the file picker on click, so the whole
   surface is keyboard-reachable and screen-reader named; the

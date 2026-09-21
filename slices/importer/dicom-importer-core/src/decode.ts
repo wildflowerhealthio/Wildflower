@@ -1,14 +1,16 @@
 /**
- * Decode one study — every picked `.dcm` of it — into one section of FHIR
- * resources and the notes that say what each file contributed.
+ * What makes a set of picked `.dcm` files one import, and how that set decodes
+ * into one section of FHIR resources plus the notes that say what each file
+ * contributed.
  *
  * @packageDocumentation
  */
-import type { DicomHeader } from 'dicom'
-import { Effect, type ParseResult } from 'effect'
+import { DicomHeader } from 'dicom'
+import { Array as Arr, Effect, Either, Option, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { DecodedFile, PickedFile } from 'importer-fundamentals'
+import { type DecodeFunction, DecodedFile, SourceFile } from 'importer-fundamentals'
+import { checkTimeZone } from 'kitchen-sink'
 
 import {
   accessionNumbers,
@@ -27,9 +29,88 @@ const labelAdopted = (resource: FhirResource, key: string, title: string): Decod
   return { key, title, resource: adopted }
 }
 
-/** One picked file of a study: the pick, its parsed header, and its archive's id. */
+/** A picked `.dcm` whose header parsed, with the slot it was picked in. */
+interface ParsedFile extends DecodeFunction.Member {
+  readonly header: DicomHeader.Type
+}
+
+/** One study's picked files, in study order. Never empty. */
+type StudyFileSet = Arr.NonEmptyReadonlyArray<ParsedFile>
+
+/** One file of a study once its archive is known — what {@link decodeStudy} reads. */
+type StudyMember = ParsedFile & { readonly sourceFile: SourceFile.Reference }
+
+/** One file of a study, as the synthesis sees it: its header, its archive, its pick. */
 interface StudyFile extends StudyInstance {
-  readonly file: PickedFile.Type
+  readonly file: DecodeFunction.Member['file']
+}
+
+const asParseError = (reason: string): ParseResult.ParseError =>
+  new ParseResult.ParseError({
+    issue: new ParseResult.Forbidden(Schema.Unknown.ast, undefined, reason),
+  })
+
+/**
+ * What two files must agree on to be the same import: the study, and the
+ * patient it is filed under.
+ *
+ * @remarks
+ * `StudyInstanceUID` alone would be enough for well-formed data, and is not
+ * what this keys on. A `PatientID` the files disagree on means one of them is
+ * mislabelled or anonymized differently, and merging them would file one
+ * patient's images in another's record — so a differing patient splits the set
+ * instead, and the reviewer sees two studies with the same UID rather than one
+ * silently merged. Patient identity is the id the synthesis derives
+ * (`PatientID` + issuer, else name + birth date), not the raw tag, so two
+ * spellings that mint the same `Patient` stay one set.
+ */
+const studyKey = (header: DicomHeader.Type): string =>
+  `${header.studyInstanceUid}\u0000${patientOriginalId(header) ?? ''}`
+
+/** A study's files in study order, so the first of them is its representative. */
+const inStudyOrder = (members: StudyFileSet): StudyFileSet => {
+  const ordered = orderedInstances(members)
+  return Arr.isNonEmptyReadonlyArray(ordered) ? ordered : members
+}
+
+/**
+ * Split a picked batch into its studies.
+ *
+ * @param files - Every `.dcm` the format claimed, in pick order
+ * @returns One file set per study, each in study order, and the picks whose
+ *   headers did not parse
+ *
+ * @remarks
+ * Parses headers and nothing else — cheap enough to run over a whole pick
+ * before any synthesis. A file that fails to parse is its own row rather than
+ * a member of some study: it states no `StudyInstanceUID`, so there is no
+ * study to put it in, and folding it into a neighbour's set would hide which
+ * file failed.
+ *
+ * Each set is ordered by the study's own order rather than the pick's, so the
+ * representative the decode function namespaces keys by and stamps
+ * `meta.source` with is the same however the files were picked.
+ */
+const partitionStudies = (
+  files: readonly DecodeFunction.Member[]
+): DecodeFunction.Partition<ParsedFile> => {
+  const [unreadable, parsed] = Arr.partitionMap(
+    files,
+    (member): Either.Either<ParsedFile, DecodeFunction.UnreadableMember> => {
+      const header = DicomHeader.tryFromDicomFile(member.file.bytes)
+      return Either.isLeft(header)
+        ? Either.left({ member, error: asParseError(header.left.reason) })
+        : Either.right({ ...member, header: header.right })
+    }
+  )
+  // `groupBy` keys are insertion-ordered, so the sets come out ordered by the
+  // pick that opened each — the order the reviewer picked the files in.
+  return {
+    fileSets: Object.values(Arr.groupBy(parsed, (member) => studyKey(member.header))).map(
+      inStudyOrder
+    ),
+    unreadable,
+  }
 }
 
 /**
@@ -55,7 +136,7 @@ const sectionTitle = (header: DicomHeader.Type): string => {
 const contributionNote = ({ file, header }: StudyFile): string =>
   `${file.fileName}: series ${header.seriesNumber ?? header.seriesInstanceUid}, instance ${header.instanceNumber ?? header.sopInstanceUid}.`
 
-/** The notes a unit's headers earn, beyond the resources they synthesize. */
+/** The notes a study's headers earn, beyond the resources they synthesize. */
 const studyNotes = (files: readonly StudyFile[]): readonly string[] => {
   const notes: string[] = []
   const accessions = accessionNumbers(files)
@@ -75,35 +156,76 @@ const studyNotes = (files: readonly StudyFile[]): readonly string[] => {
 }
 
 /**
+ * The links a study's archives carry: the patient whose record they belong in,
+ * and the study they were read into.
+ *
+ * @remarks
+ * `subject` is the epic's deliberate departure from the HAR/PDF archive
+ * convention — a DICOM file is a clinical document and belongs in
+ * `Patient/$everything`. `related` is what separates two studies of one
+ * patient, whose `subject` is the same `Patient`.
+ *
+ * Read off the decode's *own* resources rather than re-derived from the
+ * headers, so an archive names exactly the resources this decode is about to
+ * write — the two cannot drift.
+ */
+const archiveLinks = (decoded: DecodedFile.DecodedFile): DecodeFunction.ArchiveLinks => ({
+  subject: referenceTo(decoded, 'Patient'),
+  related: Arr.getSomes([referenceTo(decoded, 'ImagingStudy')]),
+})
+
+/** The reference to a decoded resource of the given type, when the decode produced one. */
+const referenceTo = (
+  decoded: DecodedFile.DecodedFile,
+  resourceType: 'Patient' | 'ImagingStudy'
+): Option.Option<SourceFile.Subject> =>
+  Arr.findFirst(
+    DecodedFile.resources(decoded),
+    (entry) => entry.resource.resourceType === resourceType
+  ).pipe(
+    Option.flatMap((entry) => Option.fromNullable(entry.resource.id)),
+    Option.map((id) => ({ reference: `${resourceType}/${id}` }))
+  )
+
+/**
  * Decode one study's picked files into a section of adopted, labeled FHIR
  * resources.
  *
- * @param files - Every picked `.dcm` of one study, each with its parsed header
- *   and the id of the `DocumentReference` storing its bytes — that id is what
- *   the file's `ImagingStudy` instance carries as its `gridfsFileId`
- *   extension, so each instance names the archive it was read from
+ * @param members - Every picked `.dcm` of one study, in study order, each with
+ *   its parsed header and the reference to the `DocumentReference` storing its
+ *   bytes — that id is what the file's `ImagingStudy` instance carries as its
+ *   `gridfsFileId` extension, so each instance names the archive it was read
+ *   from
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against
  * @returns One section when the study carries a patient, plus notes for what
  *   could not be extracted and what each file contributed; fails with a
- *   `ParseError` when a synthesized resource does not satisfy its schema
+ *   `ParseError` when the time zone is not one the runtime resolves or a
+ *   synthesized resource does not satisfy its schema
  *
  * @remarks
  * The resource keys are fixed — `patient`, `service-request`,
- * `imaging-study` — and are the same keys the per-file decode used before a
- * study spanned files, so a review's exclusions survive both a settings
- * re-decode and this change. They are unique only *within* one unit; the
- * decode function namespaces them by the unit's opening pick.
+ * `imaging-study` — and are unique only *within* one study; the decode
+ * function namespaces them by the set's representative pick.
  *
- * The time zone is not checked here: it is one setting for the whole batch,
- * so `dicom-decode.ts` rejects a zone the runtime cannot resolve once, before
- * any unit is decoded, rather than per study.
+ * The time zone is rejected rather than substituted: every
+ * `ImagingStudy.started` is resolved against it, so a guess would write
+ * instants hours away from what the equipment recorded. It is one setting for
+ * the whole pick, so an unresolvable zone fails every set, and with it every
+ * file.
  */
 const decodeStudy = (
-  files: readonly StudyFile[],
+  members: Arr.NonEmptyReadonlyArray<StudyMember>,
   settings: DicomSettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
+    yield* checkTimeZone(settings.timeZone)
+
+    const files: readonly StudyFile[] = members.map((member) => ({
+      file: member.file,
+      header: member.header,
+      sourceFileId: SourceFile.idFromReference(member.sourceFile),
+    }))
     const ordered = orderedInstances(files)
     const head = ordered[0]
     if (head === undefined) return { sections: [], notes: [] }
@@ -141,5 +263,5 @@ const decodeStudy = (
     return { sections, notes }
   })
 
-export { decodeStudy, sectionTitle }
-export type { StudyFile }
+export { archiveLinks, decodeStudy, partitionStudies, sectionTitle, studyKey }
+export type { ParsedFile, StudyFileSet, StudyMember }

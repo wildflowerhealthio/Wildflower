@@ -334,3 +334,15 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/github-issue-664-4vf2gg (DICOM preview distorted the image)
 **Learning**: Written up in the [Cornerstone Rendering Explanation](../../slices/file-formats/docs/Cornerstone%20Rendering%20Explanation.md). The transferable shape: a canvas sized in device pixels _once_ but laid out with `width: 100%; height: 100%` is rescaled into its CSS box on every paint, so the two silently diverge and the image is stretched from then on — a `ResizeObserver` driving the library's own resize call is the fix, and it repairs the initial frame too because an observer delivers one callback when it starts observing.
 **Suggested destination**: Strategies / frontend build notes
+
+## A `Context.Tag` bound by a factory is cheaper than the wrappers it grows
+
+**Discovered during**: claude/cool-lovelace-5qnjcc (PR #712 review of the importer slice)
+**Learning**: `importer-fundamentals` parameterised its source-file codec by a `Context.Tag` that only one factory (`FileImporter.make`) ever provided. The tag itself was fine; what grew around it was not: a twin type for the decode (`WithContext` vs `Type`), a "binder" factory whose other job was copying fields, six functions wrapping one `transformOrFail`, and a per-binding test file whose only purpose was providing the tag. When a tag has exactly one provider and one consumer, ask whether the consumer can provide it itself (here: the decode constructor) and whether the surface around it can be the schema's own `Schema.decode` / `Schema.encode` rather than named wrappers. The review that prompted this said the slice was "inventing concepts that already exist"; most of the invented ones were scaffolding for the tag.
+**Suggested destination**: Strategies
+
+## `Schema.typeSchema(X)`'s encode is not the identity on a struct with null-able optionals
+
+**Discovered during**: claude/cool-lovelace-5qnjcc (the importer's source-file codec became a schema)
+**Learning**: A `transformOrFail` whose `from` is `Schema.typeSchema(SomeStruct)` re-encodes the value on the way out, and for a field built with `fhir-r4`'s `OrNullAsOptional` that turns a `null` back into an absent key — so `Schema.encode(codec)(value)` yielded a `DocumentReference` whose `subject` was `undefined` where the declared type says `Reference | null`, and an assertion of `toBeNull()` failed with "expected undefined to be null". The fix is `Schema.declare((u): u is T => Schema.is(Schema.typeSchema(SomeStruct))(u))` as the `from`: a declaration's encode really is the identity, so what the transform builds is what it yields. Reach for this whenever a schema's decoded type is the seam and the round trip has to be lossless.
+**Suggested destination**: Effect Patterns Reference (Schema)

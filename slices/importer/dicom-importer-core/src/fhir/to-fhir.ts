@@ -3,14 +3,14 @@ import type { DicomHeader, PersonName } from 'dicom'
  * Synthesize FHIR R4 resources from one study's parsed
  * {@link DicomHeader.Type}s: a `Patient`, optionally a `ServiceRequest` (when
  * any file states an `AccessionNumber`), and the one `ImagingStudy` whose
- * `series` are the unit's distinct `SeriesInstanceUID`s and whose `instance`s
+ * `series` are the study's distinct `SeriesInstanceUID`s and whose `instance`s
  * are its files.
  *
  * @remarks
- * The unit — every picked `.dcm` of one study — is the input, because the
- * counts, the modality set and the earliest `started` are facts about the
- * study and no single file states them. What makes a set of files one unit is
- * `study-unit.ts`; what this module does with a unit is described on
+ * The whole file set — every picked `.dcm` of one study — is the input,
+ * because the counts, the modality set and the earliest `started` are facts
+ * about the study and no single file states them. What makes a set of files
+ * one study is `decode.ts`; what this module does with one is described on
  * {@link toFhirResources}.
  *
  * Ids are deterministic — the same tags produce the same ids — so re-importing
@@ -22,7 +22,7 @@ import type { DicomHeader, PersonName } from 'dicom'
  *
  * @packageDocumentation
  */
-import { DateTime, Effect, Option, type ParseResult, Schema } from 'effect'
+import { Array as Arr, DateTime, Effect, Option, Order, type ParseResult, Schema } from 'effect'
 import { joinIdComponents } from 'fhir-r4/identity'
 import { ImagingStudy, Patient, ServiceRequest } from 'fhir-r4/resources'
 import { fnv1a64 } from 'kitchen-sink'
@@ -187,7 +187,7 @@ const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire |
 }
 
 // ---------------------------------------------------------------------------
-// ImagingStudy — one per study, its series and instances the unit's files
+// ImagingStudy — one per study, its series and instances the study's files
 // ---------------------------------------------------------------------------
 
 /**
@@ -195,9 +195,9 @@ const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire |
  * of the `DocumentReference` storing its bytes.
  *
  * @remarks
- * The whole unit, not one file, is what {@link toFhirResources} takes: a study
- * is one `ImagingStudy` whose `series` and `instance`s are spread across the
- * picked files, and no single file can state the counts, the modality set, or
+ * The whole file set, not one file, is what {@link toFhirResources} takes: a
+ * study is one `ImagingStudy` whose `series` and `instance`s are spread across
+ * the picked files, and no single file can state the counts, the modality set, or
  * the earliest `started`.
  */
 interface StudyInstance {
@@ -208,7 +208,7 @@ interface StudyInstance {
    * known — stamped onto this instance as its `gridfsFileId` extension, so
    * every instance names its own archive rather than the study naming one.
    */
-  readonly sourceFileId: string | undefined
+  readonly sourceFileId?: string | undefined
 }
 
 /**
@@ -268,30 +268,34 @@ const compareSeries = (left: StudySeries, right: StudySeries): number => {
   )
 }
 
+/** A `compare`'s sign, as `Order.make` spells a comparison. */
+const sign = (comparison: number): -1 | 0 | 1 => {
+  if (comparison < 0) return -1
+  return comparison > 0 ? 1 : 0
+}
+
+const instanceOrder: Order.Order<StudyInstance> = Order.make((left, right) =>
+  sign(compareInstances(left, right))
+)
+
+const seriesOrder: Order.Order<StudySeries> = Order.make((left, right) =>
+  sign(compareSeries(left, right))
+)
+
 /**
- * Group a unit's instances into its series, both levels ordered.
+ * Group a study's instances into its series, both levels ordered.
  *
  * @param instances - Every file of one study, in any order
  * @returns The study's series by `SeriesInstanceUID`, ordered by
  *   `SeriesNumber`, each carrying its instances ordered by `InstanceNumber`
  */
-const studySeries = <T extends StudyInstance>(
-  instances: readonly T[]
-): readonly StudySeries<T>[] => {
-  const byUid = new Map<string, T[]>()
-  for (const instance of instances) {
-    const uid = instance.header.seriesInstanceUid
-    const members = byUid.get(uid)
-    if (members === undefined) byUid.set(uid, [instance])
-    else members.push(instance)
-  }
-  return [...byUid.entries()]
-    .map(([uid, members]): StudySeries<T> => ({
-      uid,
-      instances: members.toSorted(compareInstances),
-    }))
-    .toSorted(compareSeries)
-}
+const studySeries = <T extends StudyInstance>(instances: readonly T[]): readonly StudySeries<T>[] =>
+  Arr.sort(
+    Object.entries(Arr.groupBy(instances, (instance) => instance.header.seriesInstanceUid)).map(
+      ([uid, members]): StudySeries<T> => ({ uid, instances: Arr.sort(members, instanceOrder) })
+    ),
+    seriesOrder
+  )
 
 /**
  * The study's instances in study order — every series' instances, series by
@@ -312,25 +316,41 @@ const orderedInstances = <T extends StudyInstance>(instances: readonly T[]): rea
  * `1430`, as it must. A header with no `StudyDate` sorts last rather than
  * claiming the earliest instant.
  */
-const startRank = (header: DicomHeader.Type): string =>
-  header.studyDate === undefined
-    ? '￿'
-    : `${header.studyDate}${(header.studyTime ?? '').padEnd(13, '0')}`
+const startRank = (header: DicomHeader.Type): Option.Option<string> =>
+  Option.map(
+    Option.fromNullable(header.studyDate),
+    (studyDate) => `${studyDate}${(header.studyTime ?? '').padEnd(13, '0')}`
+  )
+
+/**
+ * Order two instances by acquisition instant, a header stating none last.
+ *
+ * @remarks
+ * `Option.getOrder` sorts `None` *first*, which would let a file with no
+ * `StudyDate` claim the study's `started`; reversing it around a reversed
+ * string order puts `None` last while keeping the stated instants ascending.
+ */
+const startedOrder: Order.Order<StudyInstance> = Order.mapInput(
+  Order.reverse(Option.getOrder(Order.reverse(Order.string))),
+  (instance: StudyInstance) => startRank(instance.header)
+)
 
 /** The earliest-acquired header of a study — the one `started` is read from. */
-const earliestStarted = (instances: readonly StudyInstance[]): DicomHeader.Type =>
-  instances.reduce((earliest, instance) =>
-    startRank(instance.header) < startRank(earliest.header) ? instance : earliest
-  ).header
+const earliestStarted = (instances: readonly StudyInstance[]): Option.Option<DicomHeader.Type> =>
+  Arr.isNonEmptyReadonlyArray(instances)
+    ? Option.some(Arr.min(instances, startedOrder).header)
+    : Option.none()
 
-/** The distinct `AccessionNumber`s a unit's files state, in study order. */
-const accessionNumbers = (instances: readonly StudyInstance[]): readonly string[] => [
-  ...new Set(
-    orderedInstances(instances)
-      .map((instance) => instance.header.accessionNumber)
-      .filter((accession): accession is string => accession !== undefined && accession !== '')
-  ),
-]
+/** The distinct `AccessionNumber`s a study's files state, in study order. */
+const accessionNumbers = (instances: readonly StudyInstance[]): readonly string[] =>
+  Arr.dedupe(
+    Arr.filterMap(orderedInstances(instances), (instance) =>
+      Option.filter(
+        Option.fromNullable(instance.header.accessionNumber),
+        (accession) => accession !== ''
+      )
+    )
+  )
 
 /** One instance of a series, as `ImagingStudy.series.instance` carries it. */
 const instanceWire = ({ header, sourceFileId }: StudyInstance): Wire => {
@@ -394,23 +414,25 @@ const imagingStudyWire = (
     series: series.map(seriesWire),
   }
 
-  const startedFrom = earliestStarted(instances)
-  const started = fhirDateTime(startedFrom.studyDate, startedFrom.studyTime, timeZone)
-  if (started !== undefined) wire['started'] = started
+  const started = Option.flatMapNullable(earliestStarted(instances), (header) =>
+    fhirDateTime(header.studyDate, header.studyTime, timeZone)
+  )
+  if (Option.isSome(started)) wire['started'] = started.value
 
   // Every modality the study's series carry, in series order — a study whose
   // files disagree is a PET/CT, not a conflict.
-  const modalities = [...new Set(series.map((one) => one.instances[0].header.modality))].filter(
-    (modality): modality is string => modality !== undefined
+  const modalities = Arr.dedupe(
+    Arr.filterMap(series, (one) => Option.fromNullable(one.instances[0].header.modality))
   )
   if (modalities.length > 0) {
     wire['modality'] = modalities.map((code) => ({ system: DCM_CODING_SYSTEM, code }))
   }
 
-  const description = orderedInstances(instances).find(
+  const described = Arr.findFirst(
+    orderedInstances(instances),
     (instance) => instance.header.studyDescription !== undefined
-  )?.header.studyDescription
-  if (description !== undefined) wire['description'] = description
+  )
+  if (Option.isSome(described)) wire['description'] = described.value.header.studyDescription
 
   if (serviceRequestId !== undefined) {
     wire['basedOn'] = [{ reference: `ServiceRequest/${serviceRequestId}` }]
@@ -445,7 +467,7 @@ type DicomFhirResources =
  *   when a wire object does not satisfy its schema.
  *
  * @remarks
- * The unit's *representative* header — the first instance of the first series,
+ * The study's *representative* header — the first instance of the first series,
  * not the first picked file — is what the `Patient` and the study's
  * describing attributes are read from, and the accession the `ServiceRequest`
  * is built from is the first stated in that same order. Every choice this
@@ -456,7 +478,7 @@ type DicomFhirResources =
  * Files that disagree on `AccessionNumber` are *not* merged into one request:
  * the first is used and {@link accessionNumbers} is what a caller reports the
  * disagreement from. Files that disagree on the patient never reach here — a
- * differing `PatientID` splits the unit upstream.
+ * differing `PatientID` splits the file set upstream.
  */
 const toFhirResources = (
   instances: readonly StudyInstance[],

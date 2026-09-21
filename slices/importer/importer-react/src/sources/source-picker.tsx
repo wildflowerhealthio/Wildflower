@@ -33,8 +33,8 @@ import styles from './source-picker.module.css'
  * the user just used, rather than surfacing downstream. The server picks come
  * from {@link ServerSourceFileList}, which lists every registered format's
  * uploaded source files — HAR, LifeLabs PDF, and any future format — and fetches
- * the chosen one back through that format's archive codec; the resulting pick
- * carries the archive's own reference so a later step links provenance
+ * the chosen ones back through that format's source-file codec; each resulting
+ * pick carries the archive's own reference so a later step links provenance
  * without re-uploading the bytes.
  *
  * Presentation and interaction only. Nothing here parses HAR or opens a PDF —
@@ -90,8 +90,8 @@ interface SourcePickerProps {
    * @remarks
    * Local picking is a batch in the default `'batch'` mode — the OS dialog
    * allows several files and a drop can carry many — so this takes a list,
-   * previewed and confirmed together. A server archive is picked one at a
-   * time and arrives as a single-element list. In `'single'` mode this
+   * previewed and confirmed together. Server picks arrive the same way: one
+   * row at a time, or every selected row as one list. In `'single'` mode this
    * always fires with exactly one file. Fires only when at least one file
    * was accepted; a re-pick replaces the previous batch. The picker holds
    * no selection of its own; the caller owns what happens next.
@@ -233,18 +233,11 @@ const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps):
         </p>
       )}
       <ServerSourceFileList
+        mode={mode}
         onPick={(picked) => {
           setError(null)
-          onPick([picked])
+          onPick(picked)
         }}
-        onPickUnit={
-          mode === 'single'
-            ? undefined
-            : (picked) => {
-                setError(null)
-                onPick(picked)
-              }
-        }
       />
     </section>
   )

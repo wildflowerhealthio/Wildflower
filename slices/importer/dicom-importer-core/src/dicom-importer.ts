@@ -1,8 +1,8 @@
-import { FileImporter } from 'importer-fundamentals'
+import { DecodeFunction, type FileImporter } from 'importer-fundamentals'
 
+import { archiveLinks, decodeStudy, partitionStudies } from './decode.ts'
 import { detectDicom } from './detect.ts'
-import { decodeDicomBatch } from './dicom-decode.ts'
-import { defaultDicomSettings } from './settings.ts'
+import { defaultDicomSettings, type DicomSettings } from './settings.ts'
 import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from './source-system.ts'
 
 const format = 'dicom'
@@ -17,13 +17,30 @@ const sourceFileFormat = {
   descriptionPrefix: `${display.title}: `,
 }
 
-const dicomImporter = FileImporter.make({
-  display,
-  sourceFileFormat,
+/**
+ * The DICOM importer: a pick of `.dcm` files in, one `ImagingStudy` per study
+ * out.
+ *
+ * @remarks
+ * The one format so far that states a `partition`: a study's files are not
+ * independent — each states one instance of a study whose counts, modality set
+ * and earliest `started` only the whole set knows. Its archives link to what
+ * the study decoded to, because a DICOM file is a clinical document and
+ * belongs in its patient's record.
+ */
+const dicomImporter: FileImporter.Type<DicomSettings, typeof format> = {
   format,
-  decode: decodeDicomBatch,
+  display,
   detect: detectDicom,
   defaultSettings: defaultDicomSettings,
-})
+  sourceFileFormat,
+  decode: DecodeFunction.make({
+    format,
+    sourceFileFormat,
+    partition: partitionStudies,
+    decodeFileSet: decodeStudy,
+    archiveLinks,
+  }),
+}
 
 export { dicomImporter }

@@ -103,7 +103,9 @@ describe('ServerSourceFileList', () => {
       harArchiveWire({ id: 'har-1', fileName: 'portal.har', uploadedAt }),
       lifelabsPdfArchiveWire({ id: 'pdf-1', fileName: 'report.pdf', uploadedAt }),
     ])
-    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList mode="single" onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
 
     // Assert — the format-neutral heading and both rows land, each with a
     // Preview and a Use-as-source action bearing the file name
@@ -122,7 +124,9 @@ describe('ServerSourceFileList', () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     serveArchives([harArchiveWire({ id: 'har-1', fileName: 'portal.har', uploadedAt })])
-    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList mode="single" onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
     await screen.findByRole('button', { name: 'Preview portal.har' })
 
     // Act — open the preview
@@ -148,7 +152,9 @@ describe('ServerSourceFileList', () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     serveArchives([lifelabsPdfArchiveWire({ id: 'pdf-1', fileName: 'report.pdf', uploadedAt })])
-    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList mode="single" onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
     await screen.findByRole('button', { name: 'Preview report.pdf' })
 
     // Act
@@ -172,7 +178,15 @@ describe('ServerSourceFileList', () => {
     let picked:
       | { readonly fileName: string; readonly bytes: Uint8Array; readonly source: unknown }
       | undefined
-    render(<ServerSourceFileList onPick={(one) => (picked = one)} />, { wrapper: withQueryClient })
+    render(
+      <ServerSourceFileList
+        mode="single"
+        onPick={(chosen) => {
+          picked = chosen[0]
+        }}
+      />,
+      { wrapper: withQueryClient }
+    )
     await screen.findByRole('button', { name: 'Use portal.har as source' })
 
     // Act
@@ -196,7 +210,7 @@ describe('ServerSourceFileList', () => {
       dicomArchiveWire({ id: 'dcm-2', fileName: 'I2.dcm', uploadedAt, study: 'study-a' }),
       dicomArchiveWire({ id: 'dcm-3', fileName: 'J1.dcm', uploadedAt, study: 'study-b' }),
     ])
-    render(<ServerSourceFileList onPick={() => undefined} onPickUnit={() => undefined} />, {
+    render(<ServerSourceFileList mode="single" onPick={() => undefined} />, {
       wrapper: withQueryClient,
     })
 
@@ -209,7 +223,7 @@ describe('ServerSourceFileList', () => {
     expect(screen.getByText('J1.dcm')).toBeDefined()
   })
 
-  it('should pick every file of a study when Use-all-as-source is clicked', async () => {
+  it('should pick every file of a study as one list when the section is selected in batch mode', async () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     serveArchives([
@@ -219,19 +233,21 @@ describe('ServerSourceFileList', () => {
     let picked: readonly { readonly fileName: string; readonly source: unknown }[] | undefined
     render(
       <ServerSourceFileList
-        onPick={() => undefined}
-        onPickUnit={(all) => {
+        mode="batch"
+        onPick={(all) => {
           picked = all
         }}
       />,
       { wrapper: withQueryClient }
     )
-    const useAll = await screen.findByRole('button', {
-      name: 'Use all 2 files of this study as source',
+    const sectionToggle = await screen.findByRole('checkbox', {
+      name: 'Include all in Study · 2 files',
     })
 
-    // Act
-    await userEvent.click(useAll)
+    // Act — the section toggle selects both rows, then one pick action
+    await userEvent.click(sectionToggle)
+    expect(screen.getByRole('checkbox', { name: 'Select I1.dcm', checked: true })).toBeDefined()
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
 
     // Assert — one pick carrying both files, each a `server` source, so the
     // decode downstream sees the whole study rather than two one-file ones
@@ -245,24 +261,82 @@ describe('ServerSourceFileList', () => {
     ])
   })
 
-  it('should offer no whole-study pick to a host that takes one file at a time', async () => {
-    // The anonymizer's `serverSource` slot: it still sees the study grouped,
-    // but has nowhere to put a two-file pick, so the action is absent.
+  it('should pick rows selected across two sections as one list', async () => {
+    const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
+    serveArchives([
+      dicomArchiveWire({ id: 'dcm-1', fileName: 'I1.dcm', uploadedAt, study: 'study-a' }),
+      dicomArchiveWire({ id: 'dcm-2', fileName: 'I2.dcm', uploadedAt, study: 'study-a' }),
+      harArchiveWire({ id: 'har-1', fileName: 'portal.har', uploadedAt }),
+    ])
+    let picked: readonly { readonly fileName: string }[] | undefined
+    render(
+      <ServerSourceFileList
+        mode="batch"
+        onPick={(all) => {
+          picked = all
+        }}
+      />,
+      { wrapper: withQueryClient }
+    )
+    await screen.findByRole('checkbox', { name: 'Select I1.dcm' })
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select I2.dcm' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select portal.har' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
+
+    await waitFor(() => {
+      expect(picked !== undefined).toBe(true)
+    })
+    expect(picked?.map((one) => one.fileName)).toEqual(['I2.dcm', 'portal.har'])
+  })
+
+  it('should unselect a section that was fully selected, and offer no pick with nothing selected', async () => {
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     serveArchives([
       dicomArchiveWire({ id: 'dcm-1', fileName: 'I1.dcm', uploadedAt, study: 'study-a' }),
       dicomArchiveWire({ id: 'dcm-2', fileName: 'I2.dcm', uploadedAt, study: 'study-a' }),
     ])
-    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList mode="batch" onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
+    const sectionToggle = await screen.findByRole('checkbox', {
+      name: 'Include all in Study · 2 files',
+    })
+    const pickAction = screen.getByRole('button', { name: 'Use selected as source' })
+    expect(pickAction.hasAttribute('disabled')).toBe(true)
+
+    await userEvent.click(sectionToggle)
+    expect(pickAction.hasAttribute('disabled')).toBe(false)
+    await userEvent.click(sectionToggle)
+
+    expect(screen.getByRole('checkbox', { name: 'Select I2.dcm', checked: false })).toBeDefined()
+    expect(pickAction.hasAttribute('disabled')).toBe(true)
+  })
+
+  it('should offer no batch pick to a host that takes one file at a time', async () => {
+    // The anonymizer's `serverSource` slot: it still sees the study as one
+    // section, but has nowhere to put a two-file pick, so it picks per row.
+    const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
+    serveArchives([
+      dicomArchiveWire({ id: 'dcm-1', fileName: 'I1.dcm', uploadedAt, study: 'study-a' }),
+      dicomArchiveWire({ id: 'dcm-2', fileName: 'I2.dcm', uploadedAt, study: 'study-a' }),
+    ])
+    render(<ServerSourceFileList mode="single" onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
 
     expect(await screen.findByText('Study · 2 files')).toBeDefined()
-    expect(screen.queryByRole('button', { name: /Use all/u })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Use selected as source' })).toBeNull()
+    expect(screen.queryByRole('checkbox')).toBeNull()
+    expect(screen.getByRole('button', { name: 'Use I1.dcm as source' })).toBeDefined()
   })
 
   it('should render the empty state format-neutrally when the server has no source files', async () => {
     // Arrange
     serveArchives([])
-    render(<ServerSourceFileList onPick={() => undefined} />, { wrapper: withQueryClient })
+    render(<ServerSourceFileList mode="single" onPick={() => undefined} />, {
+      wrapper: withQueryClient,
+    })
 
     // Assert
     expect(

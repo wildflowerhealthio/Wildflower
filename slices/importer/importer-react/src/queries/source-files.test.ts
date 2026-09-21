@@ -2,9 +2,11 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient } from '@tanstack/react-query'
 import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
+import * as fc from 'fast-check'
 import type { RunAuthed } from 'fhir-r4-react'
 import { buildSmartRouterContext } from 'fhir-r4-react/smart'
 import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
+import { numRunsFor } from 'kitchen-sink/test'
 import {
   LIFELABS_PDF_SOURCE_FILE_CODE,
   LIFELABS_SYSTEM,
@@ -13,7 +15,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vite-plus/test'
 
 import {
   SOURCE_FILES_CATEGORY_TOKEN,
+  sourceFileSections,
   sourceFilesInfiniteQueryOptions,
+  type SourceFileRow,
+  UNTITLED_SOURCE_FILE,
   DEFAULT_PAGE_SIZE,
 } from './source-files.ts'
 
@@ -279,3 +284,97 @@ const paramsOf = (index: number): Readonly<Record<string, string | undefined>> =
   if (request === undefined) throw new Error(`no request recorded at index ${index}`)
   return Object.fromEntries(request.urlParams)
 }
+
+// ---------------------------------------------------------------------------
+// sourceFileSections — how the listed rows are sectioned for display
+// ---------------------------------------------------------------------------
+
+const sectionRow = (id: string, related: string | null = null): SourceFileRow => ({
+  id,
+  format: 'dicom',
+  title: `${id}.dcm`,
+  creation: DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z')),
+  related,
+})
+
+describe('sourceFileSections', () => {
+  it('leaves a source file that names no study in a section of its own, titled by the row', () => {
+    expect(sourceFileSections([sectionRow('a'), sectionRow('b')])).toEqual([
+      { title: 'a.dcm', rows: [sectionRow('a')] },
+      { title: 'b.dcm', rows: [sectionRow('b')] },
+    ])
+  })
+
+  it('collects the files of one study into one section, at the first one’s position', () => {
+    expect(
+      sourceFileSections([
+        sectionRow('a', 'ImagingStudy/s1'),
+        sectionRow('b'),
+        sectionRow('c', 'ImagingStudy/s1'),
+      ])
+    ).toEqual([
+      {
+        title: 'Study · 2 files',
+        rows: [sectionRow('a', 'ImagingStudy/s1'), sectionRow('c', 'ImagingStudy/s1')],
+      },
+      { title: 'b.dcm', rows: [sectionRow('b')] },
+    ])
+  })
+
+  it('leaves a study with one row listed titled by that row', () => {
+    // A heading over a single row states nothing the row does not.
+    expect(sourceFileSections([sectionRow('a', 'ImagingStudy/s1')])).toEqual([
+      { title: 'a.dcm', rows: [sectionRow('a', 'ImagingStudy/s1')] },
+    ])
+  })
+
+  it('keeps two studies apart', () => {
+    const sections = sourceFileSections([
+      sectionRow('a', 'ImagingStudy/s1'),
+      sectionRow('b', 'ImagingStudy/s2'),
+      sectionRow('c', 'ImagingStudy/s1'),
+      sectionRow('d', 'ImagingStudy/s2'),
+    ])
+    expect(sections.map((section) => section.rows.map((row) => row.id))).toEqual([
+      ['a', 'c'],
+      ['b', 'd'],
+    ])
+  })
+
+  it('a row with no title falls back to the untitled label', () => {
+    expect(sourceFileSections([{ ...sectionRow('a'), title: null }])[0]?.title).toBe(
+      UNTITLED_SOURCE_FILE
+    )
+  })
+
+  it('property: every row is listed exactly once, in server order', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(fc.uuid(), fc.option(fc.constantFrom('s1', 's2', 's3'), { nil: null })), {
+          minLength: 0,
+          maxLength: 12,
+        }),
+        (pairs) => {
+          const rows = pairs.map(([id, study], index) =>
+            sectionRow(`${index}-${id}`, study === null ? null : `ImagingStudy/${study}`)
+          )
+          const listed = sourceFileSections(rows).flatMap((section) => section.rows)
+          // Same rows, and every study's members keep their relative order — a
+          // sectioning that dropped or duplicated one would be a list the
+          // reviewer cannot trust.
+          expect(listed.map((one) => one.id).toSorted()).toEqual(
+            rows.map((one) => one.id).toSorted()
+          )
+          const studyRows = rows.filter((one) => one.related !== null).map((one) => one.id)
+          expect(
+            listed
+              .filter((one) => one.related !== null)
+              .map((one) => one.id)
+              .toSorted()
+          ).toEqual(studyRows.toSorted())
+        }
+      ),
+      { numRuns: numRunsFor({ base: 60 }) }
+    )
+  })
+})

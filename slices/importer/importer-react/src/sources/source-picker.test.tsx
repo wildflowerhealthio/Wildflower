@@ -94,7 +94,7 @@ describe('SourcePicker', () => {
       wrapper: withQueryClient,
     })
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Use portal-session.har as source' })).toBeDefined()
+      expect(screen.getByRole('checkbox', { name: 'Select portal-session.har' })).toBeDefined()
     })
 
     // Act 1 — chosen through the OS picker
@@ -104,8 +104,9 @@ describe('SourcePicker', () => {
     await waitFor(() => {
       expect(picks).toHaveLength(2)
     })
-    // Act 3 — selected from the server list via the row's Use-as-source action
-    await userEvent.click(screen.getByRole('button', { name: 'Use portal-session.har as source' }))
+    // Act 3 — selected from the server list and picked as the batch's source
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select portal-session.har' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
     await waitFor(() => {
       expect(picks).toHaveLength(3)
     })
@@ -149,8 +150,9 @@ describe('SourcePicker', () => {
     expect(paramsOf(0)['_count']).toBe('50')
     expect(sentRequests[0]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
 
-    // Act — pick the row via its Use-as-source action
-    await userEvent.click(screen.getByRole('button', { name: 'Use portal-session.har as source' }))
+    // Act — select the row and pick it
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select portal-session.har' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
 
     // Assert — the chosen archive is fetched and returned as bytes
     await waitFor(() => {
@@ -175,7 +177,7 @@ describe('SourcePicker', () => {
       wrapper: withQueryClient,
     })
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Use first.har as source' })).toBeDefined()
+      expect(screen.getByRole('checkbox', { name: 'Select first.har' })).toBeDefined()
     })
 
     // Act
@@ -183,7 +185,7 @@ describe('SourcePicker', () => {
 
     // Assert — the second search carried the cursor, and both pages are listed
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Use second.har as source' })).toBeDefined()
+      expect(screen.getByRole('checkbox', { name: 'Select second.har' })).toBeDefined()
     })
     expect(paramsOf(0)['_pageToken']).toBeUndefined()
     expect(paramsOf(1)['_pageToken']).toBe('cursor-2')
@@ -278,6 +280,68 @@ describe('SourcePicker', () => {
       expect(calls).toHaveLength(1)
     })
     expect(calls[0]).toEqual(['one.har', 'two.har'])
+  })
+
+  it('should hand a caller every server row it selected as one pick', async () => {
+    serveArchives({
+      pages: [
+        {
+          archives: [
+            { id: 'archive-1', fileName: 'first.har' },
+            { id: 'archive-2', fileName: 'second.har' },
+          ],
+        },
+      ],
+      harTextById: { 'archive-1': VALID_HAR, 'archive-2': VALID_HAR },
+    })
+    const calls: string[][] = []
+    render(
+      <SourcePicker
+        detectors={testDetectors}
+        onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))}
+      />,
+      { wrapper: withQueryClient }
+    )
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: 'Select first.har' })).toBeDefined()
+    })
+
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select first.har' }))
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Select second.har' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
+
+    // One pick carrying both rows — what lets a re-picked study decode as one.
+    await waitFor(() => {
+      expect(calls).toHaveLength(1)
+    })
+    // The names are the fetched archives' own — the list's rows are titled by
+    // the search result, the pick by what the fetch read back.
+    expect(calls[0]).toEqual(['archive-1.har', 'archive-2.har'])
+  })
+
+  it('should hand a one-at-a-time caller the server row it used, as a list of one', async () => {
+    serveArchives({
+      pages: [{ archives: [{ id: 'archive-1', fileName: 'portal-session.har' }] }],
+      harTextById: { 'archive-1': VALID_HAR },
+    })
+    const calls: string[][] = []
+    render(
+      <SourcePicker
+        detectors={testDetectors}
+        mode="single"
+        onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))}
+      />,
+      { wrapper: withQueryClient }
+    )
+    const use = await screen.findByRole('button', { name: 'Use portal-session.har as source' })
+
+    await userEvent.click(use)
+
+    await waitFor(() => {
+      expect(calls).toHaveLength(1)
+    })
+    expect(calls[0]).toEqual(['archive-1.har'])
+    expect(screen.queryByRole('checkbox')).toBeNull()
   })
 
   it('should offer no folder pick to a caller that consumes one file at a time', () => {

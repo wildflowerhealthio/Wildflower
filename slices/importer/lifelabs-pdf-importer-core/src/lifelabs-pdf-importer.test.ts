@@ -1,12 +1,13 @@
-import { Effect, ParseResult } from 'effect'
+import { Effect, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
+import type { DocumentReference } from 'fhir-r4/resources'
 import {
-  FileImporter,
+  DecodeFunction,
+  type FileImporter,
   PickedFile,
   DecodedFile,
   SourceFile,
   FormatDecode,
-  PerFileDecodeFunction,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
@@ -17,7 +18,11 @@ import { arbitrary as reportArbitrary } from './entities/report-arbitrary.ts'
 import type * as Report from './entities/report.ts'
 import { lifeLabsPdfImporter } from './lifelabs-pdf-importer.ts'
 import { defaultLifeLabsPdfSettings } from './settings.ts'
-import { LIFELABS_PDF_SOURCE_FILE_CODE, LIFELABS_SYSTEM } from './source-system.ts'
+import {
+  LIFELABS_PDF_SOURCE_FILE_CODE,
+  LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE,
+  LIFELABS_SYSTEM,
+} from './source-system.ts'
 import { layoutDocument } from './test-helpers.ts'
 
 describe('lifeLabsPdfImporter', () => {
@@ -56,23 +61,26 @@ const importerForReports = (
   reports: readonly Report.Type[]
 ): FileImporter.Type<typeof SETTINGS, 'lifelabs-pdf'> => {
   const format = 'lifelabs-pdf'
-  // Closes over `reports`, so it is built per call rather than at module scope.
-  const decodeConfig = {
-    format,
-    decodeOne: (_file: PickedFile.Type, settings: typeof SETTINGS) =>
-      decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
-  } as const
-  return FileImporter.make({
+  return {
     format,
     sourceFileFormat,
-    decode: PerFileDecodeFunction.make(decodeConfig),
+    // The decode closes over `reports`, so the importer is built per call
+    // rather than at module scope.
+    decode: DecodeFunction.make({
+      format,
+      sourceFileFormat,
+      decodeFileSet: (_members, settings: typeof SETTINGS) =>
+        decodeLifeLabsPdfDocument(layoutDocument(reports), settings),
+    }),
     display: { title: 'LifeLabs report', description: 'Test' },
     detect: detectLifeLabsPdf,
     defaultSettings: SETTINGS,
-  })
+  }
 }
 
-const readUnit = (result: FormatDecode.Result<string>): FormatDecode.Result<string>['decoded'] => {
+const readDecoded = (
+  result: FormatDecode.Result<string>
+): FormatDecode.Result<string>['decoded'] => {
   if (result.unreadableFiles.length > 0) {
     throw new Error(
       `expected a readable result, got ${result.unreadableFiles.length} unreadable files`
@@ -93,7 +101,7 @@ describe('lifeLabsPdfImporter decode', () => {
             source: PickedFile.Source.local,
           }
 
-          const decoded = readUnit(
+          const decoded = readDecoded(
             await Effect.runPromise(importerForReports(reports).decode([file], SETTINGS))
           )
 
@@ -127,7 +135,7 @@ describe('lifeLabsPdfImporter decode', () => {
             source: PickedFile.Source.server('wf-already-uploaded'),
           }
 
-          const decoded = readUnit(
+          const decoded = readDecoded(
             await Effect.runPromise(importerForReports(reports).decode([file], SETTINGS))
           )
 
@@ -160,5 +168,56 @@ describe('lifeLabsPdfImporter decode', () => {
     expect(unreadable?.title).toBe(file.fileName)
     expect(unreadable?.pickedFile).toEqual(file)
     expect(ParseResult.isParseError(unreadable?.error)).toBe(true)
+  })
+})
+
+// ---------------------------------------------------------------------------
+// The source file this format's importer mints — the schemas driven under
+// `lifeLabsPdfImporter`'s own format constants, which is the same context its
+// batch `decode` mints under.
+// ---------------------------------------------------------------------------
+
+const mintArchive = (
+  bytes: Uint8Array,
+  fileName = 'lab-report.pdf'
+): Promise<DocumentReference.Type> =>
+  Effect.runPromise(
+    Schema.decode(SourceFile.FromNamedBytes)({ fileName, bytes }).pipe(
+      Effect.flatMap(Schema.encode(SourceFile.FromDocumentReference)),
+      Effect.provideService(SourceFile.Format, lifeLabsPdfImporter.sourceFileFormat)
+    )
+  )
+
+describe('LifeLabs PDF source file coding', () => {
+  it('carries the LifeLabs coding on type and category, no security label, and pdf content', async () => {
+    const resource = await mintArchive(new TextEncoder().encode('%PDF-1.7\ntest'))
+
+    expect(resource.type?.coding[0]?.system?.toString()).toBe(LIFELABS_SYSTEM)
+    expect(resource.type?.coding[0]?.code).toBe(LIFELABS_PDF_SOURCE_FILE_CODE)
+    expect(resource.category[0]?.coding[0]?.system?.toString()).toBe(LIFELABS_SYSTEM)
+    expect(resource.category[0]?.coding[0]?.code).toBe(LIFELABS_PDF_SOURCE_FILE_CODE)
+    expect((resource.securityLabel ?? []).length).toBe(0)
+    expect(resource.content[0]?.attachment?.contentType).toBe(LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE)
+    expect(resource.description).toBe('LifeLabs report: lab-report.pdf')
+    expect(SourceFile.isSourceFile(lifeLabsPdfImporter.sourceFileFormat)(resource)).toBe(true)
+  })
+
+  it('exposes the category search token in system|code form', () => {
+    expect(SourceFile.categoryToken(lifeLabsPdfImporter.sourceFileFormat)).toBe(
+      `${LIFELABS_SYSTEM}|${LIFELABS_PDF_SOURCE_FILE_CODE}`
+    )
+  })
+
+  it('mints a resource that reads back as its own source file, bytes and name recovered', async () => {
+    const bytes = new TextEncoder().encode('%PDF-1.7\n%\xff\xfa\nround-trip')
+    const resource = await mintArchive(bytes, 'my-report.pdf')
+
+    const back = await Effect.runPromise(
+      Schema.decode(SourceFile.FromDocumentReference)(resource).pipe(
+        Effect.provideService(SourceFile.Format, lifeLabsPdfImporter.sourceFileFormat)
+      )
+    )
+    expect(back.fileName).toBe('my-report.pdf')
+    expect(back.bytes).toEqual(bytes)
   })
 })

@@ -1,7 +1,7 @@
 import { Effect, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
-import type { DecodedFile, PickedFile, SourceFile } from 'importer-fundamentals'
+import type { DecodedFile, PickedFile } from 'importer-fundamentals'
 import { checkTimeZone } from 'kitchen-sink'
 import type { Document } from 'positioned-text'
 import { extractPositionedText } from 'positioned-text-web'
@@ -109,15 +109,11 @@ const decodeLifeLabsPdfDocument = (
 
 /**
  * Decode one picked LifeLabs report PDF into per-report sections of adopted,
- * labeled FHIR resources — the per-file decode the importer's `decode`
- * lifts through its per-file decode.
+ * labeled FHIR resources — the one-file set the importer's `decode` reads.
  *
  * @param file - The picked file, whose `bytes` are a LifeLabs "Reports" PDF
  *   exactly as the picker read them
  * @param settings - The import's settings (time zone for date interpretation)
- * @param _source - The file's source-file reference, unused: this format's
- *   resources carry no id derived from their source file, and `FileImporter`
- *   stamps `meta.source` itself
  * @returns One section of `LabeledResource`s per report, no notes; fails only
  *   with a `ParseError` when the bytes are not a PDF the extractor can open or
  *   the extracted text is not a recognized LifeLabs report; requires nothing
@@ -133,8 +129,7 @@ const decodeLifeLabsPdfDocument = (
  */
 const decodeLifeLabsPdf = (
   file: PickedFile.Type,
-  settings: LifeLabsPdfSettings,
-  _sourceFile: SourceFile.Reference
+  settings: LifeLabsPdfSettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.tryPromise({
     try: () => extractPositionedText(file.bytes),

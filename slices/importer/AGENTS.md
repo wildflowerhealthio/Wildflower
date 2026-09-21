@@ -22,20 +22,21 @@ Part of the offline FHIR HAR importer epic (#489).
 Each package's own AGENTS.md is the authority on its shape; the roles:
 
 - **[`importer-fundamentals`](./importer-fundamentals/AGENTS.md)**
-  (resource-agnostic, format-agnostic) — the `FileImporter` contract and the
-  `FileImporter.make` factory that builds one: a binding gives a
-  `sourceFileFormat` (its coding constants) and a batch `decode` still needing
-  that format's context — typically `PerFileDecodeFunction.make` over its format
-  tag and per-file `decodeOne` — and gets back a bound importer whose `decode`
-  the shell runs (one `FormatDecode.Result` per format: the merged sections and
-  notes, plus an `unreadableFiles` row per file that rejected), plus the
-  deterministic source-file mint and its server-read seam, and the per-file
-  review-key namespacing that keeps one claimed file's keys from colliding
-  with another's. The factory binding the context is what keeps
-  `sourceFileFormat` spelled once per binding. Also the `PickedFile`
-  vocabulary, the `FormatDetector` seam the picker sniffs with, the `SourceFile`
-  reference vocabulary and the `SourceFileCodec` that stores and reads one back,
-  and the pure per-resource `StagedImport` model.
+  (resource-agnostic, format-agnostic) — the `FileImporter` contract (an
+  interface a binding writes as a literal) and `DecodeFunction.make`, the one
+  constructor of the batch `decode` the shell runs: a binding gives its
+  `sourceFileFormat` (its coding constants), how one set of files decodes
+  (`decodeFileSet`), and — only if its files are read together — which files
+  those are (`partition`) and what their archives link to (`archiveLinks`).
+  Back comes one `FormatDecode.Result` per format: the merged sections and
+  notes, plus an `unreadableFiles` row per pick that rejected. The constructor
+  owns the source-file half — the deterministic mint, the archive section, the
+  `meta.source` stamp — and provides the format's `SourceFile.Format` service
+  internally, which is what keeps `sourceFileFormat` spelled once per binding,
+  and it namespaces each set's review keys so one set's keys cannot collide
+  with another's. Also the `PickedFile` vocabulary, the `FormatDetector` seam
+  the picker sniffs with, the `SourceFile` vocabulary and schemas that store
+  and read an archive back, and the pure per-resource `StagedImport` model.
   There is no `persist` sink: the write is the shell's one
   `persistBatchBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
@@ -65,8 +66,8 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   coding that stores a DICOM file as a FHIR `DocumentReference` filed under
   the Patient the decode synthesized and related to the `ImagingStudy` it was
   read into, header tag parsing, and FHIR R4 synthesis (Patient /
-  ServiceRequest / ImagingStudy). The one format whose **unit is not a file**:
-  its decode partitions a pick by `StudyInstanceUID` and yields one
+  ServiceRequest / ImagingStudy). The one format that states a **`partition`**:
+  its decode groups a pick by `StudyInstanceUID` (and patient) and yields one
   `ImagingStudy` per study, with one archive per file.
 - **[`dicom-importer-react`](./dicom-importer-react/AGENTS.md)** (the DICOM
   UI) — `DicomSettingsPicker` (the acquiring equipment's time zone).
@@ -147,9 +148,11 @@ sits above `http-extraction` and below every binding, exactly as
   settings. A format's `decode` mints its own source-file `DocumentReference`
   for each `local` pick, lists it among the reviewed sections, and stamps every
   extracted resource's `meta.source` with it; nothing above the binding mints
-  or stamps anything. What a format's decode treats as _one unit_ is its own
-  business too: HAR and LifeLabs decode a file at a time, DICOM a whole study
-  — the shell hands every claimed file to one `decode` either way. The write itself is format-blind — one shared
+  or stamps anything. Which files decode _together_ is its own business too:
+  HAR and LifeLabs decode a file at a time, DICOM a whole study — the shell
+  hands every claimed file to one `decode` either way, and the server
+  source-file list hands on every row the reviewer selected without deciding
+  what they make up. The write itself is format-blind — one shared
   `persistBatchBundle` at the shell.
 - **The registry is closed and compile-time.** The importer registry is
   `importer-core`'s literal `{ har, 'lifelabs-pdf', dicom }`, and
@@ -176,7 +179,7 @@ sits above `http-extraction` and below every binding, exactly as
   or another imaging import decodes a _document_: its decode belongs in a pure dialect package
   (the way rexall's carebook dialect and `web-trace-core`'s codec work), wrapped
   here by a sibling `*-importer-core` binding built on the same
-  `FileImporter.make`. The dialect sits below both transports, which is what
+  `DecodeFunction.make`. The dialect sits below both transports, which is what
   keeps the graph acyclic.
 
 ## References

@@ -1,12 +1,21 @@
 import { Effect, Schema } from 'effect'
 import * as fc from 'fast-check'
-import { HarFromJson, emitHar } from 'http-archive'
+import type { DocumentReference } from 'fhir-r4/resources'
+import { HarFromJson, HttpArchive, emitHar } from 'http-archive'
 import { SourceDescriptor } from 'http-extraction-fundamentals'
 import { PickedFile, SourceFile, FormatDecode, type DecodedFile } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 import { type TraceBody, type TraceExchange } from 'web-trace-core'
-import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
+import {
+  HAR_ARCHIVE_CODE,
+  WEB_TRACE_CODE_SYSTEM,
+  WEB_TRACE_RAW_CODE,
+  WEB_TRACE_REDACTION_SYSTEM,
+  isWebTrace,
+  toDocumentReference,
+} from 'web-trace-core/codec'
+import { arbitraries, CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 import { fhirSources } from './fhir-pool.ts'
 import { harImporter } from './har-importer.ts'
@@ -109,7 +118,7 @@ const pickedHar = (source: PickedFile.Source.Type): PickedFile.Type => ({
 })
 
 /**
- * Decode one pick and take the single unit it yields, which must have been
+ * Decode one pick and take the single result it yields, which must have been
  * read. Asynchronous because minting a local pick's source file hashes its
  * bytes through Web Crypto.
  */
@@ -226,7 +235,7 @@ describe('harImporter.decode', () => {
     )
   })
 
-  it('should report bytes that are not a well-formed HAR as one unreadable unit', async () => {
+  it('should report bytes that are not a well-formed HAR as one unreadable file', async () => {
     const file: PickedFile.Type = {
       fileName: 'archive.har',
       bytes: new TextEncoder().encode('{ not a har }'),
@@ -239,4 +248,119 @@ describe('harImporter.decode', () => {
     expect(result.unreadableFiles[0]?.title).toBe('archive.har')
     expect(result.unreadableFiles[0]?.error._tag).toBe('ParseError')
   })
+})
+
+// ---------------------------------------------------------------------------
+// The source file this format's importer mints — the schemas driven under
+// `harImporter`'s own format constants, which is the same context its batch
+// `decode` mints under.
+// ---------------------------------------------------------------------------
+
+const mintArchive = (
+  bytes: Uint8Array,
+  fileName = 'portal-session.har'
+): Promise<DocumentReference.Type> =>
+  Effect.runPromise(
+    Schema.decode(SourceFile.FromNamedBytes)({ fileName, bytes }).pipe(
+      Effect.flatMap(Schema.encode(SourceFile.FromDocumentReference)),
+      Effect.provideService(SourceFile.Format, harImporter.sourceFileFormat)
+    )
+  )
+
+const readArchive = (resource: DocumentReference.Type): Promise<SourceFile.Type> =>
+  Effect.runPromise(
+    Schema.decode(SourceFile.FromDocumentReference)(resource).pipe(
+      Effect.provideService(SourceFile.Format, harImporter.sourceFileFormat)
+    )
+  )
+
+const isHarSourceFile = SourceFile.isSourceFile(harImporter.sourceFileFormat)
+
+const { exchange: exchangeArbitrary } = arbitraries(fc)
+
+describe('HAR source file coding', () => {
+  it('carries the web-trace har-archive coding on type and category, the raw label, and json content', async () => {
+    const resource = await mintArchive(new TextEncoder().encode('{"log":{"version":"1.2"}}'))
+
+    expect(resource.type?.coding[0]?.system?.toString()).toBe(WEB_TRACE_CODE_SYSTEM)
+    expect(resource.type?.coding[0]?.code).toBe(HAR_ARCHIVE_CODE)
+    expect(resource.category[0]?.coding[0]?.system?.toString()).toBe(WEB_TRACE_CODE_SYSTEM)
+    expect(resource.category[0]?.coding[0]?.code).toBe(HAR_ARCHIVE_CODE)
+    expect(resource.securityLabel[0]?.coding[0]?.system?.toString()).toBe(
+      WEB_TRACE_REDACTION_SYSTEM
+    )
+    expect(resource.securityLabel[0]?.coding[0]?.code).toBe(WEB_TRACE_RAW_CODE)
+    expect(resource.content[0]?.attachment?.contentType).toBe(
+      harImporter.sourceFileFormat.contentType
+    )
+    expect(resource.description).toBe('HAR archive: portal-session.har')
+    expect(isHarSourceFile(resource)).toBe(true)
+  })
+
+  it('exposes the category search token in system|code form', () => {
+    expect(SourceFile.categoryToken(harImporter.sourceFileFormat)).toBe(
+      `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE}`
+    )
+  })
+})
+
+describe('HAR source file vs captured trace', () => {
+  test('property: the two document kinds are disjoint — neither predicate sees the other', async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.uint8Array({ maxLength: 512 }),
+        exchangeArbitrary,
+        async (bytes, exchange) => {
+          const sourceFileResource = await mintArchive(bytes)
+          const traceResource = await Effect.runPromise(toDocumentReference(exchange))
+
+          expect(isHarSourceFile(sourceFileResource)).toBe(true)
+          expect(isWebTrace(sourceFileResource)).toBe(false)
+          expect(isWebTrace(traceResource)).toBe(true)
+          expect(isHarSourceFile(traceResource)).toBe(false)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+
+  test('property: a trace resource fails to decode as a source file, naming the coding it wants', async () => {
+    await fc.assert(
+      fc.asyncProperty(exchangeArbitrary, async (exchange) => {
+        const outcome = await Effect.runPromise(
+          Effect.either(
+            Schema.decode(SourceFile.FromDocumentReference)(
+              await Effect.runPromise(toDocumentReference(exchange))
+            ).pipe(Effect.provideService(SourceFile.Format, harImporter.sourceFileFormat))
+          )
+        )
+        expect(outcome._tag).toBe('Left')
+        if (outcome._tag === 'Left') expect(outcome.left.message).toContain(HAR_ARCHIVE_CODE)
+      }),
+      { numRuns: numRunsFor({ base: 50 }) }
+    )
+  })
+})
+
+test('property: stored bytes still parse as an HTTP Archive after the round trip, which is the point of storing them', async () => {
+  await fc.assert(
+    fc.asyncProperty(
+      fc.array(exchangeArbitrary, { minLength: 1, maxLength: 4 }),
+      async (exchanges) => {
+        const fileText = await Effect.runPromise(
+          Schema.encode(HarFromJson)(emitHar(exchanges, { sessionId: 'session-0' }))
+        )
+        const resource = await mintArchive(new TextEncoder().encode(fileText))
+        const stored = await readArchive(resource)
+
+        const log = await Effect.runPromise(
+          Schema.decodeUnknown(HttpArchive.LogFromHarJson)(new TextDecoder().decode(stored.bytes))
+        )
+        expect(log.entries.map((entry) => entry.url).toSorted()).toEqual(
+          exchanges.map((exchange) => exchange.url).toSorted()
+        )
+      }
+    ),
+    { numRuns: numRunsFor({ base: 25 }) }
+  )
 })

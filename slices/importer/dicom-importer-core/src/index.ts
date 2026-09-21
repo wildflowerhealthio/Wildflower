@@ -6,8 +6,16 @@
  *
  * @packageDocumentation
  */
-export { decodeStudy, sectionTitle, type StudyFile } from './decode.ts'
-export { decodeDicomBatch } from './dicom-decode.ts'
+export {
+  archiveLinks,
+  decodeStudy,
+  partitionStudies,
+  sectionTitle,
+  studyKey,
+  type ParsedFile,
+  type StudyFileSet,
+  type StudyMember,
+} from './decode.ts'
 export { detectDicom } from './detect.ts'
 export { dicomImporter } from './dicom-importer.ts'
 export {
@@ -26,4 +34,3 @@ export {
   DICOM_SOURCE_FILE_CONTENT_TYPE,
   DICOM_SYSTEM,
 } from './source-system.ts'
-export { partition, type ParsedFile, type StudyUnit } from './study-unit.ts'

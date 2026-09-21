@@ -12,7 +12,7 @@ A format is registered with exactly **two static edits** — its importer entry 
 `importer-react`'s registry on top of it — because the slice has no runtime
 registry. Everything before those edits lives in a new `*-importer-core` binding
 (and its `*-importer-react` settings UI) built on `importer-fundamentals`'
-`FileImporter.make`.
+`DecodeFunction.make`.
 
 ## What you're building
 
@@ -24,17 +24,17 @@ registry entries; it touches neither `importer-fundamentals` nor
 `http-extraction`. There is **no per-format review UI**: the shell renders every
 format's decoded sections through one generalized per-resource review (include
 checkboxes, inline JSON edit, diagnostic notes). A format's whole review surface
-is what its `decodeOne` puts in each file's `DecodedFile` — sections of labeled
+is what its `decodeFileSet` puts in a `DecodedFile` — sections of labeled
 resources, plus a note per thing that did not become a resource.
 
 | Piece           | Where                                          | Contract                                                      |
 | --------------- | ---------------------------------------------- | ------------------------------------------------------------- |
 | Decode dialect  | a pure dialect package (below both transports) | the format's document → structural records                    |
 | Response kinds  | `slices/http-extraction/*-source/`             | `HttpResponseKind` — recognize + parse (only if HTTP-shaped)  |
-| Importer        | `*-importer-core/src/<format>-importer.ts`     | one `FileImporter.make({ … })` call                           |
+| Importer        | `*-importer-core/src/<format>-importer.ts`     | one `FileImporter.Type` literal over `DecodeFunction.make`    |
 | Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (an empty record if none)     |
 | Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
-| Source file     | the `sourceFileFormat` you pass in             | derived by `FileImporter.make`, minted inside `decode`        |
+| Source file     | the `sourceFileFormat` you state               | minted inside `decode` by `DecodeFunction.make`               |
 | Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)    |
 | Registry entry  | `importer-core/src/registry.ts`                | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
 | Picker entry    | `importer-react/src/registry.ts`               | the same key's `SettingsPicker`                               |
@@ -54,43 +54,52 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 
 ## 1. The decode
 
-You write **one file at a time**. `decodeOne(file, settings, sourceFile)` takes a
-single `PickedFile` — a `{ fileName, bytes, source }`, the `source` being a
-`local` pick or a `server` one naming a source file already on the device — and
-yields a `DecodedFile`: titled sections of labeled resources, plus file-level
-diagnostic notes.
+You write **one file set at a time**. `decodeFileSet(members, settings)` takes
+the picks that are decoded together — each a `{ file, index, sourceFile }`,
+where `file` is a `{ fileName, bytes, source }` (`local`, or `server` naming a
+source file already on the device) and `sourceFile` is the
+`DocumentReference/<id>` its resources will be stamped with — and yields a
+`DecodedFile`: titled sections of labeled resources, plus diagnostic notes.
 
 ```ts
 const decodeMyFormat = (
-  file: PickedFile,
-  settings: MySettings,
-  sourceFile: SourceFile.Reference
+  members: Arr.NonEmptyReadonlyArray<
+    DecodeFunction.Member & { readonly sourceFile: SourceFile.Reference }
+  >,
+  settings: MySettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> => …
 ```
 
-`PerFileDecodeFunction.make` lifts that into the batch `decode(files, settings)`
-the shell runs across every file the format claimed. That lifted decode is what:
+A format whose files stand alone reads `members[0].file` and says nothing more:
+the default partition is "every pick is its own set, in pick order". A format
+whose files must be read **together** — a multi-part archive, a manifest naming
+its siblings, a DICOM study — states a `partition` instead (see §5).
 
-- resolves each file's source file — minting one for a `local` pick and handing
-  `decodeOne` its `DocumentReference/<id>` reference before the decode runs, or
-  passing a `server` pick's existing reference through verbatim, minting
-  nothing;
-- prepends the minted row as its own **"Source file"** section;
-- stamps every extracted resource's `meta.source` with that reference;
-- **namespaces every review key** with the file's slot in the batch, so two
-  claimed files cannot collide on a key (see the obligations below);
-- folds a `ParseError` into that one file's `unreadableFiles` entry.
+`DecodeFunction.make` lifts that into the batch `decode(files, settings)` the
+shell runs across every file the format claimed. That lifted decode is what:
+
+- resolves each pick's source file — minting one for a `local` pick and handing
+  your `decodeFileSet` its `DocumentReference/<id>` reference before the decode
+  runs, or passing a `server` pick's existing reference through verbatim,
+  minting nothing;
+- prepends the minted archives as their own **"Source file"** / **"Source
+  files"** section;
+- stamps every extracted resource's `meta.source` with the set's representative
+  reference;
+- **namespaces every review key** with the representative's slot in the batch,
+  so two sets cannot collide on a key (see the obligations below);
+- folds a `ParseError` into one `unreadableFiles` row per pick of the failing
+  set.
 
 The resulting `decode` **never fails**, requires **no services**, and writes
 nothing — so a preview can never reach the write client by construction, and one
 bad file in a batch of five leaves the other four reviewable. The whole opt-in
 seam rests on this.
 
-The `sourceFile` argument is the resolved source file's reference, which is both
-what every extracted resource's `meta.source` will carry and — through
-`SourceFile.idFromReference` — where a format whose synthesized resources name
-the stored file (DICOM's `ImagingStudy` `gridfsFileId` extension) reads the bare
-id, rather than recomputing it.
+A member's `sourceFile` is both what every extracted resource's `meta.source`
+will carry and — through `SourceFile.idFromReference` — where a format whose
+synthesized resources name the stored file (DICOM's `ImagingStudy`
+`gridfsFileId` extension) reads the bare id, rather than recomputing it.
 
 Three obligations:
 
@@ -98,10 +107,10 @@ Three obligations:
   across settings changes where the underlying resource is unchanged (HAR keys
   by `responseId:index`, DICOM by the resource's role), because the reviewer's
   per-resource exclusions and inline edits are keyed by it and must survive a
-  settings re-decode. Key **within one file** and do not try to make keys unique
-  across the batch yourself — `PerFileDecodeFunction.make` prefixes each file's keys with its
-  slot (`FormatDecode.keyPrefix`), which is what makes a fixed key like
-  `patient` safe when the reviewer picked eight images at once.
+  settings re-decode. Key **within one set** and do not try to make keys unique
+  across the batch yourself — `DecodeFunction.make` prefixes each set's keys
+  with its representative's slot (`FormatDecode.keyPrefix`), which is what makes
+  a fixed key like `patient` safe when the reviewer picked eight images at once.
 - **Sections are the display.** Pick a sectioning that means something to the
   reviewer: HAR sections by URL, LifeLabs by report. A section's `title` is the
   heading the shell renders.
@@ -134,66 +143,57 @@ links are already there, stamped by the decode.
 
 A source file is the picked file itself, stored as a FHIR `DocumentReference`
 with the bytes verbatim. It is **the format's**, not the shell's — but a binding
-does not write the encoding. You pass `FileImporter.make` one **`sourceFileFormat`**
-— a `SourceFileCodec.Format`, the same value the codec is parameterized by: a
-`coding` (`{ system, code }`), a `contentType`, a `descriptionPrefix`
-(conventionally `` `${display.title}: ` ``), and optionally a `securityLabel`.
-It derives the whole seam from that:
+does not write the encoding. You state one **`sourceFileFormat`** — a
+`SourceFile.FormatValue`: a `coding` (`{ system, code }`), a `contentType`, a
+`descriptionPrefix` (conventionally `` `${display.title}: ` ``), and optionally
+a `securityLabel` — on the importer and hand the same constant to
+`DecodeFunction.make`. Everything else is `SourceFile`'s, read under those
+constants:
 
-| Derived field                     | What it is                                                  |
-| --------------------------------- | ----------------------------------------------------------- |
-| `categoryToken`                   | the `system\|code` search token the shell unions per format |
-| `isSourceFile`                    | the disjoint predicate a server row is classified through   |
-| `sourceFileFromDocumentReference` | the bytes-and-name reader a preview or a re-pick calls      |
-| `sourceFileFormat`                | those constants as data, for the codec to be driven under   |
+| What you need                           | How to get it                                         |
+| --------------------------------------- | ----------------------------------------------------- |
+| the `system\|code` search token         | `SourceFile.categoryToken(sourceFileFormat)`          |
+| the disjoint predicate for a server row | `SourceFile.isSourceFile(sourceFileFormat)(resource)` |
+| the bytes-and-name reader               | `Schema.decode(SourceFile.FromDocumentReference)`     |
+| a preview's name and bytes, in one read | `SourceFile.NamedBytesFromDocumentReference`          |
 
-The write direction is not a field on the importer: minting and encoding a
-source file is what the batch `decode` does either side of a `decodeOne`, so the
-resource can be filed under a subject the decode named. `SourceFileCodec.mintResource`
-(mint then encode, named for its result — the stored resource) and its halves
-`SourceFileCodec.tryFromNamedBytes` / `SourceFileCodec.encode` are what it calls,
-each requiring the codec's
-`SourceFileCodec.FormatContext`. `sourceFileFormat` is that context's value, which is
-how a binding's test drives the codec under the format's real config:
+Those schemas require the `SourceFile.Format` service. `DecodeFunction.make`
+provides it internally from the `sourceFileFormat` you handed it, so nothing
+your binding exports carries the requirement; a reader above the binding — the
+shell's server source-file list, or your binding's own test — provides it from
+the importer's own constants:
 
 ```ts
-SourceFileCodec.mintResource({ fileName, bytes }).pipe(
-  Effect.provideService(SourceFileCodec.FormatContext, myImporter.sourceFileFormat)
+Schema.decode(SourceFile.FromDocumentReference)(resource).pipe(
+  Effect.provideService(SourceFile.Format, myImporter.sourceFileFormat)
 )
 ```
 
-The `SourceFile` namespace beside it is the codec's _vocabulary_ — `Type`,
-`Coding`, `Reference` and its two constructors — and is context-free. Reach for
-`SourceFile` to name a source file and `SourceFileCodec` to store or read one.
+The mint (`SourceFile.FromNamedBytes`) derives its id from the bytes' SHA-256
+and the file name through `fhir-r4/identity`'s `localResourceId`, so re-importing
+the same file under the same name upserts rather than piling up duplicates, and
+it reads the clock for the upload instant on every decode. A `server` pick mints
+nothing: its existing `DocumentReference/<id>` reference is what the extracted
+resources stamp.
 
-The mint derives its id from the bytes' SHA-256 and the file name through
-`fhir-r4/identity`'s `localResourceId`, so re-importing the same file under the
-same name upserts rather than piling up duplicates, and it reads the clock for
-the upload instant on every decode. A `server` pick mints nothing: its existing
-`DocumentReference/<id>` reference is what the extracted resources stamp.
-
-Pass **`subjectFor`** when the format files its source file under a subject. It
-is called with the file _and its decode_, so it reads the subject off the
-resources the decode already produced rather than parsing the file a second
-time:
+Pass **`archiveLinks`** when the format's archives point at what was read out of
+them. It is called with the set's _decode_, so it reads the links off the
+resources already produced rather than parsing the files a second time:
 
 ```ts
-const patientSubjectOf: PerFileDecodeFunction.FileSubjectForPair = (_file, decoded) => {
-  const patient = DecodedFile.resources(decoded).find(
-    (entry) => entry.resource.resourceType === 'Patient'
-  )
-  const id = patient?.resource.id
-  return id === undefined || id === null ? undefined : { reference: `Patient/${id}` }
-}
+const archiveLinks = (decoded: DecodedFile.DecodedFile): DecodeFunction.ArchiveLinks => ({
+  subject: patientReferenceOf(decoded),
+  related: Arr.getSomes([studyReferenceOf(decoded)]),
+})
 ```
 
-The default is no `subject` at all, which keeps an engineering artifact out of
-`Patient/$everything`; DICOM opts in because its header names the patient.
-
-The minted source file is reviewed like any other resource. The reviewer can
-exclude its row, in which case it is simply not written — and the extracted
-resources keep their `meta.source`, because the decode stamped them and nothing
-downstream rewrites them.
+The default is no `subject` and no `related`, which keeps an engineering
+artifact out of `Patient/$everything`; DICOM opts in because its header names
+the patient, and its `related` is what lets the server list show a study's
+archives as one section. The minted source file is reviewed like any other
+resource. The reviewer can exclude its row, in which case it is simply not
+written — and the extracted resources keep their `meta.source`, because the
+decode stamped them and nothing downstream rewrites them.
 
 ## 5. Assemble the importer
 
@@ -210,66 +210,51 @@ const sourceFileFormat = {
 
 const format = 'my-format'
 
-const decodeConfig = {
-  format,
-  decodeOne: decodeMyFormat,
-  // optional:
-  subjectFor: mySubjectOf,
-} as const
-
-const myImporter = FileImporter.make({
+const myImporter: FileImporter.Type<MySettings, typeof format> = {
   format,
   display,
-  sourceFileFormat,
-  decode: PerFileDecodeFunction.make(decodeConfig),
   detect: (bytes, fileName) => fileName.toLowerCase().endsWith('.myfmt') || myMagic(bytes),
   defaultSettings: defaultMySettings,
-})
+  sourceFileFormat,
+  decode: DecodeFunction.make({
+    format,
+    sourceFileFormat,
+    decodeFileSet: decodeMyFormat,
+    // only when your files are read together:
+    partition: partitionMyFormat,
+    archiveLinks: myArchiveLinks,
+  }),
+}
 ```
 
-`PerFileDecodeFunction.make` returns a decode that still **needs** the
-source-file context; `FileImporter.make` is what provides it, from the
-`sourceFileFormat` in the same call. That is why you pass those constants once
-and only once — the decode's mint and the importer's `categoryToken` /
-`isSourceFile` then read the same copy by construction.
+The importer is a **literal**, not a constructor call: every field is either a
+constant you state or a function you already have. `sourceFileFormat` is spelled
+once and appears twice in that one object — on the importer, where a reader of
+the server list projects it, and in the `DecodeFunction.make` config, where the
+mint uses it — so the two cannot disagree.
 
-**`PerFileDecodeFunction` is one constructor, not the only one.** `DecodeFunction`
-is the general contract — files and settings in, one `FormatDecode.Result` out —
-and `per-file-decode-function.ts` is the one module that builds it under the
-assumption that the files are independent. _Per-file_ is a real assumption: your
-`decodeOne` is handed one file and cannot see the others, and the per-file
-results sum into the batch's. If your format's files must be read _together_ — a
-multi-part archive, a manifest naming its siblings — it is not per-file, and
-needs its own constructor rather than a widened version of that one. Do not
-smuggle cross-file state through `settings`.
+**A format whose files are read together states a `partition`.** It takes the
+claimed picks as `DecodeFunction.Member`s and returns a
+`DecodeFunction.Partition`: the non-empty `fileSets` decoded together, plus the
+`unreadable` picks it could not place (each with the `ParseError` that kept it
+out, reported ahead of any failing set, in pick order). Nothing else changes —
+the mint, the archive section, the key namespacing, the `meta.source` stamp and
+the failure folding are the constructor's either way.
 
-`dicom-importer-core` is the worked example. Its unit is a **study**: the
-files of one `StudyInstanceUID` make up one `ImagingStudy` whose counts,
-modality set and earliest `started` no single file states. Its
-`dicom-decode.ts` writes the `DecodeFunction.WithContext` directly, and what
-it shares with `PerFileDecodeFunction` — resolving a pick to its
-`SourceFile.Reference`, deferring the archive's encode until the decode has
-named how to file it, listing the minted archives as their own section — comes
-from `importer-fundamentals`' **`SourceFileMint`**. Write a group decode the
-same way round: the machinery that is not about _your_ unit belongs in
-`SourceFileMint`; the partition, the synthesis and the notes are yours. Four
-obligations the shell still expects of any decode, which the per-file
-constructor would otherwise have met for you:
+`dicom-importer-core` is the worked example. What decodes together there is a
+**study**: the files of one `StudyInstanceUID` (and patient) make up one
+`ImagingStudy` whose counts, modality set and earliest `started` no single file
+states. Its `partitionStudies` parses the headers, groups them by `studyKey`,
+and **sorts each set into study order**, because the first member of a set is
+its representative — the slot its review keys are namespaced by, and the archive
+its resources' `meta.source` names. Order a set by something intrinsic to it,
+not by the pick, or both change with the order the files were dropped in.
+`meta.source` holds one reference, so a set spanning files keeps per-file
+provenance some other way: DICOM stamps each `ImagingStudy.instance` with its
+own archive's id (`gridfsFileId`).
 
-- **namespace the unit's review keys** by the slot of the pick that opened it
-  (`FormatDecode.keyPrefix`), so one unit's fixed keys cannot collide with
-  another's;
-- **stamp `meta.source`** on the unit's resources (`MetaSource.stampDecoded`).
-  `meta.source` holds one reference, so a unit spanning files has to choose
-  one archive to stand for it — choose it by the _unit's_ own order rather
-  than the pick's, or the stamp changes with the order the files were picked
-  in;
-- **mint one archive per file**, each filed under a `SourceFileCodec.Filing`.
-  `subject` says whose record the file is in; `related` (`context.related`)
-  says which resources it is a source of, which is what lets the server list
-  show a unit's archives as one unit and re-pick them together;
-- **fold a failing unit into `unreadableFiles`**, one row per file of it, so
-  the other units stay reviewable and `decode` still never fails.
+Do not smuggle cross-file state through `settings`: `partition` is where "these
+files belong together" is said.
 
 The result is a plain record, not a class instance — which is what lets
 `importer-react`'s registry extend it with a `SettingsPicker` by spreading it,
@@ -279,7 +264,7 @@ with nothing on a prototype to lose.
 format's `detect` on the picked bytes, and the first match wins
 (`FormatDetector.claiming` in `importer-fundamentals`, `groupByFormat` in
 `importer-core`). Keep it syntactic — an extension or a magic-bytes sniff — so
-the full parse still runs only in `decodeOne`. Your `format` and `detect`
+the full parse still runs only in `decodeFileSet`. Your `format` and `detect`
 together are all `FormatDetector.Type` asks for, which is how the picker sniffs
 a file without naming your settings type.
 
@@ -347,7 +332,9 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
   `local` pick yields a "Source file" first section and `meta.source` on every
   extracted resource, a `server` pick yields no such section (and stamps the
   pick's existing reference), and malformed bytes yield an `unreadableFiles`
-  entry rather than a failed Effect.
+  entry rather than a failed Effect. A format with a `partition` also pins the
+  grouping itself: which picks land in which set, which land in `unreadable`,
+  and that the resources are identical whatever order the files were picked in.
 - **Settings picker** — a change reports the next settings value verbatim.
 - **Shell** — the end-to-end flow: zero writes to reach a review, the confirm
   (the source file and the resources in one bundle, `meta.source` on every
@@ -376,7 +363,8 @@ is a no-op here.
 - [lifelabs-pdf-importer-core AGENTS.md](../lifelabs-pdf-importer-core/AGENTS.md)
   — the worked document-format binding.
 - [dicom-importer-core AGENTS.md](../dicom-importer-core/AGENTS.md) — the worked
-  binding that links a subject and reads its source file's id in the decode.
+  binding that states a `partition`, links its archives, and reads its source
+  file's id in the decode.
 - [Adding a Collector How-To](../../collector/docs/Adding%20a%20Collector%20How-To.md)
   — the live-transport counterpart, whose descriptor/registry shape this mirrors.
 - [Documentation Reference](../../../docs/Documentation/Reference.md) — the

@@ -23,15 +23,16 @@ shell's shared `persistBatchBundle`.
   rather than declared. This binding owns the _choice_ of axis, not the axis.
   The FHIR encoding
   itself is not written here — `har-importer.ts` passes that coding,
-  `application/json`, and the web-trace raw `securityLabel` to `FileImporter.make`
-  as one `sourceFileFormat`, and gets `categoryToken`, `isSourceFile`,
-  `sourceFileFromDocumentReference`, and the batch `decode` that mints the
+  `application/json`, and the web-trace raw `securityLabel` as its one
+  `sourceFileFormat`, which `SourceFile.categoryToken` / `SourceFile.isSourceFile`
+  / `SourceFile.FromDocumentReference` are read with and which the batch
+  `decode` mints the
   source file inside itself, back.
   A whole source file lives as one attachment under the `har-archive`
   category, disjoint from a trace on the same axis (this format's
   `isSourceFile` and `isWebTrace` never both hold).
 - **The source file is minted inside `decode`.** The batch decode
-  `FileImporter.make` built mints a `local` pick's source-file `DocumentReference`
+  `DecodeFunction.make` built mints a `local` pick's source-file `DocumentReference`
   — a deterministic id from the file's SHA-256 and name, the upload instant
   stamped, **no PUT** — prepends it as its own "Source file" section, and
   stamps every extracted resource's `meta.source` with
@@ -41,7 +42,11 @@ shell's shared `persistBatchBundle`.
   `persistBatchBundle` as the extracted resources; re-importing the same file
   upserts rather than duplicating.
 - `src/har-importer.ts` — **`harImporter`**, the one value the shell's
-  registry lists. Its `decodeOne` runs the whole read half for one archive:
+  registry lists — a `FileImporter.Type` literal whose `decode` is a
+  `DecodeFunction.make` with no `partition` (a HAR stands alone) and no
+  `archiveLinks` (a captured session is an engineering artifact, kept out of
+  `Patient/$everything`). Its `decodeFileSet` runs the whole read half for one
+  archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the
   settings' enabled kinds, folded into the `DecodedFile` the shell reviews —
   one section per URL (first-seen order, only responses that parsed to at
@@ -52,7 +57,7 @@ shell's shared `persistBatchBundle`.
   leaving the batch's other files reviewable. Resource keys are
   `responseId:index` — independent of the kind toggles, so a settings change
   re-decodes to the same keys for the resources that survive it. They are keyed
-  **within one archive**; `FileImporter.make` prefixes each file's keys with its slot
+  **within one archive**; `DecodeFunction.make` prefixes each set's keys with its slot
   in the batch, so two archives in one pick cannot collide on
   `responseId:index`.
 - `src/review.ts` — the **HAR preview pipeline**: `preview(pool, responses,
@@ -60,7 +65,7 @@ enabledKinds)` recognizes each response (`Extraction.recognize`), takes its
   top-specificity enabled candidate (`pickFor` — there are no per-response
   overrides), and parses the chosen ones (`Extraction.parseWith`), folding
   every non-resource outcome to data so one bad response cannot abort the
-  batch. Consumed by the importer's `decodeOne`; the per-resource selection
+  batch. Consumed by the importer's `decodeFileSet`; the per-resource selection
   (exclude/edit) lives in `importer-fundamentals`' `StagedImport`.
 - `src/decode-har.ts` — **`decodeHar`** (the byte-level parse step) and
   `toInput`. `HttpArchive.LogFromHarJson` (`http-archive`) decodes the

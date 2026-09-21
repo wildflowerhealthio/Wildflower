@@ -1,14 +1,66 @@
 import { DicomHeader } from 'dicom'
 import { writeDicom } from 'dicom/test-helpers'
-import { DateTime, Effect, Either, Option } from 'effect'
+import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
-import { PickedFile, type FormatDecode } from 'importer-fundamentals'
+import type { DocumentReference } from 'fhir-r4/resources'
+import { PickedFile, SourceFile, type FormatDecode } from 'importer-fundamentals'
 import { describe, expect, it } from 'vite-plus/test'
 
 import { dicomImporter } from './dicom-importer.ts'
 import { patientOriginalId } from './fhir/to-fhir.ts'
 import { defaultDicomSettings } from './settings.ts'
-import { DICOM_SYSTEM } from './source-system.ts'
+import {
+  DICOM_SOURCE_FILE_CODE,
+  DICOM_SOURCE_FILE_CONTENT_TYPE,
+  DICOM_SYSTEM,
+} from './source-system.ts'
+
+/**
+ * The source file this format's importer mints for a picked file — the
+ * schemas driven under `dicomImporter`'s own format constants, which is the
+ * same context its batch `decode` mints under.
+ */
+const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<DocumentReference.Type> =>
+  Effect.runPromise(
+    Schema.decode(SourceFile.FromNamedBytes)({ fileName, bytes }).pipe(
+      Effect.flatMap(Schema.encode(SourceFile.FromDocumentReference)),
+      Effect.provideService(SourceFile.Format, dicomImporter.sourceFileFormat)
+    )
+  )
+
+describe('DICOM source file coding', () => {
+  it('carries the DICOM coding on type and category, and application/dicom content', async () => {
+    const resource = await mint(new Uint8Array([0x00, 0x01, 0x02]))
+
+    expect(resource.type?.coding[0]?.system?.toString()).toBe(DICOM_SYSTEM)
+    expect(resource.type?.coding[0]?.code).toBe(DICOM_SOURCE_FILE_CODE)
+    expect(resource.category[0]?.coding[0]?.system?.toString()).toBe(DICOM_SYSTEM)
+    expect(resource.category[0]?.coding[0]?.code).toBe(DICOM_SOURCE_FILE_CODE)
+    expect(resource.content[0]?.attachment?.contentType).toBe(DICOM_SOURCE_FILE_CONTENT_TYPE)
+    expect(resource.description).toBe('DICOM image: scan.dcm')
+    expect(SourceFile.isSourceFile(dicomImporter.sourceFileFormat)(resource)).toBe(true)
+  })
+
+  it('exposes the category search token in system|code form', () => {
+    expect(SourceFile.categoryToken(dicomImporter.sourceFileFormat)).toBe(
+      `${DICOM_SYSTEM}|${DICOM_SOURCE_FILE_CODE}`
+    )
+  })
+
+  it('mints a resource that reads back as its own source file, bytes and name recovered', async () => {
+    const bytes = new Uint8Array(132)
+    bytes.set([0x44, 0x49, 0x43, 0x4d], 128)
+    const resource = await mint(bytes, 'my-scan.dcm')
+
+    const back = await Effect.runPromise(
+      Schema.decode(SourceFile.FromDocumentReference)(resource).pipe(
+        Effect.provideService(SourceFile.Format, dicomImporter.sourceFileFormat)
+      )
+    )
+    expect(back.fileName).toBe('my-scan.dcm')
+    expect(back.bytes).toEqual(bytes)
+  })
+})
 
 const sampleDicomBytes = (): Uint8Array =>
   writeDicom({
@@ -57,15 +109,15 @@ describe('dicomImporter', () => {
       return `Patient/${localResourceId(DICOM_SYSTEM, 'Patient', originalId)}`
     }
 
-    const readUnit = async (file: PickedFile.Type): Promise<FormatDecode.Result<string>> => {
+    const readStudy = async (file: PickedFile.Type): Promise<FormatDecode.Result<string>> => {
       const result = await Effect.runPromise(dicomImporter.decode([file], defaultDicomSettings))
       if (result.unreadableFiles.length > 0) throw new Error('expected a readable result')
       return result
     }
 
     /** The one id every resource of a result must agree on: its source file's. */
-    const sourceFileIdOfUnit = (unit: FormatDecode.Result<string>): string => {
-      const [section] = unit.decoded.sections
+    const sourceFileIdOfStudy = (result: FormatDecode.Result<string>): string => {
+      const [section] = result.decoded.sections
       expect(section.title).toBe('Source file')
       expect(section.resources).toHaveLength(1)
       const [row] = section.resources
@@ -76,8 +128,8 @@ describe('dicomImporter', () => {
       return id
     }
 
-    const imagingStudyInstanceId = (unit: FormatDecode.Result<string>): string | undefined => {
-      for (const section of unit.decoded.sections) {
+    const imagingStudyInstanceId = (result: FormatDecode.Result<string>): string | undefined => {
+      for (const section of result.decoded.sections) {
         for (const { resource } of section.resources) {
           if (resource.resourceType !== 'ImagingStudy') continue
           const [extension] = resource.series[0].instance[0].extension
@@ -90,12 +142,12 @@ describe('dicomImporter', () => {
 
     it('mints a source file subject to the header-derived Patient for a local pick', async () => {
       const bytes = sampleDicomBytes()
-      const unit = await readUnit({
+      const study = await readStudy({
         fileName: 'sample.dcm',
         bytes,
         source: PickedFile.Source.local,
       })
-      const [section] = unit.decoded.sections
+      const [section] = study.decoded.sections
       expect(section.title).toBe('Source file')
       const [row] = section.resources
       expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
@@ -105,33 +157,33 @@ describe('dicomImporter', () => {
     })
 
     it('stamps every extracted resource, and the ImagingStudy instance, with that one id', async () => {
-      const unit = await readUnit({
+      const study = await readStudy({
         fileName: 'sample.dcm',
         bytes: sampleDicomBytes(),
         source: PickedFile.Source.local,
       })
-      const id = sourceFileIdOfUnit(unit)
-      const extracted = unit.decoded.sections.slice(1).flatMap((section) => section.resources)
+      const id = sourceFileIdOfStudy(study)
+      const extracted = study.decoded.sections.slice(1).flatMap((section) => section.resources)
       expect(extracted.length).toBeGreaterThan(0)
       for (const { resource } of extracted) {
         expect(resource.meta?.source).toBe(`DocumentReference/${id}`)
       }
-      expect(imagingStudyInstanceId(unit)).toBe(id)
+      expect(imagingStudyInstanceId(study)).toBe(id)
     })
 
     it('reviews no source file for a server pick and links its existing one', async () => {
-      const unit = await readUnit({
+      const study = await readStudy({
         fileName: 'sample.dcm',
         bytes: sampleDicomBytes(),
         source: PickedFile.Source.server('doc-9'),
       })
-      for (const section of unit.decoded.sections) {
+      for (const section of study.decoded.sections) {
         expect(section.title).not.toBe('Source file')
         for (const { resource } of section.resources) {
           expect(resource.meta?.source).toBe('DocumentReference/doc-9')
         }
       }
-      expect(imagingStudyInstanceId(unit)).toBe('doc-9')
+      expect(imagingStudyInstanceId(study)).toBe('doc-9')
     })
 
     it('collects an unreadable file for bytes that are not DICOM', async () => {
