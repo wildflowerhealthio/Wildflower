@@ -948,9 +948,8 @@ mod tests {
 
     /// Reads one of the Apple plists next to this crate and flattens it, so a
     /// key and its value compare as one token however the file indents them.
-    ///
-    /// Comments in these files name keys in backticks rather than as `<key>`
-    /// elements, so flattening a comment can't satisfy an assertion below.
+    /// The files' comments name keys in backticks rather than as `<key>`
+    /// elements, so a flattened comment can't satisfy an assertion below.
     fn compact_apple_plist(relative: &str) -> String {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(relative);
         let plist = std::fs::read_to_string(&path)
@@ -958,15 +957,13 @@ mod tests {
         plist.split_whitespace().collect()
     }
 
-    /// `resolve_data_dir` puts the host's data in the iOS app container's
-    /// `Documents`, which the Files app only lists under "On My iPhone" when the
-    /// bundle declares BOTH `UIFileSharingEnabled` and
-    /// `LSSupportsOpeningDocumentsInPlace` — so the choice of directory is only
-    /// part of the feature, and losing either key silently un-does it. They are
-    /// declared in `Info.ios.plist` (merged over the generated plist by
-    /// `tauri ios build`) and in the generated plist itself (what an
-    /// Xcode-opened build reads); both files have to keep both keys, and this is
-    /// what stops them from drifting.
+    /// Both keys, in both iOS plists: the Files app lists the host's data
+    /// directory under "On My iPhone" only when the bundle declares each, and
+    /// only the overlay *and* the generated plist together cover both a CLI and
+    /// an Xcode-opened build. Losing any of the four silently un-does the
+    /// feature — see the [Data Directory Explanation].
+    ///
+    /// [Data Directory Explanation]: ../../Data%20Directory%20Explanation.md
     #[test]
     fn both_ios_plists_declare_files_app_keys() {
         for relative in [
@@ -984,15 +981,13 @@ mod tests {
         }
     }
 
-    /// The host loads cleartext HTTP off the loopback interface and, in a debug
-    /// build, off a LAN dev server — both of which App Transport Security blocks
-    /// by default, and the latter of which also needs a local-network usage
-    /// string or the OS denies the connection without prompting.
+    /// The host loads cleartext HTTP off loopback and, in a debug build, off a
+    /// LAN dev server; without these keys the OS blocks both, the local-network
+    /// one without even prompting. The negative assertion is the load-bearing
+    /// half — it holds the exemptions scoped, so nobody reaches for the blanket
+    /// switch. See the [Data Directory Explanation].
     ///
-    /// `Info.plist` is the shared overlay Tauri merges on macOS *and* iOS, so it
-    /// is where the pair belongs; the generated iOS plist needs its own copy for
-    /// the same reason the Files-app keys do — an Xcode-opened build of
-    /// `gen/apple/wildflower-tauri.xcodeproj` never runs the merge.
+    /// [Data Directory Explanation]: ../../Data%20Directory%20Explanation.md
     #[test]
     fn apple_plists_declare_local_network_access() {
         for relative in ["Info.plist", "gen/apple/wildflower-tauri_iOS/Info.plist"] {
@@ -1017,9 +1012,8 @@ mod tests {
                      NSAppTransportSecurity"
                 );
             }
-            // `NSAllowsArbitraryLoads` is the blanket switch App Store review
-            // asks for written justification about, and the two scoped keys
-            // above take precedence over it on the deployment targets here.
+            // The blanket switch: superseded by the scoped keys above on these
+            // deployment targets, and the one App Store review asks about.
             assert!(
                 !compact.contains("<key>NSAllowsArbitraryLoads</key>"),
                 "{relative} must not disable ATS wholesale — the scoped keys cover \
