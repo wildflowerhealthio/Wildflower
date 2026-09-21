@@ -2366,6 +2366,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../fhir-r4
+      gatekeeper-core:
+        specifier: workspace:*
+        version: link:../../gatekeeper/gatekeeper-core
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1
@@ -13786,19 +13789,19 @@ snapshots:
     optionalDependencies:
       babel-plugin-react-compiler: 1.0.0
 
-  '@vitest/browser-preview@4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))':
+  '@vitest/browser-preview@4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11)':
     dependencies:
       '@testing-library/dom': 10.4.1
       '@testing-library/user-event': 14.6.7(@testing-library/dom@10.4.1)
-      '@vitest/browser': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))
-      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11))(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1)
+      '@vitest/browser': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11)
+      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1)
     transitivePeerDependencies:
       - bufferutil
       - msw
       - utf-8-validate
       - vite
 
-  '@vitest/browser@4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))':
+  '@vitest/browser@4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11)':
     dependencies:
       '@blazediff/core': 1.9.1
       '@vitest/mocker': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
@@ -13807,7 +13810,7 @@ snapshots:
       pngjs: 7.0.0
       sirv: 3.0.2
       tinyrainbow: 3.1.0
-      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11))(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1)
+      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1)
       ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
@@ -17845,8 +17848,8 @@ snapshots:
     dependencies:
       '@oxc-project/types': 0.149.0
       '@oxlint/plugins': 1.79.0
-      '@vitest/browser': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))
-      '@vitest/browser-preview': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))
+      '@vitest/browser': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11)
+      '@vitest/browser-preview': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11)
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       '@vitest/pretty-format': 4.1.11
@@ -17858,7 +17861,7 @@ snapshots:
       oxlint: 1.82.0(oxlint-tsgolint@7.0.2001)(vite-plus@0.3.2(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(jsdom@30.0.1)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
       oxlint-tsgolint: 7.0.2001
       vite: '@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0)'
-      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11))(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1)
+      vitest: 4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1)
     optionalDependencies:
       '@voidzero-dev/vite-plus-darwin-arm64': 0.3.2
       '@voidzero-dev/vite-plus-darwin-x64': 0.3.2
@@ -17898,7 +17901,7 @@ snapshots:
       - utf-8-validate
       - yaml
 
-  vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11))(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1):
+  vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1):
     dependencies:
       '@vitest/expect': 4.1.11
       '@vitest/mocker': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))
@@ -17923,7 +17926,7 @@ snapshots:
     optionalDependencies:
       '@opentelemetry/api': 1.9.0
       '@types/node': 26.1.0
-      '@vitest/browser-preview': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11(@opentelemetry/api@1.9.0)(@types/node@26.1.0)(@vitest/browser-preview@4.1.11)(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(jsdom@30.0.1))
+      '@vitest/browser-preview': 4.1.11(@voidzero-dev/vite-plus-core@0.3.2(@types/node@26.1.0)(esbuild@0.28.2)(jiti@2.7.0)(terser@5.51.2)(typescript@5.9.3)(unrun@0.2.39(synckit@0.11.12))(yaml@2.9.0))(vitest@4.1.11)
       jsdom: 30.0.1
     transitivePeerDependencies:
       - msw

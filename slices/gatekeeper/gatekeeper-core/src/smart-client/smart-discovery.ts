@@ -82,6 +82,37 @@ const usableEndpointUrl = (
   return url.toString()
 }
 
+/**
+ * Why a page cannot reach `serverUrl`, or `undefined` when it can.
+ *
+ * States up front the rule {@link usableEndpointUrl} enforces after the fetch:
+ * a secure page may not talk to plain `http:` on a non-loopback host. Saying so
+ * when the target is chosen turns a confusing discovery failure — which reads
+ * as though the server were down — into an explanation of the actual problem.
+ *
+ * Loopback is deliberately *not* a failure. Browsers treat `http://127.0.0.1`
+ * as potentially trustworthy, so the published HTTPS console reaching a desktop
+ * host's loopback API is the normal case, not a downgrade.
+ */
+const insecureTargetReason = (
+  serverUrl: string,
+  options: { readonly pageIsSecure: boolean }
+): string | undefined => {
+  if (!options.pageIsSecure) return undefined
+  let url: URL
+  try {
+    url = new URL(serverUrl)
+  } catch {
+    return undefined
+  }
+  if (url.protocol !== 'http:' || isLoopbackHost(url.hostname)) return undefined
+  return (
+    `This page is served over https, so the browser will block its requests to ` +
+    `${serverUrl}. Use an https address for the server, or open this console ` +
+    `from the server itself.`
+  )
+}
+
 /** Whether `value` is a plain JSON object. */
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -168,7 +199,9 @@ export {
   DiscoveryFailed,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
+  isLoopbackHost,
   usableEndpointUrl,
+  insecureTargetReason,
   smartEndpointsFrom,
   discoverSmartEndpoints,
 }

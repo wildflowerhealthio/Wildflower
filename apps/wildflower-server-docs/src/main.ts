@@ -8,7 +8,9 @@ import './styles.css'
 import {
   beginSignIn,
   completeSignIn,
+  insecureTargetReason,
   isAuthorizationResponse,
+  redirectUriForPage,
   searchWithoutAuthorizationResponse,
   searchWithServerUrl,
   type Session,
@@ -23,7 +25,6 @@ import {
   CLIENT_ID,
   REGISTERED_REDIRECT_URI,
   requestedScopeParameter,
-  signInAvailability,
 } from './smart-client.ts'
 
 /**
@@ -66,6 +67,14 @@ const statusLine = requireElement('#auth-status', HTMLParagraphElement)
 
 const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
+/**
+ * Whether this page is itself a secure context. Decides what the browser will
+ * let it reach: a secure page may talk to https anywhere and to plain http on
+ * loopback (which browsers treat as trustworthy), but not to plain http
+ * elsewhere.
+ */
+const pageIsSecure = window.location.protocol === 'https:'
+
 let reference: ReturnType<typeof createApiReference> | undefined
 
 /**
@@ -77,12 +86,18 @@ let reference: ReturnType<typeof createApiReference> | undefined
 let session: Session | undefined
 
 /**
- * Whether this copy of the console is one served from an address it knows how to
- * return to, and the redirect URI it returns to when it is. Computed once from
- * where the page is served; the return leg lands on the same URL, so the value
- * is stable.
+ * The `redirect_uri` this copy of the console returns to — its own directory
+ * URL, derived from where the page is served rather than chosen from a list, so
+ * the published site, a `/staging/pr-<n>/` preview and a dev server each return
+ * to themselves.
+ *
+ * Computed once: the return leg lands on that same directory, so the value is
+ * stable across the round trip. The fallback is unreachable in a browser that
+ * can run this page at all — `redirectUriForPage` declines only a non-http(s)
+ * origin or plaintext http off loopback — and the published URI is the harmless
+ * thing to name if it ever is.
  */
-const availability = signInAvailability(window.location.href)
+const redirectUri = redirectUriForPage(window.location.href) ?? REGISTERED_REDIRECT_URI
 
 /** The impure edges the sign-in flow runs against in the browser. */
 const signInEnvironment: SignInEnvironment = {
@@ -93,11 +108,8 @@ const signInEnvironment: SignInEnvironment = {
   pendingKey: PENDING_AUTHORIZATION_KEY,
   clientId: CLIENT_ID,
   scope: requestedScopeParameter(),
-  // The known redirect matching where this copy runs. When there is none the
-  // button is disabled and this is never sent, so the published URI is a
-  // harmless default.
-  redirectUri: availability.available ? availability.redirectUri : REGISTERED_REDIRECT_URI,
-  pageIsSecure: window.location.protocol === 'https:',
+  redirectUri,
+  pageIsSecure,
 }
 
 /** Show `message` on the status line, or clear it when `undefined`. */
@@ -128,7 +140,7 @@ const runSignInEffect = <A>(
       Effect.match({
         onSuccess,
         onFailure: (error: SignInError) => {
-          signInButton.disabled = !availability.available
+          signInButton.disabled = false
           showStatus(error.reason, 'problem')
           onFailure?.(error)
         },
@@ -159,20 +171,15 @@ const render = (serverUrl: string): void => {
 
 /** Put the sign-in button and the status line in step with the current state. */
 const renderAuthControls = (serverUrl: string): void => {
-  if (!availability.available) {
-    signInButton.disabled = true
-    signInButton.textContent = 'Sign in'
-    signInButton.title = availability.reason
-    showStatus(availability.reason, 'problem')
-    return
-  }
   signInButton.disabled = false
   if (session === undefined) {
     signInButton.textContent = 'Sign in'
     signInButton.title = `Sign in to ${serverUrl} to send authorised requests`
-    // Signed out there is nothing to report, and a stale message from a failed
-    // attempt against a different server would only mislead.
-    showStatus(undefined)
+    // A secure page cannot reach a plaintext server, and discovery would fail
+    // in a way that reads as "the server is down". Say which it is up front,
+    // while the reader is still looking at the address they just entered.
+    const blocked = insecureTargetReason(serverUrl, { pageIsSecure })
+    showStatus(blocked, blocked === undefined ? 'ok' : 'problem')
     return
   }
   signInButton.textContent = 'Sign out'

@@ -1,8 +1,7 @@
-import * as fc from 'fast-check'
-import { numRunsFor } from 'kitchen-sink/test'
 import { beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { Match } from 'effect'
+import { normalizeServerUrl as sharedNormalizeServerUrl } from 'gatekeeper-core/smart-client'
 import {
   detectSmartSupport,
   normalizeServerUrl,
@@ -156,72 +155,13 @@ describe('startStandaloneLaunch', () => {
   })
 })
 
-/** Schemes a picked FHIR base must never be able to smuggle in. */
-const dangerousScheme = fc.constantFrom(
-  'javascript',
-  'data',
-  'vbscript',
-  'file',
-  'blob',
-  'ftp',
-  'ws',
-  'wss',
-  'tauri'
-)
-
-/** Absolute `http(s)` URLs, the only inputs this app accepts. */
-const httpUrl = fc.webUrl({ withQueryParameters: true, withFragments: true, size: 'small' })
-
+// `normalizeServerUrl`'s own behaviour is covered where it now lives, in
+// `gatekeeper-core/smart-client`'s `server-target.test.ts`. What this file still
+// owes is the dedupe itself: this module used to carry a byte-identical copy,
+// and re-exporting is only worth anything if it is genuinely the same function.
 describe('normalizeServerUrl', () => {
-  it('accepts an absolute http(s) URL and drops query, fragment and userinfo', () => {
-    expect(normalizeServerUrl('http://127.0.0.1:8080/fhir-r4')).toBe(
-      'http://127.0.0.1:8080/fhir-r4'
-    )
-    expect(normalizeServerUrl('  https://launch.smarthealthit.org/v/r4/fhir/  ')).toBe(
-      'https://launch.smarthealthit.org/v/r4/fhir'
-    )
-    expect(normalizeServerUrl('https://example.test/fhir/?a=1#frag')).toBe(
-      'https://example.test/fhir'
-    )
-    expect(normalizeServerUrl('https://user:secret@example.test')).toBe('https://example.test')
-  })
-
-  it('rejects every scheme the FHIR client could not (or must not) use', () => {
-    fc.assert(
-      fc.property(dangerousScheme, fc.string(), (scheme, rest) => {
-        expect(normalizeServerUrl(`${scheme}:${rest}`)).toBeUndefined()
-      }),
-      { numRuns: numRunsFor({ base: 200 }) }
-    )
-  })
-
-  it('rejects the classic injection payloads and non-absolute inputs exactly', () => {
-    expect(normalizeServerUrl('javascript:alert(1)')).toBeUndefined()
-    expect(normalizeServerUrl('data:text/html,<script>alert(1)</script>')).toBeUndefined()
-    // Protocol-relative and relative inputs have no scheme to parse against —
-    // there is deliberately no base URL, so they cannot inherit this page's.
-    expect(normalizeServerUrl('//evil.example')).toBeUndefined()
-    expect(normalizeServerUrl('/fhir-r4')).toBeUndefined()
-    expect(normalizeServerUrl('evil.example:8080')).toBeUndefined()
-    expect(normalizeServerUrl('')).toBeUndefined()
-    expect(normalizeServerUrl('   ')).toBeUndefined()
-    expect(normalizeServerUrl('http://')).toBeUndefined()
-  })
-
-  it('is idempotent and never invents a scheme or a trailing slash', () => {
-    fc.assert(
-      fc.property(httpUrl, (url) => {
-        const once = normalizeServerUrl(url)
-        expect(once).toBeDefined()
-        const value = once ?? ''
-        expect(normalizeServerUrl(value)).toBe(value)
-        expect(value.startsWith('http://') || value.startsWith('https://')).toBe(true)
-        expect(value).not.toContain('#')
-        expect(value).not.toContain('?')
-        expect(value.endsWith('/')).toBe(false)
-      }),
-      { numRuns: numRunsFor({ base: 200 }) }
-    )
+  it('is the one implementation gatekeeper-core owns, not a local copy', () => {
+    expect(normalizeServerUrl).toBe(sharedNormalizeServerUrl)
   })
 })
 

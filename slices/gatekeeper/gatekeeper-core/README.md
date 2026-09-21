@@ -87,8 +87,9 @@ and 90 days respectively). See the
 side of the protocol `gatekeeper-rust` serves: a static Wildflower page points
 itself at whichever server the reader runs (`server-target.ts`), asks that
 server how to sign in (`smart-discovery.ts`), mints a PKCE pair (`pkce.ts`),
-leaves for `/oauth/authorize`, and picks the flow back up on the way home
-(`authorization-flow.ts`, `sign-in.ts`).
+works out where the server should send the reader back to
+(`redirect-target.ts`), leaves for `/oauth/authorize`, and picks the flow back
+up on the way home (`authorization-flow.ts`, `sign-in.ts`).
 
 It stays inside the `-core` layering rule by taking every impure edge — `fetch`,
 Web Crypto, `sessionStorage` — as an injected `SignInEnvironment`. That
@@ -102,8 +103,40 @@ let one page's return leg consume another's pending request.
 `codeChallengeS256`'s digest argument to the ambient Web Crypto; there is one
 S256 implementation here, and a property test pins the two together.
 
+### Deriving the redirect URI
+
+`redirectUriForPage(href)` returns the page's own directory URL — the same
+`new URL('.', href)` derivation the fhirclient-based apps use — or `undefined`
+when the page is served somewhere a sign-in must not return to (a non-http(s)
+origin, or plaintext http off loopback).
+
+Deriving beats listing. `/oauth/authorize` matches `redirect_uri` by exact
+string equality, so a page that picked from a compiled-in list could only sign
+in from the addresses it was built for — not from a PR preview, and not from a
+dev server on an unexpected port. Deriving also makes the match hold by
+construction: the outbound string and the one derived again on the callback
+(which arrives carrying `code` and `state`) come from the same directory.
+
+An address the client has not registered is not a dead end. For every client but
+the first-party host, `gatekeeper-rust` carries an unregistered `redirect_uri`
+to the Owner's consent prompt as a warning and adds it to the row on approval
+(`domain/client_registration.rs`), so the Owner is the gate rather than a list
+inside the page.
+
+`insecureTargetReason` in `smart-discovery.ts` states the same scheme rule about
+the _target_ that `usableEndpointUrl` enforces about the discovered endpoints, so
+a page can explain up front that a secure page cannot reach a plaintext server
+instead of surfacing it as a discovery failure. Loopback is exempt in both:
+browsers treat `http://127.0.0.1` as trustworthy, which is what lets an HTTPS
+page drive a desktop host.
+
+### Not the other SMART client
+
 This is **not** the fhirclient-based standalone launch in
 `slices/emr/fhir-r4-react/src/smart/*`, which the self-hosted React apps use.
+The two share `normalizeServerUrl` — this package owns the one implementation
+and `fhir-r4-react` re-exports it — but nothing else: the launch here is
+hand-rolled and Effect-native, and the one there delegates to `fhirclient`.
 
 ## SPA page paths
 

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   discoverSmartEndpoints,
+  insecureTargetReason,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
   smartEndpointsFrom,
@@ -285,6 +286,61 @@ describe('discoverSmartEndpoints', () => {
 
     // Assert
     expect(Either.isLeft(result)).toBe(true)
+  })
+})
+
+describe('insecureTargetReason', () => {
+  it('explains why a secure page cannot reach a plaintext server', () => {
+    // Arrange / Act
+    const reason = insecureTargetReason('http://fhir.example', onSecurePage)
+
+    // Assert
+    expect(reason).toContain('http://fhir.example')
+    expect(reason).toContain('https')
+  })
+
+  it('says nothing about a loopback target, which browsers do allow', () => {
+    // A desktop host's API on loopback is the published console's normal case,
+    // not a downgrade — see `usableEndpointUrl`'s matching exception.
+    expect(insecureTargetReason('http://127.0.0.1:8080', onSecurePage)).toBeUndefined()
+    expect(insecureTargetReason('http://localhost:8080', onSecurePage)).toBeUndefined()
+  })
+
+  it('says nothing when the page itself is not secure', () => {
+    // A dev server on http may talk to a plaintext server freely.
+    expect(insecureTargetReason('http://fhir.example', { pageIsSecure: false })).toBeUndefined()
+  })
+
+  it('never objects to an https target', () => {
+    fc.assert(
+      fc.property(fc.domain(), fc.webPath(), (domain, path) => {
+        // Act
+        const reason = insecureTargetReason(`https://${domain}${path}`, onSecurePage)
+
+        // Assert
+        expect(reason).toBeUndefined()
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('always objects to exactly what discovery would go on to reject', () => {
+    // The point of this function is to say early what `usableEndpointUrl` says
+    // late, so the two must never disagree about the same target.
+    fc.assert(
+      fc.property(fc.domain(), fc.webPath(), (domain, path) => {
+        // Arrange
+        const target = `http://${domain}${path}`
+
+        // Act
+        const reason = insecureTargetReason(target, onSecurePage)
+
+        // Assert
+        expect(reason).toBeDefined()
+        expect(usableEndpointUrl(target, onSecurePage)).toBeUndefined()
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 

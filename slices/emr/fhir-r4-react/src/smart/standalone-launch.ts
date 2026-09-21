@@ -1,3 +1,5 @@
+import { normalizeServerUrl } from 'gatekeeper-core/smart-client'
+
 import { authorizeOpenServer, authorizeSmartLaunch } from './smart-launch.ts'
 
 /**
@@ -118,44 +120,13 @@ const startStandaloneLaunch = async (
 }
 
 /**
- * The canonical form of `candidate` as a FHIR server base, or `undefined` when
- * it is not one this app will send requests to.
- *
- * @remarks
- * Deliberately duplicates the shape of `apps/wildflower-server-docs`'s
- * `server-target.ts` `normalizeServerUrl` — a slice cannot import from an app
- * (layering), and server-docs stays untouched in v1. If this gets a third
- * copy it should be hoisted to a shared package.
- *
- * Accepted: an absolute `http:`/`https:` URL with a host. Rejected: `javascript:`
- * and `data:` (a picked URL that became a script-injection vector), protocol-
- * relative `//host` and bare hosts (no scheme → no absolute parse), and any
- * other scheme. Canonicalising drops the query, fragment and userinfo, and
- * strips a trailing slash so the result concatenates cleanly with the leading-
- * slash paths the typed client emits.
+ * Re-exported from `gatekeeper-core/smart-client`, which owns the one
+ * implementation. This module used to carry a byte-identical copy, because the
+ * original lived in `apps/wildflower-server-docs` and a slice cannot import
+ * from an app. Moving it into `gatekeeper-core` removed that obstacle, so the
+ * copy is gone and `connect-menu.tsx` and the apps now canonicalise a picked
+ * FHIR server base exactly as the docs console canonicalises `?server=`.
  */
-const normalizeServerUrl = (candidate: string): string | undefined => {
-  let url: URL
-  try {
-    // No base argument: a relative or protocol-relative input has nothing to
-    // resolve against and throws, which is exactly the rejection we want.
-    url = new URL(candidate.trim())
-  } catch {
-    return undefined
-  }
+export { normalizeServerUrl }
 
-  // A hostless `http://` never gets this far — the URL parser rejects it for
-  // these schemes — so a surviving `http:`/`https:` URL always has a host.
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
-
-  const path = url.pathname.replace(/\/+$/u, '')
-  return `${url.origin}${path}`
-}
-
-export {
-  detectSmartSupport,
-  normalizeServerUrl,
-  startStandaloneLaunch,
-  type SmartSupport,
-  type StandaloneLaunchConfig,
-}
+export { detectSmartSupport, startStandaloneLaunch, type SmartSupport, type StandaloneLaunchConfig }

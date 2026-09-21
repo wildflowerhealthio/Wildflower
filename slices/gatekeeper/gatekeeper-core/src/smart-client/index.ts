@@ -43,12 +43,16 @@ export {
   serverUrlFromSearch,
 } from './server-target.ts'
 
+export { redirectUriForPage } from './redirect-target.ts'
+
 export { beginSignIn, completeSignIn, PendingRequestUnusable } from './sign-in.ts'
 export type { PendingStore, Session, SignInEnvironment, SignInError } from './sign-in.ts'
 
 export {
   discoverSmartEndpoints,
   DiscoveryFailed,
+  insecureTargetReason,
+  isLoopbackHost,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
   smartEndpointsFrom,

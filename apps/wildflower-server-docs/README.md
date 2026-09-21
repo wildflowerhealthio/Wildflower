@@ -106,14 +106,9 @@ in by hand.
 
 The client is registered by
 `slices/gatekeeper/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`;
-`src/smart-client.ts` is the browser-side reading of that row, and must match it.
-That seed's `redirect_uris` carries **one** entry, the published console URL.
-`src/smart-client.ts` also knows `http://127.0.0.1:5192`, the pinned dev-server
-origin, which no migration lists: a server is expected to accept a loopback
-developer redirect on first use through the Owner's trust-on-first-use consent
-(#688–#690). The console therefore says a copy it is not served from is one it
-"does not know how to return to" — it cannot and does not claim to know what a
-given server's client row holds.
+`src/smart-client.ts` is the browser-side reading of that row's `client_id` and
+`allowed_scopes`, and must match them. The **redirect URI is not read from
+there** — see below.
 
 Every fallible step of that is typed: the pure validation (discovery metadata,
 the `state` round trip, the token response) returns an `Either` with a tagged
@@ -131,8 +126,8 @@ second copy of this bundle inside the popup; and it generates `state` with
 `authorization-flow.ts`, `sign-in.ts`), all unit-tested there and shared with the
 hosted owner UI, and it puts one token into all six documents through Scalar's
 `authentication` configuration block. This console supplies the app-specific
-half — client id, scopes, redirect URI and the `sessionStorage` key the pending
-record is namespaced under — from `src/smart-client.ts`.
+half — client id, scopes and the `sessionStorage` key the pending record is
+namespaced under — from `src/smart-client.ts`, and derives its redirect URI.
 
 ### Where the token lives
 
@@ -150,19 +145,45 @@ leaves nowhere else to keep it. It holds no credential, and it is deleted the
 moment the console comes back, before the code is redeemed. Any refresh token
 the server returns is discarded: there is no session to refresh into.
 
-### Sign-in only works on the published console
+### Sign-in works from wherever the console is served
 
-The seeded client registers exactly one redirect URI —
-`https://wildflowerhealth.io/wildflower-server-docs/` — and `/oauth/authorize`
-matches it by exact string equality. A copy served from anywhere else (`vp run
--F wildflower-server-docs dev`, a preview build, a fork's Pages site) therefore
-cannot complete the flow, so the button is disabled there with the reason on the
-status line. Everything else about the console works; paste a token into a
-request's `Authorization` field instead.
+The console does not carry a list of addresses it is allowed to sign in from.
+It **derives** its `redirect_uri` from where the page is being served, with
+`gatekeeper-core/smart-client`'s `redirectUriForPage` — the page's own directory
+URL, which is what the fhirclient-based apps (`apps/web-trace`,
+`apps/medications-app`, `apps/importer-web`) have always done. One build
+therefore signs in from the published site, from a PR preview under
+`https://wildflowerhealthio.github.io/staging/pr-<n>/wildflower-server-docs/`,
+and from `vp run -F wildflower-server-docs dev`, with nothing to keep in step.
 
-Because that redirect URI carries no query string, `?server=` cannot ride back
-in the URL: it travels in the stashed pending record and is restored when the
-console returns.
+`/oauth/authorize` still matches `redirect_uri` by exact string equality, and
+the seed carries only the published URL. The other addresses are **not**
+rejected: for every client but the first-party host, an unregistered redirect
+reaches the Owner's consent prompt as a "this redirect is new" warning, and
+approving it adds the entry to the client row (`gatekeeper-rust`'s
+`domain/client_registration.rs`). The Owner's consent is the gate — which is
+the honest one, since a static page cannot know what a given server's row holds.
+
+Two properties make the derivation safe to rely on, both pinned by tests in
+`gatekeeper-core`:
+
+- **It is stable across the round trip.** The value is derived from the page's
+  directory, so the string sent to `/authorize` and the string derived again on
+  the callback — which arrives carrying `code` and `state` — are identical.
+  Exact matching is satisfied by construction.
+- **It never downgrades.** Any `https:` page is accepted, and `http:` only on a
+  loopback host (a dev server). A plaintext page elsewhere derives nothing,
+  because the flow puts an access token in the browser.
+
+Because the derived redirect URI carries no query string, `?server=` cannot ride
+back in the URL: it travels in the stashed pending record and is restored when
+the console returns.
+
+One consequence worth knowing when using a preview: the console warns, at the
+point the server address is entered, when a page served over https is pointed at
+a plaintext non-loopback server, because the browser blocks that. Loopback is
+unaffected — browsers treat `http://127.0.0.1` as trustworthy, which is what
+lets the published HTTPS console drive a desktop host at all.
 
 ## The CORS caveat
 
