@@ -153,6 +153,42 @@ impl Permission {
         (!self.is_word_form() || other.is_word_form()) && other.bits() & !self.bits() == 0
     }
 
+    /// The permission granting every interaction in `self` **or** `other`, or
+    /// `None` when the two are written in different grammars.
+    ///
+    /// Merging across grammars is refused rather than resolved. A v1 word never
+    /// covers a letter request (see [`contains`](Permission::contains)), so
+    /// folding `read` and `c` into the letter bag `crs` would hand the holder the
+    /// letter-grammar `r`/`s` access the word form deliberately withholds — a
+    /// widening, not a restatement. Within one grammar the union *is* a
+    /// restatement: it grants exactly the interactions the pair already granted.
+    ///
+    /// The word grammar is closed under this union — its three bit sets are
+    /// `read` (`rs`), `write` (`cud`) and `*` (`cruds`), and the only union that
+    /// leaves either word is `read ∪ write = *`.
+    pub(in crate::scope) fn union(self, other: Permission) -> Option<Self> {
+        let bits = self.bits() | other.bits();
+        match (self.is_word_form(), other.is_word_form()) {
+            (true, true) => Self::word_form_for_bits(bits),
+            (false, false) => Some(Permission(PermissionRepr::InteractionSet(bits))),
+            _ => None,
+        }
+    }
+
+    /// The SMART v1 word spelling `bits` exactly, or `None` when no word does.
+    /// Total over every union [`union`](Permission::union) can reach, since the
+    /// words' bit sets are closed under union.
+    fn word_form_for_bits(bits: u8) -> Option<Self> {
+        [
+            PermissionRepr::Read,
+            PermissionRepr::Write,
+            PermissionRepr::Star,
+        ]
+        .into_iter()
+        .map(Permission)
+        .find(|word| word.bits() == bits)
+    }
+
     /// This same permission as a canonical v2 letter bag (`read` → `rs`,
     /// `write` → `cud`, `*` → `cruds`). A value already in letter form is
     /// returned unchanged. Lets a v1 word grant be re-emitted in the letter
@@ -287,6 +323,68 @@ mod tests {
                 Permission::parse_letter_segment(&one.to_string()),
                 Some(one)
             );
+        }
+    }
+
+    #[test]
+    fn union_within_the_letter_grammar_unions_the_bits() {
+        let r = Permission::parse_segment("r").unwrap();
+        let s = Permission::parse_segment("s").unwrap();
+        assert_eq!(r.union(s), Permission::parse_segment("rs"));
+        // Absorbing: a superset swallows the subset, either way round.
+        assert_eq!(Permission::ALL.union(r), Some(Permission::ALL));
+        assert_eq!(r.union(Permission::ALL), Some(Permission::ALL));
+        assert_eq!(r.union(r), Some(r));
+    }
+
+    #[test]
+    fn union_within_the_word_grammar_stays_a_word() {
+        let read = Permission::parse_segment("read").unwrap();
+        let write = Permission::parse_segment("write").unwrap();
+        let star = Permission::parse_segment("*").unwrap();
+        // The one union that leaves either word — and it lands on `*`, not the
+        // letter bag `cruds`, so the result stays inside the word grammar.
+        assert_eq!(read.union(write), Some(star));
+        assert_eq!(read.union(read), Some(read));
+        assert_eq!(read.union(star), Some(star));
+        assert_eq!(write.union(star), Some(star));
+    }
+
+    /// The guard that keeps the [`contains`] asymmetry intact: `read` (word)
+    /// withholds letter-grammar `r`/`s`, so it must never fold into a letter bag
+    /// that hands them over.
+    #[test]
+    fn union_across_grammars_is_refused() {
+        let read = Permission::parse_segment("read").unwrap();
+        let c = Permission::parse_segment("c").unwrap();
+        assert_eq!(read.union(c), None);
+        assert_eq!(c.union(read), None);
+        // Even where the bits would be unchanged, the forms don't fold together.
+        let rs = Permission::parse_segment("rs").unwrap();
+        assert_eq!(read.union(rs), None);
+        assert_eq!(
+            Permission::ALL.union(Permission::parse_segment("*").unwrap()),
+            None
+        );
+    }
+
+    /// A union grants exactly what the pair granted — never an interaction
+    /// neither side held — and is commutative.
+    #[test]
+    fn union_grants_exactly_the_pairs_interactions() {
+        let all = [
+            "c", "r", "u", "d", "s", "rs", "cud", "cruds", "read", "write", "*",
+        ]
+        .map(|p| Permission::parse_segment(p).unwrap());
+        for a in all {
+            for b in all {
+                let Some(union) = a.union(b) else { continue };
+                assert_eq!(union.bits(), a.bits() | b.bits());
+                assert_eq!(b.union(a), Some(union));
+                // The union covers both inputs — the property the collapse relies on.
+                assert!(union.contains(a));
+                assert!(union.contains(b));
+            }
         }
     }
 

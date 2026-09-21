@@ -112,6 +112,33 @@ impl Scope {
         }
     }
 
+    /// The single scope granting everything `self` and `other` do, or `None`
+    /// when the two cannot be stated as one and must both be kept.
+    ///
+    /// Merging is deliberately narrow — it restates a pair, it never widens one.
+    /// Two resource scopes merge only when they address the identical
+    /// context/resource in the same permission grammar, unioning their
+    /// interactions (`patient/Patient.r` + `patient/Patient.s` →
+    /// `patient/Patient.rs`). Everything else — a wildcard against a named type,
+    /// `system` against `user`, a v1 word against a v2 letter bag — is left to
+    /// [`covers`](Scope::covers), which drops the narrower entry only when the
+    /// broader one genuinely subsumes it. Known and unknown scopes merge only
+    /// with an identical twin, which is how a plain duplicate collapses.
+    pub fn merged(&self, other: &Scope) -> Option<Scope> {
+        if self == other {
+            return Some(self.clone());
+        }
+        match (self, other) {
+            (Scope::FhirResource(a), Scope::FhirResource(b)) => {
+                a.merged(b).map(Scope::FhirResource)
+            }
+            (Scope::WildflowerResource(a), Scope::WildflowerResource(b)) => {
+                a.merged(b).map(Scope::WildflowerResource)
+            }
+            _ => None,
+        }
+    }
+
     /// An equivalent alternate spelling of this scope — the same grant rendered
     /// in its *other* canonical form — or `None` when it has no distinct
     /// alternate. Today the only scopes with one are resource scopes whose access

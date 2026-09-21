@@ -5,7 +5,7 @@
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
-use scopes_rust::{grantable_scopes, Grant};
+use scopes_rust::{grantable_scopes, widened_scopes, Grant};
 use uuid::Uuid;
 
 use super::delegation::{deny_consent, ensure_approver_covers};
@@ -134,6 +134,12 @@ pub(super) fn upsert_authorization_code_grant(
 /// public client named after its own `client_id` (there is no registrar to have
 /// supplied a display name), holding only the redirect it just used and the
 /// scopes the Owner actually granted.
+///
+/// The scopes go in collapsed, through the same [`widened_scopes`] the widening
+/// path uses (against an empty registration), so a row created by a first
+/// approval and a row widened into the same state are byte-identical — the
+/// approval order can't leave two clients with differently-spelled but
+/// equivalent ceilings.
 fn new_registration(
     client_id: &str,
     redirect_uri: &url::Url,
@@ -145,7 +151,7 @@ fn new_registration(
         name: client_id.to_owned(),
         kind: ClientKind::Public,
         redirect_uris: vec![RegisteredRedirectUri::Absolute(redirect_uri.clone())],
-        allowed_scopes: granted_scopes.to_vec(),
+        allowed_scopes: widened_scopes(&[], granted_scopes),
         allowed_grant_types: AllowedGrantType::ALL.to_vec(),
         secret_hash: None,
         registered_at: now,
@@ -155,10 +161,18 @@ fn new_registration(
 
 /// Widen an existing registration by what the Owner just approved: append the
 /// `redirect_uri` as an absolute entry when it resolved to none of the existing
-/// ones, and union the granted scopes into `allowed_scopes` — appending in
-/// granted order, keeping the registered order, and never duplicating a string
-/// already there. Everything else on the row (its name, kind, secret,
-/// registration time) is left exactly as it was.
+/// ones, and widen `allowed_scopes` by the granted scopes. Everything else on
+/// the row (its name, kind, secret, registration time) is left exactly as it
+/// was.
+///
+/// The scope half is [`scopes_rust::widened_scopes`], not a string union: the
+/// granted scopes are parsed, so an approval that grants
+/// `patient/Patient.cruds` **replaces** a registered `patient/Patient.r`
+/// instead of leaving the row carrying both, and granting again what the row
+/// already covers leaves it untouched. `allowed_scopes` is only ever read
+/// through [`scopes_rust::allowed_scope_covers`] (here, at `/authorize`, and in
+/// [`classify_registration`](crate::domain::client_registration::classify_registration)),
+/// so a collapsed row admits exactly the requests the un-collapsed one did.
 fn widen_registration(
     mut client: Client,
     redirect_uri: &url::Url,
@@ -170,11 +184,7 @@ fn widen_registration(
             .redirect_uris
             .push(RegisteredRedirectUri::Absolute(redirect_uri.clone()));
     }
-    for granted in granted_scopes {
-        if !client.allowed_scopes.contains(granted) {
-            client.allowed_scopes.push(granted.clone());
-        }
-    }
+    client.allowed_scopes = widened_scopes(&client.allowed_scopes, granted_scopes);
     client
 }
 
@@ -317,4 +327,125 @@ pub(super) fn deny_oauth_consent(
 ) -> Result<(), GatekeeperError> {
     load_pending_authorization_code_request(store, id)?;
     deny_consent(store, publisher, id)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::client_registration::uncovered_scopes;
+    use crate::domain::test_fake::client;
+
+    fn redirect() -> url::Url {
+        url::Url::parse("https://example.com/cb").expect("a valid redirect")
+    }
+
+    /// Widen the fixture client (registered with `registered`) by `granted`,
+    /// leaving its redirect allowlist alone.
+    fn widened(registered: &[&str], granted: &[&str]) -> Vec<String> {
+        let granted: Vec<String> = granted.iter().map(|s| (*s).to_owned()).collect();
+        widen_registration(client("app", registered), &redirect(), &granted, false).allowed_scopes
+    }
+
+    /// The registration records the *broader* grant rather than accumulating
+    /// both spellings of the same resource.
+    #[test]
+    fn a_broader_grant_replaces_the_narrower_registered_scope() {
+        assert_eq!(
+            widened(&["patient/Patient.r", "openid"], &["patient/Patient.cruds"]),
+            ["patient/Patient.cruds", "openid"]
+        );
+    }
+
+    /// Two disjoint interactions on one resource are recorded as the single
+    /// scope granting both, not as two rows.
+    #[test]
+    fn disjoint_interactions_on_one_resource_become_one_scope() {
+        assert_eq!(
+            widened(&["patient/Patient.r"], &["patient/Patient.s"]),
+            ["patient/Patient.rs"]
+        );
+    }
+
+    /// Re-approving what the row already covers leaves it byte-identical — the
+    /// common case, where an app the Owner has approved before asks again.
+    #[test]
+    fn re_granting_a_covered_scope_leaves_the_row_untouched() {
+        let registered = ["patient/*.cruds", "openid"];
+        assert_eq!(
+            widened(&registered, &["patient/Observation.r", "openid"]),
+            registered
+        );
+    }
+
+    /// A v1 word registration is never folded into a letter bag — that would
+    /// hand the client letter-grammar access it was never registered for. The
+    /// two spellings sit side by side until one genuinely covers the other.
+    #[test]
+    fn a_v1_word_registration_is_not_merged_into_letter_access() {
+        assert_eq!(
+            widened(&["patient/Patient.read"], &["patient/Patient.c"]),
+            ["patient/Patient.read", "patient/Patient.c"]
+        );
+        assert_eq!(
+            widened(&["patient/Patient.read"], &["patient/Patient.cruds"]),
+            ["patient/Patient.cruds"]
+        );
+    }
+
+    /// The property the trust-on-first-use path depends on: after widening, the
+    /// same request classifies as fully covered — collapsing the row must never
+    /// cost it coverage of what was just granted.
+    #[test]
+    fn everything_granted_is_covered_by_the_widened_row() {
+        let granted = [
+            "patient/Patient.r",
+            "patient/Patient.s",
+            "patient/Observation.read",
+            "openid",
+            "a_stray_unknown",
+        ];
+        let owned: Vec<String> = granted.iter().map(|s| (*s).to_owned()).collect();
+        let widened = widened(&["patient/Condition.r"], &granted);
+        assert!(uncovered_scopes(&widened, &owned).is_empty());
+        // ...and the pre-existing registration survives it.
+        assert!(uncovered_scopes(&widened, &["patient/Condition.r".to_owned()]).is_empty());
+    }
+
+    /// A row created by a first approval and a row widened into the same state
+    /// agree exactly — `new_registration` and `widen_registration` share one
+    /// collapse.
+    #[test]
+    fn a_new_registration_matches_a_row_widened_into_the_same_state() {
+        let granted: Vec<String> = ["patient/Patient.r", "patient/Patient.s", "openid"]
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        let fresh = new_registration("app", &redirect(), &granted, Utc::now());
+        assert_eq!(fresh.allowed_scopes, ["patient/Patient.rs", "openid"]);
+        assert_eq!(
+            fresh.allowed_scopes,
+            widened(&[], &["patient/Patient.r", "patient/Patient.s", "openid"])
+        );
+    }
+
+    /// Widening the scopes never touches the redirect allowlist, and a new
+    /// redirect is appended without disturbing the registered ones.
+    #[test]
+    fn the_redirect_allowlist_moves_only_when_the_redirect_is_new() {
+        let registered = client("app", &["openid"]);
+        let elsewhere = url::Url::parse("https://other.example/cb").unwrap();
+        let granted = vec!["openid".to_owned()];
+
+        let unchanged = widen_registration(registered.clone(), &elsewhere, &granted, false);
+        assert_eq!(unchanged.redirect_uris, registered.redirect_uris);
+
+        let appended = widen_registration(registered.clone(), &elsewhere, &granted, true);
+        assert_eq!(
+            appended.redirect_uris,
+            [
+                registered.redirect_uris[0].clone(),
+                RegisteredRedirectUri::Absolute(elsewhere),
+            ]
+        );
+    }
 }

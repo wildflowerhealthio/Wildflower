@@ -68,6 +68,22 @@ impl FhirResourceScope {
             && self.resource.covers(&other.resource)
             && self.permission.contains(other.permission)
     }
+
+    /// The single scope granting everything `self` and `other` do, or `None`
+    /// when they can't be stated as one. Both must name the **same** context and
+    /// resource type — `system` covering `user` is subsumption, not a merge, and
+    /// collapsing them here would lose the narrower context's own spelling — and
+    /// their permissions must share a grammar
+    /// ([`Permission::union`](super::Permission::union)).
+    pub(in crate::scope) fn merged(&self, other: &FhirResourceScope) -> Option<Self> {
+        (self.context == other.context && self.resource == other.resource)
+            .then(|| self.permission.union(other.permission))
+            .flatten()
+            .map(|permission| FhirResourceScope {
+                permission,
+                ..self.clone()
+            })
+    }
 }
 
 impl ContextLevel {

@@ -428,6 +428,61 @@ async fn pre_approved_scopes_skip_consent_on_reauthorize() {
         .any(|(k, v)| k == "state" && v == "second"));
 }
 
+/// The fast path matches by **coverage**, not string equality: a standing
+/// consent to `patient/Observation.rs` answers for a later request for the
+/// narrower `patient/Observation.r`, so the Owner is not re-prompted for access
+/// they already granted. This is also what keeps the fast path working once an
+/// approval has collapsed two narrow consents into one broader scope.
+#[tokio::test]
+async fn a_narrower_request_is_pre_approved_by_a_broader_standing_grant() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(
+        &db,
+        "test-app",
+        "https://app.example/cb",
+        &["patient/Observation.cruds"],
+    );
+    authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "patient%2FObservation.rs",
+        r#"{"approvedScopes":["patient/Observation.rs"],"acknowledgedRegistration":false}"#,
+    )
+    .await;
+
+    // Ask again for just the read half — strictly inside what was consented.
+    let challenge = compute_code_challenge(CODE_VERIFIER);
+    let query = format!(
+        "response_type=code&code_challenge_method=S256&client_id=test-app&\
+         scope=patient%2FObservation.r&code_challenge={challenge}&\
+         redirect_uri=https%3A%2F%2Fapp.example%2Fcb&state=second"
+    );
+    let res = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!("/oauth/authorize?{query}")),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = res
+        .headers()
+        .get("location")
+        .and_then(|v| v.to_str().ok())
+        .expect("location");
+    let url = Url::parse(location).expect("location url");
+    // Straight back to the client with a code — the consent UI was skipped.
+    assert_eq!(
+        url.as_str().split('?').next(),
+        Some("https://app.example/cb"),
+        "a request covered by the standing grant must not re-prompt the Owner",
+    );
+    assert!(url.query_pairs().any(|(k, v)| k == "code" && !v.is_empty()));
+}
+
 /// Approvals union into the standing grant: consenting to `write` later must
 /// not un-approve the previously consented `read`.
 #[tokio::test]

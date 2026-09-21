@@ -82,6 +82,20 @@ impl WildflowerResourceScope {
     pub(in crate::scope) fn covers(&self, other: &WildflowerResourceScope) -> bool {
         self.resource.covers(&other.resource) && self.permission.contains(other.permission)
     }
+
+    /// The single scope granting everything `self` and `other` do, or `None`
+    /// when they name different resources. The FHIR counterpart's context check
+    /// has no analogue here — the `wildflower` context is fixed — and the
+    /// grammar check is vacuous, since these scopes parse letter-form only.
+    pub(in crate::scope) fn merged(&self, other: &WildflowerResourceScope) -> Option<Self> {
+        (self.resource == other.resource)
+            .then(|| self.permission.union(other.permission))
+            .flatten()
+            .map(|permission| WildflowerResourceScope {
+                permission,
+                ..*self
+            })
+    }
 }
 
 impl WildflowerResourceType {

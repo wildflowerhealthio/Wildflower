@@ -5,7 +5,6 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
-use std::collections::HashSet;
 use url::Url;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -471,6 +470,10 @@ fn ensure_first_party_scopes_allowed(
 /// The subset of requested scopes an existing grant already covers, plus
 /// whether *every* requested scope is covered (the fast-path trigger) and the
 /// grant's patient context. All-empty when no grant exists for the pair.
+///
+/// "Covers" is [`scopes_rust::allowed_scope_covers`], not string equality: a
+/// standing grant is a set of permissions, so a broader consent answers for the
+/// narrower request beneath it.
 struct ExistingGrantCoverage {
     pre_approved_scopes: Vec<String>,
     all_scopes_pre_approved: bool,
@@ -503,16 +506,25 @@ fn resolve_existing_grant_coverage(
         return Ok(ExistingGrantCoverage::none());
     };
 
-    let previously_approved: HashSet<&str> =
-        existing_grant.scopes.iter().map(String::as_str).collect();
+    // Coverage, not string equality — the same test `allowed_scopes` is read
+    // through everywhere else in the slice. A standing consent is a set of
+    // permissions, so a grant of `patient/*.cruds` answers for a later
+    // `patient/Observation.r`, and a grant the Owner's approval collapsed
+    // (`.r` + `.s` recorded as `.rs`) still answers for either half.
+    let previously_approved = |requested: &String| {
+        existing_grant
+            .scopes
+            .iter()
+            .any(|granted| scopes_rust::allowed_scope_covers(granted, requested))
+    };
     let pre_approved_scopes: Vec<String> = requested_scopes
         .iter()
-        .filter(|s| previously_approved.contains(s.as_str()))
+        .filter(|requested| previously_approved(requested))
         .cloned()
         .collect();
-    let all_scopes_pre_approved = requested_scopes
-        .iter()
-        .all(|s| previously_approved.contains(s.as_str()));
+    // `pre_approved_scopes` is `requested_scopes` filtered, so equal lengths
+    // means nothing was filtered out.
+    let all_scopes_pre_approved = pre_approved_scopes.len() == requested_scopes.len();
     Ok(ExistingGrantCoverage {
         pre_approved_scopes,
         all_scopes_pre_approved,

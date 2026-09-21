@@ -172,6 +172,18 @@ re-authorizations.
   request never un-approves earlier consent. Revoking the grant is the
   way to withdraw consent (and also revokes the client's refresh
   tokens).
+- **The union is by scope, not by string** (`scopes_rust::widened_scopes`):
+  consenting to `patient/Patient.cruds` over a standing
+  `patient/Patient.r` records the one broader scope rather than both
+  spellings, and `.r` plus a later `.s` is recorded as `.rs`. The
+  widened list still reaches every interaction it reached before — only
+  the spelling is shortened. A v1 word scope (`.read`) is never folded
+  into a v2 letter bag, which would hand the client letter-grammar
+  access it was never granted.
+- **The fast path matches by coverage**, the same
+  `allowed_scope_covers` test `Client.allowedScopes` is read through:
+  a standing consent to `patient/Observation.rs` pre-approves a later
+  request for the narrower `patient/Observation.r`.
 - **Key fields:** `clientId`, `scopes`, `redirectUri`, `grantedAt`,
   `lastUsedAt` (event slot reserved, materializer present, but **no
   consumer commits `clientAccessRecorded` yet**), `patient`

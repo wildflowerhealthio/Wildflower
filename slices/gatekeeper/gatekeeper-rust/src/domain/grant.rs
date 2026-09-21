@@ -130,14 +130,16 @@ impl CumulativeConsent for DeviceGrant {
     }
 }
 
-/// Union `additional` scopes into `standing`, preserving order and skipping
-/// duplicates — the shared half of [`CumulativeConsent`].
-fn union_scopes_into(standing: &mut Vec<String>, additional: &[String]) {
-    for scope in additional {
-        if !standing.contains(scope) {
-            standing.push(scope.clone());
-        }
-    }
+/// Widen `standing` by `additional` — the shared half of [`CumulativeConsent`].
+///
+/// [`scopes_rust::widened_scopes`], not a string union: the scopes are parsed,
+/// so re-approving `patient/Patient.cruds` over a standing `patient/Patient.r`
+/// records the one broader consent instead of accumulating both spellings, and
+/// re-approving what is already consented leaves the row byte-identical. The
+/// standing set still only ever grows — the widened list reaches every
+/// interaction it reached before.
+fn union_scopes_into(standing_ref: &mut Vec<String>, additional: &[String]) {
+    *standing_ref = scopes_rust::widened_scopes(standing_ref, additional);
 }
 
 /// The wire/list seam over the two concrete grant kinds — what cross-kind
@@ -286,5 +288,44 @@ mod tests {
         );
         assert_eq!(device.granted_at, later);
         assert_eq!(device.patient, None);
+    }
+
+    /// The scopes are parsed, not compared as strings: a broader re-approval
+    /// **replaces** the narrower standing consent rather than piling up beside
+    /// it, and two disjoint interactions on one resource are recorded as the
+    /// single scope granting both.
+    #[test]
+    fn absorb_reapproval_records_one_scope_per_resource_not_two_spellings() {
+        let later: DateTime<Utc> = "2025-06-01T00:00:00Z".parse().expect("timestamp");
+
+        let mut code = code_grant();
+        code.scopes = vec!["patient/Patient.r".to_owned(), "openid".to_owned()];
+        code.absorb_reapproval(&["patient/Patient.cruds".to_owned()], None, later);
+        assert_eq!(
+            code.scopes,
+            vec!["patient/Patient.cruds".to_owned(), "openid".to_owned()],
+        );
+
+        let mut device = device_grant();
+        device.scopes = vec!["patient/Observation.r".to_owned()];
+        device.absorb_reapproval(&["patient/Observation.s".to_owned()], None, later);
+        assert_eq!(device.scopes, vec!["patient/Observation.rs".to_owned()]);
+    }
+
+    /// Re-approving exactly what is already consented leaves the scope list
+    /// byte-identical — the common case, and what keeps the widening idempotent
+    /// across repeat approvals.
+    #[test]
+    fn absorb_reapproval_of_covered_scopes_leaves_the_list_untouched() {
+        let later: DateTime<Utc> = "2025-06-01T00:00:00Z".parse().expect("timestamp");
+        let mut code = code_grant();
+        code.scopes = vec!["patient/*.cruds".to_owned(), "openid".to_owned()];
+        let before = code.scopes.clone();
+        code.absorb_reapproval(
+            &["patient/Observation.r".to_owned(), "openid".to_owned()],
+            None,
+            later,
+        );
+        assert_eq!(code.scopes, before);
     }
 }
