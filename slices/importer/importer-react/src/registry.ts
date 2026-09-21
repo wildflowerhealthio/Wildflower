@@ -1,4 +1,4 @@
-import { DicomFilePreview, DicomSettingsPicker } from 'dicom-importer-react'
+import { DicomSettingsPicker } from 'dicom-importer-react'
 import { HarSettingsPicker } from 'har-importer-react'
 import {
   type BoundFormat as CoreBoundFormat,
@@ -6,7 +6,7 @@ import {
   formatRegistry as coreRegistry,
   type FormatSettings,
 } from 'importer-core'
-import { type PickedFile, type SettingsPickerProps } from 'importer-fundamentals'
+import { type SettingsPickerProps } from 'importer-fundamentals'
 import { LifeLabsPdfSettingsPicker } from 'lifelabs-pdf-importer-react'
 import type { JSX } from 'react'
 
@@ -42,7 +42,6 @@ import type { JSX } from 'react'
  */
 type FormatWithPicker<K extends FormatKind> = CoreBoundFormat<K> & {
   readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
-  readonly FilePreview?: ((props: PickedFile.NamedBytes) => JSX.Element) | undefined
 }
 
 /**
@@ -56,7 +55,6 @@ const withSlots = <K extends FormatKind>(
   importer: CoreBoundFormat<K>,
   slots: {
     readonly SettingsPicker: (props: SettingsPickerProps<FormatSettings[K]>) => JSX.Element
-    readonly FilePreview?: ((props: PickedFile.NamedBytes) => JSX.Element) | undefined
   }
 ): FormatWithPicker<K> => ({ ...importer, ...slots })
 
@@ -68,7 +66,6 @@ const formatRegistry: { readonly [K in FormatKind]: FormatWithPicker<K> } = {
   }),
   dicom: withSlots(coreRegistry.dicom, {
     SettingsPicker: DicomSettingsPicker,
-    FilePreview: DicomFilePreview,
   }),
 }
 

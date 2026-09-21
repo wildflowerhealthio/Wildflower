@@ -5,6 +5,7 @@ import type { PickedFile } from 'importer-fundamentals'
 import { useEffect, useMemo, useState, type JSX } from 'react'
 import { Dialog } from 'react-tundraish'
 
+import { DicomFilePreview } from 'dicom-importer-react'
 import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {
   type SourceFileRow,
@@ -254,7 +255,6 @@ const PreviewBody = ({
       bytes={query.data.bytes}
       contentType={entry.contentType}
       onClose={onClose}
-      FilePreview={entry.FilePreview}
     />
   )
 }
@@ -265,7 +265,6 @@ interface PreviewContentsProps {
   readonly bytes: Uint8Array
   readonly contentType: string
   readonly onClose: () => void
-  readonly FilePreview?: ((props: PickedFile.NamedBytes) => JSX.Element) | undefined
 }
 
 /**
@@ -279,15 +278,13 @@ const PreviewContentBody = ({
   blobUrl,
   fileName,
   bytes,
-  FilePreview,
 }: {
   readonly contentType: string
   readonly blobUrl: string
   readonly fileName: string
   readonly bytes: Uint8Array
-  readonly FilePreview?: ((props: PickedFile.NamedBytes) => JSX.Element) | undefined
 }): JSX.Element => {
-  if (FilePreview !== undefined) return <FilePreview fileName={fileName} bytes={bytes} />
+  if (contentType === 'application/dicom') return <DicomFilePreview bytes={bytes} />
   if (contentType === 'application/pdf') return <PdfBody blobUrl={blobUrl} fileName={fileName} />
   if (contentType === 'application/json' || contentType === 'application/har+json') {
     return <JsonBody bytes={bytes} />
@@ -383,14 +380,12 @@ const useBlobUrl = (bytes: Uint8Array, contentType: string): string => {
  */
 const PdfBody = ({
   blobUrl,
-  fileName,
 }: {
   readonly blobUrl: string
   readonly fileName: string
 }): JSX.Element => (
   <iframe
     className={styles.previewFrame}
-    title={`Preview of ${fileName}`}
     src={blobUrl}
     sandbox="allow-scripts"
     data-testid="preview-pdf-frame"
