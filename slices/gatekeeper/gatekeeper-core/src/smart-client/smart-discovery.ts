@@ -85,14 +85,10 @@ const usableEndpointUrl = (
 /**
  * Why a page cannot reach `serverUrl`, or `undefined` when it can.
  *
- * States up front the rule {@link usableEndpointUrl} enforces after the fetch:
- * a secure page may not talk to plain `http:` on a non-loopback host. Saying so
- * when the target is chosen turns a confusing discovery failure — which reads
- * as though the server were down — into an explanation of the actual problem.
- *
- * Loopback is deliberately *not* a failure. Browsers treat `http://127.0.0.1`
- * as potentially trustworthy, so the published HTTPS console reaching a desktop
- * host's loopback API is the normal case, not a downgrade.
+ * States when the target is chosen what {@link usableEndpointUrl} enforces
+ * after the fetch, so the reader gets the real reason rather than a discovery
+ * failure that reads as "the server is down". Loopback is deliberately not a
+ * failure, for the reason {@link isLoopbackHost} gives.
  */
 const insecureTargetReason = (
   serverUrl: string,

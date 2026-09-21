@@ -67,12 +67,7 @@ const statusLine = requireElement('#auth-status', HTMLParagraphElement)
 
 const prefersDarkMode = window.matchMedia('(prefers-color-scheme: dark)').matches
 
-/**
- * Whether this page is itself a secure context. Decides what the browser will
- * let it reach: a secure page may talk to https anywhere and to plain http on
- * loopback (which browsers treat as trustworthy), but not to plain http
- * elsewhere.
- */
+/** Whether this page is a secure context, which decides what it may reach. */
 const pageIsSecure = window.location.protocol === 'https:'
 
 let reference: ReturnType<typeof createApiReference> | undefined
@@ -86,16 +81,10 @@ let reference: ReturnType<typeof createApiReference> | undefined
 let session: Session | undefined
 
 /**
- * The `redirect_uri` this copy of the console returns to — its own directory
- * URL, derived from where the page is served rather than chosen from a list, so
- * the published site, a `/staging/pr-<n>/` preview and a dev server each return
- * to themselves.
- *
- * Computed once: the return leg lands on that same directory, so the value is
- * stable across the round trip. The fallback is unreachable in a browser that
- * can run this page at all — `redirectUriForPage` declines only a non-http(s)
- * origin or plaintext http off loopback — and the published URI is the harmless
- * thing to name if it ever is.
+ * The `redirect_uri` this copy returns to — its own directory URL, derived from
+ * where the page is served (see "Sign-in works from wherever the console is
+ * served" in the README). The fallback is unreachable from a page a browser
+ * would run this script on, and the published URI is harmless if it ever is.
  */
 const redirectUri = redirectUriForPage(window.location.href) ?? REGISTERED_REDIRECT_URI
 
@@ -175,9 +164,8 @@ const renderAuthControls = (serverUrl: string): void => {
   if (session === undefined) {
     signInButton.textContent = 'Sign in'
     signInButton.title = `Sign in to ${serverUrl} to send authorised requests`
-    // A secure page cannot reach a plaintext server, and discovery would fail
-    // in a way that reads as "the server is down". Say which it is up front,
-    // while the reader is still looking at the address they just entered.
+    // Said up front, while the reader is still looking at the address they
+    // entered, rather than later as a discovery failure.
     const blocked = insecureTargetReason(serverUrl, { pageIsSecure })
     showStatus(blocked, blocked === undefined ? 'ok' : 'problem')
     return

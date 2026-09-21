@@ -9,29 +9,19 @@
  * request to the row's `allowed_scopes`, so a value that drifts from the seed
  * fails the flow at `/oauth/authorize` rather than degrading quietly. The
  * migration is the authority; this module is the browser-side reading of it
- * (the same arrangement `apps/web-trace/src/config.ts` uses for its own
- * registration).
+ * (the same arrangement `apps/web-trace/src/config.ts` uses).
  *
- * The **redirect URI is not written down here**. It is derived from wherever
- * the page is being served, by `gatekeeper-core/smart-client`'s
- * `redirectUriForPage` — the same derivation the fhirclient-based apps use — so
- * one build signs in from the published site, from a PR preview under
- * `/staging/pr-<n>/`, and from a dev server, without a list to keep in step.
- * A redirect the seed does not carry reaches the Owner as a consent warning and
- * is added on approval, so the Owner is the gate rather than this module.
+ * The **redirect URI is not written down here** — it is derived from where the
+ * page is served, by `gatekeeper-core/smart-client`'s `redirectUriForPage`.
  */
 
 /** The `client_id` the seeded row registers. */
 const CLIENT_ID = 'wildflower-server-docs'
 
 /**
- * The redirect URI of the **published** console — its own directory URL,
- * trailing slash included, and the sole entry of the seeded row.
- *
- * Kept because it is the one redirect that is genuinely registered: it is the
- * address the reader is pointed at when a copy cannot derive its own, and the
- * fixed point the seeding test asserts against. Every other copy of the console
- * derives its redirect instead of choosing from a list here.
+ * The redirect URI of the **published** console, and the sole entry of the
+ * seeded row — the one redirect that is genuinely registered. Every other copy
+ * derives its own.
  */
 const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/wildflower-server-docs/'
 
