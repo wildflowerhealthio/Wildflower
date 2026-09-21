@@ -13,7 +13,7 @@ use crate::domain::authorization_request::{AuthorizationRequest, GrantType, Requ
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{CumulativeConsent, DeviceGrant};
 use crate::domain::{GatekeeperStore, GatekeeperTx};
-use crate::ports::DeviceUserCodePublisher;
+use crate::ports::PendingConsentPublisher;
 
 /// Load the authorization request for `user_code` and verify it's a pending,
 /// unexpired device-code flow.
@@ -71,7 +71,7 @@ fn upsert_device_grant(
 /// that grants nothing is applied as a **deny**.
 pub(super) fn approve_device_consent(
     store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
+    publisher: &dyn PendingConsentPublisher,
     user_code: &str,
     input: ApproveDeviceConsentInput,
     approver: &Grant,
@@ -124,7 +124,7 @@ pub(super) fn approve_device_consent(
 /// device-flow prompt first, then marks it denied and republishes the popup head.
 pub(super) fn deny_device_consent(
     store: &impl GatekeeperStore,
-    publisher: &dyn DeviceUserCodePublisher,
+    publisher: &dyn PendingConsentPublisher,
     user_code: &str,
 ) -> Result<(), GatekeeperError> {
     let device_request = load_pending_device_request(store, user_code)?;

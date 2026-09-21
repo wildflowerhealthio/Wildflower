@@ -24,6 +24,7 @@ use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
+use crate::ports;
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
@@ -170,9 +171,11 @@ pub struct AuthorizeParams {
 /// 1. Browser lands here; the request is parked as an `AuthorizationRequest`
 ///    (5-minute TTL).
 /// 2. Unless every requested scope is pre-approved by an existing grant for
-///    this (client, `redirect_uri`) pair, the browser is 302'd to the Owner
-///    UI's polling page, which polls `GET /oauth/authorize/{id}` (a custom
-///    extension, not part of any RFC) until the Owner decides. RFC 6749
+///    this (client, `redirect_uri`) pair, the request joins the pending-consent
+///    queue (raising the host webview's popup) and the browser is 302'd to the
+///    Owner UI's polling page, which polls `GET /oauth/authorize/{id}` (a custom
+///    extension, not part of any RFC) until the Owner decides — on that page if
+///    the viewer is signed in, in the popup otherwise. RFC 6749
 ///    leaves the owner-interaction mechanism unspecified, so the polling
 ///    page is spec-legal; likewise §4.1 explicitly allows skipping consent
 ///    on a previously established authorization decision, which is what the
@@ -317,10 +320,26 @@ pub(super) async fn handle_authorize_request(
             &requested_scopes,
             grant_coverage.patient.as_deref(),
         )?;
+        // The insert above parked this request as `pending` for the width of
+        // `issue_code`, so a concurrent republish (another flow's insert, a
+        // consent decision, a reaper tick) can have latched the popup onto it.
+        // `issue_code` has since approved it, so recompute the head rather than
+        // leaving the popup on a request `/access/oauth-consents/{id}` now 404s
+        // for. Recomputing can only publish the genuinely-pending head (or
+        // `None`), so this never surfaces the pre-approved request itself.
+        ports::PendingConsentPublisher::republish_active(state.as_ref());
         return Ok(redirect_to_client(&parsed_redirect, &code, &params.state));
     }
 
-    // Otherwise redirect to the Owner UI's polling page so a human can approve.
+    // This request needs a human, so raise the host popup: the browser that
+    // landed here is often signed out (a SMART app launched elsewhere), making
+    // the popup the only surface the Owner can approve from. Deliberately after
+    // the fast-path return above — a pre-approved request must never flicker
+    // into the popup on its way through `pending`.
+    ports::PendingConsentPublisher::republish_active(state.as_ref());
+
+    // Then redirect to the Owner UI's polling page, which waits for whichever
+    // surface — this page's inline consent or the host popup — decides first.
     let polling_url = page_paths::oauth_polling_url(&origin, &request_id);
     Ok(found_redirect(&polling_url))
 }

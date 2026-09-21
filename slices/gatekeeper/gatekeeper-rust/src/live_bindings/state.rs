@@ -8,8 +8,8 @@
 //! `HeaderMap`) stays in [`crate::http`].
 //!
 //! The port trait impls that adapt this state to the domain seams live in sibling
-//! files ([`DeviceUserCodePublisher`](super::device_user_code_publisher),
-//! [`Revocation`](super::revocation)), and the per-resource
+//! files ([`PendingConsentPublisher`](crate::adapters::pending_consent_publisher),
+//! [`Revocation`](crate::adapters::revocation_store)), and the per-resource
 //! `FixedScopeCapability`/`Capability` bindings that name the concrete
 //! `SqliteGatekeeperStore` live in [`grants`](super::grants),
 //! [`consents`](super::consents), and [`tokens`](super::tokens) — so the generic,
@@ -22,6 +22,7 @@ use tokio::sync::watch;
 use token_revocation_rust::RevocationStore;
 
 use crate::db::SqliteGatekeeperStore;
+use crate::domain::pending_consent::PendingConsentHead;
 
 /// Shared state threaded through every gatekeeper handler and lifted into the
 /// scope-gated capabilities. Opaque to callers outside the crate — the host
@@ -61,16 +62,11 @@ pub struct GatekeeperState {
     /// shared rather than reallocated when the state is cloned before the `Arc`
     /// wrap.
     pub(crate) first_party_client_id: Arc<str>,
-    /// Watch sender that publishes the `user_code` of the
-    /// currently-active pending device-code consent request — the head
-    /// the host webview surfaces in its non-dismissable popup. Handlers
-    /// whose write may change the head call the
-    /// [`DeviceUserCodePublisher::republish_active`](crate::ports::DeviceUserCodePublisher::republish_active)
-    /// seam after the write
-    /// completes; the host-side bridge task forwards the value over the
-    /// `bridge:DeviceConsentRequested` event and focuses the window when
-    /// it goes to `Some`.
-    pub(crate) active_device_user_code_sender: watch::Sender<Option<String>>,
+    /// Watch sender publishing the [`PendingConsentHead`] the host webview
+    /// surfaces in its popup. Handlers whose write may change the head call the
+    /// [`PendingConsentPublisher::republish_active`](crate::ports::PendingConsentPublisher::republish_active)
+    /// seam after the write completes.
+    pub(crate) active_pending_consent_sender: watch::Sender<Option<PendingConsentHead>>,
     /// Resolves a `client_id` to a self-hosted app's redirect topology so
     /// `/authorize` can expand an app-relative `redirect_uri` entry against the
     /// request's provenance (see

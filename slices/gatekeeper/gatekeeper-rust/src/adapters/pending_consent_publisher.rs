@@ -1,20 +1,21 @@
-//! The device-consent republish seam ([`crate::ports`]) adapted onto the bare
+//! The consent-head republish seam ([`crate::ports`]) adapted onto the bare
 //! [`GatekeeperState`]. See the [module docs](super) for the composition layer.
 
 use crate::live_bindings::state::GatekeeperState;
-use crate::ports::DeviceUserCodePublisher;
+use crate::ports::PendingConsentPublisher;
 use crate::GatekeeperStore;
 
-/// The device-consent republish seam ([`crate::ports`]) the consent capability
-/// forwards to after a device-flow store write — delegates to the inherent
+/// The consent-head republish seam ([`crate::ports`]) the consent capability
+/// forwards to after a store write — delegates to the inherent
 /// recompute-and-publish. Implemented on the bare state so an
-/// `Arc<GatekeeperState>` coerces to an `Arc<dyn DeviceUserCodePublisher>` the
+/// `Arc<GatekeeperState>` coerces to an `Arc<dyn PendingConsentPublisher>` the
 /// capability holds.
-impl DeviceUserCodePublisher for GatekeeperState {
-    /// Recompute the head of the pending device-code consent queue from
-    /// the store and publish it through the bridge's watch sender. Call
-    /// after every transition that may change the head (`/oauth/device_authorization`
-    /// insert, `/oauth/authorize` insert, `/access/devices/{userCode}/approve`,
+impl PendingConsentPublisher for GatekeeperState {
+    /// Recompute the head of the pending-consent queue from the store and
+    /// publish it through the bridge's watch sender. Call after every transition
+    /// that may change the head (`/oauth/device_authorization` insert,
+    /// `/oauth/authorize` insert, `/access/oauth-consents/{id}/approve`,
+    /// `/access/oauth-consents/{id}/deny`, `/access/devices/{userCode}/approve`,
     /// `/access/devices/{userCode}/deny`).
     ///
     /// The DB read happens *inside* `send_if_modified`, so the watch
@@ -24,7 +25,7 @@ impl DeviceUserCodePublisher for GatekeeperState {
     /// value matches what is in the DB at that moment). Without this,
     /// a thread that read its head before a concurrent thread's
     /// commit could overwrite the watch with a stale head after the
-    /// concurrent publish — the popup would advertise a `user_code`
+    /// concurrent publish — the popup would advertise a request
     /// whose row was already handled.
     ///
     /// Uses `send_if_modified` so a transition that leaves the head
@@ -38,13 +39,13 @@ impl DeviceUserCodePublisher for GatekeeperState {
     /// surviving pending row will republish on the next mutation or
     /// reaper tick.
     fn republish_active(&self) {
-        self.active_device_user_code_sender
+        self.active_pending_consent_sender
             .send_if_modified(|current| {
-                let next = match self.store.oldest_pending_device_user_code() {
+                let next = match self.store.oldest_pending_consent_head() {
                     Ok(next) => next,
                     Err(error) => {
                         tracing::warn!(
-                            "oldest_pending_device_user_code query failed; clearing popup head: {error}"
+                            "oldest_pending_consent_head query failed; clearing popup head: {error}"
                         );
                         None
                     }

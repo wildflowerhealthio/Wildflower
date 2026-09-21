@@ -5,8 +5,8 @@
 //! the transport layer.
 //!
 //! - [`state`] holds the [`GatekeeperState`](state::GatekeeperState) struct.
-//! - [`device_user_code_publisher`] and [`revocation`] hold the port trait impls
-//!   that adapt the state / revocation store to the domain seams.
+//! - [`crate::adapters`] holds the port trait impls that adapt the state /
+//!   revocation store to the domain seams.
 //! - [`grants`], [`consents`], and [`tokens`] hold the per-resource
 //!   `FixedScopeCapability`/`Capability` bindings; each lifts the store + port
 //!   handles out of the state (never the whole state), so `domain/` stays free of

@@ -21,7 +21,7 @@ pub use gatekeeper_rust::domain::authorization_request::{
 pub use gatekeeper_rust::domain::client::{AllowedGrantType, Client, ClientKind};
 pub use gatekeeper_rust::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 pub use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
-pub use gatekeeper_rust::{GatekeeperStore, SqliteGatekeeperStore};
+pub use gatekeeper_rust::{GatekeeperStore, PendingConsentHead, SqliteGatekeeperStore};
 pub use persistence_rust::{Connection, DieselPool};
 pub use serde_json::Value;
 pub use tower::ServiceExt;
@@ -34,6 +34,12 @@ pub use url::Url;
 pub struct TestDb {
     pool: DieselPool,
     revocation_conn: Connection,
+    /// Live receiver on the pending-consent head the slice publishes — the same
+    /// channel the Tauri host forwards to the webview popup. Held (not dropped)
+    /// so tests can assert *what the popup would show* after a request lands,
+    /// which is the only observable difference between "parked a request" and
+    /// "parked a request and asked the Owner about it".
+    pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
 }
 
 pub fn spin_up() -> (Gatekeeper, String, TestDb) {
@@ -48,7 +54,8 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
         first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
-    let (active_device_tx, _active_device_rx) = watch::channel::<Option<String>>(None);
+    let (pending_consent_tx, pending_consent_rx) =
+        watch::channel::<Option<PendingConsentHead>>(None);
     // The shared revocation store lives on the rusqlite connection the host
     // wires into both gatekeeper and the FHIR server (#269). A second handle on
     // the same connection (see `revocation_store_handle`) lets tests
@@ -61,7 +68,7 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
         revocation_store,
         &config,
         &token_tx,
-        active_device_tx,
+        pending_consent_tx,
         std::sync::Arc::new(gatekeeper_rust::NoSelfHostedRedirects),
     )
     .expect("setup");
@@ -75,8 +82,15 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
         TestDb {
             pool,
             revocation_conn,
+            pending_consent_rx,
         },
     )
+}
+
+/// The head the host popup would currently be showing — the latest value on the
+/// slice's pending-consent watch channel.
+pub fn pending_consent_head(db: &TestDb) -> Option<PendingConsentHead> {
+    db.pending_consent_rx.borrow().clone()
 }
 
 /// A second `SqliteGatekeeperStore` handle on the *same* shared pool the running

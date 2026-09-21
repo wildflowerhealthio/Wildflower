@@ -3,7 +3,7 @@ import type { JSX } from 'react'
 import { AsyncErrorView, PageHeader } from 'react-tundraish'
 
 import { deviceConsentQueryOptions, useDeviceConsentQuery } from '../../../queries/index.ts'
-import { DeviceConsentForm } from '../../../screens/device-consent/device-consent-form.tsx'
+import { DeviceConsentForm } from '../../../screens/pending-consent/device-consent-form.tsx'
 
 const DeviceConsentScreen = ({
   userCode,
@@ -32,7 +32,7 @@ const DeviceConsentScreen = ({
  * `_auth` `beforeLoad` gate guarantees a token before this loader runs, so
  * it's a plain `ensureQueryData` — failures propagate to `errorComponent`.
  *
- * The same form is reused by the in-app {@link DeviceConsentModalHost}
+ * The same form is reused by the in-app {@link PendingConsentModalHost}
  * popup (Tauri-only), which dismisses the modal on `onDone` instead of
  * navigating.
  */

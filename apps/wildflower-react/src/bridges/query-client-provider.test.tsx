@@ -29,21 +29,21 @@ const { Passthrough } = vi.hoisted(() => ({
 // `GatekeeperRouterContext.sliceRuntimeLayer` (consumed by
 // `router-context.ts`'s layer composition). The `AuthStateStore` the
 // test renders with is constructed inline in the test body below.
-// `ActiveDeviceUserCodeProvider` is mocked as a passthrough so the
+// `ActivePendingConsentProvider` is mocked as a passthrough so the
 // modal-host wrapping in `renderApp` doesn't blow up the tree, and
-// `makeActiveDeviceUserCodeStore` returns a no-op store —
-// `DeviceConsentModalHost` is stubbed to nothing for the same reason.
+// `makeActivePendingConsentStore` returns a no-op store —
+// `PendingConsentModalHost` is stubbed to nothing for the same reason.
 vi.mock('gatekeeper-react', () => ({
   GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
-  ActiveDeviceUserCodeProvider: Passthrough,
-  makeActiveDeviceUserCodeStore: () => ({
+  ActivePendingConsentProvider: Passthrough,
+  makeActivePendingConsentStore: () => ({
     subscribable: {
       get: Effect.succeed(null),
       changes: { pipe: () => ({}) },
     },
-    setActiveUserCode: () => {},
+    setActiveHead: () => {},
   }),
-  DeviceConsentModalHost: (): null => null,
+  PendingConsentModalHost: (): null => null,
 }))
 vi.mock('react-kitchen-sink', () => ({
   AuthStateProvider: Passthrough,

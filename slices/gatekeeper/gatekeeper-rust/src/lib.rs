@@ -54,6 +54,7 @@ pub use seeding::seed_dev_app_clients;
 // `SqliteGatekeeperStore` adapter. `GatekeeperStore` is the transaction seam
 // (and carries the standalone-convenience default methods); `GatekeeperTx` is
 // the primitive contract a composed transaction hands out.
+pub use domain::pending_consent::PendingConsentHead;
 pub use domain::{GatekeeperStore, GatekeeperTx};
 // Re-exported so the host can name the pool type at the `setup_gatekeeper`
 // call site without a direct diesel dependency; the canonical home is
@@ -206,9 +207,10 @@ pub struct Gatekeeper {
 ///
 ///  - publishes the host owner token on `local_owner_token_tx` so subscribers (e.g.
 ///    the `WebView` bridge listener) observe it the moment it exists;
-///  - publishes the current head of the pending device-code consent
-///    queue on `active_device_user_code_tx`. The host-side bridge task
-///    forwards this through `bridge:DeviceConsentRequested` events and
+///  - publishes the current head of the pending consent queue — device-code
+///    and authorization-code requests share one FIFO slot — on
+///    `active_pending_consent_tx`. The host-side bridge task
+///    forwards this through `bridge:PendingConsentRequested` events and
 ///    focuses the desktop window on transitions to `Some`. Seeding at
 ///    boot means a request that was pending across an app restart still
 ///    drives the popup (the row survived in SQLite, the in-memory
@@ -243,7 +245,7 @@ pub fn setup_gatekeeper(
     revocation_store: RevocationStore,
     config: &GatekeeperConfig,
     local_owner_token_tx: &watch::Sender<Option<String>>,
-    active_device_user_code_tx: watch::Sender<Option<String>>,
+    active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     self_hosted_redirects: Arc<dyn ports::SelfHostedRedirectResolver>,
 ) -> anyhow::Result<Gatekeeper> {
     // The host owner token is minted from `granted_scopes` (the live app sources
@@ -287,14 +289,14 @@ pub fn setup_gatekeeper(
         revocation_store: revocation_store.clone(),
         loopback_base_url: config.loopback_base_url.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
-        active_device_user_code_sender: active_device_user_code_tx,
+        active_pending_consent_sender: active_pending_consent_tx,
         self_hosted_redirects,
     });
     // Seed the popup head from SQLite so a request that was pending
     // across an app restart still drives the modal on first webview
     // load — the `watch` value itself doesn't survive the process, but
     // the row does.
-    ports::DeviceUserCodePublisher::republish_active(state.as_ref());
+    ports::PendingConsentPublisher::republish_active(state.as_ref());
     spawn_device_consent_reaper(state.clone());
     // Reclaim gatekeeper rows past their retention window: once at startup, then
     // daily. Spawned before the re-minter, which consumes `store`.
@@ -447,7 +449,7 @@ fn spawn_device_consent_reaper(state: Arc<GatekeeperState>) {
         ticks.tick().await;
         loop {
             ticks.tick().await;
-            ports::DeviceUserCodePublisher::republish_active(state.as_ref());
+            ports::PendingConsentPublisher::republish_active(state.as_ref());
         }
     });
 }

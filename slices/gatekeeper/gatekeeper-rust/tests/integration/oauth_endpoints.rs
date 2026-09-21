@@ -203,6 +203,109 @@ async fn authorize_disallowed_scope_parks_a_pending_request() {
     );
 }
 
+/// A parked `/authorize` request must reach the host's consent popup, not only
+/// the polling page. The polling page tells an unauthenticated viewer to
+/// "approve this request on your device"; if the request never joins the
+/// pending-consent queue, that prompt never appears and the flow hangs until the
+/// 5-minute TTL — the bug this covers.
+#[tokio::test]
+async fn authorize_publishes_the_parked_request_as_the_consent_head() {
+    let (g, _host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    assert_eq!(
+        pending_consent_head(&db),
+        None,
+        "no request has been parked yet"
+    );
+
+    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    let request_id = parked_request_id(&res);
+
+    assert_eq!(
+        pending_consent_head(&db),
+        Some(PendingConsentHead::OAuth {
+            id: request_id.clone()
+        }),
+        "the popup must be showing the request the browser was just parked on",
+    );
+}
+
+/// Deciding a parked request clears the popup: the Owner answered it, so the
+/// head must not linger on a request that is no longer pending. Covers approve
+/// and deny separately — they take different paths to the same republish.
+#[tokio::test]
+async fn deciding_an_oauth_consent_clears_the_consent_head() {
+    for decision in ["approve", "deny"] {
+        let (g, host_owner_token, db) = spin_up();
+        seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+        let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+        let request_id = parked_request_id(&res);
+        assert!(
+            pending_consent_head(&db).is_some(),
+            "{decision}: the request should be the popup head before it is decided",
+        );
+
+        let res = g
+            .router
+            .clone()
+            .oneshot(loopback_request(
+                Request::post(format!("/access/oauth-consents/{request_id}/{decision}"))
+                    .header("host", "127.0.0.1")
+                    .header("authorization", format!("Bearer {host_owner_token}"))
+                    .header("content-type", "application/json"),
+                Body::from(r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#),
+            ))
+            .await
+            .expect("oneshot");
+        assert_eq!(res.status(), StatusCode::OK, "{decision} should succeed");
+
+        assert_eq!(
+            pending_consent_head(&db),
+            None,
+            "{decision}: the popup must close once the request is decided",
+        );
+    }
+}
+
+/// The grant fast path approves inside `/authorize` itself, so its request is
+/// never awaiting a human — it must not raise the popup on its way through
+/// `pending`. A spurious popup here would ask the Owner to re-approve something
+/// they already consented to, on a request that is already `approved`.
+#[tokio::test]
+async fn a_fast_pathed_authorize_never_becomes_the_consent_head() {
+    let (g, host_owner_token, db) = spin_up();
+    seed_client_with_redirect(&db, "test-app", "https://app.example/cb", &["read"]);
+    // First pass: park, approve, and so establish the standing grant.
+    authorize_and_approve(
+        &g,
+        &host_owner_token,
+        "test-app",
+        "read",
+        r#"{"approvedScopes":["read"],"acknowledgedRegistration":true}"#,
+    )
+    .await;
+    assert_eq!(
+        pending_consent_head(&db),
+        None,
+        "the approved first request left the popup closed"
+    );
+
+    // Second pass: the grant now pre-approves every requested scope, so
+    // /authorize issues a code and 302s straight back to the client.
+    let res = get_authorize(&g.router, &authorize_query("test-app", "read")).await;
+    assert_eq!(res.status(), StatusCode::FOUND);
+    let location = location_of(&res);
+    assert!(
+        location.starts_with("https://app.example/cb?code="),
+        "expected the fast path's client redirect, got {location}"
+    );
+    assert_eq!(
+        pending_consent_head(&db),
+        None,
+        "a fully pre-approved request must never raise the consent popup",
+    );
+}
+
 /// The first-party host is NOT trusted on first use: an unregistered scope for
 /// `wildflower-host` is still the `invalid_scope` redirect back to its
 /// (registered) redirect_uri, exactly as before.

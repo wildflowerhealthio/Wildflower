@@ -250,7 +250,8 @@ client. Flow:
    `AuthorizationRequest` and returns `{ device_code, user_code, verification_uri, ... }`.
 2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
-   device.
+   device — or answers the popup the request raised there through the
+   [pending-consent queue](#pending-consent-queue), which needs no code entry.
 3. Owner reviews the request (device name + requested scopes) and approves via
    `POST /access/devices/:userCode/approve`. The Owner may add scopes beyond
    what the device requested (up to the client's `allowedScopes`) or prune them
@@ -283,6 +284,39 @@ many non-browser device-code clients — CLIs, TV apps, bare HTTP libraries) inf
 nothing; the effective name then falls back to the client name at grant-mint
 time so the durable device grant's `(client_id, device_name)` key stays total.
 Optional on the wire; auth-code requests carry no device name.
+
+### Pending-consent queue
+
+The single FIFO of authorization requests waiting on the Owner, spanning **both**
+grant flows: a device-code request parked by `/oauth/device_authorization` and an
+authorization-code request parked by `/oauth/authorize` compete for one popup
+slot, oldest `requestedAt` first.
+
+The head of that queue is a `PendingConsentHead`, discriminated because the two
+flows have no shared lookup key:
+
+| Flow               | Head                           | Hydrated by                      |
+| ------------------ | ------------------------------ | -------------------------------- |
+| Device (RFC 8628)  | `{ kind: 'device', userCode }` | `GET /access/devices/:userCode`  |
+| Authorization code | `{ kind: 'oauth', id }`        | `GET /access/oauth-consents/:id` |
+
+The Rust side recomputes the head (`oldest_pending_consent_head`) after every
+transition that could move it — either flow's insert, approve, or deny — and
+publishes it on a `watch` channel. The Tauri host forwards each change to the
+webview as `bridge:PendingConsentRequested`, and raises the window on a
+`None → Some` transition (a brand-new request, not a queue advance). The SPA's
+`PendingConsentModalHost` branches on `kind` to mount the matching consent form.
+
+A request that the [grant](#grant) fast path fully pre-approves never enters the
+queue: `/oauth/authorize` approves it in the same handler, so it never sits
+`pending` awaiting a human. Requests are dropped from the head once expired — a
+background reaper re-runs the query so an idle host doesn't stay stuck on a head
+whose TTL lapsed.
+
+The popup is dismissable (× / ESC / backdrop) and dismissing decides nothing:
+the request stays pending and answerable from its standalone surface — Settings
+for a device request, the requesting browser's polling page for a code request —
+until it expires.
 
 ### Expandable consent
 
@@ -447,6 +481,16 @@ rejected as `unsupported_response_type`). The `/oauth/token`
 endpoint dispatches on `grant_type`; the `authorization_code` branch
 verifies PKCE + redirect_uri + client_id match the issued code, then
 mints a JWT.
+
+Unless an existing [grant](#grant) pre-approves every requested scope, the
+request is parked for the Owner and reaches them two ways at once: the browser
+lands on the polling page (which offers consent inline when its viewer is
+already signed in), and the request joins the
+[pending-consent queue](#pending-consent-queue) so the host app raises its
+popup. Either surface decides it; the polling page redirects the client once its
+poll observes the outcome. Both are needed because the browser that started the
+flow is often not signed in — a SMART app launched from another device, or one
+reaching the tunnel origin.
 
 ### Device authorization flow / `grant_type=urn:ietf:params:oauth:grant-type:device_code`
 

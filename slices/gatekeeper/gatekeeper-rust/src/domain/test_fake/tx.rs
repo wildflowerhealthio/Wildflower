@@ -10,6 +10,7 @@ use crate::domain::authorization_request::{AuthorizationRequest, GrantType, Requ
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 use crate::domain::GatekeeperTx;
@@ -85,19 +86,29 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
             .cloned())
     }
 
-    fn oldest_pending_device_user_code(&mut self) -> Result<Option<String>, GatekeeperError> {
+    fn oldest_pending_consent_head(
+        &mut self,
+    ) -> Result<Option<PendingConsentHead>, GatekeeperError> {
         let requests = self.store.authorization_requests.borrow();
         let mut pending: Vec<&AuthorizationRequest> = requests
             .values()
-            .filter(|r| {
-                r.grant_type == GrantType::DeviceCode
-                    && r.status == RequestStatus::Pending
-                    && r.user_code.is_some()
-                    && r.expires_at > Utc::now()
+            .filter(|r| r.status == RequestStatus::Pending && r.expires_at > Utc::now())
+            .filter(|r| match r.grant_type {
+                GrantType::AuthorizationCode => true,
+                // Mirrors the SQL guard: a device row without its `user_code`
+                // has no key the consent surface could fetch by, so it is not a
+                // candidate head rather than a head with a missing key.
+                GrantType::DeviceCode => r.user_code.is_some(),
             })
             .collect();
         pending.sort_by_key(|r| r.requested_at);
-        Ok(pending.first().and_then(|r| r.user_code.clone()))
+        Ok(pending.first().and_then(|r| match r.grant_type {
+            GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth { id: r.id.clone() }),
+            GrantType::DeviceCode => r
+                .user_code
+                .clone()
+                .map(|user_code| PendingConsentHead::Device { user_code }),
+        }))
     }
 
     fn insert_authorization_request(

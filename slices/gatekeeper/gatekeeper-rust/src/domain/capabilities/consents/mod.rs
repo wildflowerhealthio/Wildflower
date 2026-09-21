@@ -26,7 +26,7 @@ use crate::domain::client_registration::{
 };
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
-use crate::ports::{DeviceUserCodePublisher, SelfHostedRedirectResolver};
+use crate::ports::{PendingConsentPublisher, SelfHostedRedirectResolver};
 
 mod delegation;
 mod device;
@@ -270,11 +270,11 @@ impl<S: GatekeeperStore> ConsentReader<S> {
 /// Decide (approve/deny) pending consent prompts — the `approve`/`deny` sides of
 /// both consent surfaces. Statically gated by `AuthorizationRequest.u`, and it
 /// additionally holds the caller's own [`Grant`] (the approve paths reject any
-/// delegation beyond the approver's authority) plus the device-consent
-/// [`DeviceUserCodePublisher`] port — both lifted from the state.
+/// delegation beyond the approver's authority) plus the
+/// [`PendingConsentPublisher`] port — both lifted from the state.
 pub(crate) struct ConsentDecider<S: GatekeeperStore> {
     store: S,
-    publisher: Arc<dyn DeviceUserCodePublisher>,
+    publisher: Arc<dyn PendingConsentPublisher>,
     approver: Grant,
     redirects: Arc<dyn SelfHostedRedirectResolver>,
     first_party_client_id: Arc<str>,
@@ -288,7 +288,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
     /// against.
     pub(crate) fn new(
         store: S,
-        publisher: Arc<dyn DeviceUserCodePublisher>,
+        publisher: Arc<dyn PendingConsentPublisher>,
         approver: Grant,
         redirects: Arc<dyn SelfHostedRedirectResolver>,
         first_party_client_id: Arc<str>,
@@ -418,7 +418,7 @@ mod tests {
         }
     }
 
-    /// A [`DeviceUserCodePublisher`] that just counts republish calls. Uses an
+    /// A [`PendingConsentPublisher`] that just counts republish calls. Uses an
     /// atomic (not a `Cell`) so it satisfies the port's `Send + Sync` bound.
     #[derive(Default)]
     struct RecordingPublisher {
@@ -431,7 +431,7 @@ mod tests {
         }
     }
 
-    impl DeviceUserCodePublisher for RecordingPublisher {
+    impl PendingConsentPublisher for RecordingPublisher {
         fn republish_active(&self) {
             self.republishes.fetch_add(1, Ordering::Relaxed);
         }
@@ -484,7 +484,10 @@ mod tests {
             )
             .unwrap()
             .is_some());
-        assert_eq!(publisher.count(), 0);
+        // The approval moved this request out of `pending`, so the popup head
+        // has to be recomputed — the queue spans both grant flows, so a
+        // code-flow approval is as much a head transition as a device one.
+        assert_eq!(publisher.count(), 1);
     }
 
     #[test]

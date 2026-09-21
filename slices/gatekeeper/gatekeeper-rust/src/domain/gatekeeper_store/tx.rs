@@ -6,6 +6,7 @@ use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 
@@ -116,14 +117,18 @@ pub trait GatekeeperTx {
         user_code: &str,
     ) -> Result<Option<AuthorizationRequest>, GatekeeperError>;
 
-    /// The `user_code` of the oldest pending, non-expired device-code request —
-    /// the FIFO head the host popup surfaces — or `None` when none exists.
+    /// The oldest pending, non-expired authorization request across both grant
+    /// flows — the FIFO head the host popup surfaces — or `None` when none
+    /// exists. A device row is admitted only with a `user_code` (its lookup key
+    /// on the consent surface); a code row is keyed by `id`.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Infrastructure`] if the read fails or the column can't
-    /// be decoded as `String`.
-    fn oldest_pending_device_user_code(&mut self) -> Result<Option<String>, GatekeeperError>;
+    /// [`GatekeeperError::Infrastructure`] if the read fails or the selected
+    /// columns can't be decoded.
+    fn oldest_pending_consent_head(
+        &mut self,
+    ) -> Result<Option<PendingConsentHead>, GatekeeperError>;
 
     /// Persist a freshly-constructed `AuthorizationRequest`.
     ///

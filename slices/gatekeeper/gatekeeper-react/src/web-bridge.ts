@@ -3,7 +3,7 @@ import type { MessageHandler } from 'effect-messaging-core'
 import type { GatekeeperBridge } from 'gatekeeper-core/bridge'
 import { type AuthStateStore, HostAuthed } from 'react-kitchen-sink'
 
-import type { ActiveDeviceUserCodeStore } from './active-device-consent/store.ts'
+import type { ActivePendingConsentStore } from './active-pending-consent/store.ts'
 
 /**
  * Build the web-side {@link GatekeeperBridge} inbound handler record:
@@ -14,11 +14,12 @@ import type { ActiveDeviceUserCodeStore } from './active-device-consent/store.ts
  *   `wf_auth` cookie the host syncs into the webview. The bearer never travels
  *   the bridge or the JS side, and the page holds no token, so `HostAuthed`
  *   (authed, no page-known expiry) is exactly the signal this platform can make.
- * - `DeviceConsentRequested`: forwards the active pending device-consent head
- *   (or `null` clear) into the SPA's {@link ActiveDeviceUserCodeStore} — the
- *   modal host reads from that store and surfaces the non-dismissable popup
- *   whenever the value is non-null. `null` is meaningful here (no sentinel
- *   guard); the host pushes `null` to dismiss.
+ * - `PendingConsentRequested`: forwards the active pending-consent head
+ *   (or `null` clear) into the SPA's {@link ActivePendingConsentStore} — the
+ *   modal host reads from that store and surfaces the popup
+ *   whenever the value is non-null, branching on the head's `kind` to pick the
+ *   device or authorization-code consent form. `null` is meaningful here (no
+ *   sentinel guard); the host pushes `null` to dismiss.
  *
  * @remarks
  * Takes only the *setters* because no other handler in this record needs the
@@ -27,15 +28,15 @@ import type { ActiveDeviceUserCodeStore } from './active-device-consent/store.ts
  */
 const makeGatekeeperWebHandlers = (
   setAuthState: AuthStateStore['setAuthState'],
-  setActiveDeviceUserCode: ActiveDeviceUserCodeStore['setActiveUserCode']
+  setActivePendingConsent: ActivePendingConsentStore['setActiveHead']
 ): MessageHandler.HandlersFor<(typeof GatekeeperBridge)['HostToWeb']> => ({
   AuthTokenIssued: () =>
     Effect.sync(() => {
       setAuthState(HostAuthed())
     }),
-  DeviceConsentRequested: ({ userCode }) =>
+  PendingConsentRequested: ({ head }) =>
     Effect.sync(() => {
-      setActiveDeviceUserCode(userCode)
+      setActivePendingConsent(head)
     }),
 })
 

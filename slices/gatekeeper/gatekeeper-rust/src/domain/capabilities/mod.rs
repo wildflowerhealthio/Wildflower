@@ -10,7 +10,7 @@
 //! resource type: [`grants`], [`consents`], [`tokens`]. Each capability is
 //! **generic over the store port** (`Cap<S: GatekeeperStore>`) and holds the port
 //! dependencies (store, [`Revocation`](crate::ports::Revocation),
-//! [`DeviceUserCodePublisher`](crate::ports::DeviceUserCodePublisher)) **lifted
+//! [`PendingConsentPublisher`](crate::ports::PendingConsentPublisher)) **lifted
 //! from the state** — never an `Arc<GatekeeperState>` it reaches into — so its
 //! logic is unit-testable against the in-memory fake. The `Capability` bindings
 //! that name the concrete `SqliteGatekeeperStore` and build a capability from the

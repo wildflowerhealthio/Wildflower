@@ -7,6 +7,7 @@ use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, DeviceGrant, Grant};
+use crate::domain::pending_consent::PendingConsentHead;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily};
 use crate::domain::signing_key::SigningKey;
 
@@ -178,13 +179,13 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.pending_authorization_request_by_user_code(user_code))
     }
 
-    /// See [`GatekeeperTx::oldest_pending_device_user_code`].
+    /// See [`GatekeeperTx::oldest_pending_consent_head`].
     ///
     /// # Errors
     ///
-    /// Propagates [`GatekeeperTx::oldest_pending_device_user_code`]'s error.
-    fn oldest_pending_device_user_code(&self) -> Result<Option<String>, GatekeeperError> {
-        self.with_connection(|tx| tx.oldest_pending_device_user_code())
+    /// Propagates [`GatekeeperTx::oldest_pending_consent_head`]'s error.
+    fn oldest_pending_consent_head(&self) -> Result<Option<PendingConsentHead>, GatekeeperError> {
+        self.with_connection(|tx| tx.oldest_pending_consent_head())
     }
 
     /// See [`GatekeeperTx::insert_authorization_request`].
