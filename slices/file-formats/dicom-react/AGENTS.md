@@ -9,7 +9,7 @@ cornerstone initialization and viewport rendering. Sits alongside the pure
 ## Shape
 
 - `src/file-preview.tsx` / `src/file-preview.module.css` — `DicomFilePreview`:
-  parses the file with `parseDicomFile` from `dicom` and renders Patient, Study
+  parses the file with `DicomHeader.tryFromDicomFile` from `dicom` and renders Patient, Study
   and Encoding tag blocks under an image pane. A parse failure renders an
   inline error; an unrenderable instance (no pixel data, codec failure) shows a
   placeholder. The `renderDicomInstance` prop defaults to the real
@@ -34,7 +34,7 @@ cornerstone initialization and viewport rendering. Sits alongside the pure
 - `src/encoding-rows.ts` — `encodingRows`: the Encoding block's rows (transfer
   syntax and SOP class with their names, pixel layout, bit depth, rescale and
   windowing, the Pixel Data element, parser warnings), formatted from a
-  `DicomHeader`. Pure and React-free, so the formatting is tested without a
+  `DicomHeader.Type`. Pure and React-free, so the formatting is tested without a
   DOM.
 
   The block exists because a blank image pane says nothing about **why**. Two

@@ -80,7 +80,7 @@ async function runInitializers(): Promise<void> {
 }
 
 /** {@link runInitializers}, at most once — see {@link initialization}. */
-function initCornerstone(): Promise<void> {
+function idempotentInitCornerstone(): Promise<void> {
   // A failed run is forgotten rather than cached, so a later render retries
   // instead of replaying the same rejection forever.
   initialization ??= runInitializers().catch((error: unknown) => {
@@ -98,7 +98,7 @@ function initCornerstone(): Promise<void> {
  */
 async function renderInstance(bytes: Uint8Array, element: HTMLDivElement): Promise<RenderOutcome> {
   try {
-    await initCornerstone()
+    await idempotentInitCornerstone()
 
     const cornerstoneCore = await import('@cornerstonejs/core')
     const dicomImageLoader = await import('@cornerstonejs/dicom-image-loader')
@@ -142,17 +142,6 @@ async function renderInstance(bytes: Uint8Array, element: HTMLDivElement): Promi
         if (value > scalarMax) scalarMax = value
       }
     }
-    console.info('[dicom-preview] painted', {
-      dimensions: imageData?.dimensions,
-      scalarType: scalars?.constructor.name,
-      scalarLength: scalars?.length,
-      scalarSampledRange: [scalarMin, scalarMax],
-      voiRange: viewport.getProperties().voiRange,
-      invert: viewport.getProperties().invert,
-      canvasSize: [viewport.canvas?.width, viewport.canvas?.height],
-      elementSize: [element.clientWidth, element.clientHeight],
-      cpuRendering: cornerstoneCore.getShouldUseCPURendering(),
-    })
 
     return rendered
   } catch (error) {

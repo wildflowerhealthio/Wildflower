@@ -26,19 +26,22 @@ consumer slices.
   (non-React) `extractPositionedText` seam that fills the schema from PDF bytes
   via `pdfjs-dist`. Moved out of `pdf-anonymizer-react`. The one place PDF
   extraction is integrated, shared by the anonymizer and a future PDF importer.
-- **`dicom`** — pure DICOM Part 10 tag reader: `parseDicomFile` wraps
-  `dicom-parser` into a typed `DicomHeader` of the tags the importer cares
-  about (patient, study, series, instance, equipment modules) plus the Image
-  Pixel module and a `PixelDataDescription` of the (7FE0,0010) element — the
-  decode-debug half, which nothing in the FHIR synthesis reads and a preview
-  needs to explain why a viewer showed nothing. Each model is its own module,
-  and the display names of the values a header carries sit beside them as
-  namespaces: `TransferSyntax.name` / `SopClass.name` for the UIDs,
-  `PlanarConfiguration.meaning` / `PixelRepresentation.meaning` for the Image
-  Pixel enumerations. All four derive from a value rather than reading a tag,
-  so they are functions beside the header, not fields in it — and they live
-  here, not in a view, because what the standard says a value means is not a
-  presentation choice.
+- **`dicom`** — pure DICOM Part 10 tag reader: `DicomHeader.tryFromDicomFile`
+  wraps `dicom-parser` into a typed `DicomHeader.Type` of the tags the importer
+  cares about (patient, study, series, instance, equipment modules) plus the
+  Image Pixel module and a `PixelDataDescription.Type` of the (7FE0,0010)
+  element — the decode-debug half, which nothing in the FHIR synthesis reads
+  and a preview needs to explain why a viewer showed nothing. Every export is
+  namespaced by the model it belongs to: a module owns one concept, names its
+  type `Type`, and hangs the operations over it off the same namespace —
+  `DicomHeader.tryFromDicomFile`, `PersonName.tryFromPnString`,
+  `PixelDataDescription.tryFromDataSet`. The display names of the values a
+  header carries sit beside them the same way: `TransferSyntax.name` /
+  `SopClass.name` for the UIDs, `PlanarConfiguration.meaning` /
+  `PixelRepresentation.meaning` for the Image Pixel enumerations. All four
+  derive from a value rather than reading a tag, so they are functions beside
+  the header, not fields in it — and they live here, not in a view, because
+  what the standard says a value means is not a presentation choice.
   `effect` + `dicom-parser` only. The `test-helpers` subpath exports
   `writeDicom` (a minimal explicit-VR little-endian writer, which also emits
   native or encapsulated Pixel Data) and fast-check arbitraries for

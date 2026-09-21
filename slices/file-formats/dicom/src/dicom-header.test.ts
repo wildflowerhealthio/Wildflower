@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { parsePersonName, parseDicomFile } from './parse-dicom-file.ts'
+import * as DicomHeader from './dicom-header.ts'
 import {
   describePixelDataFixture,
   dicomHeaderArb,
@@ -18,18 +18,18 @@ const MINIMAL_UIDS = {
   SOPInstanceUID: '1.2.3.4.7',
 } as const
 
-describe('parseDicomFile', () => {
+describe('DicomHeader.tryFromDicomFile', () => {
   it('round-trips every field through writeDicom', () => {
     fc.assert(
       fc.property(dicomHeaderArb(), (header) => {
         const bytes = writeDicom(headerToTagMap(header))
-        const result = parseDicomFile(bytes)
+        const result = DicomHeader.tryFromDicomFile(bytes)
 
         expect(Either.isRight(result)).toBe(true)
         if (!Either.isRight(result)) return
 
-        // Whole-value, so a field added to DicomHeader without a matching
-        // read in parseDicomFile (or a write in writeDicom) fails here rather
+        // Whole-value, so a field added to DicomHeader.Type without a matching
+        // read in tryFromDicomFile (or a write in writeDicom) fails here rather
         // than passing unnoticed because nobody added an assertion for it.
         expect(result.right).toEqual(header)
       }),
@@ -43,7 +43,7 @@ describe('parseDicomFile', () => {
         const fixture = { kind: 'encapsulated', fragmentLengths } as const
         const bytes = writeDicom({ ...MINIMAL_UIDS, PixelData: fixture })
 
-        const result = parseDicomFile(bytes)
+        const result = DicomHeader.tryFromDicomFile(bytes)
 
         expect(Either.isRight(result)).toBe(true)
         if (!Either.isRight(result)) return
@@ -70,7 +70,7 @@ describe('parseDicomFile', () => {
       RescaleSlope: '  ',
     })
 
-    const result = parseDicomFile(bytes)
+    const result = DicomHeader.tryFromDicomFile(bytes)
 
     expect(Either.isRight(result)).toBe(true)
     if (!Either.isRight(result)) return
@@ -101,7 +101,7 @@ describe('parseDicomFile', () => {
       RescaleSlope: 0.5,
     })
 
-    const result = parseDicomFile(bytes)
+    const result = DicomHeader.tryFromDicomFile(bytes)
 
     expect(Either.isRight(result)).toBe(true)
     if (!Either.isRight(result)) return
@@ -114,7 +114,7 @@ describe('parseDicomFile', () => {
   })
 
   it('reports no pixel data for an instance that carries none', () => {
-    const result = parseDicomFile(writeDicom(MINIMAL_UIDS))
+    const result = DicomHeader.tryFromDicomFile(writeDicom(MINIMAL_UIDS))
 
     expect(Either.isRight(result)).toBe(true)
     if (!Either.isRight(result)) return
@@ -124,7 +124,7 @@ describe('parseDicomFile', () => {
   })
 
   it('fails on truncated bytes', () => {
-    const result = parseDicomFile(new Uint8Array([0x00, 0x01, 0x02]))
+    const result = DicomHeader.tryFromDicomFile(new Uint8Array([0x00, 0x01, 0x02]))
     expect(Either.isLeft(result)).toBe(true)
   })
 
@@ -135,7 +135,7 @@ describe('parseDicomFile', () => {
       SOPInstanceUID: '1.2.3.5',
     })
     // Remove the study UID element by parsing and checking
-    const result = parseDicomFile(bytes)
+    const result = DicomHeader.tryFromDicomFile(bytes)
     // writeDicom without StudyInstanceUID doesn't write the tag, so it fails
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
@@ -148,7 +148,7 @@ describe('parseDicomFile', () => {
       StudyInstanceUID: '1.2.3.4',
       SOPInstanceUID: '1.2.3.5',
     })
-    const result = parseDicomFile(bytes)
+    const result = DicomHeader.tryFromDicomFile(bytes)
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
       expect(result.left.reason).toContain('SeriesInstanceUID')
@@ -160,76 +160,10 @@ describe('parseDicomFile', () => {
       StudyInstanceUID: '1.2.3.4',
       SeriesInstanceUID: '1.2.3.5',
     })
-    const result = parseDicomFile(bytes)
+    const result = DicomHeader.tryFromDicomFile(bytes)
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
       expect(result.left.reason).toContain('SOPInstanceUID')
     }
-  })
-})
-
-describe('parsePersonName', () => {
-  it('splits family^given into parts', () => {
-    const result = parsePersonName('Smith^John')
-    expect(result).toEqual({ family: 'Smith', given: 'John', text: 'Smith John' })
-  })
-
-  it('handles family only (no caret)', () => {
-    const result = parsePersonName('Smith')
-    expect(result).toEqual({ family: 'Smith', given: '', text: 'Smith' })
-  })
-
-  it('handles multiple components separated by carets', () => {
-    const result = parsePersonName('Smith^John^M^Dr^Jr')
-    expect(result).toEqual({ family: 'Smith', given: 'John', text: 'Smith John M Dr Jr' })
-  })
-
-  it('handles empty components (padding carets)', () => {
-    const result = parsePersonName('Smith^^')
-    expect(result).toEqual({ family: 'Smith', given: '', text: 'Smith' })
-  })
-
-  it('returns undefined for empty string', () => {
-    expect(parsePersonName('')).toBeUndefined()
-  })
-
-  it('returns undefined for whitespace-only string', () => {
-    expect(parsePersonName('   ')).toBeUndefined()
-  })
-
-  it('returns undefined for a delimiters-only value', () => {
-    // What a writer emits for an anonymized or absent name. The trimmed value
-    // is not empty, so the empty-string guard alone lets it through — and a
-    // `{ family: '', given: '', text: '' }` name would reach FHIR synthesis as
-    // `name: [{ text: '' }]`, which FHIR `string` forbids, and would derive the
-    // same patient id for every such file.
-    expect(parsePersonName('^^^')).toBeUndefined()
-    expect(parsePersonName('^')).toBeUndefined()
-    expect(parsePersonName(' ^ ^ ')).toBeUndefined()
-  })
-
-  it('never returns a name whose text is empty', () => {
-    fc.assert(
-      fc.property(
-        fc.array(
-          fc.string({
-            maxLength: 8,
-            unit: fc.constantFrom(...'abc '.split('')),
-          }),
-          { maxLength: 6 }
-        ),
-        (components) => {
-          const parsed = parsePersonName(components.join('^'))
-          if (parsed === undefined) return
-          expect(parsed.text.length).toBeGreaterThan(0)
-        }
-      ),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-
-  it('trims leading/trailing whitespace from components', () => {
-    const result = parsePersonName(' Smith ^ John ')
-    expect(result).toEqual({ family: 'Smith', given: 'John', text: 'Smith John' })
   })
 })

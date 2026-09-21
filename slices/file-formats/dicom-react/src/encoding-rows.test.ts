@@ -1,4 +1,4 @@
-import { parseDicomFile, type DicomHeader } from 'dicom'
+import { DicomHeader } from 'dicom'
 import { describePixelDataFixture, dicomHeaderArb, writeDicom } from 'dicom/test-helpers'
 import { Either } from 'effect'
 import * as fc from 'fast-check'
@@ -14,13 +14,13 @@ const MINIMAL_TAGS = {
 } as const
 
 /** Parse a fixture the way the preview does, failing loudly if it cannot. */
-const headerFrom = (tags: Parameters<typeof writeDicom>[0]): DicomHeader => {
-  const parsed = parseDicomFile(writeDicom(tags))
+const headerFrom = (tags: Parameters<typeof writeDicom>[0]): DicomHeader.Type => {
+  const parsed = DicomHeader.tryFromDicomFile(writeDicom(tags))
   if (Either.isLeft(parsed)) throw new Error(`fixture did not parse: ${parsed.left.reason}`)
   return parsed.right
 }
 
-const rowsByLabel = (header: DicomHeader): Readonly<Record<string, EncodingRow>> =>
+const rowsByLabel = (header: DicomHeader.Type): Readonly<Record<string, EncodingRow>> =>
   Object.fromEntries(encodingRows(header).map((row) => [row.label, row]))
 
 describe('encodingRows', () => {

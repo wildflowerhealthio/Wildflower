@@ -5,8 +5,7 @@
  *
  * @packageDocumentation
  */
-import type { DicomHeader } from 'dicom'
-import { parseDicomFile } from 'dicom'
+import { DicomHeader } from 'dicom'
 import { Effect, Either, ParseResult, Schema } from 'effect'
 import { adoptResource } from 'fhir-r4/identity'
 import type { FhirResource } from 'fhir-r4/resources'
@@ -35,7 +34,7 @@ const labelAdopted = (resource: FhirResource, key: string, title: string): Decod
  * `<Modality> <StudyDescription> ·<StudyDate>`, falling back to
  * `DICOM study` when nothing is available.
  */
-const sectionTitle = (header: DicomHeader): string => {
+const sectionTitle = (header: DicomHeader.Type): string => {
   const parts: string[] = []
   if (header.modality !== undefined) parts.push(header.modality)
   if (header.studyDescription !== undefined) parts.push(header.studyDescription)
@@ -73,7 +72,7 @@ const decodeDicom = (
   Effect.gen(function* () {
     yield* checkTimeZone(settings.timeZone)
 
-    const parseResult = parseDicomFile(file.bytes)
+    const parseResult = DicomHeader.tryFromDicomFile(file.bytes)
     if (Either.isLeft(parseResult)) {
       return yield* Effect.fail(dicomParseAsParseError(parseResult.left.reason))
     }

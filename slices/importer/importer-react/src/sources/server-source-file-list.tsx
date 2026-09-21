@@ -284,7 +284,8 @@ const PreviewContentBody = ({
   readonly fileName: string
   readonly bytes: Uint8Array
 }): JSX.Element => {
-  if (contentType === 'application/dicom') return <DicomFilePreview bytes={bytes} />
+  if (contentType === 'application/dicom')
+    return <DicomFilePreview bytes={bytes} fileName={fileName} />
   if (contentType === 'application/pdf') return <PdfBody blobUrl={blobUrl} fileName={fileName} />
   if (contentType === 'application/json' || contentType === 'application/har+json') {
     return <JsonBody bytes={bytes} />
@@ -302,7 +303,6 @@ const PreviewContents = ({
   bytes,
   contentType,
   onClose,
-  FilePreview,
 }: PreviewContentsProps): JSX.Element => {
   const blobUrl = useBlobUrl(bytes, contentType)
   return (
@@ -315,7 +315,6 @@ const PreviewContents = ({
         blobUrl={blobUrl}
         fileName={fileName}
         bytes={bytes}
-        FilePreview={FilePreview}
       />
       <div className={styles.previewActions}>
         <a
@@ -380,6 +379,7 @@ const useBlobUrl = (bytes: Uint8Array, contentType: string): string => {
  */
 const PdfBody = ({
   blobUrl,
+  fileName,
 }: {
   readonly blobUrl: string
   readonly fileName: string
@@ -387,6 +387,7 @@ const PdfBody = ({
   <iframe
     className={styles.previewFrame}
     src={blobUrl}
+    title={`Preview of ${fileName}`}
     sandbox="allow-scripts"
     data-testid="preview-pdf-frame"
   >

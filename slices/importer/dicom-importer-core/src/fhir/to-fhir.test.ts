@@ -17,7 +17,7 @@ import { fhirDate, fhirDateTime, patientOriginalId, toFhirResources } from './to
  */
 const SETTINGS: DicomSettings = { timeZone: 'America/Toronto' }
 
-const minimalHeader = (overrides: Partial<DicomHeader> = {}): DicomHeader => ({
+const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.Type => ({
   patientName: { family: 'Doe', given: 'John', text: 'Doe John' },
   patientId: 'P001',
   issuerOfPatientId: undefined,

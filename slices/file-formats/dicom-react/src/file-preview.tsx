@@ -6,7 +6,7 @@
  * @packageDocumentation
  */
 
-import { type DicomHeader, parseDicomFile } from 'dicom'
+import { DicomHeader } from 'dicom'
 import { Either } from 'effect'
 import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 
@@ -24,6 +24,7 @@ const ABSENT = '—'
  */
 interface DicomFilePreviewProps {
   readonly bytes: Uint8Array
+  readonly fileName: string
   readonly renderDicomInstance?: typeof renderInstance
   readonly observeDicomViewportResize?: typeof observeViewportResize
 }
@@ -39,7 +40,7 @@ const DicomFilePreview = ({
   renderDicomInstance = renderInstance,
   observeDicomViewportResize = observeViewportResize,
 }: DicomFilePreviewProps): JSX.Element => {
-  const parsed = useMemo(() => parseDicomFile(bytes), [bytes])
+  const parsed = useMemo(() => DicomHeader.tryFromDicomFile(bytes), [bytes])
   return Either.match(parsed, {
     onLeft: (error) => <ParseError reason={error.reason} />,
     onRight: (header) => (
@@ -65,7 +66,7 @@ const ImageAndTags = ({
   renderDicomInstance,
   observeDicomViewportResize,
 }: {
-  readonly header: DicomHeader
+  readonly header: DicomHeader.Type
   readonly bytes: Uint8Array
   readonly renderDicomInstance: typeof renderInstance
   readonly observeDicomViewportResize: typeof observeViewportResize

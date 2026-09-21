@@ -297,7 +297,7 @@ dialog renders in place of its content-type dispatch:
 ```ts
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
   …,
-  'my-format': withSlots(coreRegistry['my-format'], {
+  'my-format': withComponents(coreRegistry['my-format'], {
     SettingsPicker: MySettingsPicker,
   }),
 }

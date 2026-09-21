@@ -45,7 +45,7 @@ The codec ones are the most visible:
 
 ```js
 // what the optimized chunk contains
-new URL(".../dist/esm/shared/decoders/@cornerstonejs/codec-openjpeg/decodewasm", import.meta.url)
+new URL('.../dist/esm/shared/decoders/@cornerstonejs/codec-openjpeg/decodewasm', import.meta.url)
 ```
 
 — a bare package specifier resolved as if it were a relative path.

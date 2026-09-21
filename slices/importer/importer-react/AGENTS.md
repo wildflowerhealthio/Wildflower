@@ -61,12 +61,12 @@ reimplements none.
 `src/registry.ts` is `importer-core`'s closed `format → FileImporter` registry
 with the React parts a format contributes — its `SettingsPicker`, and an
 optional `FilePreview` the server source file list's preview dialog renders in
-place of its content-type dispatch — attached to each entry by `withSlots`, a
+place of its content-type dispatch — attached to each entry by `withComponents`, a
 **spread**, not a subclass: a
 `FileImporter` is a plain record with no prototype, so the spread is total and
 a field added to it cannot be silently dropped on the way through. The importer
 half is registered in `importer-core/src/registry.ts`; this file is the single
-edit point for a format's UI. **`FormatWithPicker<K>`** — named for what it
+edit point for a format's UI. **`FormatWithComponents<K>`** — named for what it
 adds, and defined as `importer-core`'s `BoundFormat<K>` intersected with the
 picker rather than restating it — keeps per-format concrete types against
 `FormatSettings[K]`, so a picker typed against another format's settings fails

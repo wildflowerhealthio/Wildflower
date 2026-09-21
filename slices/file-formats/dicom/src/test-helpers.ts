@@ -1,15 +1,15 @@
 /**
  * Test-only DICOM Part 10 writer and fast-check arbitraries for
- * {@link DicomHeader}. Every DICOM test in the repo synthesizes fixtures
+ * {@link DicomHeader.Type}. Every DICOM test in the repo synthesizes fixtures
  * from these helpers; no `.dcm` files are committed.
  *
  * @packageDocumentation
  */
 import * as fc from 'fast-check'
 
-import type { DicomHeader } from './dicom-header.ts'
-import type { PersonName } from './person-name.ts'
-import type { PixelDataDescription } from './pixel-data-description.ts'
+import type * as DicomHeader from './dicom-header.ts'
+import type * as PersonName from './person-name.ts'
+import type * as PixelDataDescription from './pixel-data-description.ts'
 
 // ---------------------------------------------------------------------------
 // Minimal explicit-VR little-endian DICOM writer
@@ -173,9 +173,9 @@ const writePixelDataElement = (fixture: PixelDataFixture): Uint8Array => {
 }
 
 /**
- * The {@link PixelDataDescription} `parseDicomFile` must report for a fixture
- * `writeDicom` emitted — an oracle derived from the writer's byte layout, so a
- * test can assert the parsed value whole.
+ * The {@link PixelDataDescription.Type} `DicomHeader.tryFromDicomFile` must
+ * report for a fixture `writeDicom` emitted — an oracle derived from the
+ * writer's byte layout, so a test can assert the parsed value whole.
  *
  * @remarks
  * The encapsulated `length` is what `dicom-parser` measures from the element's
@@ -183,7 +183,7 @@ const writePixelDataElement = (fixture: PixelDataFixture): Uint8Array => {
  * offset table item (8 bytes), each fragment's item header plus its padded
  * bytes, and the delimiter's own 8-byte header.
  */
-const describePixelDataFixture = (fixture: PixelDataFixture): PixelDataDescription =>
+const describePixelDataFixture = (fixture: PixelDataFixture): PixelDataDescription.Type =>
   fixture.kind === 'native'
     ? {
         vr: 'OB',
@@ -208,7 +208,7 @@ const writeSqElement = (tagHex: string): Uint8Array => {
 }
 
 /** Format a PersonName as a DICOM PN value. */
-const formatPersonName = (pn: PersonName): string => {
+const formatPersonName = (pn: PersonName.Type): string => {
   if (pn.family === '' && pn.given === '') return pn.text
   return pn.given === '' ? pn.family : `${pn.family}^${pn.given}`
 }
@@ -216,7 +216,7 @@ const formatPersonName = (pn: PersonName): string => {
 /** A map of DICOM tag hex → value for `writeDicom`. */
 type DicomTagMap = Partial<{
   // Patient
-  PatientName: PersonName
+  PatientName: PersonName.Type
   PatientID: string
   IssuerOfPatientID: string
   PatientBirthDate: string
@@ -227,7 +227,7 @@ type DicomTagMap = Partial<{
   StudyTime: string
   StudyDescription: string
   AccessionNumber: string
-  ReferringPhysicianName: PersonName
+  ReferringPhysicianName: PersonName.Type
   RequestedProcedureDescription: string
   RequestAttributesSequence: true
   // Series
@@ -310,7 +310,7 @@ const writeDicom = (tags: DicomTagMap): Uint8Array => {
     if (value !== undefined)
       datasetElements.push({ tag: tagHex, bytes: writeStringElement(tagHex, vr, value) })
   }
-  const addPn = (tagHex: string, pn: PersonName | undefined): void => {
+  const addPn = (tagHex: string, pn: PersonName.Type | undefined): void => {
     if (pn !== undefined)
       datasetElements.push({
         tag: tagHex,
@@ -480,7 +480,7 @@ const dicomTimeArb = (): fc.Arbitrary<string> =>
         `${String(h).padStart(2, '0')}${String(m).padStart(2, '0')}${String(s).padStart(2, '0')}`
     )
 
-const personNameArb = (): fc.Arbitrary<PersonName> =>
+const personNameArb = (): fc.Arbitrary<PersonName.Type> =>
   fc
     .tuple(
       fc.string({
@@ -494,7 +494,7 @@ const personNameArb = (): fc.Arbitrary<PersonName> =>
         unit: fc.constantFrom(...'abcdefghijklmnopqrstuvwxyz '.split('')),
       })
     )
-    .map(([family, given]): PersonName => {
+    .map(([family, given]): PersonName.Type => {
       const f = family.trim() || 'Doe'
       const g = given.trim()
       const text = g === '' ? f : `${f} ${g}`
@@ -530,18 +530,18 @@ const pixelDataFragmentLengthsArb = (): fc.Arbitrary<readonly number[]> =>
  *
  * @remarks
  * Encapsulated fixtures are deliberately absent here. {@link headerToTagMap}
- * has to turn a parsed {@link PixelDataDescription} back into the fixture that
- * produced it, and an encapsulated element's `length` folds every fragment's
- * size into one total that no longer says how the fragments were split. The
- * encapsulated layout is covered directly, over
- * {@link pixelDataFragmentLengthsArb}, in `parse-dicom-file.test.ts`.
+ * has to turn a parsed {@link PixelDataDescription.Type} back into the fixture
+ * that produced it, and an encapsulated element's `length` folds every
+ * fragment's size into one total that no longer says how the fragments were
+ * split. The encapsulated layout is covered directly, over
+ * {@link pixelDataFragmentLengthsArb}, in `dicom-header.test.ts`.
  */
 const nativePixelDataArb = (): fc.Arbitrary<PixelDataFixture> =>
   fc
     .integer({ min: 0, max: 8192 })
     .map((byteLength): PixelDataFixture => ({ kind: 'native', byteLength: evenLength(byteLength) }))
 
-const dicomHeaderArb = (): fc.Arbitrary<DicomHeader> =>
+const dicomHeaderArb = (): fc.Arbitrary<DicomHeader.Type> =>
   fc.record({
     patientName: fc.option(personNameArb(), { nil: undefined }),
     patientId: fc.option(
@@ -647,7 +647,7 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader> =>
  * asked for — this throws, and encapsulated cases build their fixture directly.
  */
 const pixelDataFixtureFrom = (
-  description: PixelDataDescription | undefined
+  description: PixelDataDescription.Type | undefined
 ): PixelDataFixture | undefined => {
   if (description === undefined) return undefined
   if (description.encapsulated) {
@@ -660,7 +660,7 @@ const pixelDataFixtureFrom = (
 }
 
 /** Build a `DicomTagMap` from a `DicomHeader` for round-trip testing. */
-const headerToTagMap = (header: DicomHeader): DicomTagMap => ({
+const headerToTagMap = (header: DicomHeader.Type): DicomTagMap => ({
   PatientName: header.patientName ?? undefined,
   PatientID: header.patientId,
   IssuerOfPatientID: header.issuerOfPatientId,

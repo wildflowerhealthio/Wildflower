@@ -1,6 +1,6 @@
 import type { DicomHeader, PersonName } from 'dicom'
 /**
- * Synthesize FHIR R4 resources from a parsed {@link DicomHeader}: a `Patient`,
+ * Synthesize FHIR R4 resources from a parsed {@link DicomHeader.Type}: a `Patient`,
  * optionally a `ServiceRequest` (when `AccessionNumber` is present), and an
  * `ImagingStudy` with one series carrying one instance.
  *
@@ -84,11 +84,11 @@ const fhirDateTime = (
 }
 
 /**
- * A DICOM `PersonName` as a FHIR `HumanName`. `text` is always non-empty — the
- * `dicom` parser returns `undefined` rather than an empty name — so this never
- * emits the `text: ''` FHIR `string` forbids.
+ * A DICOM `PersonName.Type` as a FHIR `HumanName`. `text` is always non-empty —
+ * the `dicom` parser returns `undefined` rather than an empty name — so this
+ * never emits the `text: ''` FHIR `string` forbids.
  */
-const humanNameWire = (pn: PersonName): Wire => {
+const humanNameWire = (pn: PersonName.Type): Wire => {
   const wire: Wire = { text: pn.text }
   if (pn.family !== '') wire['family'] = pn.family
   if (pn.given !== '') wire['given'] = pn.given.split(/\s+/).filter((p) => p.length > 0)
@@ -99,7 +99,7 @@ const humanNameWire = (pn: PersonName): Wire => {
 // Patient
 // ---------------------------------------------------------------------------
 
-const patientOriginalId = (header: DicomHeader): string | undefined => {
+const patientOriginalId = (header: DicomHeader.Type): string | undefined => {
   if (header.patientId !== undefined && header.patientId !== '') {
     const issuer = header.issuerOfPatientId ?? DICOM_SYSTEM
     return sourceId(['patient-id', issuer, header.patientId])
@@ -110,7 +110,7 @@ const patientOriginalId = (header: DicomHeader): string | undefined => {
   return undefined
 }
 
-const patientWire = (header: DicomHeader): Wire | undefined => {
+const patientWire = (header: DicomHeader.Type): Wire | undefined => {
   const id = patientOriginalId(header)
   if (id === undefined) return undefined
 
@@ -144,10 +144,10 @@ const patientWire = (header: DicomHeader): Wire | undefined => {
 // ServiceRequest — emitted only when AccessionNumber is present
 // ---------------------------------------------------------------------------
 
-const serviceRequestOriginalId = (header: DicomHeader): string =>
+const serviceRequestOriginalId = (header: DicomHeader.Type): string =>
   sourceId(['accession', header.accessionNumber!])
 
-const serviceRequestWire = (header: DicomHeader, patientId: string): Wire | undefined => {
+const serviceRequestWire = (header: DicomHeader.Type, patientId: string): Wire | undefined => {
   if (header.accessionNumber === undefined || header.accessionNumber === '') return undefined
 
   const id = serviceRequestOriginalId(header)
@@ -176,11 +176,11 @@ const serviceRequestWire = (header: DicomHeader, patientId: string): Wire | unde
 // ImagingStudy
 // ---------------------------------------------------------------------------
 
-const imagingStudyOriginalId = (header: DicomHeader): string =>
+const imagingStudyOriginalId = (header: DicomHeader.Type): string =>
   sourceId(['study', header.studyInstanceUid])
 
 const imagingStudyWire = (
-  header: DicomHeader,
+  header: DicomHeader.Type,
   patientId: string,
   serviceRequestId: string | undefined,
   sourceFileId: string | undefined,
@@ -274,7 +274,7 @@ type DicomFhirResources =
  *   Fails with a `ParseError` when a wire object does not satisfy its schema.
  */
 const toFhirResources = (
-  header: DicomHeader,
+  header: DicomHeader.Type,
   settings: DicomSettings,
   sourceFileId?: string
 ): Effect.Effect<readonly DicomFhirResources[], ParseResult.ParseError> =>

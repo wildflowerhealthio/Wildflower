@@ -1,6 +1,6 @@
 /**
  * The Encoding section's rows: the decode-relevant half of a parsed
- * {@link DicomHeader}, formatted for display.
+ * {@link DicomHeader.Type}, formatted for display.
  *
  * @remarks
  * Pure and React-free so the formatting can be tested without a DOM. Every row
@@ -57,7 +57,7 @@ const uidRow = (
  * `columns × rows` — DICOM names the image's height `Rows` and its width
  * `Columns`, so the axis order is spelled out rather than left to be guessed.
  */
-const dimensionsRow = (header: DicomHeader): EncodingRow => {
+const dimensionsRow = (header: DicomHeader.Type): EncodingRow => {
   const size =
     header.columns === undefined || header.rows === undefined
       ? undefined
@@ -88,7 +88,7 @@ const enumeratedRow = (
   }
 }
 
-const bitDepthRow = (header: DicomHeader): EncodingRow => ({
+const bitDepthRow = (header: DicomHeader.Type): EncodingRow => ({
   label: 'Bit depth',
   value: joined([
     header.bitsAllocated === undefined ? undefined : `${header.bitsAllocated} allocated`,
@@ -103,7 +103,7 @@ const bitDepthRow = (header: DicomHeader): EncodingRow => ({
  * informative thing this section can report, so it says so in words rather
  * than leaving an em-dash to be read as "not checked".
  */
-const pixelDataRow = (pixelData: PixelDataDescription | undefined): EncodingRow => {
+const pixelDataRow = (pixelData: PixelDataDescription.Type | undefined): EncodingRow => {
   if (pixelData === undefined) {
     return {
       label: 'Pixel Data',
@@ -135,7 +135,7 @@ const warningsRow = (warnings: readonly string[]): EncodingRow => ({
 })
 
 /** Build the Encoding section's rows, in display order. */
-const encodingRows = (header: DicomHeader): readonly EncodingRow[] => [
+const encodingRows = (header: DicomHeader.Type): readonly EncodingRow[] => [
   uidRow('Transfer Syntax', header.transferSyntaxUid, TransferSyntax.name),
   uidRow('SOP Class', header.sopClassUid, SopClass.name),
   dimensionsRow(header),
