@@ -1,9 +1,11 @@
 # AGENTS.md — slices/importer/dicom-importer-react
 
-The **DICOM UI** for the importer slice: the `DicomSettingsPicker`, the one
-knob the format has — the IANA time zone the acquiring equipment's clock was
-set to. The DICOM format needs no interactive review body; the shell's
-generalized sectioned review covers it.
+The **DICOM UI** for the importer slice: the `DicomSettingsPicker` (the
+equipment time zone — the one knob the format has) and the
+`DicomFilePreview` (re-exported from `dicom-react`: identifying tags under
+a cornerstone-rendered image) for the server source file list's preview dialog.
+The DICOM format needs no interactive review body; the shell's generalized
+sectioned review covers it.
 
 Why a time zone is the knob at all is explained in
 [dicom-importer-core AGENTS.md](../dicom-importer-core/AGENTS.md) and in that
@@ -38,7 +40,8 @@ package's `src/fhir/dates.ts`.
 ## Layering
 
 - **Depends on**: `dicom-importer-core` (the `DicomSettings` type and
-  `runtimeTimeZone`), `importer-fundamentals` (`SettingsPickerProps`),
+  `runtimeTimeZone`), `dicom-react` (`DicomFilePreview` re-export),
+  `importer-fundamentals` (`SettingsPickerProps`),
   `react-kitchen-sink` (`useDebouncedCallback`), `effect`
   (`DateTime.zoneMakeNamed`, to tell a known zone from a typo), `react`.
 - **Depended on by**: `importer-react` (registry entry).

@@ -50,7 +50,7 @@ decode yields one section per file when the header carries a patient identity.
   (`{ url: 'gridfsFileId', valueString: sourceFileId }`), the link from the
   synthesized instance back to the raw source file.
 - `src/decode.ts` — **`decodeDicom`**: parses the DICOM file via
-  `parseDicomFile`, synthesizes FHIR resources via `toFhirResources`, adopts
+  `DicomHeader.tryFromDicomFile`, synthesizes FHIR resources via `toFhirResources`, adopts
   them under `DICOM_SYSTEM`. Takes `(file, settings, source)` — the picked
   file, the import's settings, and the source-file id the importer's batch
   `decode` resolved for it (minted for a local pick, read off the existing

@@ -1,4 +1,4 @@
-import { parseDicomFile } from 'dicom'
+import { DicomHeader } from 'dicom'
 import { writeDicom } from 'dicom/test-helpers'
 import { DateTime, Effect, Either, Option, Schema } from 'effect'
 import { localResourceId } from 'fhir-r4/identity'
@@ -51,7 +51,7 @@ describe('dicomImporter', () => {
   describe('decode', () => {
     /** The `Patient/<id>` reference the header's patient identity derives. */
     const headerPatientReference = (bytes: Uint8Array): string => {
-      const parsed = parseDicomFile(bytes)
+      const parsed = DicomHeader.tryFromDicomFile(bytes)
       if (Either.isLeft(parsed)) throw new Error(parsed.left.reason)
       const originalId = patientOriginalId(parsed.right)
       if (originalId === undefined) throw new Error('expected a patient identity in the header')

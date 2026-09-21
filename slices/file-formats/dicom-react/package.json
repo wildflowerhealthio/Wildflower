@@ -1,13 +1,13 @@
 {
-  "name": "dicom-importer-react",
+  "name": "dicom-react",
   "version": "0.0.0",
   "private": true,
-  "description": "The DICOM format's UI for the importer slice: the debounced time-zone DicomSettingsPicker and its North American zone suggestions — the IANA zone the acquiring equipment's clock was set to, which turns DICOM's offset-less StudyDate/StudyTime into the instant FHIR's dateTime requires. Presentation and interaction only.",
+  "description": "Browser-side DICOM rendering: cornerstone viewport, tag display, and archive preview components. Depends on @cornerstonejs for image decoding and display; the pure tag parser lives in the sibling `dicom` package.",
   "license": "UNLICENSED",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/Assessment-is/wildflower.git",
-    "directory": "slices/importer/dicom-importer-react"
+    "directory": "slices/file-formats/dicom-react"
   },
   "files": [
     "dist"
@@ -26,30 +26,31 @@
     "dev": "vp pack --watch",
     "test": "vp test"
   },
+  "dependencies": {
+    "@cornerstonejs/core": "catalog:",
+    "@cornerstonejs/dicom-image-loader": "catalog:"
+  },
   "devDependencies": {
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
     "@testing-library/user-event": "catalog:",
+    "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "dicom-importer-core": "workspace:*",
-    "dicom-react": "workspace:*",
+    "@typescript/native-preview": "catalog:",
+    "dicom": "workspace:*",
     "effect": "catalog:",
-    "importer-fundamentals": "workspace:*",
+    "fast-check": "catalog:",
     "jsdom": "catalog:",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-kitchen-sink": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
-    "dicom-importer-core": "workspace:*",
-    "dicom-react": "workspace:*",
+    "dicom": "workspace:*",
     "effect": "catalog:",
-    "importer-fundamentals": "workspace:*",
-    "react": "catalog:",
-    "react-kitchen-sink": "workspace:*"
+    "react": "catalog:"
   }
 }

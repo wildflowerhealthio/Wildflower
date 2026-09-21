@@ -290,12 +290,16 @@ const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
 
 **The UI half, in `importer-react/src/registry.ts`.** Add the
 `*-importer-react` package as a dependency of `importer-react`, run
-`vp install`, and add the one React part a format contributes:
+`vp install`, and add the React parts a format contributes — its settings
+picker, and optionally a `FilePreview` the server source file list's preview
+dialog renders in place of its content-type dispatch:
 
 ```ts
 const formatRegistry: { readonly [K in FormatKind]: BoundFormat<K> } = {
   …,
-  'my-format': withSettingsPicker(coreRegistry['my-format'], MySettingsPicker),
+  'my-format': withComponents(coreRegistry['my-format'], {
+    SettingsPicker: MySettingsPicker,
+  }),
 }
 ```
 

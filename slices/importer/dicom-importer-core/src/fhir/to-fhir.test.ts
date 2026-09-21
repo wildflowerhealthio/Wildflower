@@ -17,7 +17,7 @@ import { fhirDate, fhirDateTime, patientOriginalId, toFhirResources } from './to
  */
 const SETTINGS: DicomSettings = { timeZone: 'America/Toronto' }
 
-const minimalHeader = (overrides: Partial<DicomHeader> = {}): DicomHeader => ({
+const minimalHeader = (overrides: Partial<DicomHeader.Type> = {}): DicomHeader.Type => ({
   patientName: { family: 'Doe', given: 'John', text: 'Doe John' },
   patientId: 'P001',
   issuerOfPatientId: undefined,
@@ -43,9 +43,24 @@ const minimalHeader = (overrides: Partial<DicomHeader> = {}): DicomHeader => ({
   columns: 512,
   numberOfFrames: undefined,
   transferSyntaxUid: '1.2.840.10008.1.2.1',
+  // The Image Pixel module describes how the frames are encoded; nothing in
+  // the FHIR synthesis reads it, so the minimal header leaves it absent.
+  samplesPerPixel: undefined,
+  photometricInterpretation: undefined,
+  planarConfiguration: undefined,
+  bitsAllocated: undefined,
+  bitsStored: undefined,
+  highBit: undefined,
+  pixelRepresentation: undefined,
+  rescaleIntercept: undefined,
+  rescaleSlope: undefined,
+  windowCenter: undefined,
+  windowWidth: undefined,
+  pixelData: undefined,
   manufacturer: 'GE MEDICAL SYSTEMS',
   manufacturerModelName: 'Discovery',
   institutionName: 'Test Hospital',
+  parserWarnings: [],
   ...overrides,
 })
 

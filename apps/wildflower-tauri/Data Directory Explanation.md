@@ -68,7 +68,7 @@ The folder is named after the target's `PRODUCT_NAME` (`Wildflower`), not the
 app's `productName` (`Wildflower Host`).
 
 `UIFileSharingEnabled` exposes the directory; it does not make the app a document
-browser. `LSSupportsOpeningDocumentsInPlace`, the key that lets *other* apps edit
+browser. `LSSupportsOpeningDocumentsInPlace`, the key that lets _other_ apps edit
 files there in place, is deliberately not set — nothing here is a document meant
 to be edited by another app, and a live SQLite database least of all.
 
