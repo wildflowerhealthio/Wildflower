@@ -19,11 +19,18 @@ slices/<name>/
 
 Slices may also carry slice-specific packages (e.g. `collector-fundamentals`, `fhir-r4-client-collector`, `fhir-r4` / `fhir-r4-react` under `emr`). A few slices are Rust-only with no `-core` (`persistence`).
 
-Current slices: `anonymizer`, `apps`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `gatekeeper`, `har-recorder`, `http-extraction`, `importer`, `medication`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`, `web-trace`. Verify with `ls slices/` — this list can go stale.
+Current slices: `anonymizer`, `apps`, `branding`, `browser-sniffer`, `collector`, `databases`, `emr`, `file-formats`, `gatekeeper`, `har-recorder`, `health-viewer`, `http-extraction`, `importer`, `medication`, `navigation`, `persistence`, `scopes`, `shared-structures`, `telemetry`, `tunnel`, `web-trace`. Verify with `ls slices/` — this list can go stale.
 
 `http-extraction` owns the abstract fundamentals of extracting entities from HTTP traffic (`HttpResponseKind` / `Extraction` / `UrlMatch` / `Specificity`) plus per-source packages (`fhir-r4-source`, `web-trace-source`) — see [http-extraction/AGENTS.md](./http-extraction/AGENTS.md). Two slices build on it and neither owns it: `collector` runs the vocabulary live against a sniffer webview, and `importer` — the user-facing app flow plus per-file-format import pipelines — runs it over uploaded `.har` archives, previewing extracted FHIR resources it can then opt-in persist — see [importer/AGENTS.md](./importer/AGENTS.md).
 
 `medication` owns a patient's medication list end-to-end — see [medication/AGENTS.md](./medication/AGENTS.md). Its `medication-core` holds the shared name-matching fundamentals (the minimal `Medication` type, name normalization, containment scoring) plus, behind the `medication-core/fhir` subpath, the FHIR R4 `MedicationRequest` adapters that build those values; two features build on it, neither owning the base: `medication-sponsorship-*` matches against patient-support program lists, and `medication-interaction-*` against the DDInter drug-interaction database.
+
+`health-viewer` plots a patient's own observations and medications on one time
+axis — see [health-viewer/AGENTS.md](./health-viewer/AGENTS.md). Its
+`health-viewer-core` holds the whole chart's logic as pure functions (the series
+model, the FHIR `Observation` adapter, axis domains, range presets, the
+catalogue's grouping and search, and the URL codec a shared link round-trips
+through), so it can be property-tested without a DOM.
 
 `web-trace` records a browsing session as FHIR `DocumentReference`s and exports a redacting HAR — see [web-trace/AGENTS.md](./web-trace/AGENTS.md). Its `web-trace-core` sits below both a collector and a React app (`web-trace-react`, the on-device viewer), which is why it is a slice of its own rather than a package inside either. The collector that consumes it, [`web-trace-collector`](./collector/web-trace-collector/AGENTS.md), lives in the `collector` slice — a `*-client-collector` belongs where the descriptor seam is, not next to the codec it imports.
 

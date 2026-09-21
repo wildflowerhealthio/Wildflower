@@ -1,0 +1,36 @@
+{
+  "name": "health-viewer-core",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Pure logic for the synthesized health viewer: the plottable series model, the FHIR R4 `Observation` → series adapter, axis assignment and domains, time-range presets, the catalogue panel's grouping / search, the URL codec for a selection, and the crosshair lookup. No DOM, no platform imports.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "source": "./src/index.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "check": "vp check",
+    "dev": "vp pack --watch",
+    "test": "vp test"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "@typescript/native-preview": "catalog:",
+    "effect": "catalog:",
+    "fast-check": "catalog:",
+    "fhir-r4": "workspace:*",
+    "kitchen-sink": "workspace:*",
+    "typescript": "catalog:",
+    "vite": "catalog:",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "effect": "catalog:",
+    "fhir-r4": "workspace:*"
+  }
+}
