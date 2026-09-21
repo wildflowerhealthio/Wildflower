@@ -126,8 +126,9 @@ pub trait GatekeeperTx {
     ///
     /// [`GatekeeperError::Infrastructure`] if the read fails or the selected
     /// columns can't be decoded.
-    fn oldest_pending_consent_head(&mut self)
-        -> Result<Option<PendingConsentHead>, GatekeeperError>;
+    fn oldest_pending_consent_head(
+        &mut self,
+    ) -> Result<Option<PendingConsentHead>, GatekeeperError>;
 
     /// Persist a freshly-constructed `AuthorizationRequest`.
     ///

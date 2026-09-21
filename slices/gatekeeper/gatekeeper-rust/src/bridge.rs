@@ -61,7 +61,9 @@ pub enum GatekeeperHostToWeb {
     /// Wire: `{"_tag":"PendingConsentRequested","head":null}`,
     /// `{"_tag":"PendingConsentRequested","head":{"kind":"device","userCode":"ABC-123"}}`,
     /// or `{"_tag":"PendingConsentRequested","head":{"kind":"oauth","id":"req-1"}}`.
-    PendingConsentRequested { head: Option<PendingConsentHeadWire> },
+    PendingConsentRequested {
+        head: Option<PendingConsentHeadWire>,
+    },
 }
 
 #[cfg(test)]

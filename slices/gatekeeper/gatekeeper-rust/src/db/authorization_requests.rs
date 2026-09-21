@@ -216,7 +216,9 @@ fn head_from_row(
 ) -> Option<PendingConsentHead> {
     match grant_type {
         GrantType::AuthorizationCode => Some(PendingConsentHead::OAuth { id }),
-        GrantType::DeviceCode => user_code.map(|user_code| PendingConsentHead::Device { user_code }),
+        GrantType::DeviceCode => {
+            user_code.map(|user_code| PendingConsentHead::Device { user_code })
+        }
     }
 }
 

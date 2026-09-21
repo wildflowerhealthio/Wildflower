@@ -32,7 +32,7 @@ const DeviceConsentScreen = ({
  * `_auth` `beforeLoad` gate guarantees a token before this loader runs, so
  * it's a plain `ensureQueryData` — failures propagate to `errorComponent`.
  *
- * The same form is reused by the in-app {@link DeviceConsentModalHost}
+ * The same form is reused by the in-app {@link PendingConsentModalHost}
  * popup (Tauri-only), which dismisses the modal on `onDone` instead of
  * navigating.
  */

@@ -68,16 +68,16 @@ renderApp({
     makeAwaitEmbeddedAuthReady(tokenStore.subscribable, transportReady),
   // Tauri-native transport over per-tag events; only the gatekeeper
   // bridge needs a boot-stable handler (the host pushes the token and
-  // any pending device-consent head before any slice mounts). Other
+  // any pending-consent head before any slice mounts). Other
   // slices register on mount through the coordinator, exactly as on
   // embedded.
-  makeTransport: (_navigate, writeIssuedToken, setActiveDeviceUserCode) =>
+  makeTransport: (_navigate, writeIssuedToken, setActivePendingConsent) =>
     makeTauriTransport({
       bridges,
       initial: {
         [GatekeeperBridge.name]: makeGatekeeperWebHandlers(
           writeIssuedToken,
-          setActiveDeviceUserCode
+          setActivePendingConsent
         ),
       },
     }).then((transport) => {

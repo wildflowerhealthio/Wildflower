@@ -320,6 +320,14 @@ pub(super) async fn handle_authorize_request(
             &requested_scopes,
             grant_coverage.patient.as_deref(),
         )?;
+        // The insert above parked this request as `pending` for the width of
+        // `issue_code`, so a concurrent republish (another flow's insert, a
+        // consent decision, a reaper tick) can have latched the popup onto it.
+        // `issue_code` has since approved it, so recompute the head rather than
+        // leaving the popup on a request `/access/oauth-consents/{id}` now 404s
+        // for. Recomputing can only publish the genuinely-pending head (or
+        // `None`), so this never surfaces the pre-approved request itself.
+        ports::PendingConsentPublisher::republish_active(state.as_ref());
         return Ok(redirect_to_client(&parsed_redirect, &code, &params.state));
     }
 
