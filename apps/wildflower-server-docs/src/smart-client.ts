@@ -33,25 +33,28 @@ const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/wildflower-server-d
  * `web-server-docs-dev` port (5192) in `slices/apps/dev-app-ports.json`.
  *
  * Sent alongside the published URI so a developer can drive the whole sign-in
- * flow without deploying. `/oauth/authorize` matches the redirect by exact
- * string equality, so this MUST equal the loopback entry the gatekeeper seed
- * registers for this client — no trailing slash, matching the loopback origin
- * the dev server is reached at. The seed's `redirect_uris` is the authority: a
- * server whose `wildflower-server-docs` row does not carry this entry rejects the
- * dev-server sign-in at `/oauth/authorize` rather than honouring it.
+ * flow without deploying.
+ *
+ * **This one is not seeded.** Unlike {@link REGISTERED_REDIRECT_URI}, no
+ * migration lists it: `0007_seed_wildflower_server_docs_client`'s
+ * `redirect_uris` carries the published URL alone. It is here because a
+ * Wildflower server is expected to accept a loopback developer redirect on
+ * first use, through the Owner's trust-on-first-use consent (#688–#690); until
+ * that lands, a server that has not had this entry added by hand answers the
+ * dev-server sign-in with `invalid_request` at `/oauth/authorize`. Do not
+ * describe it as registered — the seed is the authority for what is.
  */
 const LOCAL_DEV_REDIRECT_URI = 'http://127.0.0.1:5192'
 
 /**
- * Every redirect URI the seeded row registers, in preference order. The console
- * returns to whichever one matches where it is being served (see
- * {@link signInAvailability}); the published URI is first, so it is the one any
- * reason string and the sign-in environment's default fall back to.
+ * Every redirect URI this console knows a server may honour, in preference
+ * order: the seeded published URL first, then the loopback dev server the Owner
+ * approves on first use. The console returns to whichever one matches where it
+ * is being served (see {@link signInAvailability}); the published URI is first,
+ * so it is the one any reason string and the sign-in environment's default fall
+ * back to.
  */
-const REGISTERED_REDIRECT_URIS: readonly string[] = [
-  REGISTERED_REDIRECT_URI,
-  LOCAL_DEV_REDIRECT_URI,
-]
+const KNOWN_REDIRECT_URIS: readonly string[] = [REGISTERED_REDIRECT_URI, LOCAL_DEV_REDIRECT_URI]
 
 /**
  * The scopes the console asks for: the whole ceiling the seeded row allows.
@@ -79,24 +82,35 @@ const REQUESTED_SCOPES: readonly string[] = [
 const requestedScopeParameter = (): string => REQUESTED_SCOPES.join(' ')
 
 /**
- * The registered redirect URI a console served at `href` returns to, or
- * `undefined` when `href` is not one of the registered consoles.
+ * The `sessionStorage` key this console's pending-authorization record lives at.
+ *
+ * Namespaced with the console's own name because the flow in
+ * `gatekeeper-core/smart-client` is shared: the published console and the hosted
+ * owner UI are both served from `wildflowerhealth.io`, so an unqualified key
+ * would be one key for both, and one page's return leg could consume the other's
+ * request.
+ */
+const PENDING_AUTHORIZATION_KEY = 'wildflower-server-docs.pending-authorization'
+
+/**
+ * The known redirect URI a console served at `href` returns to, or `undefined`
+ * when `href` is none of them.
  *
  * `/oauth/authorize` matches the redirect by exact URL equality, so the string
- * returned here is the one to send — the literal registered entry, not `href`
+ * returned here is the one to send — the literal known entry, not `href`
  * itself. Origin and path are compared with trailing slashes trimmed, so
  * `/wildflower-server-docs` and `/wildflower-server-docs/` — the same page,
  * before and after the host's canonicalising redirect — both count; the query
  * and fragment are the console's own state and never affect the match.
  */
-const registeredRedirectUriFor = (href: string): string | undefined => {
+const knownRedirectUriFor = (href: string): string | undefined => {
   let here: URL
   try {
     here = new URL(href)
   } catch {
     return undefined
   }
-  return REGISTERED_REDIRECT_URIS.find((uri) => {
+  return KNOWN_REDIRECT_URIS.find((uri) => {
     const registered = new URL(uri)
     return (
       here.origin === registered.origin &&
@@ -109,35 +123,38 @@ const registeredRedirectUriFor = (href: string): string | undefined => {
  * Whether the console can complete a sign-in from `href`, the redirect URI it
  * would return to when it can, and why not when it cannot.
  *
- * Only a registered copy can: the seeded client registers a fixed set of
- * redirect URIs (the published console and the loopback dev server), and
- * `/oauth/authorize` matches by exact URL equality, so a copy served from
- * anywhere else (a preview build, a fork's Pages site, an unpinned dev port) has
- * no redirect the server would honour. Detecting that here is what lets the
- * header bar disable its button with a reason instead of sending the reader to
- * an `invalid_request` page.
+ * `/oauth/authorize` matches the redirect by exact URL equality against the
+ * client's `redirect_uris`, and this console knows two entries a server may
+ * hold: the seeded published URL and the loopback dev server the Owner approves
+ * on first use. A copy served anywhere else (a preview build, a fork's Pages
+ * site, an unpinned dev port) has no URI here to send — that is a statement
+ * about what this page knows, **not** a claim that the copy is unregistered, and
+ * the reason below says so. Detecting it is what lets the header bar disable its
+ * button with an explanation instead of sending the reader to an
+ * `invalid_request` page.
  */
 const signInAvailability = (
   href: string
 ):
   | { readonly available: true; readonly redirectUri: string }
   | { readonly available: false; readonly reason: string } => {
-  const redirectUri = registeredRedirectUriFor(href)
+  const redirectUri = knownRedirectUriFor(href)
   if (redirectUri !== undefined) return { available: true, redirectUri }
   return {
     available: false,
     reason:
-      `Sign-in works only on the published console at ${REGISTERED_REDIRECT_URI} — ` +
-      'one of the redirect URIs this client is registered for. Paste a token into a ' +
-      'request’s Authorization field instead.',
+      `This copy of the console is not served from an address it knows how to return to, so ` +
+      `it cannot start a sign-in. The published console at ${REGISTERED_REDIRECT_URI} can. ` +
+      'Paste a token into a request’s Authorization field instead.',
   }
 }
 
 export {
   CLIENT_ID,
+  KNOWN_REDIRECT_URIS,
   LOCAL_DEV_REDIRECT_URI,
+  PENDING_AUTHORIZATION_KEY,
   REGISTERED_REDIRECT_URI,
-  REGISTERED_REDIRECT_URIS,
   REQUESTED_SCOPES,
   requestedScopeParameter,
   signInAvailability,

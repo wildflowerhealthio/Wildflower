@@ -62,9 +62,12 @@ The target lives in the URL:
   applies the gate as a layer.
 - The target doubles as the SMART `iss` for signing in — see below.
 
-The parsing, the document transforms and the Scalar configuration are pure
-functions in `src/server-target.ts`, `src/spec.ts` and `src/configuration.ts`,
-unit-tested beside them; `src/main.ts` is the DOM and history wiring.
+The document transforms and the Scalar configuration are pure functions in
+`src/spec.ts` and `src/configuration.ts`, unit-tested beside them; the `?server=`
+parsing itself lives in `gatekeeper-core/smart-client` (every static Wildflower
+page that targets a reader-chosen server needs it), and `src/server-target.ts`
+holds only this console's fallback — the desktop host's loopback origin.
+`src/main.ts` is the DOM and history wiring.
 
 The configuration also turns off two Scalar defaults that would otherwise reach
 third parties: its `web` layout proxies "send" through `https://proxy.scalar.com`
@@ -104,6 +107,13 @@ in by hand.
 The client is registered by
 `slices/gatekeeper/gatekeeper-rust/migrations/0007_seed_wildflower_server_docs_client`;
 `src/smart-client.ts` is the browser-side reading of that row, and must match it.
+That seed's `redirect_uris` carries **one** entry, the published console URL.
+`src/smart-client.ts` also knows `http://127.0.0.1:5192`, the pinned dev-server
+origin, which no migration lists: a server is expected to accept a loopback
+developer redirect on first use through the Owner's trust-on-first-use consent
+(#688–#690). The console therefore says a copy it is not served from is one it
+"does not know how to return to" — it cannot and does not claim to know what a
+given server's client row holds.
 
 Every fallible step of that is typed: the pure validation (discovery metadata,
 the `state` round trip, the token response) returns an `Either` with a tagged
@@ -116,10 +126,13 @@ Scalar's own OAuth2 support is deliberately **not** used. It authorizes
 per-document, so a six-slice console would ask the reader to sign in six times;
 it drives the flow through a popup whose location it polls, which would boot a
 second copy of this bundle inside the popup; and it generates `state` with
-`Math.random`. The flow above is ~200 lines of dependency-free code in
-`smart-discovery.ts`, `pkce.ts`, `authorization-flow.ts` and `sign-in.ts`, all
-unit-tested, and it puts one token into all six documents through Scalar's
-`authentication` configuration block.
+`Math.random`. The flow above is a few hundred lines of dependency-free code in
+`gatekeeper-core/smart-client` (`smart-discovery.ts`, `pkce.ts`,
+`authorization-flow.ts`, `sign-in.ts`), all unit-tested there and shared with the
+hosted owner UI, and it puts one token into all six documents through Scalar's
+`authentication` configuration block. This console supplies the app-specific
+half — client id, scopes, redirect URI and the `sessionStorage` key the pending
+record is namespaced under — from `src/smart-client.ts`.
 
 ### Where the token lives
 

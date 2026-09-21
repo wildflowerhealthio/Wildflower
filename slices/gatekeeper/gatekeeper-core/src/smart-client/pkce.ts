@@ -2,11 +2,12 @@
  * PKCE (RFC 7636) and the random values the authorization request needs.
  *
  * Written out here rather than pulled from a package: the challenge is one
- * SHA-256 and a base64url encode, and this console's whole point is a bundle
- * with no avoidable dependencies. It is a standard algorithm pinned to the
- * RFC's own known-answer vector in the tests beside this file — the same
- * treatment `kitchen-sink`'s FNV implementation gets — so "matches the spec" is
- * asserted, not asserted-by-comment.
+ * SHA-256 and a base64url encode, and the browser clients that use it are
+ * static pages whose whole point is a bundle with no avoidable dependencies. It
+ * is a standard algorithm pinned to the RFC's own known-answer vector in the
+ * tests beside this file — the same treatment `kitchen-sink`'s FNV
+ * implementation gets — so "matches the spec" is asserted, not
+ * asserted-by-comment.
  *
  * The digest is a `Promise`, so {@link codeChallengeS256} is an `Effect` that
  * fails with {@link PkceUnavailable} — the same shape `web-trace-core`'s
@@ -20,7 +21,7 @@ import { Data, Effect } from 'effect'
 /**
  * Raised when Web Crypto will not produce an S256 challenge — an insecure
  * origin (browsers gate `crypto.subtle` on secure contexts) or a runtime
- * without it. Not recoverable by retrying, and fatal to sign-in: this console
+ * without it. Not recoverable by retrying, and fatal to sign-in: this client
  * does not fall back to a `plain` challenge.
  */
 class PkceUnavailable extends Data.TaggedError('PkceUnavailable')<{
@@ -32,9 +33,16 @@ interface RandomBytesSource {
   getRandomValues(array: Uint8Array<ArrayBuffer>): Uint8Array<ArrayBuffer>
 }
 
-/** The slice of `crypto.subtle` this module needs. */
+/**
+ * The slice of `crypto.subtle` this module needs.
+ *
+ * `data` is spelled out rather than written as `BufferSource`: this package is
+ * a slice core and compiles without the DOM lib, where that alias does not
+ * exist. The union is what `BufferSource` is defined as, so the real
+ * `crypto.subtle` still satisfies this.
+ */
 interface DigestSource {
-  digest(algorithm: 'SHA-256', data: BufferSource): Promise<ArrayBuffer>
+  digest(algorithm: 'SHA-256', data: ArrayBufferView | ArrayBuffer): Promise<ArrayBuffer>
 }
 
 /** `bytes` in unpadded base64url (RFC 4648 §5), the encoding PKCE uses. */
@@ -57,7 +65,7 @@ const createCodeVerifier = (random: RandomBytesSource): string => randomBase64Ur
 
 /**
  * A fresh `state`: 16 random bytes. Its job is CSRF protection on the way back
- * — the console compares it to the value it stashed before redirecting — so it
+ * — the client compares it to the value it stashed before redirecting — so it
  * only has to be unguessable, not long.
  */
 const createState = (random: RandomBytesSource): string => randomBase64Url(16, random)
@@ -65,10 +73,10 @@ const createState = (random: RandomBytesSource): string => randomBase64Url(16, r
 /**
  * The S256 `code_challenge` for `verifier`: base64url(SHA-256(ASCII(verifier))).
  *
- * S256 only. RFC 7636 also defines `plain`, and Scalar's own client silently
- * falls back to it when `crypto.subtle` is missing; this console does not — a
- * `plain` challenge is no protection at all, and `gatekeeper-rust`'s authorize
- * endpoint rejects it anyway.
+ * S256 only. RFC 7636 also defines `plain`, and some clients silently fall back
+ * to it when `crypto.subtle` is missing; this one does not — a `plain`
+ * challenge is no protection at all, and `gatekeeper-rust`'s authorize endpoint
+ * rejects it anyway.
  */
 const codeChallengeS256 = (
   verifier: string,

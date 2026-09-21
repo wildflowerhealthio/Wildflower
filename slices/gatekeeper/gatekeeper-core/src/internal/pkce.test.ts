@@ -2,6 +2,7 @@ import { Effect } from 'effect'
 import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { expect, test } from 'vite-plus/test'
+import { codeChallengeS256 } from '../smart-client/pkce.ts'
 import { computeCodeChallenge } from './pkce.ts'
 
 // RFC 7636 §A.1 known-answer: a fixed code_verifier maps to a known
@@ -61,5 +62,23 @@ test('computeCodeChallenge produces a 43-character output for any input', async 
       expect(challenge).toHaveLength(43)
     }),
     { numRuns: numRunsFor({ base: 25 }) }
+  )
+})
+
+test('computeCodeChallenge is codeChallengeS256 over the ambient Web Crypto', async () => {
+  // There is one S256 implementation in this package; this wrapper only binds
+  // its digest argument. A divergence here would mean a second implementation
+  // had grown back — and a `code_challenge` that no longer matches the verifier
+  // the other half of the flow stashed.
+  await fc.assert(
+    fc.asyncProperty(fc.string({ minLength: 43, maxLength: 128 }), async (verifier) => {
+      const wrapped = await Effect.runPromise(computeCodeChallenge(verifier))
+      const direct = await Effect.runPromise(codeChallengeS256(verifier, globalThis.crypto.subtle))
+
+      expect(wrapped).toBe(direct)
+      expect(wrapped).toHaveLength(43)
+      expect(wrapped).toMatch(/^[A-Za-z0-9_-]+$/)
+    }),
+    { numRuns: numRunsFor({ base: 50 }) }
   )
 })

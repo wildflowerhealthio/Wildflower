@@ -13,7 +13,7 @@ import {
 
 /**
  * A discovery document shaped like the one `emr-rust`'s
- * `build_smart_configuration` serves, trimmed to the fields this console reads.
+ * `build_smart_configuration` serves, trimmed to the fields this client reads.
  */
 const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> => ({
   issuer: 'https://wildflowerhealth.io',
@@ -47,9 +47,9 @@ describe('usableEndpointUrl', () => {
     )
   })
 
-  it('accepts a loopback http endpoint even from the published https console', () => {
+  it('accepts a loopback http endpoint even from the published https page', () => {
     // A desktop host serves its API on loopback, which browsers treat as
-    // potentially trustworthy — the same exception the console's own requests
+    // potentially trustworthy — the same exception the client's own requests
     // rely on.
     expect(usableEndpointUrl('http://127.0.0.1:8080/oauth/token', onSecurePage)).toBe(
       'http://127.0.0.1:8080/oauth/token'
@@ -72,7 +72,7 @@ describe('usableEndpointUrl', () => {
     )
   })
 
-  it('accepts the same plain-http endpoint when the console itself is not secure', () => {
+  it('accepts the same plain-http endpoint when the client itself is not secure', () => {
     // Act / Assert
     expect(usableEndpointUrl('http://server.test/oauth/token', { pageIsSecure: false })).toBe(
       'http://server.test/oauth/token'
@@ -295,7 +295,7 @@ const runToEither = <A, E>(effect: Effect.Effect<A, E>): Promise<Either.Either<A
   Effect.runPromise(Effect.either(effect))
 
 /** The URL a `fetch` argument names, in any of the three forms it can take. */
-const requestUrl = Match.type<RequestInfo | URL>().pipe(
+const requestUrl = Match.type<Parameters<typeof globalThis.fetch>[0]>().pipe(
   Match.withReturnType<string>(),
   Match.when(Match.string, (s) => s),
   Match.when({ href: Match.string }, (u) => u.href),

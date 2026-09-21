@@ -4,9 +4,10 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   CLIENT_ID,
+  KNOWN_REDIRECT_URIS,
   LOCAL_DEV_REDIRECT_URI,
+  PENDING_AUTHORIZATION_KEY,
   REGISTERED_REDIRECT_URI,
-  REGISTERED_REDIRECT_URIS,
   REQUESTED_SCOPES,
   requestedScopeParameter,
   signInAvailability,
@@ -15,15 +16,13 @@ import {
 describe('the seeded client registration', () => {
   it('is the public PKCE client the gatekeeper migration seeds', () => {
     // The values the gatekeeper `wildflower-server-docs` seed registers — the
-    // client id and scopes from `0007_seed_wildflower_server_docs_client`, and
-    // both redirect URIs the seed's `redirect_uris` must carry (the published
-    // console + the loopback dev server). `/authorize` matches the redirect by
-    // exact string equality and clamps the request to `allowed_scopes`, so drift
-    // between these constants and the seed fails the flow outright.
+    // client id, the single `redirect_uris` entry and the scopes from
+    // `0007_seed_wildflower_server_docs_client`. `/authorize` matches the
+    // redirect by exact string equality and clamps the request to
+    // `allowed_scopes`, so drift between these constants and the seed fails the
+    // flow outright.
     expect(CLIENT_ID).toBe('wildflower-server-docs')
     expect(REGISTERED_REDIRECT_URI).toBe('https://wildflowerhealth.io/wildflower-server-docs/')
-    expect(LOCAL_DEV_REDIRECT_URI).toBe('http://127.0.0.1:5192')
-    expect([...REGISTERED_REDIRECT_URIS]).toEqual([REGISTERED_REDIRECT_URI, LOCAL_DEV_REDIRECT_URI])
     expect([...REQUESTED_SCOPES]).toEqual([
       'openid',
       'profile',
@@ -35,6 +34,28 @@ describe('the seeded client registration', () => {
       'system/*.cruds',
       'wildflower/*.cruds',
     ])
+  })
+})
+
+describe('the redirect URIs this console knows', () => {
+  it('lists the seeded published URL first, then the un-seeded loopback dev server', () => {
+    // Only the first entry is in `0007_seed_wildflower_server_docs_client`. The
+    // loopback one is a developer convenience a server accepts on first use
+    // through the Owner's consent (#688–#690), so this list is "what the console
+    // knows how to return to", not "what is registered" — the seed is the
+    // authority for the latter, and it carries exactly one entry.
+    expect(LOCAL_DEV_REDIRECT_URI).toBe('http://127.0.0.1:5192')
+    expect([...KNOWN_REDIRECT_URIS]).toEqual([REGISTERED_REDIRECT_URI, LOCAL_DEV_REDIRECT_URI])
+  })
+})
+
+describe('PENDING_AUTHORIZATION_KEY', () => {
+  it('is namespaced to this console, not to the shared flow', () => {
+    // `gatekeeper-core/smart-client` takes the key as a parameter precisely so
+    // two Wildflower pages on `wildflowerhealth.io` cannot read each other's
+    // pending record. A key that dropped the app prefix would undo that.
+    expect(PENDING_AUTHORIZATION_KEY).toBe('wildflower-server-docs.pending-authorization')
+    expect(PENDING_AUTHORIZATION_KEY.startsWith(`${CLIENT_ID}.`)).toBe(true)
   })
 })
 
@@ -123,6 +144,32 @@ describe('signInAvailability', () => {
     // Assert
     if (availability.available) throw new Error('expected sign-in to be unavailable')
     expect(availability.reason).toContain(REGISTERED_REDIRECT_URI)
+  })
+
+  it('never calls an unrecognised copy unregistered', () => {
+    // The console cannot know what a given server's client row holds — the seed
+    // is one starting point, and the Owner may add a redirect on first use — so
+    // "this page does not know how to return here" is the honest reason, and
+    // "you are not registered" is not the console's to say.
+    fc.assert(
+      fc.property(
+        fc.constantFrom(
+          'http://localhost:5173/',
+          'https://fork.github.io/wildflower-server-docs/',
+          'https://wildflowerhealth.io/wildflower-server-docs-preview/'
+        ),
+        (href) => {
+          // Act
+          const availability = signInAvailability(href)
+
+          // Assert
+          if (availability.available) throw new Error('expected sign-in to be unavailable')
+          expect(availability.reason.toLowerCase()).not.toContain('unregistered')
+          expect(availability.reason.toLowerCase()).not.toContain('registered for')
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
   })
 
   it('refuses an address it cannot even parse', () => {

@@ -6,19 +6,25 @@ import '@scalar/api-reference/style.css'
 import './styles.css'
 
 import {
-  isAuthorizationResponse,
-  searchWithoutAuthorizationResponse,
-} from './authorization-flow.ts'
-import { consoleConfiguration } from './configuration.ts'
-import { searchWithServerUrl, serverUrlFromSearch } from './server-target.ts'
-import {
   beginSignIn,
   completeSignIn,
+  isAuthorizationResponse,
+  searchWithoutAuthorizationResponse,
+  searchWithServerUrl,
   type Session,
   type SignInEnvironment,
   type SignInError,
-} from './sign-in.ts'
-import { REGISTERED_REDIRECT_URI, signInAvailability } from './smart-client.ts'
+} from 'gatekeeper-core/smart-client'
+
+import { consoleConfiguration } from './configuration.ts'
+import { serverUrlFromSearch } from './server-target.ts'
+import {
+  PENDING_AUTHORIZATION_KEY,
+  CLIENT_ID,
+  REGISTERED_REDIRECT_URI,
+  requestedScopeParameter,
+  signInAvailability,
+} from './smart-client.ts'
 
 /**
  * Boots the static Wildflower server-docs console: a Scalar API reference over
@@ -71,9 +77,10 @@ let reference: ReturnType<typeof createApiReference> | undefined
 let session: Session | undefined
 
 /**
- * Whether this copy of the console is one the client is registered for, and the
- * redirect URI it returns to when it is. Computed once from where the page is
- * served; the return leg lands on the same URL, so the value is stable.
+ * Whether this copy of the console is one served from an address it knows how to
+ * return to, and the redirect URI it returns to when it is. Computed once from
+ * where the page is served; the return leg lands on the same URL, so the value
+ * is stable.
  */
 const availability = signInAvailability(window.location.href)
 
@@ -83,9 +90,12 @@ const signInEnvironment: SignInEnvironment = {
   random: window.crypto,
   subtle: window.crypto.subtle,
   store: window.sessionStorage,
-  // The registered redirect matching where this copy runs. When the copy is
-  // unregistered the button is disabled and this is never sent, so the published
-  // URI is a harmless default.
+  pendingKey: PENDING_AUTHORIZATION_KEY,
+  clientId: CLIENT_ID,
+  scope: requestedScopeParameter(),
+  // The known redirect matching where this copy runs. When there is none the
+  // button is disabled and this is never sent, so the published URI is a
+  // harmless default.
   redirectUri: availability.available ? availability.redirectUri : REGISTERED_REDIRECT_URI,
   pageIsSecure: window.location.protocol === 'https:',
 }

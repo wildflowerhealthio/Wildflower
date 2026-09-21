@@ -81,6 +81,30 @@ and 90 days respectively). See the
 - `/access/requests`, `/access/requests/:id` (+ `/approve`, `/deny`) —
   gate decisions on inbound HTTP requests.
 
+## The SMART standalone-launch client
+
+[`gatekeeper-core/smart-client`](./src/smart-client/index.ts) is the browser
+side of the protocol `gatekeeper-rust` serves: a static Wildflower page points
+itself at whichever server the reader runs (`server-target.ts`), asks that
+server how to sign in (`smart-discovery.ts`), mints a PKCE pair (`pkce.ts`),
+leaves for `/oauth/authorize`, and picks the flow back up on the way home
+(`authorization-flow.ts`, `sign-in.ts`).
+
+It stays inside the `-core` layering rule by taking every impure edge — `fetch`,
+Web Crypto, `sessionStorage` — as an injected `SignInEnvironment`. That
+environment also carries everything app-specific: the `client_id`, the requested
+`scope`, the redirect URI and the `sessionStorage` key the pending record lives
+at. The key in particular is the app's to choose and should be namespaced with
+the app's name, because these pages share an origin and an unqualified key would
+let one page's return leg consume another's pending request.
+
+`internal/pkce.ts`'s `computeCodeChallenge` is a thin wrapper that binds
+`codeChallengeS256`'s digest argument to the ambient Web Crypto; there is one
+S256 implementation here, and a property test pins the two together.
+
+This is **not** the fhirclient-based standalone launch in
+`slices/emr/fhir-r4-react/src/smart/*`, which the self-hosted React apps use.
+
 ## SPA page paths
 
 The gatekeeper API redirects to URLs under `/gatekeeper/`, which the host app
