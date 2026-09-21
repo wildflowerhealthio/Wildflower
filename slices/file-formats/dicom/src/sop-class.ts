@@ -10,8 +10,6 @@
  * @packageDocumentation
  */
 
-import { lookupUidName } from './uid-name-table.ts'
-
 /**
  * The storage SOP classes worth naming. A class that is not an image class —
  * Structured Report, Presentation State, Encapsulated PDF — is the common
@@ -45,6 +43,7 @@ const NAMES: Readonly<Record<string, string>> = {
 }
 
 /** The display name for a SOP Class UID, or `undefined` if unrecognized. */
-const name = (uid: string): string | undefined => lookupUidName(NAMES, uid)
+const name = (uid: string): string | undefined =>
+  Object.hasOwn(NAMES, uid) ? NAMES[uid] : undefined
 
 export { name }

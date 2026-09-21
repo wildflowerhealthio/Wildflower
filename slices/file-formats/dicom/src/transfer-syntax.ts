@@ -11,8 +11,6 @@
  * @packageDocumentation
  */
 
-import { lookupUidName } from './uid-name-table.ts'
-
 /**
  * The transfer syntaxes a browser-side viewer is likely to be handed, with the
  * lossy ones marked — a lossy syntax that renders at all still renders
@@ -46,6 +44,7 @@ const NAMES: Readonly<Record<string, string>> = {
 }
 
 /** The display name for a Transfer Syntax UID, or `undefined` if unrecognized. */
-const name = (uid: string): string | undefined => lookupUidName(NAMES, uid)
+const name = (uid: string): string | undefined =>
+  Object.hasOwn(NAMES, uid) ? NAMES[uid] : undefined
 
 export { name }
