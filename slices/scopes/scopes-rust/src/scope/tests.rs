@@ -242,4 +242,59 @@ proptest! {
         let via_string = serde_json::to_string(&canonical).unwrap();
         prop_assert_eq!(via_scope, via_string);
     }
+
+    /// [`Grant::collapse`] is an access-preserving rewrite: it may only shorten
+    /// the list, it reaches exactly the same single-interaction atoms as before,
+    /// it still admits every scope it started with, and running it twice changes
+    /// nothing. These are the properties `widened_scopes` leans on to be safe on
+    /// an authorization ceiling.
+    #[test]
+    fn collapse_preserves_access_shrinks_and_is_idempotent(
+        raw in prop::collection::vec(
+            (
+                prop::sample::select(vec!["patient", "user", "system"]),
+                prop::sample::select(vec!["*", "Patient", "Observation"]),
+                // Both grammars, so the letter/word partition is exercised.
+                prop::sample::select(vec![
+                    "c", "r", "u", "d", "s", "rs", "cud", "cruds", "read", "write", "*",
+                ]),
+            ),
+            0..8,
+        ),
+    ) {
+        let before = Grant::parse(
+            raw.iter().map(|(ctx, rtype, perms)| format!("{ctx}/{rtype}.{perms}")),
+        );
+        let mut after = before.clone();
+        after.collapse();
+
+        // Never longer than what it started with.
+        prop_assert!(after.scopes.len() <= before.scopes.len());
+
+        // Every input scope is still admitted — nothing was consented away.
+        for scope in &before.scopes {
+            prop_assert!(after.covers(scope), "collapse dropped {}", scope);
+        }
+
+        // Identical access, atom by atom: one interaction on one concrete
+        // resource is the finest thing a grant can confer.
+        for ctx in ["patient", "user", "system"] {
+            for rtype in ["Patient", "Observation", "Condition"] {
+                for atom in ["c", "r", "u", "d", "s"] {
+                    let probe = Scope::from(format!("{ctx}/{rtype}.{atom}").as_str());
+                    prop_assert_eq!(
+                        after.covers(&probe),
+                        before.covers(&probe),
+                        "collapse changed access to {}",
+                        probe
+                    );
+                }
+            }
+        }
+
+        // A second pass is a no-op.
+        let mut twice = after.clone();
+        twice.collapse();
+        prop_assert_eq!(twice.render(), after.render());
+    }
 }

@@ -21,6 +21,13 @@ type OAuthConsentResult = Schema.Schema.Type<typeof OAuthConsent.OAuthConsentRes
 type ApproveOAuthPayload = {
   readonly approvedScopes: readonly string[]
   readonly patient: string | null
+  /**
+   * Whether the Owner ticked the trust-on-first-use acknowledgment checkbox.
+   * The server requires (and enforces) `true` whenever the consent's
+   * `registration.status` is `new` or `changed`; send `false` for `registered`,
+   * where no checkbox is shown.
+   */
+  readonly acknowledgedRegistration: boolean
 }
 
 const isConsentNotFound = (error: unknown): boolean =>
@@ -98,6 +105,7 @@ const useOAuthConsentMutation = (): UseMutationResult<
                 payload: {
                   approvedScopes: [...variables.payload.approvedScopes],
                   patient: variables.payload.patient,
+                  acknowledgedRegistration: variables.payload.acknowledgedRegistration,
                 },
               })
             : c['oauth-consent'].DenyOAuthConsent({ path: { id: variables.id } })

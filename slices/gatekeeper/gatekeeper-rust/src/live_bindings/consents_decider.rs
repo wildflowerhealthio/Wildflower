@@ -31,6 +31,12 @@ impl Capability for LiveConsentDecider {
         // `Arc<GatekeeperState>` implements `DeviceUserCodePublisher` (via the bare
         // state's impl), so it coerces to the port handle the capability holds.
         let publisher: Arc<dyn DeviceUserCodePublisher> = state.clone();
-        ConsentDecider::new(state.store.clone(), publisher, granted)
+        ConsentDecider::new(
+            state.store.clone(),
+            publisher,
+            granted,
+            state.self_hosted_redirects.clone(),
+            state.first_party_client_id.clone(),
+        )
     }
 }

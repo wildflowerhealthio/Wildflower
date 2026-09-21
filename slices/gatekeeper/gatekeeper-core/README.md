@@ -17,8 +17,11 @@ The tables live in `gatekeeper-rust`'s store; they are described here
 because the wire schemas in this package mirror their rows.
 
 - `clients` — registered OAuth clients with per-client `redirectUris`
-  allowlist, `allowedScopes` cap, and optional `secretHash` for
-  confidential clients. Every accepted `client_id` resolves here.
+  allowlist, `allowedScopes`, and optional `secretHash` for confidential
+  clients. `/oauth/token` and the device flow require a row; the
+  authorization-code flow registers or widens a row when the Owner approves
+  a `new` or `changed` consent prompt (trust on first use — see the
+  [Jargon Explanation](../docs/Jargon%20Explanation.md#trust-on-first-use)).
 - `authorizationRequests` — pending OAuth grants. A `grantType`
   discriminator (matching the wire `grant_type` parameter) splits
   between `'authorization_code'` (browser-side OAuth code grant) and
@@ -52,7 +55,10 @@ and 90 days respectively). See the
 ## Routes
 
 - `/.well-known/jwks.json` — public JWKs for token verification.
-- `/oauth/authorize` — OAuth 2.0 authorization endpoint. Always
+- `/oauth/authorize` — OAuth 2.0 authorization endpoint. An unknown
+  `client_id`, an unregistered `redirect_uri`, or scopes outside the
+  registration are carried to the consent prompt as a registration verdict
+  rather than rejected (`wildflower-host` excepted). Always
   redirects to the polling page (`/gatekeeper/oauth-polling/:id`); the
   browser's JS picks same-device-vs-cross-device based on whether it's
   already authenticated (the `wf_auth` cookie on web, the host-provided
@@ -65,7 +71,9 @@ and 90 days respectively). See the
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.
 - `/access/oauth-consents/:id` (+ `/approve`, `/deny`) — Owner actions
-  on a pending OAuth code-flow request.
+  on a pending OAuth code-flow request. The consent carries a `registration`
+  verdict (`registered` / `new` / `changed`); approving a `new` or `changed`
+  one requires `acknowledgedRegistration: true`.
 - `/access/devices/:userCode` (+ `/approve`, `/deny`) — Owner actions
   on a pending device-flow request.
 - `/access/grants`, `/access/grants/:id` — list / inspect / revoke

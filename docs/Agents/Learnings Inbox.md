@@ -271,6 +271,32 @@ the literal and fakes only the data part.
 **Learning**: When a per-item decode is keyed within itself and something above merges several items' output into one keyed collection, the _merger_ must namespace the keys — the decode cannot, because it is not given the batch. The importer's per-file `decodeOne` keys resources within one file (DICOM's fixed `patient` / `service-request` / `imaging-study`, HAR's `har-entry-<index>` counting from zero per archive), which was correct when a review unit was a file. Collapsing the unit to a _format_ made the batch decode merge every claimed file's sections into one review while the selection, the server-diff verdicts and the write plan stayed keyed by `(format, key)` — so two DICOM images collided on all three keys and unticking one file's row silently dropped the other's resource. Nothing failed and nothing type-erred: a duplicate key in a `Set` of exclusions is just a smaller set. The fix belongs in the one place that can see the batch (`buildPerFileDecode` prefixes each file's keys with its slot), and the same reasoning applies to the ids: a slot must lead with the file's _index_, not its name, because picking two files with the same name out of two folders is ordinary and a name-only id collides on what a React key and a result id rely on. Worth a property test that the merged keys are distinct — it is the invariant the whole selection model rests on, and a per-file test cannot see it.
 **Suggested destination**: Strategies / review lessons
 
+## markdownlint's emphasis style is "first seen wins" per file
+
+`MD049/emphasis-style` runs in `consistent` mode, so the first emphasis marker in
+a file sets the rule for the rest of it. Inserting a `*word*` near the top of a
+doc that otherwise uses `_word_` flags every _later_ underscore, hundreds of
+lines below the edit — the reported lines are not where the problem is. Match
+the file's existing marker (the gatekeeper docs use underscores).
+
+## The gatekeeper OpenAPI snapshot covers `/oauth/*` only, not `/access/*`
+
+`documented_router()` in `gatekeeper-rust` deliberately leaves the Owner-facing
+`/access` surface out of the committed `openapi/gatekeeper-oauth.openapi.json`,
+so a change to a consent body (e.g. the `registration` verdict, the approve
+body's `acknowledgedRegistration`) never shows up in the snapshot and
+`UPDATE_OPENAPI=1` regenerates only the `/oauth` prose. The TS mirror in
+`gatekeeper-core/src/http-api-definition/*.ts` plus a wire round-trip test is
+the only drift guard for those shapes today.
+
+## `upsert_client` cannot disable a client
+
+`db/clients.rs::upsert_client`'s `ON CONFLICT DO UPDATE` omits `disabled_at`
+(by design — a re-seed must not resurrect an admin disable), which also means
+nothing in the crate can _set_ it: a test for "disabled clients are rejected"
+has to insert the row already disabled. An admin disable surface needs its own
+store method.
+
 ## Tauri owns iOS signing: it reads `IOS_MOBILE_PROVISION`, and rewrites `gen/apple` every build
 
 **Discovered during**: claude/mac-notarization-error-hgxawr (iOS TestFlight job)

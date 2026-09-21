@@ -2,8 +2,8 @@
 //!
 //! [`scope`] is the structured, owned [`Scope`] model — parse, render, and
 //! coverage. [`smart`] keeps the string-facing grammar entry points
-//! (`grantable_scopes`, `allowed_scope_covers`) that gatekeeper's consent
-//! handlers call, implemented on top of the model.
+//! (`grantable_scopes`, `allowed_scope_covers`, `widened_scopes`) that
+//! gatekeeper's consent handlers call, implemented on top of the model.
 
 pub mod scope;
 pub mod smart;
@@ -12,7 +12,9 @@ pub use scope::{
     ContextLevel, FhirResourceScope, Grant, KnownScope, Permission, ResourceType, Scope,
     UnknownScope, WildflowerResource, WildflowerResourceScope, WildflowerResourceType,
 };
-pub use smart::{allowed_scope_covers, grantable_scopes, with_alternate_canonical_forms};
+pub use smart::{
+    allowed_scope_covers, grantable_scopes, widened_scopes, with_alternate_canonical_forms,
+};
 
 /// Render a slice of [`Scope`]s to their canonical wire strings — the shape
 /// stored in client `allowed_scopes`/grant rows and minted into a token's

@@ -9,6 +9,7 @@ import { PatientPillPicker, ScopePicker } from 'scopes-react'
 import { useOAuthConsentMutation } from '../../queries/index.ts'
 import type { OAuthConsentResource, OAuthConsentResult } from '../../queries/index.ts'
 import { AppAvatar } from './app-avatar.tsx'
+import { RegistrationWarning } from './registration-warning.tsx'
 import { usePatientOptions } from './use-patient-options.ts'
 import styles from '../../styles/consent-card.module.css'
 
@@ -53,6 +54,11 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
   )
   const [resultError, setResultError] = useState<string | null>(null)
   const [patientError, setPatientError] = useState<string | null>(null)
+  // The trust-on-first-use acknowledgment: required before Approve is enabled
+  // whenever `registration.status` is `new`/`changed`; irrelevant (and never
+  // shown) for `registered`, so it always sends `false` in that case.
+  const [registrationAcknowledged, setRegistrationAcknowledged] = useState(false)
+  const registrationNeedsAcknowledgment = consent.registration.status !== 'registered'
   const { options: patients } = usePatientOptions(hasPatientScope)
 
   // Whether a patient-context scope is still granted in the *current draft*. The
@@ -110,6 +116,9 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
           // Only bind a launch patient when the draft still grants a patient-context
           // scope; a patient chosen before pruning all patient scopes is dropped.
           patient: draftHasPatientScope ? draft.patient : null,
+          // `registered` shows no checkbox and always sends `false`; the server
+          // ignores the flag for that status anyway.
+          acknowledgedRegistration: registrationNeedsAcknowledgment && registrationAcknowledged,
         },
       },
       {
@@ -182,6 +191,14 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
         </div>
       ) : null}
 
+      <RegistrationWarning
+        registration={consent.registration}
+        clientId={consent.clientId}
+        redirectUri={consent.redirectUri}
+        acknowledged={registrationAcknowledged}
+        onAcknowledgeChange={setRegistrationAcknowledged}
+      />
+
       <ScopePicker subjectName={appName} request={request} draft={draft} onDraftChange={setDraft} />
 
       <div className={styles['footer']}>
@@ -199,8 +216,13 @@ const OAuthConsentForm = ({ consent, onDone }: OAuthConsentFormProps): JSX.Eleme
             className={cn('button-2 filled', styles['allow'])}
             // A fully-pruned draft serializes to no scopes, which the backend
             // treats as a deny — block the approve action rather than let an
-            // empty grant submit as an accidental denial.
-            disabled={submitting || !GrantDraft.hasScopes(draft)}
+            // empty grant submit as an accidental denial. A `new`/`changed`
+            // registration additionally gates on the acknowledgment checkbox.
+            disabled={
+              submitting ||
+              !GrantDraft.hasScopes(draft) ||
+              (registrationNeedsAcknowledgment && !registrationAcknowledged)
+            }
             onClick={handleApprove}
           >
             Allow access

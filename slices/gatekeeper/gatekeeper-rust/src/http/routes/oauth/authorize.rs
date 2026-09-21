@@ -5,7 +5,6 @@ use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
-use std::collections::HashSet;
 use url::Url;
 use utoipa::IntoParams;
 use uuid::Uuid;
@@ -13,8 +12,11 @@ use uuid::Uuid;
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
-use crate::domain::client::{Client, RegisteredRedirectUri};
-use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
+use crate::domain::client::Client;
+use crate::domain::client_redirect::{
+    build_client_error_redirect_url, build_client_redirect_url, redirect_is_allowlisted,
+};
+use crate::domain::client_registration::{classify_registration, PendingRegistration};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
 use crate::domain::GatekeeperStore;
@@ -22,7 +24,6 @@ use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
-use crate::ports::SelfHostedRedirectTopology;
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
@@ -59,10 +60,12 @@ fn found_redirect(location: &str) -> Response {
 /// `Response`) so `Result<_, AuthorizeError>` doesn't trip
 /// `clippy::result_large_err`.
 pub(super) enum AuthorizeError {
-    /// Failure before `client_id` / `redirect_uri` are trusted (unknown or
-    /// disabled client, malformed/un-allowlisted `redirect_uri`). Renders a
-    /// local HTML page — redirecting to an unvalidated URI would be an open
-    /// redirect (RFC 6749 §4.1.2.1).
+    /// A failure on a request whose `redirect_uri` is not trusted — a disabled
+    /// client, a malformed or non-http(s) URI, an unregistered redirect for the
+    /// first-party client, or (because the client is new to this gatekeeper or
+    /// the redirect is not on its registration) any later validation failure.
+    /// Renders a local HTML page — redirecting to an unvouched-for URI would be
+    /// an open redirect (RFC 6749 §4.1.2.1).
     LocalPage(OAuthErrorKind),
     /// A spec'd error once `redirect_uri` is validated — 302 back to the
     /// client. Carries the already-built `Location` (the client `redirect_uri`
@@ -177,6 +180,15 @@ pub struct AuthorizeParams {
 /// 3. Approval 302s the browser back to the client's `redirect_uri` with
 ///    `code` + `state` (§4.1.2); the client then redeems the short-lived
 ///    code at `POST /oauth/token` (§4.1.3) with its PKCE verifier.
+///
+/// Clients other than the first-party host are **trusted on first use**: an
+/// unknown `client_id`, an unregistered `redirect_uri`, and scopes outside the
+/// registration are all carried to the Owner's prompt as a registration warning
+/// rather than rejected here, and nothing is written to the `clients` table
+/// until the Owner approves. Such a request never takes the grant fast path,
+/// and while its redirect is untrusted every other failure renders the local
+/// HTML page instead of redirecting. `wildflower-host` keeps the strict
+/// treatment, and a disabled client is rejected either way.
 #[utoipa::path(
     get,
     tag = "OAuth 2.0",
@@ -184,7 +196,7 @@ pub struct AuthorizeParams {
     params(AuthorizeParams),
     responses(
         (status = 302, description = "Redirect to the client redirect_uri or the owner approval UI"),
-        (status = 400, description = "Local HTML error page (untrusted client / redirect_uri)"),
+        (status = 400, description = "Local HTML error page (untrusted redirect_uri)"),
         (status = 503, description = "No active signing key")
     )
 )]
@@ -207,25 +219,77 @@ pub(super) async fn handle_authorize_request(
         );
     }
 
-    // Validate in two phases: client/redirect_uri first (failures render a
-    // local page), then the redirectable params (failures 302 back). Each
-    // helper returns the values the rest of the flow needs or the matching
-    // `AuthorizeError`.
-    let client = validate_and_load_client(&state, &params)?;
+    // Validate in two phases: client/redirect_uri first (failures always render a
+    // local page), then the redirectable params — which 302 back only once the
+    // redirect is trusted. Each helper returns the values the rest of the flow
+    // needs or the matching `AuthorizeError`.
+    let is_first_party = params.client_id.as_str() == &*state.first_party_client_id;
+    let client = load_client(&state, &params, is_first_party)?;
     // A self-hosted app registers an app-relative redirect entry; resolve its
-    // topology so `validate_redirect_url` can expand it against this request's
+    // topology so the allowlist check can expand it against this request's
     // provenance. `None` for a non-self-hosted client, whose relative entries (if
     // any) then match nothing.
     let redirect_topology = state.self_hosted_redirects.resolve(&params.client_id);
-    let parsed_redirect =
-        validate_redirect_url(&params, &client, &origin, redirect_topology.as_ref())?;
-    validate_code(&params, &parsed_redirect)?;
-    let requested_scopes = validate_requested_scopes(&params, &client, &parsed_redirect)?;
+    let parsed_redirect = parse_redirect_url(&params)?;
+    // The served origin comes from the trusted extractor; if it somehow can't
+    // parse, no app-relative entry resolves (absolute entries still match).
+    let served = Url::parse(&origin).ok();
+    let redirect_allowlisted = client.as_ref().is_some_and(|client| {
+        redirect_is_allowlisted(
+            client,
+            &parsed_redirect,
+            served.as_ref(),
+            redirect_topology.as_ref(),
+        )
+    });
+    if is_first_party && !redirect_allowlisted {
+        // The first-party host is NOT trusted on first use: an unregistered
+        // redirect for it is still the local "not allowed" page.
+        tracing::warn!(
+            client_id = %params.client_id,
+            redirect_uri = %params.redirect_uri,
+            "redirect_uri not allowed for the first-party client"
+        );
+        return Err(AuthorizeError::LocalPage(
+            OAuthErrorKind::RedirectUriNotAllowed,
+        ));
+    }
+    // A redirect is trustworthy only when a client we already know already
+    // registered it. Until the Owner approves, every later failure on such a
+    // request renders locally instead of 302ing to a URI we can't vouch for
+    // (RFC 6749 §4.1.2.1).
+    validate_code(&params, &parsed_redirect, redirect_allowlisted)?;
+    let requested_scopes: Vec<String> = params
+        .scope
+        .split_whitespace()
+        .map(str::to_string)
+        .collect();
+    // Only the first-party host is held to its allowlist here; `load_client`
+    // already rejected an unknown first-party `client_id`, so the `Some` always
+    // matches when `is_first_party`.
+    if let (true, Some(host)) = (is_first_party, client.as_ref()) {
+        ensure_first_party_scopes_allowed(&params, host, &parsed_redirect, &requested_scopes)?;
+    }
+
+    // How this request compares against the registration as it stands now — the
+    // warning the consent prompt renders, and the gate on the fast path below.
+    let registration = classify_registration(&PendingRegistration {
+        maybe_existing_client: client.as_ref(),
+        redirect_uri: &parsed_redirect,
+        requested_scopes: &requested_scopes,
+        served_origin: served.as_ref(),
+        topology: redirect_topology.as_ref(),
+    });
 
     // Check for an existing grant that pre-approves some or all scopes for
-    // this (client, redirect_uri) pair.
-    let grant_coverage =
-        resolve_existing_grant_coverage(&state, &params, &parsed_redirect, &requested_scopes)?;
+    // this (client, redirect_uri) pair. A request that steps outside the
+    // registration never fast-paths, however well an old grant covers it: the
+    // Owner has not yet seen *this* app/redirect/scope combination.
+    let grant_coverage = if registration.is_registered() {
+        resolve_existing_grant_coverage(&state, &params, &parsed_redirect, &requested_scopes)?
+    } else {
+        ExistingGrantCoverage::none()
+    };
 
     // Persist the pending request — every path from here on out references
     // it by `request_id`.
@@ -274,207 +338,142 @@ fn ensure_active_signing_key(state: &GatekeeperState) -> Result<(), AuthorizeErr
     }
 }
 
-/// Load the client and validate it exists and is enabled (RFC 6749 §4.1.2.1).
-/// An unknown or disabled client can't be trusted as a redirect target, so the
-/// failure renders a local HTML page rather than a redirect.
-fn validate_and_load_client(
+/// Load the client row named by the request, if any.
+///
+/// A **disabled** client is rejected outright with the local HTML page, as is an
+/// unknown `client_id` for the first-party host (`is_first_party`). Every other
+/// unknown `client_id` returns `None` — a `New` registration verdict for the
+/// consent prompt; nothing is persisted for it here.
+fn load_client(
     state: &GatekeeperState,
     params: &AuthorizeParams,
-) -> Result<Client, AuthorizeError> {
-    let client = state
-        .store
-        .client_by_id(&params.client_id)?
-        .ok_or(AuthorizeError::LocalPage(OAuthErrorKind::UnknownClient))?;
+    is_first_party: bool,
+) -> Result<Option<Client>, AuthorizeError> {
+    let Some(client) = state.store.client_by_id(&params.client_id)? else {
+        return if is_first_party {
+            Err(AuthorizeError::LocalPage(OAuthErrorKind::UnknownClient))
+        } else {
+            Ok(None)
+        };
+    };
     if client.disabled_at.is_some() {
         return Err(AuthorizeError::LocalPage(OAuthErrorKind::DisabledClient));
     }
-    Ok(client)
+    Ok(Some(client))
 }
 
-/// Validate the `redirect_uri` against `client`: a well-formed http/https URL
-/// (RFC 6749 §4.1.2.1) that matches the client's allowlist. An
-/// [`Absolute`](RegisteredRedirectUri::Absolute) entry matches by exact URL
-/// equality; an [`AppRelative`](RegisteredRedirectUri::AppRelative) entry is
-/// resolved against the self-hosted app's own origin **for this request's
-/// provenance** (from `served_origin` + `topology`) and then matched exactly, so
-/// one registration covers both the on-device and tunneled launch origins
-/// without either being knowable at seed time. A `redirect_uri` that isn't
-/// trusted can't be a redirect target, so failures render a local HTML page.
-/// Returns the parsed URL the redirect flow uses thereafter.
-fn validate_redirect_url(
-    params: &AuthorizeParams,
-    client: &Client,
-    served_origin: &str,
-    topology: Option<&SelfHostedRedirectTopology>,
-) -> Result<Url, AuthorizeError> {
+/// Parse the presented `redirect_uri` and check its scheme: it must be a
+/// well-formed http/https URL (RFC 6749 §4.1.2.1). These two failures are
+/// unconditional local HTML pages — a URI we can't even parse (or that names a
+/// scheme we won't emit) is never a redirect target.
+///
+/// Whether the parsed URI is one the client *registered* is a separate question
+/// ([`redirect_is_allowlisted`]) that feeds the registration verdict rather than
+/// rejecting the request — see [`client_registration`](crate::domain::client_registration).
+fn parse_redirect_url(params: &AuthorizeParams) -> Result<Url, AuthorizeError> {
     let parsed_redirect = Url::parse(&params.redirect_uri)
         .map_err(|_| AuthorizeError::LocalPage(OAuthErrorKind::InvalidRedirectUri))?;
     if parsed_redirect.scheme() != "http" && parsed_redirect.scheme() != "https" {
         return Err(AuthorizeError::LocalPage(OAuthErrorKind::InvalidScheme));
     }
-    // The served origin comes from the trusted extractor; if it somehow can't
-    // parse, no app-relative entry resolves (absolute entries still match).
-    let served = Url::parse(served_origin).ok();
-    let matches = client.redirect_uris.iter().any(|entry| {
-        resolve_registered_redirect(entry, served.as_ref(), topology)
-            .is_some_and(|resolved| resolved == parsed_redirect)
-    });
-    if !matches {
-        tracing::warn!(
-            client_id = %params.client_id,
-            redirect_uri = %params.redirect_uri,
-            registered_redirect_uris = ?client.redirect_uris,
-            "redirect_uri not allowed for this client"
-        );
-        return Err(AuthorizeError::LocalPage(
-            OAuthErrorKind::RedirectUriNotAllowed,
-        ));
-    }
     Ok(parsed_redirect)
 }
 
-/// The concrete redirect URL a registered allowlist entry authorizes for this
-/// request, or `None` when it can't be resolved (an app-relative entry on a
-/// non-self-hosted client, or with an unparseable served origin). Both sides go
-/// through the same URL normalizer, so the caller compares by `==`.
-fn resolve_registered_redirect(
-    entry: &RegisteredRedirectUri,
-    served: Option<&Url>,
-    topology: Option<&SelfHostedRedirectTopology>,
-) -> Option<Url> {
-    match entry {
-        RegisteredRedirectUri::Absolute(url) => Some(url.clone()),
-        RegisteredRedirectUri::AppRelative(path) => {
-            let base = self_hosted_app_origin(served?, topology?)?;
-            let resolved = base.join(path).ok()?;
-            // An app-relative entry may only pick a path *under its own origin*.
-            // `Url::join` on an http(s) base folds `\`→`/` and strips tab/newline,
-            // so a tampered `/\evil.example` (which the parse-time `//` screen does
-            // not catch) would otherwise resolve to `http://evil.example/`. This
-            // origin-equality check is the authoritative same-origin guard; the
-            // parse-time rejection only screens the most obvious form.
-            (resolved.origin() == base.origin()).then_some(resolved)
+/// Validate the response type and PKCE challenge — the spec'd errors that are
+/// *delivered* differently depending on whether the `redirect_uri` can be
+/// trusted.
+///
+/// With `redirect_trusted` (a known client whose registration lists this
+/// `redirect_uri`) each failure goes back to the client per RFC 6749 §4.1.2.1
+/// with `error` + `state`. Otherwise — a client new to this gatekeeper, or a
+/// redirect it never registered — the same failure renders a local HTML page:
+/// redirecting an error to a URI nobody has vouched for is exactly the open
+/// redirect §4.1.2.1 forbids.
+fn validate_code(
+    params: &AuthorizeParams,
+    parsed_redirect: &Url,
+    redirect_trusted: bool,
+) -> Result<(), AuthorizeError> {
+    // Deliver a spec'd failure the way this request's trust level allows.
+    let fail = |error: OAuthErrorCode, local: OAuthErrorKind| {
+        if redirect_trusted {
+            AuthorizeError::redirect(parsed_redirect, error, &params.state)
+        } else {
+            AuthorizeError::LocalPage(local)
         }
-    }
-}
+    };
 
-/// The self-hosted app's own origin for the request's provenance, derived from
-/// the request's served origin + the app's topology — so an app-relative entry
-/// resolves to the *same-provenance* origin only:
-/// - a **loopback** served origin (the on-device API) → same scheme + host, the
-///   app's loopback port (`http://127.0.0.1:<port>`);
-/// - any other served origin (the tunnel apex) → the app's subdomain under that
-///   host, carrying the apex's own scheme and port (`https://<subdomain>.<apex>`
-///   for the usual https:443 tunnel).
-fn self_hosted_app_origin(served: &Url, topology: &SelfHostedRedirectTopology) -> Option<Url> {
-    let host = served.host_str()?;
-    if host_is_loopback(host) {
-        let mut origin = served.clone();
-        origin.set_port(Some(topology.port)).ok()?;
-        Some(origin)
-    } else {
-        // Prepend the app's subdomain to the served apex, preserving the served
-        // scheme AND port (`host_str` drops the port, so a non-443 apex would
-        // otherwise resolve to the wrong origin). `set_host` also validates the
-        // interpolated subdomain rather than trusting it into a URL string.
-        let mut origin = served.clone();
-        origin
-            .set_host(Some(&format!("{}.{}", topology.subdomain, host)))
-            .ok()?;
-        Some(origin)
-    }
-}
-
-/// Whether `host` (a URL host string) is a loopback address (`127.0.0.0/8`,
-/// `::1`) or `localhost` — the provenance split for [`self_hosted_app_origin`].
-fn host_is_loopback(host: &str) -> bool {
-    if host.eq_ignore_ascii_case("localhost") {
-        return true;
-    }
-    // `host_str` brackets an IPv6 literal (`[::1]`); strip them so it parses.
-    let unbracketed = host
-        .strip_prefix('[')
-        .and_then(|inner| inner.strip_suffix(']'))
-        .unwrap_or(host);
-    unbracketed
-        .parse::<std::net::IpAddr>()
-        .is_ok_and(|ip| ip.is_loopback())
-}
-
-/// Validate the response type and PKCE challenge. With `redirect_uri` +
-/// `client_id` already validated, these spec'd errors go back to the client
-/// per RFC 6749 §4.1.2.1 with `error` + `state`.
-fn validate_code(params: &AuthorizeParams, parsed_redirect: &Url) -> Result<(), AuthorizeError> {
     // Only the authorization-code grant is implemented; any other value is
     // `unsupported_response_type` (RFC 6749 §4.1.1 makes the parameter
     // REQUIRED, §4.1.2.1 names the error code).
     if params.response_type != "code" {
-        return Err(AuthorizeError::redirect(
-            parsed_redirect,
+        return Err(fail(
             OAuthErrorCode::UnsupportedResponseType,
-            &params.state,
+            OAuthErrorKind::UnsupportedResponseType,
         ));
     }
 
     // Only S256 PKCE is supported. An unsupported `code_challenge_method` is
     // `invalid_request` (RFC 7636 §4.4.1).
     if params.code_challenge_method != "S256" {
-        return Err(AuthorizeError::redirect(
-            parsed_redirect,
+        return Err(fail(
             OAuthErrorCode::InvalidRequest,
-            &params.state,
+            OAuthErrorKind::UnsupportedCodeChallengeMethod,
         ));
     }
     // The `code_challenge` must be a well-formed S256 challenge (RFC 7636
     // §4.3); a malformed one is `invalid_request` (RFC 7636 §4.4.1).
     if !is_valid_s256_code_challenge(&params.code_challenge) {
-        return Err(AuthorizeError::redirect(
-            parsed_redirect,
+        return Err(fail(
             OAuthErrorCode::InvalidRequest,
-            &params.state,
+            OAuthErrorKind::InvalidCodeChallenge,
         ));
     }
 
     Ok(())
 }
 
-/// Validate that every requested scope is on the client's allowlist
-/// (`invalid_scope`, RFC 6749 §4.1.2.1). Returns the whitespace-split scopes.
-fn validate_requested_scopes(
+/// Reject a **first-party** request for a scope outside the host client's
+/// allowlist (`invalid_scope`, RFC 6749 §4.1.2.1).
+///
+/// Only `wildflower-host` is held to its allowlist here; every other client's
+/// unregistered scope becomes part of its registration verdict instead (see
+/// [`client_registration`](crate::domain::client_registration)).
+///
+/// The check is coverage-aware, not exact string membership: a client allowed a
+/// broad scope (e.g. `patient/*.rs`) also admits a narrower same-grammar request
+/// it covers (`patient/Observation.r`). Coverage never crosses the v1 word / v2
+/// letter grammars — a registration in one grammar authorizes requests in that
+/// grammar only.
+fn ensure_first_party_scopes_allowed(
     params: &AuthorizeParams,
     client: &Client,
     parsed_redirect: &Url,
-) -> Result<Vec<String>, AuthorizeError> {
-    let requested_scopes: Vec<String> = params
-        .scope
-        .split_whitespace()
-        .map(str::to_string)
-        .collect();
-    // Coverage-aware allowlist check, not exact string membership: a client
-    // allowed a broad scope (e.g. `patient/*.rs`) also admits a narrower
-    // same-grammar request it covers (`patient/Observation.r`). Coverage never
-    // crosses the v1 word / v2 letter grammars — a registration in one grammar
-    // authorizes requests in that grammar only. Mirrors the consent path's
-    // `grantable_scopes`; the same intersection runs again there.
-    if !requested_scopes.iter().all(|requested| {
+    requested_scopes: &[String],
+) -> Result<(), AuthorizeError> {
+    if requested_scopes.iter().all(|requested| {
         client
             .allowed_scopes
             .iter()
             .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
     }) {
-        return Err(AuthorizeError::redirect(
+        Ok(())
+    } else {
+        Err(AuthorizeError::redirect(
             parsed_redirect,
             OAuthErrorCode::InvalidScope,
             &params.state,
-        ));
+        ))
     }
-
-    Ok(requested_scopes)
 }
 
 /// The subset of requested scopes an existing grant already covers, plus
 /// whether *every* requested scope is covered (the fast-path trigger) and the
 /// grant's patient context. All-empty when no grant exists for the pair.
+///
+/// "Covers" is [`scopes_rust::allowed_scope_covers`], not string equality: a
+/// standing grant is a set of permissions, so a broader consent answers for the
+/// narrower request beneath it.
 struct ExistingGrantCoverage {
     pre_approved_scopes: Vec<String>,
     all_scopes_pre_approved: bool,
@@ -507,16 +506,25 @@ fn resolve_existing_grant_coverage(
         return Ok(ExistingGrantCoverage::none());
     };
 
-    let previously_approved: HashSet<&str> =
-        existing_grant.scopes.iter().map(String::as_str).collect();
+    // Coverage, not string equality — the same test `allowed_scopes` is read
+    // through everywhere else in the slice. A standing consent is a set of
+    // permissions, so a grant of `patient/*.cruds` answers for a later
+    // `patient/Observation.r`, and a grant the Owner's approval collapsed
+    // (`.r` + `.s` recorded as `.rs`) still answers for either half.
+    let previously_approved = |requested: &String| {
+        existing_grant
+            .scopes
+            .iter()
+            .any(|granted| scopes_rust::allowed_scope_covers(granted, requested))
+    };
     let pre_approved_scopes: Vec<String> = requested_scopes
         .iter()
-        .filter(|s| previously_approved.contains(s.as_str()))
+        .filter(|requested| previously_approved(requested))
         .cloned()
         .collect();
-    let all_scopes_pre_approved = requested_scopes
-        .iter()
-        .all(|s| previously_approved.contains(s.as_str()));
+    // `pre_approved_scopes` is `requested_scopes` filtered, so equal lengths
+    // means nothing was filtered out.
+    let all_scopes_pre_approved = pre_approved_scopes.len() == requested_scopes.len();
     Ok(ExistingGrantCoverage {
         pre_approved_scopes,
         all_scopes_pre_approved,
@@ -574,184 +582,4 @@ fn redirect_to_client(parsed_redirect: &Url, code: &str, client_state: &str) -> 
 
 fn html_bad_request(html: String) -> Response {
     (StatusCode::BAD_REQUEST, Html(html)).into_response()
-}
-
-#[cfg(test)]
-mod redirect_resolution_tests {
-    use super::*;
-
-    fn topology() -> SelfHostedRedirectTopology {
-        SelfHostedRedirectTopology {
-            port: 8090,
-            subdomain: "medication".to_owned(),
-        }
-    }
-
-    fn served(origin: &str) -> Url {
-        Url::parse(origin).expect("served origin")
-    }
-
-    fn relative() -> RegisteredRedirectUri {
-        RegisteredRedirectUri::AppRelative("/".to_owned())
-    }
-
-    /// A loopback served origin (the on-device API) resolves an app-relative
-    /// entry to the app's own loopback origin — same scheme + host, the app port.
-    #[test]
-    fn relative_resolves_to_the_loopback_app_origin_on_device() {
-        let resolved = resolve_registered_redirect(
-            &relative(),
-            Some(&served("http://127.0.0.1:8080")),
-            Some(&topology()),
-        );
-        assert_eq!(
-            resolved,
-            Some(Url::parse("http://127.0.0.1:8090/").unwrap())
-        );
-    }
-
-    /// A forwarded served origin (the tunnel apex) resolves the same entry to the
-    /// app's subdomain under that apex, over https.
-    #[test]
-    fn relative_resolves_to_the_subdomain_origin_when_forwarded() {
-        let resolved = resolve_registered_redirect(
-            &relative(),
-            Some(&served("https://ruth.wildflowerhealth.io")),
-            Some(&topology()),
-        );
-        assert_eq!(
-            resolved,
-            Some(Url::parse("https://medication.ruth.wildflowerhealth.io/").unwrap())
-        );
-    }
-
-    /// Provenance is matched: a loopback flow resolves only the loopback origin
-    /// and a forwarded flow only the subdomain origin, so a redirect from the
-    /// other provenance can't match.
-    #[test]
-    fn relative_matches_only_the_same_provenance_origin() {
-        let loopback = resolve_registered_redirect(
-            &relative(),
-            Some(&served("http://127.0.0.1:8080")),
-            Some(&topology()),
-        )
-        .unwrap();
-        let forwarded = resolve_registered_redirect(
-            &relative(),
-            Some(&served("https://ruth.wildflowerhealth.io")),
-            Some(&topology()),
-        )
-        .unwrap();
-        assert_ne!(loopback, forwarded);
-        assert_eq!(loopback.scheme(), "http");
-        assert_eq!(forwarded.scheme(), "https");
-    }
-
-    /// Without topology (a non-self-hosted client) an app-relative entry resolves
-    /// to nothing, so it can never match a request.
-    #[test]
-    fn relative_resolves_to_nothing_without_topology() {
-        assert_eq!(
-            resolve_registered_redirect(&relative(), Some(&served("http://127.0.0.1:8080")), None),
-            None
-        );
-    }
-
-    /// An unparseable served origin also resolves an app-relative entry to
-    /// nothing (rather than trusting a bogus base).
-    #[test]
-    fn relative_resolves_to_nothing_without_a_served_origin() {
-        assert_eq!(
-            resolve_registered_redirect(&relative(), None, Some(&topology())),
-            None
-        );
-    }
-
-    /// A tampered app-relative entry that would swap the origin resolves to
-    /// nothing. `Url::join` on an http(s) base folds `\`→`/` and strips
-    /// tab/newline, so each of these joins to a foreign authority — the
-    /// resolution-time origin-equality guard (not the parse-time `//` screen)
-    /// rejects them. This is the same tampered-row threat the `//` parse test
-    /// treats as in scope.
-    #[test]
-    fn relative_that_would_swap_origin_resolves_to_nothing() {
-        for tampered in [
-            "/\\evil.example",   // backslash → folded to `//`
-            "/\\\\evil.example", // `\\` → authority
-            "/\t/evil.example",  // tab stripped, then `//`
-            "/\n/evil.example",  // newline stripped, then `//`
-        ] {
-            let entry = RegisteredRedirectUri::AppRelative(tampered.to_owned());
-            assert_eq!(
-                resolve_registered_redirect(
-                    &entry,
-                    Some(&served("https://ruth.wildflowerhealth.io")),
-                    Some(&topology()),
-                ),
-                None,
-                "tampered `{tampered}` must not resolve across the origin"
-            );
-            assert_eq!(
-                resolve_registered_redirect(
-                    &entry,
-                    Some(&served("http://127.0.0.1:8080")),
-                    Some(&topology()),
-                ),
-                None,
-                "tampered `{tampered}` must not resolve across the loopback origin"
-            );
-        }
-    }
-
-    /// A same-origin path with a `\` that `Url::join` folds to `/` still resolves
-    /// (the guard is on the *origin*, not the path), so a legitimate nested path
-    /// keeps working.
-    #[test]
-    fn relative_same_origin_path_with_backslash_still_resolves() {
-        let entry = RegisteredRedirectUri::AppRelative("/a\\b".to_owned());
-        assert_eq!(
-            resolve_registered_redirect(
-                &entry,
-                Some(&served("http://127.0.0.1:8080")),
-                Some(&topology()),
-            ),
-            Some(Url::parse("http://127.0.0.1:8090/a/b").unwrap()),
-        );
-    }
-
-    /// A tunnel apex served on a non-default port carries that port onto the
-    /// resolved subdomain origin (`host_str` alone would drop it, leaving an
-    /// implicit :443 that no real redirect could match).
-    #[test]
-    fn forwarded_apex_preserves_a_non_default_port() {
-        let resolved = resolve_registered_redirect(
-            &relative(),
-            Some(&served("https://ruth.wildflowerhealth.io:8443")),
-            Some(&topology()),
-        );
-        assert_eq!(
-            resolved,
-            Some(Url::parse("https://medication.ruth.wildflowerhealth.io:8443/").unwrap())
-        );
-    }
-
-    /// An absolute entry resolves to itself regardless of served origin/topology.
-    #[test]
-    fn absolute_resolves_to_itself() {
-        let url = Url::parse("https://app.example/cb").unwrap();
-        let resolved =
-            resolve_registered_redirect(&RegisteredRedirectUri::Absolute(url.clone()), None, None);
-        assert_eq!(resolved, Some(url));
-    }
-
-    #[test]
-    fn host_is_loopback_classifies_hosts() {
-        assert!(host_is_loopback("127.0.0.1"));
-        assert!(host_is_loopback("127.5.5.5"));
-        assert!(host_is_loopback("localhost"));
-        assert!(host_is_loopback("LocalHost"));
-        assert!(host_is_loopback("[::1]"));
-        assert!(!host_is_loopback("ruth.wildflowerhealth.io"));
-        assert!(!host_is_loopback("192.168.1.9"));
-    }
 }

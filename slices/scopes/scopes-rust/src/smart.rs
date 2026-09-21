@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use crate::scope::Scope;
+use crate::scope::{Grant, Scope};
 
 /// The scopes an Owner approval can actually grant: those that are both still
 /// requested by the pending request and covered by the client's *current*
@@ -46,6 +46,22 @@ pub fn grantable_scopes(
         }
     }
     granted
+}
+
+/// Widen the stored scope list `standing` by `additional`, returning the
+/// collapsed union as wire strings — the string-facing form of
+/// [`Grant::widen`](crate::Grant::widen), for callers holding `Vec<String>`
+/// columns (a client's `allowed_scopes`, a standing grant's `scopes`).
+///
+/// The result grants exactly what the two lists granted between them, stated as
+/// shortly as the grammar allows: `["patient/Patient.r"]` widened by
+/// `["patient/Patient.cruds"]` is `["patient/Patient.cruds"]`, not both. Parsing
+/// is total, so an unrecognized string survives as an `Unknown` scope that only
+/// ever collapses against an identical twin.
+pub fn widened_scopes(standing: &[String], additional: &[String]) -> Vec<String> {
+    let mut grant = Grant::parse(standing);
+    grant.widen(&Grant::parse(additional));
+    grant.render()
 }
 
 /// Does the client-allowed scope `allowed` cover the approved scope `requested`?
