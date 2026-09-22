@@ -7,7 +7,7 @@ import {
 } from '@tanstack/react-router'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import { makeBearerAuthStateStore, type BearerAuthStateStore } from 'gatekeeper-react'
-import { AuthStateProvider } from 'react-kitchen-sink'
+import { AuthedUntil, AuthStateProvider } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
 import { Landing } from './index.tsx'
@@ -69,7 +69,8 @@ describe('Landing', () => {
     // Arrange — authed before the router mounts, which is what `main-web`'s
     // boot does after it redeems a callback.
     const store = makeBearerAuthStateStore()
-    store.writeBearer('tok_hosted', Math.floor(Date.now() / 1000) + 3600)
+    store.writeBearer('tok_web')
+    store.setAuthState(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + 3600 }))
 
     // Act
     const router = await mountLanding('/', { store })

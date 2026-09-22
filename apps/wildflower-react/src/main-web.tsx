@@ -78,19 +78,17 @@ const boot = async (): Promise<void> => {
   const { bearerStore, ...entryOptions } = makeWebEntryOptions()
 
   if (session !== undefined) {
-    // `storeBearer` + `setAuthState` rather than `writeBearer`, which can only
-    // publish `AuthedUntil` — a token response that reported no lifetime has no
-    // honest `exp` to publish. See `authStateForSession`.
-    bearerStore.storeBearer(session.accessToken)
+    // The bearer is held first and the signal set second: the store publishes
+    // nothing on a write, because a token response that reported no lifetime
+    // has no honest `exp`. See `authStateForSession`.
+    bearerStore.writeBearer(session.accessToken)
     bearerStore.setAuthState(authStateForSession(session, Math.floor(Date.now() / 1000)))
   }
 
   const history = createBrowserHistory()
 
   const tokenResponseHandler: TokenResponseHandler = {
-    writeBearer: (accessToken) => {
-      bearerStore.storeBearer(accessToken)
-    },
+    writeBearer: bearerStore.writeBearer,
     navigateAfterAuth: (returnTo) => {
       history.push(returnTo)
     },

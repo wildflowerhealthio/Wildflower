@@ -4,19 +4,31 @@ import {
   makeBearerAuthStateStore,
   type BearerAuthStateStore,
 } from 'gatekeeper-react'
+// Named imports, not the whole document: only these two fields concern this
+// entry, and importing them individually keeps the rest of the host's
+// configuration out of a published bundle. The same read
+// `apps/wildflower-server-docs/src/host-defaults.ts` does, and the same one
+// `apps/wildflower-tauri/vite.config.ts` injects `WILDFLOWER_LOOPBACK_ORIGIN`
+// from.
+import {
+  loopback_hostname as loopbackHostname,
+  loopback_port as loopbackPort,
+} from '../../wildflower-tauri/tauri-shared-config.json'
 
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
 
 /**
  * The API origin assumed when the URL carries no usable `?server=`: the loopback
- * origin a locally-running Wildflower server binds.
+ * origin a locally-running Wildflower server binds, read from the same
+ * `tauri-shared-config.json` the Rust host and the Tauri webview derive theirs
+ * from, so this page cannot carry a stale copy of it.
  *
  * Exported because the landing page's "local server" button and its sign-in both
  * need the same value the transport resolves — a second literal there would let
  * the page sign in to one server and send its requests to another.
  */
-const DEFAULT_SERVER_URL = 'http://127.0.0.1:8080'
+const DEFAULT_SERVER_URL = `http://${loopbackHostname}:${loopbackPort}`
 
 /**
  * The API origin a page load targets, given its `location.search`. Falls back to

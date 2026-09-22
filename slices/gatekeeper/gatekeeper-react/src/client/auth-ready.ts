@@ -176,6 +176,13 @@ const makeAwaitEmbeddedAuthReady =
  * `returnTo` is threaded as a `?returnTo=` search param on the redirect so the
  * landing page can send the reader back where they were headed once sign-in
  * completes.
+ *
+ * The search is built as an **updater** over the search the reader was already
+ * on, not as a fresh object: a plain object replaces the query wholesale, which
+ * would drop `main-web`'s `?server=` — the one parameter the landing page needs
+ * to offer a way back in. A reader whose in-memory bearer is gone (any reload)
+ * would otherwise land on a picker with nothing picked and have to retype their
+ * server.
  */
 const landingAuthReadyEffect = (
   subscribable: Subscribable.Subscribable<AuthState>,
@@ -185,9 +192,15 @@ const landingAuthReadyEffect = (
     subscribable.get,
     Effect.flatMap((signal) => {
       if (isAuthed(signal)) return Effect.void
-      const search: Record<string, string> = {}
-      if (returnTo !== undefined && returnTo !== '') search['returnTo'] = returnTo
-      return Effect.fail<AnyRedirect>(redirect({ to: '/', search }))
+      return Effect.fail<AnyRedirect>(
+        redirect({
+          to: '/',
+          search: (previous: Record<string, unknown>) => ({
+            ...previous,
+            ...(returnTo !== undefined && returnTo !== '' ? { returnTo } : {}),
+          }),
+        })
+      )
     })
   )
 

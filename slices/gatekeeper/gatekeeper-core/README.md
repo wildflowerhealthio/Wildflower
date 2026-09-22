@@ -99,6 +99,15 @@ at. The key in particular is the app's to choose and should be namespaced with
 the app's name, because these pages share an origin and an unqualified key would
 let one page's return leg consume another's pending request.
 
+What each page supplies, it supplies once. `browserSignInEnvironment(page,
+registration)` does the wiring every browser caller would otherwise repeat —
+including calling `fetch` as a method, since an unbound `Window.fetch` throws
+`Illegal invocation` — and takes `page` structurally, so a test passes a plain
+object instead of a `Window`. `STANDALONE_LAUNCH_SCOPES` is the requested
+`scope` for both seeded public clients: migrations 0007 and 0012 register
+identical `allowed_scopes`, with a `db/clients.rs` test that fails if they
+drift, so the browser side is one list rather than a copy per app.
+
 `internal/pkce.ts`'s `computeCodeChallenge` is a thin wrapper that binds
 `codeChallengeS256`'s digest argument to the ambient Web Crypto; there is one
 S256 implementation here, and a property test pins the two together.

@@ -1,6 +1,8 @@
 import { HttpClient, HttpClientRequest } from '@effect/platform'
 import { Effect, Layer } from 'effect'
 
+import { hasAbsoluteScheme } from './prepend-api-base-url.ts'
+
 /**
  * Wrap an `HttpClient` layer so every *relative* request carries an
  * `Authorization: Bearer <token>` header, read lazily from a
@@ -18,12 +20,14 @@ import { Effect, Layer } from 'effect'
  * app's existing `onUnauthorized` handler picks up.
  *
  * Lives beside `prepend-api-base-url.ts` and composes with it in
- * `buildAppQueryRuntime`: prepend rewrites the URL, then this
- * wrapper attaches the bearer on the (now still relative, pre-fetch)
- * request.
+ * `buildAppQueryRuntime`, which wraps this layer **first** and the
+ * prepend around it. `HttpClient.mapRequest` chains preprocessing
+ * inside-out — the inner client's transform runs first — so this
+ * wrapper sees the still-relative path and the prepend rewrites the
+ * URL afterwards. Reversing those two lines would hand this wrapper an
+ * already-absolute URL, and the guard above would silently drop the
+ * `Authorization` header from every request.
  */
-const hasAbsoluteScheme = (url: string): boolean => /^[a-z][a-z0-9+.-]*:/i.test(url)
-
 const attachBearer = (
   httpClientLayer: Layer.Layer<HttpClient.HttpClient>,
   readBearer: () => string | undefined

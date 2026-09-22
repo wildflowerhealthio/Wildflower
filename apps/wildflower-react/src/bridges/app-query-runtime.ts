@@ -35,6 +35,11 @@ const buildAppQueryRuntime = (
   readonly runtimeLayer: RuntimeLayer
 } => {
   const queryClient = buildQueryClient(onUnauthorized)
+  // Order is load-bearing: `HttpClient.mapRequest` chains preprocessing
+  // inside-out, so the bearer wrapper has to be the *inner* one to see a
+  // still-relative URL. Swapped, its absolute-URL guard would drop the
+  // `Authorization` header from every request. Pinned by a test in
+  // `attach-bearer.test.ts`.
   let httpClientLayer = webHttpClientLayer
   if (readBearer !== undefined) httpClientLayer = attachBearer(httpClientLayer, readBearer)
   if (apiBaseUrl !== undefined) httpClientLayer = prependApiBaseUrl(httpClientLayer, apiBaseUrl)

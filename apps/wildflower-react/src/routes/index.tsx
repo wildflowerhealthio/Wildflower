@@ -3,6 +3,7 @@ import {
   insecureTargetReason,
   normalizeServerUrl,
   searchWithServerUrl,
+  serverUrlFromSearch,
 } from 'gatekeeper-core/smart-client'
 import { type JSX, type SubmitEvent, useEffect, useState } from 'react'
 import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitchen-sink'
@@ -160,7 +161,12 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
     connectToServer(trimmed)
   }
 
-  const hasServerInUrl = new URLSearchParams(window.location.search).has('server')
+  // Keyed on a `?server=` the page can actually use, not on the parameter's
+  // bare presence: a junk value falls back to the loopback default, and
+  // offering "Sign in to http://127.0.0.1:8080" to a reader whose address bar
+  // says something else names the wrong server on the one control that hands
+  // out a token.
+  const hasServerInUrl = serverUrlFromSearch(window.location.search) !== undefined
 
   // A failed attempt outranks the up-front warning: the reader has already
   // acted, so what went wrong is the more useful thing to read.

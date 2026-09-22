@@ -9,6 +9,7 @@ import {
   deviceLoginAuthReadyEffect,
   EMBEDDED_TOKEN_TIMEOUT,
   embeddedAuthReadyEffect,
+  landingAuthReadyEffect,
   TokenTimeout,
 } from './auth-ready.ts'
 
@@ -93,6 +94,61 @@ describe('deviceLoginAuthReadyEffect', () => {
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('landingAuthReadyEffect', () => {
+  test('keeps the search the reader was on, so ?server= survives the bounce', async () => {
+    const returnTo = '/home?server=https%3A%2F%2Fx.test'
+    const result = await Effect.runPromise(
+      Effect.flatMap(makeRef(Unauthed()), (ref) =>
+        Effect.either(landingAuthReadyEffect(ref, returnTo))
+      )
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(isRedirect(result.left)).toBe(true)
+      if (isRedirect(result.left)) {
+        expect(result.left.options.to).toBe('/')
+        // An updater, not a replacement: `main-web`'s `?server=` is the one
+        // thing the landing page needs to offer a way back in, and a plain
+        // object here would drop it on every reload-induced bounce.
+        const search = result.left.options.search
+        expect(typeof search).toBe('function')
+        if (typeof search === 'function') {
+          expect(search({ server: 'https://x.test' })).toStrictEqual({
+            server: 'https://x.test',
+            returnTo,
+          })
+        }
+      }
+    }
+  })
+
+  test('omits returnTo entirely when the gate supplies none', async () => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(makeRef(Unauthed()), (ref) => Effect.either(landingAuthReadyEffect(ref)))
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result) && isRedirect(result.left)) {
+      const search = result.left.options.search
+      expect(typeof search).toBe('function')
+      if (typeof search === 'function') {
+        expect(search({ server: 'https://x.test' })).toStrictEqual({ server: 'https://x.test' })
+      }
+    }
+  })
+
+  test('resolves without redirecting when the signal is authed', async () => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(makeRef(AuthedUntil({ exp: 9_999_999_999 })), (ref) =>
+        Effect.either(landingAuthReadyEffect(ref))
+      )
+    )
+
+    expect(result).toStrictEqual(Either.void)
   })
 })
 

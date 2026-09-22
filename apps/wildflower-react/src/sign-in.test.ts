@@ -1,6 +1,12 @@
 import { Option } from 'effect'
 import * as fc from 'fast-check'
-import type { PendingStore, Session } from 'gatekeeper-core/smart-client'
+import {
+  STANDALONE_LAUNCH_SCOPES,
+  standaloneLaunchScopeParameter,
+  type PendingStore,
+  type Session,
+  type SignInPage,
+} from 'gatekeeper-core/smart-client'
 import { numRunsFor } from 'kitchen-sink/test'
 import { AuthedUntil, HostAuthed, isAuthed, isFreshlyAuthed } from 'react-kitchen-sink'
 import { describe, expect, it } from 'vite-plus/test'
@@ -11,11 +17,8 @@ import {
   finishSignIn,
   PENDING_AUTHORIZATION_KEY,
   REGISTERED_REDIRECT_URI,
-  REQUESTED_SCOPES,
-  requestedScopeParameter,
   signInEnvironment,
   startSignIn,
-  type SignInPage,
 } from './sign-in.ts'
 
 describe('signInEnvironment', () => {
@@ -52,8 +55,8 @@ describe('signInEnvironment', () => {
     const environment = signInEnvironment(pageAt('https://wildflowerhealth.io/'))
 
     // Assert — the wire form is the space-delimited list, in order.
-    expect(environment.scope).toBe(REQUESTED_SCOPES.join(' '))
-    expect(environment.scope).toBe(requestedScopeParameter())
+    expect(environment.scope).toBe(STANDALONE_LAUNCH_SCOPES.join(' '))
+    expect(environment.scope).toBe(standaloneLaunchScopeParameter())
     expect(environment.clientId).toBe('wildflower-react')
   })
 
@@ -92,7 +95,7 @@ describe('startSignIn', () => {
     expect(authorize.origin + authorize.pathname).toBe(`${SERVER_URL}/oauth/authorize`)
     expect(authorize.searchParams.get('client_id')).toBe(CLIENT_ID)
     expect(authorize.searchParams.get('redirect_uri')).toBe('http://127.0.0.1:5173/home')
-    expect(authorize.searchParams.get('scope')).toBe(requestedScopeParameter())
+    expect(authorize.searchParams.get('scope')).toBe(standaloneLaunchScopeParameter())
     expect(authorize.searchParams.get('code_challenge_method')).toBe('S256')
   })
 

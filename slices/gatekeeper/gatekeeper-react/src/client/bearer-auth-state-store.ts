@@ -23,7 +23,6 @@
 
 import { Equal } from 'effect'
 import {
-  AuthedUntil,
   type AuthState,
   type AuthStateStore,
   makeSubscribableStore,
@@ -37,16 +36,16 @@ interface BearerAuthStateStore extends AuthStateStore {
    */
   readonly bearer: () => string | undefined
   /**
-   * Store a bearer token from a device-flow token response and publish
-   * `AuthedUntil({ exp })`. The only way the bearer enters the store.
+   * Hold `token` as this page's bearer. The only way the bearer enters the
+   * store, and it publishes nothing: the auth signal is the caller's to set,
+   * because only the caller knows what the token response reported. Both
+   * callers follow it with `setAuthState` — the device flow with
+   * `AuthedUntil({ exp })` from `expires_in`, the redirect flow with whatever
+   * `authStateForSession` makes of a response that may report no lifetime at
+   * all. A writer that published `AuthedUntil` itself would have to invent an
+   * `exp` in that second case.
    */
-  readonly writeBearer: (token: string, exp: number) => void
-  /**
-   * Store a bearer token without publishing an auth signal. Used by the
-   * `TokenResponseHandler` when `NeedsAuthMessage` will call
-   * `setAuthState` separately right after.
-   */
-  readonly storeBearer: (token: string) => void
+  readonly writeBearer: (token: string) => void
 }
 
 const makeBearerAuthStateStore = (): BearerAuthStateStore => {
@@ -70,11 +69,7 @@ const makeBearerAuthStateStore = (): BearerAuthStateStore => {
       publish(signal)
     },
     bearer: () => currentBearer,
-    writeBearer: (token, exp) => {
-      currentBearer = token
-      publish(AuthedUntil({ exp }))
-    },
-    storeBearer: (token) => {
+    writeBearer: (token) => {
       currentBearer = token
     },
   }

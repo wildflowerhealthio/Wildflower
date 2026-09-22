@@ -45,6 +45,14 @@ export {
 
 export { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 
+export { browserSignInEnvironment } from './browser-environment.ts'
+export type { ClientRegistration, SignInPage } from './browser-environment.ts'
+
+export {
+  STANDALONE_LAUNCH_SCOPES,
+  standaloneLaunchScopeParameter,
+} from './standalone-launch-scopes.ts'
+
 export { beginSignIn, completeSignIn, PendingRequestUnusable } from './sign-in.ts'
 export type { PendingStore, Session, SignInEnvironment, SignInError } from './sign-in.ts'
 

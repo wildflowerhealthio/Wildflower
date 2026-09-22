@@ -12,6 +12,12 @@
  * case (and as the 401 fallback), but it is no longer how the landing page
  * signs in.
  *
+ * What is left here is only what is this entry's own: the registered values
+ * below, and the two thin wrappers that fold the flow's error channel into a
+ * {@link SignInStep}. The impure wiring is `browserSignInEnvironment`'s and the
+ * requested scopes are the standalone-launch vocabulary both seeded clients
+ * share — neither is restated in this app.
+ *
  * Nothing here navigates or touches the DOM: {@link startSignIn} yields
  * the URL to leave for and {@link finishSignIn} reads a query string, so
  * both are drivable from a test with a stub `Window`. The one Effect boundary is
@@ -31,14 +37,14 @@ import type { Option } from 'effect'
 import { Effect } from 'effect'
 import {
   beginSignIn,
+  browserSignInEnvironment,
   completeSignIn,
   redirectUriForRoute,
-  type DigestSource,
-  type PendingStore,
-  type RandomBytesSource,
+  standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
   type SignInError,
+  type SignInPage,
 } from 'gatekeeper-core/smart-client'
 import { AuthedUntil, type AuthState, HostAuthed } from 'react-kitchen-sink'
 
@@ -93,31 +99,6 @@ const POST_SIGN_IN_ROUTE = '/home'
 const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/app/home'
 
 /**
- * The scopes the web entry asks for: the whole ceiling the seeded row allows,
- * identical to the server-docs console's set.
- *
- * Asking wide is deliberate and is the same argument 0007 and 0012 make.
- * `allowed_scopes` is only the ceiling on what may be *requested*; the Owner's
- * consent step is where the grant is actually narrowed. The owner UI drives
- * every slice surface, so it cannot know in advance which one the reader will
- * open, and requesting less would 403 surfaces the reader is entitled to.
- */
-const REQUESTED_SCOPES: readonly string[] = [
-  'openid',
-  'profile',
-  'fhirUser',
-  'launch',
-  'launch/patient',
-  'offline_access',
-  'wildflower/launch',
-  'system/*.cruds',
-  'wildflower/*.cruds',
-]
-
-/** The space-delimited `scope` parameter form of {@link REQUESTED_SCOPES}. */
-const requestedScopeParameter = (): string => REQUESTED_SCOPES.join(' ')
-
-/**
  * The `sessionStorage` key this entry's pending-authorization record lives at,
  * namespaced because this build shares both the flow and the
  * `wildflowerhealth.io` origin with the server-docs console. A key chosen
@@ -136,34 +117,15 @@ type SignInStep<A> =
   | { readonly tag: 'Ok'; readonly value: A }
   | { readonly tag: 'Failed'; readonly reason: string }
 
-/**
- * The slice of `window` a sign-in is built from. A real `Window` satisfies it
- * structurally, so the caller passes `window`; declaring the slice rather than
- * taking `Window` is what lets a test drive the flow from a plain object — no
- * jsdom navigation, and no cast to fake a global.
- */
-interface SignInPage {
-  readonly fetch: typeof globalThis.fetch
-  readonly crypto: RandomBytesSource & { readonly subtle: DigestSource }
-  readonly sessionStorage: PendingStore
-  readonly location: { readonly href: string; readonly protocol: string }
-}
-
-/** The impure edges — and the app-specific values — the flow runs against. */
-const signInEnvironment = (page: SignInPage): SignInEnvironment => ({
-  // Called as a method so a real `Window.fetch` keeps its receiver; an unbound
-  // reference throws `Illegal invocation` in a browser.
-  fetch: (...args) => page.fetch(...args),
-  random: page.crypto,
-  subtle: page.crypto.subtle,
-  store: page.sessionStorage,
-  pendingKey: PENDING_AUTHORIZATION_KEY,
-  clientId: CLIENT_ID,
-  scope: requestedScopeParameter(),
-  redirectUri:
-    redirectUriForRoute(page.location.href, POST_SIGN_IN_ROUTE) ?? REGISTERED_REDIRECT_URI,
-  pageIsSecure: page.location.protocol === 'https:',
-})
+/** The impure edges — and this entry's registered values — the flow runs against. */
+const signInEnvironment = (page: SignInPage): SignInEnvironment =>
+  browserSignInEnvironment(page, {
+    clientId: CLIENT_ID,
+    pendingKey: PENDING_AUTHORIZATION_KEY,
+    scope: standaloneLaunchScopeParameter(),
+    redirectUri:
+      redirectUriForRoute(page.location.href, POST_SIGN_IN_ROUTE) ?? REGISTERED_REDIRECT_URI,
+  })
 
 /** Fold a sign-in Effect's failure channel into a {@link SignInStep}. */
 const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A>> =>
@@ -219,9 +181,7 @@ export {
   PENDING_AUTHORIZATION_KEY,
   POST_SIGN_IN_ROUTE,
   REGISTERED_REDIRECT_URI,
-  REQUESTED_SCOPES,
-  requestedScopeParameter,
   signInEnvironment,
   startSignIn,
 }
-export type { SignInPage, SignInStep }
+export type { SignInStep }

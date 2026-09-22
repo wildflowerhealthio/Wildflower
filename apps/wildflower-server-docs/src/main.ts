@@ -7,12 +7,14 @@ import './styles.css'
 
 import {
   beginSignIn,
+  browserSignInEnvironment,
   completeSignIn,
   insecureTargetReason,
   isAuthorizationResponse,
   redirectUriForPage,
   searchWithoutAuthorizationResponse,
   searchWithServerUrl,
+  standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
   type SignInError,
@@ -20,12 +22,7 @@ import {
 
 import { consoleConfiguration } from './configuration.ts'
 import { serverUrlFromSearch } from './server-target.ts'
-import {
-  PENDING_AUTHORIZATION_KEY,
-  CLIENT_ID,
-  REGISTERED_REDIRECT_URI,
-  requestedScopeParameter,
-} from './smart-client.ts'
+import { PENDING_AUTHORIZATION_KEY, CLIENT_ID, REGISTERED_REDIRECT_URI } from './smart-client.ts'
 
 /**
  * Boots the static Wildflower server-docs console: a Scalar API reference over
@@ -88,18 +85,17 @@ let session: Session | undefined
  */
 const redirectUri = redirectUriForPage(window.location.href) ?? REGISTERED_REDIRECT_URI
 
-/** The impure edges the sign-in flow runs against in the browser. */
-const signInEnvironment: SignInEnvironment = {
-  fetch: (...args) => globalThis.fetch(...args),
-  random: window.crypto,
-  subtle: window.crypto.subtle,
-  store: window.sessionStorage,
-  pendingKey: PENDING_AUTHORIZATION_KEY,
+/**
+ * The impure edges the sign-in flow runs against in the browser, wired by
+ * `gatekeeper-core/smart-client` so this console and the `wildflower-react`
+ * page share one reading of `window` rather than a copy each.
+ */
+const signInEnvironment: SignInEnvironment = browserSignInEnvironment(window, {
   clientId: CLIENT_ID,
-  scope: requestedScopeParameter(),
+  pendingKey: PENDING_AUTHORIZATION_KEY,
+  scope: standaloneLaunchScopeParameter(),
   redirectUri,
-  pageIsSecure,
-}
+})
 
 /** Show `message` on the status line, or clear it when `undefined`. */
 const showStatus = (message: string | undefined, kind: 'ok' | 'problem' = 'ok'): void => {

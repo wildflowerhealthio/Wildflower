@@ -5,6 +5,7 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
 import { attachBearer } from './attach-bearer.ts'
+import { prependApiBaseUrl } from './prepend-api-base-url.ts'
 
 describe('attachBearer', () => {
   test('attaches Authorization header to relative requests when bearer is present', async () => {
@@ -61,6 +62,26 @@ describe('attachBearer', () => {
       { authorization: 'Bearer tok_first' },
       { authorization: 'Bearer tok_second' },
     ])
+  })
+
+  test('still attaches the bearer once the base-url prepend wraps this layer', async () => {
+    // The composition `buildAppQueryRuntime` actually builds. `mapRequest`
+    // preprocessing chains inside-out, so this wrapper must stay the inner one:
+    // built the other way round it would see an absolute URL and drop the
+    // header on every request.
+    const { seenHeaders, inner } = capturingClientLayer()
+
+    await Effect.flatMap(HttpClient.HttpClient, (client) => client.get('/api/apps')).pipe(
+      Effect.provide(
+        prependApiBaseUrl(
+          attachBearer(inner, () => 'tok_abc'),
+          'https://api.test'
+        )
+      ),
+      Effect.runPromise
+    )
+
+    expect(seenHeaders).toEqual([{ authorization: 'Bearer tok_abc' }])
   })
 
   test('property: absolute URLs never receive an Authorization header', async () => {

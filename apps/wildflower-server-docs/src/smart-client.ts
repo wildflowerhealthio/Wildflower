@@ -13,6 +13,11 @@
  *
  * The **redirect URI is not written down here** — it is derived from where the
  * page is served, by `gatekeeper-core/smart-client`'s `redirectUriForPage`.
+ *
+ * Neither are the **requested scopes**: they are the standalone-launch
+ * vocabulary `STANDALONE_LAUNCH_SCOPES` shares with the `wildflower-react`
+ * page. The two seeded rows register identical `allowed_scopes` (`db/clients.rs`
+ * has a test that fails if they drift), so the browser side is one list too.
  */
 
 /** The `client_id` the seeded row registers. */
@@ -26,31 +31,6 @@ const CLIENT_ID = 'wildflower-server-docs'
 const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/wildflower-server-docs/'
 
 /**
- * The scopes the console asks for: the whole ceiling the seeded row allows.
- *
- * Asking wide is deliberate. The console is a request client for *every*
- * documented slice, so it cannot know in advance which surface a reader will
- * try; `allowed_scopes` is only the ceiling on what may be **requested**, and
- * the Owner's consent step is where the grant is actually narrowed (the
- * migration's own comment says so). Requesting less would silently break the
- * "send request" button on surfaces the reader is entitled to.
- */
-const REQUESTED_SCOPES: readonly string[] = [
-  'openid',
-  'profile',
-  'fhirUser',
-  'launch',
-  'launch/patient',
-  'offline_access',
-  'wildflower/launch',
-  'system/*.cruds',
-  'wildflower/*.cruds',
-]
-
-/** The space-delimited `scope` parameter form of {@link REQUESTED_SCOPES}. */
-const requestedScopeParameter = (): string => REQUESTED_SCOPES.join(' ')
-
-/**
  * The `sessionStorage` key this console's pending-authorization record lives at,
  * namespaced because the console shares both the flow in
  * `gatekeeper-core/smart-client` and the `wildflowerhealth.io` origin with the
@@ -58,10 +38,4 @@ const requestedScopeParameter = (): string => REQUESTED_SCOPES.join(' ')
  */
 const PENDING_AUTHORIZATION_KEY = 'wildflower-server-docs.pending-authorization'
 
-export {
-  CLIENT_ID,
-  PENDING_AUTHORIZATION_KEY,
-  REGISTERED_REDIRECT_URI,
-  REQUESTED_SCOPES,
-  requestedScopeParameter,
-}
+export { CLIENT_ID, PENDING_AUTHORIZATION_KEY, REGISTERED_REDIRECT_URI }

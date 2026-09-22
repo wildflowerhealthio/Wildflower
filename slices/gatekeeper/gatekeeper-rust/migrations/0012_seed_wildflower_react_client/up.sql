@@ -1,9 +1,10 @@
--- Seed the OAuth client for the **hosted** Wildflower owner UI — the
--- `main-hosted` build of `apps/wildflower-react`, which runs cross-origin to
+-- Seed the OAuth client for the **statically hosted** Wildflower owner UI — the
+-- `main-web` build of `apps/wildflower-react`, which runs cross-origin to
 -- whichever server the user points it at and holds its bearer in page memory
--- (`hosted-auth-state-store.ts`). A public PKCE client: it is a static browser
--- page, so it can keep no secret and `secret_hash` stays NULL. Same pattern and
--- column formats as 0007_seed_wildflower_server_docs_client (see `db/clients.rs`).
+-- (`gatekeeper-react`'s `bearer-auth-state-store.ts`). A public PKCE client: it
+-- is a static browser page, so it can keep no secret and `secret_hash` stays
+-- NULL. Same pattern and column formats as
+-- 0007_seed_wildflower_server_docs_client (see `db/clients.rs`).
 --
 -- WHY A CLIENT OF ITS OWN, and not the first-party `wildflower-host`. The host
 -- client is seeded from code on every boot with NO redirect URIs at all
@@ -16,7 +17,7 @@
 -- non-first-party row gets the ordinary trust-on-first-use treatment every other
 -- app has.
 --
--- REDIRECT URI is the single absolute published URL. The hosted UI is a
+-- REDIRECT URI is the single absolute published URL. The web UI is a
 -- single-page app on browser history, so it returns to one FIXED route rather
 -- than to its own directory the way the server-docs console does — the directory
 -- of `/settings/tunnel` is not the directory of `/home`, and only one of them
@@ -26,13 +27,13 @@
 -- redirect and is carried to the consent prompt as a warning, exactly as the
 -- server-docs console is away from its published address.
 --
--- NOTE: the hosted build is not yet a section of the assembled GitHub Pages site
+-- NOTE: the web build is not yet a section of the assembled GitHub Pages site
 -- (`apps/github-pages/src/assembly.ts`), so `/app/` is the intended publish
 -- location rather than a live one, and nothing serves this URL today. It is also
 -- ahead of the app: the router is built with a plain `createBrowserHistory()` and
 -- its routes are root-absolute, so `/app/home` needs a router basepath (and a
--- matching derivation in `hosted-sign-in.ts`) before a copy served under `/app/`
--- would present this exact string. Until then such a copy presents
+-- matching derivation in the app's `sign-in.ts`) before a copy served under
+-- `/app/` would present this exact string. Until then such a copy presents
 -- `<origin>/home`, which is simply an unregistered redirect: trusted on first use
 -- through the consent prompt's warning, which is the same treatment every other
 -- origin the build runs at already gets.
@@ -49,7 +50,7 @@
 --
 -- `allowed_grant_types` is `authorization_code` + `refresh_token`: the page runs
 -- the PKCE code flow and may request `offline_access`. No device-code flow — the
--- hosted landing page signs in by redirect now, and a page the user is already
+-- landing page signs in by redirect now, and a page the user is already
 -- looking at has no second-screen pairing story.
 INSERT OR IGNORE INTO clients
     (client_id, name, kind, redirect_uris, allowed_scopes, allowed_grant_types, secret_hash, registered_at, disabled_at)

@@ -371,21 +371,23 @@ const NeedsAuthMessage = (): JSX.Element => {
         const returnTo = sanitizeReturnTo(
           parseDeviceLoginSearch(window.location.search).returnTo ?? null
         )
+        // Bearer-holding entry: keep the token in page memory *before* the
+        // signal flips, so the first authed request after it has a header to
+        // carry.
+        tokenResponseHandler?.writeBearer(tokenResponse.access_token)
+        // Nudge the store to publish the freshly-authed signal. The cookie
+        // store ignores the argument and re-derives from the `wf_auth_exp`
+        // cookie the server just set (its source of truth); `AuthedUntil` is
+        // the honest value this sign-in just achieved.
+        setAuthState(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in }))
         if (tokenResponseHandler !== undefined) {
-          // Hosted entry: store the bearer in page memory and navigate
-          // client-side so the in-memory token survives (a full reload
-          // would lose it).
-          tokenResponseHandler.writeBearer(tokenResponse.access_token)
-          setAuthState(
-            AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in })
-          )
+          // Client-side navigation, because a full reload would drop the
+          // in-memory bearer this entry just acquired.
           tokenResponseHandler.navigateAfterAuth(returnTo)
         } else {
-          // Cookie-web / Tauri entry: the server set an HttpOnly cookie,
-          // so a full-page reload picks it up.
-          setAuthState(
-            AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in })
-          )
+          // Cookie-web / Tauri entry: the server set an HttpOnly cookie, so a
+          // full-page reload picks it up — matching the "this page will reload
+          // automatically once you sign in" copy.
           window.location.assign(returnTo)
         }
       })
