@@ -1,13 +1,7 @@
-import { redirectUriForPage } from 'gatekeeper-core/smart-client'
+import { redirectUriForPage, STANDALONE_LAUNCH_SCOPES } from 'gatekeeper-core/smart-client'
 import { describe, expect, it } from 'vite-plus/test'
 
-import {
-  CLIENT_ID,
-  PENDING_AUTHORIZATION_KEY,
-  REGISTERED_REDIRECT_URI,
-  REQUESTED_SCOPES,
-  requestedScopeParameter,
-} from './smart-client.ts'
+import { CLIENT_ID, PENDING_AUTHORIZATION_KEY, REGISTERED_REDIRECT_URI } from './smart-client.ts'
 
 describe('the seeded client registration', () => {
   it('is the public PKCE client the gatekeeper migration seeds', () => {
@@ -18,7 +12,7 @@ describe('the seeded client registration', () => {
     // the flow outright.
     expect(CLIENT_ID).toBe('wildflower-server-docs')
     expect(REGISTERED_REDIRECT_URI).toBe('https://wildflowerhealth.io/wildflower-server-docs/')
-    expect([...REQUESTED_SCOPES]).toEqual([
+    expect([...STANDALONE_LAUNCH_SCOPES]).toEqual([
       'openid',
       'profile',
       'fhirUser',
@@ -48,12 +42,5 @@ describe('PENDING_AUTHORIZATION_KEY', () => {
     // pending record. A key that dropped the app prefix would undo that.
     expect(PENDING_AUTHORIZATION_KEY).toBe('wildflower-server-docs.pending-authorization')
     expect(PENDING_AUTHORIZATION_KEY.startsWith(`${CLIENT_ID}.`)).toBe(true)
-  })
-})
-
-describe('requestedScopeParameter', () => {
-  it('joins the scopes the way RFC 6749 §3.3 asks for', () => {
-    // Act / Assert
-    expect(requestedScopeParameter().split(' ')).toEqual([...REQUESTED_SCOPES])
   })
 })

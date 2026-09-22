@@ -6,17 +6,19 @@ import { AuthedUntil, type AuthState, HostAuthed, isAuthed, Unauthed } from 'rea
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
+  deviceLoginAuthReadyEffect,
   EMBEDDED_TOKEN_TIMEOUT,
   embeddedAuthReadyEffect,
+  landingAuthReadyEffect,
   TokenTimeout,
-  webAuthReadyEffect,
 } from './auth-ready.ts'
 
 /**
  * Pins the injected `awaitAuthReady` cores the entries thread into the
- * router context. Web is a synchronous authed/unauthed decision; embedded
- * waits the host handshake up to `EMBEDDED_TOKEN_TIMEOUT` and is driven
- * here with `TestClock` so the 5s window is exercised without real time.
+ * router context. The device-login gate is a synchronous authed/unauthed
+ * decision; embedded waits the host handshake up to `EMBEDDED_TOKEN_TIMEOUT`
+ * and is driven here with `TestClock` so the 5s window is exercised without
+ * real time.
  *
  * The gate keys purely on the {@link AuthState} tag (`isAuthed`); the
  * cookie-expiry logic that turns a stale hint into `Unauthed` lives in
@@ -26,11 +28,11 @@ import {
 const makeRef = (initial: AuthState): Effect.Effect<SubscriptionRef.SubscriptionRef<AuthState>> =>
   SubscriptionRef.make<AuthState>(initial)
 
-describe('webAuthReadyEffect', () => {
+describe('deviceLoginAuthReadyEffect', () => {
   test('resolves when the signal is authed (standalone web)', async () => {
     const result = await Effect.runPromise(
       Effect.flatMap(makeRef(AuthedUntil({ exp: 9_999_999_999 })), (ref) =>
-        Effect.either(webAuthReadyEffect(ref))
+        Effect.either(deviceLoginAuthReadyEffect(ref))
       )
     )
 
@@ -39,7 +41,7 @@ describe('webAuthReadyEffect', () => {
 
   test('rejects with a TanStack redirect to the device-login route when unauthed', async () => {
     const result = await Effect.runPromise(
-      Effect.flatMap(makeRef(Unauthed()), (ref) => Effect.either(webAuthReadyEffect(ref)))
+      Effect.flatMap(makeRef(Unauthed()), (ref) => Effect.either(deviceLoginAuthReadyEffect(ref)))
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -58,7 +60,9 @@ describe('webAuthReadyEffect', () => {
   test('bakes the supplied returnTo into the redirect search', async () => {
     const returnTo = '/home?tab=labs'
     const result = await Effect.runPromise(
-      Effect.flatMap(makeRef(Unauthed()), (ref) => Effect.either(webAuthReadyEffect(ref, returnTo)))
+      Effect.flatMap(makeRef(Unauthed()), (ref) =>
+        Effect.either(deviceLoginAuthReadyEffect(ref, returnTo))
+      )
     )
 
     expect(Either.isLeft(result)).toBe(true)
@@ -84,12 +88,67 @@ describe('webAuthReadyEffect', () => {
     await fc.assert(
       fc.asyncProperty(anySignal, async (signal) => {
         const result = await Effect.runPromise(
-          Effect.flatMap(makeRef(signal), (ref) => Effect.either(webAuthReadyEffect(ref)))
+          Effect.flatMap(makeRef(signal), (ref) => Effect.either(deviceLoginAuthReadyEffect(ref)))
         )
         expect(Either.isRight(result)).toBe(isAuthed(signal))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )
+  })
+})
+
+describe('landingAuthReadyEffect', () => {
+  test('keeps the search the reader was on, so ?server= survives the bounce', async () => {
+    const returnTo = '/home?server=https%3A%2F%2Fx.test'
+    const result = await Effect.runPromise(
+      Effect.flatMap(makeRef(Unauthed()), (ref) =>
+        Effect.either(landingAuthReadyEffect(ref, returnTo))
+      )
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(isRedirect(result.left)).toBe(true)
+      if (isRedirect(result.left)) {
+        expect(result.left.options.to).toBe('/')
+        // An updater, not a replacement: `main-web`'s `?server=` is the one
+        // thing the landing page needs to offer a way back in, and a plain
+        // object here would drop it on every reload-induced bounce.
+        const search = result.left.options.search
+        expect(typeof search).toBe('function')
+        if (typeof search === 'function') {
+          expect(search({ server: 'https://x.test' })).toStrictEqual({
+            server: 'https://x.test',
+            returnTo,
+          })
+        }
+      }
+    }
+  })
+
+  test('omits returnTo entirely when the gate supplies none', async () => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(makeRef(Unauthed()), (ref) => Effect.either(landingAuthReadyEffect(ref)))
+    )
+
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result) && isRedirect(result.left)) {
+      const search = result.left.options.search
+      expect(typeof search).toBe('function')
+      if (typeof search === 'function') {
+        expect(search({ server: 'https://x.test' })).toStrictEqual({ server: 'https://x.test' })
+      }
+    }
+  })
+
+  test('resolves without redirecting when the signal is authed', async () => {
+    const result = await Effect.runPromise(
+      Effect.flatMap(makeRef(AuthedUntil({ exp: 9_999_999_999 })), (ref) =>
+        Effect.either(landingAuthReadyEffect(ref))
+      )
+    )
+
+    expect(result).toStrictEqual(Either.void)
   })
 })
 

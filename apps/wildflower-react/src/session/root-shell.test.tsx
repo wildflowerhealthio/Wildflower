@@ -2,6 +2,7 @@ import { HttpClient, HttpClientResponse } from '@effect/platform'
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
+import type * as GatekeeperReact from 'gatekeeper-react'
 import { useEffect, type JSX, type ReactNode } from 'react'
 import { type AuthState, Unauthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -85,18 +86,22 @@ vi.mock('react-kitchen-sink', () => ({
 // passthrough and `PendingConsentModalHost` to nothing — the popup
 // surface isn't what's being pinned here, and the real Effect
 // `SubscriptionRef` plumbing would drag a runtime into this harness.
-vi.mock('gatekeeper-react', () => ({
-  GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
-  ActivePendingConsentProvider: makePassthrough('ActivePendingConsentProvider'),
-  makeActivePendingConsentStore: () => ({
-    subscribable: {
-      get: Effect.succeed(null),
-      changes: { pipe: () => ({}) },
-    },
-    setActiveHead: () => {},
-  }),
-  PendingConsentModalHost: (): null => null,
-}))
+vi.mock('gatekeeper-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof GatekeeperReact>()
+  return {
+    GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
+    ActivePendingConsentProvider: makePassthrough('ActivePendingConsentProvider'),
+    makeActivePendingConsentStore: () => ({
+      subscribable: {
+        get: Effect.succeed(null),
+        changes: { pipe: () => ({}) },
+      },
+      setActiveHead: () => {},
+    }),
+    PendingConsentModalHost: (): null => null,
+    TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
+  }
+})
 vi.mock('collector-react', () => ({
   CollectorRouterContext: { sliceRuntimeLayer: Layer.empty },
 }))

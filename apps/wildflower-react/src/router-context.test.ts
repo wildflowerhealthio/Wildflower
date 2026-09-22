@@ -31,6 +31,7 @@ describe('RouterContext assembly', () => {
         sendMessage: () => Effect.void,
         coordinator: { register: () => Effect.void, unregister: () => Effect.void },
       }),
+      entry: 'main-web',
     } satisfies RouterContext
 
     // Assert

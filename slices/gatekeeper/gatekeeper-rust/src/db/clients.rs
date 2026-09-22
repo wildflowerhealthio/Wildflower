@@ -211,6 +211,7 @@ mod tests {
             "medications-app",
             "web-trace-app",
             "wildflower-server-docs",
+            "wildflower-react",
             "importer-app",
             "ohif-viewer",
         ] {
@@ -368,6 +369,30 @@ mod tests {
                 "the console's allowed scopes must cover {requested}",
             );
         }
+        // The web owner UI (`apps/wildflower-react`'s `main-web` build) is a
+        // standalone-launch client for the same reason the console is — it drives
+        // every slice surface — so `0012` registers it against the console's
+        // vocabulary rather than a set of its own. Compared against `docs` rather
+        // than a second literal copy: a scope added to one migration and not the
+        // other fails here instead of drifting quietly.
+        let web_client = store.client_by_id("wildflower-react").unwrap().unwrap();
+        assert_eq!(web_client.allowed_scopes, docs.allowed_scopes);
+        assert_eq!(web_client.allowed_grant_types, docs.allowed_grant_types);
+        // One absolute entry, and it is the app's fixed post-sign-in ROUTE, not a
+        // directory: the web UI is a SPA on browser history, so
+        // `redirectUriForRoute` derives `/home` per origin (the directory form
+        // would vary by whichever section the reader signed in from). Any other
+        // origin the build runs at is trusted on first use through the consent
+        // prompt, so this single entry is the published address only.
+        assert_eq!(
+            web_client.redirect_uris,
+            vec![RegisteredRedirectUri::Absolute(
+                "https://wildflowerhealth.io/app/home"
+                    .parse()
+                    .expect("a valid absolute redirect"),
+            )],
+        );
+
         // `importer-app` (the Importer) is a cloud client like `medications-app`
         // and `web-trace-app`: the app-relative `"/"` for the debug-only
         // self-hosted dev row, plus the absolute published-site redirect it

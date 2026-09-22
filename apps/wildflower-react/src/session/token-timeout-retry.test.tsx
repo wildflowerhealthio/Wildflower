@@ -50,6 +50,7 @@ const renderGate = (
       sendMessage: () => Effect.void,
       coordinator: { register: () => Effect.void, unregister: () => Effect.void },
     }),
+    entry: 'main-web',
   }
   const router = createRouter({
     routeTree: leaf,

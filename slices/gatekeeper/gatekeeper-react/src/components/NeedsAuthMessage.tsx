@@ -12,6 +12,7 @@ import { GrantDraft, ScopeRequest } from 'scopes-core'
 import type { GrantDraft as GrantDraftModel } from 'scopes-core'
 import { ScopePicker } from 'scopes-react'
 
+import { useTokenResponseHandler } from '../client/token-response-handler.ts'
 import { parseDeviceLoginSearch, parseRequestScopes } from '../device-login-route.ts'
 import {
   useGatekeeperFirstPartyClientId,
@@ -218,6 +219,7 @@ const NeedsAuthMessage = (): JSX.Element => {
   const [state, setState] = useState<DeviceFlowState>({ tag: 'form' })
   const [deviceName, setDeviceName] = useState('')
   const setAuthState = useAuthStateSetter()
+  const tokenResponseHandler = useTokenResponseHandler()
   // Long-running device flow with retry — needs a fiber handle for
   // interrupt-on-unmount, which the promise-returning `runAuthed` can't
   // give. Runs against the composed `runtimeLayer` from router context
@@ -366,19 +368,28 @@ const NeedsAuthMessage = (): JSX.Element => {
         )
 
       yield* Effect.sync(() => {
-        // Nudge the store to publish the freshly-authed signal. The web store
-        // ignores the argument and re-derives from the `wf_auth_exp` cookie the
-        // server just set (its source of truth); `AuthedUntil` is the honest
-        // value this sign-in just achieved. The full-page reload below rebuilds
-        // the store from the cookie anyway.
-        setAuthState(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in }))
-        // Full-page navigation (not a client-side route push) so the app
-        // re-boots with the now-persisted bearer in place — matching the
-        // "this page will reload automatically once you sign in" copy.
         const returnTo = sanitizeReturnTo(
           parseDeviceLoginSearch(window.location.search).returnTo ?? null
         )
-        window.location.assign(returnTo)
+        // Bearer-holding entry: keep the token in page memory *before* the
+        // signal flips, so the first authed request after it has a header to
+        // carry.
+        tokenResponseHandler?.writeBearer(tokenResponse.access_token)
+        // Nudge the store to publish the freshly-authed signal. The cookie
+        // store ignores the argument and re-derives from the `wf_auth_exp`
+        // cookie the server just set (its source of truth); `AuthedUntil` is
+        // the honest value this sign-in just achieved.
+        setAuthState(AuthedUntil({ exp: Math.floor(Date.now() / 1000) + tokenResponse.expires_in }))
+        if (tokenResponseHandler !== undefined) {
+          // Client-side navigation, because a full reload would drop the
+          // in-memory bearer this entry just acquired.
+          tokenResponseHandler.navigateAfterAuth(returnTo)
+        } else {
+          // Cookie-web / Tauri entry: the server set an HttpOnly cookie, so a
+          // full-page reload picks it up — matching the "this page will reload
+          // automatically once you sign in" copy.
+          window.location.assign(returnTo)
+        }
       })
     }).pipe(
       Effect.catchAll((err) =>

@@ -58,4 +58,4 @@ const prependApiBaseUrl = (
     )
   ).pipe(Layer.provide(httpClientLayer))
 
-export { prependApiBaseUrl }
+export { hasAbsoluteScheme, prependApiBaseUrl }

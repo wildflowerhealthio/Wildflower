@@ -30,6 +30,8 @@ type RuntimeLayer = BaseRouterContext.RuntimeLayerWith<SliceServices>
 type RunAuthed = BaseRouterContext.RunAuthedWith<SliceServices>
 
 interface RouterContext extends BaseRouterContext.RouterContextWith<SliceServices> {
+  /** Which entry point mounted the app — routes use this to vary behavior. */
+  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri'
   /**
    * Resolves to the page-side `BridgeTransport` (narrowed to the React
    * surface — only `sendMessage`) once the boot-time `signalReady`
@@ -64,6 +66,14 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    * web/embedded (the gatekeeper-core `FIRST_PARTY_CLIENT_ID` fallback applies).
    */
   readonly firstPartyClientId?: string
+  /**
+   * Why the web entry's boot-time SMART sign-in failed, when it did — the
+   * `reason` off a `SignInError`, already written for a reader. `main-web`
+   * redeems the authorization code before it mounts the router, so a failed
+   * return leg has no tree to render itself into; the landing route shows this
+   * instead. Omitted on every other entry and on an ordinary load.
+   */
+  readonly signInProblem?: string
 }
 
 export type { RouterContext, RunAuthed, RuntimeLayer }

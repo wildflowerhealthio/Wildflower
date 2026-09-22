@@ -5,14 +5,15 @@ import { createBrowserHistory } from '@tanstack/react-router'
 import './styles/global.css'
 import { addOsColorSchemeListener } from 'react-tundraish'
 import { renderApp } from './app-root.tsx'
-import { makeWebEntryOptions } from './web-entry.ts'
+import { makeSingleWebEntryOptions } from './single-web-entry.ts'
 
 addOsColorSchemeListener()
 
-// Same standalone-web wiring as `main-web` (see `makeWebEntryOptions`);
-// differs only in `entry` and the commented-out `instrument.ts` import.
+// The single-file bundle the host embeds and serves itself, so it is always
+// same-origin with the API and authenticates by cookie — see
+// `makeSingleWebEntryOptions`. `main-web` is the cross-origin counterpart.
 renderApp({
   history: createBrowserHistory(),
   entry: 'main-single-web',
-  ...makeWebEntryOptions(),
+  ...makeSingleWebEntryOptions(),
 })

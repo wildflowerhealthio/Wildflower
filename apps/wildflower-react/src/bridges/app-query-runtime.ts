@@ -4,6 +4,7 @@ import { webHttpClientLayer } from 'telemetry-react'
 import { buildQueryClient } from '../query-client.ts'
 import type { RunAuthed, RuntimeLayer } from '../router-context.ts'
 import { buildRunAuthed } from '../runtime-layer.ts'
+import { attachBearer } from './attach-bearer.ts'
 import { prependApiBaseUrl } from './prepend-api-base-url.ts'
 
 /**
@@ -20,20 +21,28 @@ import { prependApiBaseUrl } from './prepend-api-base-url.ts'
  * @param onUnauthorized - Invoked by the `QueryClient`'s cache when an
  *   authed query/mutation ends in a 401 that survived the boot-race
  *   retry — the entry uses it to send the user to device login.
+ * @param readBearer - Lazy bearer reader for the hosted entry. When
+ *   provided, every relative request carries `Authorization: Bearer
+ *   <token>`. Omitted for cookie-authed entries.
  */
 const buildAppQueryRuntime = (
   apiBaseUrl: string | undefined,
-  onUnauthorized: () => void
+  onUnauthorized: () => void,
+  readBearer?: () => string | undefined
 ): {
   readonly queryClient: QueryClient
   readonly runAuthed: RunAuthed
   readonly runtimeLayer: RuntimeLayer
 } => {
   const queryClient = buildQueryClient(onUnauthorized)
-  const httpClientLayer =
-    apiBaseUrl === undefined
-      ? webHttpClientLayer
-      : prependApiBaseUrl(webHttpClientLayer, apiBaseUrl)
+  // Order is load-bearing: `HttpClient.mapRequest` chains preprocessing
+  // inside-out, so the bearer wrapper has to be the *inner* one to see a
+  // still-relative URL. Swapped, its absolute-URL guard would drop the
+  // `Authorization` header from every request. Pinned by a test in
+  // `attach-bearer.test.ts`.
+  let httpClientLayer = webHttpClientLayer
+  if (readBearer !== undefined) httpClientLayer = attachBearer(httpClientLayer, readBearer)
+  if (apiBaseUrl !== undefined) httpClientLayer = prependApiBaseUrl(httpClientLayer, apiBaseUrl)
   const { runAuthed, runtimeLayer } = buildRunAuthed(httpClientLayer)
   return { queryClient, runAuthed, runtimeLayer }
 }

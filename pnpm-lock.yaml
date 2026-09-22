@@ -681,6 +681,9 @@ importers:
       apps-react:
         specifier: workspace:*
         version: link:../../slices/apps/apps-react
+      branding-core:
+        specifier: workspace:*
+        version: link:../../slices/branding/branding-core
       collector-fundamentals:
         specifier: workspace:*
         version: link:../../slices/collector/collector-fundamentals

@@ -51,8 +51,8 @@ export const routes = rootRoute('__root.tsx', [
     physical('', routesDir('databases', 'settings')),
     physical('', routesDir('apps', 'settings')),
   ]),
+  index('index.tsx'),
   layout('_auth', '_auth.tsx', [
-    index('_auth/index.tsx'),
     physical('', routesDir('collector', '_auth')),
     physical('', routesDir('har-recorder', '_auth')),
     route('/home', '_auth/home.tsx', [physical('', routesDir('apps', '_auth/home'))]),

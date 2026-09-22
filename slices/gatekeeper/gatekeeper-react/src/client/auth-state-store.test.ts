@@ -10,8 +10,8 @@ import { afterEach, beforeEach, describe, expect, test } from 'vite-plus/test'
 
 import { clearAllCookies, futureAuthExp, pastAuthExp, setAuthExpCookie } from '../test-support.ts'
 import {
+  makeCookieAuthStateStore,
   makeEmbeddedAuthStateStore,
-  makeWebAuthStateStore,
   readAuthedSignalFromCookie,
 } from './auth-state-store.ts'
 
@@ -64,26 +64,26 @@ describe('readAuthedSignalFromCookie', () => {
   })
 })
 
-describe('makeWebAuthStateStore', () => {
+describe('makeCookieAuthStateStore', () => {
   test('starts AuthedUntil(exp) when the cookie is present at construction', () => {
     const exp = futureAuthExp()
     setAuthExpCookie(exp)
-    expect(Equal.equals(read(makeWebAuthStateStore()), AuthedUntil({ exp: Number(exp) }))).toBe(
+    expect(Equal.equals(read(makeCookieAuthStateStore()), AuthedUntil({ exp: Number(exp) }))).toBe(
       true
     )
   })
 
   test('starts Unauthed when no cookie is present', () => {
-    expect(Equal.equals(read(makeWebAuthStateStore()), Unauthed())).toBe(true)
+    expect(Equal.equals(read(makeCookieAuthStateStore()), Unauthed())).toBe(true)
   })
 
   test('starts Unauthed when the cookie is already expired', () => {
     setAuthExpCookie(pastAuthExp())
-    expect(Equal.equals(read(makeWebAuthStateStore()), Unauthed())).toBe(true)
+    expect(Equal.equals(read(makeCookieAuthStateStore()), Unauthed())).toBe(true)
   })
 
   test('setAuthState re-derives the signal from the cookie, ignoring its argument', () => {
-    const store = makeWebAuthStateStore()
+    const store = makeCookieAuthStateStore()
     expect(Equal.equals(read(store), Unauthed())).toBe(true)
 
     // The server set the HttpOnly cookie on the device-flow response; the
@@ -99,7 +99,7 @@ describe('makeWebAuthStateStore', () => {
   test('the signal is a typed AuthedUntil carrying only the non-secret exp — never a JWT', () => {
     const exp = futureAuthExp()
     setAuthExpCookie(exp)
-    const signal = read(makeWebAuthStateStore())
+    const signal = read(makeCookieAuthStateStore())
     expect(signal._tag).toBe('AuthedUntil')
     if (signal._tag === 'AuthedUntil') expect(signal.exp).toBe(Number(exp))
   })

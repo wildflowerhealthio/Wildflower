@@ -7,6 +7,8 @@ import {
   DEVICE_LOGIN_ROUTE,
   makeActivePendingConsentStore,
   type ActivePendingConsentStore,
+  TokenResponseHandlerContext,
+  type TokenResponseHandler,
 } from 'gatekeeper-react'
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
@@ -176,6 +178,28 @@ interface RenderAppOptions {
    * this shared code.
    */
   readonly redirectToDeviceLoginOnUnauthorized: boolean
+  /**
+   * Lazy bearer reader for `main-web`, the cross-origin entry. When provided,
+   * every relative HTTP request carries `Authorization: Bearer <token>`.
+   * Omitted for cookie-authed entries (single-web, Tauri).
+   */
+  readonly readBearer?: () => string | undefined
+  /**
+   * Token response handler for `main-web`. When provided,
+   * `NeedsAuthMessage` writes the bearer and navigates client-side
+   * instead of doing a full-page reload.
+   */
+  readonly tokenResponseHandler?: TokenResponseHandler
+  /**
+   * Why the web entry's boot-time SMART sign-in failed, when it did.
+   * `main-web` redeems the authorization code before it mounts the router
+   * (see its `boot`), so a failed return leg has nowhere to render itself by
+   * the time the tree exists. Threaded into router context for the landing
+   * route to show, the same way `localGrantedScopes` and `firstPartyClientId`
+   * reach `NeedsAuthMessage`. Omitted on every other entry and on an ordinary
+   * load.
+   */
+  readonly signInProblem?: string
 }
 
 /**
@@ -219,6 +243,9 @@ const renderApp = ({
   platformSettingsItems,
   platformTabs,
   redirectToDeviceLoginOnUnauthorized,
+  readBearer,
+  tokenResponseHandler,
+  signInProblem,
 }: RenderAppOptions): void => {
   // Router isn't built until after the query runtime (its context needs the
   // runtime), so the closures that navigate imperatively read it through this
@@ -241,7 +268,11 @@ const renderApp = ({
   // here. Web entries redirect; `main-tauri` takes no action (see the field doc
   // and the entrypoints). A new entry must state its own behavior at its seam.
   const onUnauthorized = redirectToDeviceLoginOnUnauthorized ? redirectToDeviceLogin : () => {}
-  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(apiBaseUrl, onUnauthorized)
+  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
+    apiBaseUrl,
+    onUnauthorized,
+    readBearer
+  )
 
   // Keyed on the auth *signal* (the store), not the bearer source: on web a
   // sign-in flips the cookie-derived signal and should flush the cache.
@@ -277,6 +308,7 @@ const renderApp = ({
       runtimeLayer,
       awaitAuthReady: resolvedAwaitAuthReady,
       transport: transportPromise,
+      entry,
       // Threaded so the apps launch POST reaches the host API origin — see
       // `RouterContext.apiBaseUrl`.
       apiBaseUrl,
@@ -287,6 +319,9 @@ const renderApp = ({
       // gatekeeper seeds the first-party client under — see
       // `RouterContext.firstPartyClientId`.
       firstPartyClientId,
+      // Threaded so the landing page can report a sign-in that failed before
+      // the tree existed — see `RouterContext.signInProblem`.
+      signInProblem,
     },
     defaultPreload: 'intent',
   })
@@ -313,14 +348,16 @@ const renderApp = ({
       >
         <QueryClientProvider client={queryClient}>
           <AuthStateProvider store={tokenStore}>
-            <ActivePendingConsentProvider store={activePendingConsentStore}>
-              <AppRootTree
-                router={router}
-                transportPromise={transportPromise}
-                platformSettingsItems={platformSettingsItems}
-                platformTabs={platformTabs}
-              />
-            </ActivePendingConsentProvider>
+            <TokenResponseHandlerContext value={tokenResponseHandler}>
+              <ActivePendingConsentProvider store={activePendingConsentStore}>
+                <AppRootTree
+                  router={router}
+                  transportPromise={transportPromise}
+                  platformSettingsItems={platformSettingsItems}
+                  platformTabs={platformTabs}
+                />
+              </ActivePendingConsentProvider>
+            </TokenResponseHandlerContext>
           </AuthStateProvider>
         </QueryClientProvider>
       </ErrorBoundary>
