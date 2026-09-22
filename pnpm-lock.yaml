@@ -278,6 +278,9 @@ importers:
       wildflower-importer:
         specifier: workspace:*
         version: link:../importer-web
+      wildflower-react:
+        specifier: workspace:*
+        version: link:../wildflower-react
       wildflower-server-docs:
         specifier: workspace:*
         version: link:../wildflower-server-docs

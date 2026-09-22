@@ -59,28 +59,53 @@ const redirectUriForPage = (href: string): string | undefined => {
 /**
  * The `redirect_uri` for a page that returns to **one fixed in-app route**
  * rather than to wherever the reader happened to start: `route` resolved
- * against the origin `href` is served from.
+ * against the app's served root — the origin, plus `basePath` when the copy is
+ * published under a subpath.
  *
  * This is the form a single-page app wants. {@link redirectUriForPage} derives
  * the directory, which for a SPA on browser history is whatever section the
  * reader was in when they clicked sign in (`/settings/foo` → `/settings/`) — a
  * different URI per section, so the registered entry could never cover more
  * than one of them. Resolving a fixed route instead makes the value depend on
- * the origin alone.
+ * the served root alone, identical on the outbound leg and on the callback
+ * (which arrives at that root carrying `code`/`state`).
  *
- * `route` is resolved against the **origin**, not the current path, so a
- * relative spelling still names a top-level route. A `route` that escapes the
- * origin (`//evil.test/home`, or a `/\evil.test` that `URL` folds into that
- * form) yields `undefined` rather than a URI pointing somewhere else — the same
+ * `basePath` is the slash-suffixed directory the build is served from
+ * (`branding-core`'s `basenameOf(location.pathname)`); it defaults to `/`, the
+ * origin root, so a root-served copy behaves exactly as before. A copy under
+ * `/app/` (or a PR preview's `/staging/pr-<n>/app/`) passes that directory so
+ * the route returns **under it** — `/app/home`, the registered value — rather
+ * than at `<origin>/home`, off the app. The caller must derive `basePath` at
+ * the served root on both legs (so the two derivations agree), which the hosted
+ * owner UI does: its sign-in is reachable only from that root.
+ *
+ * `route` is first resolved against the **origin**, so a `route` that escapes it
+ * (`//evil.test/home`, or a `/\evil.test` that `URL` folds into that form)
+ * yields `undefined` rather than a URI pointing somewhere else — the same
  * origin-equality guard `gatekeeper-rust` applies to an app-relative allowlist
- * entry in `domain/client_redirect.rs`.
+ * entry in `domain/client_redirect.rs` — before its path is re-rooted under
+ * `basePath`.
  */
-const redirectUriForRoute = (href: string, route: string): string | undefined => {
+const redirectUriForRoute = (href: string, route: string, basePath = '/'): string | undefined => {
   const here = returnableUrl(href)
   if (here === undefined) return undefined
+  let absolute: URL
+  try {
+    // Resolve against the origin first: this is the screen that turns a
+    // protocol-relative or absolute `route` into a foreign origin the guard
+    // below rejects, and it normalizes any `.`/`..` out of the path.
+    absolute = new URL(route, here.origin)
+  } catch {
+    return undefined
+  }
+  if (absolute.origin !== here.origin) return undefined
   let target: URL
   try {
-    target = new URL(route, here.origin)
+    // Re-root the now origin-safe route path under the served base. `basePath`
+    // needs its trailing slash for `URL` to treat it as a directory rather than
+    // a sibling to replace.
+    const servedRoot = new URL(basePath.endsWith('/') ? basePath : `${basePath}/`, here.origin)
+    target = new URL(absolute.pathname.replace(/^\/+/, ''), servedRoot)
   } catch {
     return undefined
   }

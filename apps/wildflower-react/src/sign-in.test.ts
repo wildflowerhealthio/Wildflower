@@ -36,6 +36,21 @@ describe('signInEnvironment', () => {
     expect(fromDev.redirectUri).toBe('http://127.0.0.1:5173/home')
   })
 
+  it('returns under the served subpath when the build is published there', () => {
+    // Arrange / Act — the hosted build runs under `/app/` in production and under
+    // a PR preview's `/staging/pr-<n>/app/`; the caller passes that served base.
+    const production = signInEnvironment(pageAt('https://wildflowerhealth.io/app/'), '/app/')
+    const preview = signInEnvironment(
+      pageAt('https://wildflowerhealthio.github.io/staging/pr-719/app/'),
+      '/staging/pr-719/app/'
+    )
+
+    // Assert — production derives exactly the seeded row (so the sign-in returns
+    // silently); the preview derives its own base, correct for where it is served.
+    expect(production.redirectUri).toBe(REGISTERED_REDIRECT_URI)
+    expect(preview.redirectUri).toBe('https://wildflowerhealthio.github.io/staging/pr-719/app/home')
+  })
+
   it('falls back to the published URI from an address a sign-in must not return to', () => {
     // Arrange / Act — plaintext off loopback is refused the derivation, and the
     // published value is harmless from a page that can never receive it.
