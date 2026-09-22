@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use axum::extract::State;
 use axum::http::{header, HeaderMap};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -14,7 +11,7 @@ use super::token_request::TokenRequest;
 use crate::domain::capabilities::oauth::DeviceAuthorizationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
-use crate::http::state::GatekeeperState;
+use crate::http::extractors::Live;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::http::ServedOrigin;
 use crate::live_bindings::LiveDeviceAuthorizer;
@@ -65,7 +62,7 @@ impl IntoResponse for DeviceAuthorizationResponse {
     )
 )]
 pub(super) async fn handle_device_authorization_request(
-    State(state): State<Arc<GatekeeperState>>,
+    authorizer: Live<LiveDeviceAuthorizer>,
     origin: ServedOrigin,
     headers: HeaderMap,
     request: TokenRequest<DeviceAuthorizationPayload>,
@@ -75,14 +72,14 @@ pub(super) async fn handle_device_authorization_request(
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok());
-    device_authorization(&state, &origin, user_agent, request).into_response()
+    device_authorization(&authorizer, &origin, user_agent, request).into_response()
 }
 
 /// Parse the request, hand it to the [`LiveDeviceAuthorizer`], and frame the
 /// RFC 8628 §3.2 response on this request's served origin, surfacing every
 /// failure as a [`TokenError`].
 fn device_authorization(
-    state: &Arc<GatekeeperState>,
+    authorizer: &LiveDeviceAuthorizer,
     origin: &ServedOrigin,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
@@ -107,7 +104,7 @@ fn device_authorization(
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .or_else(|| user_agent.and_then(device_name_from_user_agent));
-    let started = LiveDeviceAuthorizer::from_state(state)
+    let started = authorizer
         .start(&client, requested_scopes, device_name)
         .map_err(|error| match error {
             DeviceAuthorizationError::ScopeNotAllowed => TokenError::bad_request(

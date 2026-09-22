@@ -296,7 +296,7 @@ mod tests {
     fn revocation_store_unavailable_maps_to_500() {
         // A store read failure fails closed: we can't prove the token is live,
         // so it's an operator-facing 500, never a silent pass.
-        let err = VerifyError::RevocationStoreUnavailable(rusqlite::Error::QueryReturnedNoRows);
+        let err = VerifyError::RevocationStoreUnavailable("query returned no rows".to_owned());
         let response = verify_error_response("test", err);
         assert_eq!(response.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }

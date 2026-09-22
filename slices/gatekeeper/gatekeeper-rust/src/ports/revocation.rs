@@ -29,3 +29,25 @@ pub(crate) trait Revocation: Send + Sync + 'static {
     /// Returns the store failure (stringified) when the write fails.
     fn revoke_subject_as_of_now(&self, subject: &str) -> Result<(), String>;
 }
+
+/// Answer whether an issued token has been revoked — the read side of the
+/// same store, kept as its own object-safe seam so the token verifier can be
+/// tested against a stub. Errors are stringified for the same reason as
+/// [`Revocation`]'s.
+pub(crate) trait RevocationCheck: Send + Sync + 'static {
+    /// Whether the token identified by `jti` (denylisted individually) or
+    /// issued to `subject` at `issued_at` (before the subject's revocation
+    /// epoch) is revoked. A missing `jti` skips the per-token check; a missing
+    /// `issued_at` skips the epoch check.
+    ///
+    /// # Errors
+    ///
+    /// Returns the store failure (stringified) when the read fails; the caller
+    /// fails closed.
+    fn is_revoked(
+        &self,
+        jti: Option<&str>,
+        issued_at: Option<DateTime<Utc>>,
+        subject: &str,
+    ) -> Result<bool, String>;
+}

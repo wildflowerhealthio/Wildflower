@@ -8,6 +8,9 @@
 //!  - [`oauth`] — the `/oauth/*` pre-auth surface, gated on the **client**:
 //!    anything done on a client's own behalf takes an `AuthenticatedClient`
 //!    proof, produced by the one capability there.
+//!  - [`session`] — the token verification both authN gates run, and the
+//!    authenticated-only self-service operations on the caller's own session
+//!    (acquired through the shared `Authenticated<…>` extractor).
 //!  - [`writers`] — the privileged writes themselves (approve a request, issue a
 //!    code, record a grant, mint a token), each gated on an **authority proof**
 //!    from [`crate::domain::authority`]. Flow capabilities in every other group
@@ -24,6 +27,7 @@
 
 pub(crate) mod access;
 pub(crate) mod oauth;
+pub(crate) mod session;
 pub(crate) mod writers;
 
 pub use access::grantable_admin_scopes;

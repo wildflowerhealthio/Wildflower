@@ -8,23 +8,28 @@
 //!    request extractor goes through) and consumed by [`TokenExchanger`] and
 //!    [`DeviceAuthorizer`];
 //!  - public: [`CodeAuthorizationStarter`] (a browser arriving at
-//!    `/authorize`) and [`AuthorizationStatusReader`] (polling by request id).
-//!    Each exposes exactly one operation, so a handler holding one can do
-//!    nothing else with the store.
+//!    `/authorize`), [`AuthorizationStatusReader`] (polling by request id),
+//!    [`PublicKeysReader`] (the JWKS), and [`ClientScopesReader`] (the host's
+//!    per-app launch check). Each exposes exactly one operation, so a handler
+//!    holding one can do nothing else with the store.
 
 mod authorization_status_reader;
 mod client_authenticator;
+mod client_scopes_reader;
 mod code_authorization_starter;
 mod device_authorizer;
+mod public_keys_reader;
 mod token_exchanger;
 
 pub(crate) use authorization_status_reader::{
     AuthorizationStatusError, AuthorizationStatusReader, AuthorizationStatusView,
 };
 pub(crate) use client_authenticator::ClientAuthenticator;
+pub(crate) use client_scopes_reader::ClientScopesReader;
 pub(crate) use code_authorization_starter::{
     AuthorizationStart, AuthorizationStartError, AuthorizeRequest, CodeAuthorizationStarter,
     FreshIds,
 };
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
+pub(crate) use public_keys_reader::PublicKeysReader;
 pub(crate) use token_exchanger::{AuthorizationCodeGrant, ExchangedToken, TokenExchanger};

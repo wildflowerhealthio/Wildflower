@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use axum::extract::{Query, State};
+use axum::extract::Query;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
@@ -15,7 +13,7 @@ use crate::domain::client_redirect::{build_client_error_redirect_url, build_clie
 use crate::domain::page_paths;
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
-use crate::http::state::GatekeeperState;
+use crate::http::extractors::Live;
 use crate::http::ServedOrigin;
 use crate::live_bindings::LiveCodeAuthorizationStarter;
 
@@ -185,7 +183,7 @@ pub struct AuthorizeParams {
     )
 )]
 pub(super) async fn handle_authorize_request(
-    State(state): State<Arc<GatekeeperState>>,
+    starter: Live<LiveCodeAuthorizationStarter>,
     origin: ServedOrigin,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
@@ -200,7 +198,7 @@ pub(super) async fn handle_authorize_request(
             "SMART App Launch parameters received at /oauth/authorize",
         );
     }
-    let started = LiveCodeAuthorizationStarter::from_state(&state).start(
+    let started = starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
             code_challenge_method: &params.code_challenge_method,

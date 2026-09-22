@@ -65,7 +65,7 @@ pub fn grantable_admin_scopes() -> Vec<Scope> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::source_guard::rs_files_under;
+    use crate::domain::source_guard::{production_lines, relative_to, rs_files_under};
 
     #[test]
     fn grantable_admin_scopes_are_the_expected_wildflower_scopes() {
@@ -121,56 +121,86 @@ mod tests {
         );
     }
 
-    /// Default-safety guard: the scope-gated `/access` handler files must reach
-    /// the store **only** through a `Scoped<…>` capability — never a raw
-    /// `State<Arc<GatekeeperState>>` or a direct `.store` / `.revocation_store`
-    /// field access. This test fails if one appears, so a forgotten scope check
-    /// can't ship silently.
+    /// Default-safety guard: every handler file reaches the store **only**
+    /// through a capability extractor — `Scoped<…>` (scope-gated),
+    /// `Authenticated<…>` (the caller's own session), or `Live<…>` (the
+    /// pre-auth front door, whose gate is the proof its methods take) — never a
+    /// raw `State<Arc<GatekeeperState>>` or a state field. This test fails if
+    /// one appears, so a forgotten gate can't ship silently.
     ///
     /// The routes tree is enumerated at test time, so a NEW handler file is
-    /// guarded by default — it must be consciously exempted below to escape.
-    /// (Advisory-strength, deliberately: the needles are textual.)
+    /// guarded by default; only module glue (`mod.rs`) is exempt. (Advisory-
+    /// strength, deliberately: the needles are textual; comments and unit-test
+    /// modules are skipped.)
     #[test]
-    fn access_handlers_reach_the_store_only_through_capabilities() {
-        // Files that are legitimately NOT scope-gated: module glue, the pre-auth
-        // public surface (`oauth/`, jwks), and self-service logout (authN-only).
-        // The `oauth/`, logout, and jwks exemptions shrink as the PR chain moves
-        // each surface behind a capability (see the crate's TODO.md).
-        const EXEMPT_FILES: &[&str] = &["mod.rs", "logout.rs", "well_known_jwks.rs"];
-        const EXEMPT_DIR_PREFIXES: &[&str] = &["oauth/"];
-        const FORBIDDEN: &[&str] = &["State<", ".store", ".revocation_store"];
+    fn handlers_reach_the_state_only_through_capabilities() {
+        // Raw router state, or any field of it — the only ways to reach data
+        // or a seam without a capability.
+        const FORBIDDEN: &[&str] = &[
+            "State<",
+            ".store",
+            ".revocation_store",
+            ".first_party_client_id",
+            ".self_hosted_redirects",
+            ".active_pending_consent_sender",
+            ".loopback_base_url",
+        ];
 
         let routes_dir =
             std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/routes"));
         let mut checked = 0;
         for path in rs_files_under(routes_dir) {
-            let relative = path
-                .strip_prefix(routes_dir)
-                .expect("enumerated under routes_dir")
-                .to_string_lossy()
-                .replace('\\', "/");
-            let file_name = relative.rsplit('/').next().unwrap_or(&relative);
-            if EXEMPT_FILES.contains(&file_name)
-                || EXEMPT_DIR_PREFIXES
-                    .iter()
-                    .any(|prefix| relative.starts_with(prefix))
-            {
+            let relative = relative_to(&path, routes_dir);
+            if relative.ends_with("mod.rs") {
                 continue;
             }
             let source = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("read handler source {relative}: {e}"));
-            for needle in FORBIDDEN {
-                assert!(
-                    !source.contains(needle),
-                    "scope-gated handler `{relative}` reaches the store directly \
-                     (`{needle}`); acquire it through a `Scoped<…>` capability instead",
-                );
+            for (n, line) in production_lines(&source) {
+                for needle in FORBIDDEN {
+                    assert!(
+                        !line.contains(needle),
+                        "handler `{relative}:{n}` reaches the state directly (`{needle}`); \
+                         acquire a capability through `Scoped<…>`, `Authenticated<…>`, or \
+                         `Live<…>` instead",
+                    );
+                }
             }
             checked += 1;
         }
         assert!(
-            checked >= 10,
+            checked >= 15,
             "only {checked} handler files enumerated — did src/http/routes move?",
+        );
+    }
+
+    /// The authN gates verify a token through the `TokenVerifier` capability,
+    /// not against the stores directly, so the verification policy has exactly
+    /// one home. Same textual strength as the handler guard.
+    #[test]
+    fn middleware_verifies_only_through_the_token_verifier() {
+        const FORBIDDEN: &[&str] = &[".store", ".revocation_store"];
+        let middleware_dir =
+            std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src/http/middleware"));
+        let mut checked = 0;
+        for path in rs_files_under(middleware_dir) {
+            let relative = relative_to(&path, middleware_dir);
+            let source = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("read middleware source {relative}: {e}"));
+            for (n, line) in production_lines(&source) {
+                for needle in FORBIDDEN {
+                    assert!(
+                        !line.contains(needle),
+                        "middleware `{relative}:{n}` reaches a store directly (`{needle}`); \
+                         verify through `LiveTokenVerifier` instead",
+                    );
+                }
+            }
+            checked += 1;
+        }
+        assert!(
+            checked >= 3,
+            "only {checked} middleware files enumerated — did src/http/middleware move?",
         );
     }
 }

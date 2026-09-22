@@ -14,7 +14,6 @@ mod state;
 mod wire_representations;
 
 pub(crate) use extractors::served_origin::ServedOrigin;
-pub(crate) use extractors::session::CallerSession;
 // Re-export so call sites read `crate::http::served_base_url_for` without the
 // `shared_structures_rust::` prefix. See `docs/Origins/Explanation.md`.
 pub(crate) use shared_structures_rust::served_origin::served_base_url_for;
@@ -95,8 +94,9 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
 /// `allowed_scopes`, parsed. The apps slice's per-app SMART launch check resolves a
 /// SMART app's `client_id` to this set through its `AppLaunchScopes` port (wired
 /// host-side to this fn), then requires the launching caller's grant to cover it.
-/// Reads inside the opaque [`GatekeeperState`] so the host never touches the
-/// store. An unknown `client_id` (a
+/// Reads through the
+/// [`ClientScopesReader`](crate::domain::capabilities::oauth::ClientScopesReader)
+/// so the host never touches the store. An unknown `client_id` (a
 /// misconfigured registration) yields an empty set — only the launch umbrella then
 /// gates the launch — and is logged as a warning so the fail-open scope downgrade
 /// is detectable rather than silent.
@@ -105,26 +105,14 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
 ///
 /// Propagates a store checkout / query failure.
 pub fn client_allowed_scopes(
-    state: &GatekeeperState,
+    state: &Arc<GatekeeperState>,
     client_id: &str,
 ) -> anyhow::Result<Vec<scopes_rust::Scope>> {
-    use crate::domain::GatekeeperStore as _;
-    let Some(client) = state.store.client_by_id(client_id)? else {
-        // A SMART app registration whose `client_id` has no gatekeeper client row
-        // (deleted or misconfigured): the per-app launch check then sees no required
-        // scopes and gates on the `wildflower/launch` umbrella alone. Log it so this
-        // fail-open scope downgrade is detectable rather than silent.
-        tracing::warn!(
-            "app launch scopes requested for unknown client_id `{client_id}`; per-app \
-             SMART scope check falls open to the `wildflower/launch` umbrella only",
-        );
-        return Ok(Vec::new());
-    };
-    Ok(client
-        .allowed_scopes
-        .iter()
-        .map(|scope| scopes_rust::Scope::from(scope.as_str()))
-        .collect())
+    use crate::live_bindings::FromState as _;
+    Ok(
+        crate::live_bindings::LiveClientScopesReader::from_state(state)
+            .allowed_scopes(client_id)?,
+    )
 }
 
 /// The gatekeeper OAuth + discovery `OpenAPI` document, collected from the very

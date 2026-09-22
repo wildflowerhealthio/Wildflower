@@ -1,6 +1,3 @@
-use std::sync::Arc;
-
-use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use serde::Deserialize;
@@ -10,7 +7,7 @@ use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
 use crate::cookies;
 use crate::domain::capabilities::oauth::{AuthorizationCodeGrant, ExchangedToken};
-use crate::http::state::GatekeeperState;
+use crate::http::extractors::Live;
 use crate::http::wire_representations::{OAuthError, TokenResponse};
 use crate::http::ServedOrigin;
 use crate::live_bindings::LiveTokenExchanger;
@@ -56,12 +53,11 @@ pub enum TokenPayload {
     )
 )]
 pub(super) async fn handle_token_request(
-    State(state): State<Arc<GatekeeperState>>,
+    exchanger: Live<LiveTokenExchanger>,
     origin: ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Response {
     let TokenRequest { payload, client } = request;
-    let exchanger = LiveTokenExchanger::from_state(&state);
     let now = Utc::now();
     // Whether to plant the owner-origin session cookie (`wf_auth` +
     // `wf_auth_exp`) is a property of the *resolved* grant, never of the wire

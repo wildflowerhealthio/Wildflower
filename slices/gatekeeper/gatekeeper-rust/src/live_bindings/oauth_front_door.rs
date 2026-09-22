@@ -2,24 +2,24 @@
 //! capabilities over the concrete `SqliteGatekeeperStore`. None is scope-gated
 //! (a browser arriving at `/authorize` holds no token; a device request is
 //! gated by its `AuthenticatedClient` proof), so none has a `Capability` impl;
-//! the handlers build them from the state.
+//! the handlers acquire them through `Live<…>` via [`FromState`].
 
 use std::sync::Arc;
 
 use super::state::GatekeeperState;
+use super::FromState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::oauth::{
-    AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer,
+    AuthorizationStatusReader, ClientScopesReader, CodeAuthorizationStarter, DeviceAuthorizer,
+    PublicKeysReader,
 };
 use crate::ports::PendingConsentPublisher;
 
 /// Start an authorization-code flow — built by the `/oauth/authorize` handler.
 pub(crate) type LiveCodeAuthorizationStarter = CodeAuthorizationStarter<SqliteGatekeeperStore>;
 
-impl LiveCodeAuthorizationStarter {
-    /// Lift the store, the popup publisher, the self-hosted redirect seam, and
-    /// the first-party `client_id` out of the state.
-    pub(crate) fn from_state(state: &Arc<GatekeeperState>) -> Self {
+impl FromState for LiveCodeAuthorizationStarter {
+    fn from_state(state: &Arc<GatekeeperState>) -> Self {
         let publisher: Arc<dyn PendingConsentPublisher> = state.clone();
         CodeAuthorizationStarter::new(
             state.store.clone(),
@@ -34,9 +34,8 @@ impl LiveCodeAuthorizationStarter {
 /// handler.
 pub(crate) type LiveDeviceAuthorizer = DeviceAuthorizer<SqliteGatekeeperStore>;
 
-impl LiveDeviceAuthorizer {
-    /// Lift the store and the popup publisher out of the state.
-    pub(crate) fn from_state(state: &Arc<GatekeeperState>) -> Self {
+impl FromState for LiveDeviceAuthorizer {
+    fn from_state(state: &Arc<GatekeeperState>) -> Self {
         let publisher: Arc<dyn PendingConsentPublisher> = state.clone();
         DeviceAuthorizer::new(state.store.clone(), publisher)
     }
@@ -46,9 +45,28 @@ impl LiveDeviceAuthorizer {
 /// handler.
 pub(crate) type LiveAuthorizationStatusReader = AuthorizationStatusReader<SqliteGatekeeperStore>;
 
-impl LiveAuthorizationStatusReader {
-    /// Lift the store out of the state.
-    pub(crate) fn from_state(state: &GatekeeperState) -> Self {
+impl FromState for LiveAuthorizationStatusReader {
+    fn from_state(state: &Arc<GatekeeperState>) -> Self {
         AuthorizationStatusReader::new(state.store.clone())
+    }
+}
+
+/// Serve the public signing keys — built by the `/.well-known/jwks.json`
+/// handler.
+pub(crate) type LivePublicKeysReader = PublicKeysReader<SqliteGatekeeperStore>;
+
+impl FromState for LivePublicKeysReader {
+    fn from_state(state: &Arc<GatekeeperState>) -> Self {
+        PublicKeysReader::new(state.store.clone())
+    }
+}
+
+/// Read a client's allowed scopes — built by the host-facing
+/// `client_allowed_scopes` for the apps slice's per-app launch check.
+pub(crate) type LiveClientScopesReader = ClientScopesReader<SqliteGatekeeperStore>;
+
+impl FromState for LiveClientScopesReader {
+    fn from_state(state: &Arc<GatekeeperState>) -> Self {
+        ClientScopesReader::new(state.store.clone())
     }
 }

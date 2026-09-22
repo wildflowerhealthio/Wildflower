@@ -1,6 +1,4 @@
-use std::sync::Arc;
-
-use axum::extract::{Path, State};
+use axum::extract::Path;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use chrono::Utc;
@@ -13,7 +11,7 @@ use crate::domain::capabilities::oauth::{AuthorizationStatusError, Authorization
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::http::state::GatekeeperState;
+use crate::http::extractors::Live;
 use crate::http::wire_representations::OAuthError;
 use crate::live_bindings::LiveAuthorizationStatusReader;
 
@@ -65,28 +63,29 @@ impl IntoResponse for AuthorizationStatus {
     )
 )]
 pub(super) async fn handle_authorization_status_request(
-    State(state): State<Arc<GatekeeperState>>,
+    reader: Live<LiveAuthorizationStatusReader>,
     Path(id): Path<String>,
 ) -> axum::response::Result<AuthorizationStatus> {
-    let view = LiveAuthorizationStatusReader::from_state(&state)
-        .status(&id, Utc::now())
-        .map_err(|error| -> axum::response::ErrorResponse {
-            match error {
-                AuthorizationStatusError::NotFound { id } => {
-                    GatekeeperError::AuthorizationRequestNotFound { id }.into()
+    let view =
+        reader
+            .status(&id, Utc::now())
+            .map_err(|error| -> axum::response::ErrorResponse {
+                match error {
+                    AuthorizationStatusError::NotFound { id } => {
+                        GatekeeperError::AuthorizationRequestNotFound { id }.into()
+                    }
+                    AuthorizationStatusError::ApprovedWithoutRedirect => {
+                        OAuthErrorResponse::server_error(
+                            "Authorization request is not a code-flow request",
+                        )
+                        .into()
+                    }
+                    AuthorizationStatusError::ApprovedWithoutCode => {
+                        OAuthErrorResponse::server_error("Authorization code missing").into()
+                    }
+                    AuthorizationStatusError::Store(error) => error.into(),
                 }
-                AuthorizationStatusError::ApprovedWithoutRedirect => {
-                    OAuthErrorResponse::server_error(
-                        "Authorization request is not a code-flow request",
-                    )
-                    .into()
-                }
-                AuthorizationStatusError::ApprovedWithoutCode => {
-                    OAuthErrorResponse::server_error("Authorization code missing").into()
-                }
-                AuthorizationStatusError::Store(error) => error.into(),
-            }
-        })?;
+            })?;
     Ok(match view {
         AuthorizationStatusView::Pending => AuthorizationStatus::Pending,
         AuthorizationStatusView::Expired => AuthorizationStatus::Error {

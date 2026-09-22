@@ -15,7 +15,7 @@ use super::internal::{ClientAuthenticationFailure, TokenError};
 use crate::domain::authority::AuthenticatedClient;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::state::GatekeeperState;
-use crate::live_bindings::LiveClientAuthenticator;
+use crate::live_bindings::{FromState, LiveClientAuthenticator};
 
 /// The media type RFC 6749 §3.2 (and §4 device-flow extensions) require on a
 /// token-endpoint request body.
