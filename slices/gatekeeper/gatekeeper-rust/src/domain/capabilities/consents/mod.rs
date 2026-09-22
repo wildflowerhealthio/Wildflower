@@ -37,6 +37,7 @@ use oauth::{
     approve_oauth_consent, deny_oauth_consent, load_pending_authorization_code_request,
     ApprovalContext,
 };
+pub(crate) use oauth::{new_registration, widen_registration};
 
 /// The scope gating [`ConsentReader`] — `wildflower/AuthorizationRequest.r`.
 pub(crate) fn consent_reader_scopes() -> Vec<Scope> {

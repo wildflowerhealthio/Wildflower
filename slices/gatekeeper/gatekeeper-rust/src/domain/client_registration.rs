@@ -53,6 +53,21 @@ impl ClientRegistration {
     pub(crate) fn needs_acknowledgement(&self) -> bool {
         !self.is_registered()
     }
+
+    /// Whether the presented `redirect_uri` resolves to no existing allowlist
+    /// entry — true for a `New` client or a `Changed` verdict whose redirect is
+    /// new. Used by both the normal consent approval path and the loopback
+    /// consent path to decide whether to append the redirect.
+    pub(crate) fn redirect_is_new(&self) -> bool {
+        matches!(
+            self,
+            ClientRegistration::New
+                | ClientRegistration::Changed {
+                    redirect_uri_is_new: true,
+                    ..
+                }
+        )
+    }
 }
 
 /// The pending authorization-code request to classify, paired with the client

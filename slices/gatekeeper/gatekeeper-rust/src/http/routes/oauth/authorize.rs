@@ -667,6 +667,8 @@ fn approve_loopback_consent(
     requested_scopes: &[String],
     registration: &ClientRegistration,
 ) -> Result<Response, AuthorizeError> {
+    use crate::domain::capabilities::consents::{new_registration, widen_registration};
+
     let ceiling: Vec<String> = scopes_rust::render_scopes(crate::WILDFLOWER_LOCAL_GRANTED_SCOPES);
     let granted_scopes: Vec<String> = requested_scopes
         .iter()
@@ -681,70 +683,35 @@ fn approve_loopback_consent(
         return deny_loopback_consent(state, request_id, params, parsed_redirect);
     }
 
-    let approved =
-        state
-            .store
-            .approve_authorization_request(request_id, &granted_scopes, None, None)?;
-    if !approved {
-        return Err(AuthorizeError::internal(
-            "loopback approve_authorization_request",
-            "authorization request was not pending",
-        ));
-    }
-
     // Register/widen the client row so subsequent requests classify as
     // `Registered` — but skip the standing grant, so each loopback login still
     // prompts the Owner.
-    let redirect_is_new = matches!(
-        registration,
-        ClientRegistration::New
-            | ClientRegistration::Changed {
-                redirect_uri_is_new: true,
-                ..
-            }
-    );
-    if !matches!(registration, &ClientRegistration::Registered) {
-        use crate::domain::client::{AllowedGrantType, ClientKind, RegisteredRedirectUri};
+    if !registration.is_registered() {
         let row = match state.store.client_by_id(&params.client_id)? {
-            Some(mut existing) => {
-                if redirect_is_new {
-                    existing
-                        .redirect_uris
-                        .push(RegisteredRedirectUri::Absolute(parsed_redirect.clone()));
-                }
-                existing.allowed_scopes =
-                    scopes_rust::widened_scopes(&existing.allowed_scopes, &granted_scopes);
-                existing
-            }
-            None => Client {
-                client_id: params.client_id.clone(),
-                name: params.client_id.clone(),
-                kind: ClientKind::Public,
-                redirect_uris: vec![RegisteredRedirectUri::Absolute(parsed_redirect.clone())],
-                allowed_scopes: scopes_rust::widened_scopes(&[], &granted_scopes),
-                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
-                secret_hash: None,
-                registered_at: Utc::now(),
-                disabled_at: None,
-            },
+            Some(existing) => widen_registration(
+                existing,
+                parsed_redirect,
+                &granted_scopes,
+                registration.redirect_is_new(),
+            ),
+            None => new_registration(
+                &params.client_id,
+                parsed_redirect,
+                &granted_scopes,
+                Utc::now(),
+            ),
         };
         state.store.upsert_client(&row)?;
     }
 
-    let code = generate_authorization_code();
-    let issued_at = Utc::now();
-    let authorization_code = AuthorizationCode {
-        code: code.clone(),
-        request_id: request_id.to_string(),
-        client_id: params.client_id.clone(),
-        redirect_uri: parsed_redirect.clone(),
-        code_challenge: params.code_challenge.clone(),
-        granted_scopes,
-        patient: None,
-        issued_at,
-        expires_at: issued_at + AUTHORIZATION_CODE_TTL,
-    };
-    state.store.issue_authorization_code(&authorization_code)?;
+    let code = issue_code(
+        state,
+        request_id,
+        params,
+        parsed_redirect,
+        &granted_scopes,
+        None,
+    )?;
     ports::PendingConsentPublisher::republish_active(state);
     Ok(redirect_to_client(parsed_redirect, &code, &params.state))
 }

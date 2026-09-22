@@ -16,7 +16,6 @@ use crate::domain::authorization_code::{
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegisteredRedirectUri};
 use crate::domain::client_redirect::build_client_redirect_url;
-use crate::domain::client_registration::ClientRegistration;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent};
 use crate::domain::{GatekeeperStore, GatekeeperTx};
@@ -140,7 +139,7 @@ pub(super) fn upsert_authorization_code_grant(
 /// approval and a row widened into the same state are byte-identical — the
 /// approval order can't leave two clients with differently-spelled but
 /// equivalent ceilings.
-fn new_registration(
+pub(crate) fn new_registration(
     client_id: &str,
     redirect_uri: &url::Url,
     granted_scopes: &[String],
@@ -173,7 +172,7 @@ fn new_registration(
 /// through [`scopes_rust::allowed_scope_covers`] (here, at `/authorize`, and in
 /// [`classify_registration`](crate::domain::client_registration::classify_registration)),
 /// so a collapsed row admits exactly the requests the un-collapsed one did.
-fn widen_registration(
+pub(crate) fn widen_registration(
     mut client: Client,
     redirect_uri: &url::Url,
     granted_scopes: &[String],
@@ -199,7 +198,7 @@ fn widen_registration(
 /// `ctx.approver` is the deciding Owner's granted scopes — the approval can't
 /// delegate a resource scope the approver doesn't hold (see
 /// [`ensure_approver_covers`]). And a
-/// [`New`](ClientRegistration::New) or [`Changed`](ClientRegistration::Changed)
+/// [`New`](crate::domain::client_registration::ClientRegistration::New) or [`Changed`](crate::domain::client_registration::ClientRegistration::Changed)
 /// registration must carry the Owner's
 /// [`acknowledged_registration`](ApproveOAuthConsentInput::acknowledged_registration);
 /// without it the approval fails with
@@ -291,14 +290,7 @@ pub(super) fn approve_oauth_consent(
         RegistrationWrite::Untouched
     } else {
         RegistrationWrite::Widen {
-            redirect_is_new: matches!(
-                registration,
-                ClientRegistration::New
-                    | ClientRegistration::Changed {
-                        redirect_uri_is_new: true,
-                        ..
-                    }
-            ),
+            redirect_is_new: registration.redirect_is_new(),
         }
     };
     upsert_authorization_code_grant(
