@@ -65,12 +65,6 @@ mod tests {
         "seeding.rs",
     ];
 
-    /// Call sites that still reach a privileged method directly and are moved
-    /// behind a writer by a later PR in the chain, listed by file with the
-    /// method so the remaining work is visible here rather than hidden by a
-    /// blanket exemption. Empty: every privileged call is behind a writer.
-    const IN_FLIGHT: &[(&str, &str)] = &[];
-
     /// Default-safety guard: a privileged store method is called only inside a
     /// writer (or the adapter / port / fake / seeding files that define it). A
     /// new flow that reaches around the writers — and so around the proof its
@@ -93,14 +87,8 @@ mod tests {
                 std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("read {relative}: {e}"));
             for (n, line) in production_lines(&source) {
                 for needle in PRIVILEGED_CALLS {
-                    if !line.contains(needle) {
-                        continue;
-                    }
-                    let in_flight = IN_FLIGHT
-                        .iter()
-                        .any(|(file, method)| *file == relative && method == needle);
                     assert!(
-                        in_flight,
+                        !line.contains(needle),
                         "{relative}:{n} calls the privileged store method `{needle}` outside a \
                          writer; obtain the authority proof and go through \
                          `domain::capabilities::writers`",
@@ -113,22 +101,5 @@ mod tests {
             checked >= 40,
             "only {checked} source files enumerated — did src/ move?",
         );
-    }
-
-    /// The in-flight list must shrink, never rot: every entry must still match a
-    /// real call, so a finished migration can't leave a stale exemption that a
-    /// future regression would hide behind.
-    #[test]
-    fn every_in_flight_exemption_still_names_a_real_call() {
-        let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
-        for (file, method) in IN_FLIGHT {
-            let source = std::fs::read_to_string(src.join(file))
-                .unwrap_or_else(|e| panic!("in-flight exemption names a missing file {file}: {e}"));
-            let still_called = production_lines(&source).any(|(_, line)| line.contains(method));
-            assert!(
-                still_called,
-                "{file} no longer calls `{method}`; remove its IN_FLIGHT exemption",
-            );
-        }
     }
 }
