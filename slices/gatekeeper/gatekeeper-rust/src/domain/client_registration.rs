@@ -49,6 +49,19 @@ impl ClientRegistration {
         matches!(self, ClientRegistration::Registered)
     }
 
+    /// Whether the presented `redirect_uri` is outside the registration — always
+    /// for a [`New`](Self::New) client, which has no allowlist yet.
+    pub(crate) fn redirect_uri_is_new(&self) -> bool {
+        match self {
+            ClientRegistration::Registered => false,
+            ClientRegistration::New => true,
+            ClientRegistration::Changed {
+                redirect_uri_is_new,
+                ..
+            } => *redirect_uri_is_new,
+        }
+    }
+
     /// Whether approving this request needs the Owner's explicit acknowledgement
     /// that the app (or its redirect / scopes) is new to them.
     pub(crate) fn needs_acknowledgement(&self) -> bool {
@@ -124,26 +137,23 @@ pub(crate) fn uncovered_scopes(allowed: &[String], requested: &[String]) -> Vec<
         .collect()
 }
 
-/// The request-scoped inputs the [registration verdict](ClientRegistration)
+/// Classifies requests served on one origin against their client
+/// registrations. It holds what the [registration verdict](ClientRegistration)
 /// needs beyond the store: the self-hosted redirect seam (to expand an
 /// app-relative allowlist entry) and the origin this request was served on (the
-/// base it expands against), plus the first-party `client_id` the trust-on-first
-/// -use path exempts.
+/// base it expands against).
 ///
-/// Assembled by the consent capabilities from the handles they hold plus the
-/// handler's `ServedOrigin`, so the verdict a prompt renders is computed exactly
-/// the way `/authorize` computed it.
-pub(crate) struct RegistrationContext<'a> {
+/// Built by the consent capabilities and the `/authorize` flow from the handles
+/// they hold plus the handler's `ServedOrigin`, so the verdict a prompt renders
+/// is computed exactly the way `/authorize` computed it.
+pub(crate) struct RegistrationClassifier<'a> {
     /// Resolves a `client_id` to a self-hosted app's `{port, subdomain}`.
     pub(crate) redirects: &'a dyn SelfHostedRedirectResolver,
     /// The origin this request was served on, unparsed.
     pub(crate) served_origin: &'a str,
-    /// The first-party host's `client_id`, which is never trusted on first use
-    /// and whose registration an approval never widens.
-    pub(crate) first_party_client_id: &'a str,
 }
 
-impl RegistrationContext<'_> {
+impl RegistrationClassifier<'_> {
     /// Classify a pending request against `client` (the current row, or `None`
     /// when the id is unknown), expanding app-relative allowlist entries for this
     /// request's provenance.
@@ -151,26 +161,38 @@ impl RegistrationContext<'_> {
         &self,
         client_id: &str,
         client: Option<&Client>,
-        redirect_uri: &url::Url,
+        redirect_uri: &Url,
         requested_scopes: &[String],
     ) -> ClientRegistration {
         let topology = self.redirects.resolve(client_id);
-        // An unparseable served origin simply resolves no app-relative entry;
-        // absolute entries still match.
-        let served = url::Url::parse(self.served_origin).ok();
+        let served_origin = self.parsed_served_origin();
         classify_registration(&PendingRegistration {
             maybe_existing_client: client,
             redirect_uri,
             requested_scopes,
-            served_origin: served.as_ref(),
+            served_origin: served_origin.as_ref(),
             topology: topology.as_ref(),
         })
     }
 
-    /// Whether `client_id` is the first-party host — the one client held to its
-    /// registration rather than trusted on first use.
-    pub(crate) fn is_first_party(&self, client_id: &str) -> bool {
-        client_id == self.first_party_client_id
+    /// Whether `client`'s allowlist admits `redirect_uri` for this request — the
+    /// redirect half of [`classify`](Self::classify), for a caller that must
+    /// decide whether the redirect is trusted before it has the scopes.
+    pub(crate) fn redirect_is_allowlisted(&self, client: &Client, redirect_uri: &Url) -> bool {
+        let topology = self.redirects.resolve(&client.client_id);
+        let served_origin = self.parsed_served_origin();
+        redirect_is_allowlisted(
+            client,
+            redirect_uri,
+            served_origin.as_ref(),
+            topology.as_ref(),
+        )
+    }
+
+    /// The served origin, parsed. An unparseable one simply resolves no
+    /// app-relative entry; absolute entries still match.
+    fn parsed_served_origin(&self) -> Option<Url> {
+        Url::parse(self.served_origin).ok()
     }
 }
 
@@ -241,6 +263,25 @@ mod tests {
                 new_scopes: Vec::new(),
             }
         );
+    }
+
+    /// The redirect is new for an unknown client (it has no allowlist yet) and
+    /// for a `Changed` verdict that says so — never for a `Registered` one or
+    /// a `Changed` one that only added scopes.
+    #[test]
+    fn redirect_uri_is_new_follows_the_verdict() {
+        assert!(ClientRegistration::New.redirect_uri_is_new());
+        assert!(!ClientRegistration::Registered.redirect_uri_is_new());
+        assert!(ClientRegistration::Changed {
+            redirect_uri_is_new: true,
+            new_scopes: Vec::new(),
+        }
+        .redirect_uri_is_new());
+        assert!(!ClientRegistration::Changed {
+            redirect_uri_is_new: false,
+            new_scopes: vec!["write".to_owned()],
+        }
+        .redirect_uri_is_new());
     }
 
     /// The uncovered scopes are reported in **request** order (not registration

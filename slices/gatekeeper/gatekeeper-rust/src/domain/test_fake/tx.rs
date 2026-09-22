@@ -5,7 +5,7 @@ use chrono::{DateTime, Utc};
 use url::Url;
 
 use super::FakeGatekeeperTx;
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -181,14 +181,14 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
     fn redeem_authorization_code(
         &mut self,
         code: &str,
-    ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+    ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
         Ok(self.store.authorization_codes.borrow_mut().remove(code))
     }
 
     fn authorization_code_by_request_id(
         &mut self,
         request_id: &str,
-    ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+    ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
         Ok(self
             .store
             .authorization_codes
@@ -200,7 +200,7 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
 
     fn issue_authorization_code(
         &mut self,
-        code: &AuthorizationCode,
+        code: &IssuedAuthorizationCode,
     ) -> Result<(), GatekeeperError> {
         self.store
             .authorization_codes

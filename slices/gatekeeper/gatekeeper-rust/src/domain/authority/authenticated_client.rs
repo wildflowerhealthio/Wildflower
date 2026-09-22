@@ -7,14 +7,14 @@
 //! secret was never checked.
 
 use crate::crypto_util::client_secret::verify_client_secret;
-use crate::domain::client::{Client, ClientKind};
+use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 
-/// A client whose credentials have been verified. The row is reachable only
-/// through [`client`](Self::client); the field is private and there is no other
-/// constructor.
+/// A client whose credentials have been verified. It answers the questions a
+/// flow asks of the client it acts for (its id, name, and what its registration
+/// allows); the row itself is private and there is no other constructor.
 #[derive(Debug)]
 pub(crate) struct AuthenticatedClient {
     client: Client,
@@ -81,14 +81,25 @@ impl AuthenticatedClient {
         Ok(AuthenticatedClient { client })
     }
 
-    /// The verified client's row.
-    pub(crate) fn client(&self) -> &Client {
-        &self.client
-    }
-
     /// The verified client's id.
     pub(crate) fn client_id(&self) -> &str {
         &self.client.client_id
+    }
+
+    /// The verified client's display name.
+    pub(crate) fn name(&self) -> &str {
+        &self.client.name
+    }
+
+    /// Whether the client's registration lists `grant_type`.
+    pub(crate) fn allows_grant_type(&self, grant_type: AllowedGrantType) -> bool {
+        self.client.allowed_grant_types.contains(&grant_type)
+    }
+
+    /// Whether the client's registration covers every one of `requested_scopes`
+    /// (see [`Client::allows_scopes`]).
+    pub(crate) fn allows_scopes(&self, requested_scopes: &[String]) -> bool {
+        self.client.allows_scopes(requested_scopes)
     }
 }
 
@@ -124,7 +135,7 @@ mod tests {
         let proof =
             AuthenticatedClient::authenticate(&store, &presented("app", None)).expect("public");
         assert_eq!(proof.client_id(), "app");
-        assert_eq!(proof.client().name, "app display name");
+        assert_eq!(proof.name(), "app display name");
         assert!(AuthenticatedClient::authenticate(&store, &presented("app", Some("x"))).is_ok());
     }
 
@@ -178,5 +189,24 @@ mod tests {
         assert!(
             AuthenticatedClient::authenticate(&store, &presented("app", Some("s3cret"))).is_ok()
         );
+    }
+
+    /// The proof answers for the registration it verified: its grant types
+    /// and its scope allowlist (coverage-aware, like [`Client::allows_scopes`]).
+    #[test]
+    fn the_proof_answers_for_its_registration() {
+        let store = FakeGatekeeperStore::default();
+        store
+            .upsert_client(&Client {
+                allowed_grant_types: vec![AllowedGrantType::DeviceCode],
+                ..client("app", &["patient/*.rs"])
+            })
+            .unwrap();
+        let proof = AuthenticatedClient::authenticate(&store, &presented("app", None))
+            .expect("a public client authenticates");
+        assert!(proof.allows_grant_type(AllowedGrantType::DeviceCode));
+        assert!(!proof.allows_grant_type(AllowedGrantType::RefreshToken));
+        assert!(proof.allows_scopes(&["patient/Observation.r".to_owned()]));
+        assert!(!proof.allows_scopes(&["patient/Observation.c".to_owned()]));
     }
 }

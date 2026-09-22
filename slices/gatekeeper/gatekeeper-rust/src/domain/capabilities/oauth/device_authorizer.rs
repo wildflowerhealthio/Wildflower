@@ -26,9 +26,10 @@ pub(crate) const DEVICE_AUTHORIZATION_TTL: Duration = Duration::minutes(5);
 /// because the alphabet/length make collisions astronomically rare.
 const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
 
-/// A started device authorization — the RFC 8628 §3.2 response minus the
-/// verification URIs, which the HTTP layer builds from the served origin.
-pub(crate) struct DeviceAuthorizationStarted {
+/// The codes a started device authorization hands the device — the RFC 8628
+/// §3.2 response minus the verification URIs, which the HTTP layer builds from
+/// the served origin.
+pub(crate) struct DeviceCodes {
     pub(crate) device_code: String,
     pub(crate) user_code: String,
     pub(crate) expires_in: i64,
@@ -82,8 +83,8 @@ impl<S: GatekeeperStore> DeviceAuthorizer<S> {
         client: &AuthenticatedClient,
         requested_scopes: Vec<String>,
         device_name: Option<String>,
-    ) -> Result<DeviceAuthorizationStarted, DeviceAuthorizationError> {
-        if !client.client().allows_scopes(&requested_scopes) {
+    ) -> Result<DeviceCodes, DeviceAuthorizationError> {
+        if !client.allows_scopes(&requested_scopes) {
             return Err(DeviceAuthorizationError::ScopeNotAllowed);
         }
         // 256-bit CSPRNG opaque token per RFC 6749 §10.10, like an
@@ -103,7 +104,7 @@ impl<S: GatekeeperStore> DeviceAuthorizer<S> {
         // A fresh pending row may have just become the head of the consent
         // queue; republish so the host webview popup picks it up.
         self.publisher.republish_active();
-        Ok(DeviceAuthorizationStarted {
+        Ok(DeviceCodes {
             device_code,
             user_code,
             expires_in: DEVICE_AUTHORIZATION_TTL.num_seconds(),

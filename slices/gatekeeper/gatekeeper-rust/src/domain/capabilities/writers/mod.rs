@@ -9,7 +9,7 @@
 //!    trusted on first use, its registration, in one transaction (under
 //!    `DelegatedScopes`).
 //!  - [`AccessTokenMinter`] — read the active signing key and mint a JWT (under
-//!    a `MintAuthority` proof).
+//!    a `TokenEntitlement` proof).
 //!  - [`RefreshFamilyWriter`] — start a refresh-token family or rotate a token
 //!    into its successor (under a redemption proof).
 //!
@@ -22,10 +22,10 @@ mod grant_recorder;
 mod refresh_family_writer;
 mod request_approver;
 
-pub(crate) use access_token_minter::{AccessTokenMinter, MintRequest, TokenIssuanceError};
-pub(crate) use grant_recorder::{GrantRecorder, RegistrationWrite};
-pub(crate) use refresh_family_writer::{RefreshFamilyWriter, Rotation};
-pub(crate) use request_approver::{CodeApproval, CodeAuthority, DeviceApproval, RequestApprover};
+pub(crate) use access_token_minter::{AccessTokenMinter, TokenIssuanceError};
+pub(crate) use grant_recorder::{GrantRecorder, RegistrationWidening};
+pub(crate) use refresh_family_writer::RefreshFamilyWriter;
+pub(crate) use request_approver::{CodeAuthority, RequestApprover};
 
 #[cfg(test)]
 mod tests {
@@ -56,7 +56,7 @@ mod tests {
     /// the `SQLite` adapter and port definition that implement and declare the
     /// methods, the in-memory fake, and the boot-time seeding (the signing-key
     /// seed and the first-party client row come from configuration, not from a
-    /// delegation — the `HostBootstrap` proof names that exception).
+    /// delegation — the `HostOwnerEntitlement` proof names that exception).
     const ALLOWED_PREFIXES: &[&str] = &[
         "domain/capabilities/writers/",
         "db/",

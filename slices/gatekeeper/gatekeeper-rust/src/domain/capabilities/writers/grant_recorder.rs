@@ -11,22 +11,33 @@ use uuid::Uuid;
 
 use crate::domain::authority::DelegatedScopes;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegisteredRedirectUri};
+use crate::domain::client_registration::ClientRegistration;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
 use crate::domain::{GatekeeperStore, GatekeeperTx};
 
-/// What recording a code-flow grant writes to the `clients` row alongside it.
-pub(crate) enum RegistrationWrite {
-    /// Leave the row untouched — the first-party host, whose registration an
-    /// approval never widens.
-    Untouched,
-    /// Trust this client on first use: create the row when absent, otherwise
-    /// widen it in place.
-    Widen {
-        /// Whether the approved `redirect_uri` resolves to no existing allowlist
-        /// entry and so must be appended as an absolute one.
-        redirect_is_new: bool,
-    },
+/// How recording a code-flow grant widens the client's registration, for a
+/// client trusted on first use: the `clients` row is created when absent,
+/// otherwise widened in place. The first-party host, whose registration an
+/// approval never widens, records its grant with no widening at all.
+///
+/// The scopes a widening adds are always the grant's own [`DelegatedScopes`]
+/// (the proof [`GrantRecorder::record_code_grant`] takes), so the only thing
+/// this records is whether the approved redirect joins the allowlist.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RegistrationWidening {
+    adds_redirect: bool,
+}
+
+impl RegistrationWidening {
+    /// The widening an approval of a request with this `registration` verdict
+    /// applies: the approved redirect is appended exactly when the verdict
+    /// found it new.
+    pub(crate) fn for_approval(registration: &ClientRegistration) -> Self {
+        RegistrationWidening {
+            adds_redirect: registration.redirect_uri_is_new(),
+        }
+    }
 }
 
 /// Record standing grants. A borrowed view over the store; the gate is the
@@ -43,8 +54,8 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
 
     /// Register (or widen) the client and insert or cumulatively update the
     /// standing authorization-code grant for `(client_id, redirect_uri)`, all
-    /// inside one `BEGIN IMMEDIATE` transaction: apply `registration` to the
-    /// `clients` row, then read the standing grant — if present, fold the
+    /// inside one `BEGIN IMMEDIATE` transaction: apply the `widening` (if any)
+    /// to the `clients` row, then read the standing grant — if present, fold the
     /// re-approval in via [`CumulativeConsent::absorb_reapproval`] and write it
     /// back; otherwise mint a fresh grant. `BEGIN IMMEDIATE` takes the write lock
     /// before the read, so two concurrent approvals serialise at the read rather
@@ -62,17 +73,17 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
         &self,
         client_id: &str,
         redirect_uri: &Url,
-        scopes: &DelegatedScopes,
+        delegated_scopes: &DelegatedScopes,
         patient: Option<&str>,
         now: DateTime<Utc>,
-        registration: &RegistrationWrite,
+        widening: Option<RegistrationWidening>,
     ) -> Result<(), GatekeeperError> {
-        let scopes = scopes.scopes();
+        let scopes = delegated_scopes.scopes();
         self.store.immediate_transaction(|tx| {
-            if let RegistrationWrite::Widen { redirect_is_new } = *registration {
+            if let Some(widening) = widening {
                 let row = match tx.client_by_id(client_id)? {
                     Some(existing) => {
-                        widen_registration(existing, redirect_uri, scopes, redirect_is_new)
+                        widen_registration(existing, redirect_uri, scopes, widening.adds_redirect)
                     }
                     None => new_registration(client_id, redirect_uri, scopes, now),
                 };
@@ -112,11 +123,11 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
         &self,
         client_id: &str,
         device_name: &str,
-        scopes: &DelegatedScopes,
+        delegated_scopes: &DelegatedScopes,
         patient: Option<&str>,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        let scopes = scopes.scopes();
+        let scopes = delegated_scopes.scopes();
         self.store.immediate_transaction(|tx| {
             match tx.device_grant_by_client_and_device_name(client_id, device_name)? {
                 Some(mut grant) => {
@@ -185,9 +196,9 @@ fn widen_registration(
     mut client: Client,
     redirect_uri: &Url,
     granted_scopes: &[String],
-    redirect_is_new: bool,
+    adds_redirect: bool,
 ) -> Client {
-    if redirect_is_new {
+    if adds_redirect {
         client
             .redirect_uris
             .push(RegisteredRedirectUri::Absolute(redirect_uri.clone()));
@@ -203,7 +214,7 @@ mod tests {
     use scopes_rust::Grant;
 
     use super::*;
-    use crate::domain::authority::ScopeCeiling;
+    use crate::domain::authority::ApprovableScopes;
     use crate::domain::client_registration::uncovered_scopes;
     use crate::domain::test_fake::{client, FakeGatekeeperStore};
 
@@ -211,14 +222,14 @@ mod tests {
         Url::parse("https://example.com/cb").expect("a valid redirect")
     }
 
-    fn delegated(scopes: &[&str]) -> DelegatedScopes {
+    fn delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
         let requested: HashSet<&str> = scopes.iter().copied().collect();
         DelegatedScopes::clamp(
             &Grant::parse(["system/*.cruds", "wildflower/*.cruds"]),
             scopes.iter().map(|s| (*s).to_owned()).collect(),
-            &ScopeCeiling {
-                requested: &requested,
-                allowed: &requested,
+            &ApprovableScopes {
+                requested_scopes: &requested,
+                allowed_scopes: &requested,
             },
         )
         .expect("owner covers everything")
@@ -236,10 +247,10 @@ mod tests {
             .record_code_grant(
                 "client-a",
                 &redirect(),
-                &delegated(&["patient/Patient.r"]),
+                &delegated_scopes(&["patient/Patient.r"]),
                 Some("pat-1"),
                 Utc::now(),
-                &RegistrationWrite::Untouched,
+                None,
             )
             .unwrap();
         let first = store
@@ -252,10 +263,10 @@ mod tests {
             .record_code_grant(
                 "client-a",
                 &redirect(),
-                &delegated(&["patient/Patient.r", "patient/Observation.r"]),
+                &delegated_scopes(&["patient/Patient.r", "patient/Observation.r"]),
                 Some("pat-2"),
                 Utc::now(),
-                &RegistrationWrite::Untouched,
+                None,
             )
             .unwrap();
         let merged = store
@@ -273,26 +284,26 @@ mod tests {
         assert_eq!(merged.patient.as_deref(), Some("pat-2"));
     }
 
-    /// `Untouched` writes no client row at all, even when none exists — the
+    /// No widening writes no client row at all, even when none exists — the
     /// first-party host is never registered by an approval.
     #[test]
-    fn record_code_grant_untouched_never_creates_a_client() {
+    fn record_code_grant_without_widening_never_creates_a_client() {
         let store = FakeGatekeeperStore::default();
         GrantRecorder::over(&store)
             .record_code_grant(
                 "host",
                 &redirect(),
-                &delegated(&["openid"]),
+                &delegated_scopes(&["openid"]),
                 None,
                 Utc::now(),
-                &RegistrationWrite::Untouched,
+                None,
             )
             .unwrap();
         assert_eq!(store.client_by_id("host").unwrap(), None);
     }
 
-    /// `Widen` on an unknown client creates the trust-on-first-use row holding
-    /// exactly the delegated scopes and the approved redirect.
+    /// A widening on an unknown client creates the trust-on-first-use row
+    /// holding exactly the delegated scopes and the approved redirect.
     #[test]
     fn record_code_grant_widen_registers_a_new_client_with_the_delegated_scopes() {
         let store = FakeGatekeeperStore::default();
@@ -300,12 +311,10 @@ mod tests {
             .record_code_grant(
                 "newcomer",
                 &redirect(),
-                &delegated(&["patient/Patient.r", "openid"]),
+                &delegated_scopes(&["patient/Patient.r", "openid"]),
                 None,
                 Utc::now(),
-                &RegistrationWrite::Widen {
-                    redirect_is_new: true,
-                },
+                Some(RegistrationWidening::for_approval(&ClientRegistration::New)),
             )
             .unwrap();
         let row = store
@@ -320,6 +329,44 @@ mod tests {
         assert_eq!(row.kind, ClientKind::Public);
     }
 
+    /// A widening for a known client whose redirect is already allowlisted
+    /// widens the scopes but leaves the allowlist alone; one whose redirect is
+    /// new appends it.
+    #[test]
+    fn record_code_grant_widening_appends_only_a_new_redirect() {
+        let elsewhere = Url::parse("https://other.example/cb").unwrap();
+        for (redirect_uri_is_new, expected_redirects) in [
+            (false, vec![RegisteredRedirectUri::Absolute(redirect())]),
+            (
+                true,
+                vec![
+                    RegisteredRedirectUri::Absolute(redirect()),
+                    RegisteredRedirectUri::Absolute(elsewhere.clone()),
+                ],
+            ),
+        ] {
+            let store = FakeGatekeeperStore::default();
+            store.upsert_client(&client("app", &["openid"])).unwrap();
+            let verdict = ClientRegistration::Changed {
+                redirect_uri_is_new,
+                new_scopes: vec!["patient/Patient.r".to_owned()],
+            };
+            GrantRecorder::over(&store)
+                .record_code_grant(
+                    "app",
+                    &elsewhere,
+                    &delegated_scopes(&["patient/Patient.r"]),
+                    None,
+                    Utc::now(),
+                    Some(RegistrationWidening::for_approval(&verdict)),
+                )
+                .unwrap();
+            let row = store.client_by_id("app").unwrap().expect("present");
+            assert_eq!(row.redirect_uris, expected_redirects);
+            assert_eq!(row.allowed_scopes, ["openid", "patient/Patient.r"]);
+        }
+    }
+
     /// The device grant follows the same insert-then-union shape, keyed on the
     /// device name.
     #[test]
@@ -330,7 +377,7 @@ mod tests {
             .record_device_grant(
                 "client-a",
                 "Kitchen iPad",
-                &delegated(&["patient/Patient.r"]),
+                &delegated_scopes(&["patient/Patient.r"]),
                 None,
                 Utc::now(),
             )
@@ -339,7 +386,7 @@ mod tests {
             .record_device_grant(
                 "client-a",
                 "Kitchen iPad",
-                &delegated(&["patient/Observation.r"]),
+                &delegated_scopes(&["patient/Observation.r"]),
                 None,
                 Utc::now(),
             )

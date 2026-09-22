@@ -27,9 +27,9 @@ pub(crate) use authorization_status_reader::{
 pub(crate) use client_authenticator::ClientAuthenticator;
 pub(crate) use client_scopes_reader::ClientScopesReader;
 pub(crate) use code_authorization_starter::{
-    AuthorizationStart, AuthorizationStartError, AuthorizeRequest, CodeAuthorizationStarter,
+    AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, CodeAuthorizationStarter,
     FreshIds,
 };
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use public_keys_reader::PublicKeysReader;
-pub(crate) use token_exchanger::{AuthorizationCodeGrant, ExchangedToken, TokenExchanger};
+pub(crate) use token_exchanger::{IssuedTokens, PresentedAuthorizationCode, TokenExchanger};

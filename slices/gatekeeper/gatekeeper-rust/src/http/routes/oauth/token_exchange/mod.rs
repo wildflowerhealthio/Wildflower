@@ -6,7 +6,7 @@ use super::internal::TokenError;
 use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
 use crate::cookies;
-use crate::domain::capabilities::oauth::{AuthorizationCodeGrant, ExchangedToken};
+use crate::domain::capabilities::oauth::{IssuedTokens, PresentedAuthorizationCode};
 use crate::http::extractors::Live;
 use crate::http::wire_representations::{OAuthError, TokenResponse};
 use crate::http::ServedOrigin;
@@ -75,7 +75,7 @@ pub(super) async fn handle_token_request(
             redirect_uri,
         } => exchanger.exchange_authorization_code(
             &client,
-            &AuthorizationCodeGrant {
+            &PresentedAuthorizationCode {
                 code: &code,
                 code_verifier: &code_verifier,
                 redirect_uri: &redirect_uri,
@@ -120,7 +120,7 @@ pub(super) async fn handle_token_request(
 }
 
 /// The RFC 6749 §5.1 body for an exchange.
-fn token_response(token: ExchangedToken) -> TokenResponse {
+fn token_response(token: IssuedTokens) -> TokenResponse {
     TokenResponse {
         access_token: token.access_token,
         token_type: "Bearer".to_string(),

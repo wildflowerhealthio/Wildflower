@@ -7,7 +7,7 @@ use uuid::Uuid;
 
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::capabilities::oauth::{
-    AuthorizationStart, AuthorizationStartError, AuthorizeRequest, FreshIds,
+    AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
 };
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::page_paths;
@@ -218,7 +218,7 @@ pub(super) async fn handle_authorize_request(
     Ok(match started {
         // Fully pre-approved: 302 the user-agent straight back to the client
         // with the fresh code (RFC 6749 §4.1.2).
-        AuthorizationStart::RedirectToClient {
+        AuthorizeNextStep::RedirectToClient {
             redirect_uri,
             code,
             client_state,
@@ -229,7 +229,7 @@ pub(super) async fn handle_authorize_request(
         )),
         // Otherwise the Owner UI's polling page, which waits for whichever
         // surface — its inline consent or the host popup — decides first.
-        AuthorizationStart::AwaitOwner { request_id } => {
+        AuthorizeNextStep::AwaitOwner { request_id } => {
             found_redirect(&page_paths::oauth_polling_url(&origin, &request_id))
         }
     })

@@ -258,20 +258,25 @@ the rule the proof stands for:
 
 - `AuthenticatedClient` — the client exists, is enabled, and (if confidential)
   presented its secret. Everything a client does on its own behalf takes one.
-- `DelegatedScopes` — an Owner's approval clamped to the requested/allowed
-  ceiling **and** covered by the approver's own grant, so nothing recorded ever
-  exceeds what the approver held.
+- `DelegatedScopes` — an Owner's approval clamped to the approvable scopes
+  (requested ∩ allowed) **and** covered by the approver's own grant, so nothing
+  recorded ever exceeds what the approver held.
 - `StandingGrantCoverage` — a standing grant covers every scope of a
   _registered_ request: the `/oauth/authorize` fast path's authority to issue a
   code with no human in the loop, named so it can be audited as such.
 - `RedeemedAuthorizationCode` / `ConsumedDeviceRequest` / `ValidatedRefreshToken`
   — the redemptions a token is minted under, each carrying the scopes of the
   record it redeemed.
-- `HostBootstrap` — the host's own boot-time owner token, the one authority
-  with no approving human; constructible only in `seeding.rs`.
+- `HostOwnerEntitlement` — what the host's own boot-time owner token may claim,
+  the one authority with no approving human; constructible only in `seeding.rs`.
+
+The minter signs only under a `TokenEntitlement` — a sealed trait the
+redemptions and `HostOwnerEntitlement` implement — so a token's claims always
+come from a proof, never from a caller-assembled scope list.
 
 Two source guards make it structural: one pins every privileged store method
-name to the writers, the other pins the `HostBootstrap` constructor to seeding.
+name to the writers, the other pins the `HostOwnerEntitlement` constructor to
+seeding.
 The audit is then the proof constructors plus the writers, not every flow.
 Capabilities that no principal unlocks (the pre-auth `/oauth` front door, the
 token verifier) are acquired through gatekeeper's `Live<F>` extractor, so a

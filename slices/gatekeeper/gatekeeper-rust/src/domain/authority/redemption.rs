@@ -16,14 +16,15 @@
 //! family (a refresh can only rotate the family it belongs to).
 
 use chrono::{DateTime, Utc};
+use scopes_rust::KnownScope;
 use subtle::ConstantTimeEq;
 use url::Url;
 
 use super::authenticated_client::AuthenticatedClient;
-use super::mint_authority::{sealed, MintAuthority};
+use super::token_entitlement::{sealed, TokenEntitlement};
 use crate::crypto_util::pkce::compute_code_challenge;
 use crate::crypto_util::random_token::token_storage_hash;
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
 };
@@ -39,8 +40,8 @@ pub(crate) struct CodeRedemption<'a> {
 }
 
 /// A redemption that may start a refresh-token family: the two grants that
-/// establish a session rather than renew one. Sealed like [`MintAuthority`].
-pub(crate) trait GrantRedemption: MintAuthority {
+/// establish a session rather than renew one. Sealed like [`TokenEntitlement`].
+pub(crate) trait GrantRedemption: TokenEntitlement {
     /// The scopes as granted (before the minter's spelling twin), for the
     /// token response's `scope` and the family's record.
     fn granted_scopes(&self) -> &[String];
@@ -49,13 +50,21 @@ pub(crate) trait GrantRedemption: MintAuthority {
     fn authorization_code(&self) -> Option<&str>;
     /// The standing grant behind this redemption, if one was resolved.
     fn grant_id(&self) -> Option<&str>;
+
+    /// Whether the grant carries [`KnownScope::OfflineAccess`] and so earns a
+    /// refresh-token family alongside its access token.
+    fn earns_refresh_token(&self) -> bool {
+        self.granted_scopes()
+            .iter()
+            .any(|scope| scope == KnownScope::OfflineAccess.as_str())
+    }
 }
 
 /// An authorization code that has been atomically consumed and verified: bound
 /// to the redeeming client and `redirect_uri`, unexpired, and matching the
 /// PKCE verifier. Carries the code's granted scopes.
 pub(crate) struct RedeemedAuthorizationCode {
-    code: AuthorizationCode,
+    code: IssuedAuthorizationCode,
     token_scopes: Vec<String>,
     grant_id: Option<String>,
 }
@@ -135,7 +144,7 @@ impl RedeemedAuthorizationCode {
 
 impl sealed::Sealed for RedeemedAuthorizationCode {}
 
-impl MintAuthority for RedeemedAuthorizationCode {
+impl TokenEntitlement for RedeemedAuthorizationCode {
     fn client_id(&self) -> &str {
         &self.code.client_id
     }
@@ -243,10 +252,7 @@ impl ConsumedDeviceRequest {
         // The durable device grant minted at approval is keyed on the
         // *effective* device name — the request's, or the client name it
         // defaulted to — the same fallback the approval recorded under.
-        let effective_device_name = request
-            .device_name
-            .as_deref()
-            .unwrap_or(client.client().name.as_str());
+        let effective_device_name = request.device_name.as_deref().unwrap_or(client.name());
         let grant_id = store
             .device_grant_by_client_and_device_name(&request.client_id, effective_device_name)?
             .map(|grant| grant.id);
@@ -261,7 +267,7 @@ impl ConsumedDeviceRequest {
 
 impl sealed::Sealed for ConsumedDeviceRequest {}
 
-impl MintAuthority for ConsumedDeviceRequest {
+impl TokenEntitlement for ConsumedDeviceRequest {
     fn client_id(&self) -> &str {
         &self.request.client_id
     }
@@ -366,7 +372,7 @@ impl ValidatedRefreshToken {
 
 impl sealed::Sealed for ValidatedRefreshToken {}
 
-impl MintAuthority for ValidatedRefreshToken {
+impl TokenEntitlement for ValidatedRefreshToken {
     fn client_id(&self) -> &str {
         &self.family.client_id
     }
@@ -426,7 +432,7 @@ mod tests {
     fn issued_code(store: &FakeGatekeeperStore, client_id: &str, now: DateTime<Utc>) -> String {
         let code = generate_authorization_code();
         store
-            .issue_authorization_code(&AuthorizationCode {
+            .issue_authorization_code(&IssuedAuthorizationCode {
                 code: code.clone(),
                 request_id: "req".to_owned(),
                 client_id: client_id.to_owned(),

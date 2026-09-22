@@ -34,6 +34,8 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
+use crate::domain::capabilities::oauth::ClientScopesReader;
+
 /// Base `OpenAPI` document; the collected routes fill in paths + components.
 #[derive(OpenApi)]
 struct ApiDoc;
@@ -105,14 +107,11 @@ pub fn is_pre_auth_public_path(path: &str) -> bool {
 ///
 /// Propagates a store checkout / query failure.
 pub fn client_allowed_scopes(
-    state: &Arc<GatekeeperState>,
+    state: &GatekeeperState,
     client_id: &str,
 ) -> anyhow::Result<Vec<scopes_rust::Scope>> {
-    use crate::live_bindings::FromState as _;
-    Ok(
-        crate::live_bindings::LiveClientScopesReader::from_state(state)
-            .allowed_scopes(client_id)?,
-    )
+    let reader = ClientScopesReader::new(state.store.clone());
+    Ok(reader.allowed_scopes(client_id)?)
 }
 
 /// The gatekeeper OAuth + discovery `OpenAPI` document, collected from the very

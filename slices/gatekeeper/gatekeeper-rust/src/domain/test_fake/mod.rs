@@ -16,7 +16,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::domain::authorization_code::AuthorizationCode;
+use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -38,7 +38,7 @@ pub(crate) struct FakeGatekeeperStore {
     clients: RefCell<HashMap<String, Client>>,
     signing_keys: RefCell<Vec<SigningKey>>,
     authorization_requests: RefCell<HashMap<String, AuthorizationRequest>>,
-    authorization_codes: RefCell<HashMap<String, AuthorizationCode>>,
+    authorization_codes: RefCell<HashMap<String, IssuedAuthorizationCode>>,
     families: RefCell<HashMap<String, RefreshTokenFamily>>,
     tokens: RefCell<HashMap<String, RefreshToken>>,
     code_grants: RefCell<HashMap<String, AuthorizationCodeGrant>>,
@@ -51,7 +51,7 @@ struct Snapshot {
     clients: HashMap<String, Client>,
     signing_keys: Vec<SigningKey>,
     authorization_requests: HashMap<String, AuthorizationRequest>,
-    authorization_codes: HashMap<String, AuthorizationCode>,
+    authorization_codes: HashMap<String, IssuedAuthorizationCode>,
     families: HashMap<String, RefreshTokenFamily>,
     tokens: HashMap<String, RefreshToken>,
     code_grants: HashMap<String, AuthorizationCodeGrant>,

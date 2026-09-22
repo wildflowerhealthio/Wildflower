@@ -10,9 +10,9 @@ use scopes_rust::Grant;
 
 use super::delegation::deny_consent;
 use super::{ApproveDeviceConsentInput, ConsentOutcome};
-use crate::domain::authority::{DelegatedScopes, ScopeCeiling};
+use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
-use crate::domain::capabilities::writers::{DeviceApproval, GrantRecorder, RequestApprover};
+use crate::domain::capabilities::writers::{GrantRecorder, RequestApprover};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::ports::PendingConsentPublisher;
@@ -57,16 +57,17 @@ pub(super) fn approve_device_consent(
         .client_by_id(&device_request.client_id)?
         .ok_or_else(make_consent_not_found)?;
 
-    // Device consent is expandable: the ceiling is the client's `allowed_scopes`
-    // on both sides. The proof every write below demands is the Owner's ticks
-    // clamped to it and covered by the approver's own grant.
-    let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    let Some(delegated) = DelegatedScopes::clamp(
+    // Device consent is expandable: the Owner may grant anything the client is
+    // allowed, whatever the device asked for. The proof every write below
+    // demands is the Owner's ticks clamped to that and covered by the
+    // approver's own grant.
+    let allowed_scopes: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
+    let Some(delegated_scopes) = DelegatedScopes::clamp(
         approver,
         input.approved_scopes,
-        &ScopeCeiling {
-            requested: &allowed,
-            allowed: &allowed,
+        &ApprovableScopes {
+            requested_scopes: &allowed_scopes,
+            allowed_scopes: &allowed_scopes,
         },
     )?
     else {
@@ -78,12 +79,10 @@ pub(super) fn approve_device_consent(
         .as_deref()
         .or(device_request.device_name.as_deref());
     let approved = RequestApprover::over(store).approve_for_device(
-        &delegated,
-        DeviceApproval {
-            request_id: &device_request.id,
-            patient: input.patient.as_deref(),
-            device_name: request_device_name,
-        },
+        &delegated_scopes,
+        &device_request.id,
+        input.patient.as_deref(),
+        request_device_name,
     )?;
     if !approved {
         return Err(make_consent_not_found());
@@ -93,7 +92,7 @@ pub(super) fn approve_device_consent(
     GrantRecorder::over(store).record_device_grant(
         &device_request.client_id,
         effective_device_name,
-        &delegated,
+        &delegated_scopes,
         input.patient.as_deref(),
         now,
     )?;

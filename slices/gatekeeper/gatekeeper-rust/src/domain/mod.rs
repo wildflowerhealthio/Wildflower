@@ -75,7 +75,7 @@ pub mod token;
 // collapses onto the generic RFC 6749 §5.2 descriptions.
 pub(crate) mod token_exchange_error;
 
-pub use authorization_code::PendingCodeConsent;
+pub use authorization_code::PendingCodeRequest;
 pub use gatekeeper_store::{GatekeeperStore, GatekeeperTx};
 
 /// Shared helpers for the crate's **source-guard** tests — the advisory-strength

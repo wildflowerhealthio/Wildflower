@@ -11,11 +11,11 @@ use url::Url;
 
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
 use crate::domain::authority::{GrantCoverage, StandingGrantCoverage};
+use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
-use crate::domain::capabilities::writers::{CodeApproval, CodeAuthority, RequestApprover};
+use crate::domain::capabilities::writers::{CodeAuthority, RequestApprover};
 use crate::domain::client::Client;
-use crate::domain::client_redirect::redirect_is_allowlisted;
-use crate::domain::client_registration::RegistrationContext;
+use crate::domain::client_registration::RegistrationClassifier;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::oauth_error_kind::OAuthErrorKind;
@@ -45,9 +45,9 @@ pub(crate) struct FreshIds {
     pub(crate) code: String,
 }
 
-/// Where the user-agent goes next.
+/// Where the user-agent goes next after `/authorize`.
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum AuthorizationStart {
+pub(crate) enum AuthorizeNextStep {
     /// Every requested scope was pre-approved: back to the client with a code
     /// (RFC 6749 §4.1.2).
     RedirectToClient {
@@ -144,25 +144,22 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         served_origin: &str,
         ids: FreshIds,
         now: DateTime<Utc>,
-    ) -> Result<AuthorizationStart, AuthorizationStartError> {
+    ) -> Result<AuthorizeNextStep, AuthorizationStartError> {
         if !self.store.has_active_signing_key()? {
             return Err(AuthorizationStartError::NoActiveSigningKey);
         }
-        let registration = RegistrationContext {
+        let classifier = RegistrationClassifier {
             redirects: self.redirects.as_ref(),
             served_origin,
-            first_party_client_id: &self.first_party_client_id,
         };
-        let is_first_party = registration.is_first_party(request.client_id);
+        let is_first_party = self.is_first_party(request.client_id);
         let client = self.load_client(request.client_id, is_first_party)?;
         let redirect_uri = parse_redirect_uri(request.redirect_uri)?;
         // A redirect is trustworthy only when a client we already know already
         // registered it.
-        let redirect_allowlisted = client.as_ref().is_some_and(|client| {
-            let topology = self.redirects.resolve(request.client_id);
-            let served = Url::parse(served_origin).ok();
-            redirect_is_allowlisted(client, &redirect_uri, served.as_ref(), topology.as_ref())
-        });
+        let redirect_allowlisted = client
+            .as_ref()
+            .is_some_and(|client| classifier.redirect_is_allowlisted(client, &redirect_uri));
         if is_first_party && !redirect_allowlisted {
             return Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::RedirectUriNotAllowed,
@@ -185,7 +182,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
                 });
             }
         }
-        let verdict = registration.classify(
+        let registration = classifier.classify(
             request.client_id,
             client.as_ref(),
             &redirect_uri,
@@ -193,24 +190,28 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         );
         let coverage = StandingGrantCoverage::resolve(
             &self.store,
-            &verdict,
+            &registration,
             request.client_id,
             &redirect_uri,
             &requested_scopes,
         )?;
 
         // Park the request — every path from here on references it by id.
-        let parked = AuthorizationRequest::new_code_authorization(StartCodeAuthorizationArgs {
-            id: ids.request_id.clone(),
-            client_id: request.client_id.to_owned(),
-            requested_scopes,
-            code_challenge: request.code_challenge.to_owned(),
+        let parked = PendingCodeRequest {
+            request: AuthorizationRequest::new_code_authorization(StartCodeAuthorizationArgs {
+                id: ids.request_id.clone(),
+                client_id: request.client_id.to_owned(),
+                requested_scopes,
+                code_challenge: request.code_challenge.to_owned(),
+                redirect_uri: redirect_uri.clone(),
+                client_state: request.client_state.to_owned(),
+                pre_approved_scopes: coverage.pre_approved_scopes().to_vec(),
+                ttl: AUTHORIZATION_REQUEST_TTL,
+            }),
             redirect_uri: redirect_uri.clone(),
-            client_state: request.client_state.to_owned(),
-            pre_approved_scopes: coverage.pre_approved_scopes().to_vec(),
-            ttl: AUTHORIZATION_REQUEST_TTL,
-        });
-        self.store.insert_authorization_request(&parked)?;
+            code_challenge: request.code_challenge.to_owned(),
+        };
+        self.store.insert_authorization_request(&parked.request)?;
 
         if let GrantCoverage::Full(standing) = coverage {
             // The fast path: the standing grant is the authority. The insert
@@ -220,21 +221,16 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             // can only publish the genuinely-pending head, never this one.
             let issued = RequestApprover::over(&self.store).approve_for_code(
                 CodeAuthority::StandingGrant(&standing),
-                CodeApproval {
-                    request_id: &ids.request_id,
-                    client_id: request.client_id,
-                    redirect_uri: &redirect_uri,
-                    code_challenge: request.code_challenge,
-                    patient: standing.patient(),
-                    code: ids.code,
-                    now,
-                },
+                &parked,
+                standing.patient(),
+                ids.code,
+                now,
             )?;
             self.publisher.republish_active();
             let Some(issued) = issued else {
                 return Err(AuthorizationStartError::RequestNotPending);
             };
-            return Ok(AuthorizationStart::RedirectToClient {
+            return Ok(AuthorizeNextStep::RedirectToClient {
                 redirect_uri,
                 code: issued.code,
                 client_state: request.client_state.to_owned(),
@@ -244,9 +240,15 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         // This request needs a human: raise the host popup (after the fast-path
         // return above, so a pre-approved request never flickers into it).
         self.publisher.republish_active();
-        Ok(AuthorizationStart::AwaitOwner {
+        Ok(AuthorizeNextStep::AwaitOwner {
             request_id: ids.request_id,
         })
+    }
+
+    /// Whether `client_id` is the first-party host — the one client held to its
+    /// registration rather than trusted on first use.
+    fn is_first_party(&self, client_id: &str) -> bool {
+        client_id == &*self.first_party_client_id
     }
 
     /// The client row named by the request, if any. A disabled client is
@@ -421,7 +423,7 @@ mod tests {
             .expect("starts");
         assert_eq!(
             outcome,
-            AuthorizationStart::RedirectToClient {
+            AuthorizeNextStep::RedirectToClient {
                 redirect_uri: Url::parse("https://example.com/cb").unwrap(),
                 code: "the-code".to_owned(),
                 client_state: "xyz".to_owned(),
@@ -461,7 +463,7 @@ mod tests {
             .expect("starts");
         assert_eq!(
             outcome,
-            AuthorizationStart::AwaitOwner {
+            AuthorizeNextStep::AwaitOwner {
                 request_id: "req-1".to_owned()
             }
         );
@@ -490,7 +492,7 @@ mod tests {
                 Utc::now(),
             )
             .expect("parked for the owner");
-        assert!(matches!(outcome, AuthorizationStart::AwaitOwner { .. }));
+        assert!(matches!(outcome, AuthorizeNextStep::AwaitOwner { .. }));
 
         let mut bad_type = request("newcomer", "openid");
         bad_type.response_type = "token";

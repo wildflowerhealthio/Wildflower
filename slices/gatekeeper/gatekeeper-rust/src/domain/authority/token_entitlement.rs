@@ -1,5 +1,5 @@
-//! [`MintAuthority`] — the sealed trait the access-token minter mints under.
-//! An implementor carries the claims a token may be minted with **privately**,
+//! [`TokenEntitlement`] — what an access token may claim: the sealed trait the
+//! access-token minter mints under. An implementor carries the claims a token may be minted with **privately**,
 //! copied from the record or configuration it stands for, so the minter never
 //! accepts a bare scope slice a caller assembled.
 
@@ -7,7 +7,7 @@
 /// caller. Sealed: only the proof types in [`crate::domain::authority`]
 /// implement it, so the set of things a token can be minted *for* is the set of
 /// types in that module.
-pub(crate) trait MintAuthority: sealed::Sealed {
+pub(crate) trait TokenEntitlement: sealed::Sealed {
     /// The `sub` / `client_id` the token is issued to.
     fn client_id(&self) -> &str;
     /// The scopes the token carries, exactly as the proof recorded them.
@@ -20,7 +20,8 @@ pub(crate) trait MintAuthority: sealed::Sealed {
 }
 
 pub(crate) mod sealed {
-    /// The sealing trait: implemented alongside each [`MintAuthority`](super::MintAuthority)
-    /// impl inside `domain::authority`, and nowhere else.
+    /// The sealing trait: implemented alongside each
+    /// [`TokenEntitlement`](super::TokenEntitlement) impl inside
+    /// `domain::authority`, and nowhere else.
     pub(crate) trait Sealed {}
 }

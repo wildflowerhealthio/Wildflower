@@ -111,7 +111,7 @@ mod tests {
     use chrono::Duration;
 
     use super::*;
-    use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
+    use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
     use crate::domain::test_fake::{code_request, FakeGatekeeperStore};
 
     /// Each stored status maps to its view; a pending request past its TTL
@@ -149,7 +149,7 @@ mod tests {
             ))
             .unwrap();
         store
-            .issue_authorization_code(&AuthorizationCode {
+            .issue_authorization_code(&IssuedAuthorizationCode {
                 code: "the-code".to_owned(),
                 request_id: "approved".to_owned(),
                 client_id: "client".to_owned(),

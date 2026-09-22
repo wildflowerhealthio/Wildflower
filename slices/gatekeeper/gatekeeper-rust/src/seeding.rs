@@ -17,8 +17,8 @@ use persistence_rust::DieselPool;
 use thiserror::Error;
 
 use crate::db::SqliteGatekeeperStore;
-use crate::domain::authority::HostBootstrap;
-use crate::domain::capabilities::writers::{AccessTokenMinter, MintRequest, TokenIssuanceError};
+use crate::domain::authority::HostOwnerEntitlement;
+use crate::domain::capabilities::writers::{AccessTokenMinter, TokenIssuanceError};
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
 // The persistence port trait — brought into scope so the store's methods
@@ -327,17 +327,10 @@ pub(crate) fn mint_host_owner_token(
     // `WILDFLOWER_WIDEST_SCOPES` before we reach here.
     //
     // The one token minted with no approving human: its authority is the named
-    // `HostBootstrap` proof (constructible only here), through the same minter.
-    let authority = HostBootstrap::for_host(first_party_client_id, granted_scopes);
-    let issued = AccessTokenMinter::over(store).mint(
-        &authority,
-        &MintRequest {
-            issuer: iss,
-            audience: aud,
-            ttl,
-        },
-    )?;
-    Ok(issued.access_token)
+    // `HostOwnerEntitlement` proof (constructible only here), through the same
+    // minter.
+    let entitlement = HostOwnerEntitlement::for_host(first_party_client_id, granted_scopes);
+    Ok(AccessTokenMinter::new(store, iss, aud, ttl).mint(&entitlement)?)
 }
 
 #[cfg(test)]

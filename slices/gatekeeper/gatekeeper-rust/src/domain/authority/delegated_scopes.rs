@@ -8,16 +8,16 @@ use scopes_rust::{grantable_scopes, Grant, Scope};
 
 use crate::domain::gatekeeper_error::GatekeeperError;
 
-/// What an approval may grant at most: the scopes the request asked for, and
-/// the scopes the client is allowed. The intersection of the two is the space
-/// the Owner's ticks are clamped into; the approver's own grant then bounds it
-/// again. Each consent flow decides the ceiling (the device flow's is the
-/// client's `allowed_scopes` on both sides, since device consent is expandable;
-/// the code flow's is the registration, widened by the request for a client
-/// trusted on first use).
-pub(crate) struct ScopeCeiling<'a> {
-    pub(crate) requested: &'a HashSet<&'a str>,
-    pub(crate) allowed: &'a HashSet<&'a str>,
+/// The scopes an approval may grant at most: those the request asked for that
+/// the client is also allowed. The Owner's ticks are clamped into this
+/// intersection; the approver's own grant then bounds it again. Each consent
+/// flow decides both halves (the device flow passes the client's
+/// `allowed_scopes` for both, since device consent is expandable; the code flow
+/// allows the registration, widened by the request for a client trusted on
+/// first use).
+pub(crate) struct ApprovableScopes<'a> {
+    pub(crate) requested_scopes: &'a HashSet<&'a str>,
+    pub(crate) allowed_scopes: &'a HashSet<&'a str>,
 }
 
 /// A scope set an Owner has approved **and** is entitled to delegate. Holding
@@ -30,8 +30,9 @@ pub(crate) struct DelegatedScopes {
 }
 
 impl DelegatedScopes {
-    /// Clamp the Owner's `approved` ticks to the `ceiling`, then require that the
-    /// `approver`'s own grant covers every **resource** scope that survives.
+    /// Clamp the Owner's `approved` ticks to the `approvable` scopes, then
+    /// require that the `approver`'s own grant covers every **resource** scope
+    /// that survives.
     ///
     /// `Ok(None)` when nothing survives — the caller denies. Identity and session
     /// markers (`openid`, `offline_access`, …) are not resource access and pass
@@ -47,9 +48,13 @@ impl DelegatedScopes {
     pub(crate) fn clamp(
         approver: &Grant,
         approved: Vec<String>,
-        ceiling: &ScopeCeiling<'_>,
+        approvable: &ApprovableScopes<'_>,
     ) -> Result<Option<Self>, GatekeeperError> {
-        let scopes = grantable_scopes(approved, ceiling.requested, ceiling.allowed);
+        let scopes = grantable_scopes(
+            approved,
+            approvable.requested_scopes,
+            approvable.allowed_scopes,
+        );
         if scopes.is_empty() {
             return Ok(None);
         }
@@ -112,18 +117,18 @@ mod tests {
         Grant::parse(scopes.iter().copied())
     }
 
-    /// The happy path: ticks inside the ceiling and inside the approver's own
-    /// authority come back as the delegated set, verbatim.
+    /// The happy path: ticks inside the approvable scopes and inside the
+    /// approver's own authority come back as the delegated set, verbatim.
     #[test]
-    fn clamp_admits_covered_scopes_inside_the_ceiling() {
+    fn clamp_admits_covered_approvable_scopes() {
         let requested = set(&["patient/Patient.r", "openid"]);
         let allowed = set(&["patient/Patient.r", "openid", "patient/Observation.r"]);
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
             owned(&["patient/Patient.r", "openid"]),
-            &ScopeCeiling {
-                requested: &requested,
-                allowed: &allowed,
+            &ApprovableScopes {
+                requested_scopes: &requested,
+                allowed_scopes: &allowed,
             },
         )
         .expect("approver covers everything")
@@ -131,18 +136,18 @@ mod tests {
         assert_eq!(delegated.scopes(), ["patient/Patient.r", "openid"]);
     }
 
-    /// A tick outside the ceiling is dropped, not delegated — the ceiling is the
-    /// intersection of requested and allowed.
+    /// A tick outside the approvable scopes (requested ∩ allowed) is dropped,
+    /// not delegated.
     #[test]
-    fn clamp_drops_ticks_outside_the_ceiling() {
+    fn clamp_drops_ticks_outside_the_approvable_scopes() {
         let requested = set(&["patient/Patient.r"]);
         let allowed = set(&["patient/Patient.r"]);
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
             owned(&["patient/Patient.r", "patient/Observation.r"]),
-            &ScopeCeiling {
-                requested: &requested,
-                allowed: &allowed,
+            &ApprovableScopes {
+                requested_scopes: &requested,
+                allowed_scopes: &allowed,
             },
         )
         .expect("approver covers everything")
@@ -150,7 +155,7 @@ mod tests {
         assert_eq!(delegated.scopes(), ["patient/Patient.r"]);
     }
 
-    /// Nothing surviving the ceiling is `None`, so the caller denies rather than
+    /// Nothing surviving the clamp is `None`, so the caller denies rather than
     /// recording an empty grant.
     #[test]
     fn clamp_yields_none_when_nothing_survives() {
@@ -159,9 +164,9 @@ mod tests {
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
             owned(&["patient/Observation.r"]),
-            &ScopeCeiling {
-                requested: &requested,
-                allowed: &allowed,
+            &ApprovableScopes {
+                requested_scopes: &requested,
+                allowed_scopes: &allowed,
             },
         )
         .expect("no approver check runs on an empty set");
@@ -178,9 +183,9 @@ mod tests {
         let outcome = DelegatedScopes::clamp(
             &grant(&["patient/Patient.r"]),
             owned(&["patient/Patient.r", "patient/Observation.r"]),
-            &ScopeCeiling {
-                requested: &requested,
-                allowed: &allowed,
+            &ApprovableScopes {
+                requested_scopes: &requested,
+                allowed_scopes: &allowed,
             },
         );
         assert_eq!(
@@ -200,9 +205,9 @@ mod tests {
         let outcome = DelegatedScopes::clamp(
             &grant(&[]),
             owned(&["patient/Patient.r"]),
-            &ScopeCeiling {
-                requested: &requested,
-                allowed: &allowed,
+            &ApprovableScopes {
+                requested_scopes: &requested,
+                allowed_scopes: &allowed,
             },
         );
         assert!(matches!(
@@ -220,9 +225,9 @@ mod tests {
         let delegated = DelegatedScopes::clamp(
             &grant(&["patient/Patient.r"]),
             owned(&["openid", "offline_access"]),
-            &ScopeCeiling {
-                requested: &requested,
-                allowed: &allowed,
+            &ApprovableScopes {
+                requested_scopes: &requested,
+                allowed_scopes: &allowed,
             },
         )
         .expect("markers need no resource authority")
@@ -239,9 +244,9 @@ mod tests {
         let delegated = DelegatedScopes::clamp(
             &grant(&["patient/Patient.rs"]),
             owned(&["patient/Patient.read"]),
-            &ScopeCeiling {
-                requested: &requested,
-                allowed: &allowed,
+            &ApprovableScopes {
+                requested_scopes: &requested,
+                allowed_scopes: &allowed,
             },
         )
         .expect("letter authority covers the word spelling")

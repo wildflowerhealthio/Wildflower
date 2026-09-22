@@ -10,28 +10,28 @@ use url::Url;
 
 use crate::crypto_util::pkce::is_valid_code_verifier_length;
 use crate::domain::authority::{
-    AuthenticatedClient, CodeRedemption, ConsumedDeviceRequest, GrantRedemption, MintAuthority,
-    RedeemedAuthorizationCode, ValidatedRefreshToken,
+    AuthenticatedClient, CodeRedemption, ConsumedDeviceRequest, GrantRedemption,
+    RedeemedAuthorizationCode, TokenEntitlement, ValidatedRefreshToken,
 };
-use crate::domain::capabilities::writers::{
-    AccessTokenMinter, MintRequest, RefreshFamilyWriter, Rotation,
-};
+use crate::domain::capabilities::writers::{AccessTokenMinter, RefreshFamilyWriter};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::token::ACCESS_TOKEN_TTL;
-use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
+use crate::domain::token_exchange_error::TokenExchangeError;
 use crate::domain::GatekeeperStore;
 
-/// The presented halves of an `authorization_code` grant request.
-pub(crate) struct AuthorizationCodeGrant<'a> {
+/// The presented halves of an `authorization_code` grant request, as the
+/// client sent them (the `redirect_uri` still unparsed).
+pub(crate) struct PresentedAuthorizationCode<'a> {
     pub(crate) code: &'a str,
     pub(crate) code_verifier: &'a str,
     pub(crate) redirect_uri: &'a str,
 }
 
-/// A successful exchange: what the RFC 6749 §5.1 token response carries, plus
-/// whether the redeeming client is the first-party host (the HTTP layer plants
-/// the owner session cookie only for the host's own session grants).
-pub(crate) struct ExchangedToken {
+/// The tokens a successful exchange issued: what the RFC 6749 §5.1 token
+/// response carries, plus whether the redeeming client is the first-party host
+/// (the HTTP layer plants the owner session cookie only for the host's own
+/// session grants).
+pub(crate) struct IssuedTokens {
     pub(crate) access_token: String,
     /// Seconds until the access token expires.
     pub(crate) expires_in: i64,
@@ -74,22 +74,22 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     pub(crate) fn exchange_authorization_code(
         &self,
         client: &AuthenticatedClient,
-        grant: &AuthorizationCodeGrant<'_>,
+        presented: &PresentedAuthorizationCode<'_>,
         origin: &str,
         now: DateTime<Utc>,
-    ) -> Result<ExchangedToken, TokenExchangeError> {
+    ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(client, AllowedGrantType::AuthorizationCode)?;
-        if !is_valid_code_verifier_length(grant.code_verifier) {
+        if !is_valid_code_verifier_length(presented.code_verifier) {
             return Err(TokenExchangeError::InvalidCodeVerifier);
         }
-        let redirect_uri =
-            Url::parse(grant.redirect_uri).map_err(|_| TokenExchangeError::InvalidRedirectUri)?;
+        let redirect_uri = Url::parse(presented.redirect_uri)
+            .map_err(|_| TokenExchangeError::InvalidRedirectUri)?;
         let redeemed = RedeemedAuthorizationCode::redeem(
             &self.store,
             client,
             &CodeRedemption {
-                code: grant.code,
-                code_verifier: grant.code_verifier,
+                code: presented.code,
+                code_verifier: presented.code_verifier,
                 redirect_uri: &redirect_uri,
             },
             now,
@@ -111,7 +111,7 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         device_code: &str,
         origin: &str,
         now: DateTime<Utc>,
-    ) -> Result<ExchangedToken, TokenExchangeError> {
+    ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(client, AllowedGrantType::DeviceCode)?;
         let consumed = ConsumedDeviceRequest::consume(&self.store, client, device_code, now)?;
         self.issue_for_redemption(&consumed, origin, now)
@@ -127,39 +127,22 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     ///
     /// [`TokenExchangeError::UnauthorizedGrantType`], the validation's
     /// [`InvalidGrant`](TokenExchangeError::InvalidGrant), a replay
-    /// ([`InvalidGrantReason::RefreshTokenReplayed`], after which the family is
-    /// revoked), or a minting / store failure.
+    /// ([`RefreshTokenReplayed`](crate::domain::token_exchange_error::InvalidGrantReason::RefreshTokenReplayed),
+    /// after which the family is revoked), or a minting / store failure.
     pub(crate) fn exchange_refresh_token(
         &self,
         client: &AuthenticatedClient,
         presented_refresh_token: &str,
         origin: &str,
         now: DateTime<Utc>,
-    ) -> Result<ExchangedToken, TokenExchangeError> {
+    ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(client, AllowedGrantType::RefreshToken)?;
         let validated =
             ValidatedRefreshToken::validate(&self.store, client, presented_refresh_token, now)?;
-        let minted = self.mint(&validated, origin)?;
-        let successor = match RefreshFamilyWriter::over(&self.store).rotate(&validated, now)? {
-            Rotation::Rotated { successor } => successor,
-            Rotation::Replayed => {
-                return Err(TokenExchangeError::InvalidGrant(
-                    InvalidGrantReason::RefreshTokenReplayed {
-                        family_id: validated.family_id().to_owned(),
-                        client_id: validated.client_id().to_owned(),
-                    },
-                ))
-            }
-            Rotation::Vanished => {
-                return Err(TokenExchangeError::InvalidGrant(
-                    InvalidGrantReason::RefreshTokenVanished {
-                        family_id: validated.family_id().to_owned(),
-                    },
-                ))
-            }
-        };
-        Ok(ExchangedToken {
-            access_token: minted,
+        let access_token = self.mint(&validated, origin)?;
+        let successor = RefreshFamilyWriter::over(&self.store).rotate(&validated, now)?;
+        Ok(IssuedTokens {
+            access_token,
             expires_in: ACCESS_TOKEN_TTL.num_seconds(),
             scope: validated.granted_scopes().to_vec(),
             refresh_token: Some(successor),
@@ -174,7 +157,7 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         client: &AuthenticatedClient,
         grant_type: AllowedGrantType,
     ) -> Result<(), TokenExchangeError> {
-        if client.client().allowed_grant_types.contains(&grant_type) {
+        if client.allows_grant_type(grant_type) {
             Ok(())
         } else {
             Err(TokenExchangeError::UnauthorizedGrantType)
@@ -188,12 +171,15 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         redemption: &impl GrantRedemption,
         origin: &str,
         now: DateTime<Utc>,
-    ) -> Result<ExchangedToken, TokenExchangeError> {
-        let minted = self.mint(redemption, origin)?;
-        let refresh_token =
-            RefreshFamilyWriter::over(&self.store).start_family_if_granted(redemption, now)?;
-        Ok(ExchangedToken {
-            access_token: minted,
+    ) -> Result<IssuedTokens, TokenExchangeError> {
+        let access_token = self.mint(redemption, origin)?;
+        let refresh_token = if redemption.earns_refresh_token() {
+            Some(RefreshFamilyWriter::over(&self.store).start_family(redemption, now)?)
+        } else {
+            None
+        };
+        Ok(IssuedTokens {
+            access_token,
             expires_in: ACCESS_TOKEN_TTL.num_seconds(),
             scope: redemption.granted_scopes().to_vec(),
             refresh_token,
@@ -206,23 +192,21 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     /// request's served origin's FHIR base (see `docs/Origins/Explanation.md`).
     fn mint(
         &self,
-        authority: &impl MintAuthority,
+        entitlement: &impl TokenEntitlement,
         origin: &str,
     ) -> Result<String, TokenExchangeError> {
         let audience = format!("{origin}/fhir-r4");
-        let issued = AccessTokenMinter::over(&self.store).mint(
-            authority,
-            &MintRequest {
-                issuer: shared_structures_rust::CANONICAL_ISSUER,
-                audience: &audience,
-                ttl: ACCESS_TOKEN_TTL,
-            },
-        )?;
-        Ok(issued.access_token)
+        let minter = AccessTokenMinter::new(
+            &self.store,
+            shared_structures_rust::CANONICAL_ISSUER,
+            &audience,
+            ACCESS_TOKEN_TTL,
+        );
+        Ok(minter.mint(entitlement)?)
     }
 
-    fn is_first_party(&self, authority: &impl MintAuthority) -> bool {
-        authority.client_id() == &*self.first_party_client_id
+    fn is_first_party(&self, entitlement: &impl TokenEntitlement) -> bool {
+        entitlement.client_id() == &*self.first_party_client_id
     }
 }
 
@@ -230,10 +214,12 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
 mod tests {
     use chrono::Duration;
 
+    use crate::domain::token_exchange_error::InvalidGrantReason;
+
     use super::*;
     use crate::crypto_util::pkce::compute_code_challenge;
     use crate::crypto_util::random_token::generate_authorization_code;
-    use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
+    use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
     use crate::domain::client::Client;
     use crate::domain::client_credentials::ClientCredentials;
     use crate::domain::signing_key::SigningKey;
@@ -274,7 +260,7 @@ mod tests {
         let code = generate_authorization_code();
         let now = Utc::now();
         store
-            .issue_authorization_code(&AuthorizationCode {
+            .issue_authorization_code(&IssuedAuthorizationCode {
                 code: code.clone(),
                 request_id: "req".to_owned(),
                 client_id: client_id.to_owned(),
@@ -298,7 +284,7 @@ mod tests {
         let code = issue_code(&exchanger.store, "app", &["openid"]);
         let outcome = exchanger.exchange_authorization_code(
             &client,
-            &AuthorizationCodeGrant {
+            &PresentedAuthorizationCode {
                 code: &code,
                 code_verifier: VERIFIER,
                 redirect_uri: "https://example.com/cb",
@@ -331,7 +317,7 @@ mod tests {
         let token = exchanger
             .exchange_authorization_code(
                 &client,
-                &AuthorizationCodeGrant {
+                &PresentedAuthorizationCode {
                     code: &plain,
                     code_verifier: VERIFIER,
                     redirect_uri: "https://example.com/cb",
@@ -350,7 +336,7 @@ mod tests {
         let token = exchanger
             .exchange_authorization_code(
                 &host,
-                &AuthorizationCodeGrant {
+                &PresentedAuthorizationCode {
                     code: &plain,
                     code_verifier: VERIFIER,
                     redirect_uri: "https://example.com/cb",
@@ -375,7 +361,7 @@ mod tests {
         let first = exchanger
             .exchange_authorization_code(
                 &client,
-                &AuthorizationCodeGrant {
+                &PresentedAuthorizationCode {
                     code: &plain,
                     code_verifier: VERIFIER,
                     redirect_uri: "https://example.com/cb",

@@ -10,8 +10,7 @@ use super::state::GatekeeperState;
 use super::FromState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::oauth::{
-    AuthorizationStatusReader, ClientScopesReader, CodeAuthorizationStarter, DeviceAuthorizer,
-    PublicKeysReader,
+    AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, PublicKeysReader,
 };
 use crate::ports::PendingConsentPublisher;
 
@@ -58,15 +57,5 @@ pub(crate) type LivePublicKeysReader = PublicKeysReader<SqliteGatekeeperStore>;
 impl FromState for LivePublicKeysReader {
     fn from_state(state: &Arc<GatekeeperState>) -> Self {
         PublicKeysReader::new(state.store.clone())
-    }
-}
-
-/// Read a client's allowed scopes — built by the host-facing
-/// `client_allowed_scopes` for the apps slice's per-app launch check.
-pub(crate) type LiveClientScopesReader = ClientScopesReader<SqliteGatekeeperStore>;
-
-impl FromState for LiveClientScopesReader {
-    fn from_state(state: &Arc<GatekeeperState>) -> Self {
-        ClientScopesReader::new(state.store.clone())
     }
 }

@@ -12,10 +12,10 @@
 //!  - [`AuthenticatedClient`] — an OAuth client that exists, is enabled, and
 //!    (if confidential) presented its secret. Everything a client does on its
 //!    own behalf takes one.
-//!  - [`DelegatedScopes`] — what an approving Owner may delegate: clamped to the
-//!    requested/allowed ceiling **and** covered by the approver's own grant. No
-//!    grant, code, or widened registration can carry a scope the approver did
-//!    not hold.
+//!  - [`DelegatedScopes`] — what an approving Owner may delegate: clamped to
+//!    the approvable scopes (requested ∩ allowed) **and** covered by the
+//!    approver's own grant. No grant, code, or widened registration can carry a
+//!    scope the approver did not hold.
 //!  - [`RedeemedAuthorizationCode`], [`ConsumedDeviceRequest`],
 //!    [`ValidatedRefreshToken`] — the redemptions an access token is minted
 //!    under at `/oauth/token`; each carries the scopes of the record it
@@ -23,11 +23,12 @@
 //!  - [`StandingGrantCoverage`] — a standing grant already covers every scope
 //!    of a *registered* request: the `/oauth/authorize` fast path's authority
 //!    to issue a code with no human in the loop.
-//!  - [`HostBootstrap`] — the host's own boot-time owner token, the one authority
-//!    with no approving human; constructible only in `seeding` (guarded below).
-//!  - [`MintAuthority`] — the sealed trait the minter mints under; implementors
-//!    carry their scopes privately, so a token's scopes are never a
-//!    caller-assembled slice.
+//!  - [`HostOwnerEntitlement`] — what the host's own boot-time owner token may
+//!    claim, the one authority with no approving human; constructible only in
+//!    `seeding` (guarded below).
+//!  - [`TokenEntitlement`] — the sealed trait the minter mints under;
+//!    implementors carry their claims privately, so a token's scopes are never
+//!    a caller-assembled slice.
 //!
 //! Not proofs: the registration-acknowledgement check (a consent-UI rule run
 //! before any clamp) and the pending-request bookkeeping writes (park, poll,
@@ -35,38 +36,38 @@
 
 mod authenticated_client;
 mod delegated_scopes;
-mod host_bootstrap;
-mod mint_authority;
+mod host_owner_entitlement;
 mod redemption;
 mod standing_grant;
+mod token_entitlement;
 
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
-pub(crate) use delegated_scopes::{DelegatedScopes, ScopeCeiling};
-pub(crate) use host_bootstrap::HostBootstrap;
-pub(crate) use mint_authority::MintAuthority;
+pub(crate) use delegated_scopes::{ApprovableScopes, DelegatedScopes};
+pub(crate) use host_owner_entitlement::HostOwnerEntitlement;
+pub(crate) use token_entitlement::TokenEntitlement;
 // The sealing trait, exposed only so a writer test can stub a redemption.
-#[cfg(test)]
-pub(crate) use mint_authority::sealed;
 pub(crate) use redemption::{
     CodeRedemption, ConsumedDeviceRequest, GrantRedemption, RedeemedAuthorizationCode,
     ValidatedRefreshToken,
 };
 pub(crate) use standing_grant::{GrantCoverage, StandingGrantCoverage};
+#[cfg(test)]
+pub(crate) use token_entitlement::sealed;
 
 #[cfg(test)]
 mod construction_site_guard {
     use crate::domain::source_guard::{production_lines, relative_to, rs_files_under};
 
-    /// [`HostBootstrap`](super::HostBootstrap) is the one authority minted with
-    /// no approving human, so its constructor may be called from exactly one
+    /// [`HostOwnerEntitlement`](super::HostOwnerEntitlement) is the one
+    /// authority minted with no approving human, so its constructor may be called from exactly one
     /// place: the boot-time seeding. This test enumerates `src/` and fails if
     /// the constructor is named anywhere else (its own definition file aside),
     /// so a second unproven mint can't appear silently. Comments and unit-test
     /// modules are skipped (see [`production_lines`]).
     #[test]
-    fn host_bootstrap_is_constructed_only_by_seeding() {
-        let needle = concat!("HostBootstrap::", "for_host(");
-        let allowed = ["seeding.rs", "domain/authority/host_bootstrap.rs"];
+    fn host_owner_entitlement_is_constructed_only_by_seeding() {
+        let needle = concat!("HostOwnerEntitlement::", "for_host(");
+        let allowed = ["seeding.rs", "domain/authority/host_owner_entitlement.rs"];
         let src = std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
         for path in rs_files_under(src) {
             let relative = relative_to(&path, src);
@@ -78,7 +79,7 @@ mod construction_site_guard {
             for (n, line) in production_lines(&source) {
                 assert!(
                     !line.contains(needle),
-                    "{relative}:{n} constructs the host bootstrap authority; only seeding may \
+                    "{relative}:{n} constructs the host-owner entitlement; only seeding may \
                      mint a token with no approving human",
                 );
             }

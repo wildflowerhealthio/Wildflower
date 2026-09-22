@@ -14,7 +14,7 @@ pub use gatekeeper_rust::crypto_util::base64;
 pub use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
 pub use gatekeeper_rust::crypto_util::pkce::compute_code_challenge;
 pub use gatekeeper_rust::crypto_util::random_token::token_storage_hash;
-pub use gatekeeper_rust::domain::authorization_code::AuthorizationCode;
+pub use gatekeeper_rust::domain::authorization_code::IssuedAuthorizationCode;
 pub use gatekeeper_rust::domain::authorization_request::{
     AuthorizationRequest, GrantType, RequestStatus,
 };
@@ -233,7 +233,7 @@ pub fn plant_authorization_code(
         })
         .expect("insert request");
     store
-        .issue_authorization_code(&AuthorizationCode {
+        .issue_authorization_code(&IssuedAuthorizationCode {
             code: code.to_string(),
             request_id,
             client_id: client_id.to_string(),

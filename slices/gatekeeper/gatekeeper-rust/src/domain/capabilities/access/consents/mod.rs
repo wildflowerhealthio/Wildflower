@@ -23,9 +23,9 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
-use crate::domain::authorization_code::PendingCodeConsent;
+use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client_registration::{ClientRegistration, RegistrationContext};
+use crate::domain::client_registration::{ClientRegistration, RegistrationClassifier};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::ports::{PendingConsentPublisher, SelfHostedRedirectResolver};
@@ -136,32 +136,14 @@ pub(crate) struct ApproveDeviceConsentInput {
 pub(crate) struct ConsentReader<S: GatekeeperStore> {
     store: S,
     redirects: Arc<dyn SelfHostedRedirectResolver>,
-    first_party_client_id: Arc<str>,
 }
 
 impl<S: GatekeeperStore> ConsentReader<S> {
-    /// Build the reader over a store handle, the self-hosted redirect seam, and
-    /// the first-party `client_id` — all lifted from the state. The latter two
-    /// feed the [registration verdict](ClientRegistration) each prompt carries.
-    pub(crate) fn new(
-        store: S,
-        redirects: Arc<dyn SelfHostedRedirectResolver>,
-        first_party_client_id: Arc<str>,
-    ) -> Self {
-        ConsentReader {
-            store,
-            redirects,
-            first_party_client_id,
-        }
-    }
-
-    /// The request-scoped registration inputs for a prompt served on `origin`.
-    fn registration_context<'a>(&'a self, origin: &'a str) -> RegistrationContext<'a> {
-        RegistrationContext {
-            redirects: self.redirects.as_ref(),
-            served_origin: origin,
-            first_party_client_id: &self.first_party_client_id,
-        }
+    /// Build the reader over a store handle and the self-hosted redirect seam,
+    /// both lifted from the state. The seam feeds the
+    /// [registration verdict](ClientRegistration) each prompt carries.
+    pub(crate) fn new(store: S, redirects: Arc<dyn SelfHostedRedirectResolver>) -> Self {
+        ConsentReader { store, redirects }
     }
 
     /// Load a pending authorization-code consent prompt for the Owner UI, with
@@ -174,7 +156,7 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         id: &str,
         served_origin: &str,
     ) -> Result<OAuthConsentView, GatekeeperError> {
-        let PendingCodeConsent {
+        let PendingCodeRequest {
             request,
             redirect_uri,
             ..
@@ -186,7 +168,11 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         let client_name = client
             .as_ref()
             .map_or_else(|| request.client_id.clone(), |c| c.name.clone());
-        let registration = self.registration_context(served_origin).classify(
+        let classifier = RegistrationClassifier {
+            redirects: self.redirects.as_ref(),
+            served_origin,
+        };
+        let registration = classifier.classify(
             &request.client_id,
             client.as_ref(),
             &redirect_uri,
@@ -276,11 +262,11 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
             generate_code,
             &ApprovalContext {
                 approver: &self.approver,
-                registration: &RegistrationContext {
+                classifier: &RegistrationClassifier {
                     redirects: self.redirects.as_ref(),
                     served_origin,
-                    first_party_client_id: &self.first_party_client_id,
                 },
+                first_party_client_id: &self.first_party_client_id,
                 now,
             },
         )
@@ -327,17 +313,16 @@ mod tests {
     use crate::domain::test_fake::{client, code_request, device_request, FakeGatekeeperStore};
     use crate::ports::NoSelfHostedRedirects;
 
-    /// The registration inputs the code-consent tests share: no self-hosted app
-    /// (so app-relative entries resolve to nothing), the loopback served origin,
-    /// and the real first-party id — which the `client` fixture never uses, so
-    /// the fixture client always takes the trust-on-first-use path.
-    const TEST_REGISTRATION: RegistrationContext<'static> = RegistrationContext {
+    /// The classifier the code-consent tests share: no self-hosted app (so
+    /// app-relative entries resolve to nothing) and the loopback served origin.
+    const TEST_CLASSIFIER: RegistrationClassifier<'static> = RegistrationClassifier {
         redirects: &NoSelfHostedRedirects,
         served_origin: "http://127.0.0.1",
-        first_party_client_id: crate::FIRST_PARTY_CLIENT_ID,
     };
 
-    /// Approve a code-flow consent with the shared registration context.
+    /// Approve a code-flow consent with the shared classifier and the real
+    /// first-party id — which the `client` fixture never uses, so the fixture
+    /// client always takes the trust-on-first-use path.
     fn approve_code(
         store: &FakeGatekeeperStore,
         publisher: &RecordingPublisher,
@@ -354,7 +339,8 @@ mod tests {
             generate_code,
             &ApprovalContext {
                 approver,
-                registration: &TEST_REGISTRATION,
+                classifier: &TEST_CLASSIFIER,
+                first_party_client_id: crate::FIRST_PARTY_CLIENT_ID,
                 now: Utc::now(),
             },
         )
@@ -911,11 +897,7 @@ mod tests {
                 Utc::now() + Duration::minutes(5),
             ))
             .unwrap();
-        let reader = ConsentReader::new(
-            store,
-            Arc::new(NoSelfHostedRedirects),
-            crate::FIRST_PARTY_CLIENT_ID.into(),
-        );
+        let reader = ConsentReader::new(store, Arc::new(NoSelfHostedRedirects));
         let view = reader
             .oauth_consent("req-1", "http://127.0.0.1")
             .expect("view");

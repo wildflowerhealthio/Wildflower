@@ -1,35 +1,21 @@
 //! [`RefreshFamilyWriter`] — the writer that issues standing credentials: it
-//! starts a refresh-token family for a grant redemption that earned one, and
-//! rotates a validated refresh token into its successor. Both take a
+//! starts a refresh-token family for a grant redemption, and rotates a
+//! validated refresh token into its successor. Both take a
 //! redemption proof, so a refresh token is only ever minted for scopes a
 //! consumed code or claimed device request recorded.
 
 use chrono::{DateTime, Utc};
-use scopes_rust::KnownScope;
 use uuid::Uuid;
 
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
-use crate::domain::authority::{GrantRedemption, ValidatedRefreshToken};
+use crate::domain::authority::{GrantRedemption, TokenEntitlement, ValidatedRefreshToken};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::refresh_token::{
     consume_refresh_token, RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily,
     REFRESH_TOKEN_FAMILY_TTL,
 };
+use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::domain::GatekeeperStore;
-
-/// What rotating a validated refresh token produced.
-#[derive(Debug, PartialEq, Eq)]
-#[must_use]
-pub(crate) enum Rotation {
-    /// The presented token is consumed and this is its successor's plaintext.
-    Rotated { successor: String },
-    /// The presented token had already been consumed — a leak or a badly broken
-    /// client, either way an unsafe lineage: the whole family has been expired.
-    Replayed,
-    /// The token vanished between validation and rotation (a failed decode);
-    /// nothing to revoke.
-    Vanished,
-}
 
 /// Issue and rotate refresh tokens. A borrowed view over the store; the gate is
 /// the redemption proof each method takes.
@@ -43,28 +29,21 @@ impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
         RefreshFamilyWriter { store }
     }
 
-    /// When the redemption's granted scopes carry
-    /// [`KnownScope::OfflineAccess`], mint a new family with its first token and
-    /// return the token's plaintext. Grants without the scope get `Ok(None)` —
-    /// no standing credential is created. The family records the redemption's
+    /// Mint a new family with its first token and return the token's
+    /// plaintext. The caller checks
+    /// [`earns_refresh_token`](GrantRedemption::earns_refresh_token) first. The
+    /// family records the redemption's
     /// scopes and patient verbatim, the code it consumed (so a replay of that
     /// code can revoke the lineage), and the standing grant behind it.
     ///
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] on a store failure.
-    pub(crate) fn start_family_if_granted(
+    pub(crate) fn start_family(
         &self,
         redemption: &impl GrantRedemption,
         now: DateTime<Utc>,
-    ) -> Result<Option<String>, GatekeeperError> {
-        if !redemption
-            .granted_scopes()
-            .iter()
-            .any(|s| s == KnownScope::OfflineAccess.as_str())
-        {
-            return Ok(None);
-        }
+    ) -> Result<String, GatekeeperError> {
         let plaintext = generate_refresh_token();
         let family = RefreshTokenFamily {
             family_id: Uuid::new_v4().to_string(),
@@ -84,24 +63,29 @@ impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
         };
         self.store.insert_refresh_token_family_row(&family)?;
         self.store.insert_refresh_token(&first_token)?;
-        Ok(Some(plaintext))
+        Ok(plaintext)
     }
 
     /// Consume the presented token and, only if that consume won, insert its
-    /// successor. The consume is atomic on its own; the successor insert is
-    /// ordered after it, so a failure of the insert leaves the presented token
-    /// spent with no successor (a failed rotation the client recovers from by
-    /// re-authorizing), never a usable extra token. A replay expires the whole
-    /// family at `now` before returning.
+    /// successor and return the successor's plaintext. The consume is atomic on
+    /// its own; the successor insert is ordered after it, so a failure of the
+    /// insert leaves the presented token spent with no successor (a failed
+    /// rotation the client recovers from by re-authorizing), never a usable
+    /// extra token.
     ///
     /// # Errors
     ///
-    /// [`GatekeeperError::Infrastructure`] on a store failure.
+    /// [`InvalidGrantReason::RefreshTokenReplayed`] when the token had already
+    /// been consumed — a leak or a badly broken client, either way an unsafe
+    /// lineage, so the whole family is expired at `now` first;
+    /// [`InvalidGrantReason::RefreshTokenVanished`] when it disappeared between
+    /// validation and rotation (nothing to revoke);
+    /// [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn rotate(
         &self,
         token: &ValidatedRefreshToken,
         now: DateTime<Utc>,
-    ) -> Result<Rotation, GatekeeperError> {
+    ) -> Result<String, TokenExchangeError> {
         match consume_refresh_token(self.store, token.presented_hash(), now)? {
             RefreshTokenConsumeOutcome::Consumed => {
                 let successor = generate_refresh_token();
@@ -111,14 +95,23 @@ impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
                     issued_at: now,
                     consumed_at: None,
                 })?;
-                Ok(Rotation::Rotated { successor })
+                Ok(successor)
             }
             RefreshTokenConsumeOutcome::Replayed => {
                 self.store
                     .expire_refresh_token_family(token.family_id(), now)?;
-                Ok(Rotation::Replayed)
+                Err(TokenExchangeError::InvalidGrant(
+                    InvalidGrantReason::RefreshTokenReplayed {
+                        family_id: token.family_id().to_owned(),
+                        client_id: token.client_id().to_owned(),
+                    },
+                ))
             }
-            RefreshTokenConsumeOutcome::NotFound => Ok(Rotation::Vanished),
+            RefreshTokenConsumeOutcome::NotFound => Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::RefreshTokenVanished {
+                    family_id: token.family_id().to_owned(),
+                },
+            )),
         }
     }
 }
@@ -140,7 +133,7 @@ mod tests {
 
     impl crate::domain::authority::sealed::Sealed for FakeRedemption {}
 
-    impl crate::domain::authority::MintAuthority for FakeRedemption {
+    impl crate::domain::authority::TokenEntitlement for FakeRedemption {
         fn client_id(&self) -> &str {
             "client"
         }
@@ -171,35 +164,33 @@ mod tests {
         scopes.iter().map(|s| (*s).to_owned()).collect()
     }
 
-    /// Only a grant carrying `offline_access` starts a family; the family
-    /// records the redemption's scopes, patient, code hash, and grant, and the
-    /// returned plaintext resolves to its first token.
+    /// Only a grant carrying `offline_access` earns a refresh token.
     #[test]
-    fn start_family_only_for_offline_access_and_records_the_redemption() {
+    fn only_offline_access_earns_a_refresh_token() {
+        let redemption = |scopes: &[&str]| FakeRedemption {
+            scopes: owned(scopes),
+            code: None,
+        };
+        assert!(!redemption(&["openid"]).earns_refresh_token());
+        assert!(redemption(&["openid", "offline_access"]).earns_refresh_token());
+    }
+
+    /// The family records the redemption's scopes, patient, code hash, and
+    /// grant, and the returned plaintext resolves to its first token.
+    #[test]
+    fn start_family_records_the_redemption() {
         let store = FakeGatekeeperStore::default();
         let writer = RefreshFamilyWriter::over(&store);
         let now = Utc::now();
-        let none = writer
-            .start_family_if_granted(
-                &FakeRedemption {
-                    scopes: owned(&["openid"]),
-                    code: None,
-                },
-                now,
-            )
-            .unwrap();
-        assert_eq!(none, None);
-
         let plaintext = writer
-            .start_family_if_granted(
+            .start_family(
                 &FakeRedemption {
                     scopes: owned(&["openid", "offline_access"]),
                     code: Some("the-code".to_owned()),
                 },
                 now,
             )
-            .unwrap()
-            .expect("offline_access earns a family");
+            .unwrap();
         let (token, family) = store
             .refresh_token_with_family_by_hash(&token_storage_hash(&plaintext))
             .unwrap()
@@ -238,26 +229,30 @@ mod tests {
         let writer = RefreshFamilyWriter::over(&store);
         let now = Utc::now();
         let first = writer
-            .start_family_if_granted(
+            .start_family(
                 &FakeRedemption {
                     scopes: owned(&["offline_access"]),
                     code: None,
                 },
                 now,
             )
-            .unwrap()
             .unwrap();
         let presented = validated(&store, &first);
 
-        let Rotation::Rotated { successor } = writer.rotate(&presented, now).unwrap() else {
-            panic!("first rotation rotates");
-        };
+        let successor = writer
+            .rotate(&presented, now)
+            .expect("first rotation rotates");
         assert!(store
             .refresh_token_with_family_by_hash(&token_storage_hash(&successor))
             .unwrap()
             .is_some());
 
-        assert_eq!(writer.rotate(&presented, now).unwrap(), Rotation::Replayed);
+        assert!(matches!(
+            writer.rotate(&presented, now),
+            Err(TokenExchangeError::InvalidGrant(
+                InvalidGrantReason::RefreshTokenReplayed { .. }
+            ))
+        ));
         let (_, family) = store
             .refresh_token_with_family_by_hash(&token_storage_hash(&successor))
             .unwrap()
