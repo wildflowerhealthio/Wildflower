@@ -23,10 +23,15 @@ const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
  * throw away the page mid-action. It survives the sign-in round trip anyway:
  * the registered redirect carries no query, so `main-web`'s boot restores
  * `?server=` from the redeemed session rather than from the address bar.
+ *
+ * The current `pathname` is kept, not replaced with `/`: this build is served
+ * under a subpath (`/app/`, or a PR preview's `/staging/pr-<n>/app/`), so a
+ * hardcoded root would move the reader off the app onto the origin root and
+ * point `?server=` at a page that is not this app.
  */
 const rememberServer = (serverUrl: string): void => {
   const search = searchWithServerUrl(window.location.search, serverUrl)
-  window.history.replaceState(null, '', `/${search}`)
+  window.history.replaceState(null, '', `${window.location.pathname}${search}`)
 }
 
 /**

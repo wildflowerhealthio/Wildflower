@@ -8,6 +8,8 @@ import {
 import { basenameOf } from 'branding-core'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { underBasepath } from './web-entry.ts'
+
 /**
  * The hosted `main-web` build is path-independent (`base: './'`) and is
  * published under a subpath — `/app/` for the live copy, `/staging/pr-<n>/app/`
@@ -79,5 +81,24 @@ describe('main-web router basepath', () => {
     // Root-absolute in the route tree, subpath-absolute in the URL — so a reload
     // of it 404s to the right app root and redirects home again.
     expect(router.buildLocation({ to: '/home' }).href).toBe(`${previewDir}home`)
+  })
+})
+
+/**
+ * `underBasepath` is how `main-web` writes a root-absolute route straight to the
+ * history object (the device-login return) without dropping the served base —
+ * `history.push`, unlike `router.navigate`, applies no basepath of its own.
+ */
+describe('underBasepath', () => {
+  test('prefixes a root-absolute route with the served subpath', () => {
+    expect(underBasepath('/staging/pr-719/app/', '/home')).toBe('/staging/pr-719/app/home')
+    expect(underBasepath('/app/', '/settings/databases')).toBe('/app/settings/databases')
+  })
+
+  test('is a no-op at the origin root', () => {
+    // `basenameOf` yields `/` off the root, so the router basepath is `/` and the
+    // pushed path is unchanged — the root-served entries keep working untouched.
+    expect(underBasepath('/', '/home')).toBe('/home')
+    expect(underBasepath(basenameOf('/'), '/home')).toBe('/home')
   })
 })

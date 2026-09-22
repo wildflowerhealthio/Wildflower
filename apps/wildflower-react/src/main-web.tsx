@@ -15,7 +15,7 @@ import { addOsColorSchemeListener } from 'react-tundraish'
 import './styles/global.css'
 import { renderApp } from './app-root.tsx'
 import { finishSignIn, signInEnvironment, authStateForSession } from './sign-in.ts'
-import { makeWebEntryOptions } from './web-entry.ts'
+import { makeWebEntryOptions, underBasepath } from './web-entry.ts'
 
 addOsColorSchemeListener()
 
@@ -104,7 +104,11 @@ const boot = async (): Promise<void> => {
   const tokenResponseHandler: TokenResponseHandler = {
     writeBearer: bearerStore.writeBearer,
     navigateAfterAuth: (returnTo) => {
-      history.push(returnTo)
+      // `history.push` writes the address bar directly and does not apply the
+      // router basepath (that is `router.navigate`'s job), so the served base
+      // is prefixed here — otherwise the device-login return lands at
+      // `<origin>/home`, off the app, on a subpath deploy.
+      history.push(underBasepath(basepath, returnTo))
     },
   }
 

@@ -5,11 +5,13 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import { makeBearerAuthStateStore, type BearerAuthStateStore } from 'gatekeeper-react'
 import { AuthedUntil, AuthStateProvider } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
+import { DEFAULT_SERVER_URL } from '../web-entry.ts'
 import { Landing } from './index.tsx'
 
 /**
@@ -82,6 +84,22 @@ describe('Landing', () => {
       expect(router.pathname()).toBe('/home')
     })
   })
+
+  test('keeps the served subpath when a server is chosen', async () => {
+    // Arrange — the hosted build is served under a subpath, not the origin root.
+    const appBase = '/staging/pr-719/app/'
+    await mountLanding(appBase, { basepath: appBase })
+
+    // Act — picking the local server records `?server=` in the address bar. The
+    // record is written synchronously, before the sign-in redirect leaves.
+    fireEvent.click(await screen.findByRole('button', { name: /local server/i }))
+
+    // Assert — the reader stays on the app's own subpath (not moved to `/`), and
+    // `?server=` is now set there. A root path would point the parameter at a
+    // page that is not this app.
+    expect(window.location.pathname).toBe(appBase)
+    expect(serverUrlFromSearch(window.location.search)).toBe(DEFAULT_SERVER_URL)
+  })
 })
 
 // Helpers
@@ -96,6 +114,12 @@ const mountLanding = async (
   options: {
     readonly store?: BearerAuthStateStore
     readonly bootSignInProblem?: string
+    /**
+     * Router basepath, when `url` is under a subpath rather than the origin
+     * root — mirrors what `main-web` passes so `/` still resolves the landing
+     * there. See `web-basepath.test.tsx`.
+     */
+    readonly basepath?: string
   } = {}
 ): Promise<{ readonly pathname: () => string }> => {
   window.history.replaceState(null, '', url)
@@ -113,6 +137,7 @@ const mountLanding = async (
   })
   const router = createRouter({
     routeTree: rootRoute.addChildren([indexRoute, homeRoute]),
+    basepath: options.basepath,
     history: createMemoryHistory({ initialEntries: [url] }),
   })
 
