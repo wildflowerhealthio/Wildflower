@@ -73,11 +73,11 @@ const CLIENT_ID = 'wildflower-react'
  * **before** it mounts the router — a router mounted first would find the store
  * still unauthed and bounce to `/` while the token was in flight.
  *
- * Resolved against the **origin**, which is the app's own base today: the router
- * is built with a plain `createBrowserHistory()` and its routes are
- * root-absolute. A copy published under a subpath would need a router basepath
- * before this route resolved there at all, and this derivation would have to
- * follow it — see {@link REGISTERED_REDIRECT_URI}.
+ * Resolved under the **served base** the caller passes to {@link
+ * signInEnvironment} (the router's basepath), not the bare origin: on a subpath
+ * deploy the route returns under `/app/` (or a PR preview's
+ * `/staging/pr-<n>/app/`) the same way the router resolves it — see {@link
+ * REGISTERED_REDIRECT_URI}.
  */
 const POST_SIGN_IN_ROUTE = '/home'
 
@@ -89,12 +89,12 @@ const POST_SIGN_IN_ROUTE = '/home'
  * actually running this build.
  *
  * It MUST equal the row's entry, which is matched by exact string equality. The
- * row names `/app/home`, so the published copy is one served under `/app/` —
- * an arrangement the router does not yet support (see
- * {@link POST_SIGN_IN_ROUTE}). Until it does, a copy served there derives
- * `<origin>/home`, which the server treats as an unregistered redirect: the
- * sign-in still completes, but through the consent prompt's "this app is asking
- * to return somewhere new" warning rather than silently.
+ * row names `/app/home`, and the production copy is served under `/app/`, so its
+ * base-aware derivation (see {@link POST_SIGN_IN_ROUTE}) yields exactly this
+ * value and the sign-in returns silently. A PR preview served under
+ * `/staging/pr-<n>/app/` derives its own `…/app/home` — correct for where it is,
+ * but unregistered, so it completes through the consent prompt's "this app is
+ * asking to return somewhere new" warning instead.
  */
 const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/app/home'
 
@@ -117,14 +117,24 @@ type SignInStep<A> =
   | { readonly tag: 'Ok'; readonly value: A }
   | { readonly tag: 'Failed'; readonly reason: string }
 
-/** The impure edges — and this entry's registered values — the flow runs against. */
-const signInEnvironment = (page: SignInPage): SignInEnvironment =>
+/**
+ * The impure edges — and this entry's registered values — the flow runs against.
+ *
+ * `basePath` is the served base (the router's basepath) the redirect returns
+ * under; it defaults to the origin root. Both legs must pass the same value, so
+ * the outbound `redirect_uri` and the one re-derived on the callback match: the
+ * caller reads it at the app root, which is stable across the round trip (the
+ * landing on the way out; the base the 404 redirect lands on when the code
+ * comes back). See {@link POST_SIGN_IN_ROUTE}.
+ */
+const signInEnvironment = (page: SignInPage, basePath = '/'): SignInEnvironment =>
   browserSignInEnvironment(page, {
     clientId: CLIENT_ID,
     pendingKey: PENDING_AUTHORIZATION_KEY,
     scope: standaloneLaunchScopeParameter(),
     redirectUri:
-      redirectUriForRoute(page.location.href, POST_SIGN_IN_ROUTE) ?? REGISTERED_REDIRECT_URI,
+      redirectUriForRoute(page.location.href, POST_SIGN_IN_ROUTE, basePath) ??
+      REGISTERED_REDIRECT_URI,
   })
 
 /** Fold a sign-in Effect's failure channel into a {@link SignInStep}. */

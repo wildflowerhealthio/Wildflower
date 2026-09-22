@@ -224,6 +224,60 @@ describe('redirectUriForRoute', () => {
       { numRuns: numRunsFor({ base: 200 }) }
     )
   })
+
+  it('re-roots the route under a subpath base when one is given', () => {
+    // Arrange / Act / Assert — a copy published under `/app/` (or a PR preview's
+    // `/staging/pr-<n>/app/`) returns under its own served root, which is the
+    // registered `/app/home` in production, not `<origin>/home` off the app.
+    expect(redirectUriForRoute('https://wildflowerhealth.io/app/', '/home', '/app/')).toBe(
+      'https://wildflowerhealth.io/app/home'
+    )
+    expect(
+      redirectUriForRoute(
+        'https://wildflowerhealthio.github.io/staging/pr-719/app/',
+        '/home',
+        '/staging/pr-719/app/'
+      )
+    ).toBe('https://wildflowerhealthio.github.io/staging/pr-719/app/home')
+  })
+
+  it('a missing or root base keeps the origin-rooted value', () => {
+    // The default is the origin root, so every existing caller is unchanged.
+    expect(redirectUriForRoute('https://wildflowerhealth.io/', '/home')).toBe(
+      'https://wildflowerhealth.io/home'
+    )
+    expect(redirectUriForRoute('https://wildflowerhealth.io/', '/home', '/')).toBe(
+      'https://wildflowerhealth.io/home'
+    )
+  })
+
+  it('agrees on outbound and callback under a subpath base', () => {
+    // The two legs derive the redirect independently and must land byte-for-byte
+    // the same: outbound from the app root, callback from the route the root's
+    // 404 redirect restored — both re-root to the same `<base>home`.
+    fc.assert(
+      fc.property(securePageUrl, servedBase, fc.string(), (href, base, code) => {
+        // Arrange — `base` is an origin-absolute served directory (`/app/`, …).
+        const started = new URL(base, href)
+        const callback = new URL('home', started)
+        callback.search = new URLSearchParams({ code }).toString()
+
+        // Act / Assert
+        const outbound = redirectUriForRoute(started.href, '/home', base)
+        expect(redirectUriForRoute(callback.href, '/home', base)).toBe(outbound)
+        if (outbound !== undefined) expect(outbound).toBe(new URL('home', started).href)
+      }),
+      { numRuns: numRunsFor({ base: 200 }) }
+    )
+  })
+
+  it('a subpath base still cannot point the redirect off-origin', () => {
+    // The origin screen runs before the base is applied, so neither the route
+    // nor the base can move the token to another origin.
+    const here = 'https://wildflowerhealth.io/app/'
+    expect(redirectUriForRoute(here, '//evil.test/home', '/app/')).toBeUndefined()
+    expect(redirectUriForRoute(here, '/\\evil.test/home', '/app/')).toBeUndefined()
+  })
 })
 
 // Helpers
@@ -235,3 +289,12 @@ describe('redirectUriForRoute', () => {
 const securePageUrl = fc
   .webUrl({ withQueryParameters: true, withFragments: true })
   .map((url) => url.replace(/^http:/, 'https:'))
+
+/**
+ * A served base directory: origin-absolute and slash-suffixed (`/`, `/app/`,
+ * `/staging/pr-719/app/`), built from safe segments so `new URL(base, origin)`
+ * always parses — the shape `basenameOf(location.pathname)` yields.
+ */
+const servedBase = fc
+  .array(fc.constantFrom('app', 'staging', 'pr-719', 'owner', 'a'), { maxLength: 3 })
+  .map((segments) => (segments.length === 0 ? '/' : `/${segments.join('/')}/`))

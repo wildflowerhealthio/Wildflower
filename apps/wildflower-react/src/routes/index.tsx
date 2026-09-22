@@ -1,4 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { basenameOf } from 'branding-core'
 import {
   insecureTargetReason,
   normalizeServerUrl,
@@ -116,7 +117,11 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
   const signInTo = (target: string): void => {
     setLeavingToSignIn(true)
     setSignInProblem(undefined)
-    void startSignIn(target, signInEnvironment(window)).then((started) => {
+    // Sign-in only starts from this landing, which sits at the app root, so the
+    // page's own directory is the served base — the same value `main-web` hands
+    // the router and the callback re-derives. See `sign-in.ts`.
+    const basePath = basenameOf(window.location.pathname)
+    void startSignIn(target, signInEnvironment(window, basePath)).then((started) => {
       if (started.tag === 'Ok') {
         window.location.assign(started.value)
         return

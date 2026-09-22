@@ -141,19 +141,29 @@ at all. A browser page running this flow therefore cannot authorize as
 
 ### Returning to a route instead of a directory
 
-`redirectUriForRoute(href, route)` resolves `route` against the origin `href` is
-served from, sharing the scheme screen above. It is the form a single-page app
+`redirectUriForRoute(href, route, basePath)` resolves `route` under the app's
+served root — the origin, plus `basePath` when the copy is published under a
+subpath — sharing the scheme screen above. It is the form a single-page app
 wants: a SPA on browser history has no stable directory, since the one a reader
 signs in from is whichever section they were in (`/settings/foo` → `/settings/`),
 and only one of those could ever be the registered entry. Resolving a fixed route
-makes the value depend on the origin alone, which restores the
+makes the value depend on the served root alone, which restores the
 outbound-equals-callback property `redirectUriForPage` gets from the directory.
 
-A `route` that escapes the origin — `//evil.test/home`, or the `/\evil.test` that
-`URL` folds into it — yields `undefined` rather than a URI pointing elsewhere,
-the same origin-equality guard `gatekeeper-rust` applies to an app-relative
-allowlist entry. The hosted owner UI (`apps/wildflower-react`'s `main-hosted`)
-is the caller; the server-docs console still uses the directory form.
+`basePath` is the slash-suffixed directory the build is served from
+(`branding-core`'s `basenameOf(location.pathname)`), defaulting to `/` — so a
+root-served copy is unchanged. A copy under `/app/` (or a PR preview's
+`/staging/pr-<n>/app/`) passes that directory, so the route returns under it:
+`/app/home`, the registered value, rather than `<origin>/home` off the app. The
+caller derives `basePath` at the served root on both legs — the hosted owner UI
+can, because its sign-in is reachable only from that root.
+
+`route` is resolved against the origin first, so a spelling that escapes it —
+`//evil.test/home`, or the `/\evil.test` that `URL` folds into it — yields
+`undefined` rather than a URI pointing elsewhere (the same origin-equality guard
+`gatekeeper-rust` applies to an app-relative allowlist entry) before its path is
+re-rooted under `basePath`. The hosted owner UI (`apps/wildflower-react`'s
+`main-web`) is the caller; the server-docs console still uses the directory form.
 
 `insecureTargetReason` in `smart-discovery.ts` states the same scheme rule about
 the _target_ that `usableEndpointUrl` enforces about the discovered endpoints, so

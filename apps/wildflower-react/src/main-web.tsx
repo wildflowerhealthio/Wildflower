@@ -78,7 +78,9 @@ const settleUrlAfterSignIn = (session: Session): void => {
  */
 const boot = async (): Promise<void> => {
   const returnSearch = window.location.search
-  const completed = await finishSignIn(returnSearch, signInEnvironment(window))
+  // The same `basepath` the router gets, so the callback re-derives the exact
+  // `redirect_uri` the outbound leg sent from the app root — see `sign-in.ts`.
+  const completed = await finishSignIn(returnSearch, signInEnvironment(window, basepath))
   const session = completed.tag === 'Ok' ? Option.getOrUndefined(completed.value) : undefined
 
   if (session !== undefined) settleUrlAfterSignIn(session)
