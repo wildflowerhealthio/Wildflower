@@ -6770,6 +6770,7 @@ dependencies = [
  "scopes-rust",
  "serde",
  "shared-structures-rust",
+ "tokio",
  "utoipa",
 ]
 
