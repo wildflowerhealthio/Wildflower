@@ -12,6 +12,7 @@ that owns it, and this package places those outputs at their public URLs.
 | `/wildflower-server-docs` | `wildflower-server-docs` (`apps/wildflower-server-docs`) |
 | `/web-trace-app`          | `wildflower-web-trace` (`apps/web-trace`)                |
 | `/ohif-viewer`            | `ohif-viewer` (`apps/ohif-viewer`)                       |
+| `/app`                    | `wildflower-react` (`apps/wildflower-react`, `dist-web`) |
 
 Generated HTML documentation joins the layout at `/docs` in a later change.
 

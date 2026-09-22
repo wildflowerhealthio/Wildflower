@@ -20,6 +20,7 @@
     "vite": "catalog:",
     "vite-plus": "catalog:",
     "wildflower-importer": "workspace:*",
+    "wildflower-react": "workspace:*",
     "wildflower-server-docs": "workspace:*",
     "wildflower-web-trace": "workspace:*"
   }

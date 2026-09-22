@@ -10,11 +10,12 @@ const sectionIdArb = fc.constantFrom<SectionId>(
   'importer',
   'webTrace',
   'serverDocs',
-  'ohifViewer'
+  'ohifViewer',
+  'app'
 )
 
 describe('SECTION_PATHS', () => {
-  it('should contain exactly six sections with the correct deploy-contract paths', () => {
+  it('should contain exactly seven sections with the correct deploy-contract paths', () => {
     expect(SECTION_PATHS).toStrictEqual({
       marketing: '',
       medications: 'medications-app',
@@ -22,6 +23,7 @@ describe('SECTION_PATHS', () => {
       webTrace: 'web-trace-app',
       serverDocs: 'wildflower-server-docs',
       ohifViewer: 'ohif-viewer',
+      app: 'app',
     })
   })
 })
@@ -34,6 +36,7 @@ describe('sectionUrl', () => {
   it('should return absolute URLs for non-marketing sections', () => {
     expect(sectionUrl('medications')).toBe('https://wildflowerhealth.io/medications-app')
     expect(sectionUrl('serverDocs')).toBe('https://wildflowerhealth.io/wildflower-server-docs')
+    expect(sectionUrl('app')).toBe('https://wildflowerhealth.io/app')
   })
 
   it('should always start with SITE_ORIGIN/', () => {
