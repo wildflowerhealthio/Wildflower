@@ -31,6 +31,9 @@ pub(crate) mod test_fake;
 pub mod authorization_code;
 pub mod authorization_request;
 pub mod client;
+// The `client_id` / `client_secret` pair a client presents (RFC 6749 §2.3.1),
+// zeroized on drop; how it arrived is the HTTP layer's `PresentedCredentials`.
+pub mod client_credentials;
 // Pure builders for the OAuth client-callback URLs (`redirect_uri` + `code`/`error`
 // + `state`) — no axum/store coupling, so the `/oauth` surface and the Owner
 // consent action can return the same URL. Lifted out of `http::routes::oauth`.

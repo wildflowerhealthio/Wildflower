@@ -131,15 +131,12 @@ fn dispatch_token_request(
     origin: &ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Result<DispatchedToken, TokenError> {
-    let TokenRequest {
-        payload,
-        credentials: presented_credentials,
-    } = request;
-    // Each exchange below validates that the presented client owns the grant it
-    // redeems (the device request / refresh-token family), so after a successful
-    // exchange `presented_credentials.client_id` IS the resolved, authenticated
-    // client — the identity the cookie decision keys on.
-    let is_first_party = presented_credentials.client_id == *state.first_party_client_id;
+    let TokenRequest { payload, client } = request;
+    // The extractor already authenticated `client`, and each exchange below
+    // validates that it owns the grant it redeems (the device request / refresh-
+    // token family), so after a successful exchange it IS the resolved client —
+    // the identity the cookie decision keys on.
+    let is_first_party = client.client_id() == &*state.first_party_client_id;
     match payload {
         TokenPayload::AuthorizationCode {
             code,
@@ -149,7 +146,7 @@ fn dispatch_token_request(
             let response = exchange_authorization_code(
                 state,
                 origin,
-                &presented_credentials,
+                &client,
                 &AuthorizationCodeGrant {
                     code: &code,
                     code_verifier: &code_verifier,
@@ -165,16 +162,14 @@ fn dispatch_token_request(
             })
         }
         TokenPayload::DeviceCode { device_code } => {
-            let response =
-                exchange_device_code(state, origin, &presented_credentials, &device_code)?;
+            let response = exchange_device_code(state, origin, &client, &device_code)?;
             Ok(DispatchedToken {
                 response,
                 plants_session_cookie: is_first_party,
             })
         }
         TokenPayload::RefreshToken { refresh_token } => {
-            let response =
-                exchange_refresh_token(state, origin, &presented_credentials, &refresh_token)?;
+            let response = exchange_refresh_token(state, origin, &client, &refresh_token)?;
             Ok(DispatchedToken {
                 response,
                 plants_session_cookie: is_first_party,

@@ -5,9 +5,11 @@
 //! authentication for clients issued a password (`client_secret_basic`), and
 //! permits accepting the credentials in the request body
 //! (`client_secret_post`). This module resolves both sources into one
-//! [`ClientCredentials`] value: the Basic header takes precedence, the body is
-//! the fallback, and presenting a secret both ways is rejected (§2.3 — "MUST
-//! NOT use more than one authentication method in each request").
+//! [`PresentedCredentials`] value: the Basic header takes precedence, the body
+//! is the fallback, and presenting a secret both ways is rejected (§2.3 — "MUST
+//! NOT use more than one authentication method in each request"). Verifying
+//! the credentials is the domain's job
+//! ([`AuthenticatedClient`](crate::domain::authority::AuthenticatedClient)).
 
 use axum::http::{header, StatusCode};
 use axum::response::{IntoResponse, Response};
@@ -16,6 +18,7 @@ use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 use super::internal::OAuthErrorResponse;
 use crate::crypto_util::base64;
+use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::wire_representations::OAuthError;
 
@@ -39,46 +42,13 @@ pub enum ClientAuthenticationMethod {
     RequestBody,
 }
 
-/// Client credentials resolved from the `Authorization: Basic` header
-/// (RFC 6749 §2.3.1) and/or the form-body `client_id`/`client_secret`
-/// parameters.
-///
-/// The plaintext `client_secret` is scrubbed from memory when the resolved
-/// credential is dropped (`#[derive(ZeroizeOnDrop)]`). This is defense in depth
-/// that reduces the window in which the secret sits on the heap after the
-/// request that verified it completes — it does not eliminate every copy: the
-/// raw form body and the `Authorization` header still live in axum's request
-/// buffers, and other transient copies may exist upstream.
-///
-/// `#[zeroize(skip)]` on `client_id` and `presented_via` keeps the non-secret
-/// fields untouched (and lets `presented_via`, a `Copy` enum that isn't
-/// `Zeroize`, participate at all); any secret field added later is scrubbed
-/// automatically rather than needing a hand-maintained `Drop` body.
-#[derive(PartialEq, Eq, Zeroize, ZeroizeOnDrop)]
-pub struct ClientCredentials {
-    #[zeroize(skip)]
-    pub client_id: String,
-    pub client_secret: Option<String>,
-    /// How the client presented these credentials — drives the RFC 6749 §5.2
-    /// `WWW-Authenticate: Basic` challenge on auth failure.
-    #[zeroize(skip)]
+/// The domain [`ClientCredentials`] plus the transport fact the domain doesn't
+/// need: how they were presented, which drives the RFC 6749 §5.2
+/// `WWW-Authenticate: Basic` challenge on an authentication failure.
+#[derive(Debug, PartialEq, Eq)]
+pub struct PresentedCredentials {
+    pub credentials: ClientCredentials,
     pub presented_via: ClientAuthenticationMethod,
-}
-
-/// Redact `client_secret` from `Debug` output so the plaintext scrubbed on drop
-/// can't leak through a log line or a `{:?}` in a test-failure message. Only the
-/// secret's presence is shown, never its value.
-impl std::fmt::Debug for ClientCredentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ClientCredentials")
-            .field("client_id", &self.client_id)
-            .field(
-                "client_secret",
-                &self.client_secret.as_ref().map(|_| "<redacted>"),
-            )
-            .field("presented_via", &self.presented_via)
-            .finish()
-    }
 }
 
 /// Failure modes of credential resolution, before any store lookup.
@@ -167,7 +137,7 @@ struct MalformedBasicHeader;
 pub fn resolve_client_credentials(
     authorization: Option<&str>,
     form_body: &str,
-) -> Result<ClientCredentials, ResolveClientCredentialsError> {
+) -> Result<PresentedCredentials, ResolveClientCredentialsError> {
     // A structurally unparseable body simply contributes no credentials; the
     // grant-payload parse is responsible for rejecting malformed bodies. `mut`
     // so the success path can `take` the fields out (the zero-on-drop structs
@@ -205,16 +175,20 @@ pub fn resolve_client_credentials(
             // `take` moves the fields out without a plain-access move, which the
             // zero-on-drop `BasicCredentials` forbids; the emptied `basic`
             // scrubs its now-empty buffers on drop.
-            Ok(ClientCredentials {
-                client_id: std::mem::take(&mut basic.client_id),
-                client_secret: Some(std::mem::take(&mut basic.client_secret)),
+            Ok(PresentedCredentials {
+                credentials: ClientCredentials {
+                    client_id: std::mem::take(&mut basic.client_id),
+                    client_secret: Some(std::mem::take(&mut basic.client_secret)),
+                },
                 presented_via: ClientAuthenticationMethod::HttpBasic,
             })
         }
         None => match body.client_id.take() {
-            Some(client_id) => Ok(ClientCredentials {
-                client_id,
-                client_secret: body.client_secret.take(),
+            Some(client_id) => Ok(PresentedCredentials {
+                credentials: ClientCredentials {
+                    client_id,
+                    client_secret: body.client_secret.take(),
+                },
                 presented_via: ClientAuthenticationMethod::RequestBody,
             }),
             None => Err(ResolveClientCredentialsError::InvalidRequest(
@@ -297,44 +271,18 @@ fn form_urlencoded_decode_credential_component(encoded_component: &str) -> Optio
 mod tests {
     use super::*;
 
-    #[test]
-    fn debug_redacts_client_secret() {
-        let credentials = ClientCredentials {
-            client_id: "app".to_string(),
-            client_secret: Some("SUPER-SECRET-VALUE".to_string()),
-            presented_via: ClientAuthenticationMethod::HttpBasic,
-        };
-        let rendered = format!("{credentials:?}");
-        // The secret value must never surface in a formatted credential.
-        assert!(
-            !rendered.contains("SUPER-SECRET-VALUE"),
-            "secret leaked: {rendered}"
-        );
-        // Presence of a secret is still shown so the value stays diagnosable.
-        assert!(
-            rendered.contains("<redacted>"),
-            "no redaction marker: {rendered}"
-        );
-        assert!(rendered.contains("app"), "client_id hidden: {rendered}");
-    }
-
-    #[test]
-    fn debug_shows_absent_client_secret_as_none() {
-        let credentials = ClientCredentials {
-            client_id: "app".to_string(),
-            client_secret: None,
-            presented_via: ClientAuthenticationMethod::RequestBody,
-        };
-        let rendered = format!("{credentials:?}");
-        // A missing secret reads as `None`, distinct from a redacted present one.
-        assert!(
-            rendered.contains("None"),
-            "absent secret not shown: {rendered}"
-        );
-        assert!(
-            !rendered.contains("<redacted>"),
-            "redaction marker on absent secret: {rendered}"
-        );
+    fn presented(
+        client_id: &str,
+        client_secret: Option<&str>,
+        presented_via: ClientAuthenticationMethod,
+    ) -> PresentedCredentials {
+        PresentedCredentials {
+            credentials: ClientCredentials {
+                client_id: client_id.to_string(),
+                client_secret: client_secret.map(str::to_string),
+            },
+            presented_via,
+        }
     }
 
     fn basic_authorization(userid: &str, password: &str) -> String {
@@ -353,11 +301,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             resolved,
-            ClientCredentials {
-                client_id: "app".to_string(),
-                client_secret: Some("s3cret".to_string()),
-                presented_via: ClientAuthenticationMethod::RequestBody,
-            }
+            presented(
+                "app",
+                Some("s3cret"),
+                ClientAuthenticationMethod::RequestBody
+            )
         );
     }
 
@@ -371,11 +319,7 @@ mod tests {
         .unwrap();
         assert_eq!(
             resolved,
-            ClientCredentials {
-                client_id: "app".to_string(),
-                client_secret: Some("s3cret".to_string()),
-                presented_via: ClientAuthenticationMethod::HttpBasic,
-            }
+            presented("app", Some("s3cret"), ClientAuthenticationMethod::HttpBasic)
         );
     }
 
@@ -388,7 +332,7 @@ mod tests {
             resolved.presented_via,
             ClientAuthenticationMethod::HttpBasic
         );
-        assert_eq!(resolved.client_id, "app");
+        assert_eq!(resolved.credentials.client_id, "app");
     }
 
     #[test]
@@ -400,11 +344,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             resolved,
-            ClientCredentials {
-                client_id: "app".to_string(),
-                client_secret: Some("s3cret".to_string()),
-                presented_via: ClientAuthenticationMethod::RequestBody,
-            }
+            presented(
+                "app",
+                Some("s3cret"),
+                ClientAuthenticationMethod::RequestBody
+            )
         );
     }
 
@@ -416,11 +360,11 @@ mod tests {
         let resolved = resolve_client_credentials(Some(&authorization), "").unwrap();
         assert_eq!(
             resolved,
-            ClientCredentials {
-                client_id: "app+one".to_string(),
-                client_secret: Some("p@ss word%".to_string()),
-                presented_via: ClientAuthenticationMethod::HttpBasic,
-            }
+            presented(
+                "app+one",
+                Some("p@ss word%"),
+                ClientAuthenticationMethod::HttpBasic
+            )
         );
     }
 
@@ -428,7 +372,10 @@ mod tests {
     fn basic_password_keeps_text_after_first_colon() {
         let authorization = basic_authorization("app", "se:cret");
         let resolved = resolve_client_credentials(Some(&authorization), "").unwrap();
-        assert_eq!(resolved.client_secret.as_deref(), Some("se:cret"));
+        assert_eq!(
+            resolved.credentials.client_secret.as_deref(),
+            Some("se:cret")
+        );
     }
 
     #[test]
@@ -446,7 +393,7 @@ mod tests {
     fn basic_with_matching_body_client_id_is_allowed() {
         let authorization = basic_authorization("app", "s3cret");
         let resolved = resolve_client_credentials(Some(&authorization), "client_id=app").unwrap();
-        assert_eq!(resolved.client_id, "app");
+        assert_eq!(resolved.credentials.client_id, "app");
         assert_eq!(
             resolved.presented_via,
             ClientAuthenticationMethod::HttpBasic

@@ -13,6 +13,7 @@
 //!   both `crate::http` and the concrete adapter types. The `Live…` aliases are
 //!   what the `/access` handlers name in `Scoped<…>`.
 
+mod client_authenticator;
 mod consents_decider;
 mod consents_reader;
 mod grants_reader;
@@ -21,6 +22,7 @@ mod grants_revoker;
 pub mod state;
 mod token_revoker;
 
+pub(crate) use client_authenticator::LiveClientAuthenticator;
 pub(crate) use consents_decider::LiveConsentDecider;
 pub(crate) use consents_reader::LiveConsentReader;
 pub(crate) use grants_reader::LiveGrantsReader;

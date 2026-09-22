@@ -5,25 +5,23 @@ use url::Url;
 use super::{issue_token, start_refresh_token_family_if_granted, AuthorizationCodeGrant};
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::token_storage_hash;
+use crate::domain::authority::AuthenticatedClient;
 use crate::domain::authorization_code::AuthorizationCode;
 use crate::domain::client::AllowedGrantType;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::GatekeeperStore;
-use crate::http::routes::oauth::client_auth::ClientCredentials;
-use crate::http::routes::oauth::internal::{
-    require_valid_client_for_token, IssueTokenInput, TokenError,
-};
+use crate::http::routes::oauth::internal::{IssueTokenInput, TokenError};
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::TokenResponse;
 
 pub(super) fn exchange_authorization_code(
     state: &GatekeeperState,
     origin: &str,
-    presented_credentials: &ClientCredentials,
+    client: &AuthenticatedClient,
     grant: &AuthorizationCodeGrant<'_>,
 ) -> Result<TokenResponse, TokenError> {
-    let client = require_valid_client_for_token(&state.store, presented_credentials)?;
     if !client
+        .client()
         .allowed_grant_types
         .contains(&AllowedGrantType::AuthorizationCode)
     {
@@ -80,7 +78,7 @@ pub(super) fn exchange_authorization_code(
         state,
         origin,
         &code_record,
-        &presented_credentials.client_id,
+        client.client_id(),
         &parsed_redirect,
         grant.code_verifier,
     )
