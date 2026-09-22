@@ -14,9 +14,14 @@
 // The persistence port. Mirrors collector's `remotes_store`.
 pub mod gatekeeper_store;
 
-// The scope-gated `/access` capabilities — the per-(resource, permission)
-// operations, generic over the store port. Their `Capability` bindings to the
-// concrete state live in `crate::live_bindings`.
+// The authority proofs every privileged write demands — the typed answer to "on
+// what authority is this row written?". Constructed only by the one function
+// that checks the rule each proof stands for.
+pub(crate) mod authority;
+
+// The capabilities: the scope-gated `/access` surface (`access/`) and the
+// proof-gated privileged writers (`writers/`), generic over the store port. The
+// `Capability` bindings to the concrete state live in `crate::live_bindings`.
 pub(crate) mod capabilities;
 
 // The in-memory `FakeGatekeeperStore` + fixtures the domain unit tests share.
@@ -64,14 +69,65 @@ pub mod token;
 pub use authorization_code::PendingCodeConsent;
 pub use gatekeeper_store::{GatekeeperStore, GatekeeperTx};
 
+/// Shared helpers for the crate's **source-guard** tests — the advisory-strength
+/// tests that enumerate source files and assert a textual invariant (a handler
+/// never names the store, a privileged call never leaves the writers, a proof is
+/// constructed in one place). One enumerator, so every guard walks the tree the
+/// same way.
+#[cfg(test)]
+pub(crate) mod source_guard {
+    use std::path::{Path, PathBuf};
+
+    /// Every `.rs` file under `dir`, recursively, sorted for stable failures.
+    pub(crate) fn rs_files_under(dir: &Path) -> Vec<PathBuf> {
+        let mut files = Vec::new();
+        let entries =
+            std::fs::read_dir(dir).unwrap_or_else(|e| panic!("enumerate {}: {e}", dir.display()));
+        for entry in entries {
+            let path = entry.expect("readable dir entry").path();
+            if path.is_dir() {
+                files.extend(rs_files_under(&path));
+            } else if path.extension().is_some_and(|ext| ext == "rs") {
+                files.push(path);
+            }
+        }
+        files.sort();
+        files
+    }
+
+    /// `path` relative to `root`, with forward slashes, for matching against the
+    /// guards' allow-lists.
+    pub(crate) fn relative_to(path: &Path, root: &Path) -> String {
+        path.strip_prefix(root)
+            .expect("enumerated under root")
+            .to_string_lossy()
+            .replace('\\', "/")
+    }
+
+    /// The non-test, non-comment lines of a source file, numbered from 1. A
+    /// guard scans these: line and doc comments may name anything in prose, and
+    /// the unit-test module (everything from the first `#[cfg(test)]` on) may
+    /// arrange state directly — planting rows, constructing proofs — without
+    /// being the production path the guard exists to pin.
+    pub(crate) fn production_lines(source: &str) -> impl Iterator<Item = (usize, &str)> {
+        source
+            .lines()
+            .enumerate()
+            .take_while(|(_, line)| line.trim_start() != "#[cfg(test)]")
+            .filter(|(_, line)| !line.trim_start().starts_with("//"))
+            .map(|(n, line)| (n + 1, line))
+    }
+}
+
 #[cfg(test)]
 mod http_free_guard {
+    use super::source_guard::{production_lines, rs_files_under};
+
     /// `domain/` must never depend on `crate::http` — the capabilities live here
     /// and are built from `crate::live_bindings`, so a stray `use crate::http::…` would
     /// re-couple the domain to the transport layer. This test enumerates the
     /// `domain/` tree and fails if any non-comment line names `crate::http`, so
-    /// the invariant can't silently regress. (Doc comments may mention it in
-    /// prose — those lines are skipped.)
+    /// the invariant can't silently regress.
     #[test]
     fn domain_never_references_crate_http() {
         // Assembled from parts so this guard's own source doesn't contain the
@@ -81,31 +137,14 @@ mod http_free_guard {
         for path in rs_files_under(domain_dir) {
             let source = std::fs::read_to_string(&path)
                 .unwrap_or_else(|e| panic!("read {}: {e}", path.display()));
-            for (n, line) in source.lines().enumerate() {
-                if line.trim_start().starts_with("//") {
-                    continue;
-                }
+            for (n, line) in production_lines(&source) {
                 assert!(
                     !line.contains(needle),
-                    "domain/ file {} line {} imports the transport layer (`{needle}`) — domain \
+                    "domain/ file {} line {n} imports the transport layer (`{needle}`) — domain \
                      must stay transport-free; route the dependency through a port or `crate::live_bindings`",
                     path.display(),
-                    n + 1,
                 );
             }
         }
-    }
-
-    fn rs_files_under(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
-        let mut files = Vec::new();
-        for entry in std::fs::read_dir(dir).expect("read domain dir") {
-            let path = entry.expect("dir entry").path();
-            if path.is_dir() {
-                files.extend(rs_files_under(&path));
-            } else if path.extension().is_some_and(|ext| ext == "rs") {
-                files.push(path);
-            }
-        }
-        files
     }
 }

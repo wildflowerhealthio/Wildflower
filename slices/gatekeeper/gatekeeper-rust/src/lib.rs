@@ -72,7 +72,7 @@ pub use cookies::{owner_session_cookies, rescope_owner_session_set_cookies};
 pub use domain::capabilities::grantable_admin_scopes;
 pub use http::{
     client_allowed_scopes, ensure_bearer_header, gatekeeper_auth_middleware,
-    is_pre_auth_public_path, openapi_spec, require_loopback_peer_middleware, verify_owner_bearer,
+    is_pre_auth_public_path, openapi_spec, require_loopback_peer_middleware,
     GatekeeperAuthMiddleware, GatekeeperState, RequireLoopbackPeerMiddleware,
 };
 // The self-hosted redirect seam: the host implements it (backed by the apps
@@ -95,9 +95,8 @@ pub const FIRST_PARTY_CLIENT_ID: &str = "wildflower-host";
 /// (`system/*.cruds`) **and** full Wildflower-resource access
 /// (`wildflower/*.cruds`). An Owner token covers *every* one of these, so it
 /// covers every per-resource `/access/*` scope the scope-gated extractors
-/// require — the fail-closed owner default. `verify_owner_token` still uses this
-/// set for the in-handler owner check (`verify_owner_bearer`). (Replaced the
-/// bespoke `wildflower/admin` scope.)
+/// require — the fail-closed owner default. (Replaced the bespoke
+/// `wildflower/admin` scope.)
 pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
     Scope::FhirResource(FhirResourceScope {
         context: ContextLevel::System,

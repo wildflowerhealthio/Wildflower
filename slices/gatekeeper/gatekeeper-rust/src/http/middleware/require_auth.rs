@@ -11,8 +11,6 @@ use crate::domain::GatekeeperStore;
 use crate::http::errors;
 use crate::http::served_base_url_for;
 use crate::http::state::GatekeeperState;
-use crate::WILDFLOWER_WIDEST_SCOPES;
-use scopes_rust::Scope;
 
 /// The `/access` authN gate: verify the request carries a **valid, non-revoked**
 /// bearer (or `wf_auth` cookie) token and stash the resulting [`VerifiedClaims`]
@@ -136,39 +134,6 @@ pub fn try_bearer_token_from_headers(headers: &HeaderMap) -> Option<&str> {
         return None;
     }
     Some(value[prefix.len()..].trim())
-}
-
-pub fn verify_owner_token(
-    state: &GatekeeperState,
-    origin: &str,
-    token: &str,
-) -> Result<VerifiedClaims, VerifyError> {
-    let claims = verify_auth_token_claims(state, origin, token)?;
-    // Owner = the token covers *every* maximal-access scope (full FHIR + full
-    // Wildflower), which gates gatekeeper's `/access/*` admin surface — see
-    // [`WILDFLOWER_WIDEST_SCOPES`](crate::WILDFLOWER_WIDEST_SCOPES).
-    let token_claim_scopes: Vec<Scope> = claims
-        .scope
-        .as_deref()
-        .unwrap_or("")
-        .split_whitespace()
-        .map(Scope::from)
-        .collect();
-    // Guard: an empty owner-defining set makes `all()` vacuously true, admitting
-    // every token (even a scope-less one) to `/access/*`.
-    debug_assert!(
-        !WILDFLOWER_WIDEST_SCOPES.is_empty(),
-        "WILDFLOWER_WIDEST_SCOPES must be non-empty or the owner check fails open"
-    );
-    let grants_owner = WILDFLOWER_WIDEST_SCOPES.iter().all(|mandatory_scope| {
-        token_claim_scopes
-            .iter()
-            .any(|token_claim| token_claim.covers(mandatory_scope))
-    });
-    if !grants_owner {
-        return Err(VerifyError::TokenRejected);
-    }
-    Ok(claims)
 }
 
 /// Verify `token` for `origin`, accepting the per-request served-origin audiences

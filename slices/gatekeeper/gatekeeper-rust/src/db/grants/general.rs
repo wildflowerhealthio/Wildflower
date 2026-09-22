@@ -168,7 +168,7 @@ mod tests {
     /// The grant-revoke cascade (delete the grant + expire the client's
     /// refresh-token families in one transaction), inlined so the db test drives
     /// the real adapter directly rather than reaching up into a domain capability.
-    /// Mirrors `domain::capabilities::grants::revoke_grant`.
+    /// Mirrors `domain::capabilities::access::grants::revoke_grant`.
     fn revoke_grant(
         store: &SqliteGatekeeperStore,
         grant_id: &str,

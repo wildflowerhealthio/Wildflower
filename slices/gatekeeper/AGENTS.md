@@ -16,7 +16,8 @@ OAuth 2.0 / SMART-on-FHIR authorization slice. Read the [Jargon Explanation](./d
 
 ## References
 
-- [Scope-Gated Endpoints How-To](../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md) — the `/access` surface's scope-gated `Scoped<F>`/capability pattern (machinery shared from `scopes/scope-capabilities-rust`); `domain/capabilities/` is the worked fixed-scope example (capabilities generic over the store port, bound to the concrete store in `src/state/`)
+- [Scope-Gated Endpoints How-To](../../docs/Authorization/Scope-Gated%20Endpoints%20How-To.md) — the `/access` surface's scope-gated `Scoped<F>`/capability pattern (machinery shared from `scopes/scope-capabilities-rust`); `domain/capabilities/access/` is the worked fixed-scope example (capabilities generic over the store port, bound to the concrete store in `src/live_bindings/`)
+- **Authority proofs** — every privileged write (approve a request, issue a code, record a grant, mint a token) happens in a `domain/capabilities/writers/` method that takes a proof type from `domain/authority/` (`DelegatedScopes`, `HostBootstrap`, …). Audit by reading each proof's single constructor and each writer; source guards pin the privileged store methods to the writers and the host-bootstrap proof to `seeding.rs`. The migration of the `/oauth/*` surface onto this pattern is tracked in `gatekeeper-rust/TODO.md`
 - [gatekeeper-core README](./gatekeeper-core/README.md) — tables, OAuth routes, page-path drift test
 - [Jargon Explanation](./docs/Jargon%20Explanation.md) — the domain vocabulary
 - [Auth Token Storage Explanation](./docs/Auth%20Token%20Storage%20Explanation.md) — token storage policies

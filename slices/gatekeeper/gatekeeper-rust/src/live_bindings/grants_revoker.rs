@@ -9,7 +9,7 @@ use scopes_rust::Scope;
 
 use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;
-use crate::domain::capabilities::grants::grants_revoker_scopes;
+use crate::domain::capabilities::access::grants::grants_revoker_scopes;
 use crate::domain::capabilities::{FixedScopeCapability, GrantsRevoker};
 use crate::domain::token::VerifiedClaims;
 

@@ -102,7 +102,7 @@ mod tests {
     /// The create-or-union upsert transaction, inlined here so the db test drives
     /// the real adapter's grant primitives directly instead of reaching up into a
     /// domain capability. Mirrors
-    /// `domain::capabilities::consents::upsert_authorization_code_grant`.
+    /// `domain::capabilities::writers::GrantRecorder::record_code_grant`.
     fn upsert_code_grant(
         store: &SqliteGatekeeperStore,
         client_id: &str,
@@ -142,7 +142,7 @@ mod tests {
     /// grant, unions scopes (cumulative consent) and writes it back through
     /// `update_authorization_code_grant` — all inside the action's
     /// `BEGIN IMMEDIATE` transaction, against one row. The pure union decision
-    /// is unit-tested against the fake in `domain::capabilities::consents`; this proves
+    /// is unit-tested against the fake in `domain::capabilities::writers`; this proves
     /// the same script lands correctly through diesel.
     #[test]
     fn upsert_action_inserts_then_unions_scopes_over_sqlite() {

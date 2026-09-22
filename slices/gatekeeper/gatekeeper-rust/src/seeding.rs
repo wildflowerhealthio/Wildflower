@@ -17,9 +17,10 @@ use persistence_rust::DieselPool;
 use thiserror::Error;
 
 use crate::db::SqliteGatekeeperStore;
+use crate::domain::authority::HostBootstrap;
+use crate::domain::capabilities::writers::{AccessTokenMinter, MintRequest, TokenIssuanceError};
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
-use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
 // The persistence port trait — brought into scope so the store's methods
 // (`active_signing_key`, `insert_signing_key`, `upsert_client`, …) resolve on
 // the concrete `SqliteGatekeeperStore` this boot code holds directly.
@@ -292,20 +293,13 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Failures while minting the host owner token at boot.
+/// Failures while minting the host owner token at boot — the minter's own
+/// failure vocabulary (no key, a signing failure, a store failure), wrapped so
+/// the boot path reports where it was minting.
 #[derive(Debug, Error)]
 pub(crate) enum HostTokenError {
-    /// Reading signing keys from the store failed.
-    #[error("read signing keys from store")]
-    Store(#[from] crate::domain::gatekeeper_error::GatekeeperError),
-    /// No signing keys are present in the store — bootstrap has not run, or
-    /// the database has been tampered with.
-    #[error("no signing keys in store")]
-    NoSigningKeys,
-    /// [`crate::domain::token`] failed to sign the token; the wrapped error
-    /// preserves whether it was a key-material or encoding failure.
-    #[error("sign host owner token")]
-    JwsSignFailed(#[from] MintError),
+    #[error("mint host owner token")]
+    Mint(#[from] TokenIssuanceError),
 }
 
 /// Mint an Owner-scoped access token for `wildflower-host`, the
@@ -325,28 +319,25 @@ pub(crate) fn mint_host_owner_token(
     granted_scopes: &[String],
     first_party_client_id: &str,
 ) -> Result<String, HostTokenError> {
-    let key = store
-        .active_signing_key()?
-        .ok_or(HostTokenError::NoSigningKeys)?;
     // The host owner token carries the host's granted scopes (by default the FHIR
     // and Wildflower full-access wildcards): it gates HFS's FHIR surface, and —
     // because those wildcards cover every per-resource scope the `Scoped<…>`
     // extractors require — it passes every gate on gatekeeper's `/access/*` admin
     // surface too. `setup_gatekeeper` asserts the granted set covers
     // `WILDFLOWER_WIDEST_SCOPES` before we reach here.
-    Ok(mint_access_token(
-        &key,
-        &NewJwtArgs {
-            client_id: first_party_client_id,
-            scope: granted_scopes,
+    //
+    // The one token minted with no approving human: its authority is the named
+    // `HostBootstrap` proof (constructible only here), through the same minter.
+    let authority = HostBootstrap::for_host(first_party_client_id, granted_scopes);
+    let issued = AccessTokenMinter::over(store).mint(
+        &authority,
+        &MintRequest {
+            issuer: iss,
+            audience: aud,
             ttl,
-            origin: iss,
-            audience: Some(aud),
-            patient: None,
-            // Marks the one token allowed to authenticate via the canonical audience.
-            is_host_owner: true,
         },
-    )?)
+    )?;
+    Ok(issued.access_token)
 }
 
 #[cfg(test)]
