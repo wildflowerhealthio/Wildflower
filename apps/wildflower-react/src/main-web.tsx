@@ -2,7 +2,7 @@ import './instrument.ts'
 import { createBrowserHistory } from '@tanstack/react-router'
 import 'tundra-css'
 import 'react-tundraish/styles.css'
-import { restoreRedirectedUrl } from 'branding-core'
+import { basenameOf, restoreRedirectedUrl } from 'branding-core'
 import { Option } from 'effect'
 import {
   isAuthorizationResponse,
@@ -18,6 +18,20 @@ import { finishSignIn, signInEnvironment, authStateForSession } from './sign-in.
 import { makeWebEntryOptions } from './web-entry.ts'
 
 addOsColorSchemeListener()
+
+// The directory this build is served from, captured as the router's `basepath`.
+//
+// `base: './'` in `vite.config.web.ts` makes the bundle path-independent, so one
+// build serves both `/app/` and a PR preview's `/staging/pr-<n>/app/`; the
+// router still has to be told which, or its root-absolute routes miss under the
+// subpath and the app renders its own not-found (what #719's preview hit).
+//
+// Read here, at the top of the module, because every boot lands on the app root
+// — a fresh load of it, or a 404 redirect that bounced there (see below) — so
+// `location.pathname` is the served directory. It MUST be read before
+// `restoreRedirectedUrl` rewrites a deep redirected route back into the bar,
+// after which `basenameOf` would fold that route's own segments into the answer.
+const basepath = basenameOf(window.location.pathname)
 
 // Complete a GitHub Pages 404 redirect before anything reads the URL — see
 // "The 404 redirect" in `slices/branding/AGENTS.md`. Ahead of both the
@@ -97,6 +111,7 @@ const boot = async (): Promise<void> => {
   renderApp({
     history,
     entry: 'main-web',
+    basepath,
     ...entryOptions,
     tokenResponseHandler,
     ...(completed.tag === 'Failed' ? { signInProblem: completed.reason } : {}),
