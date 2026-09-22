@@ -13,7 +13,7 @@ use crate::domain::authority::{DelegatedScopes, ScopeCeiling};
 use crate::domain::authorization_code::PendingCodeConsent;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
 use crate::domain::capabilities::writers::{
-    CodeApproval, GrantRecorder, RegistrationWrite, RequestApprover,
+    CodeApproval, CodeAuthority, GrantRecorder, RegistrationWrite, RequestApprover,
 };
 use crate::domain::client_redirect::build_client_redirect_url;
 use crate::domain::client_registration::ClientRegistration;
@@ -152,7 +152,7 @@ pub(super) fn approve_oauth_consent(
     };
 
     let Some(authorization_code) = RequestApprover::over(store).approve_for_code(
-        &delegated,
+        CodeAuthority::OwnerDelegated(&delegated),
         CodeApproval {
             request_id: id,
             client_id: &request.client_id,

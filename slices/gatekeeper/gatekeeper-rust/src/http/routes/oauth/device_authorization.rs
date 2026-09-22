@@ -1,11 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::{anyhow, Context};
 use axum::extract::State;
 use axum::http::{header, HeaderMap};
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use chrono::Duration;
 use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
@@ -13,26 +11,13 @@ use super::device_name_hint::device_name_from_user_agent;
 use super::internal::TokenError;
 use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
-use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
-use crate::crypto_util::random_token::generate_authorization_code;
-use crate::domain::authorization_request::{
-    AuthorizationRequest, StartDeviceAuthorizationArgs, DEVICE_CODE_POLL_INTERVAL,
-};
+use crate::domain::capabilities::oauth::DeviceAuthorizationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
-use crate::domain::GatekeeperStore;
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::http::ServedOrigin;
-use crate::ports::PendingConsentPublisher;
-
-/// Lifetime of a device-flow authorization request — the user has this long
-/// to enter their `user_code` before the flow expires.
-const DEVICE_AUTHORIZATION_TTL: Duration = Duration::minutes(5);
-
-/// How many random `user_code` candidates we try before giving up. Generous
-/// because the alphabet/length make collisions astronomically rare.
-const MAX_USER_CODE_GENERATION_ATTEMPTS: usize = 10;
+use crate::live_bindings::LiveDeviceAuthorizer;
 
 /// Body of an RFC 8628 device authorization request. Client credentials are
 /// not parsed here — RFC 8628 §3.1 inherits RFC 6749 §3.2.1 client
@@ -90,14 +75,14 @@ pub(super) async fn handle_device_authorization_request(
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok());
-    device_authorization(&state, state.as_ref(), &origin, user_agent, request).into_response()
+    device_authorization(&state, &origin, user_agent, request).into_response()
 }
 
-/// Validate the request, authenticate the client, and mint a
-/// `(device_code, user_code)` pair, surfacing every failure as a [`TokenError`].
+/// Parse the request, hand it to the [`LiveDeviceAuthorizer`], and frame the
+/// RFC 8628 §3.2 response on this request's served origin, surfacing every
+/// failure as a [`TokenError`].
 fn device_authorization(
-    state: &GatekeeperState,
-    pending_consent_publisher: &dyn PendingConsentPublisher,
+    state: &Arc<GatekeeperState>,
     origin: &ServedOrigin,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
@@ -110,87 +95,40 @@ fn device_authorization(
         .split_whitespace()
         .map(str::to_string)
         .collect();
-    // RFC 8628 §3.1 inherits RFC 6749 §3.2.1 client authentication, already
-    // done by the `TokenRequest` extractor: `client` is the proof.
-    // Coverage-aware allowlist check (a broad/v1 grant admits a narrower/v2
-    // request it covers) — the same check as
-    // `authorize.rs::validate_requested_scopes`; see there.
-    if !requested_scopes.iter().all(|requested| {
-        client
-            .client()
-            .allowed_scopes
-            .iter()
-            .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
-    }) {
-        return Err(TokenError::bad_request(
-            OAuthErrorCode::InvalidScope,
-            Some("Scope not allowed for client"),
-        ));
-    }
-    // 256-bit CSPRNG opaque token per RFC 6749 §10.10, consistent with the
-    // authorization_code minting in `authorize.rs`.
-    let device_code = generate_authorization_code();
-    let user_code = generate_unique_user_code(state)
-        .map_err(|e| TokenError::internal("user_code generation failed", e))?;
-    let request = AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
-        id: device_code.clone(),
-        client_id: client.client_id().to_owned(),
-        requested_scopes,
-        user_code: user_code.clone(),
-        // The name the approver sees and the grant is keyed on. Prefer the name
-        // the client chose (normalizing an all-whitespace/empty name to `None`);
-        // when it didn't name itself, infer a friendly one from its User-Agent.
-        // If neither yields a name, `approve.rs` / `token_exchange.rs` fall back
-        // to the client name so the upsert key stays total.
-        device_name: payload
-            .device_name
-            .as_deref()
-            .map(str::trim)
-            .filter(|name| !name.is_empty())
-            .map(str::to_string)
-            .or_else(|| user_agent.and_then(device_name_from_user_agent)),
-        ttl: DEVICE_AUTHORIZATION_TTL,
-    });
-    state.store.insert_authorization_request(&request)?;
-    // A fresh pending row may have just become the head of the
-    // consent queue (it always does, unless an older non-expired
-    // pending request — of either grant flow — still leads).
-    // Republish so the host webview popup picks it up.
-    pending_consent_publisher.republish_active();
+    // The name the approver sees and the grant is keyed on. Prefer the name the
+    // client chose (normalizing an all-whitespace/empty name to `None`); when it
+    // didn't name itself, infer a friendly one from its User-Agent. If neither
+    // yields a name, approval falls back to the client name so the upsert key
+    // stays total.
+    let device_name = payload
+        .device_name
+        .as_deref()
+        .map(str::trim)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
+        .or_else(|| user_agent.and_then(device_name_from_user_agent));
+    let started = LiveDeviceAuthorizer::from_state(state)
+        .start(&client, requested_scopes, device_name)
+        .map_err(|error| match error {
+            DeviceAuthorizationError::ScopeNotAllowed => TokenError::bad_request(
+                OAuthErrorCode::InvalidScope,
+                Some("Scope not allowed for client"),
+            ),
+            DeviceAuthorizationError::UserCodeExhausted => TokenError::internal(
+                "user_code generation failed",
+                "exhausted every user_code generation attempt",
+            ),
+            DeviceAuthorizationError::Store(error) => TokenError::from(error),
+        })?;
     Ok(DeviceAuthorizationResponse {
-        device_code,
-        user_code: user_code.clone(),
+        device_code: started.device_code,
         verification_uri: page_paths::device_entry_url(origin),
-        verification_uri_complete: page_paths::device_entry_url_with_code(origin, &user_code),
-        expires_in: DEVICE_AUTHORIZATION_TTL.num_seconds(),
-        interval: DEVICE_CODE_POLL_INTERVAL.num_seconds(),
+        verification_uri_complete: page_paths::device_entry_url_with_code(
+            origin,
+            &started.user_code,
+        ),
+        user_code: started.user_code,
+        expires_in: started.expires_in,
+        interval: started.interval,
     })
-}
-
-/// Try up to `MAX_USER_CODE_GENERATION_ATTEMPTS` random user codes until one
-/// collides with *no* existing request. Returns an error that preserves cause
-/// information for logging.
-///
-/// Any existing row — pending or terminal — counts as a collision: reusing a
-/// `user_code` already attached to a denied/expired row lets that stale row
-/// shadow the new pending request at the consent-side lookup (`user_code` is
-/// not unique once reused), so we regenerate instead.
-fn generate_unique_user_code(state: &GatekeeperState) -> anyhow::Result<String> {
-    for _ in 0..MAX_USER_CODE_GENERATION_ATTEMPTS {
-        let candidate = {
-            let mut rng = rand::rng();
-            generate_oauth_user_code(&mut rng)
-        };
-        if state
-            .store
-            .authorization_request_by_user_code(&candidate)
-            .context("authorization_request_by_user_code lookup failed")?
-            .is_none()
-        {
-            return Ok(candidate);
-        }
-    }
-    Err(anyhow!(
-        "exhausted {MAX_USER_CODE_GENERATION_ATTEMPTS} user_code generation attempts"
-    ))
 }

@@ -187,28 +187,7 @@ impl IntoResponse for GatekeeperError {
     }
 }
 
-/// Local HTML error pages for `/oauth/authorize` failures that may NOT be
-/// redirected back to the client — every failure on a request whose
-/// `redirect_uri` is not (yet) trusted. RFC 6749 §4.1.2.1 forbids delivering an
-/// error to an unvalidated URI, so a failure that would normally 302 back
-/// (`unsupported_response_type`, a bad PKCE method or challenge) renders one of
-/// these pages instead whenever the client is new to this gatekeeper or its
-/// `redirect_uri` is not on the registration. Once the redirect **is** trusted,
-/// those same failures are delivered by redirecting with `error` + `state`.
-pub enum OAuthErrorKind {
-    InvalidRedirectUri,
-    InvalidScheme,
-    UnknownClient,
-    DisabledClient,
-    RedirectUriNotAllowed,
-    /// `response_type` was not `code`, on an untrusted redirect.
-    UnsupportedResponseType,
-    /// `code_challenge_method` was not `S256`, on an untrusted redirect.
-    UnsupportedCodeChallengeMethod,
-    /// `code_challenge` was not a well-formed S256 challenge, on an untrusted
-    /// redirect.
-    InvalidCodeChallenge,
-}
+pub(crate) use crate::domain::oauth_error_kind::OAuthErrorKind;
 
 fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
     match kind {

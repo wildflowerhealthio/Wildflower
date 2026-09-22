@@ -25,10 +25,7 @@ use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_code::PendingCodeConsent;
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client::Client;
-use crate::domain::client_registration::{
-    classify_registration, ClientRegistration, PendingRegistration,
-};
+use crate::domain::client_registration::{ClientRegistration, RegistrationContext};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::ports::{PendingConsentPublisher, SelfHostedRedirectResolver};
@@ -76,56 +73,6 @@ pub(crate) struct OAuthConsentView {
     /// redirect, or its scopes are new to the Owner. Recomputed on every read,
     /// never stored.
     pub(crate) registration: ClientRegistration,
-}
-
-/// The request-scoped inputs the [registration verdict](ClientRegistration)
-/// needs beyond the store: the self-hosted redirect seam (to expand an
-/// app-relative allowlist entry) and the origin this request was served on (the
-/// base it expands against), plus the first-party `client_id` the trust-on-first
-/// -use path exempts.
-///
-/// Assembled by the consent capabilities from the handles they hold plus the
-/// handler's `ServedOrigin`, so the verdict a prompt renders is computed exactly
-/// the way `/authorize` computed it.
-pub(crate) struct RegistrationContext<'a> {
-    /// Resolves a `client_id` to a self-hosted app's `{port, subdomain}`.
-    pub(crate) redirects: &'a dyn SelfHostedRedirectResolver,
-    /// The origin this request was served on, unparsed.
-    pub(crate) served_origin: &'a str,
-    /// The first-party host's `client_id`, which is never trusted on first use
-    /// and whose registration an approval never widens.
-    pub(crate) first_party_client_id: &'a str,
-}
-
-impl RegistrationContext<'_> {
-    /// Classify a pending request against `client` (the current row, or `None`
-    /// when the id is unknown), expanding app-relative allowlist entries for this
-    /// request's provenance.
-    pub(crate) fn classify(
-        &self,
-        client_id: &str,
-        client: Option<&Client>,
-        redirect_uri: &url::Url,
-        requested_scopes: &[String],
-    ) -> ClientRegistration {
-        let topology = self.redirects.resolve(client_id);
-        // An unparseable served origin simply resolves no app-relative entry;
-        // absolute entries still match.
-        let served = url::Url::parse(self.served_origin).ok();
-        classify_registration(&PendingRegistration {
-            maybe_existing_client: client,
-            redirect_uri,
-            requested_scopes,
-            served_origin: served.as_ref(),
-            topology: topology.as_ref(),
-        })
-    }
-
-    /// Whether `client_id` is the first-party host — the one client held to its
-    /// registration rather than trusted on first use.
-    pub(crate) fn is_first_party(&self, client_id: &str) -> bool {
-        client_id == self.first_party_client_id
-    }
 }
 
 /// A device-code consent prompt loaded for the Owner UI — adds the client's full

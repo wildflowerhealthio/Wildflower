@@ -20,6 +20,9 @@
 //!    [`ValidatedRefreshToken`] — the redemptions an access token is minted
 //!    under at `/oauth/token`; each carries the scopes of the record it
 //!    redeemed, so a token holds only what the consent behind it recorded.
+//!  - [`StandingGrantCoverage`] — a standing grant already covers every scope
+//!    of a *registered* request: the `/oauth/authorize` fast path's authority
+//!    to issue a code with no human in the loop.
 //!  - [`HostBootstrap`] — the host's own boot-time owner token, the one authority
 //!    with no approving human; constructible only in `seeding` (guarded below).
 //!  - [`MintAuthority`] — the sealed trait the minter mints under; implementors
@@ -35,6 +38,7 @@ mod delegated_scopes;
 mod host_bootstrap;
 mod mint_authority;
 mod redemption;
+mod standing_grant;
 
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
 pub(crate) use delegated_scopes::{DelegatedScopes, ScopeCeiling};
@@ -47,6 +51,7 @@ pub(crate) use redemption::{
     CodeRedemption, ConsumedDeviceRequest, GrantRedemption, RedeemedAuthorizationCode,
     ValidatedRefreshToken,
 };
+pub(crate) use standing_grant::{GrantCoverage, StandingGrantCoverage};
 
 #[cfg(test)]
 mod construction_site_guard {

@@ -50,6 +50,9 @@ pub mod grant;
 // codes) — a pure domain vocabulary lifted out of the OAuth route tree so the
 // error model can name it without reaching into `http`.
 pub mod oauth_error_code;
+// The `/oauth/authorize` failures rendered as a local page rather than a
+// redirect; the HTML lives in `http::errors`.
+pub mod oauth_error_kind;
 // URL/path builders for the gatekeeper's user-facing `/gatekeeper/*` webview
 // pages — pure string builders (no axum/state), duplicated TS ⇄ Rust and
 // drift-tested against `gatekeeper-core/src/page-paths.ts`.

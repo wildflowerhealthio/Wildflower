@@ -7,10 +7,30 @@
 use chrono::{DateTime, Utc};
 use url::Url;
 
-use crate::domain::authority::DelegatedScopes;
+use crate::domain::authority::{DelegatedScopes, StandingGrantCoverage};
 use crate::domain::authorization_code::{AuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
+
+/// On whose authority a code-flow request is approved — the two proofs that
+/// may issue an authorization code. Listing them here is the point: a reader
+/// auditing "who can issue a code with no human?" finds
+/// [`StandingGrant`](Self::StandingGrant) by name.
+pub(crate) enum CodeAuthority<'a> {
+    /// The Owner approved the prompt.
+    OwnerDelegated(&'a DelegatedScopes),
+    /// A standing grant already covered every requested scope.
+    StandingGrant(&'a StandingGrantCoverage),
+}
+
+impl CodeAuthority<'_> {
+    fn scopes(&self) -> &[String] {
+        match self {
+            CodeAuthority::OwnerDelegated(delegated) => delegated.scopes(),
+            CodeAuthority::StandingGrant(standing) => standing.scopes(),
+        }
+    }
+}
 
 /// The request-specific inputs of a code-flow approval — everything the issued
 /// code must be bound to, read from the pending request the flow loaded.
@@ -51,7 +71,7 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
         RequestApprover { store }
     }
 
-    /// Approve a code-flow request under `scopes` and issue its authorization
+    /// Approve a code-flow request under `authority` and issue its authorization
     /// code, bound to the request's client, redirect, and PKCE challenge, expiring
     /// [`AUTHORIZATION_CODE_TTL`] after `now`. Returns `None` when the request was
     /// no longer pending (a concurrent decision or expiry won), in which case
@@ -62,12 +82,13 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
     /// [`GatekeeperError::Infrastructure`] on a store failure.
     pub(crate) fn approve_for_code(
         &self,
-        scopes: &DelegatedScopes,
+        authority: CodeAuthority<'_>,
         approval: CodeApproval<'_>,
     ) -> Result<Option<AuthorizationCode>, GatekeeperError> {
+        let scopes = authority.scopes();
         let approved = self.store.approve_authorization_request(
             approval.request_id,
-            scopes.scopes(),
+            scopes,
             approval.patient,
             None,
         )?;
@@ -80,7 +101,7 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
             client_id: approval.client_id.to_owned(),
             redirect_uri: approval.redirect_uri.clone(),
             code_challenge: approval.code_challenge.to_owned(),
-            granted_scopes: scopes.scopes().to_vec(),
+            granted_scopes: scopes.to_vec(),
             patient: approval.patient.map(str::to_owned),
             issued_at: approval.now,
             expires_at: approval.now + AUTHORIZATION_CODE_TTL,
@@ -155,7 +176,7 @@ mod tests {
         let now = Utc::now();
         let issued = RequestApprover::over(&store)
             .approve_for_code(
-                &delegated(&["patient/Patient.r"]),
+                CodeAuthority::OwnerDelegated(&delegated(&["patient/Patient.r"])),
                 CodeApproval {
                     request_id: "req-1",
                     client_id: "client",
@@ -201,7 +222,7 @@ mod tests {
             .unwrap();
         let issued = RequestApprover::over(&store)
             .approve_for_code(
-                &delegated(&["patient/Patient.r"]),
+                CodeAuthority::OwnerDelegated(&delegated(&["patient/Patient.r"])),
                 CodeApproval {
                     request_id: "req-1",
                     client_id: "client",
