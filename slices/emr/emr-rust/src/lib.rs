@@ -73,8 +73,9 @@ pub const UNAUTHENTICATED_FHIR_PATHS: &[&str] = &[
 ///
 /// `revocation_store` is the shared token-revocation store the host wires into
 /// both this and gatekeeper; when auth is enabled, HFS consults it per validated
-/// token through a custom [`JtiCache`](helios_auth::JtiCache) (per-`jti` denylist
-/// — defense-in-depth behind gatekeeper's gate). See [`crate::auth`].
+/// token through a revocation-checking [`AuthProvider`](helios_auth::AuthProvider)
+/// wrapper (per-`jti` denylist — defense-in-depth behind gatekeeper's gate). See
+/// [`crate::auth`].
 ///
 /// # Errors
 ///
