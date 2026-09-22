@@ -29,6 +29,10 @@
       "source": "./src/bridge.ts",
       "default": "./dist/bridge.js"
     },
+    "./smart-client": {
+      "source": "./src/smart-client/index.ts",
+      "default": "./dist/smart-client/index.js"
+    },
     "./page-paths": {
       "source": "./src/page-paths.ts",
       "default": "./dist/page-paths.js"

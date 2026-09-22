@@ -814,6 +814,9 @@ importers:
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)
+      gatekeeper-core:
+        specifier: workspace:*
+        version: link:../../slices/gatekeeper/gatekeeper-core
     devDependencies:
       fast-check:
         specifier: 'catalog:'
@@ -2363,6 +2366,9 @@ importers:
       fhir-r4:
         specifier: workspace:*
         version: link:../fhir-r4
+      gatekeeper-core:
+        specifier: workspace:*
+        version: link:../../gatekeeper/gatekeeper-core
       jsdom:
         specifier: 'catalog:'
         version: 30.0.1

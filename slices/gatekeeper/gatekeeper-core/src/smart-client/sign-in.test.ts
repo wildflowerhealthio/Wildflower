@@ -5,7 +5,6 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   parsePendingAuthorization,
-  PENDING_AUTHORIZATION_KEY,
   serializePendingAuthorization,
   type PendingAuthorization,
 } from './authorization-flow.ts'
@@ -16,9 +15,18 @@ import {
   type PendingStore,
   type SignInEnvironment,
 } from './sign-in.ts'
-import { REGISTERED_REDIRECT_URI } from './smart-client.ts'
 
 const SERVER = 'https://ruth.wildflowerhealth.io'
+
+/**
+ * An app's registration, standing in for whatever the calling page supplies.
+ * Nothing in `sign-in.ts` reads these from a module of its own any more, so the
+ * fixture is the whole contract.
+ */
+const CLIENT_ID = 'a-wildflower-page'
+const REDIRECT_URI = 'https://wildflowerhealth.io/a-wildflower-page/'
+const SCOPE = 'openid fhirUser system/*.cruds'
+const PENDING_KEY = 'a-wildflower-page.pending-authorization'
 
 describe('beginSignIn', () => {
   it('builds an authorization URL from the endpoints the server advertised', async () => {
@@ -33,9 +41,71 @@ describe('beginSignIn', () => {
     if (Either.isLeft(result)) throw new Error(result.left.reason)
     const url = new URL(result.right)
     expect(url.origin + url.pathname).toBe(`${SERVER}/oauth/authorize`)
-    expect(url.searchParams.get('client_id')).toBe('wildflower-server-docs')
-    expect(url.searchParams.get('redirect_uri')).toBe(REGISTERED_REDIRECT_URI)
+    expect(url.searchParams.get('client_id')).toBe(CLIENT_ID)
+    expect(url.searchParams.get('redirect_uri')).toBe(REDIRECT_URI)
     expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+    expect(url.searchParams.get('scope')).toBe(SCOPE)
+  })
+
+  it('sends whatever registration the caller injected, not one of its own', async () => {
+    // The whole point of the move into `gatekeeper-core`: two apps share this
+    // flow and each brings its own client id, scopes and redirect URI. Nothing
+    // in `sign-in.ts` may fall back to a built-in.
+    await fc.assert(
+      fc.asyncProperty(
+        fc.uuid().map((id) => `client-${id}`),
+        fc.uuid().map((id) => `https://wildflowerhealth.io/${id}/`),
+        fc.uniqueArray(fc.constantFrom('openid', 'fhirUser', 'launch', 'system/*.cruds'), {
+          minLength: 1,
+        }),
+        async (clientId, redirectUri, scopes) => {
+          // Arrange
+          const scope = scopes.join(' ')
+          const environment: SignInEnvironment = {
+            ...testEnvironment({ store: memoryStore(), fetch: discoveryOnly() }),
+            clientId,
+            redirectUri,
+            scope,
+          }
+
+          // Act
+          const result = await runToEither(beginSignIn(SERVER, environment))
+
+          // Assert
+          if (Either.isLeft(result)) throw new Error(result.left.reason)
+          const url = new URL(result.right)
+          expect(url.searchParams.get('client_id')).toBe(clientId)
+          expect(url.searchParams.get('redirect_uri')).toBe(redirectUri)
+          expect(url.searchParams.get('scope')).toBe(scope)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
+  })
+
+  it('stashes the record under the key the caller named, and nowhere else', async () => {
+    // Namespacing is what keeps two Wildflower pages on one origin from reading
+    // each other's pending request.
+    await fc.assert(
+      fc.asyncProperty(
+        fc.uuid().map((id) => `app-${id}.pending-authorization`),
+        async (pendingKey) => {
+          // Arrange
+          const store = memoryStore()
+
+          // Act
+          const result = await runToEither(
+            beginSignIn(SERVER, testEnvironment({ store, fetch: discoveryOnly(), pendingKey }))
+          )
+
+          // Assert
+          if (Either.isLeft(result)) throw new Error(result.left.reason)
+          expect(store.getItem(pendingKey)).not.toBeNull()
+          expect(store.getItem(PENDING_KEY)).toBeNull()
+        }
+      ),
+      { numRuns: numRunsFor({ base: 30 }) }
+    )
   })
 
   it('stashes the verifier that matches the challenge it sent', async () => {
@@ -50,7 +120,7 @@ describe('beginSignIn', () => {
 
     // Assert
     if (Either.isLeft(result)) throw new Error(result.left.reason)
-    const stashed = parsePendingAuthorization(store.getItem(PENDING_AUTHORIZATION_KEY))
+    const stashed = parsePendingAuthorization(store.getItem(PENDING_KEY))
     if (Option.isNone(stashed)) throw new Error('nothing was stashed')
     const pending = stashed.value
     const url = new URL(result.right)
@@ -76,9 +146,7 @@ describe('beginSignIn', () => {
     )
 
     // Assert
-    expect(first.getItem(PENDING_AUTHORIZATION_KEY)).not.toBe(
-      second.getItem(PENDING_AUTHORIZATION_KEY)
-    )
+    expect(first.getItem(PENDING_KEY)).not.toBe(second.getItem(PENDING_KEY))
   })
 
   it('stashes nothing when the target cannot be discovered', async () => {
@@ -95,7 +163,7 @@ describe('beginSignIn', () => {
     // Assert
     if (Either.isRight(result)) throw new Error('expected discovery to fail the sign-in')
     expect(result.left._tag).toBe('DiscoveryFailed')
-    expect(store.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
+    expect(store.getItem(PENDING_KEY)).toBeNull()
   })
 
   it('reports a browser whose session storage refuses the record', async () => {
@@ -124,7 +192,7 @@ describe('completeSignIn', () => {
   it('leaves an ordinary page load alone', async () => {
     // Arrange
     const store = memoryStore()
-    store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(stashedRequest()))
+    store.setItem(PENDING_KEY, serializePendingAuthorization(stashedRequest()))
 
     // Act
     const result = await runToEither(
@@ -136,14 +204,37 @@ describe('completeSignIn', () => {
 
     // Assert
     expect(result).toEqual(Either.right(Option.none()))
-    expect(store.getItem(PENDING_AUTHORIZATION_KEY)).not.toBeNull()
+    expect(store.getItem(PENDING_KEY)).not.toBeNull()
+  })
+
+  it('never redeems a code against another page’s pending record', async () => {
+    // Two Wildflower pages share `sessionStorage` on one origin. A return leg
+    // must look only at its own key: reading a neighbour's record would let one
+    // page complete a sign-in the other started.
+    // Arrange
+    const store = memoryStore()
+    const pending = stashedRequest()
+    store.setItem('another-page.pending-authorization', serializePendingAuthorization(pending))
+
+    // Act
+    const result = await runToEither(
+      completeSignIn(
+        `?code=the-code&state=${pending.state}`,
+        testEnvironment({ store, fetch: refusingFetch })
+      )
+    )
+
+    // Assert — no token request was made, and the neighbour's record survives.
+    if (Either.isRight(result)) throw new Error('expected the stray code to be rejected')
+    expect(result.left._tag).toBe('AuthorizationRejected')
+    expect(store.getItem('another-page.pending-authorization')).not.toBeNull()
   })
 
   it('redeems the code and returns the granted session', async () => {
     // Arrange
     const store = memoryStore()
     const pending = stashedRequest()
-    store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(pending))
+    store.setItem(PENDING_KEY, serializePendingAuthorization(pending))
     const bodies: string[] = []
     const fetchStub: typeof globalThis.fetch = (_input, init) => {
       bodies.push(typeof init?.body === 'string' ? init.body : '')
@@ -178,7 +269,7 @@ describe('completeSignIn', () => {
     )
     const sent = new URLSearchParams(bodies[0])
     expect(sent.get('code_verifier')).toBe(pending.codeVerifier)
-    expect(sent.get('redirect_uri')).toBe(REGISTERED_REDIRECT_URI)
+    expect(sent.get('redirect_uri')).toBe(REDIRECT_URI)
   })
 
   it('never writes the access token to storage', async () => {
@@ -193,7 +284,7 @@ describe('completeSignIn', () => {
           // Arrange
           const store = memoryStore()
           const pending = stashedRequest()
-          store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(pending))
+          store.setItem(PENDING_KEY, serializePendingAuthorization(pending))
           const fetchStub: typeof globalThis.fetch = () =>
             Promise.resolve(jsonResponse({ access_token: accessToken, token_type: 'Bearer' }))
 
@@ -221,7 +312,7 @@ describe('completeSignIn', () => {
         // Arrange
         const store = memoryStore()
         const pending = stashedRequest()
-        store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(pending))
+        store.setItem(PENDING_KEY, serializePendingAuthorization(pending))
         const fetchStub: typeof globalThis.fetch = () =>
           Promise.resolve(
             jsonResponse(
@@ -240,7 +331,7 @@ describe('completeSignIn', () => {
         )
 
         // Assert
-        expect(store.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
+        expect(store.getItem(PENDING_KEY)).toBeNull()
       }),
       { numRuns: numRunsFor({ base: 20 }) }
     )
@@ -249,7 +340,7 @@ describe('completeSignIn', () => {
   it('clears the pending record when the server refuses the authorization', async () => {
     // Arrange
     const store = memoryStore()
-    store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(stashedRequest()))
+    store.setItem(PENDING_KEY, serializePendingAuthorization(stashedRequest()))
 
     // Act
     const result = await runToEither(
@@ -261,7 +352,7 @@ describe('completeSignIn', () => {
 
     // Assert
     expect(Either.isLeft(result)).toBe(true)
-    expect(store.getItem(PENDING_AUTHORIZATION_KEY)).toBeNull()
+    expect(store.getItem(PENDING_KEY)).toBeNull()
   })
 
   it('routes the redirect-outcome Either through the Effect error channel', async () => {
@@ -273,7 +364,7 @@ describe('completeSignIn', () => {
     // Arrange — a server-refused return is the cleanest Left: no pending record
     // or state setup is needed to reach it.
     const store = memoryStore()
-    store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(stashedRequest()))
+    store.setItem(PENDING_KEY, serializePendingAuthorization(stashedRequest()))
 
     // Act
     const result = await runToEither(
@@ -298,7 +389,7 @@ describe('completeSignIn', () => {
         async (state) => {
           // Arrange
           const store = memoryStore()
-          store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(stashedRequest()))
+          store.setItem(PENDING_KEY, serializePendingAuthorization(stashedRequest()))
           const requests: string[] = []
           const fetchStub: typeof globalThis.fetch = (input) => {
             requests.push(requestUrl(input))
@@ -327,7 +418,7 @@ describe('completeSignIn', () => {
     // Arrange
     const store = memoryStore()
     const pending = stashedRequest()
-    store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(pending))
+    store.setItem(PENDING_KEY, serializePendingAuthorization(pending))
     const fetchStub: typeof globalThis.fetch = () =>
       Promise.resolve(
         jsonResponse({ error: 'invalid_grant', error_description: 'Invalid authorization grant' })
@@ -351,7 +442,7 @@ describe('completeSignIn', () => {
     // Arrange
     const store = memoryStore()
     const pending = stashedRequest()
-    store.setItem(PENDING_AUTHORIZATION_KEY, serializePendingAuthorization(pending))
+    store.setItem(PENDING_KEY, serializePendingAuthorization(pending))
 
     // Act
     const result = await runToEither(
@@ -396,12 +487,16 @@ const memoryStore = (): PendingStore & { contents(): string } => {
 const testEnvironment = (parts: {
   readonly store: PendingStore
   readonly fetch: typeof globalThis.fetch
+  readonly pendingKey?: string
 }): SignInEnvironment => ({
   fetch: parts.fetch,
   random: globalThis.crypto,
   subtle: globalThis.crypto.subtle,
   store: parts.store,
-  redirectUri: REGISTERED_REDIRECT_URI,
+  pendingKey: parts.pendingKey ?? PENDING_KEY,
+  clientId: CLIENT_ID,
+  scope: SCOPE,
+  redirectUri: REDIRECT_URI,
   pageIsSecure: true,
 })
 
@@ -436,7 +531,7 @@ const refusingFetch: typeof globalThis.fetch = (input) => {
 }
 
 /** The URL a `fetch` argument names, in any of the three forms it can take. */
-const requestUrl = Match.type<RequestInfo | URL>().pipe(
+const requestUrl = Match.type<Parameters<typeof globalThis.fetch>[0]>().pipe(
   Match.withReturnType<string>(),
   Match.when(Match.string, (s) => s),
   Match.when({ href: Match.string }, (u) => u.href),

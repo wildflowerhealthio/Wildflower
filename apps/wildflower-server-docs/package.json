@@ -13,7 +13,8 @@
   "dependencies": {
     "@scalar/api-reference": "catalog:",
     "branding-core": "workspace:*",
-    "effect": "catalog:"
+    "effect": "catalog:",
+    "gatekeeper-core": "workspace:*"
   },
   "devDependencies": {
     "fast-check": "catalog:",

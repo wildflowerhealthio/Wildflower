@@ -8,7 +8,7 @@
  * (mounted at `/fhir-r4/.well-known/smart-configuration`, and exempt from the
  * bearer gate — `gatekeeper-rust`'s `require_valid_bearer_token`), advertising
  * `authorization_endpoint` and `token_endpoint` derived from the origin it was
- * served on. Those advertised URLs are what the console uses; it never assumes
+ * served on. Those advertised URLs are what the client uses; it never assumes
  * `/oauth/authorize` sits at the target's root.
  *
  * The validation is pure and returns an `Either`; the fetch is the async edge
@@ -42,8 +42,8 @@ interface SmartEndpoints {
  * Hosts a browser treats as potentially trustworthy over plain `http:`
  * (W3C Secure Contexts §3.1): the loopback addresses. A desktop Wildflower host
  * serves its API on one of these, so an `http:` endpoint pointing at loopback is
- * accepted even from the HTTPS-published console — the same exception that makes
- * the console's ordinary requests to a loopback server work at all.
+ * accepted even from the HTTPS-published page — the same exception that makes
+ * the client's ordinary requests to a loopback server work at all.
  */
 const isLoopbackHost = (hostname: string): boolean =>
   hostname === 'localhost' ||
@@ -52,13 +52,13 @@ const isLoopbackHost = (hostname: string): boolean =>
   /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(hostname)
 
 /**
- * `candidate` as an endpoint URL the console will send a reader (or a token
+ * `candidate` as an endpoint URL the client will send a reader (or a token
  * request) to, or `undefined` when it is not one.
  *
  * Rejected: anything that is not an absolute `http:`/`https:` URL; embedded
  * credentials (userinfo, which a redirect would carry into the address bar); a
  * fragment (the authorize URL grows query parameters, and a fragment would
- * strand them); and plain `http:` to a non-loopback host while the console
+ * strand them); and plain `http:` to a non-loopback host while the client
  * itself is on a secure page — a downgrade the browser would block anyway, and
  * which would put an access token on the wire in the clear.
  */
@@ -82,6 +82,33 @@ const usableEndpointUrl = (
   return url.toString()
 }
 
+/**
+ * Why a page cannot reach `serverUrl`, or `undefined` when it can.
+ *
+ * States when the target is chosen what {@link usableEndpointUrl} enforces
+ * after the fetch, so the reader gets the real reason rather than a discovery
+ * failure that reads as "the server is down". Loopback is deliberately not a
+ * failure, for the reason {@link isLoopbackHost} gives.
+ */
+const insecureTargetReason = (
+  serverUrl: string,
+  options: { readonly pageIsSecure: boolean }
+): string | undefined => {
+  if (!options.pageIsSecure) return undefined
+  let url: URL
+  try {
+    url = new URL(serverUrl)
+  } catch {
+    return undefined
+  }
+  if (url.protocol !== 'http:' || isLoopbackHost(url.hostname)) return undefined
+  return (
+    `This page is served over https, so the browser will block its requests to ` +
+    `${serverUrl}. Use an https address for the server, or open this console ` +
+    `from the server itself.`
+  )
+}
+
 /** Whether `value` is a plain JSON object. */
 const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -91,7 +118,7 @@ const isRecord = (value: unknown): value is Readonly<Record<string, unknown>> =>
  *
  * Only the two endpoints the flow needs are required. `code_challenge_methods_supported`
  * is checked for `S256` when present, because a server that cannot do S256
- * cannot complete this console's flow (the gatekeeper authorize endpoint
+ * cannot complete this client's flow (the gatekeeper authorize endpoint
  * mandates it) and failing here says so plainly; a document that omits the
  * field is given the benefit of the doubt rather than blocked on a hint.
  */
@@ -168,7 +195,9 @@ export {
   DiscoveryFailed,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
+  isLoopbackHost,
   usableEndpointUrl,
+  insecureTargetReason,
   smartEndpointsFrom,
   discoverSmartEndpoints,
 }

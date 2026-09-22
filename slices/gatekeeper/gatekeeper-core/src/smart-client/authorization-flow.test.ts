@@ -412,7 +412,7 @@ describe('parseTokenResponse', () => {
     )
   })
 
-  it('never accepts a token the console could not send as a bearer', () => {
+  it('never accepts a token the client could not send as a bearer', () => {
     fc.assert(
       fc.property(
         fc.string().filter((type) => type.toLowerCase() !== 'bearer'),

@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vite-plus/test'
 
 import {
   discoverSmartEndpoints,
+  insecureTargetReason,
   SMART_CONFIGURATION_PATH,
   smartConfigurationUrl,
   smartEndpointsFrom,
@@ -13,7 +14,7 @@ import {
 
 /**
  * A discovery document shaped like the one `emr-rust`'s
- * `build_smart_configuration` serves, trimmed to the fields this console reads.
+ * `build_smart_configuration` serves, trimmed to the fields this client reads.
  */
 const wildflowerDiscoveryDocument = (origin: string): Record<string, unknown> => ({
   issuer: 'https://wildflowerhealth.io',
@@ -47,9 +48,9 @@ describe('usableEndpointUrl', () => {
     )
   })
 
-  it('accepts a loopback http endpoint even from the published https console', () => {
+  it('accepts a loopback http endpoint even from the published https page', () => {
     // A desktop host serves its API on loopback, which browsers treat as
-    // potentially trustworthy — the same exception the console's own requests
+    // potentially trustworthy — the same exception the client's own requests
     // rely on.
     expect(usableEndpointUrl('http://127.0.0.1:8080/oauth/token', onSecurePage)).toBe(
       'http://127.0.0.1:8080/oauth/token'
@@ -72,7 +73,7 @@ describe('usableEndpointUrl', () => {
     )
   })
 
-  it('accepts the same plain-http endpoint when the console itself is not secure', () => {
+  it('accepts the same plain-http endpoint when the client itself is not secure', () => {
     // Act / Assert
     expect(usableEndpointUrl('http://server.test/oauth/token', { pageIsSecure: false })).toBe(
       'http://server.test/oauth/token'
@@ -288,6 +289,61 @@ describe('discoverSmartEndpoints', () => {
   })
 })
 
+describe('insecureTargetReason', () => {
+  it('explains why a secure page cannot reach a plaintext server', () => {
+    // Arrange / Act
+    const reason = insecureTargetReason('http://fhir.example', onSecurePage)
+
+    // Assert
+    expect(reason).toContain('http://fhir.example')
+    expect(reason).toContain('https')
+  })
+
+  it('says nothing about a loopback target, which browsers do allow', () => {
+    // A desktop host's API on loopback is the published console's normal case,
+    // not a downgrade — see `usableEndpointUrl`'s matching exception.
+    expect(insecureTargetReason('http://127.0.0.1:8080', onSecurePage)).toBeUndefined()
+    expect(insecureTargetReason('http://localhost:8080', onSecurePage)).toBeUndefined()
+  })
+
+  it('says nothing when the page itself is not secure', () => {
+    // A dev server on http may talk to a plaintext server freely.
+    expect(insecureTargetReason('http://fhir.example', { pageIsSecure: false })).toBeUndefined()
+  })
+
+  it('never objects to an https target', () => {
+    fc.assert(
+      fc.property(fc.domain(), fc.webPath(), (domain, path) => {
+        // Act
+        const reason = insecureTargetReason(`https://${domain}${path}`, onSecurePage)
+
+        // Assert
+        expect(reason).toBeUndefined()
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('always objects to exactly what discovery would go on to reject', () => {
+    // The point of this function is to say early what `usableEndpointUrl` says
+    // late, so the two must never disagree about the same target.
+    fc.assert(
+      fc.property(fc.domain(), fc.webPath(), (domain, path) => {
+        // Arrange
+        const target = `http://${domain}${path}`
+
+        // Act
+        const reason = insecureTargetReason(target, onSecurePage)
+
+        // Assert
+        expect(reason).toBeDefined()
+        expect(usableEndpointUrl(target, onSecurePage)).toBeUndefined()
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
 // Helpers
 
 /** Run a discovery Effect to its `Either`, so both channels are assertable. */
@@ -295,7 +351,7 @@ const runToEither = <A, E>(effect: Effect.Effect<A, E>): Promise<Either.Either<A
   Effect.runPromise(Effect.either(effect))
 
 /** The URL a `fetch` argument names, in any of the three forms it can take. */
-const requestUrl = Match.type<RequestInfo | URL>().pipe(
+const requestUrl = Match.type<Parameters<typeof globalThis.fetch>[0]>().pipe(
   Match.withReturnType<string>(),
   Match.when(Match.string, (s) => s),
   Match.when({ href: Match.string }, (u) => u.href),

@@ -1,16 +1,19 @@
+/**
+ * {@link codeChallengeS256} — the package's one S256 implementation — bound to
+ * the ambient Web Crypto, keeping the `UnknownException` error type this
+ * wrapper's callers expect.
+ */
+
 import { Effect } from 'effect'
 import { UnknownException } from 'effect/Cause'
+
+import { codeChallengeS256 } from '../smart-client/pkce.ts'
 
 const computeCodeChallenge = (
   codeVerifier: string
 ): Effect.Effect<string, UnknownException, never> =>
-  Effect.tryPromise({
-    try: async () => {
-      const buffer = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(codeVerifier))
-      const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
-      return base64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-    },
-    catch: (error) => new UnknownException(error, 'Failed to compute code challenge'),
-  })
+  codeChallengeS256(codeVerifier, crypto.subtle).pipe(
+    Effect.mapError((error) => new UnknownException(error, 'Failed to compute code challenge'))
+  )
 
 export { computeCodeChallenge }

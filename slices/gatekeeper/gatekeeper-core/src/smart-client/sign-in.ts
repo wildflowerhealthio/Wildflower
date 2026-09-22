@@ -5,9 +5,14 @@
  * when the browser comes back and redeems the code.
  *
  * Neither navigates and neither touches the DOM — `beginSignIn` *yields* the
- * URL for `main.ts` to assign — so both are drivable from tests with a stub
+ * URL for the app to assign — so both are drivable from tests with a stub
  * fetch, fixed random bytes and a plain object standing in for
  * `sessionStorage`.
+ *
+ * Nothing here knows which app it is running for: the client id, the requested
+ * scopes, the redirect URI and the `sessionStorage` key all arrive in the
+ * {@link SignInEnvironment}, so two Wildflower pages on one origin cannot read
+ * each other's pending record.
  *
  * ## The error channel
  *
@@ -16,19 +21,19 @@
  * modules that own those steps, {@link PendingRequestUnusable} from the storage
  * round trip here, {@link AuthorizationRejected} and
  * {@link TokenExchangeFailed} from the flow's pure validation. Nothing throws
- * and nothing returns an ad-hoc `{ ok }` union; `main.ts` runs the Effect at the
- * one boundary and renders `error.reason` on the header bar's status line.
+ * and nothing returns an ad-hoc `{ ok }` union; the app runs the Effect at one
+ * boundary and renders `error.reason` wherever it shows status.
  *
  * ## Token custody
  *
  * The access token is the Effect's success value and is never written anywhere
- * by this module: no `localStorage`, no `sessionStorage`, no cookie. The console
- * is a public page and the token it obtains can be admin-capable, so it lives in
- * one `let` in `main.ts` and dies with the tab — the same in-memory-only policy
+ * by this module: no `localStorage`, no `sessionStorage`, no cookie. The client
+ * is a public page and the token it obtains can be admin-capable, so it belongs
+ * in one in-memory binding that dies with the tab — the same policy
  * `makeEmbeddedAuthStateStore` follows for the same reason
  * (`slices/gatekeeper/docs/Auth Token Storage Explanation.md`). The only thing
  * that does reach `sessionStorage` is the pending record — no credential, and
- * deleted the instant the console returns, before the code is even redeemed.
+ * deleted the instant the client returns, before the code is even redeemed.
  */
 
 import { Data, Effect, Either, Option } from 'effect'
@@ -39,7 +44,6 @@ import {
   fhirAudienceFor,
   parsePendingAuthorization,
   parseTokenResponse,
-  PENDING_AUTHORIZATION_KEY,
   serializePendingAuthorization,
   tokenRequestBody,
   type AccessGrant,
@@ -49,7 +53,6 @@ import {
 } from './authorization-flow.ts'
 import { codeChallengeS256, createCodeVerifier, createState } from './pkce.ts'
 import type { DigestSource, PkceUnavailable, RandomBytesSource } from './pkce.ts'
-import { CLIENT_ID, requestedScopeParameter } from './smart-client.ts'
 import { discoverSmartEndpoints, type DiscoveryFailed } from './smart-discovery.ts'
 
 /**
@@ -76,15 +79,29 @@ interface PendingStore {
   removeItem(key: string): void
 }
 
-/** Everything impure the flow depends on, supplied by the caller. */
+/**
+ * Everything impure — and everything app-specific — the flow depends on,
+ * supplied by the caller.
+ */
 interface SignInEnvironment {
   readonly fetch: typeof globalThis.fetch
   readonly random: RandomBytesSource
   readonly subtle: DigestSource
   readonly store: PendingStore
-  /** The redirect URI to send, which must be the client's registered one. */
+  /**
+   * The `sessionStorage` key the pending record lives at. Namespace it with the
+   * app's own name (`wildflower-server-docs.pending-authorization`): these pages
+   * share an origin, so a key chosen here would be one key for all of them, and
+   * one tab's return leg could consume a record another tab was waiting on.
+   */
+  readonly pendingKey: string
+  /** The `client_id` this app is registered as. */
+  readonly clientId: string
+  /** The space-delimited `scope` parameter to request (RFC 6749 §3.3). */
+  readonly scope: string
+  /** The redirect URI to send, which must be one the server will honour. */
   readonly redirectUri: string
-  /** Whether the console itself is on a secure page (an `https:` document). */
+  /** Whether the client itself is on a secure page (an `https:` document). */
   readonly pageIsSecure: boolean
 }
 
@@ -112,7 +129,7 @@ const beginSignIn = (
     yield* Effect.try({
       try: () =>
         environment.store.setItem(
-          PENDING_AUTHORIZATION_KEY,
+          environment.pendingKey,
           serializePendingAuthorization({
             state,
             codeVerifier,
@@ -129,9 +146,9 @@ const beginSignIn = (
     })
 
     return authorizationRequestUrl(endpoints.authorizationEndpoint, {
-      clientId: CLIENT_ID,
+      clientId: environment.clientId,
       redirectUri: environment.redirectUri,
-      scope: requestedScopeParameter(),
+      scope: environment.scope,
       state,
       codeChallenge,
       audience: fhirAudienceFor(serverUrl),
@@ -149,7 +166,7 @@ interface Session {
 }
 
 /**
- * Finish a sign-in from the query string the console came back on: `None` when
+ * Finish a sign-in from the query string the client came back on: `None` when
  * this page load is not a return from the authorization server (the common
  * case), a {@link Session} when it is and the code redeemed.
  *
@@ -163,10 +180,11 @@ const completeSignIn = (
   environment: SignInEnvironment
 ): Effect.Effect<Option.Option<Session>, SignInError> =>
   Effect.gen(function* () {
-    const stored = readPendingRecord(environment.store)
+    const stored = readPendingRecord(environment.store, environment.pendingKey)
     const outcome = authorizationRedirectOutcome(search, stored)
     const isReturnLeg = Either.isLeft(outcome) || Option.isSome(outcome.right)
-    if (isReturnLeg) yield* Effect.sync(() => forgetPendingRecord(environment.store))
+    if (isReturnLeg)
+      yield* Effect.sync(() => forgetPendingRecord(environment.store, environment.pendingKey))
     const returning = yield* outcome
     if (Option.isNone(returning)) return Option.none()
     const { code, pending } = returning.value
@@ -183,7 +201,7 @@ const completeSignIn = (
             code,
             codeVerifier: pending.codeVerifier,
             redirectUri: environment.redirectUri,
-            clientId: CLIENT_ID,
+            clientId: environment.clientId,
           }),
         }),
       catch: () =>
@@ -201,13 +219,16 @@ const completeSignIn = (
   })
 
 /**
- * The pending record `store` holds, if any. A storage that refuses to be read
- * is indistinguishable from an empty one here, and neither is an error: it only
- * means this page load cannot be a return leg.
+ * The pending record `store` holds at `key`, if any. A storage that refuses to
+ * be read is indistinguishable from an empty one here, and neither is an error:
+ * it only means this page load cannot be a return leg.
  */
-const readPendingRecord = (store: PendingStore): Option.Option<PendingAuthorization> => {
+const readPendingRecord = (
+  store: PendingStore,
+  key: string
+): Option.Option<PendingAuthorization> => {
   try {
-    return parsePendingAuthorization(store.getItem(PENDING_AUTHORIZATION_KEY))
+    return parsePendingAuthorization(store.getItem(key))
   } catch {
     return Option.none()
   }
@@ -217,9 +238,9 @@ const readPendingRecord = (store: PendingStore): Option.Option<PendingAuthorizat
  * Drop the pending record. A storage that refuses removal cannot be helped, and
  * the flow is already past the point where the record mattered.
  */
-const forgetPendingRecord = (store: PendingStore): void => {
+const forgetPendingRecord = (store: PendingStore, key: string): void => {
   try {
-    store.removeItem(PENDING_AUTHORIZATION_KEY)
+    store.removeItem(key)
   } catch {
     // Deliberately ignored; see the doc comment.
   }

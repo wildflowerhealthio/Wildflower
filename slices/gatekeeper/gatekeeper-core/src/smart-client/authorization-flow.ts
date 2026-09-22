@@ -25,7 +25,7 @@ class AuthorizationRejected extends Data.TaggedError('AuthorizationRejected')<{
 }> {}
 
 /**
- * Raised when the token endpoint's answer is not a grant this console can use —
+ * Raised when the token endpoint's answer is not a grant this client can use —
  * an RFC 6749 §5.2 error body, a missing token, or a token type it cannot send.
  */
 class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
@@ -33,7 +33,7 @@ class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
 }> {}
 
 /**
- * What the console must remember across the redirect to the authorization
+ * What the client must remember across the redirect to the authorization
  * server: the PKCE verifier it will redeem the code with, the `state` it will
  * check the return against, and the target the sign-in was started for — the
  * registered redirect URI carries no query string, so `?server=` cannot ride
@@ -42,7 +42,7 @@ class TokenExchangeFailed extends Data.TaggedError('TokenExchangeFailed')<{
  * This is the one thing that touches `sessionStorage`, because a full-page
  * redirect leaves no other way to carry it. It holds **no credential**: the
  * verifier is worthless without the code, and the record is deleted the moment
- * the console returns. The access token itself never goes near storage — see
+ * the client returns. The access token itself never goes near storage — see
  * `slices/gatekeeper/docs/Auth Token Storage Explanation.md`.
  */
 interface PendingAuthorization {
@@ -52,10 +52,10 @@ interface PendingAuthorization {
   readonly tokenEndpoint: string
 }
 
-/** The `sessionStorage` key the pending record lives at. */
-const PENDING_AUTHORIZATION_KEY = 'wildflower-server-docs.pending-authorization'
-
-/** The pending record as the string form stored under {@link PENDING_AUTHORIZATION_KEY}. */
+/**
+ * The pending record as the string form stored under the `sessionStorage` key
+ * the app names in its `SignInEnvironment` (`sign-in.ts`).
+ */
 const serializePendingAuthorization = (pending: PendingAuthorization): string =>
   JSON.stringify(pending)
 
@@ -207,7 +207,7 @@ const isAuthorizationResponse = (search: string): boolean => {
  *
  * The code is single-use and already redeemed by the time this is written back,
  * but leaving it in the address bar would put it in history, in a shared link
- * and in any referrer — so the console scrubs it either way. The result includes
+ * and in any referrer — so the client scrubs it either way. The result includes
  * the leading `?` unless it is empty.
  */
 const searchWithoutAuthorizationResponse = (search: string): string => {
@@ -236,7 +236,7 @@ const tokenRequestBody = (input: {
     code_verifier: input.codeVerifier,
   }).toString()
 
-/** A usable token response, reduced to what the console keeps. */
+/** A usable token response, reduced to what the client keeps. */
 interface AccessGrant {
   readonly accessToken: string
   /** The scopes actually granted — the Owner's narrowing, not what was asked. */
@@ -249,8 +249,8 @@ interface AccessGrant {
  * A token-endpoint response read as a grant, or the reason it is not one.
  *
  * Only a `Bearer` token is accepted, because a bearer header is the only thing
- * the console knows how to send. A refresh token in the response is **ignored**:
- * the console keeps no credential past the tab, so there is nothing for it to
+ * the client knows how to send. A refresh token in the response is **ignored**:
+ * the client keeps no credential past the tab, so there is nothing for it to
  * refresh into.
  */
 const parseTokenResponse = (body: unknown): Either.Either<AccessGrant, TokenExchangeFailed> => {
@@ -279,7 +279,7 @@ const parseTokenResponse = (body: unknown): Either.Either<AccessGrant, TokenExch
   if (typeof tokenType !== 'string' || tokenType.toLowerCase() !== 'bearer') {
     return Either.left(
       new TokenExchangeFailed({
-        reason: 'The token endpoint returned a token this console cannot send.',
+        reason: 'The token endpoint returned a token this client cannot send.',
       })
     )
   }
@@ -296,7 +296,6 @@ const parseTokenResponse = (body: unknown): Either.Either<AccessGrant, TokenExch
 export {
   AuthorizationRejected,
   TokenExchangeFailed,
-  PENDING_AUTHORIZATION_KEY,
   serializePendingAuthorization,
   parsePendingAuthorization,
   authorizationRequestUrl,
