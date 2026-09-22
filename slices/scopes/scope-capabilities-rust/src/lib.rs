@@ -16,8 +16,8 @@
 //!    covers `F`'s [`required_scopes`](Capability::required_scopes) — otherwise a
 //!    `403` naming the missing scopes ([`insufficient_scope`]).
 //!
-//! A capability comes in two flavours, and the flavour is visible at the `impl`
-//! line:
+//! A capability comes in three flavours, and the flavour is visible at the
+//! `impl` line:
 //!
 //! - **Fixed-scope** — `impl FixedScopeCapability for …`: the whole capability is
 //!   gated by one static scope set, checked by the extractor before `build` runs.
@@ -28,6 +28,10 @@
 //!   caller's [`Grant`] for the methods to re-check per call. A direct
 //!   `Capability` impl that neither declares scopes nor stores the grant is a
 //!   bug — that's what `FixedScopeCapability` is for.
+//! - **Authenticated-only** — `impl AuthenticatedCapability for …`, acquired
+//!   through [`Authenticated<F>`]: no scope at all, for a caller acting on
+//!   their *own* session (logout, reading back their own scopes). It receives
+//!   the caller's claims whole, and nothing else.
 //!
 //! Because the capability is the sole door to the store for these handlers, a
 //! handler that skips the scope check simply has no way to reach any data: the
@@ -212,6 +216,60 @@ impl<F: Capability> FromRequestParts<F::State> for Scoped<F> {
         } else {
             Err(insufficient_scope(scopes_rust::render_scopes(&missing)))
         }
+    }
+}
+
+/// The **authenticated-only** flavour: a capability unlocked by the caller
+/// having authenticated at all, with no scope check — for self-service
+/// operations on the caller's *own* session (logging out, reading back one's
+/// own scopes), where a scope gate would lock out exactly the under-scoped
+/// callers who need them. `build` receives the claims the authN layer inserted,
+/// so the capability acts on the caller's own identity and nothing else.
+///
+/// Distinct from a data-dependent [`Capability`] with empty scopes: that flavour
+/// promises a per-resource check inside its methods; this one promises there is
+/// no resource — only the caller's own claims.
+pub trait AuthenticatedCapability: Sized {
+    /// See [`Capability::State`].
+    type State: Clone + Send + Sync + 'static;
+    /// The claims value the slice's authN middleware inserts into the request
+    /// extensions — the caller's own identity, handed to `build` whole.
+    type Claims: Clone + Send + Sync + 'static;
+
+    /// Build the capability from the router state and the caller's claims.
+    fn build(state: Self::State, claims: Self::Claims) -> Self;
+}
+
+/// Extractor that yields the authenticated-only capability `F` for the caller
+/// whose claims the authN layer inserted. Like [`Scoped`], a missing claims
+/// value is a wiring bug (the handler was mounted without its authN layer) and
+/// fails closed with a 500 rather than admitting the request. Derefs to `F`.
+pub struct Authenticated<F: AuthenticatedCapability>(pub F);
+
+impl<F: AuthenticatedCapability> Deref for Authenticated<F> {
+    type Target = F;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<F: AuthenticatedCapability> FromRequestParts<F::State> for Authenticated<F> {
+    type Rejection = Response;
+
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &F::State,
+    ) -> Result<Self, Self::Rejection> {
+        let Some(claims) = parts.extensions.get::<F::Claims>() else {
+            return Err(InternalError::new(
+                "authenticated capability",
+                "claims missing from request extensions; an authN layer that inserts \
+                 the claims must run before an Authenticated<…> handler",
+            )
+            .into_response());
+        };
+        Ok(Authenticated(F::build(state.clone(), claims.clone())))
     }
 }
 
@@ -435,5 +493,51 @@ mod tests {
             RefOr::T(response) => assert_eq!(response.description, "pre-existing"),
             RefOr::Ref(_) => panic!("expected the pre-existing inline response"),
         }
+    }
+
+    #[derive(Clone)]
+    struct FakeClaims(&'static str);
+
+    struct WhoAmI(&'static str);
+
+    impl AuthenticatedCapability for WhoAmI {
+        type State = ();
+        type Claims = FakeClaims;
+
+        fn build((): (), claims: FakeClaims) -> Self {
+            WhoAmI(claims.0)
+        }
+    }
+
+    fn parts() -> Parts {
+        axum::http::Request::builder()
+            .body(())
+            .expect("empty request")
+            .into_parts()
+            .0
+    }
+
+    /// With the claims inserted, the extractor builds the capability from
+    /// exactly those claims.
+    #[tokio::test]
+    async fn authenticated_builds_from_the_inserted_claims() {
+        let mut parts = parts();
+        parts.extensions.insert(FakeClaims("owner"));
+        let Authenticated(who) = Authenticated::<WhoAmI>::from_request_parts(&mut parts, &())
+            .await
+            .expect("claims present");
+        assert_eq!(who.0, "owner");
+    }
+
+    /// Without the claims the extractor fails closed with a 500 — a wiring bug,
+    /// never an admitted request.
+    #[tokio::test]
+    async fn authenticated_fails_closed_without_claims() {
+        let mut parts = parts();
+        let rejection = Authenticated::<WhoAmI>::from_request_parts(&mut parts, &())
+            .await
+            .err()
+            .expect("claims absent");
+        assert_eq!(rejection.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 }

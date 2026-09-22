@@ -26,6 +26,8 @@ The building blocks (`scope_capabilities_rust`):
 - **`Scoped<F>`** — an axum extractor that yields capability `F` only if the
   caller's claims cover `F::required_scopes()`, else a `403` naming the missing
   scopes.
+- **`AuthenticatedCapability`** / **`Authenticated<F>`** — the authenticated-only
+  flavour: no scope, the caller's own claims handed to `build` whole.
 - **`ScopeClaims`** / **`GrantedScopes`** — the claims contract. `ScopeClaims` is
   the ready-made value an authN middleware inserts; a slice with a richer claims
   type implements `GrantedScopes` on it instead (via `grant_from_scope_claim`).
@@ -221,7 +223,7 @@ of putting it in the request. Keep required scopes inside the client's allowed s
 (`tauri-shared-config.json`'s `local_granted_scopes`, which seeds them) or the
 step-up path dead-ends for that endpoint.
 
-## Two flavours of gate
+## Three flavours of gate
 
 - **Fixed capability** (gatekeeper's `/access`): the scope is constant, so
   implement `FixedScopeCapability` — `required_scopes()` returns it and `build`
@@ -236,6 +238,45 @@ step-up path dead-ends for that endpoint.
   whether the resource exists on disk. (Catalogue membership — which ids the host
   declares — is separately public to any authenticated caller, so a `404` for an
   uncatalogued id is not a leak.)
+- **Authenticated-only** (gatekeeper's logout and `GET /access/session`): the
+  caller acts on their _own_ session and no scope applies — a scope gate would
+  lock out exactly the under-scoped callers who need to log out or read their own
+  scopes. Implement `AuthenticatedCapability` (`build(state, claims)` receives the
+  caller's claims whole) and take `Authenticated<F>` in the handler. It fails
+  closed with a 500 when no authN layer inserted claims, like `Scoped`.
+
+## Authority proofs: gating the write, not just the read
+
+Scope gates answer "may this caller reach this data?". Gatekeeper additionally
+answers "on what authority is this row being written?" for every privileged
+write (approving a request, issuing a code, recording or widening a grant or a
+registration, minting a token, issuing a refresh token). Each such write lives
+in exactly one **writer** (`gatekeeper-rust/src/domain/capabilities/writers/`),
+and each writer method takes a **proof** from `domain/authority/` — a type with
+private fields and a single constructor, which is the one function that checks
+the rule the proof stands for:
+
+- `AuthenticatedClient` — the client exists, is enabled, and (if confidential)
+  presented its secret. Everything a client does on its own behalf takes one.
+- `DelegatedScopes` — an Owner's approval clamped to the requested/allowed
+  ceiling **and** covered by the approver's own grant, so nothing recorded ever
+  exceeds what the approver held.
+- `StandingGrantCoverage` — a standing grant covers every scope of a
+  _registered_ request: the `/oauth/authorize` fast path's authority to issue a
+  code with no human in the loop, named so it can be audited as such.
+- `RedeemedAuthorizationCode` / `ConsumedDeviceRequest` / `ValidatedRefreshToken`
+  — the redemptions a token is minted under, each carrying the scopes of the
+  record it redeemed.
+- `HostBootstrap` — the host's own boot-time owner token, the one authority
+  with no approving human; constructible only in `seeding.rs`.
+
+Two source guards make it structural: one pins every privileged store method
+name to the writers, the other pins the `HostBootstrap` constructor to seeding.
+The audit is then the proof constructors plus the writers, not every flow.
+Capabilities that no principal unlocks (the pre-auth `/oauth` front door, the
+token verifier) are acquired through gatekeeper's `Live<F>` extractor, so a
+handler never names the router state; the handler-file guard forbids `State<…>`
+and every state field outright.
 
 ## Canonical layout
 
@@ -265,16 +306,18 @@ lets a guard test assert `domain/` never imports `crate::http`.
   `/access` admin surface (`GrantsReader`, `GrantsRevoker`, `ConsentReader`,
   `ConsentDecider`, `TokenRevoker`), generic over `GatekeeperStore`, bound to the
   concrete store in `gatekeeper-rust/src/live_bindings/`. Their privileged writes
-  go through `domain/capabilities/writers/`, each of whose methods demands an
-  **authority proof** from `domain/authority/` (e.g. `DelegatedScopes`, the
-  clamp proving an approver may delegate a scope set) — the same "price of
-  admission" idea, applied to _what authority a row is written under_ rather
-  than _who may reach the store_. A source guard pins each privileged store
-  method to the writers.
+  go through the writers under an authority proof (see the section above).
 - **Data-dependent:** `slices/databases/databases-rust/src/domain/capabilities.rs` —
   `DatabasesReader` / `DatabasesDeleter`, gated per database by the `read_scope` /
   `delete_scope` the host declares on each `DatabaseDescriptor`, operating through
   the `DatabaseFiles` port (stubbed with an in-memory fake in the unit tests).
+- **Authenticated-only:** `gatekeeper-rust/src/live_bindings/session.rs` —
+  `LiveSessionEnder` / `LiveSessionReader`, built from the caller's
+  `VerifiedClaims` and acquired through `Authenticated<…>`.
+- **Authority proofs and writers:** `gatekeeper-rust/src/domain/authority/` and
+  `gatekeeper-rust/src/domain/capabilities/writers/`; the flows that obtain a
+  proof and hand it to a writer are `domain/capabilities/oauth/` (the pre-auth
+  front door) and `domain/capabilities/access/consents/` (the Owner's approvals).
 - **The authN-pair contract:**
   `gatekeeper-rust/tests/integration/smoke.rs::bearer_gate_inserts_scope_claims_a_downstream_capability_reads`
   drives the real bearer gate into the real databases capability.

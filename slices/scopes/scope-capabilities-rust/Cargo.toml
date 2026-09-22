@@ -31,3 +31,8 @@ shared-structures-rust = { path = "../../shared-structures/shared-structures-rus
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Drives the `Authenticated<F>` extractor's `async fn from_request_parts` in
+# unit tests.
+tokio = { workspace = true, features = ["macros", "rt"] }

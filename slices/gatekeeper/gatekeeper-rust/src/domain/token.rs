@@ -220,8 +220,8 @@ pub enum VerifyError {
     /// while checking whether a token was revoked. An operator problem, and we
     /// **fail closed** — surface as 500 rather than admit a possibly-revoked
     /// token — matching how [`Self::KeyStoreUnavailable`] is treated.
-    #[error("revocation store unavailable")]
-    RevocationStoreUnavailable(#[source] rusqlite::Error),
+    #[error("revocation store unavailable: {0}")]
+    RevocationStoreUnavailable(String),
 }
 
 /// Verify a JWT against `possible_signing_keys`, returning the decoded claims
