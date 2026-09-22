@@ -72,10 +72,9 @@ interface ServerSourceFileListProps {
    *
    * @remarks
    * `1` is a host with nowhere to put a twelve-file pick — the anonymizer's
-   * `serverSource` slot, and the importer app's own tab, which imports one
-   * file at a time. It renders the rows as radios, so selecting one deselects
-   * every other, and names the action **Use as source**. Any other cap simply
-   * disables the remaining rows' checkboxes once it is reached.
+   * `serverSource` slot. It renders the rows as radios, so selecting one
+   * deselects every other, and names the action **Use as source**. Any other
+   * cap simply disables the remaining rows' checkboxes once it is reached.
    */
   readonly maxPicks?: number | undefined
 }
