@@ -82,7 +82,7 @@ function.
   Both extraction failure and an unrecognized LifeLabs document surface as
   `ParseError` — the one error channel the batch decode folds into that file's
   `unreadableFiles` entry. It reads only the picked file's name and bytes: this
-  format derives no id from its archive, and the batch decode does the
+  format derives no id from its source file, and the batch decode does the
   `meta.source` stamping.
 - `src/detect.ts` — **`detectLifeLabsPdf`**, the importer's `detect`:
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
@@ -96,7 +96,7 @@ function.
   FHIR encoding is not written
   here — `lifelabs-pdf-importer.ts` states those constants as its
   `sourceFileFormat` (PDF content type, LifeLabs coding under
-  `LIFELABS_SYSTEM|lifelabs-pdf-archive`, no web-trace security label) and
+  `LIFELABS_SYSTEM|lifelabs-pdf-source file`, no web-trace security label) and
   gets the read-back, and a `decode` that mints, derived from them. Nothing parses the PDF on
   that path; the bytes are carried, hashed, and handed back exactly as they
   arrived. The mint derives a deterministic id from the file's SHA-256 and
@@ -106,8 +106,8 @@ function.
 - `src/lifelabs-pdf-importer.ts` — **`lifeLabsPdfImporter`**, the
   `FileImporter.Type` literal for format `'lifelabs-pdf'`, its `decode` a
   `DecodeFunction.make` with `decodeLifeLabsPdf` as its `decodeFileSet` — no
-  `groupBy` (a report stands alone) and no `archive`. The
-  batch decode it returns mints every pick's archive
+  `groupBy` (a report stands alone) and no `linkSourceFile`. The
+  batch decode it returns mints every pick's source file
   `DocumentReference` and reviews it as its own "Source file" section, stamps
   every synthesized resource's `meta.source` with it, and folds a file whose
   bytes yield no report into that file's `unreadableFiles` entry. What `decode`

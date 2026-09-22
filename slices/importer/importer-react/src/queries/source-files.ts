@@ -102,8 +102,8 @@ interface SourceFileRow {
    * instant.
    *
    * @remarks
-   * The server's own `meta.lastUpdated`, not anything the archive carries: an
-   * archive states what the file *is*, and the instant it reached the device is
+   * The server's own `meta.lastUpdated`, not anything the source file carries: an
+   * source file states what the file *is*, and the instant it reached the device is
    * the server's to know.
    */
   readonly lastUpdated: DateTime.Utc | null
@@ -113,7 +113,7 @@ interface SourceFileRow {
    *
    * @remarks
    * What lets the list show a study's files as one study rather than N loose
-   * rows. Only a group format writes it: a DICOM study's archives all name the
+   * rows. Only a group format writes it: a DICOM study's source files all name the
    * `ImagingStudy` they were read into, which is the only thing on the stored
    * resource that separates two studies of one patient (their `subject` is the
    * same `Patient`). A format whose files stand alone leaves it `null`.
@@ -362,10 +362,10 @@ const useSmartSourceFilesQuery = (
  *
  * @remarks
  * Decodes through `PickedFile.FromDocumentReference` under the row's format's
- * own constants, so a resource that is not an archive of that format fails as a
+ * own constants, so a resource that is not a source file of that format fails as a
  * `ParseError` rather than yielding nonsense. The bytes are carried verbatim —
  * every downstream step reads bytes — and no id travels with them: a re-picked
- * archive mints the same id from the same bytes and name, so the row it
+ * source file mints the same id from the same bytes and name, so the row it
  * produces is the one already stored.
  *
  * One read for both consumers. The picker hands the result to the batch, which

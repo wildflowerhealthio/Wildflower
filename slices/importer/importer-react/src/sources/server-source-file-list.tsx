@@ -105,7 +105,7 @@ const SourceFileRowItem = ({
 }: SourceFileRowItemProps): JSX.Element => {
   const title = row.title ?? UNTITLED_LABEL
   return (
-    <li className={styles.archiveRow}>
+    <li className={styles.sourceFileRow}>
       <div className={styles.archiveMeta}>
         <input
           type={isSingle ? 'radio' : 'checkbox'}

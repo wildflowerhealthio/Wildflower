@@ -39,9 +39,9 @@ const testDetectors: readonly FormatDetector.Type[] = [harDetector]
  * search's URL and its `Authorization` header can both be asserted.
  *
  * The load-bearing observation is convergence: a file dropped, a file chosen, and
- * a server archive selected all reach `onPick` with the same HAR text — the
+ * a server source file selected all reach `onPick` with the same HAR text — the
  * local two identically, the server one under a `server` source that names the
- * stored archive.
+ * stored source file.
  */
 
 vi.mock('fhir-r4-react', async (importOriginal) => {
@@ -52,7 +52,7 @@ vi.mock('fhir-r4-react', async (importOriginal) => {
 const SERVER_URL = 'http://127.0.0.1:8080/fhir-r4'
 const ACCESS_TOKEN = 'tok-abc'
 
-/** A minimal but complete HAR 1.2 archive, shared by every source in a test. */
+/** A minimal but complete HAR 1.2 source file, shared by every source in a test. */
 const VALID_HAR = JSON.stringify({
   log: {
     version: '1.2',
@@ -114,10 +114,10 @@ const captureIntersectionObservers = (): readonly { readonly trigger: () => void
 }
 
 describe('SourcePicker', () => {
-  it('should reach the same HAR text from a dropped file, a chosen file, and a server archive', async () => {
-    // Arrange — one archive on the server, carrying the same HAR the local file does
+  it('should reach the same HAR text from a dropped file, a chosen file, and a server source file', async () => {
+    // Arrange — one source file on the server, carrying the same HAR the local file does
     serveArchives({
-      pages: [{ archives: [{ id: 'archive-1', fileName: 'portal-session.har' }] }],
+      pages: [{ sourceFiles: [{ id: 'archive-1', fileName: 'portal-session.har' }] }],
       harTextById: { 'archive-1': VALID_HAR },
     })
     const picks: Array<{ fileName: string; bytes: Uint8Array }> = []
@@ -147,16 +147,16 @@ describe('SourcePicker', () => {
     expect(picks.map((pick) => decode(pick.bytes))).toEqual([VALID_HAR, VALID_HAR, VALID_HAR])
     expect(picks[0]?.fileName).toBe('portal-session.har')
     expect(picks[1]?.fileName).toBe('portal-session.har')
-    // The server pick is titled by what the fetch read back off the archive.
+    // The server pick is titled by what the fetch read back off the source file.
     expect(picks[2]?.fileName).toBe('archive-1.har')
   })
 
-  it('should list server archives by title and date, and read the selected one over an authed search', async () => {
+  it('should list server source files by title and date, and read the selected one over an authed search', async () => {
     // Arrange
     const uploadedAt = '2026-08-13'
     serveArchives({
       pages: [
-        { archives: [{ id: 'archive-1', fileName: 'portal-session.har', date: uploadedAt }] },
+        { sourceFiles: [{ id: 'archive-1', fileName: 'portal-session.har', date: uploadedAt }] },
       ],
       harTextById: { 'archive-1': VALID_HAR },
     })
@@ -171,7 +171,7 @@ describe('SourcePicker', () => {
     })
     expect(screen.getByText(uploadedAt)).toBeDefined()
 
-    // …the search went out filtered by the comma-joined archive category
+    // …the search went out filtered by the comma-joined source file category
     // covering every registered format, sized, and authed
     expect(paramsOf(0)['category']).toBe(SOURCE_FILES_CATEGORY_TOKEN)
     expect(SOURCE_FILES_CATEGORY_TOKEN).toBe(
@@ -184,7 +184,7 @@ describe('SourcePicker', () => {
     await userEvent.click(screen.getByRole('checkbox', { name: 'Select portal-session.har' }))
     await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
 
-    // Assert — the chosen archive is fetched and returned as bytes
+    // Assert — the chosen source file is fetched and returned as bytes
     await waitFor(() => {
       expect(picked !== undefined).toBe(true)
     })
@@ -198,8 +198,8 @@ describe('SourcePicker', () => {
     const observers = captureIntersectionObservers()
     serveArchives({
       pages: [
-        { archives: [{ id: 'archive-1', fileName: 'first.har' }], nextCursor: 'cursor-2' },
-        { archives: [{ id: 'archive-2', fileName: 'second.har' }] },
+        { sourceFiles: [{ id: 'archive-1', fileName: 'first.har' }], nextCursor: 'cursor-2' },
+        { sourceFiles: [{ id: 'archive-2', fileName: 'second.har' }] },
       ],
       harTextById: {},
     })
@@ -228,7 +228,7 @@ describe('SourcePicker', () => {
 
   it('should expose the drop zone as a labeled button and the file input as a named control', () => {
     // Arrange
-    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    serveArchives({ pages: [{ sourceFiles: [] }], harTextById: {} })
     render(<SourcePicker detectors={testDetectors} onPick={() => undefined} />, {
       wrapper: withQueryClient,
     })
@@ -244,7 +244,7 @@ describe('SourcePicker', () => {
 
   it('should reject a dropped file that is not a HAR at the picker, without calling onPick', async () => {
     // Arrange
-    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    serveArchives({ pages: [{ sourceFiles: [] }], harTextById: {} })
     const picks: unknown[] = []
     render(<SourcePicker detectors={testDetectors} onPick={(chosen) => picks.push(...chosen)} />, {
       wrapper: withQueryClient,
@@ -267,7 +267,7 @@ describe('SourcePicker', () => {
 
   it('should pick several chosen files at once as one batch', async () => {
     // Arrange
-    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    serveArchives({ pages: [{ sourceFiles: [] }], harTextById: {} })
     const calls: string[][] = []
     render(
       <SourcePicker
@@ -292,7 +292,7 @@ describe('SourcePicker', () => {
 
   it('should pick a whole folder as one batch, through a directory input', async () => {
     // Arrange — a study arrives as a directory, not as files chosen by hand
-    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    serveArchives({ pages: [{ sourceFiles: [] }], harTextById: {} })
     const calls: string[][] = []
     render(
       <SourcePicker
@@ -321,7 +321,7 @@ describe('SourcePicker', () => {
     serveArchives({
       pages: [
         {
-          archives: [
+          sourceFiles: [
             { id: 'archive-1', fileName: 'first.har' },
             { id: 'archive-2', fileName: 'second.har' },
           ],
@@ -349,14 +349,14 @@ describe('SourcePicker', () => {
     await waitFor(() => {
       expect(calls).toHaveLength(1)
     })
-    // The names are the fetched archives' own — the list's rows are titled by
+    // The names are the fetched source files' own — the list's rows are titled by
     // the search result, the pick by what the fetch read back.
     expect(calls[0]).toEqual(['archive-1.har', 'archive-2.har'])
   })
 
   it('should pick the valid files in a mixed drop and name the ones that were not HARs', async () => {
     // Arrange
-    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
+    serveArchives({ pages: [{ sourceFiles: [] }], harTextById: {} })
     const picks: string[] = []
     render(
       <SourcePicker
@@ -384,7 +384,7 @@ describe('SourcePicker', () => {
 
 // Helpers
 
-/** Text as base64, the way the archive codec stores the file's bytes. */
+/** Text as base64, the way the source file codec stores the file's bytes. */
 const base64 = Schema.encodeSync(Schema.StringFromBase64)
 
 /** A real HAR `File`, for the OS-picker (`upload`) and drop paths. */
@@ -407,8 +407,8 @@ const dataTransferOf = (...files: readonly File[]): { readonly files: readonly F
   files,
 })
 
-/** One archive `DocumentReference` wire, decodable and rowable. */
-const archiveWire = (fields: {
+/** One source file `DocumentReference` wire, decodable and rowable. */
+const sourceFileWire = (fields: {
   readonly id: string
   readonly fileName: string
   readonly date?: string
@@ -465,9 +465,9 @@ const idFromUrl = (url: string): string => {
   return segments[segments.length - 1] ?? ''
 }
 
-/** A page the search returns: its archives and an optional next cursor. */
+/** A page the search returns: its source files and an optional next cursor. */
 interface ArchivePageSpec {
-  readonly archives: ReadonlyArray<{
+  readonly sourceFiles: ReadonlyArray<{
     readonly id: string
     readonly fileName: string
     readonly date?: string
@@ -476,7 +476,7 @@ interface ArchivePageSpec {
 }
 
 /**
- * Serves the archive search and the per-id fetch off one stateless routing rule:
+ * Serves the source file search and the per-id fetch off one stateless routing rule:
  * a request with a `category` param is a search (answered by page, keyed by
  * `_pageToken` → page index), anything else is a GetById (answered by id). The
  * runner carries the bearer token so the wire can be asserted.
@@ -495,13 +495,13 @@ const serveArchives = (config: {
       const params = Object.fromEntries(request.urlParams)
       if (params['category'] !== undefined) {
         const page = config.pages[pageIndexOf(params['_pageToken'])]
-        const wires = (page?.archives ?? []).map((one) => archiveWire(one))
+        const wires = (page?.sourceFiles ?? []).map((one) => sourceFileWire(one))
         return Effect.succeed(
           HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires, page?.nextCursor)))
         )
       }
       const id = idFromUrl(request.url)
-      const wire = archiveWire({ id, fileName: `${id}.har`, harText: config.harTextById[id] })
+      const wire = sourceFileWire({ id, fileName: `${id}.har`, harText: config.harTextById[id] })
       return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(wire)))
     })
   )

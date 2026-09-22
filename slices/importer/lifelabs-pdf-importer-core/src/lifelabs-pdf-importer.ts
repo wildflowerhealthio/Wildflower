@@ -21,7 +21,7 @@ const sourceFileFormat = {
  * The LifeLabs PDF importer: one report PDF per pick.
  *
  * @remarks
- * No `groupBy` — a report stands alone — and no `archive`: the stored PDF is
+ * No `groupBy` — a report stands alone — and no `source file`: the stored PDF is
  * the format's own artifact, kept out of `Patient/$everything`.
  */
 const lifeLabsPdfImporter: FileImporter.Type<LifeLabsPdfSettings, typeof format> = {

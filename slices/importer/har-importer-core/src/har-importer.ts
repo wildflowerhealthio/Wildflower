@@ -73,12 +73,12 @@ const sourceFileFormat = {
 }
 
 /**
- * The HAR importer: one archive per pick, its recognized responses folded into
+ * The HAR importer: one source file per pick, its recognized responses folded into
  * per-URL sections.
  *
  * @remarks
  * No `groupBy` — a HAR stands alone, so every pick is its own set — and no
- * `archive`: a captured browsing session is an engineering artifact, and
+ * `source file`: a captured browsing session is an engineering artifact, and
  * filing it under a patient would put it in `Patient/$everything`.
  */
 const harImporter: FileImporter.Type<HarSettings, typeof format> = {

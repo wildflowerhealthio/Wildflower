@@ -50,7 +50,7 @@ afterEach(() => {
 })
 
 describe('sourceFilesInfiniteQueryOptions', () => {
-  it('should search the comma-joined archive category over every registered format, sized and authed', async () => {
+  it('should search the comma-joined source file category over every registered format, sized and authed', async () => {
     // Arrange
     const queryClient = freshQueryClient()
     const options = sourceFilesInfiniteQueryOptions(runAuthedOver([searchset([])]))
@@ -94,7 +94,7 @@ describe('sourceFilesInfiniteQueryOptions', () => {
   })
 
   it("should date each row by the stored resource's own meta.lastUpdated", async () => {
-    // The archive states no instant of its own; when the file reached the
+    // The source file states no instant of its own; when the file reached the
     // device is the server's to know.
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
     const queryClient = freshQueryClient()
@@ -151,7 +151,7 @@ describe('sourceFilesInfiniteQueryOptions', () => {
 
 // Helpers
 
-/** Text as base64, the way the archive codec stores the file's bytes. */
+/** Text as base64, the way the source file codec stores the file's bytes. */
 const base64 = Schema.encodeSync(Schema.StringFromBase64)
 
 /**
@@ -185,7 +185,7 @@ const harArchiveWire = (fields: {
   }
 }
 
-/** One LifeLabs PDF archive `DocumentReference`, hand-built the same way. */
+/** One LifeLabs PDF source file `DocumentReference`, hand-built the same way. */
 const lifelabsPdfArchiveWire = (fields: {
   readonly id: string
   readonly fileName: string

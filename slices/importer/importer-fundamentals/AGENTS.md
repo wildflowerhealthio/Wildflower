@@ -24,7 +24,7 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   record, not a class instance**: an adapter layer extends one by spreading it
   (which is how `importer-react`'s registry attaches each format's
   `SettingsPicker`), and a spread is only total when there is no prototype to
-  lose. The **write direction is not a member**: minting the archive a pick is
+  lose. The **write direction is not a member**: minting the source file a pick is
   stored as is something only the batch `decode` does, through `PickedFile`'s
   own codec. What a reader of the server's source-file list needs —
   `PickedFile.categoryToken`, `PickedFile.isSourceFile`,
@@ -64,25 +64,25 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   `FormatDecode.Result` out, never failing, requiring nothing).
   **`make(config)`** takes one **`Config`**: the `format`, the
   `sourceFileFormat`, a `decodeFileSet`, and — optionally — a `groupBy` and an
-  `archive`. **`ArchivedFile`** is what a `decodeFileSet` reads: a
+  `linkSourceFile`. **`WithSourceFile`** is what a `decodeFileSet` reads: a
   `PickedFile.Type` plus the `DocumentReference` minted for it. **`groupBy`** is
   called per file and returns the key it shares with its set-mates, or a `Left`
   that reports it as its own `unreadableFiles` row (pick order, ahead of any
   failing set); left out, every file is its own set, keyed by its own id. A
   format that needs a parse to state that key **parses twice** — once here, once
   in `decodeFileSet` — which is the deliberate price of a constructor with no
-  parsed-value passthrough in it. **`archive`** runs after the decode, once per
-  member, with that member's minted archive and the set's whole decode, and
-  returns the archive to list and stamp with; its `id` must not change. Left
-  out, the archive is stored exactly as minted.
-  Per set, concurrently across sets, `make` mints an archive for **every** pick
+  parsed-value passthrough in it. **`linkSourceFile`** runs after the decode, once per
+  member, with that member's minted source file and the set's whole decode, and
+  returns the source file to list and stamp with; its `id` must not change. Left
+  out, the source file is stored exactly as minted.
+  Per set, concurrently across sets, `make` mints a source file for **every** pick
   (`Schema.encode(PickedFile.FromDocumentReference)`), runs `decodeFileSet`,
-  finishes each archive through `archive`, **namespaces the decode's review
+  finishes each source file through `linkSourceFile`, **namespaces the decode's review
   keys** by the set's first picked file (`FormatDecode.keyPrefix`), stamps every
   resource's `meta.source` with the set's **representative** — the member whose
-  archive id is lexicographically smallest, and an archive id is a content hash,
+  source file id is lexicographically smallest, and a source file id is a content hash,
   so the stamp is independent of pick order (`MetaSource.stampDecoded`) —
-  prepends the archives as the set's **"Source file"** / **"Source files"**
+  prepends the source files as the set's **"Source file"** / **"Source files"**
   section, and folds a `ParseError` into one `unreadableFiles` row per pick of
   the failing set. It provides the `PickedFile.Format` service from
   `config.sourceFileFormat` internally, so nothing it returns carries a
@@ -104,34 +104,34 @@ No DOM, no `fs`, no React: pure data and transitions the shell drives.
   (keys a re-decode no longer produces) are inert — sets and maps of keys,
   nothing dangling.
 - `src/picked-file.ts` — the **`PickedFile`** namespace: the picked file
-  vocabulary _and_ the codec that archives one. **`Type`**
+  vocabulary _and_ the codec that source files one. **`Type`**
   (`{ id, fileName, bytes }`) is the one value every `decode` receives, and
   **`NamedBytes`** (`{ fileName, bytes }`) the id-free half it extends — one
   name for the shape a picker source, `FormatDetector.claiming` and the read of
-  a stored archive all take, instead of three structural copies of it. Bytes
+  a stored source file all take, instead of three structural copies of it. Bytes
   rather than text so the picker stays format-blind. The `id` is the batch slot
   `importer-core`'s `readBatch` stamped, and **the picker never mints one**.
   The codec is one schema over one format's **`FormatValue`**, which reaches it
   as the **`Format`** `Context.Tag`: **`FromDocumentReference`**, whose read leg
-  accepts only an archive of this format carrying attachment data (so a rejected
-  archive reports through the schema's own issue) and projects it — stored id,
+  accepts only a source file of this format carrying attachment data (so a rejected
+  source file reports through the schema's own issue) and projects it — stored id,
   attachment title, decoded bytes — and whose write leg **mints**: SHA-256 of the
   bytes, an id from `fhir-r4/identity`'s `localResourceId` over that hash plus
   the file name namespaced by the coding system, and the resource built around
-  them. The encode ignores the value's own `id`, so decoding an archive and
+  them. The encode ignores the value's own `id`, so decoding a source file and
   encoding it again is the identity on the id — which is what makes a file
-  re-picked off the server mint the archive it came from rather than a second
-  copy. The archive states **no instant**: what it is, not when it arrived; the
+  re-picked off the server mint the source file it came from rather than a second
+  copy. The source file states **no instant**: what it is, not when it arrived; the
   server's own `meta.lastUpdated` is what dates a row.
   **`categoryToken`** and **`isSourceFile`** are plain projections of the
   constants — not codec work, so not schemas. A validated `DocumentReference` is
   **not** named here as a type of its own: a module that needs it imports
-  `DocumentReference` from `fhir-r4/resources`. Note the internal `ArchiveSchema`
+  `DocumentReference` from `fhir-r4/resources`. Note the internal `DocumentReferenceAsItself`
   is a `Schema.declare` over that type rather than
   `Schema.typeSchema(DocumentReference.Schema)`, whose encode walks the struct
   and turns a `null` optional into `undefined`.
 - `src/sha256.ts` — **`sha256Base64`** (+ `DigestUnavailable`), the base64
-  SHA-256 the archive attachment's `hash` carries, over Web Crypto. A verbatim
+  SHA-256 the source file attachment's `hash` carries, over Web Crypto. A verbatim
   copy of `web-trace-core`'s helper (the standard digest, no project-specific
   behaviour), kept here so the codec above needs no `web-trace-core` dependency
   — a copy, because moving it would invert the importer → web-trace direction.
@@ -144,7 +144,7 @@ Depends on `effect` (and `kitchen-sink` in tests), plus `fhir-r4` for the
 not generic — every format binds `FhirResource`, so there is no `TParsed` left
 to abstract over), `fhir-r4/data-types` for `Meta` (the slot `MetaSource.stamp`
 writes into), `fhir-r4/identity` for the shared id derivation, and `fhir`'s
-wire types. Hosting the archive codec is what widened
+wire types. Hosting the source file codec is what widened
 `fhir-r4` from a type-only import to the `DocumentReference` runtime schema
 (it builds and decodes the resource) — but still no client, no other resource
 schemas, and no `persistResources`: the write sink stays at the shell
@@ -153,7 +153,7 @@ on `web-trace-core`: the digest helper (`sha256.ts`) and `meta-source.ts` are
 both verbatim-in-spirit copies of web-trace's, for the same reason — standard,
 project-neutral helpers, and moving them would invert the importer →
 web-trace direction. A HAR binding passes web-trace's coding constants in as
-data. Names no archive _format_ (each binding supplies its `decodeFileSet` and
+data. Names no source file _format_ (each binding supplies its `decodeFileSet` and
 its coding), no HTTP vocabulary (the HAR binding's recognition machinery lives in
 `har-importer-core`), and no UI framework. Never imports a `*-importer-core`,
 an `importer-core`, a `*-importer-react`, `slices/collector`, or
@@ -172,12 +172,12 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
 - **`DecodeFunction.make` provides `PickedFile.Format`; the shell provides it
   at its one read; no other production code does.** The codec is parameterized
   by that tag, the constructor discharges it once from the `sourceFileFormat` it
-  was handed, and `importer-react`'s read of a stored archive
+  was handed, and `importer-react`'s read of a stored source file
   (`fetchSourceFile`) provides it from the registry entry's own
   `sourceFileFormat`. See "Bake an internal context requirement to reshape the
   public type" in the
   [Effect Patterns Reference](../../../docs/Effect/Patterns%20Reference.md).
-  A new archive operation belongs in `picked-file.ts` requiring the tag,
+  A new source file operation belongs in `picked-file.ts` requiring the tag,
   not in a wrapper closing over `coding`.
   This is also what keeps **`sourceFileFormat` spelled once** per binding: a
   second copy could hand the decode constants that disagree with the ones a
@@ -192,10 +192,10 @@ an `importer-core`, a `*-importer-react`, `slices/collector`, or
   exposes each module as its namespace, and a flat re-export beside it would
   give the same symbol a second spelling. Only modules that are _not_
   namespaces (`sha256.ts`, `settings-picker-props.ts`) export flat.
-- **The archive is the format's, minted inside `decode`.** What an archive is,
+- **The source file is the format's, minted inside `decode`.** What a source file is,
   which resources point at it, and what happens to those links are each format's
   decisions, expressed through `decode-function.ts`'s constructor over the
-  `picked-file.ts` vocabulary and codec. The shell has no archive knowledge at
+  `picked-file.ts` vocabulary and codec. The shell has no source file knowledge at
   all — it reviews the minted row like any other resource. Do not put the mint
   back in the shell.
 - **Review keys are namespaced per file set, here and nowhere else.** A

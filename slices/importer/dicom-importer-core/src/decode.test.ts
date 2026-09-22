@@ -32,11 +32,11 @@ import { type DicomSettings } from './settings.ts'
 const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
 
 /**
- * A stored archive with the given id — the shape the decode constructor hands
+ * A stored source file with the given id — the shape the decode constructor hands
  * each member. Only its `id` matters here: it is what an instance's
  * `gridfsFileId` names.
  */
-const archiveWithId = (id: string): DocumentReference.Type =>
+const sourceFileWithId = (id: string): DocumentReference.Type =>
   Schema.decodeSync(DocumentReference.Schema)({
     resourceType: 'DocumentReference',
     id,
@@ -46,17 +46,17 @@ const archiveWithId = (id: string): DocumentReference.Type =>
 
 /**
  * One file of a study — what the decode function hands this decode once it has
- * grouped the pick and minted the archives. The header is parsed by
+ * grouped the pick and minted the source files. The header is parsed by
  * `decodeStudy` itself, so nothing is passed alongside the bytes.
  */
 const studyFile = (
   tags: DicomTagMap,
   { fileName = 'sample.dcm', sourceFileId = 'doc-1', index = 0 } = {}
-): DecodeFunction.ArchivedFile => ({
+): DecodeFunction.WithSourceFile => ({
   id: `${index}:${fileName}`,
   fileName,
   bytes: writeDicom(tags),
-  archive: archiveWithId(sourceFileId),
+  sourceFile: sourceFileWithId(sourceFileId),
 })
 
 const SAMPLE_TAGS: DicomTagMap = {
@@ -75,7 +75,7 @@ const SAMPLE_TAGS: DicomTagMap = {
 
 const sample = (
   overrides: DicomTagMap = {}
-): Arr.NonEmptyReadonlyArray<DecodeFunction.ArchivedFile> => [
+): Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> => [
   studyFile({ ...SAMPLE_TAGS, ...overrides }),
 ]
 
@@ -166,7 +166,7 @@ describe('decodeStudy', () => {
   })
 
   describe('a study spread across files', () => {
-    const twoFiles: Arr.NonEmptyReadonlyArray<DecodeFunction.ArchivedFile> = [
+    const twoFiles: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> = [
       studyFile(
         { ...SAMPLE_TAGS, SeriesInstanceUID: '1.2.3.4.5.2', SeriesNumber: 2, SOPInstanceUID: 'I2' },
         { fileName: 'b.dcm', sourceFileId: 'doc-b', index: 0 }
@@ -196,7 +196,7 @@ describe('decodeStudy', () => {
     })
 
     it('notes an AccessionNumber the files disagree on, and does not merge them', async () => {
-      const conflicting: Arr.NonEmptyReadonlyArray<DecodeFunction.ArchivedFile> = [
+      const conflicting: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> = [
         twoFiles[0],
         studyFile(
           {
@@ -255,7 +255,7 @@ describe('sectionTitle', () => {
 
 /**
  * The batch decode as the importer exposes it: `DecodeFunction.make` is what
- * provides the source-file context, and the archives it mints under the
+ * provides the source-file context, and the source files it mints under the
  * format's real coding constants are half of what these tests are about.
  */
 const decode = dicomImporter.decode
@@ -287,10 +287,10 @@ const of = <K extends FhirResource['resourceType']>(
 const studiesOf = (result: FormatDecode.Result<string>): readonly ImagingStudy.Type[] =>
   of(result, 'ImagingStudy')
 
-const archivesOf = (result: FormatDecode.Result<string>): readonly DocumentReference.Type[] =>
+const sourceFilesOf = (result: FormatDecode.Result<string>): readonly DocumentReference.Type[] =>
   of(result, 'DocumentReference')
 
-/** The sections a study was decoded into — the archive sections are the rest. */
+/** The sections a study was decoded into — the source file sections are the rest. */
 const studySections = (result: FormatDecode.Result<string>): readonly DecodedFile.Section[] =>
   result.decoded.sections.filter((section) =>
     section.resources.some((one) => one.key.endsWith('imaging-study'))
@@ -333,25 +333,25 @@ describe('the DICOM batch decode', () => {
     expect(studySections(result)).toHaveLength(1)
   })
 
-  it('mints one archive per file, all filed under the patient and related to the study', async () => {
+  it('mints one source file per file, all filed under the patient and related to the study', async () => {
     const result = await run([
       file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
       file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
     ])
-    const archives = archivesOf(result)
-    expect(archives).toHaveLength(2)
+    const sourceFiles = sourceFilesOf(result)
+    expect(sourceFiles).toHaveLength(2)
 
     const [study] = studiesOf(result)
     const [patient] = of(result, 'Patient')
-    for (const archive of archives) {
-      expect(archive.subject?.reference).toBe(`Patient/${patient.id}`)
-      expect(archive.context?.related.map((one) => one.reference)).toEqual([
+    for (const sourceFile of sourceFiles) {
+      expect(sourceFile.subject?.reference).toBe(`Patient/${patient.id}`)
+      expect(sourceFile.context?.related.map((one) => one.reference)).toEqual([
         `ImagingStudy/${study.id}`,
       ])
     }
   })
 
-  it('lists the archives in one "Source files" section ahead of the study', async () => {
+  it('lists the source files in one "Source files" section ahead of the study', async () => {
     const result = await run([
       file('1', { SOPInstanceUID: 'I1' }),
       file('2', { SOPInstanceUID: 'I2' }),
@@ -364,17 +364,17 @@ describe('the DICOM batch decode', () => {
     ])
   })
 
-  it('gives each instance the archive of its own file', async () => {
+  it('gives each instance the source file of its own file', async () => {
     const result = await run([
       file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
       file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
     ])
-    const archiveIds = archivesOf(result).map((one) => one.id)
+    const sourceFileIds = sourceFilesOf(result).map((one) => one.id)
     const [study] = studiesOf(result)
     const instanceFileIds = study.series.flatMap((series) =>
       series.instance.map((instance) => instance.extension[0]?.valueString)
     )
-    expect(new Set(instanceFileIds)).toEqual(new Set(archiveIds))
+    expect(new Set(instanceFileIds)).toEqual(new Set(sourceFileIds))
   })
 
   it('splits a pick spanning two studies into two file sets', async () => {
@@ -415,15 +415,15 @@ describe('the DICOM batch decode', () => {
     expect(result.decoded.sections).toEqual([])
   })
 
-  it('stamps every resource of a study with the smallest of its archive ids', async () => {
+  it('stamps every resource of a study with the smallest of its source file ids', async () => {
     const result = await run([
       file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
       file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
     ])
-    const smallest = archivesOf(result)
+    const smallest = sourceFilesOf(result)
       .map((one) => one.id ?? '')
       .toSorted((left, right) => left.localeCompare(right))[0]
-    // The archive rows are the set's own section, prepended after the stamp —
+    // The source file rows are the set's own section, prepended after the stamp —
     // what carries a `meta.source` is what was read *out of* the files.
     const stamps = new Set(
       resourcesOf(result)

@@ -25,7 +25,7 @@ import { ServerSourceFileList, UNDATED_LABEL } from './server-source-file-list.t
  *     format-neutral heading, each with a selection control and a Preview
  *     action;
  *   - Preview opens the modal, fetches the file through the row's format's
- *     archive codec, and renders the bytes (a JSON archive as pretty-printed
+ *     source file codec, and renders the bytes (a JSON source file as pretty-printed
  *     text, a PDF via an `<iframe>` at a `blob:` URL);
  *   - the one pick action fetches every selected row and calls `onPick` with
  *     their names and bytes;
@@ -104,7 +104,7 @@ afterEach(() => {
 })
 
 describe('ServerSourceFileList', () => {
-  it('should list a HAR and a LifeLabs PDF archive together under the format-neutral heading', async () => {
+  it('should list a HAR and a LifeLabs PDF source file together under the format-neutral heading', async () => {
     // Arrange — a mixed searchset carrying one of each format
     serveArchives([
       harArchiveWire({ id: 'har-1', fileName: 'portal.har', lastUpdated: UPLOADED_AT }),
@@ -168,7 +168,7 @@ describe('ServerSourceFileList', () => {
     // Two spaces of indentation is the pretty-print signal — JSON.stringify(
     //   parsed, null, 2)
     expect(screen.getByTestId('preview-json').textContent).toContain('  "log"')
-    // The archive was fetched by id off the FHIR base
+    // The source file was fetched by id off the FHIR base
     const fetchRequest = sentRequests.find((request) =>
       request.url.includes('/DocumentReference/har-1')
     )

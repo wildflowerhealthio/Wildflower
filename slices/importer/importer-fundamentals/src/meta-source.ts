@@ -5,7 +5,7 @@
  *
  * @remarks
  * Both stamps take a {@link Reference} rather than a bare `string` — the
- * slice's one currency for "which archive" — so the only place it could be
+ * slice's one currency for "which source file" — so the only place it could be
  * laundered back into an unconstrained string is closed. The vocabulary lives
  * here, beside its one consumer, which keeps this module free of the codec and
  * of any schema import.
@@ -20,12 +20,12 @@ import type * as DecodedFile from './decoded-file.ts'
 const REFERENCE_PREFIX = 'DocumentReference/'
 
 /**
- * A typed FHIR reference to an archive's `DocumentReference`, carrying the
+ * A typed FHIR reference to a source file's `DocumentReference`, carrying the
  * invariant that the string is `DocumentReference/<id>` at the type level.
  */
 type Reference = `DocumentReference/${string}`
 
-/** The reference a resource stamped with this archive names. */
+/** The reference a resource stamped with this source file names. */
 const makeReference = (id: string): Reference => `${REFERENCE_PREFIX}${id}`
 
 interface Sourceable {

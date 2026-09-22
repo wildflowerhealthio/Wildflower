@@ -63,7 +63,7 @@ write plan with this package alone.
   substituted, in review order) with the `excluded` count, or a `skip` with
   its **`SkipReason`** (`nothing` / `unreadable`). It adds no
   provenance and rewrites nothing: the format's `decode` already minted the
-  archive and stamped `meta.source`.
+  source file and stamped `meta.source`.
 
 ## Layering
 
@@ -75,12 +75,12 @@ nothing from `slices/collector` or `slices/http-extraction`.
 
 ## Guardrails
 
-- **No archive knowledge here.** What an archive is, which resources point at
+- **No source file knowledge here.** What a source file is, which resources point at
   it, and what happens to those links when the reviewer excludes it
   are each format's decisions, made inside its `decode` by
   `importer-fundamentals`' `DecodeFunction.make`. `readBatch` and `planFormatWrite`
-  treat the archive row as any other resource. Do not reintroduce a
-  shell-side mint, a side map of archives, or a "primary file".
+  treat the source file row as any other resource. Do not reintroduce a
+  shell-side mint, a side map of source files, or a "primary file".
 - **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from
   the format tag and the picked files' own ids — which `groupByFormat` mints
   from each file's position in the batch and its name, so two picks of the same
@@ -98,7 +98,7 @@ nothing from `slices/collector` or `slices/http-extraction`.
 
 - [slices/importer AGENTS.md](../AGENTS.md) — package roles and layering.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
-  `FileImporter` contract, the archive seam, and `StagedImport`.
+  `FileImporter` contract, the source file seam, and `StagedImport`.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
   runs these functions from its hooks.
 - [Adding a File-Format Importer How-To](../docs/Adding%20a%20File-Format%20Importer%20How-To.md)

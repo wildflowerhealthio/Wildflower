@@ -47,7 +47,7 @@ const DICOM_UID_SYSTEM = 'urn:dicom:uid'
  * @remarks
  * Per *instance*, which is why a study spanning many files keeps per-file
  * provenance that `meta.source` alone could not carry: `meta.source` names one
- * archive, and a study has as many archives as it has files.
+ * source file, and a study has as many source files as it has files.
  */
 const GRIDFS_FILE_ID_EXTENSION_URL = 'gridfsFileId'
 
@@ -206,7 +206,7 @@ interface StudyInstance {
   /**
    * The id of the `DocumentReference` storing this file's raw bytes, when
    * known — stamped onto this instance as its `gridfsFileId` extension, so
-   * every instance names its own archive rather than the study naming one.
+   * every instance names its own source file rather than the study naming one.
    */
   readonly sourceFileId?: string | undefined
 }
@@ -243,7 +243,7 @@ const compareText = (left: string, right: string): number => {
 
 /**
  * Order two instances within their series: by `InstanceNumber`, then by
- * `SOPInstanceUID`, then by the archive they came from.
+ * `SOPInstanceUID`, then by the source file they came from.
  *
  * @remarks
  * Total, and a function of the files alone — no tie is broken by pick order.
@@ -300,7 +300,7 @@ const studySeries = <T extends StudyInstance>(instances: readonly T[]): readonly
 /**
  * The study's instances in study order — every series' instances, series by
  * series. The first of them is the study's representative: the header the
- * `Patient` and the section title are read off, and the archive the
+ * `Patient` and the section title are read off, and the source file the
  * study-level resources' `meta.source` names.
  */
 const orderedInstances = <T extends StudyInstance>(instances: readonly T[]): readonly T[] =>
@@ -454,7 +454,7 @@ type DicomFhirResources =
  * Synthesize FHIR resources from one study's files.
  *
  * @param instances - Every picked file of one study — same `StudyInstanceUID`,
- *   same patient — in any order, each with the id of the archive storing it
+ *   same patient — in any order, each with the id of the source file storing it
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against (see `dates.ts`)
  * @returns The resources in write order: Patient first (when the headers carry

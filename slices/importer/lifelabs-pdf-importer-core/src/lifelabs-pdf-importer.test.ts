@@ -89,7 +89,7 @@ const readDecoded = (
 }
 
 describe('lifeLabsPdfImporter decode', () => {
-  it('property: a pick is reviewed with its minted archive, and every resource points at it', async () => {
+  it('property: a pick is reviewed with its minted source file, and every resource points at it', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
@@ -142,12 +142,12 @@ describe('lifeLabsPdfImporter decode', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The archive this format's importer mints — the schema driven under
+// The source file this format's importer mints — the schema driven under
 // `lifeLabsPdfImporter`'s own format constants, which is the same context its
 // batch `decode` mints under.
 // ---------------------------------------------------------------------------
 
-const mintArchive = (
+const mintSourceFile = (
   bytes: Uint8Array,
   fileName = 'lab-report.pdf'
 ): Promise<DocumentReference.Type> =>
@@ -159,9 +159,9 @@ const mintArchive = (
     }).pipe(Effect.provideService(PickedFile.Format, lifeLabsPdfImporter.sourceFileFormat))
   )
 
-describe('LifeLabs PDF archive coding', () => {
+describe('LifeLabs PDF source file coding', () => {
   it('carries the LifeLabs coding on type and category, no security label, and pdf content', async () => {
-    const resource = await mintArchive(new TextEncoder().encode('%PDF-1.7\ntest'))
+    const resource = await mintSourceFile(new TextEncoder().encode('%PDF-1.7\ntest'))
 
     expect(resource.type?.coding[0]?.system?.toString()).toBe(LIFELABS_SYSTEM)
     expect(resource.type?.coding[0]?.code).toBe(LIFELABS_PDF_SOURCE_FILE_CODE)
@@ -179,9 +179,9 @@ describe('LifeLabs PDF archive coding', () => {
     )
   })
 
-  it('mints a resource that reads back as its own archive, bytes and name recovered', async () => {
+  it('mints a resource that reads back as its own source file, bytes and name recovered', async () => {
     const bytes = new TextEncoder().encode('%PDF-1.7\n%\xff\xfa\nround-trip')
-    const resource = await mintArchive(bytes, 'my-report.pdf')
+    const resource = await mintSourceFile(bytes, 'my-report.pdf')
 
     const back = await Effect.runPromise(
       Schema.decode(PickedFile.FromDocumentReference)(resource).pipe(

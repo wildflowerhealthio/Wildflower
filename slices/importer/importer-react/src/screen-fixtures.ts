@@ -1,6 +1,6 @@
 /**
  * The files the screen tests pick: the canonical DICOM study, the HAR the
- * FHIR pool recognizes, and the archive wire the server list serves.
+ * FHIR pool recognizes, and the source file wire the server list serves.
  *
  * @remarks
  * Their own module rather than inline in `importer-screen.test.tsx`: building
@@ -110,33 +110,33 @@ const RECOGNIZED_HAR: string = Effect.runSync(
   // observed the method would carry through.
 ).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
 
-/** One archive already on the server: its minted id and the wire it is served as. */
-interface StoredArchive {
+/** One source file already on the server: its minted id and the wire it is served as. */
+interface StoredSourceFile {
   readonly id: string
   readonly fileName: string
   readonly wire: unknown
 }
 
 /**
- * The archive a file of this format would be stored as, minted exactly as the
+ * The source file a file of this format would be stored as, minted exactly as the
  * decode mints it.
  *
- * @param format - The format's archive constants, from its registry entry
+ * @param format - The format's source file constants, from its registry entry
  * @param fileName - The stored file's name
  * @param text - The stored file's contents
- * @returns The archive's id and the FHIR JSON a server would serve
+ * @returns The source file's id and the FHIR JSON a server would serve
  *
  * @remarks
  * Minted rather than hand-built, because the point of a server-picked file is
- * that re-picking it mints *the same* archive: the id is deterministic in the
+ * that re-picking it mints *the same* sourceFile: the id is deterministic in the
  * bytes, the name and the coding system, so the row a re-decode produces is the
  * one already stored and the server diff reads it as `unchanged`.
  */
-const storedArchive = async (
+const storedSourceFile = async (
   format: PickedFile.FormatValue,
   fileName: string,
   text: string
-): Promise<StoredArchive> => {
+): Promise<StoredSourceFile> => {
   const bytes = new Uint8Array(new TextEncoder().encode(text))
   const resource = await Effect.runPromise(
     Schema.encode(PickedFile.FromDocumentReference)({ id: `0:${fileName}`, fileName, bytes }).pipe(
@@ -147,5 +147,5 @@ const storedArchive = async (
   return { id: resource.id ?? '', fileName, wire }
 }
 
-export { dicomFile, RECOGNIZED_HAR, storedArchive }
-export type { DicomTagMap, StoredArchive }
+export { dicomFile, RECOGNIZED_HAR, storedSourceFile }
+export type { DicomTagMap, StoredSourceFile }

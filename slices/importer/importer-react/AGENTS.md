@@ -9,7 +9,7 @@ One surface a host app mounts, reading the authed runner out of router context:
   exactly what every format would write in one combined, **generalized**
   view — each format's decoded sections with per-resource include/edit, under
   its own settings form — confirm once to write the reviewed, included
-  resources across the batch (every file's archive among them), and read
+  resources across the batch (every file's source file among them), and read
   the per-format results. Every source picks a **batch**: several local files,
   several folder entries, several server rows.
 
@@ -142,9 +142,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   best-effort: `planFormatWrite` (in `importer-core`) then one
   `persistBatchBundle` of exactly those resources. It adds nothing to any
   resource — no id locking, no provenance stamping — because the format's
-  `decode` already minted the archive and stamped every extracted
+  `decode` already minted the source file and stamped every extracted
   resource's `meta.source`. One format's failure never stops the rest, and a
-  rejected archive is just one failed entry; there is no separate upload
+  rejected source file is just one failed entry; there is no separate upload
   step to fail.
   `resource-editor.tsx` (+ `resource-editor-helpers.ts`) is the inline JSON
   editor: **Keep** parses the text, decodes through
@@ -158,11 +158,11 @@ The importer has no HTTP wire union to derive, so there is no separate
   format result's `title` (its claimed file names) rather than a file name of
   its own, all on `collectImportSummary` semantics (any failure ⇒ partial);
   `import-results.tsx` renders the batch grouped by response code — every
-  submitted resource (the archive included) with its status, plus the
+  submitted resource (the source file included) with its status, plus the
   formats that had nothing to import — under one aggregate tally. Only claimed
   formats appear: a format that took no files is not a "nothing to import"
   row. There is no
-  upload-failed section: a rejected archive is an ordinary failure row.
+  upload-failed section: a rejected source file is an ordinary failure row.
 - **`src/sources/`** — the picker. Every source here yields
   `PickedFile.NamedBytes` (`{ fileName, bytes }`); the id a pick is known by is
   `importer-core`'s `readBatch` to mint, and nothing in this directory does.
@@ -204,8 +204,8 @@ The importer has no HTTP wire union to derive, so there is no separate
   `page-token.ts` pulls the continuation cursor out of a bundle's `next`
   link (a copy of the web-trace viewer's, see the trap); `keys.ts` holds
   the query-key roots.
-- **The archive is a reviewed resource the format minted.** Every pick's
-  archive `DocumentReference` is minted inside that format's
+- **The source file is a reviewed resource the format minted.** Every pick's
+  source file `DocumentReference` is minted inside that format's
   `decode` (by the batch decode `DecodeFunction.make` built) and arrives as its own
   "Source file" section ahead of that file's extracted ones, keyed
   `<pick id>/source-file/<fileName>`. The shell neither mints it nor
@@ -215,7 +215,7 @@ The importer has no HTTP wire union to derive, so there is no separate
   `meta.source` links survive — and so does re-picking the same file off the
   server, which is why its row comes back `unchanged` from the diff and
   pre-excluded from the initial selection. The source-file list query is
-  invalidated once at end-of-batch (a fresh archive is a new
+  invalidated once at end-of-batch (a fresh source file is a new
   `DocumentReference` the picker should see next pick — cheap even when none
   wrote).
 
@@ -246,13 +246,13 @@ The importer has no HTTP wire union to derive, so there is no separate
 - **A format's confirm is one `persistBatchBundle`, and nothing is stamped at
   confirm.** `planFormatWrite` (in `importer-core`) turns the format's decoded
   sections plus the reviewer's selection into the exact resource list — a set
-  leads with its archives in the same bundle as its
+  leads with its source files in the same bundle as its
   extracted resources, no upload-then-persist sequence and no ordering to
   protect. `importOneFormat` hands that list straight to
   `persistBatchBundle`: it does not look for the
-  archive, lock an id, or write `meta.source`, because the format's
-  `decode` already minted the archive at a deterministic id and stamped
-  every extracted resource with its reference. An archive row the reviewer
+  source file, lock an id, or write `meta.source`, because the format's
+  `decode` already minted the source file at a deterministic id and stamped
+  every extracted resource with its reference. A source file row the reviewer
   **excluded** is simply not written, and the resources keep their
   `meta.source` — the link points at a `DocumentReference` this batch chose not
   to upload, which is the reviewer's decision, not a rewrite the shell makes.
@@ -322,14 +322,14 @@ The importer has no HTTP wire union to derive, so there is no separate
   `fetchSourceFile` reads the one file the user selected or previewed. Listing
   the bytes to render a title would pull every source file onto the device to
   draw a list.
-- **A row selection decodes through its format's archive codec and keeps
+- **A row selection decodes through its format's source file codec and keeps
   the bytes verbatim.** `fetchSourceFile` decodes
   `PickedFile.FromDocumentReference` with the row's format's
   `sourceFileFormat` provided as the `PickedFile.Format` service — the one
   place above `importer-fundamentals` that provides it — so a
-  resource that is not an archive of that format fails as a `ParseError`,
+  resource that is not a source file of that format fails as a `ParseError`,
   never yields nonsense. It hands on the stored file's own name and bytes and
-  nothing else: re-picking mints the archive it came from, because the id is a
+  nothing else: re-picking mints the source file it came from, because the id is a
   hash of exactly those two.
 - **A row's Preview action opens a read-only raw-contents modal that
   renders the file itself.** The modal fetches through
@@ -341,27 +341,27 @@ The importer has no HTTP wire union to derive, so there is no separate
   fallback for a giant source file. The modal writes nothing and offers no
   editing — a preview is inspection, not another entry point to the
   review flow.
-- **An archive's id is derived from its bytes and name, so re-importing upserts.**
+- **A source file's id is derived from its bytes and name, so re-importing upserts.**
   The mint `DecodeFunction.make` runs inside each format's `decode`
   derives the resource id with `localResourceId` over the file's SHA-256 and
   name — deterministic, not a per-pick uuid — so its bundle entry is a PUT to a
   stable `DocumentReference/<id>` and re-importing the same file under the same
   name overwrites in place rather than piling up duplicates; a file re-picked
-  off the server mints the archive it came from. The attachment's
-  `hash` and `size` still describe the bytes, and the archive states no instant
+  off the server mints the source file it came from. The attachment's
+  `hash` and `size` still describe the bytes, and the source file states no instant
   at all. (Result ids are also
   deterministic — `FormatDecode.makeId` over the format tag and each picked
   file's id — so there is no client-side `crypto.randomUUID()` anywhere in
   the flow.)
-- **Upload takes bytes, not text.** The archive mint stores the file
+- **Upload takes bytes, not text.** The source file mint stores the file
   verbatim so a truncated or mis-encoded upload is preserved and the
   attachment `hash` means something. `PickedFile.bytes` is a `Uint8Array` from
   the picker all the way to the mint, and nothing in between re-encodes it.
 - **A group format's files are re-picked together or not at all.** Picking one
-  archive of a study off the server yields a one-file study, which is a
+  source file of a study off the server yields a one-file study, which is a
   different `ImagingStudy` than the one that was imported. That is why the list
   is multi-select and hands every selected row on as one pick, and why each row
-  shows what it is a source of (`context.related` — a study's archives name the
+  shows what it is a source of (`context.related` — a study's source files name the
   `ImagingStudy` they were read into, which `subject` cannot distinguish, since
   every study of one patient shares it). The line is a label, not a grouping:
   what the rows make up is the decode's `groupBy` to decide.
@@ -402,10 +402,10 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
 - `importer-screen.test.tsx` is the end-to-end one: it replaces only the router
   seam and drives the whole flow over a recording stub `HttpClient`, reading one
   ordered write log back. It pins the opt-in seam (zero writes to reach a review),
-  the confirm (the archive and the extracted resources go out in one
+  the confirm (the source file and the extracted resources go out in one
   bundle, every resource write carrying the `meta.source` its decode stamped),
-  the re-picked server archive (its row present and pre-excluded, nothing
-  uploaded), the multi-file batch, the per-file archive failure, the
+  the re-picked server source file (its row present and pre-excluded, nothing
+  uploaded), the multi-file batch, the per-file source file failure, the
   partial-write fold,
   that a single-format import reports no blank "nothing to import" rows, and
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a

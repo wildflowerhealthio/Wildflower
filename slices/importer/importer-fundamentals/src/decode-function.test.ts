@@ -15,7 +15,7 @@ import * as DecodedFile from './decoded-file.ts'
 import * as FormatDecode from './format-decode.ts'
 import * as PickedFile from './picked-file.ts'
 
-// The archive schema itself — the mint, the encode, the read-back — is
+// The source file schema itself — the mint, the encode, the read-back — is
 // `picked-file.ts`'s and is tested there, directly under the format tag. What
 // this file covers is the constructor: how a batch is grouped into sets, what
 // each set contributes, and what a rejecting set does to its neighbours.
@@ -97,15 +97,15 @@ const fileArbitrary: fc.Arbitrary<PickedFile.Type> = fc
 const asBatch = (files: readonly PickedFile.Type[]): readonly PickedFile.Type[] =>
   files.map((file, index) => pickedFile(index, file.fileName, file.bytes))
 
-/** The archive row a single-pick decode leads with. */
-const mintedArchive = async (
+/** The source file row a single-pick decode leads with. */
+const mintedSourceFile = async (
   batchDecode: DecodeFunction.Type<null, typeof testFormat>,
   file: PickedFile.Type
 ): Promise<DocumentReference.Type> => {
   const result = await Effect.runPromise(batchDecode([file], null))
   const resource = result.decoded.sections[0]?.resources[0]?.resource
   if (resource?.resourceType !== 'DocumentReference')
-    throw expect.fail('Expected an archive DocumentReference')
+    throw expect.fail('Expected a source file DocumentReference')
   return resource
 }
 
@@ -119,10 +119,10 @@ const readBack = (
     )
   )
 
-describe('the archives a decode mints', () => {
-  it('reads its own minted archive back, bytes and name recovered', async () => {
+describe('the source files a decode mints', () => {
+  it('reads its own minted source file back, bytes and name recovered', async () => {
     const file = oneFile('scan.bin', new Uint8Array([1, 2]))
-    const resource = await mintedArchive(decode, file)
+    const resource = await mintedSourceFile(decode, file)
 
     expect(PickedFile.isSourceFile(sourceFileFormat)(resource)).toBe(true)
     const back = await readBack(sourceFileFormat, resource)
@@ -131,9 +131,9 @@ describe('the archives a decode mints', () => {
     expect(back.id).toBe(resource.id)
   })
 
-  it("does not claim another format's archive, though they share a system", async () => {
+  it("does not claim another format's source file, though they share a system", async () => {
     const file = oneFile('scan.bin', new Uint8Array([1, 2]))
-    const theirs = await mintedArchive(otherDecode, file)
+    const theirs = await mintedSourceFile(otherDecode, file)
 
     expect(PickedFile.isSourceFile(sourceFileFormat)(theirs)).toBe(false)
     const outcome = await Effect.runPromise(
@@ -157,13 +157,13 @@ describe('the archives a decode mints', () => {
     expect(labeled?.title).toBe('scan.bin')
   })
 
-  it('should carry no upload instant on the archive it mints', async () => {
-    const resource = await mintedArchive(decode, oneFile('scan.bin', new Uint8Array([1, 2])))
+  it('should carry no upload instant on the source file it mints', async () => {
+    const resource = await mintedSourceFile(decode, oneFile('scan.bin', new Uint8Array([1, 2])))
     expect(resource.date).toBeNull()
     expect(resource.content[0]?.attachment.creation).toBeNull()
   })
 
-  it('should mint an archive for every pick, however it was picked', async () => {
+  it('should mint a source file for every pick, however it was picked', async () => {
     const result = await Effect.runPromise(
       decode(
         asBatch([oneFile('a.bin', new Uint8Array([1])), oneFile('b.bin', new Uint8Array([2]))]),
@@ -176,8 +176,8 @@ describe('the archives a decode mints', () => {
 
   it('should mint the same id for the same bytes and name on every decode', async () => {
     const file = oneFile('scan.bin', new Uint8Array([7]))
-    const first = await mintedArchive(decode, file)
-    const second = await mintedArchive(decode, file)
+    const first = await mintedSourceFile(decode, file)
+    const second = await mintedSourceFile(decode, file)
     expect(first.id).toBe(second.id)
   })
 })
@@ -190,14 +190,14 @@ const referenceValue = (reference: string): typeof IdentifierAndReference.Refere
 
 const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
 
-/** A decode whose archives name the first resource the set decoded to. */
+/** A decode whose source files name the first resource the set decoded to. */
 const linkingDecode = DecodeFunction.make({
   format: testFormat,
   sourceFileFormat,
   decodeFileSet: (members) => decodeBytes(members[0]),
   // The decode's own resources name the links, so a format never parses its
   // file twice to derive one.
-  archive: (minted, decoded): DocumentReference.Type => {
+  linkSourceFile: (minted, decoded): DocumentReference.Type => {
     const first = DecodedFile.resources(decoded)[0]
     if (first === undefined) return minted
     const reference = referenceValue(`Patient/${first.resource.id}`)
@@ -209,17 +209,20 @@ const linkingDecode = DecodeFunction.make({
   },
 })
 
-describe('the archive a format finishes off its decode', () => {
-  it('should list the archive the format returned, links and all', async () => {
-    const sourceRow = await mintedArchive(linkingDecode, oneFile('scan.bin', new Uint8Array([9])))
+describe('the source file a format finishes off its decode', () => {
+  it('should list the source file the format returned, links and all', async () => {
+    const sourceRow = await mintedSourceFile(
+      linkingDecode,
+      oneFile('scan.bin', new Uint8Array([9]))
+    )
     expect(sourceRow.subject?.reference).toBe('Patient/9')
     expect(sourceRow.context?.related.map((one) => one.reference)).toEqual(['Patient/9'])
   })
 
   it('should keep the minted id, and stamp meta.source with it', async () => {
     const file = oneFile('scan.bin', new Uint8Array([9]))
-    const minted = await mintedArchive(decode, file)
-    const finished = await mintedArchive(linkingDecode, file)
+    const minted = await mintedSourceFile(decode, file)
+    const finished = await mintedSourceFile(linkingDecode, file)
     expect(finished.id).toBe(minted.id)
 
     const result = await Effect.runPromise(linkingDecode([file], null))
@@ -243,7 +246,7 @@ describe('decode (batch behavior)', () => {
         for (const [index, entry] of result.unreadableFiles.entries()) {
           expect(entry.title).toBe(unreadable[index]?.fileName)
         }
-        // Each readable file contributes its archive's section plus a content
+        // Each readable file contributes its source file's section plus a content
         // section — every pick mints, whatever it came from.
         expect(result.decoded.sections.length).toBe(readable.length * 2)
       }),
@@ -262,11 +265,11 @@ describe('decode (batch behavior)', () => {
           expect(sections[0]?.resources.map((entry) => entry.key)).toEqual([
             `${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`,
           ])
-          const archiveId = sections[0]?.resources[0]?.resource.id
+          const sourceFileId = sections[0]?.resources[0]?.resource.id
           const extracted = sections.slice(1).flatMap((section) => section.resources)
           expect(extracted.length).toBe(file.bytes.length)
           for (const entry of extracted) {
-            expect(entry.resource.meta?.source).toBe(`DocumentReference/${archiveId}`)
+            expect(entry.resource.meta?.source).toBe(`DocumentReference/${sourceFileId}`)
           }
         }
       ),
@@ -274,13 +277,13 @@ describe('decode (batch behavior)', () => {
     )
   })
 
-  it('should hand the set decode the archive minted for each member', async () => {
+  it('should hand the set decode the source file minted for each member', async () => {
     const seen: (string | null)[] = []
     const spyDecode = DecodeFunction.make({
       format: testFormat,
       sourceFileFormat,
       decodeFileSet: (members) => {
-        seen.push(members[0].archive.id)
+        seen.push(members[0].sourceFile.id)
         return decodeBytes(members[0])
       },
     })
@@ -318,7 +321,7 @@ describe('decode (batch behavior)', () => {
   })
 
   it('should keep two files that decode to the same key apart', async () => {
-    // Both files decode to a `<fileName>:0` key, and both mint an archive row —
+    // Both files decode to a `<fileName>:0` key, and both mint a source file row —
     // the collision that let unticking one file's row drop the other's
     // resource, since the selection is keyed by (format, key).
     const result = await Effect.runPromise(
@@ -382,7 +385,7 @@ const groupByName = (file: PickedFile.Type): Either.Either<string, ParseResult.P
 
 /** One section per set, one resource per member; a set with an empty file rejects whole. */
 const decodeGroup = (
-  members: Arr.NonEmptyReadonlyArray<DecodeFunction.ArchivedFile>
+  members: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile>
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   members.some((member) => member.bytes.length === 0)
     ? Effect.fail(emptyFileError(members[0].fileName))
@@ -446,7 +449,7 @@ describe('a grouped decode', () => {
     )
   })
 
-  it('namespaces a set by its first picked member and stamps it with one archive', async () => {
+  it('namespaces a set by its first picked member and stamps it with one source file', async () => {
     const files = asBatch([
       oneFile('s-1.bin', new Uint8Array([1])),
       oneFile('s-2.bin', new Uint8Array([2])),
@@ -463,7 +466,7 @@ describe('a grouped decode', () => {
       `${prefix}member/${second.id}`,
     ])
     expect(stampsOf(result).size).toBe(1)
-    // Both archives are listed, each keyed by its own pick.
+    // Both source files are listed, each keyed by its own pick.
     expect(result.decoded.sections[0]?.title).toBe('Source files')
     expect(result.decoded.sections[0]?.resources.map((entry) => entry.key)).toEqual([
       `${prefix}source-file/s-1.bin`,
@@ -471,7 +474,7 @@ describe('a grouped decode', () => {
     ])
   })
 
-  it('property: a set stamps the smallest of its archive ids, whatever order it was picked in', async () => {
+  it('property: a set stamps the smallest of its source file ids, whatever order it was picked in', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.uniqueArray(fc.integer({ min: 1, max: 40 }), { minLength: 2, maxLength: 4 }),

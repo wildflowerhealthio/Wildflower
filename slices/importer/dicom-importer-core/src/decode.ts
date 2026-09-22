@@ -34,7 +34,7 @@ const labelAdopted = (resource: FhirResource, key: string, title: string): Decod
   return { key, title, resource: adopted }
 }
 
-/** One file of a study, as the synthesis sees it: its header, its archive, its pick. */
+/** One file of a study, as the synthesis sees it: its header, its source file, its pick. */
 interface StudyFile extends StudyInstance {
   readonly fileName: string
 }
@@ -147,27 +147,27 @@ const referenceValue = (reference: string): typeof IdentifierAndReference.Refere
 const emptyContext = Schema.decodeSync(DocumentReferenceContext.Schema)({})
 
 /**
- * Finish a study's archive off the study's own decode: file it under the
+ * Finish a study's source file off the study's own decode: file it under the
  * `Patient` the decode synthesized, and relate it to the `ImagingStudy` it was
  * read into.
  *
- * @param minted - The archive as `PickedFile.FromDocumentReference` minted it
+ * @param minted - The source file as `PickedFile.FromDocumentReference` minted it
  * @param decoded - The whole study's decode
- * @returns The archive to store and list, with the same id it was minted under
+ * @returns The source file to store and list, with the same id it was minted under
  *
  * @remarks
- * `subject` is the epic's deliberate departure from the HAR/PDF archive
+ * `subject` is the epic's deliberate departure from the HAR/PDF source file
  * convention — a DICOM file is a clinical document and belongs in
  * `Patient/$everything`. `context.related` is what separates two studies of one
  * patient, whose `subject` is the same `Patient`.
  *
  * Read off the decode's *own* resources rather than re-derived from the
- * headers, so an archive names exactly the resources this decode is about to
- * write — the two cannot drift. Nothing here touches the archive's `id`: the
+ * headers, so a source file names exactly the resources this decode is about to
+ * write — the two cannot drift. Nothing here touches the source file's `id`: the
  * row listed for review and the reference every resource's `meta.source` names
  * are both read back off this result.
  */
-const archive = (
+const linkToPatientAndStudy = (
   minted: DocumentReference.Type,
   decoded: DecodedFile.DecodedFile
 ): DocumentReference.Type => {
@@ -194,7 +194,7 @@ const archive = (
  * resources.
  *
  * @param members - Every picked `.dcm` of one study, in pick order, each with
- *   the archive storing it (whose id is the instance's `gridfsFileId`)
+ *   the source file storing it (whose id is the instance's `gridfsFileId`)
  * @param settings - The import's settings; its `timeZone` is what
  *   `ImagingStudy.started` is resolved against
  * @returns One section when the study carries a patient, plus notes for what
@@ -218,7 +218,7 @@ const archive = (
  * setting for the whole pick, so an unresolvable zone fails every set.
  */
 const decodeStudy = (
-  members: Arr.NonEmptyReadonlyArray<DecodeFunction.ArchivedFile>,
+  members: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile>,
   settings: DicomSettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.gen(function* () {
@@ -228,7 +228,7 @@ const decodeStudy = (
       Effect.map(headerOf(member), (header) => ({
         fileName: member.fileName,
         header,
-        sourceFileId: member.archive.id ?? undefined,
+        sourceFileId: member.sourceFile.id ?? undefined,
       }))
     )
     const ordered = orderedInstances(files)
@@ -268,5 +268,5 @@ const decodeStudy = (
     return { sections, notes }
   })
 
-export { archive, decodeStudy, sectionTitle, studyGroupKey, studyKey }
+export { linkToPatientAndStudy, decodeStudy, sectionTitle, studyGroupKey, studyKey }
 export type { StudyFile }

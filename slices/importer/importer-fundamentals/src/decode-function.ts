@@ -4,8 +4,8 @@
  * builds it.
  *
  * @remarks
- * {@link make} is where archive handling lives: it mints a
- * `DocumentReference` for every picked file, lists the archives among the
+ * {@link make} is where source file handling lives: it mints a
+ * `DocumentReference` for every picked file, lists the source files among the
  * reviewed sections, stamps `meta.source` on everything the decode produced,
  * and provides the format's `PickedFile.Format` internally, so what a binding
  * writes is a literal and what a consumer holds requires nothing.
@@ -42,14 +42,14 @@ type Type<in TSettings, TFormat extends string> = (
 
 /**
  * One file of a set as {@link Config.decodeFileSet} reads it: the pick, plus
- * the archive minted for it.
+ * the source file minted for it.
  */
-type ArchivedFile = PickedFile.Type & { readonly archive: DocumentReference.Type }
+type WithSourceFile = PickedFile.Type & { readonly sourceFile: DocumentReference.Type }
 
 /** What {@link make} needs of a format. */
 interface Config<TFormat extends string, TSettings> {
   readonly format: TFormat
-  /** The format's archive constants — {@link make} provides them internally. */
+  /** The format's source file constants — {@link make} provides them internally. */
   readonly sourceFileFormat: PickedFile.FormatValue
   /**
    * Which files are decoded together, as the key they share.
@@ -64,67 +64,71 @@ interface Config<TFormat extends string, TSettings> {
     | ((file: PickedFile.Type) => Either.Either<string, ParseResult.ParseError>)
     | undefined
   readonly decodeFileSet: (
-    members: Arr.NonEmptyReadonlyArray<ArchivedFile>,
+    members: Arr.NonEmptyReadonlyArray<WithSourceFile>,
     settings: TSettings
   ) => Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError>
   /**
-   * What this set's archives are listed and stamped as, read off its decode.
+   * What this set's source files are listed and stamped as, read off its decode.
    *
    * @remarks
-   * Runs after the decode, once per member, with that member's minted archive
+   * Runs after the decode, once per member, with that member's minted source file
    * and the set's whole decode — so a format names the subject and the related
-   * resources off what it already extracted. **The archive's `id` must not
+   * resources off what it already extracted. **The source file's `id` must not
    * change**: the row that is listed and the reference every resource's
-   * `meta.source` names are both read off the result. Left out, an archive is
+   * `meta.source` names are both read off the result. Left out, a source file is
    * stored exactly as minted — which keeps an engineering artifact out of
    * `Patient/$everything`.
    */
-  readonly archive?:
+  readonly linkSourceFile?:
     | ((minted: DocumentReference.Type, decoded: DecodedFile.DecodedFile) => DocumentReference.Type)
     | undefined
 }
 
-/** The section title one picked file's archive is reviewed under. */
+/** The section title one picked file's source file is reviewed under. */
 const SOURCE_FILE_SECTION_TITLE = 'Source file'
 
-/** The section title several archives read together are reviewed under. */
+/** The section title several source files read together are reviewed under. */
 const SOURCE_FILES_SECTION_TITLE = 'Source files'
 
-/** The review key of an archive row, stable across a settings re-decode. */
+/** The review key of a source file row, stable across a settings re-decode. */
 const sourceFileKey = (file: PickedFile.Type): string =>
   `${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`
 
-const mintArchive = Schema.encode(PickedFile.FromDocumentReference)
+const mintSourceFile = Schema.encode(PickedFile.FromDocumentReference)
 
-/** An archive stored exactly as minted — what a format that states no `archive` gets. */
+/** A source file stored exactly as minted — what a format that states no `source file` gets. */
 const asMinted = (minted: DocumentReference.Type): DocumentReference.Type => minted
 
 /**
- * The member whose archive stamps `meta.source` on the set's resources: the
- * one with the lexicographically smallest archive id.
+ * The member whose source file stamps `meta.source` on the set's resources: the
+ * one with the lexicographically smallest source file id.
  *
  * @remarks
- * An archive's id is a content hash of the file's bytes and name, so the
+ * A source file's id is a content hash of the file's bytes and name, so the
  * smallest of them is a fact about the set and not about the order it was
  * picked in — which is what makes the same study, picked any way round,
  * synthesize identical resources. Review keys need only survive a settings
  * re-decode, so they are namespaced by the set's first member in pick order
  * instead.
  */
-const representativeOf = (archived: Arr.NonEmptyReadonlyArray<ArchivedFile>): ArchivedFile =>
-  archived.reduce((smallest, one) => (archiveId(one) < archiveId(smallest) ? one : smallest))
+const representativeOf = (
+  withSourceFiles: Arr.NonEmptyReadonlyArray<WithSourceFile>
+): WithSourceFile =>
+  withSourceFiles.reduce((smallest, one) =>
+    sourceFileId(one) < sourceFileId(smallest) ? one : smallest
+  )
 
 /**
- * An archive's logical id. The mint always states one; `DocumentReference.id`
- * is nullable on the resource, and an archive missing it sorts first and
+ * A source file's logical id. The mint always states one; `DocumentReference.id`
+ * is nullable on the resource, and a source file missing it sorts first and
  * stamps a reference no resource resolves — which is what a mint that lost its
  * id should look like, rather than a crash.
  */
-const archiveId = (one: ArchivedFile): string => one.archive.id ?? ''
+const sourceFileId = (one: WithSourceFile): string => one.sourceFile.id ?? ''
 
 /**
- * Decode one set: mint an archive per pick, decode them together, let the
- * format finish each archive off the decode, and lead with the archives it is
+ * Decode one set: mint a source file per pick, decode them together, let the
+ * format finish each source file off the decode, and lead with the source files it is
  * about to store.
  */
 const decodeSet = <TSettings>(
@@ -133,30 +137,30 @@ const decodeSet = <TSettings>(
   config: Config<string, TSettings>
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError, PickedFile.Format> =>
   Effect.gen(function* () {
-    const archived = yield* Effect.forEach(
+    const withSourceFiles = yield* Effect.forEach(
       members,
-      (file): Effect.Effect<ArchivedFile, ParseResult.ParseError, PickedFile.Format> =>
-        Effect.map(mintArchive(file), (archive) => ({ ...file, archive })),
+      (file): Effect.Effect<WithSourceFile, ParseResult.ParseError, PickedFile.Format> =>
+        Effect.map(mintSourceFile(file), (sourceFile) => ({ ...file, sourceFile })),
       { concurrency: 'unbounded' }
     )
 
-    const decoded = yield* config.decodeFileSet(archived, settings)
+    const decoded = yield* config.decodeFileSet(withSourceFiles, settings)
 
-    const finish = config.archive ?? asMinted
-    const finished: Arr.NonEmptyReadonlyArray<ArchivedFile> = Arr.map(archived, (one) => ({
+    const finish = config.linkSourceFile ?? asMinted
+    const finished: Arr.NonEmptyReadonlyArray<WithSourceFile> = Arr.map(withSourceFiles, (one) => ({
       ...one,
-      archive: finish(one.archive, decoded),
+      sourceFile: finish(one.sourceFile, decoded),
     }))
 
     const stamped = MetaSource.stampDecoded(
       DecodedFile.namespaceKeys(decoded, FormatDecode.keyPrefix(members[0])),
-      MetaSource.makeReference(archiveId(representativeOf(finished)))
+      MetaSource.makeReference(sourceFileId(representativeOf(finished)))
     )
 
     const rows = finished.map((one): DecodedFile.Resource => ({
       key: sourceFileKey(one),
       title: one.fileName,
-      resource: one.archive,
+      resource: one.sourceFile,
     }))
 
     // Their own section ahead of what was read out of them, so the reviewer
@@ -215,16 +219,16 @@ const groupFiles = (
  * Build a format's batch `decode` from how its files group and how one group
  * reads.
  *
- * @param config - The format's tag, its archive constants, its
+ * @param config - The format's tag, its source file constants, its
  *   `decodeFileSet`, and — for a format whose files are read together — its
- *   `groupBy` and its `archive`
+ *   `groupBy` and its `source file`
  * @returns The format's batch decode: never failing, requiring nothing
  *
  * @remarks
  * Sets are decoded concurrently and each is independent: one that rejects
  * yields an `unreadableFiles` row per pick in it while the rest stay
- * reviewable. Within a set the archives are minted concurrently too, but they
- * are finished after the decode, because {@link Config.archive} reads it.
+ * reviewable. Within a set the source files are minted concurrently too, but they
+ * are finished after the decode, because {@link Config.sourceFile} reads it.
  */
 const make = <TFormat extends string, TSettings>(
   config: Config<TFormat, TSettings>
@@ -285,4 +289,4 @@ const make = <TFormat extends string, TSettings>(
 }
 
 export { SOURCE_FILE_SECTION_TITLE, SOURCE_FILES_SECTION_TITLE, make }
-export type { ArchivedFile, Config, Type }
+export type { WithSourceFile, Config, Type }

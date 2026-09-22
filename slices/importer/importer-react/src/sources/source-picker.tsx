@@ -17,7 +17,7 @@ import styles from './source-picker.module.css'
 /**
  * The one control that turns any of four sources into named bytes: a file
  * dropped on the zone, files chosen through the OS dialog, a whole folder, or
- * uploaded archives on the device's own FHIR server.
+ * uploaded source files on the device's own FHIR server.
  *
  * @remarks
  * Drop is an enhancement, not the only path: the zone is itself a button that
@@ -34,7 +34,7 @@ import styles from './source-picker.module.css'
  * from {@link ServerSourceFileList}, which lists every registered format's
  * uploaded source files — HAR, LifeLabs PDF, and any future format — and fetches
  * the chosen ones back through that format's source-file codec; each resulting
- * pick carries the archive's own reference so a later step links provenance
+ * pick carries the source file's own reference so a later step links provenance
  * without re-uploading the bytes.
  *
  * Presentation and interaction only. Nothing here parses HAR or opens a PDF —
@@ -114,7 +114,7 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
 
 /**
  * The picker: a drop-and-pick zone, the file input it opens, a rejection
- * notice, and the server archive list.
+ * notice, and the server source file list.
  */
 const SourcePicker = ({ detectors, onPick }: SourcePickerProps): JSX.Element => {
   const fileInputRef = useRef<HTMLInputElement>(null)

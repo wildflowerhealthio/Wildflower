@@ -107,10 +107,10 @@ const RECOGNIZED_WITH_NOISE = harBytesOf([
 /** The kind names the settings can turn off — the whole pool recognition routes against. */
 const POOL_KIND_NAMES: string[] = SourceDescriptor.poolOf(fhirSources).map((kind) => kind.name)
 
-/** The two kinds that claim the archive's Observation response. */
+/** The two kinds that claim the source file's Observation response. */
 const OBSERVATION_KINDS = ['ObservationListResponseKind', 'ObservationResponseKind']
 
-/** The fixture archive, as the batch read hands it over. */
+/** The fixture source file, as the batch read hands it over. */
 const pickedHar = (): PickedFile.Type => ({
   id: '0:archive.har',
   fileName: 'archive.har',
@@ -119,7 +119,7 @@ const pickedHar = (): PickedFile.Type => ({
 
 /**
  * Decode one pick and take the single result it yields, which must have been
- * read. Asynchronous because minting a pick's archive hashes its bytes through
+ * read. Asynchronous because minting a pick's source file hashes its bytes through
  * Web Crypto.
  */
 const readOne = async (
@@ -135,7 +135,7 @@ const readOne = async (
   return result
 }
 
-/** The format's own sections — everything but the minted archive's. */
+/** The format's own sections — everything but the minted source file's. */
 const extractedSections = (
   sections: readonly DecodedFile.Section[]
 ): readonly DecodedFile.Section[] => sections.filter((section) => section.title !== 'Source file')
@@ -147,7 +147,7 @@ const metaSourcesOf = (
   sections.flatMap((section) => section.resources.map((entry) => entry.resource.meta?.source))
 
 describe('harImporter.decode', () => {
-  it('should fold a recognized archive into one section per URL, in first-seen order', async () => {
+  it('should fold a recognized source file into one section per URL, in first-seen order', async () => {
     const decoded = (await readOne(pickedHar())).decoded
 
     expect(decoded.sections.map((section) => section.title)).toEqual([
@@ -193,12 +193,12 @@ describe('harImporter.decode', () => {
     )
   })
 
-  it("should list a pick's minted archive as its own first section", async () => {
+  it("should list a pick's minted source file as its own first section", async () => {
     const decoded = (await readOne(pickedHar())).decoded
     const sourceSection = decoded.sections[0]
 
     expect(sourceSection?.title).toBe('Source file')
-    // The key is namespaced by the file's slot in the batch, so two archives
+    // The key is namespaced by the file's slot in the batch, so two source files
     // in one pick cannot collide on it.
     expect(sourceSection?.resources.map((entry) => entry.key)).toEqual([
       `${FormatDecode.keyPrefix(pickedHar())}source-file/archive.har`,
@@ -206,7 +206,7 @@ describe('harImporter.decode', () => {
     expect(sourceSection?.resources[0]?.resource.resourceType).toBe('DocumentReference')
   })
 
-  test('property: every extracted resource names the minted archive, under any kind toggles', async () => {
+  test('property: every extracted resource names the minted source file, under any kind toggles', async () => {
     await fc.assert(
       fc.asyncProperty(fc.subarray(POOL_KIND_NAMES), async (disabledKinds) => {
         const decoded = (await readOne(pickedHar(), { disabledKinds })).decoded
@@ -238,12 +238,12 @@ describe('harImporter.decode', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The archive this format's importer mints — the schema driven under
+// The source file this format's importer mints — the schema driven under
 // `harImporter`'s own format constants, which is the same context its batch
 // `decode` mints under.
 // ---------------------------------------------------------------------------
 
-const mintArchive = (
+const mintSourceFile = (
   bytes: Uint8Array,
   fileName = 'portal-session.har'
 ): Promise<DocumentReference.Type> =>
@@ -255,7 +255,7 @@ const mintArchive = (
     }).pipe(Effect.provideService(PickedFile.Format, harImporter.sourceFileFormat))
   )
 
-const readArchive = (resource: DocumentReference.Type): Promise<PickedFile.Type> =>
+const readSourceFile = (resource: DocumentReference.Type): Promise<PickedFile.Type> =>
   Effect.runPromise(
     Schema.decode(PickedFile.FromDocumentReference)(resource).pipe(
       Effect.provideService(PickedFile.Format, harImporter.sourceFileFormat)
@@ -268,7 +268,7 @@ const { exchange: exchangeArbitrary } = arbitraries(fc)
 
 describe('HAR archive coding', () => {
   it('carries the web-trace har-archive coding on type and category, the raw label, and json content', async () => {
-    const resource = await mintArchive(new TextEncoder().encode('{"log":{"version":"1.2"}}'))
+    const resource = await mintSourceFile(new TextEncoder().encode('{"log":{"version":"1.2"}}'))
 
     expect(resource.type?.coding[0]?.system?.toString()).toBe(WEB_TRACE_CODE_SYSTEM)
     expect(resource.type?.coding[0]?.code).toBe(HAR_ARCHIVE_CODE)
@@ -299,7 +299,7 @@ describe('HAR archive vs captured trace', () => {
         fc.uint8Array({ maxLength: 512 }),
         exchangeArbitrary,
         async (bytes, exchange) => {
-          const sourceFileResource = await mintArchive(bytes)
+          const sourceFileResource = await mintSourceFile(bytes)
           const traceResource = await Effect.runPromise(toDocumentReference(exchange))
 
           expect(isHarSourceFile(sourceFileResource)).toBe(true)
@@ -312,7 +312,7 @@ describe('HAR archive vs captured trace', () => {
     )
   })
 
-  test('property: a trace resource fails to decode as an archive, naming the coding it wants', async () => {
+  test('property: a trace resource fails to decode as a source file, naming the coding it wants', async () => {
     await fc.assert(
       fc.asyncProperty(exchangeArbitrary, async (exchange) => {
         const outcome = await Effect.runPromise(
@@ -330,7 +330,7 @@ describe('HAR archive vs captured trace', () => {
   })
 })
 
-test('property: stored bytes still parse as an HTTP Archive after the round trip, which is the point of storing them', async () => {
+test('property: stored bytes still parse as an HTTP Source file after the round trip, which is the point of storing them', async () => {
   await fc.assert(
     fc.asyncProperty(
       fc.array(exchangeArbitrary, { minLength: 1, maxLength: 4 }),
@@ -338,8 +338,8 @@ test('property: stored bytes still parse as an HTTP Archive after the round trip
         const fileText = await Effect.runPromise(
           Schema.encode(HarFromJson)(emitHar(exchanges, { sessionId: 'session-0' }))
         )
-        const resource = await mintArchive(new TextEncoder().encode(fileText))
-        const stored = await readArchive(resource)
+        const resource = await mintSourceFile(new TextEncoder().encode(fileText))
+        const stored = await readSourceFile(resource)
 
         const log = await Effect.runPromise(
           Schema.decodeUnknown(HttpArchive.LogFromHarJson)(new TextDecoder().decode(stored.bytes))

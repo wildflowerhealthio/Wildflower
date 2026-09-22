@@ -35,7 +35,7 @@ const nameArbitrary = fc.stringMatching(/^[a-z0-9]{1,8}\.bin$/u)
 
 /**
  * A pick as a batch hands it over. Its `id` is the batch slot, which the mint
- * ignores — every claim below about the archive's id is a claim about the
+ * ignores — every claim below about the source file's id is a claim about the
  * bytes and the name.
  */
 const pickedArbitrary: fc.Arbitrary<PickedFile.Type> = fc
@@ -61,7 +61,7 @@ const digestOf = async (bytes: Uint8Array): Promise<string> => {
 }
 
 describe('the mint — what encoding a pick decides', () => {
-  it('property: the archive id is decided by the bytes and the name together, and by nothing else', async () => {
+  it('property: the source file id is decided by the bytes and the name together, and by nothing else', async () => {
     await fc.assert(
       fc.asyncProperty(pickedArbitrary, pickedArbitrary, async (here, there) => {
         const [mintedHere, mintedThere] = await Promise.all([run(encode(here)), run(encode(there))])
@@ -96,7 +96,7 @@ describe('the mint — what encoding a pick decides', () => {
 })
 
 describe('the codec as a schema', () => {
-  test('property: an archive round-trips — the stored id, filename and bytes recovered exactly', async () => {
+  test('property: a source file round-trips — the stored id, filename and bytes recovered exactly', async () => {
     await fc.assert(
       fc.asyncProperty(pickedArbitrary, async (picked) => {
         const resource = await run(encode(picked))
@@ -138,7 +138,7 @@ describe('the codec as a schema', () => {
     expect(back.bytes).toEqual(picked.bytes)
   })
 
-  test('property: the mint names no subject and no related resource, keeping archives out of Patient/$everything', async () => {
+  test('property: the mint names no subject and no related resource, keeping source files out of Patient/$everything', async () => {
     await fc.assert(
       fc.asyncProperty(pickedArbitrary, async (picked) => {
         const resource = await run(encode(picked))
@@ -179,7 +179,7 @@ describe('the codec as a schema', () => {
     if (outcome._tag === 'Left') expect(outcome.left.message).toContain(resource.id ?? '')
   })
 
-  it("another format's document is not this one's archive", async () => {
+  it("another format's document is not this one's source file", async () => {
     const resource = await runAs(otherFormat, encode(example()))
     const outcome = await run(Effect.either(readBack(resource)))
     expect(outcome._tag).toBe('Left')
@@ -194,7 +194,7 @@ describe('the constants a reader of the server list projects', () => {
     expect(PickedFile.categoryToken(exampleFormat)).toBe(`${SYSTEM}|example-source-file`)
   })
 
-  it('recognizes an archive of its own format', async () => {
+  it('recognizes a source file of its own format', async () => {
     const resource = await run(encode(example()))
     expect(PickedFile.isSourceFile(exampleFormat)(resource)).toBe(true)
   })

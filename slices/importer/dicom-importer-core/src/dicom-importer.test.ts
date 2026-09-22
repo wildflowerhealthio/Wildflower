@@ -16,7 +16,7 @@ import {
 } from './source-system.ts'
 
 /**
- * The archive this format's importer mints for a picked file — the schema
+ * The source file this format's importer mints for a picked file — the schema
  * driven under `dicomImporter`'s own format constants, which is the same
  * context its batch `decode` mints under.
  */
@@ -29,7 +29,7 @@ const mint = (bytes: Uint8Array, fileName = 'scan.dcm'): Promise<DocumentReferen
     }).pipe(Effect.provideService(PickedFile.Format, dicomImporter.sourceFileFormat))
   )
 
-describe('DICOM archive coding', () => {
+describe('DICOM source file coding', () => {
   it('carries the DICOM coding on type and category, and application/dicom content', async () => {
     const resource = await mint(new Uint8Array([0x00, 0x01, 0x02]))
 
@@ -48,7 +48,7 @@ describe('DICOM archive coding', () => {
     )
   })
 
-  it('mints a resource that reads back as its own archive, bytes and name recovered', async () => {
+  it('mints a resource that reads back as its own source file, bytes and name recovered', async () => {
     const bytes = new Uint8Array(132)
     bytes.set([0x44, 0x49, 0x43, 0x4d], 128)
     const resource = await mint(bytes, 'my-scan.dcm')
@@ -117,7 +117,7 @@ describe('dicomImporter', () => {
       return result
     }
 
-    /** The one id every resource of a result must agree on: its archive's. */
+    /** The one id every resource of a result must agree on: its source file's. */
     const sourceFileIdOfStudy = (result: FormatDecode.Result<string>): string => {
       const [section] = result.decoded.sections
       expect(section.title).toBe('Source file')
@@ -126,7 +126,7 @@ describe('dicomImporter', () => {
       expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
       expect(row.resource.resourceType).toBe('DocumentReference')
       const { id } = row.resource
-      if (id === null) throw new Error('expected a minted archive id')
+      if (id === null) throw new Error('expected a minted source file id')
       return id
     }
 
@@ -142,14 +142,15 @@ describe('dicomImporter', () => {
       return undefined
     }
 
-    it('mints an archive subject to the header-derived Patient', async () => {
+    it('mints a source file subject to the header-derived Patient', async () => {
       const bytes = sampleDicomBytes()
       const study = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })
       const [section] = study.decoded.sections
       expect(section.title).toBe('Source file')
       const [row] = section.resources
       expect(row.key).toBe('0:sample.dcm/source-file/sample.dcm')
-      if (row.resource.resourceType !== 'DocumentReference') throw new Error('expected an archive')
+      if (row.resource.resourceType !== 'DocumentReference')
+        throw new Error('expected a source file')
       expect(row.resource.subject?.reference).toBe(headerPatientReference(bytes))
     })
 
@@ -168,7 +169,7 @@ describe('dicomImporter', () => {
       expect(imagingStudyInstanceId(study)).toBe(id)
     })
 
-    it('mints the same archive id for the same file on every decode', async () => {
+    it('mints the same source file id for the same file on every decode', async () => {
       const bytes = sampleDicomBytes()
       const first = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })
       const second = await readStudy({ id: '0:sample.dcm', fileName: 'sample.dcm', bytes })

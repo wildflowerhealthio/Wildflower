@@ -7,7 +7,7 @@
  * @packageDocumentation
  */
 export {
-  archive,
+  linkToPatientAndStudy,
   decodeStudy,
   sectionTitle,
   studyGroupKey,

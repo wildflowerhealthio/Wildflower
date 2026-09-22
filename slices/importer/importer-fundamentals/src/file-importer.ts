@@ -31,7 +31,7 @@ interface Type<TSettings, TFormat extends string> {
   /** The batch decode the shell runs: never failing, requiring nothing. */
   readonly decode: DecodeFunction.Type<TSettings, TFormat>
   /**
-   * The format's archive constants — what its archives are written under,
+   * The format's source file constants — what its source files are written under,
    * and what a reader of the server's list searches, recognizes and decodes
    * with (`PickedFile.categoryToken`, `PickedFile.isSourceFile`,
    * `PickedFile.FromDocumentReference`).

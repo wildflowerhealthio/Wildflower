@@ -1,8 +1,8 @@
 /**
  * The one value every picker source converges on and every format's `decode`
  * receives — a file's id, its name and its raw bytes — together with the
- * coding constants one format tags its archives with and the codec that stores
- * a pick as the FHIR `DocumentReference` it is archived as, and reads it back.
+ * coding constants one format tags its source files with and the codec that stores
+ * a pick as the FHIR `DocumentReference` it is stored as, and reads it back.
  *
  * @remarks
  * Bytes rather than text so the picker stays format-blind: a HAR decodes
@@ -32,11 +32,11 @@ import { sha256Base64 } from './sha256.ts'
  *
  * @remarks
  * Named so every picker source (the local file picker, the server list's
- * fetch), `FormatDetector.claiming` and the archive's own mint all spell one
+ * fetch), `FormatDetector.claiming` and the source file's own mint all spell one
  * shape instead of three structural copies of it.
  */
 interface NamedBytes {
-  /** The file's name, for display and for the archive's attachment title. */
+  /** The file's name, for display and for the source file's attachment title. */
   readonly fileName: string
   /** The file's raw bytes, exactly as they were read. */
   readonly bytes: Uint8Array
@@ -56,7 +56,7 @@ interface Type extends NamedBytes {
   readonly id: string
 }
 
-/** A `system`/`code` pair — the axis one format's archives are tagged on. */
+/** A `system`/`code` pair — the axis one format's source files are tagged on. */
 interface Coding {
   readonly system: string
   readonly code: string
@@ -64,7 +64,7 @@ interface Coding {
 
 /**
  * The per-format constants the codec is parameterised by: which coding an
- * archive is tagged with, what its attachment claims to be, and how its
+ * source file is tagged with, what its attachment claims to be, and how its
  * description reads.
  */
 interface FormatValue {
@@ -80,20 +80,20 @@ interface FormatValue {
  *
  * @remarks
  * `DecodeFunction.make` provides it around everything one format's decode
- * mints, and the shell provides it at its read of a stored archive. No other
+ * mints, and the shell provides it at its read of a stored source file. No other
  * production code does — which is what keeps the constants an importer lists
- * and the constants its archives are written under the same copy.
+ * and the constants its source files are written under the same copy.
  */
 class Format extends Context.Tag('importer-fundamentals/PickedFile.Format')<
   Format,
   FormatValue
 >() {}
 
-/** The `system|code` search token one format's archives are found by. */
+/** The `system|code` search token one format's source files are found by. */
 const categoryToken = (format: FormatValue): string =>
   `${format.coding.system}|${format.coding.code}`
 
-/** Whether a `DocumentReference` off the server is one of this format's archives. */
+/** Whether a `DocumentReference` off the server is one of this format's source files. */
 const isSourceFile =
   (format: FormatValue) =>
   (resource: DocumentReference.Type): boolean =>
@@ -105,7 +105,7 @@ const isSourceFile =
 
 const IdSchema = Schema.NonEmptyString.pipe(Schema.pattern(/^[A-Za-z0-9\-.]{1,64}$/u)).annotations({
   identifier: `ImportPickedFileId`,
-  description: `FHIR resource id of an archived pick; deterministic in the file hash and name.`,
+  description: `FHIR resource id of a stored pick; deterministic in the file hash and name.`,
 })
 
 /**
@@ -115,13 +115,13 @@ const IdSchema = Schema.NonEmptyString.pipe(Schema.pattern(/^[A-Za-z0-9\-.]{1,64
 const ValueSchema = Schema.Struct({
   // A plain string, not {@link IdSchema}: a picked file's id is the batch slot
   // `readBatch` stamped it with (`0:report.pdf`), which the mint ignores — only
-  // an id *read back off a stored archive* is a FHIR resource id.
+  // an id *read back off a stored source file* is a FHIR resource id.
   id: Schema.NonEmptyString,
   fileName: Schema.NonEmptyString,
   bytes: Schema.Uint8ArrayFromSelf,
 })
 
-/** The fields a stored archive carries as strings, read back off its attachment. */
+/** The fields a stored source file carries as strings, read back off its attachment. */
 const StoredFieldsSchema = Schema.Struct({
   id: IdSchema,
   fileName: Schema.NonEmptyString,
@@ -143,7 +143,7 @@ const hasCoding = (
   )
 
 /**
- * Why this resource is not one of the format's archives, or `undefined` when it
+ * Why this resource is not one of the format's source files, or `undefined` when it
  * is one.
  *
  * @remarks
@@ -161,7 +161,7 @@ const rejection = (resource: DocumentReference.Type, coding: Coding): string | u
   return undefined
 }
 
-const isArchive = Schema.is(Schema.typeSchema(DocumentReference.Schema))
+const isDocumentReference = Schema.is(Schema.typeSchema(DocumentReference.Schema))
 
 /**
  * A decoded `DocumentReference`, as itself.
@@ -173,20 +173,20 @@ const isArchive = Schema.is(Schema.typeSchema(DocumentReference.Schema))
  * encode is the identity, so what {@link FromDocumentReference} builds is
  * exactly what it yields.
  */
-const ArchiveSchema: Schema.Schema<DocumentReference.Type> = Schema.declare(
-  (input: unknown): input is DocumentReference.Type => isArchive(input)
+const DocumentReferenceAsItself: Schema.Schema<DocumentReference.Type> = Schema.declare(
+  (input: unknown): input is DocumentReference.Type => isDocumentReference(input)
 )
 
-/** A `DocumentReference` that is one of this format's archives, data and all. */
-const ArchiveOfFormat = ArchiveSchema.pipe(
+/** A `DocumentReference` that is one of this format's source files, data and all. */
+const SourceFileOfFormat = DocumentReferenceAsItself.pipe(
   Schema.filterEffect((resource) => Effect.map(Format, ({ coding }) => rejection(resource, coding)))
 )
 
 /**
- * The archive a pick is stored as, on the wire.
+ * The source file a pick is stored as, on the wire.
  *
  * @remarks
- * No instant of any kind: the archive states what the file *is*, not when it
+ * No instant of any kind: the source file states what the file *is*, not when it
  * reached the device, and the stored resource's own `meta.lastUpdated` is what
  * the server list dates a row by.
  */
@@ -222,7 +222,7 @@ const wireOf = (
 }
 
 /**
- * Mint the archive a picked file is stored as: hash its bytes, decide its id,
+ * Mint the source file a picked file is stored as: hash its bytes, decide its id,
  * and build the resource.
  *
  * @remarks
@@ -230,9 +230,9 @@ const wireOf = (
  * format's coding system, so re-importing the same file upserts rather than
  * duplicating and two formats never collide on identical bytes. The value's
  * own `id` — the batch slot the pick was read in — takes no part in it: the
- * mint decides the archive's id, and reading the archive back yields that one.
+ * mint decides the source file's id, and reading the source file back yields that one.
  */
-const toArchive = (
+const toSourceFile = (
   picked: NamedBytes,
   ast: Schema.Schema.AnyNoContext['ast']
 ): Effect.Effect<DocumentReference.Type, ParseResult.ParseIssue, Format> =>
@@ -251,18 +251,18 @@ const toArchive = (
   })
 
 /**
- * The codec: one picked file ⇄ the `DocumentReference` it is archived as.
+ * The codec: one picked file ⇄ the `DocumentReference` it is stored as.
  *
  * @remarks
- * The read leg accepts only an archive of this format carrying attachment data
- * — {@link ArchiveOfFormat} — and then projects it, so the file read back
+ * The read leg accepts only a source file of this format carrying attachment data
+ * — {@link SourceFileOfFormat} — and then projects it, so the file read back
  * carries the stored resource's own id. The write leg mints: it hashes the
- * bytes into the attachment's `hash` and derives the archive's id from them,
- * ignoring the value's own id. Decoding an archive and encoding it again is
+ * bytes into the attachment's `hash` and derives the source file's id from them,
+ * ignoring the value's own id. Decoding a source file and encoding it again is
  * therefore the identity on the id.
  */
 const FromDocumentReference: Schema.Schema<Type, DocumentReference.Type, Format> =
-  Schema.transformOrFail(ArchiveOfFormat, ValueSchema, {
+  Schema.transformOrFail(SourceFileOfFormat, ValueSchema, {
     strict: true,
     decode: (resource) => {
       const attachment = resource.content[0]?.attachment
@@ -272,10 +272,10 @@ const FromDocumentReference: Schema.Schema<Type, DocumentReference.Type, Format>
         bytes: attachment?.data,
       })
     },
-    encode: (picked, _options, ast) => toArchive(picked, ast),
+    encode: (picked, _options, ast) => toSourceFile(picked, ast),
   }).annotations({
     identifier: `PickedFileFromDocumentReference`,
-    description: `One picked file, encoded as the FHIR R4 DocumentReference it is archived as.`,
+    description: `One picked file, encoded as the FHIR R4 DocumentReference it is stored as.`,
   })
 
 export { Format, FromDocumentReference, categoryToken, isSourceFile }
