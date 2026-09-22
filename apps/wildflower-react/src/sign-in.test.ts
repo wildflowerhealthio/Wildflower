@@ -1,4 +1,4 @@
-import { Option } from 'effect'
+import { Effect, Equal, Option } from 'effect'
 import * as fc from 'fast-check'
 import {
   STANDALONE_LAUNCH_SCOPES,
@@ -7,18 +7,31 @@ import {
   type Session,
   type SignInPage,
 } from 'gatekeeper-core/smart-client'
+import { makeBearerAuthStateStore } from 'gatekeeper-react'
 import { numRunsFor } from 'kitchen-sink/test'
-import { AuthedUntil, HostAuthed, isAuthed, isFreshlyAuthed } from 'react-kitchen-sink'
-import { describe, expect, it } from 'vite-plus/test'
+import {
+  AuthedUntil,
+  type AuthState,
+  HostAuthed,
+  isAuthed,
+  isFreshlyAuthed,
+  Unauthed,
+} from 'react-kitchen-sink'
+import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import {
   authStateForSession,
   CLIENT_ID,
   finishSignIn,
   PENDING_AUTHORIZATION_KEY,
+  postSignInUrl,
   REGISTERED_REDIRECT_URI,
+  rememberReturnTo,
+  RETURN_TO_KEY,
+  scheduleExpiry,
   signInEnvironment,
   startSignIn,
+  takeReturnTo,
 } from './sign-in.ts'
 
 describe('signInEnvironment', () => {
@@ -255,7 +268,138 @@ describe('authStateForSession', () => {
   })
 })
 
+describe('scheduleExpiry', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('returns the store to Unauthed when the reported lifetime lapses', () => {
+    // Arrange — a live session in the same bearer store the entry uses.
+    vi.useFakeTimers()
+    const store = makeBearerAuthStateStore()
+    store.writeBearer('tok_hosted')
+    store.setAuthState(AuthedUntil({ exp: 3600 }))
+
+    // Act
+    scheduleExpiry(store.setAuthState, 3600)
+
+    // Assert — a millisecond before the lifetime is up, the session is still
+    // live and the bearer is still there.
+    vi.advanceTimersByTime(3600 * 1000 - 1)
+    expect(isAuthed(readState(store))).toBe(true)
+    expect(store.bearer()).toBe('tok_hosted')
+
+    // At `exp` the signal flips to Unauthed and the bearer goes with it — the
+    // next authed request now redirects to the landing rather than 401-looping.
+    vi.advanceTimersByTime(1)
+    expect(Equal.equals(readState(store), Unauthed())).toBe(true)
+    expect(store.bearer()).toBeUndefined()
+  })
+
+  it('arms no timer for a response that reported no lifetime', () => {
+    // A `HostAuthed` session has no honest `exp` to count down to, so nothing is
+    // scheduled and it stays authed.
+    vi.useFakeTimers()
+    const store = makeBearerAuthStateStore()
+    store.writeBearer('tok_hosted')
+    store.setAuthState(HostAuthed())
+
+    scheduleExpiry(store.setAuthState, undefined)
+
+    vi.advanceTimersByTime(2 ** 31)
+    expect(isAuthed(readState(store))).toBe(true)
+  })
+
+  it('cancels the pending flip when its canceller is called', () => {
+    // A replaced or torn-down session must not be dropped by a stale timer.
+    vi.useFakeTimers()
+    const store = makeBearerAuthStateStore()
+    store.setAuthState(AuthedUntil({ exp: 3600 }))
+
+    const cancel = scheduleExpiry(store.setAuthState, 3600)
+    cancel()
+
+    vi.advanceTimersByTime(3600 * 1000 + 1)
+    expect(isAuthed(readState(store))).toBe(true)
+  })
+})
+
+describe('rememberReturnTo / takeReturnTo', () => {
+  it('carries the gate’s returnTo across the redirect and hands it back once', () => {
+    // Arrange — the auth gate bounced the reader here with the path they were
+    // headed for; the registered redirect URI will drop the query, so it is
+    // stashed just before leaving.
+    const store = memoryStore()
+    const page = pageAt('https://wildflowerhealth.io/?returnTo=%2Fsettings%2Ftunnel', {
+      sessionStorage: store,
+    })
+
+    // Act / Assert — written under this app’s key…
+    rememberReturnTo(page)
+    expect(store.getItem(RETURN_TO_KEY)).toBe('/settings/tunnel')
+
+    // …and read back exactly once, so a later stray load cannot replay it.
+    expect(takeReturnTo(page)).toBe('/settings/tunnel')
+    expect(takeReturnTo(page)).toBeNull()
+  })
+
+  it('clears a stale return path when the page carries none', () => {
+    // A fresh sign-in with no `returnTo` must not honour one left by an
+    // abandoned earlier attempt.
+    const store = memoryStore()
+    store.setItem(RETURN_TO_KEY, '/settings/tunnel')
+    const page = pageAt('https://wildflowerhealth.io/?server=https%3A%2F%2Fx.test', {
+      sessionStorage: store,
+    })
+
+    rememberReturnTo(page)
+
+    expect(store.getItem(RETURN_TO_KEY)).toBeNull()
+  })
+})
+
+describe('postSignInUrl', () => {
+  const ORIGIN = 'https://wildflowerhealth.io'
+
+  it('lands on the return path carrying the signed-in server', () => {
+    // Arrange / Act
+    const settled = new URL(postSignInUrl('/home', SERVER_URL, ORIGIN), ORIGIN)
+
+    // Assert
+    expect(settled.pathname).toBe('/home')
+    expect(settled.searchParams.get('server')).toBe(SERVER_URL)
+  })
+
+  it('merges the server into a returnTo that brings its own query and hash', () => {
+    // The gate preserves the whole path it bounced, so `server` is added to that
+    // query rather than replacing it, and the fragment survives.
+    const settled = new URL(
+      postSignInUrl('/settings/tunnel?tab=logs#live', SERVER_URL, ORIGIN),
+      ORIGIN
+    )
+
+    expect(settled.pathname).toBe('/settings/tunnel')
+    expect(settled.searchParams.get('tab')).toBe('logs')
+    expect(settled.searchParams.get('server')).toBe(SERVER_URL)
+    expect(settled.hash).toBe('#live')
+  })
+
+  it('carries no authorization response, since it is built from the return path', () => {
+    // The callback’s single-use `?code=`/`?state=` never reaches `returnTo`, so
+    // they cannot survive into the settled URL.
+    const settled = new URL(postSignInUrl('/home', SERVER_URL, ORIGIN), ORIGIN)
+
+    expect(settled.searchParams.has('code')).toBe(false)
+    expect(settled.searchParams.has('state')).toBe(false)
+  })
+})
+
 // Helpers
+
+/** The store's current published auth signal. */
+const readState = (store: {
+  readonly subscribable: { readonly get: Effect.Effect<AuthState> }
+}): AuthState => Effect.runSync(store.subscribable.get)
 
 const SERVER_URL = 'http://127.0.0.1:8080'
 

@@ -7,14 +7,20 @@ import { Option } from 'effect'
 import {
   isAuthorizationResponse,
   searchWithoutAuthorizationResponse,
-  searchWithServerUrl,
   type Session,
 } from 'gatekeeper-core/smart-client'
-import type { TokenResponseHandler } from 'gatekeeper-react'
+import { sanitizeReturnTo, type TokenResponseHandler } from 'gatekeeper-react'
 import { addOsColorSchemeListener } from 'react-tundraish'
 import './styles/global.css'
 import { renderApp } from './app-root.tsx'
-import { finishSignIn, signInEnvironment, authStateForSession } from './sign-in.ts'
+import {
+  authStateForSession,
+  finishSignIn,
+  postSignInUrl,
+  scheduleExpiry,
+  signInEnvironment,
+  takeReturnTo,
+} from './sign-in.ts'
 import { makeWebEntryOptions, underBasepath } from './web-entry.ts'
 
 addOsColorSchemeListener()
@@ -48,20 +54,24 @@ const replaceSearch = (search: string): void => {
 }
 
 /**
- * Put the signed-in server back in the address bar, and take the authorization
- * response out of it.
+ * Land on where the reader was headed, put the signed-in server back in the
+ * address bar, and take the authorization response out of it — in one rewrite.
  *
- * Both happen in one rewrite because the new query is built from an empty
- * string rather than from the one the browser arrived on. `?server=` has to be
- * *restored* rather than kept: the registered redirect URI carries no query, so
- * by the callback the parameter is gone, and `web-entry.ts` derives
- * `apiBaseUrl` from it — left alone, the page would sign in to one server and
- * send every request to the loopback default. The `code`/`state` have to go for
- * the usual reason: the code is single-use and already redeemed, but left in the
- * URL it would sit in history and in anything the reader copies out of the bar.
+ * `returnTo` is the sanitised path the auth gate bounced (or `/home`); the URL
+ * is rebuilt from it rather than from the address the browser arrived on, which
+ * is what drops the callback's single-use `?code=`/`?state=` (left in the URL
+ * they would sit in history and in anything the reader copies out of the bar).
+ * `?server=` has to be *restored* rather than kept: the registered redirect URI
+ * carries no query, so by the callback the parameter is gone, and `web-entry.ts`
+ * derives `apiBaseUrl` from it — left alone, the page would sign in to one
+ * server and send every request to the loopback default.
  */
-const settleUrlAfterSignIn = (session: Session): void => {
-  replaceSearch(searchWithServerUrl('', session.serverUrl))
+const settleUrlAfterSignIn = (session: Session, returnTo: string): void => {
+  window.history.replaceState(
+    null,
+    '',
+    postSignInUrl(returnTo, session.serverUrl, window.location.origin)
+  )
 }
 
 /**
@@ -83,8 +93,12 @@ const boot = async (): Promise<void> => {
   const completed = await finishSignIn(returnSearch, signInEnvironment(window, basepath))
   const session = completed.tag === 'Ok' ? Option.getOrUndefined(completed.value) : undefined
 
-  if (session !== undefined) settleUrlAfterSignIn(session)
-  else if (isAuthorizationResponse(returnSearch)) {
+  if (session !== undefined) {
+    // Read the stashed return path (the gate's `?returnTo=`, carried across the
+    // redirect in `sessionStorage`) and honour it once, sanitised — same rules
+    // as `NeedsAuthMessage`'s device-flow return leg.
+    settleUrlAfterSignIn(session, sanitizeReturnTo(takeReturnTo(window)))
+  } else if (isAuthorizationResponse(returnSearch)) {
     // A return leg that resolved to nothing usable: the response still has to
     // leave the URL, or a reload would replay a code that is already spent.
     replaceSearch(searchWithoutAuthorizationResponse(returnSearch))
@@ -99,6 +113,9 @@ const boot = async (): Promise<void> => {
     // has no honest `exp`. See `authStateForSession`.
     bearerStore.writeBearer(session.accessToken)
     bearerStore.setAuthState(authStateForSession(session, Math.floor(Date.now() / 1000)))
+    // Drop the session back to `Unauthed` when the reported lifetime lapses, so
+    // the next authed request redirects to the landing rather than 401-looping.
+    scheduleExpiry(bearerStore.setAuthState, session.expiresInSeconds)
   }
 
   const history = createBrowserHistory()

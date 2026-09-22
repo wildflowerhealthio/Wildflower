@@ -40,13 +40,14 @@ import {
   browserSignInEnvironment,
   completeSignIn,
   redirectUriForRoute,
+  searchWithServerUrl,
   standaloneLaunchScopeParameter,
   type Session,
   type SignInEnvironment,
   type SignInError,
   type SignInPage,
 } from 'gatekeeper-core/smart-client'
-import { AuthedUntil, type AuthState, HostAuthed } from 'react-kitchen-sink'
+import { AuthedUntil, type AuthState, HostAuthed, Unauthed } from 'react-kitchen-sink'
 
 /**
  * The `client_id` the web entry authorizes as, seeded by
@@ -106,6 +107,21 @@ const REGISTERED_REDIRECT_URI = 'https://wildflowerhealth.io/app/home'
  * could consume a record the other was waiting on.
  */
 const PENDING_AUTHORIZATION_KEY = 'wildflower-react.pending-authorization'
+
+/**
+ * The `sessionStorage` key that carries where to land after a redeemed sign-in.
+ *
+ * The auth gate bounces an unauthed reader to the landing with a `?returnTo=`
+ * naming the path they were headed for, but the SMART redirect returns to the
+ * registered `/home` — which carries no query — so the parameter is gone by the
+ * callback. Stashing it here is what carries it across the round trip. Like the
+ * pending record it holds no credential, and it is namespaced for the same
+ * reason: the server-docs console shares this origin.
+ */
+const RETURN_TO_KEY = 'wildflower-react.post-sign-in-return-to'
+
+/** The query parameter the auth gate preserves the originally-requested path in. */
+const RETURN_TO_PARAM = 'returnTo'
 
 /**
  * The outcome of a sign-in step that can fail with something worth showing the
@@ -184,14 +200,95 @@ const authStateForSession = (session: Session, nowSeconds: number): AuthState =>
     ? HostAuthed()
     : AuthedUntil({ exp: nowSeconds + session.expiresInSeconds })
 
+/**
+ * Return the store to `Unauthed` when the token's reported lifetime runs out.
+ *
+ * The bearer lives in page memory only and is never refreshed, so a lapsed
+ * token would 401 every request it was attached to — silently. Flipping the
+ * signal at `exp` (which also drops the bearer — see `makeBearerAuthStateStore`)
+ * sends the next authed navigation back to the landing rather than into a
+ * 401 loop. A response that reported no lifetime gets no timer, matching
+ * {@link authStateForSession}'s `HostAuthed`.
+ *
+ * Mirrors `scheduleExpiryNotice` in `apps/wildflower-server-docs/src/main.ts`.
+ * Returns a canceller: this entry signs in once per page load, so it is here for
+ * symmetry and tests rather than a re-arm.
+ */
+const scheduleExpiry = (
+  setAuthState: (signal: AuthState) => void,
+  expiresInSeconds: number | undefined
+): (() => void) => {
+  if (expiresInSeconds === undefined) return () => {}
+  const timer = setTimeout(
+    () => {
+      setAuthState(Unauthed())
+    },
+    Math.max(0, expiresInSeconds * 1000)
+  )
+  return () => {
+    clearTimeout(timer)
+  }
+}
+
+/**
+ * Remember where to return after sign-in, reading the `?returnTo=` the auth gate
+ * left on this page. Called just before leaving for the authorization server. A
+ * page carrying no `returnTo` clears any stale value rather than leaving one a
+ * later, unrelated sign-in would honour.
+ */
+const rememberReturnTo = (page: Pick<SignInPage, 'location' | 'sessionStorage'>): void => {
+  const returnTo = new URL(page.location.href).searchParams.get(RETURN_TO_PARAM)
+  try {
+    if (returnTo === null || returnTo === '') page.sessionStorage.removeItem(RETURN_TO_KEY)
+    else page.sessionStorage.setItem(RETURN_TO_KEY, returnTo)
+  } catch {
+    // A storage that refuses the write only means the reader lands on the
+    // default `/home` — not a reason to fail the sign-in.
+  }
+}
+
+/**
+ * Take the remembered return path, removing it so it is honoured once. `null`
+ * when none was stashed; the caller sanitises it before navigating.
+ */
+const takeReturnTo = (page: Pick<SignInPage, 'sessionStorage'>): string | null => {
+  try {
+    const stored = page.sessionStorage.getItem(RETURN_TO_KEY)
+    page.sessionStorage.removeItem(RETURN_TO_KEY)
+    return stored
+  } catch {
+    return null
+  }
+}
+
+/**
+ * The in-app URL to settle on after a redeemed sign-in: the (already sanitised)
+ * `returnTo`, carrying the signed-in `?server=` so a reload keeps its target.
+ *
+ * `returnTo` may bring its own query and hash — the gate preserves the whole
+ * path it bounced — so `server` is merged into that query rather than replacing
+ * it, and any `?code=`/`?state=` from the callback is dropped because the URL is
+ * rebuilt from the return path, not from the address the browser arrived on.
+ */
+const postSignInUrl = (returnTo: string, serverUrl: string, origin: string): string => {
+  const url = new URL(returnTo, origin)
+  const search = searchWithServerUrl(url.search, serverUrl)
+  return `${url.pathname}${search}${url.hash}`
+}
+
 export {
   authStateForSession,
   CLIENT_ID,
   finishSignIn,
   PENDING_AUTHORIZATION_KEY,
+  postSignInUrl,
   POST_SIGN_IN_ROUTE,
   REGISTERED_REDIRECT_URI,
+  rememberReturnTo,
+  RETURN_TO_KEY,
+  scheduleExpiry,
   signInEnvironment,
   startSignIn,
+  takeReturnTo,
 }
 export type { SignInStep }

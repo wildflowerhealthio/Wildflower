@@ -1,5 +1,6 @@
 /* oxlint-disable react/only-export-components ---
-  Neither export changes often and sanitizeReturnTo is only used in tests */
+  Neither export changes often; sanitizeReturnTo is a pure helper reused by
+  the wildflower-react web entry's return leg (and this screen's own tests) */
 import { Duration, Effect, Either, Fiber, Match, Predicate, Schedule, Schema } from 'effect'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
 import { FIRST_PARTY_CLIENT_ID } from 'gatekeeper-core/contexts'
