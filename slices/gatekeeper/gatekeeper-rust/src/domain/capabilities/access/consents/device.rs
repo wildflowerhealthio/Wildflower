@@ -1,18 +1,20 @@
-//! Device-code consent: load/approve/deny the device-flow prompt and the standing
-//! device grant its approval upserts.
+//! Device-code consent: load/approve/deny the device-flow prompt. An approval
+//! obtains a [`DelegatedScopes`] proof and hands it to the writers — the
+//! [`RequestApprover`] transitions the request, the [`GrantRecorder`] records
+//! the standing device grant.
 
 use std::collections::HashSet;
 
 use chrono::{DateTime, Utc};
-use scopes_rust::{grantable_scopes, Grant};
-use uuid::Uuid;
+use scopes_rust::Grant;
 
-use super::delegation::{deny_consent, ensure_approver_covers};
+use super::delegation::deny_consent;
 use super::{ApproveDeviceConsentInput, ConsentOutcome};
+use crate::domain::authority::{DelegatedScopes, ScopeCeiling};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+use crate::domain::capabilities::writers::{DeviceApproval, GrantRecorder, RequestApprover};
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::domain::grant::{CumulativeConsent, DeviceGrant};
-use crate::domain::{GatekeeperStore, GatekeeperTx};
+use crate::domain::GatekeeperStore;
 use crate::ports::PendingConsentPublisher;
 
 /// Load the authorization request for `user_code` and verify it's a pending,
@@ -35,36 +37,6 @@ pub(super) fn load_pending_device_request(
     }
 }
 
-/// Insert or cumulatively update the standing device grant for
-/// `(client_id, device_name)`, same read-merge-write-under-`BEGIN IMMEDIATE`
-/// shape as [`upsert_authorization_code_grant`], keyed on the device name.
-fn upsert_device_grant(
-    store: &impl GatekeeperStore,
-    client_id: &str,
-    device_name: &str,
-    scopes: &[String],
-    patient: Option<&str>,
-    now: DateTime<Utc>,
-) -> Result<(), GatekeeperError> {
-    store.immediate_transaction(|tx| {
-        match tx.device_grant_by_client_and_device_name(client_id, device_name)? {
-            Some(mut grant) => {
-                grant.absorb_reapproval(scopes, patient, now);
-                tx.update_device_grant(&grant)
-            }
-            None => tx.create_device_grant(&DeviceGrant {
-                id: Uuid::new_v4().to_string(),
-                client_id: client_id.to_owned(),
-                scopes: scopes.to_vec(),
-                granted_at: now,
-                last_used_at: None,
-                patient: patient.map(str::to_owned),
-                device_name: device_name.to_owned(),
-            }),
-        }
-    })
-}
-
 /// Approve a device-code consent prompt: apply the **expandable** scope decision
 /// (up to the client's `allowed_scopes`), transition the request, mint (or
 /// refresh) the standing device grant, and republish the popup head. An approval
@@ -85,33 +57,43 @@ pub(super) fn approve_device_consent(
         .client_by_id(&device_request.client_id)?
         .ok_or_else(make_consent_not_found)?;
 
+    // Device consent is expandable: the ceiling is the client's `allowed_scopes`
+    // on both sides. The proof every write below demands is the Owner's ticks
+    // clamped to it and covered by the approver's own grant.
     let allowed: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
-    let granted_scopes = grantable_scopes(input.approved_scopes, &allowed, &allowed);
-    if granted_scopes.is_empty() {
+    let Some(delegated) = DelegatedScopes::clamp(
+        approver,
+        input.approved_scopes,
+        &ScopeCeiling {
+            requested: &allowed,
+            allowed: &allowed,
+        },
+    )?
+    else {
         return deny_consent(store, publisher, &device_request.id).map(|()| ConsentOutcome::Denied);
-    }
-    ensure_approver_covers(&granted_scopes, approver)?;
+    };
 
     let request_device_name = input
         .device_name
         .as_deref()
         .or(device_request.device_name.as_deref());
-    let approved = store.approve_authorization_request(
-        &device_request.id,
-        &granted_scopes,
-        input.patient.as_deref(),
-        request_device_name,
+    let approved = RequestApprover::over(store).approve_for_device(
+        &delegated,
+        DeviceApproval {
+            request_id: &device_request.id,
+            patient: input.patient.as_deref(),
+            device_name: request_device_name,
+        },
     )?;
     if !approved {
         return Err(make_consent_not_found());
     }
 
     let effective_device_name = request_device_name.unwrap_or(client.name.as_str());
-    upsert_device_grant(
-        store,
+    GrantRecorder::over(store).record_device_grant(
         &device_request.client_id,
         effective_device_name,
-        &granted_scopes,
+        &delegated,
         input.patient.as_deref(),
         now,
     )?;

@@ -1,10 +1,15 @@
 //! Consent capabilities — the `wildflower/AuthorizationRequest.*` capabilities
 //! behind `/access/oauth-consents/*` and `/access/devices/*`, and the consent
-//! operations they own. The transaction scripts (load-and-validate, the
-//! approve/deny flows, the standing-grant upserts they trigger) live here as
-//! `&impl GatekeeperStore` functions so they stay unit-testable against the
+//! operations they own. The flows (load-and-validate, approve, deny) live here
+//! as `&impl GatekeeperStore` functions so they stay unit-testable against the
 //! in-memory fake; the capabilities are the scope-gated entries, generic over the
-//! store and holding the port dependencies lifted from the state.
+//! store and holding the port dependencies lifted from the state. An approval's
+//! privileged writes — approving the request, issuing the code, recording the
+//! grant and registration — go through the
+//! [`writers`](crate::domain::capabilities::writers) under the
+//! [`DelegatedScopes`](crate::domain::authority::DelegatedScopes) proof the
+//! approve flows obtain, so what the Owner clicked can never be recorded wider
+//! than what the Owner holds.
 //!
 //! The code-flow surfaces additionally carry the **registration verdict** (see
 //! [`crate::domain::client_registration`]): the prompt renders it, and an
@@ -369,7 +374,6 @@ mod tests {
 
     use chrono::Duration;
 
-    use super::oauth::{upsert_authorization_code_grant, RegistrationWrite};
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::client::RegisteredRedirectUri;
@@ -947,49 +951,6 @@ mod tests {
                 Err(GatekeeperError::OAuthConsentNotFound { id: id.to_owned() }),
             );
         }
-    }
-
-    #[test]
-    fn upsert_authorization_code_grant_inserts_then_unions_scopes() {
-        let store = FakeGatekeeperStore::default();
-        let redirect = url::Url::parse("https://example.com/cb").unwrap();
-
-        upsert_authorization_code_grant(
-            &store,
-            "client-a",
-            &redirect,
-            &["read".to_owned()],
-            Some("pat-1"),
-            Utc::now(),
-            &RegistrationWrite::Untouched,
-        )
-        .unwrap();
-        let first = store
-            .grant_by_client_and_redirect("client-a", &redirect)
-            .unwrap()
-            .expect("grant inserted");
-        assert_eq!(first.scopes, vec!["read".to_owned()]);
-
-        upsert_authorization_code_grant(
-            &store,
-            "client-a",
-            &redirect,
-            &["read".to_owned(), "write".to_owned()],
-            Some("pat-2"),
-            Utc::now(),
-            &RegistrationWrite::Untouched,
-        )
-        .unwrap();
-        let merged = store
-            .grant_by_client_and_redirect("client-a", &redirect)
-            .unwrap()
-            .expect("grant present");
-        assert_eq!(
-            merged.id, first.id,
-            "the same grant is updated, not duplicated"
-        );
-        assert_eq!(merged.scopes, vec!["read".to_owned(), "write".to_owned()]);
-        assert_eq!(merged.patient.as_deref(), Some("pat-2"));
     }
 
     #[test]

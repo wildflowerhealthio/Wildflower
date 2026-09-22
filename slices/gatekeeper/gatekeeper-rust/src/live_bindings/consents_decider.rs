@@ -11,7 +11,7 @@ use scopes_rust::{Grant, Scope};
 
 use super::state::GatekeeperState;
 use crate::db::SqliteGatekeeperStore;
-use crate::domain::capabilities::consents::consent_decider_scopes;
+use crate::domain::capabilities::access::consents::consent_decider_scopes;
 use crate::domain::capabilities::{Capability, ConsentDecider};
 use crate::domain::token::VerifiedClaims;
 use crate::ports::PendingConsentPublisher;
