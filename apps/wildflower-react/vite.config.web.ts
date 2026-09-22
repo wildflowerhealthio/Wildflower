@@ -5,7 +5,7 @@ export default defineConfig({
   ...baseConfig,
   base: './',
   build: {
-    outDir: 'dist-hosted',
-    rolldownOptions: { input: 'index-hosted.html' },
+    outDir: 'dist-web',
+    rolldownOptions: { input: 'index.html' },
   },
 })

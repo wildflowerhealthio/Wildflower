@@ -2,7 +2,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { redirectUriForPage } from './redirect-target.ts'
+import { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 
 describe('redirectUriForPage', () => {
   it('derives a page’s own directory, wherever the build is served from', () => {
@@ -130,6 +130,96 @@ describe('redirectUriForPage', () => {
 
         // Assert
         expect(redirectUri).toBeUndefined()
+      }),
+      { numRuns: numRunsFor({ base: 200 }) }
+    )
+  })
+})
+
+describe('redirectUriForRoute', () => {
+  it('resolves the route against the origin, not the page’s own path', () => {
+    // Arrange / Act / Assert — the same SPA reached from three of its sections
+    // has to send one `redirect_uri`, or only one section could ever sign in.
+    expect(redirectUriForRoute('https://wildflowerhealth.io/', '/home')).toBe(
+      'https://wildflowerhealth.io/home'
+    )
+    expect(redirectUriForRoute('https://wildflowerhealth.io/settings/tunnel', '/home')).toBe(
+      'https://wildflowerhealth.io/home'
+    )
+    expect(redirectUriForRoute('http://127.0.0.1:5173/gatekeeper/grants', '/home')).toBe(
+      'http://127.0.0.1:5173/home'
+    )
+  })
+
+  it('drops the query the reader arrived with, including the callback’s own', () => {
+    // Arrange — the outbound page carries `?server=`, the callback carries the
+    // single-use `code`/`state`. Neither may reach the registered value.
+    const outbound = 'https://wildflowerhealth.io/?server=https%3A%2F%2Fx.test#anchor'
+    const callback = 'https://wildflowerhealth.io/home?code=abc&state=xyz'
+
+    // Act / Assert
+    expect(redirectUriForRoute(outbound, '/home')).toBe('https://wildflowerhealth.io/home')
+    expect(redirectUriForRoute(callback, '/home')).toBe('https://wildflowerhealth.io/home')
+  })
+
+  it('refuses a route that would point the redirect at another origin', () => {
+    // Arrange / Act / Assert — `/\` is the form `URL` folds into `//`, which the
+    // origin-equality guard is there to catch.
+    const here = 'https://wildflowerhealth.io/'
+    expect(redirectUriForRoute(here, '//evil.test/home')).toBeUndefined()
+    expect(redirectUriForRoute(here, '/\\evil.test/home')).toBeUndefined()
+    expect(redirectUriForRoute(here, 'https://evil.test/home')).toBeUndefined()
+  })
+
+  it('applies the same scheme screen as the page form', () => {
+    // Arrange / Act / Assert
+    expect(redirectUriForRoute('http://localhost:5173/', '/home')).toBe(
+      'http://localhost:5173/home'
+    )
+    expect(redirectUriForRoute('http://preview.example/', '/home')).toBeUndefined()
+    expect(redirectUriForRoute('file:///tmp/app/index.html', '/home')).toBeUndefined()
+    expect(redirectUriForRoute('', '/home')).toBeUndefined()
+  })
+
+  it('always derives the same redirect wherever in the app the flow starts', () => {
+    // The server matches `redirect_uri` by exact string equality, and the
+    // return leg lands on the fixed route carrying `code` and `state`. The
+    // whole point of resolving against the origin is that these two agree
+    // however deep the reader was when they started.
+    fc.assert(
+      fc.property(securePageUrl, fc.webPath(), fc.string(), (href, section, code) => {
+        // Arrange
+        const started = new URL(href)
+        started.pathname = section
+        const callback = new URL('/home', href)
+        callback.search = new URLSearchParams({ code }).toString()
+
+        // Act / Assert
+        expect(redirectUriForRoute(started.href, '/home')).toBe(
+          redirectUriForRoute(callback.href, '/home')
+        )
+      }),
+      { numRuns: numRunsFor({ base: 200 }) }
+    )
+  })
+
+  it('never yields a URI off the page’s own origin, whatever the route says', () => {
+    // A route is app-authored, but the guard is what makes that irrelevant:
+    // nothing a route string can spell redirects the token somewhere else.
+    fc.assert(
+      fc.property(securePageUrl, fc.string(), (href, route) => {
+        // Act
+        const redirectUri = redirectUriForRoute(href, route)
+
+        // Assert — either refused outright, or provably on this origin and
+        // carrying none of the parts a `redirect_uri` must not.
+        if (redirectUri === undefined) return
+        const parsed = new URL(redirectUri)
+        expect(parsed.origin).toBe(new URL(href).origin)
+        expect(parsed.username).toBe('')
+        expect(parsed.password).toBe('')
+        expect(parsed.search).toBe('')
+        expect(parsed.hash).toBe('')
       }),
       { numRuns: numRunsFor({ base: 200 }) }
     )

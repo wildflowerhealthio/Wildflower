@@ -1,19 +1,24 @@
 /**
- * Per-entry {@link AuthStateStore} factory for the hosted web entry
- * (`main-hosted`), where the bearer token lives in page memory —
- * not in a cookie or a host-side jar.
+ * {@link AuthStateStore} factory for an entry that holds its credential as a
+ * **bearer token in page memory** — not in a cookie or a host-side jar. The
+ * `main-web` entry of `apps/wildflower-react` is the one that does.
  *
- * The hosted page runs cross-origin to its API server, so the `HttpOnly`
- * `wf_auth` cookie (set `SameSite=Lax`) is never carried by its fetches.
- * Instead the device-flow token response's `access_token` is held here
- * and attached as an `Authorization` header by the transport wrapper in
- * `apps/wildflower-react`. A page reload returns to `Unauthed` (the
- * bearer is in-memory only; no `localStorage`, no cookie).
+ * Named for the mechanism rather than the deployment, alongside
+ * {@link makeCookieAuthStateStore}: which one an entry picks is decided by how
+ * its credential travels, and a page that runs cross-origin to its API server
+ * has no choice. The `HttpOnly` `wf_auth` cookie is set `SameSite=Lax`, so it
+ * is never carried by a cross-origin fetch; the token response's
+ * `access_token` is held here instead and attached as an `Authorization`
+ * header by the transport wrapper in `apps/wildflower-react`. A page reload
+ * returns to `Unauthed` — the bearer is in memory only, no `localStorage` and
+ * no cookie, which is the policy
+ * `slices/gatekeeper/docs/Auth Token Storage Explanation.md` sets for a
+ * credential a public page holds.
  *
  * The store satisfies {@link AuthStateStore} so every consumer is
- * environment-blind; the {@link HostedAuthStateStore.bearer} reader and
- * the {@link HostedAuthStateStore.writeBearer} writer are the extra surface the
- * hosted entry and transport wrapper use.
+ * environment-blind; the {@link BearerAuthStateStore.bearer} reader and
+ * the {@link BearerAuthStateStore.writeBearer} writer are the extra surface the
+ * entry and transport wrapper use.
  */
 
 import { Equal } from 'effect'
@@ -25,7 +30,7 @@ import {
   Unauthed,
 } from 'react-kitchen-sink'
 
-interface HostedAuthStateStore extends AuthStateStore {
+interface BearerAuthStateStore extends AuthStateStore {
   /**
    * The current bearer token, or `undefined` when unauthed. Read by the
    * transport wrapper to attach `Authorization: Bearer <token>`.
@@ -44,7 +49,7 @@ interface HostedAuthStateStore extends AuthStateStore {
   readonly storeBearer: (token: string) => void
 }
 
-const makeHostedAuthStateStore = (): HostedAuthStateStore => {
+const makeBearerAuthStateStore = (): BearerAuthStateStore => {
   let currentBearer: string | undefined
   let current: AuthState = Unauthed()
   const { subscribable, set } = makeSubscribableStore<AuthState>(current)
@@ -75,5 +80,5 @@ const makeHostedAuthStateStore = (): HostedAuthStateStore => {
   }
 }
 
-export { makeHostedAuthStateStore }
-export type { HostedAuthStateStore }
+export { makeBearerAuthStateStore }
+export type { BearerAuthStateStore }

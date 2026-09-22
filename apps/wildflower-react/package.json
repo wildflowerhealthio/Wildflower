@@ -36,9 +36,9 @@
     "./package.json": "./package.json"
   },
   "scripts": {
-    "build": "vp run build:single-web && vp run build:hosted",
-    "build:hosted": "vp build --config vite.config.web.ts",
+    "build": "vp run build:single-web && vp run build:web",
     "build:single-web": "vp build --config vite.config.single-web.ts",
+    "build:web": "vp build --config vite.config.web.ts",
     "check": "vp check",
     "dev": "vp dev --config vite.config.web.ts",
     "test": "vp test --passWithNoTests"

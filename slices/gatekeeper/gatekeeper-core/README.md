@@ -123,6 +123,29 @@ to the Owner's consent prompt as a warning and adds it to the row on approval
 (`domain/client_registration.rs`), so the Owner is the gate rather than a list
 inside the page.
 
+The first-party host is the exception, in both directions: `/authorize` refuses
+an unregistered redirect for it outright (the local `RedirectUriNotAllowed`
+page), and `ensure_first_party_client` seeds it from code with no redirect URIs
+at all. A browser page running this flow therefore cannot authorize as
+`wildflower-host`; it needs a client row of its own, the way
+`wildflower-server-docs` and `wildflower-react` have one.
+
+### Returning to a route instead of a directory
+
+`redirectUriForRoute(href, route)` resolves `route` against the origin `href` is
+served from, sharing the scheme screen above. It is the form a single-page app
+wants: a SPA on browser history has no stable directory, since the one a reader
+signs in from is whichever section they were in (`/settings/foo` → `/settings/`),
+and only one of those could ever be the registered entry. Resolving a fixed route
+makes the value depend on the origin alone, which restores the
+outbound-equals-callback property `redirectUriForPage` gets from the directory.
+
+A `route` that escapes the origin — `//evil.test/home`, or the `/\evil.test` that
+`URL` folds into it — yields `undefined` rather than a URI pointing elsewhere,
+the same origin-equality guard `gatekeeper-rust` applies to an app-relative
+allowlist entry. The hosted owner UI (`apps/wildflower-react`'s `main-hosted`)
+is the caller; the server-docs console still uses the directory form.
+
 `insecureTargetReason` in `smart-discovery.ts` states the same scheme rule about
 the _target_ that `usableEndpointUrl` enforces about the discovered endpoints, so
 a page can explain up front that a secure page cannot reach a plaintext server

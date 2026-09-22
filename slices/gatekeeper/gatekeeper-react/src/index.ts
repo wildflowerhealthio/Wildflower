@@ -52,23 +52,23 @@ export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 
 export {
   EMBEDDED_TOKEN_TIMEOUT,
+  makeAwaitDeviceLoginAuthReady,
   makeAwaitEmbeddedAuthReady,
-  makeAwaitHostedAuthReady,
-  makeAwaitWebAuthReady,
+  makeAwaitLandingAuthReady,
   TokenTimeout,
 } from './client/auth-ready.ts'
 
 export {
   AUTH_EXP_COOKIE_NAME,
+  makeCookieAuthStateStore,
   makeEmbeddedAuthStateStore,
-  makeWebAuthStateStore,
   readAuthedSignalFromCookie,
 } from './client/auth-state-store.ts'
 
 export {
-  makeHostedAuthStateStore,
-  type HostedAuthStateStore,
-} from './client/hosted-auth-state-store.ts'
+  makeBearerAuthStateStore,
+  type BearerAuthStateStore,
+} from './client/bearer-auth-state-store.ts'
 
 export {
   TokenResponseHandlerContext,

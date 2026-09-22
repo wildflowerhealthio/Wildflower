@@ -43,7 +43,7 @@ export {
   serverUrlFromSearch,
 } from './server-target.ts'
 
-export { redirectUriForPage } from './redirect-target.ts'
+export { redirectUriForPage, redirectUriForRoute } from './redirect-target.ts'
 
 export { beginSignIn, completeSignIn, PendingRequestUnusable } from './sign-in.ts'
 export type { PendingStore, Session, SignInEnvironment, SignInError } from './sign-in.ts'

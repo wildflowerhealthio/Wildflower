@@ -1,10 +1,16 @@
 /**
  * Per-entry {@link AuthStateStore} factories for the gatekeeper auth
- * signal: {@link makeWebAuthStateStore} (cookie-driven, for the
- * standalone web entries) and {@link makeEmbeddedAuthStateStore}
- * (in-memory only, for the in-WebView SPA). Both return the same
- * {@link AuthStateStore} shape so every consumer is environment-blind;
- * only the `main-*` entrypoint picks a factory.
+ * signal: {@link makeCookieAuthStateStore} (cookie-driven, for an entry served
+ * same-origin by the API server) and {@link makeEmbeddedAuthStateStore}
+ * (in-memory only, for the in-WebView SPA). A third,
+ * {@link makeBearerAuthStateStore}, lives in `bearer-auth-state-store.ts` for
+ * an entry that runs cross-origin and must carry its own header. All three
+ * return the same {@link AuthStateStore} shape so every consumer is
+ * environment-blind; only the `main-*` entrypoint picks a factory.
+ *
+ * The factories are named for the **mechanism** — how the credential travels —
+ * rather than for a deployment, because that is what actually decides which one
+ * an entry can use.
  *
  * The store publishes a typed {@link AuthState}, never a credential:
  *
@@ -80,7 +86,7 @@ const readAuthedSignalFromCookie = (): AuthState => {
  * freshness can read `exp` off the signal themselves. Call once per page load in
  * the `main-*` entrypoint.
  */
-const makeWebAuthStateStore = (): AuthStateStore => {
+const makeCookieAuthStateStore = (): AuthStateStore => {
   let current = readAuthedSignalFromCookie()
   const { subscribable, set } = makeSubscribableStore<AuthState>(current)
 
@@ -125,7 +131,7 @@ const makeEmbeddedAuthStateStore = (): AuthStateStore => {
 
 export {
   AUTH_EXP_COOKIE_NAME,
+  makeCookieAuthStateStore,
   makeEmbeddedAuthStateStore,
-  makeWebAuthStateStore,
   readAuthedSignalFromCookie,
 }

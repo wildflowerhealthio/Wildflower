@@ -98,7 +98,7 @@ interface RenderAppOptions {
   /** Browser history for web, memory history for embedded WebView. */
   readonly history: RouterHistory
   /** Tagged onto Sentry events to distinguish web/embedded crashes. */
-  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri' | 'main-hosted'
+  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri'
   /**
    * Environment-specific {@link AuthStateStore}. Web entries pass
    * `makeWebAuthStateStore()` (cookie-derived auth signal — the real JWT
@@ -179,17 +179,27 @@ interface RenderAppOptions {
    */
   readonly redirectToDeviceLoginOnUnauthorized: boolean
   /**
-   * Lazy bearer reader for the hosted entry. When provided, every
-   * relative HTTP request carries `Authorization: Bearer <token>`.
-   * Omitted for cookie-authed entries (web, Tauri).
+   * Lazy bearer reader for `main-web`, the cross-origin entry. When provided,
+   * every relative HTTP request carries `Authorization: Bearer <token>`.
+   * Omitted for cookie-authed entries (single-web, Tauri).
    */
   readonly readBearer?: () => string | undefined
   /**
-   * Token response handler for the hosted entry. When provided,
+   * Token response handler for `main-web`. When provided,
    * `NeedsAuthMessage` writes the bearer and navigates client-side
    * instead of doing a full-page reload.
    */
   readonly tokenResponseHandler?: TokenResponseHandler
+  /**
+   * Why the web entry's boot-time SMART sign-in failed, when it did.
+   * `main-web` redeems the authorization code before it mounts the router
+   * (see its `boot`), so a failed return leg has nowhere to render itself by
+   * the time the tree exists. Threaded into router context for the landing
+   * route to show, the same way `localGrantedScopes` and `firstPartyClientId`
+   * reach `NeedsAuthMessage`. Omitted on every other entry and on an ordinary
+   * load.
+   */
+  readonly signInProblem?: string
 }
 
 /**
@@ -235,6 +245,7 @@ const renderApp = ({
   redirectToDeviceLoginOnUnauthorized,
   readBearer,
   tokenResponseHandler,
+  signInProblem,
 }: RenderAppOptions): void => {
   // Router isn't built until after the query runtime (its context needs the
   // runtime), so the closures that navigate imperatively read it through this
@@ -308,6 +319,9 @@ const renderApp = ({
       // gatekeeper seeds the first-party client under — see
       // `RouterContext.firstPartyClientId`.
       firstPartyClientId,
+      // Threaded so the landing page can report a sign-in that failed before
+      // the tree existed — see `RouterContext.signInProblem`.
+      signInProblem,
     },
     defaultPreload: 'intent',
   })

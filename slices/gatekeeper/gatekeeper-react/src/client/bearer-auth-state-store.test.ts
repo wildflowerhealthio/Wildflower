@@ -4,22 +4,22 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { AuthedUntil, type AuthState, Unauthed } from 'react-kitchen-sink'
 import { describe, expect, test } from 'vite-plus/test'
 
-import { makeHostedAuthStateStore } from './hosted-auth-state-store.ts'
+import { makeBearerAuthStateStore } from './bearer-auth-state-store.ts'
 
 const read = (store: {
   readonly subscribable: { readonly get: Effect.Effect<AuthState> }
 }): AuthState => Effect.runSync(store.subscribable.get)
 
-describe('makeHostedAuthStateStore', () => {
+describe('makeBearerAuthStateStore', () => {
   test('starts Unauthed with no bearer', () => {
-    const store = makeHostedAuthStateStore()
+    const store = makeBearerAuthStateStore()
 
     expect(Equal.equals(read(store), Unauthed())).toBe(true)
     expect(store.bearer()).toBeUndefined()
   })
 
   test('writeBearer sets the bearer and publishes AuthedUntil', () => {
-    const store = makeHostedAuthStateStore()
+    const store = makeBearerAuthStateStore()
 
     store.writeBearer('tok_abc', 9999)
 
@@ -28,7 +28,7 @@ describe('makeHostedAuthStateStore', () => {
   })
 
   test('storeBearer sets the bearer without publishing an auth signal', () => {
-    const store = makeHostedAuthStateStore()
+    const store = makeBearerAuthStateStore()
 
     store.storeBearer('tok_silent')
 
@@ -37,7 +37,7 @@ describe('makeHostedAuthStateStore', () => {
   })
 
   test('setAuthState(Unauthed) clears the bearer', () => {
-    const store = makeHostedAuthStateStore()
+    const store = makeBearerAuthStateStore()
     store.writeBearer('tok_abc', 9999)
 
     store.setAuthState(Unauthed())
@@ -47,7 +47,7 @@ describe('makeHostedAuthStateStore', () => {
   })
 
   test('setAuthState(AuthedUntil) publishes without changing the bearer', () => {
-    const store = makeHostedAuthStateStore()
+    const store = makeBearerAuthStateStore()
     store.storeBearer('tok_pre')
 
     store.setAuthState(AuthedUntil({ exp: 5000 }))
@@ -59,7 +59,7 @@ describe('makeHostedAuthStateStore', () => {
   test('property: writeBearer round-trips any token and exp', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), fc.nat(), (token, exp) => {
-        const store = makeHostedAuthStateStore()
+        const store = makeBearerAuthStateStore()
         store.writeBearer(token, exp)
 
         expect(store.bearer()).toBe(token)
@@ -72,7 +72,7 @@ describe('makeHostedAuthStateStore', () => {
   test('property: storeBearer then setAuthState(AuthedUntil) composes correctly', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), fc.nat(), (token, exp) => {
-        const store = makeHostedAuthStateStore()
+        const store = makeBearerAuthStateStore()
         store.storeBearer(token)
         store.setAuthState(AuthedUntil({ exp }))
 
@@ -86,7 +86,7 @@ describe('makeHostedAuthStateStore', () => {
   test('property: Unauthed always clears the bearer regardless of prior state', () => {
     fc.assert(
       fc.property(fc.string({ minLength: 1 }), fc.nat(), (token, exp) => {
-        const store = makeHostedAuthStateStore()
+        const store = makeBearerAuthStateStore()
         store.writeBearer(token, exp)
         store.setAuthState(Unauthed())
 

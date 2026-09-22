@@ -1,7 +1,6 @@
 # Build output folders
 dist-embedded/
 dist-web/
-dist-hosted/
 dist-single-web/
 
 # TanStack router-plugin tmp dir

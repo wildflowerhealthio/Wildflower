@@ -1,56 +1,149 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
-import { normalizeServerUrl, searchWithServerUrl } from 'gatekeeper-core/smart-client'
-import { buildDeviceLoginTarget } from 'gatekeeper-react'
-import { type JSX, type SubmitEvent, useState } from 'react'
+import {
+  insecureTargetReason,
+  normalizeServerUrl,
+  searchWithServerUrl,
+} from 'gatekeeper-core/smart-client'
+import { type JSX, type SubmitEvent, useEffect, useState } from 'react'
 import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitchen-sink'
 import { TextField, pageLayoutStyles } from 'react-tundraish'
 
 import type { RouterContext } from '../router-context.ts'
+import { signInEnvironment, startSignIn } from '../sign-in.ts'
+import { apiServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
 
 const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
-const LOCAL_SERVER_URL = 'http://127.0.0.1:8080'
 
-const connectToServer = (serverUrl: string): void => {
-  const normalized = normalizeServerUrl(serverUrl)
-  if (normalized === undefined) return
-  const search = searchWithServerUrl(window.location.search, normalized)
-  window.location.assign(`/${search}`)
+/**
+ * Record `serverUrl` as this page's target without reloading.
+ *
+ * `?server=` is what `web-entry.ts` reads to point the transport, so it has
+ * to be in the URL — but a reload is not needed to get there and would only
+ * throw away the page mid-action. It survives the sign-in round trip anyway:
+ * the registered redirect carries no query, so `main-web`'s boot restores
+ * `?server=` from the redeemed session rather than from the address bar.
+ */
+const rememberServer = (serverUrl: string): void => {
+  const search = searchWithServerUrl(window.location.search, serverUrl)
+  window.history.replaceState(null, '', `/${search}`)
 }
 
 /**
  * Root index. Behavior varies by entry:
  *
- * - **Hosted + unauthed**: renders the server picker landing page.
- * - **Hosted + authed**: redirects to `/home`.
- * - **Non-hosted**: redirects to `/home` unconditionally (the `_auth`
- *   gate handles the auth check for those entries).
+ * - **`main-web` + unauthed**: renders the server picker landing page, which
+ *   signs in by SMART standalone launch — see `../sign-in.ts` for the flow and
+ *   why this entry uses it rather than the device-code screen.
+ * - **`main-web` + authed**: redirects to `/home`.
+ * - **Every other entry**: redirects to `/home` unconditionally. They are
+ *   served by the API server itself, so there is no server to pick, and their
+ *   `_auth` gate handles the auth check.
  */
 const Route = createFileRoute('/')({
   beforeLoad: ({ context }: { readonly context: RouterContext }): void => {
-    if (context.entry !== 'main-hosted') {
+    if (context.entry !== 'main-web') {
       throw redirect({ to: '/home' })
     }
   },
-  component: HostedLanding,
+  component: LandingRoute,
 })
 
-function HostedLanding(): JSX.Element {
+/**
+ * Reads the one piece of router context the landing page needs and hands it
+ * down, so {@link Landing} itself takes plain props and mounts in a test
+ * under a bare router — the arrangement `settings/index.tsx` uses.
+ */
+function LandingRoute(): JSX.Element {
+  const bootProblem = Route.useRouteContext({
+    select: (context: RouterContext) => context.signInProblem,
+  })
+  return <Landing bootSignInProblem={bootProblem} />
+}
+
+/**
+ * The web entry's landing page: pick a server, then sign in to it.
+ *
+ * @param bootSignInProblem - Why a sign-in failed on the *previous* page load,
+ *   before this tree existed. `main-web` redeems the authorization code
+ *   ahead of mounting the router, so that failure has to be carried in rather
+ *   than raised here. Seeds the state once; a fresh attempt replaces it.
+ */
+function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string }): JSX.Element {
   const navigate = useNavigate()
   const authSignal = useSubscribable(useAuthStateSubscribable())
   const [subdomain, setSubdomain] = useState('')
   const [freeText, setFreeText] = useState('')
+  const [signInProblem, setSignInProblem] = useState(bootSignInProblem)
+  const [leavingToSignIn, setLeavingToSignIn] = useState(false)
 
-  if (isAuthed(authSignal)) {
-    void navigate({ to: '/home' })
-    return <></>
+  // Bounce an already-signed-in reader on to the app. In an effect, not in the
+  // render body: `navigate` schedules a router state update, and calling it
+  // while rendering updates a component mid-render (React warns, and under
+  // StrictMode the render runs twice), so the navigation could be dropped and
+  // leave the landing page sitting there authed.
+  const authed = isAuthed(authSignal)
+  useEffect(() => {
+    if (authed) void navigate({ to: '/home' })
+  }, [authed, navigate])
+
+  if (authed) return <></>
+
+  // The server this page is pointed at — the same resolution `web-entry.ts`
+  // gives the transport, so the token is asked of whichever server the requests
+  // will go to.
+  const serverUrl = apiServerUrl(window.location.search)
+
+  // Said up front, while the reader is still looking at the address they
+  // entered, rather than later as a discovery failure: an https page cannot
+  // reach a plaintext server unless it is loopback.
+  const blockedReason = insecureTargetReason(serverUrl, {
+    pageIsSecure: window.location.protocol === 'https:',
+  })
+
+  /**
+   * Leave for `target`'s `/oauth/authorize` — the SMART standalone launch, the
+   * same flow the server-docs console runs. The reader comes back to `/home`
+   * with a code, which `main-web`'s boot redeems before the router mounts.
+   * Nothing is held here across the redirect but the pending record in
+   * `sessionStorage`, which carries no credential.
+   */
+  const signInTo = (target: string): void => {
+    setLeavingToSignIn(true)
+    setSignInProblem(undefined)
+    void startSignIn(target, signInEnvironment(window)).then((started) => {
+      if (started.tag === 'Ok') {
+        window.location.assign(started.value)
+        return
+      }
+      setLeavingToSignIn(false)
+      setSignInProblem(started.reason)
+    })
   }
 
-  const startSignInWithCurrentServer = (): void => {
-    void navigate(buildDeviceLoginTarget('/home'))
+  /**
+   * Point the page at `candidate` and start signing in to it, which is what
+   * choosing a server means — a reader who picks one wants to be signed in to
+   * it, not handed a second button further down the page.
+   */
+  const connectToServer = (candidate: string): void => {
+    const normalized = normalizeServerUrl(candidate)
+    if (normalized === undefined) {
+      setSignInProblem(`“${candidate}” is not an address this page can reach.`)
+      return
+    }
+    const blocked = insecureTargetReason(normalized, {
+      pageIsSecure: window.location.protocol === 'https:',
+    })
+    if (blocked !== undefined) {
+      setSignInProblem(blocked)
+      return
+    }
+    rememberServer(normalized)
+    signInTo(normalized)
   }
 
   const handleLocal = (): void => {
-    connectToServer(LOCAL_SERVER_URL)
+    connectToServer(DEFAULT_SERVER_URL)
   }
 
   const handleSubdomain = (e: SubmitEvent<HTMLFormElement>): void => {
@@ -69,6 +162,10 @@ function HostedLanding(): JSX.Element {
 
   const hasServerInUrl = new URLSearchParams(window.location.search).has('server')
 
+  // A failed attempt outranks the up-front warning: the reader has already
+  // acted, so what went wrong is the more useful thing to read.
+  const status = signInProblem ?? blockedReason
+
   return (
     <div className={pageLayoutStyles['page']}>
       <h1 className="text-heading-6">Wildflower</h1>
@@ -81,20 +178,25 @@ function HostedLanding(): JSX.Element {
 
         <div style={{ display: 'grid', gap: 'var(--space-7)', marginTop: 'var(--space-7)' }}>
           <button type="button" className="button-2 filled" onClick={handleLocal}>
-            Local server (127.0.0.1:8080)
+            Local server ({new URL(DEFAULT_SERVER_URL).host})
           </button>
 
           <form
             onSubmit={handleSubdomain}
             style={{ display: 'flex', gap: 'var(--space-4)', alignItems: 'end' }}
           >
+            <span className="text-body-3" style={{ marginBottom: 8 }}>
+              https://
+            </span>
             <TextField
               label="Subdomain"
               value={subdomain}
               onChange={setSubdomain}
               placeholder="my-server"
             />
-            <span className="text-body-3">{WILDFLOWER_DOMAIN}</span>
+            <span className="text-body-3" style={{ marginBottom: 8 }}>
+              {WILDFLOWER_DOMAIN}
+            </span>
             <button type="submit" className="button-3 outlined">
               Connect
             </button>
@@ -116,20 +218,29 @@ function HostedLanding(): JSX.Element {
           </form>
         </div>
 
-        {hasServerInUrl ? (
-          <div style={{ marginTop: 'var(--space-9)' }}>
+        <div style={{ marginTop: 'var(--space-9)', display: 'grid', gap: 'var(--space-5)' }}>
+          {/* Shown only when a server is already chosen — a reader who arrived
+              on a shared link, or who was bounced here by the auth gate, has
+              nothing to pick and just needs the way back in. Picking a server
+              above signs in on its own, so this would be a dead second step
+              otherwise. */}
+          {hasServerInUrl ? (
             <button
               type="button"
               className="button-2 filled"
-              onClick={startSignInWithCurrentServer}
+              onClick={() => {
+                signInTo(serverUrl)
+              }}
+              disabled={leavingToSignIn || blockedReason !== undefined}
             >
-              Sign in to connected server
+              {leavingToSignIn ? 'Taking you to sign in…' : `Sign in to ${serverUrl}`}
             </button>
-          </div>
-        ) : null}
+          ) : null}
+          {status === undefined ? null : <p className="text-body-3">{status}</p>}
+        </div>
       </section>
     </div>
   )
 }
 
-export { Route }
+export { Landing, Route }
