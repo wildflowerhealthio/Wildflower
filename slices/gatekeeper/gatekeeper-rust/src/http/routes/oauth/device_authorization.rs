@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use utoipa::ToSchema;
 
 use super::device_name_hint::device_name_from_user_agent;
-use super::internal::{require_valid_client_for_token, TokenError};
+use super::internal::TokenError;
 use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
 use crate::crypto_util::oauth_user_code::generate_oauth_user_code;
@@ -102,10 +102,7 @@ fn device_authorization(
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
-    let TokenRequest {
-        payload,
-        credentials: presented_credentials,
-    } = request;
+    let TokenRequest { payload, client } = request;
     let requested_scopes: Vec<String> = payload
         .scope
         .as_deref()
@@ -114,15 +111,13 @@ fn device_authorization(
         .map(str::to_string)
         .collect();
     // RFC 8628 §3.1 inherits RFC 6749 §3.2.1 client authentication, already
-    // resolved by the `TokenRequest` extractor (Basic header first, body
-    // fallback); confidential clients are verified here with a timing-safe
-    // secret check, public clients pass through without a secret.
-    let client = require_valid_client_for_token(&state.store, &presented_credentials)?;
+    // done by the `TokenRequest` extractor: `client` is the proof.
     // Coverage-aware allowlist check (a broad/v1 grant admits a narrower/v2
     // request it covers) — the same check as
     // `authorize.rs::validate_requested_scopes`; see there.
     if !requested_scopes.iter().all(|requested| {
         client
+            .client()
             .allowed_scopes
             .iter()
             .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
@@ -139,7 +134,7 @@ fn device_authorization(
         .map_err(|e| TokenError::internal("user_code generation failed", e))?;
     let request = AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
         id: device_code.clone(),
-        client_id: presented_credentials.client_id.clone(),
+        client_id: client.client_id().to_owned(),
         requested_scopes,
         user_code: user_code.clone(),
         // The name the approver sees and the grant is keyed on. Prefer the name

@@ -5,6 +5,9 @@
 //!    **scopes**: acquired through the `Scoped<…>` extractor, which checks the
 //!    covering scope before the capability exists. The origin of the
 //!    default-safe pattern (`docs/Authorization/Scope-Gated Endpoints How-To.md`).
+//!  - [`oauth`] — the `/oauth/*` pre-auth surface, gated on the **client**:
+//!    anything done on a client's own behalf takes an `AuthenticatedClient`
+//!    proof, produced by the one capability there.
 //!  - [`writers`] — the privileged writes themselves (approve a request, issue a
 //!    code, record a grant, mint a token), each gated on an **authority proof**
 //!    from [`crate::domain::authority`]. Flow capabilities in every other group
@@ -20,6 +23,7 @@
 //! `crate::http`.
 
 pub(crate) mod access;
+pub(crate) mod oauth;
 pub(crate) mod writers;
 
 pub use access::grantable_admin_scopes;

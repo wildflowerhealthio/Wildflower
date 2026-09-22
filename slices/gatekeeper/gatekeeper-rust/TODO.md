@@ -23,13 +23,15 @@ constructible only in `seeding.rs`).
    mint routed through them, `capabilities/` split into `access/` + `writers/`,
    the privileged-call source guard with an explicit `IN_FLIGHT` list, and the
    unused owner-bearer helpers deleted.
-2. **`…-2-client-auth` — client authentication to domain.** `AuthenticatedClient`
-   proof (private constructor in `domain/client_authentication.rs`, argon2 +
-   disabled checks), domain `ClientCredentials` (zeroized) with an HTTP
-   `PresentedCredentials` wrapper carrying `presented_via`,
-   `ClientAuthenticationError` variants rendered by `http/errors/`. The
-   `TokenRequest` extractor authenticates and yields the proof (same check order
-   as today). Delete `require_valid_client_for_token` from `internal.rs`.
+2. **`…-2-client-auth` — client authentication to domain.** DONE.
+   `AuthenticatedClient` proof (`domain/authority/authenticated_client.rs`,
+   argon2 + disabled checks as its one constructor), domain `ClientCredentials`
+   (zeroized) with the HTTP `PresentedCredentials` wrapper carrying
+   `presented_via`, `ClientAuthenticationError` variants rendered by
+   `ClientAuthenticationFailure` in `internal.rs`. The `TokenRequest` extractor
+   authenticates through `LiveClientAuthenticator` and yields the proof (same
+   check order as before); the exchange handlers take `&AuthenticatedClient`.
+   `require_valid_client_for_token` deleted.
 3. **`…-3-token-exchange` — the three redemptions.** `RedeemedAuthorizationCode`,
    `ConsumedDeviceRequest`, `RotatedRefreshToken` in `domain/authority/`, each
    implementing `MintAuthority`; `RefreshFamilyStarter` writer (add

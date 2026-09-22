@@ -1,14 +1,12 @@
 use chrono::Utc;
 
 use super::{issue_token, start_refresh_token_family_if_granted};
+use crate::domain::authority::AuthenticatedClient;
 use crate::domain::authorization_request::{GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL};
 use crate::domain::client::AllowedGrantType;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::GatekeeperStore;
-use crate::http::routes::oauth::client_auth::ClientCredentials;
-use crate::http::routes::oauth::internal::{
-    require_valid_client_for_token, IssueTokenInput, TokenError,
-};
+use crate::http::routes::oauth::internal::{IssueTokenInput, TokenError};
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::TokenResponse;
 
@@ -32,11 +30,11 @@ fn ensure_device_request_approved(status: RequestStatus) -> Result<(), TokenErro
 pub(super) fn exchange_device_code(
     state: &GatekeeperState,
     origin: &str,
-    presented_credentials: &ClientCredentials,
+    client: &AuthenticatedClient,
     device_code: &str,
 ) -> Result<TokenResponse, TokenError> {
-    let client = require_valid_client_for_token(&state.store, presented_credentials)?;
     if !client
+        .client()
         .allowed_grant_types
         .contains(&AllowedGrantType::DeviceCode)
     {
@@ -48,7 +46,7 @@ pub(super) fn exchange_device_code(
     let request_record = match state.store.authorization_request_by_id(device_code)? {
         Some(record)
             if record.grant_type == GrantType::DeviceCode
-                && record.client_id == presented_credentials.client_id =>
+                && record.client_id == client.client_id() =>
         {
             record
         }
@@ -56,7 +54,7 @@ pub(super) fn exchange_device_code(
             // One response collapses "no such device_code", "wrong client", and
             // "not a device request"; log which (no device_code — it's a secret).
             tracing::warn!(
-                presented_client_id = %presented_credentials.client_id,
+                presented_client_id = %client.client_id(),
                 "device_code grant rejected: no matching pending/approved device request for this client"
             );
             return Err(TokenError::bad_request(
@@ -105,7 +103,7 @@ pub(super) fn exchange_device_code(
     let effective_device_name = request_record
         .device_name
         .as_deref()
-        .unwrap_or(client.name.as_str());
+        .unwrap_or(client.client().name.as_str());
     let grant_id = state
         .store
         .device_grant_by_client_and_device_name(&request_record.client_id, effective_device_name)?

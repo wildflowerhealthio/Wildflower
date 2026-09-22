@@ -3,11 +3,9 @@ use axum::response::{IntoResponse, Response};
 use axum::Json;
 
 use super::client_auth::{
-    ClientAuthenticationMethod, ClientCredentials, ResolveClientCredentialsError,
-    BASIC_AUTH_CHALLENGE,
+    ClientAuthenticationMethod, ResolveClientCredentialsError, BASIC_AUTH_CHALLENGE,
 };
-use crate::crypto_util::client_secret::verify_client_secret;
-use crate::domain::client::{Client, ClientKind};
+use crate::domain::authority::ClientAuthenticationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::token::{mint_access_token, NewJwtArgs, ACCESS_TOKEN_TTL};
 use crate::domain::GatekeeperStore;
@@ -67,7 +65,7 @@ pub enum TokenError {
     ResolveCredentials(ResolveClientCredentialsError),
     /// Client-authentication failure — renders its own response, possibly with
     /// a `WWW-Authenticate: Basic` challenge.
-    ClientAuth(ValidateClientError),
+    ClientAuth(ClientAuthenticationFailure),
     /// A logged, opaque, cache-suppressed 500 (e.g. a store read failed) —
     /// see [`InternalError`].
     Internal(InternalError),
@@ -120,8 +118,8 @@ impl From<ResolveClientCredentialsError> for TokenError {
     }
 }
 
-impl From<ValidateClientError> for TokenError {
-    fn from(error: ValidateClientError) -> Self {
+impl From<ClientAuthenticationFailure> for TokenError {
+    fn from(error: ClientAuthenticationFailure) -> Self {
         TokenError::ClientAuth(error)
     }
 }
@@ -137,95 +135,58 @@ impl IntoResponse for TokenError {
     }
 }
 
-/// Reasons that client authentication at the token endpoint can fail.
+/// A domain [`ClientAuthenticationError`] paired with how the client
+/// authenticated, which is what the rendering needs: RFC 6749 §5.2 says a `401`
+/// answering a Basic-authentication attempt carries a matching
+/// `WWW-Authenticate: Basic` challenge.
 #[derive(Debug)]
-pub enum ValidateClientError {
-    /// Client identification or secret check failed — surface as 401. RFC
-    /// 6749 §5.2: the response to a Basic-authentication attempt carries a
-    /// matching `WWW-Authenticate: Basic` challenge.
-    Unauthorized {
-        error: OAuthError,
-        attempted_via: ClientAuthenticationMethod,
-    },
-    /// Server-side failure (e.g. database read) — surface as 500.
-    Internal(OAuthError),
+pub struct ClientAuthenticationFailure {
+    pub error: ClientAuthenticationError,
+    pub attempted_via: ClientAuthenticationMethod,
 }
 
-impl IntoResponse for ValidateClientError {
+impl IntoResponse for ClientAuthenticationFailure {
+    /// The caller's-fault variants render as `401 invalid_client` with a
+    /// description naming the check; the server-side ones log and render as
+    /// `500 server_error` with no detail.
     fn into_response(self) -> Response {
-        match self {
-            ValidateClientError::Unauthorized {
-                error,
-                attempted_via: ClientAuthenticationMethod::HttpBasic,
-            } => (
+        let server_error = || {
+            OAuthErrorResponse::new(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                OAuthErrorCode::ServerError,
+                None,
+            )
+            .into_response()
+        };
+        let description = match self.error {
+            ClientAuthenticationError::UnknownClient => "Unknown client_id",
+            ClientAuthenticationError::Disabled => "Client is disabled",
+            ClientAuthenticationError::SecretNotConfigured => "Client secret not configured",
+            ClientAuthenticationError::SecretRequired => "Client secret required",
+            ClientAuthenticationError::SecretMismatch => "Invalid client_secret",
+            ClientAuthenticationError::Verification(error) => {
+                tracing::error!(%error, "client secret verification failed");
+                return server_error();
+            }
+            ClientAuthenticationError::Store(error) => {
+                tracing::error!(%error, "client_by_id lookup failed");
+                return server_error();
+            }
+        };
+        let unauthorized = OAuthErrorResponse::new(
+            StatusCode::UNAUTHORIZED,
+            OAuthErrorCode::InvalidClient,
+            Some(description),
+        );
+        match self.attempted_via {
+            ClientAuthenticationMethod::HttpBasic => (
                 [(header::WWW_AUTHENTICATE, BASIC_AUTH_CHALLENGE)],
-                OAuthErrorResponse {
-                    status: StatusCode::UNAUTHORIZED,
-                    error,
-                },
+                unauthorized,
             )
                 .into_response(),
-            ValidateClientError::Unauthorized {
-                error,
-                attempted_via: ClientAuthenticationMethod::RequestBody,
-            } => OAuthErrorResponse {
-                status: StatusCode::UNAUTHORIZED,
-                error,
-            }
-            .into_response(),
-            ValidateClientError::Internal(error) => OAuthErrorResponse {
-                status: StatusCode::INTERNAL_SERVER_ERROR,
-                error,
-            }
-            .into_response(),
+            ClientAuthenticationMethod::RequestBody => unauthorized.into_response(),
         }
     }
-}
-
-/// Look up the client named by the resolved credentials and authenticate it.
-/// For confidential clients the presented secret is verified against the
-/// stored argon2id PHC string (constant-time internally). Returns the loaded
-/// `Client` if both checks pass.
-pub fn require_valid_client_for_token(
-    store: &impl GatekeeperStore,
-    presented_credentials: &ClientCredentials,
-) -> Result<Client, ValidateClientError> {
-    // Every authentication failure records how the client authenticated, so
-    // 401s answer Basic attempts with a matching `WWW-Authenticate` header
-    // (RFC 6749 §5.2).
-    let unauthorized = |description: &str| ValidateClientError::Unauthorized {
-        error: OAuthError::new(OAuthErrorCode::InvalidClient, Some(description)),
-        attempted_via: presented_credentials.presented_via,
-    };
-    let client = store
-        .client_by_id(&presented_credentials.client_id)
-        .map_err(|e| {
-            tracing::error!(error = %e, "client_by_id lookup failed");
-            ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
-        })?;
-    let client = client.ok_or_else(|| unauthorized("Unknown client_id"))?;
-    if client.disabled_at.is_some() {
-        return Err(unauthorized("Client is disabled"));
-    }
-    if matches!(client.kind, ClientKind::Public) {
-        return Ok(client);
-    }
-    let stored_hash = client
-        .secret_hash
-        .as_deref()
-        .ok_or_else(|| unauthorized("Client secret not configured"))?;
-    let presented = presented_credentials
-        .client_secret
-        .as_deref()
-        .ok_or_else(|| unauthorized("Client secret required"))?;
-    let secret_matches = verify_client_secret(presented, stored_hash).map_err(|e| {
-        tracing::error!(error = %e, "client secret verification failed");
-        ValidateClientError::Internal(OAuthError::new(OAuthErrorCode::ServerError, None))
-    })?;
-    if !secret_matches {
-        return Err(unauthorized("Invalid client_secret"));
-    }
-    Ok(client)
 }
 
 /// Inputs required to mint and frame an OAuth `TokenResponse`.

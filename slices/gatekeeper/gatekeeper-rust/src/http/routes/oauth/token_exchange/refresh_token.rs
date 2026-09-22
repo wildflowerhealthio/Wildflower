@@ -1,14 +1,12 @@
 use chrono::Utc;
 
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
+use crate::domain::authority::AuthenticatedClient;
 use crate::domain::client::AllowedGrantType;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::refresh_token::{RefreshToken, RefreshTokenConsumeOutcome};
 use crate::domain::GatekeeperStore;
-use crate::http::routes::oauth::client_auth::ClientCredentials;
-use crate::http::routes::oauth::internal::{
-    issue_token_response, require_valid_client_for_token, IssueTokenInput, TokenError,
-};
+use crate::http::routes::oauth::internal::{issue_token_response, IssueTokenInput, TokenError};
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::TokenResponse;
 
@@ -19,11 +17,11 @@ use crate::http::wire_representations::TokenResponse;
 pub(super) fn exchange_refresh_token(
     state: &GatekeeperState,
     origin: &str,
-    presented_credentials: &ClientCredentials,
+    client: &AuthenticatedClient,
     presented_refresh_token: &str,
 ) -> Result<TokenResponse, TokenError> {
-    let client = require_valid_client_for_token(&state.store, presented_credentials)?;
     if !client
+        .client()
         .allowed_grant_types
         .contains(&AllowedGrantType::RefreshToken)
     {
@@ -44,12 +42,12 @@ pub(super) fn exchange_refresh_token(
     // wrong client is a grant failure; answer exactly as if it didn't exist.
     // Checked before consuming so a stranger can't burn the rightful
     // client's live token.
-    if family.client_id != presented_credentials.client_id {
+    if family.client_id != client.client_id() {
         // Deliberately answered exactly like "not found" (RFC 6749 §6) so a
         // stranger can't probe token validity; log the real reason.
         tracing::warn!(
             family_client_id = %family.client_id,
-            presented_client_id = %presented_credentials.client_id,
+            presented_client_id = %client.client_id(),
             "refresh_token grant rejected: token belongs to a different client"
         );
         return Err(TokenError::bad_request(

@@ -9,6 +9,9 @@
 //! The audit is therefore two short lists: the constructors here, and the
 //! writers (a source guard pins every privileged store call to them).
 //!
+//!  - [`AuthenticatedClient`] — an OAuth client that exists, is enabled, and
+//!    (if confidential) presented its secret. Everything a client does on its
+//!    own behalf takes one.
 //!  - [`DelegatedScopes`] — what an approving Owner may delegate: clamped to the
 //!    requested/allowed ceiling **and** covered by the approver's own grant. No
 //!    grant, code, or widened registration can carry a scope the approver did
@@ -23,10 +26,12 @@
 //! before any clamp) and the pending-request bookkeeping writes (park, poll,
 //! deny), which grant no authority and stay on the ordinary store port.
 
+mod authenticated_client;
 mod delegated_scopes;
 mod host_bootstrap;
 mod mint_authority;
 
+pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
 pub(crate) use delegated_scopes::{DelegatedScopes, ScopeCeiling};
 pub(crate) use host_bootstrap::HostBootstrap;
 pub(crate) use mint_authority::MintAuthority;
