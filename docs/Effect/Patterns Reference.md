@@ -35,6 +35,8 @@ When a higher-order surface has internal callbacks that require a `Context.Tag` 
 
 Keep the consumer-visible type clean by resolving the Tag once at construction time inside the scoped Effect, then satisfying the inner callbacks with `Effect.provideService(Tag, value)` at the boundary. Tests still swap implementations by providing a different value via `Layer.succeed(Tag, stub)` to the constructor itself; only the _public closure_ hides the requirement. Reach for this whenever "this thing internally needs X, but consumers shouldn't have to provide X on every call".
 
+The importer slice does the same with a schema rather than callbacks: `importer-fundamentals`' source file codec carries a `PickedFile.Format` requirement, and `DecodeFunction.make` provides it from the `sourceFileFormat` the binding handed it, so the batch `decode` it returns requires nothing. The tag's only other provider is the shell's read of a stored source file, from the same registry entry's constants — which is what keeps a format's coding spelled once. A constructor that closed over the constants instead would let two copies disagree.
+
 ## `SubscriptionRef` for a set-once, observable runtime slot
 
 A global slot where an entry point installs a value once and every other consumer reads it (e.g. `EffectRuntimeGlobal`) has two consumer flavours: sync readers that need it _now_, and async readers that race the entry point and can wait. A plain `let _value` serves the first but forces the second into a polling loop. `SubscriptionRef.make<T | undefined>(undefined)` collapses both:

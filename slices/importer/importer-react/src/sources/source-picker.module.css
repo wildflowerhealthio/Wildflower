@@ -51,3 +51,23 @@
      its newline a line break rather than collapsing it to a space. */
   white-space: pre-line;
 }
+
+/*
+ * The folder pick sits under the drop zone as a secondary action: a study is
+ * a folder, but most picks are still files.
+ */
+.folderButton {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-2);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.folderButton:hover,
+.folderButton:focus-visible {
+  border-color: var(--color-neutral-9);
+}

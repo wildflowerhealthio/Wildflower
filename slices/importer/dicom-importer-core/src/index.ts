@@ -6,10 +6,25 @@
  *
  * @packageDocumentation
  */
-export { decodeDicom } from './decode.ts'
+export {
+  linkToPatientAndStudy,
+  decodeStudy,
+  sectionTitle,
+  studyGroupKey,
+  studyKey,
+  type StudyFile,
+} from './decode.ts'
 export { detectDicom } from './detect.ts'
 export { dicomImporter } from './dicom-importer.ts'
-export { toFhirResources, patientOriginalId } from './fhir/to-fhir.ts'
+export {
+  accessionNumbers,
+  orderedInstances,
+  patientOriginalId,
+  studySeries,
+  toFhirResources,
+  type StudyInstance,
+  type StudySeries,
+} from './fhir/to-fhir.ts'
 export { dicomCalendarDate, dicomInstant } from './fhir/dates.ts'
 export { defaultDicomSettings, runtimeTimeZone, type DicomSettings } from './settings.ts'
 export {

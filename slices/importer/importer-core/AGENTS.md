@@ -32,7 +32,8 @@ write plan with this package alone.
 - `src/read-batch.ts` — the read half as pure functions over a
   **`ReadRegistry`** (`Pick<BoundFormat<K>, 'format' | 'detect' | 'decode'>` per
   format — deliberately not the whole `BoundFormat`, so a test can stand up a
-  fake registry with just those fields). **`readBatch`** groups a pick by format
+  fake registry with just those fields). **`readBatch`** takes the picker's
+  `PickedFile.NamedBytes`, groups them by format
   and decodes every group concurrently into a **`BatchDecodeResult`** — one
   `FormatDecode.Result<K>` per registered format (an `emptyResult` for a format
   that claimed nothing) plus the **`UnrecognizedFile`**s, plain data for the
@@ -41,6 +42,11 @@ write plan with this package alone.
   **`redecodeFormat`** re-runs one format's files from their retained picks
   under new settings (ids are deterministic, so no id-preservation logic is
   needed).
+  **`groupByFormat` is the one place a pick's id is minted** — its position in
+  the whole batch and its file name, so two `report.pdf`s out of two folders
+  stay distinct and a settings re-decode, which hands the same files back,
+  yields the same ids. Nothing above or below it mints one: a picker source
+  produces `NamedBytes`.
   Its three internal steps — `identifyPick` (the first claiming detector, via
   `FormatDetector.claiming`), `groupByFormat`, and `decodeFormat` (generic in
   `K` so `registry[kind]` and `settings[kind]` stay correlated with no
@@ -69,19 +75,19 @@ nothing from `slices/collector` or `slices/http-extraction`.
 
 ## Guardrails
 
-- **No source-file knowledge here.** What a source file is, which resources
-  point at it, and what happens to those links when the reviewer excludes it
+- **No source file knowledge here.** What a source file is, which resources point at
+  it, and what happens to those links when the reviewer excludes it
   are each format's decisions, made inside its `decode` by
-  `importer-fundamentals`' `FileImporter.make`. `readBatch` and `planFormatWrite`
-  treat the source-file row as any other resource. Do not reintroduce a
+  `importer-fundamentals`' `DecodeFunction.make`. `readBatch` and `planFormatWrite`
+  treat the source file row as any other resource. Do not reintroduce a
   shell-side mint, a side map of source files, or a "primary file".
 - **Ids are deterministic via `FormatDecode.makeId`.** An id is derived from
-  the format tag and the picked files — each file's _slot_ (its index and
-  name), so two picks of the same name stay distinct — and a re-decode hands
-  the same `files` array back, so the same ids come out and the reviewer's
-  selection keeps applying.
+  the format tag and the picked files' own ids — which `groupByFormat` mints
+  from each file's position in the batch and its name, so two picks of the same
+  name stay distinct — and a re-decode hands the same `files` array back, so
+  the same ids come out and the reviewer's selection keeps applying.
 - **`decode` never fails.** A malformed file is an `unreadableFiles` entry,
-  folded by `PerFileDecodeFunction.make`; there is no `catchAll` in the read half, and a
+  folded by `DecodeFunction.make`; there is no `catchAll` in the read half, and a
   format that raised would be a contract bug, not a case to handle here.
 - **Dispatch generically, not by `Match`.** Indexing the registry by a
   `FormatKind` union loses the per-format correlation; a generic
@@ -92,7 +98,7 @@ nothing from `slices/collector` or `slices/http-extraction`.
 
 - [slices/importer AGENTS.md](../AGENTS.md) — package roles and layering.
 - [importer-fundamentals AGENTS.md](../importer-fundamentals/AGENTS.md) — the
-  `FileImporter` contract, the source-file seam, and `StagedImport`.
+  `FileImporter` contract, the source file seam, and `StagedImport`.
 - [importer-react AGENTS.md](../importer-react/AGENTS.md) — the shell that
   runs these functions from its hooks.
 - [Adding a File-Format Importer How-To](../docs/Adding%20a%20File-Format%20Importer%20How-To.md)

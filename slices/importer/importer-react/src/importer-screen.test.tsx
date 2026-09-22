@@ -2,19 +2,22 @@ import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
-import { DateTime, Effect, Layer, Schema } from 'effect'
+import { Effect, Layer, Schema } from 'effect'
 import { FhirR4ResourcesRouterContext, type RunAuthed } from 'fhir-r4-react'
 import type * as FhirR4React from 'fhir-r4-react'
 import type { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
-import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
-import { emitHar, HarFromJson } from 'http-archive'
 import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
-import type { TraceBody } from 'web-trace-core'
-import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
 import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
+import { formatRegistry } from './registry.ts'
 import { SKIPPED_HEADING } from './results/import-results.tsx'
+import {
+  dicomFile,
+  RECOGNIZED_HAR,
+  storedSourceFile,
+  type StoredSourceFile,
+} from './screen-fixtures.ts'
 
 /**
  * The whole preview-then-confirm flow, driven end-to-end over the real
@@ -26,19 +29,19 @@ import { SKIPPED_HEADING } from './results/import-results.tsx'
  * The load-bearing assertions are the opt-in seam itself:
  *
  * - **the preview issues no writes** — reaching a preview touches the server only
- *   for the source list; the source-file archive and every resource write appear
+ *   for the source list; the source-file source file and every resource write appear
  *   only after an explicit confirm;
- * - **the source-file archive is a reviewed resource** — a local pick shows it in
+ * - **the source-file source file is a reviewed resource** — a local pick shows it in
  *   its own "Source file" section, and it is written in the *same* batch as the
  *   resources it stamps (its entry first in the bundle), each resource body
- *   carrying `meta.source` naming that archive (a server-sourced HAR shows no
- *   archive section, uploads nothing, and links to the document it was fetched
+ *   carrying `meta.source` naming that source file (a server-sourced HAR shows no
+ *   source file section, uploads nothing, and links to the document it was fetched
  *   from);
- * - **skipping the archive keeps `meta.source`** — unticking the "Source file"
+ * - **skipping the source file keeps `meta.source`** — unticking the "Source file"
  *   row writes no `DocumentReference`, and the resources still name it (the
  *   format stamped them at decode; the id is deterministic in the file, so a
  *   later upload of the same file resolves the link);
- * - **a failing write folds into a partial result** (a rejected archive is just
+ * - **a failing write folds into a partial result** (a rejected source file is just
  *   one failed row, not a gate on the rest), and **cancel discards with no
  *   writes**.
  */
@@ -53,7 +56,7 @@ let recorded: RecordedRequest[]
 let queryClient: QueryClient
 
 /**
- * jsdom's `TextEncoder` hands back a `Uint8Array` from a realm the archive codec's
+ * jsdom's `TextEncoder` hands back a `Uint8Array` from a realm the source file codec's
  * `Uint8ArrayFromSelf` schema rejects on `instanceof` — a purely jsdom artifact,
  * since a browser has one realm and a real capture's bytes always satisfy the
  * check. Re-wrapping the encoder's output through the ambient `Uint8Array` (the
@@ -131,7 +134,7 @@ describe('ImporterScreen', () => {
     // The source file is its own reviewable section, above the extracted rows.
     expect(screen.getByRole('checkbox', { name: 'Include all in Source file' })).toBeDefined()
 
-    // Act — confirm (one Patient + two Observations + the source-file archive)
+    // Act — confirm (one Patient + two Observations + the source-file source file)
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
     // Assert — writes appear only now
@@ -147,7 +150,7 @@ describe('ImporterScreen', () => {
     expect(screen.getByRole('status').textContent).toMatch(/Wrote 4 of 4 resources/)
   })
 
-  it('writes the source-file archive in the same batch, first, and stamps every resource with it', async () => {
+  it('writes the source-file source file in the same batch, first, and stamps every resource with it', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -162,16 +165,18 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — one HAR-archive write, its entry first in the batch (the "Source
+    // Assert — one HAR-source file write, its entry first in the batch (the "Source
     // file" section is prepended), ahead of the first resource write
-    const archiveCreate = writes().findIndex((write) => write.url.includes('/DocumentReference/'))
+    const sourceFileCreate = writes().findIndex((write) =>
+      write.url.includes('/DocumentReference/')
+    )
     const firstResource = writes().findIndex((write) => isResourceWrite(write))
-    expect(archiveCreate).toBeGreaterThanOrEqual(0)
-    expect(firstResource).toBeGreaterThan(archiveCreate)
+    expect(sourceFileCreate).toBeGreaterThanOrEqual(0)
+    expect(firstResource).toBeGreaterThan(sourceFileCreate)
 
-    // …and every resource write points its `meta.source` at that fresh archive
-    const archiveId = idFromUrl(writes()[archiveCreate]?.url ?? '')
-    const expectedSource = `DocumentReference/${archiveId}`
+    // …and every resource write points its `meta.source` at that fresh source file
+    const sourceFileId = idFromUrl(writes()[sourceFileCreate]?.url ?? '')
+    const expectedSource = `DocumentReference/${sourceFileId}`
     const resourceWrites = writes().filter(isResourceWrite)
     expect(resourceWrites).toHaveLength(3)
     for (const write of resourceWrites) {
@@ -179,35 +184,47 @@ describe('ImporterScreen', () => {
     }
   })
 
-  it('links a server-sourced HAR to the fetched document and creates no archive', async () => {
-    // Arrange — one archive already on the server, carrying the recognized HAR
-    currentRunAuthed = routingServer({
-      archives: [{ id: 'archive-1', fileName: 'server-session.har', harText: RECOGNIZED_HAR }],
-    })
+  it('lists a re-picked server source file as a pre-excluded row and uploads nothing', async () => {
+    // Arrange — one source file already on the server, minted from the recognized
+    // HAR exactly as this format's decode would mint it
+    const stored = await storedSourceFile(
+      formatRegistry.har.sourceFileFormat,
+      'server-session.har',
+      RECOGNIZED_HAR
+    )
+    currentRunAuthed = routingServer({ sourceFiles: [stored] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
-    // Act — pick it from the server list via the row's Use-as-source action,
-    // then confirm
+    // Act — select it in the server list and pick it as the batch's source
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Use server-session.har as source' })
+      await screen.findByRole('checkbox', { name: 'Select server-session.har' })
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
+
+    // Assert — the source file is a reviewed row like any other, but the server
+    // already holds exactly it, so the diff reads `unchanged` and the initial
+    // selection leaves it out: three of the four rows are selected.
+    const sourceFileRow = screen.getByRole('checkbox', { name: /Include DocumentReference/ })
+    expect(sourceFileRow.hasAttribute('checked')).toBe(false)
+    expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
+
+    // Act — confirm
     await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — no DocumentReference *create* (the archive already exists), and
-    // every resource links to the document it was fetched from
+    // Assert — no DocumentReference write (the source file is already there), and
+    // every resource links to the source file the re-pick minted, which is the one
+    // it came from.
     expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
     const resourceWrites = writes().filter(isResourceWrite)
     expect(resourceWrites).toHaveLength(3)
     for (const write of resourceWrites) {
-      expect(JSON.parse(write.body)).toMatchObject({
-        meta: { source: 'DocumentReference/archive-1' },
-      })
+      expect(metaSourceOf(write.body)).toBe(`DocumentReference/${stored.id}`)
     }
   })
 
@@ -225,7 +242,7 @@ describe('ImporterScreen', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
-    // Assert — a partial result: the source-file archive and the Patient wrote,
+    // Assert — a partial result: the source-file source file and the Patient wrote,
     // both Observations are grouped under their failure status code (retry
     // backoff runs on the real clock).
     await waitFor(
@@ -239,8 +256,8 @@ describe('ImporterScreen', () => {
     expect(screen.getByRole('status').textContent).toMatch(/Wrote 2 of 4/)
   })
 
-  it("still writes a file's resources when its source-file archive is rejected, as a partial batch", async () => {
-    // Arrange — the store rejects the archive `DocumentReference` entry. It rides
+  it("still writes a file's resources when its source-file source file is rejected, as a partial batch", async () => {
+    // Arrange — the store rejects the source file `DocumentReference` entry. It rides
     // the same batch as the resources, so its rejection is one failed row — not a
     // gate that stops the rest.
     currentRunAuthed = routingServer({
@@ -255,8 +272,8 @@ describe('ImporterScreen', () => {
     })
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
-    // Assert — a partial result: the archive's failed row shows under its status,
-    // yet the three resources still wrote (each stamped with the archive ref).
+    // Assert — a partial result: the source file's failed row shows under its status,
+    // yet the three resources still wrote (each stamped with the source file ref).
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Imported with some failures/ })).toBeDefined()
     })
@@ -265,7 +282,7 @@ describe('ImporterScreen', () => {
     expect(writes().filter(isResourceWrite)).toHaveLength(3)
   })
 
-  it('imports several files at once as one batch, each stamped with its own archive', async () => {
+  it('imports several files at once as one batch, each stamped with its own source file', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
@@ -276,7 +293,7 @@ describe('ImporterScreen', () => {
       harFile('session-b.har'),
     ])
     await waitFor(() => {
-      // Two files × (three resources + one source-file archive) under one confirm.
+      // Two files × (three resources + one source-file source file) under one confirm.
       expect(screen.getByRole('button', { name: /Import 8 resources/ })).toBeDefined()
     })
     expect(writes()).toHaveLength(0)
@@ -287,19 +304,59 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — one archive per file, six resources, each pointing at one of the
-    // two fresh archives.
-    const archiveIds = writes()
+    // Assert — one source file per file, six resources, each pointing at one of the
+    // two fresh source files.
+    const sourceFileIds = writes()
       .filter((write) => write.url.includes('/DocumentReference/'))
       .map((write) => idFromUrl(write.url))
-    expect(new Set(archiveIds).size).toBe(2)
+    expect(new Set(sourceFileIds).size).toBe(2)
     const sources = writes()
       .filter(isResourceWrite)
       .map((write) => metaSourceOf(write.body))
     expect(sources).toHaveLength(6)
     for (const source of sources) {
-      expect(archiveIds.map((id) => `DocumentReference/${id}`)).toContain(source)
+      expect(sourceFileIds.map((id) => `DocumentReference/${id}`)).toContain(source)
     }
+  })
+
+  it('imports a DICOM study of several files as one ImagingStudy with a source file per file', async () => {
+    // Arrange — three files of one study: two instances of one series, one of
+    // another. Decoded per file, this would be three ImagingStudys sharing an
+    // id, each overwriting the last's series list.
+    currentRunAuthed = routingServer({})
+    render(<ImporterScreen />, { wrapper: withQueryClient })
+
+    // Act — pick the study's files together, as a folder pick yields them
+    await userEvent.upload(screen.getByLabelText('Import file'), [
+      dicomFile('I1.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I1' }),
+      dicomFile('I2.dcm', { SeriesInstanceUID: 'S1', SeriesNumber: 1, SOPInstanceUID: 'I2' }),
+      dicomFile('I3.dcm', { SeriesInstanceUID: 'S2', SeriesNumber: 2, SOPInstanceUID: 'I3' }),
+    ])
+    // Three source files + one Patient + one ServiceRequest + one ImagingStudy.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Import 6 resources/ })).toBeDefined()
+    })
+    await userEvent.click(screen.getByRole('button', { name: /Import 6 resources/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
+    })
+
+    // Assert — one ImagingStudy carrying all three instances, and one source file
+    // per file, each named by the instance it stores
+    const studies = writes().filter((write) => write.url.includes('/ImagingStudy/'))
+    expect(studies).toHaveLength(1)
+    const study = Schema.decodeUnknownSync(ImagingStudyWire)(JSON.parse(studies[0].body))
+    expect(study.numberOfSeries).toBe(2)
+    expect(study.numberOfInstances).toBe(3)
+
+    const sourceFileIds = writes()
+      .filter((write) => write.url.includes('/DocumentReference/'))
+      .map((write) => idFromUrl(write.url))
+    expect(new Set(sourceFileIds).size).toBe(3)
+    const instanceFileIds = study.series.flatMap((series) =>
+      series.instance.map((instance) => instance.extension[0]?.valueString)
+    )
+    expect(new Set(instanceFileIds)).toEqual(new Set(sourceFileIds))
   })
 
   it('excludes an unchecked resource from the write set — the reviewer opt-out is honoured on the wire', async () => {
@@ -319,7 +376,7 @@ describe('ImporterScreen', () => {
     if (first === undefined) throw new Error('unreachable: obsBoxes has at least two entries')
     await userEvent.click(first)
     await waitFor(() => {
-      // 1 Patient + 1 Observation + the source-file archive remain.
+      // 1 Patient + 1 Observation + the source-file source file remain.
       expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
     })
     await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
@@ -383,17 +440,17 @@ describe('ImporterScreen', () => {
     expect(body).toMatchObject({ resourceType: 'Patient', gender: 'female' })
   })
 
-  it('skips the source-file archive when unticked — resources still write with meta.source', async () => {
+  it('skips the source-file source file when unticked — resources still write with meta.source', async () => {
     // Arrange
     currentRunAuthed = routingServer({})
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
-    // Act — pick locally (1 Patient + 2 Observations + the source-file archive)
+    // Act — pick locally (1 Patient + 2 Observations + the source-file source file)
     await userEvent.upload(screen.getByLabelText('Import file'), harFile('portal-session.har'))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
-    // Untick the whole "Source file" section, dropping the archive from the batch.
+    // Untick the whole "Source file" section, dropping the source file from the batch.
     await userEvent.click(screen.getByRole('checkbox', { name: 'Include all in Source file' }))
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
@@ -403,8 +460,8 @@ describe('ImporterScreen', () => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — no archive `DocumentReference` write, and the three resources
-    // still name the archive: the format stamped `meta.source` at decode, and
+    // Assert — no source file `DocumentReference` write, and the three resources
+    // still name the sourceFile: the format stamped `meta.source` at decode, and
     // skipping the row changes what is written, not what was decoded.
     expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
     const resourceWrites = writes().filter(isResourceWrite)
@@ -468,70 +525,32 @@ describe('ImporterScreen', () => {
 
 // Helpers
 
-/** A stored FHIR-JSON body, as the capture side would hold it. */
-const storedJson = (value: unknown): TraceBody => ({
-  _tag: 'StoredBody',
-  contentType: 'application/fhir+json',
-  data: jsonBody(value),
-  size: JSON.stringify(value).length,
-  hash: 'RBNvo1WzZ4oRRq0W9+hknpT7T8If536DEMBg9hyq/4o=',
-})
+const jsonResponse = (body: unknown, status = 200): Response =>
+  new Response(status === 200 ? JSON.stringify(body) : '', {
+    status,
+    headers: { 'content-type': 'application/json' },
+  })
 
-/** A minimal FHIR searchset wrapping the given resources. */
-const searchsetOf = (...resources: readonly unknown[]): Record<string, unknown> => ({
-  resourceType: 'Bundle',
-  type: 'searchset',
-  total: resources.length,
-  entry: resources.map((resource) => ({ resource })),
-})
+const decodeBody = (body: HttpClientRequest.HttpClientRequest['body']): string =>
+  body._tag === 'Uint8Array' ? new TextDecoder().decode(body.body) : ''
 
-/**
- * A HAR the `fhir-r4` importer recognizes: a Patient read and an Observation
- * searchset off one server, built through `web-trace-core`'s own `emitHar` so it
- * is shaped exactly like a real capture. Previews to 1 Patient + 2 Observations.
- */
-const RECOGNIZED_HAR: string = Effect.runSync(
-  Schema.encode(HarFromJson)(
-    emitHar(
-      [
-        traceExchange({
-          requestId: 'req-0',
-          url: 'https://r4.example.org/baseR4/Patient/pat-7?_format=json',
-          headers: [['content-type', 'application/fhir+json']],
-          body: storedJson({ resourceType: 'Patient', id: 'pat-7' }),
-          startedAtMillis: CAPTURE_FLOOR,
-        }),
-        traceExchange({
-          requestId: 'req-1',
-          url: 'https://r4.example.org/baseR4/Observation?subject%3APatient=pat-7&_count=250',
-          headers: [['content-type', 'application/fhir+json']],
-          body: storedJson(
-            searchsetOf(
-              {
-                resourceType: 'Observation',
-                id: 'obs-1',
-                status: 'final',
-                code: { text: 'Weight' },
-              },
-              {
-                resourceType: 'Observation',
-                id: 'obs-2',
-                status: 'final',
-                code: { text: 'Height' },
-              }
-            )
+/** Just enough of a written `ImagingStudy` to assert its counts and instance links. */
+const ImagingStudyWire = Schema.Struct({
+  numberOfSeries: Schema.Number,
+  numberOfInstances: Schema.Number,
+  series: Schema.Array(
+    Schema.Struct({
+      instance: Schema.Array(
+        Schema.Struct({
+          extension: Schema.optionalWith(
+            Schema.Array(Schema.Struct({ valueString: Schema.optional(Schema.String) })),
+            { default: () => [] }
           ),
-          startedAtMillis: CAPTURE_FLOOR + 1000,
-        }),
-      ],
-      { sessionId: 'test-session' }
-    )
-  )
-  // `emitHar` writes `request.method: 'UNKNOWN'` (the capture side never
-  // observed a verb); rewrite the wire so the FHIR pool's `verb: ['GET']`
-  // matchers claim these entries, mirroring what a real capture that
-  // observed the method would carry through.
-).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
+        })
+      ),
+    })
+  ),
+})
 
 /** A recognized-HAR `File`, for the OS-picker (`upload`) path. */
 const harFile = (name: string): File =>
@@ -548,7 +567,7 @@ interface RecordedRequest {
 const writes = (): readonly RecordedRequest[] =>
   recorded.filter((request) => request.method === 'PUT' || request.method === 'POST')
 
-/** Whether a write is a FHIR resource write (a Patient or Observation), not the archive. */
+/** Whether a write is a FHIR resource write (a Patient or Observation), not the source file. */
 const isResourceWrite = (write: RecordedRequest): boolean =>
   write.url.includes('/Patient/') || write.url.includes('/Observation/')
 
@@ -564,62 +583,18 @@ const idFromUrl = (url: string): string => {
   return segments[segments.length - 1] ?? ''
 }
 
-/** Text as base64, the way the archive codec stores the file's bytes. */
-const base64 = Schema.encodeSync(Schema.StringFromBase64)
-
-/** One archive `DocumentReference` wire, decodable by the codec and rowable by the list. */
-const archiveWire = (fields: {
-  readonly id: string
-  readonly fileName: string
-  readonly harText: string
-}): unknown => {
-  const coding = [{ system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE }]
-  const iso = DateTime.formatIso(DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z')))
-  return {
-    resourceType: 'DocumentReference',
-    id: fields.id,
-    status: 'current',
-    type: { coding },
-    category: [{ coding }],
-    date: iso,
-    content: [
-      {
-        attachment: {
-          contentType: 'application/json',
-          data: base64(fields.harText),
-          title: fields.fileName,
-          creation: iso,
-        },
-      },
-    ],
-  }
-}
-
-const jsonResponse = (body: unknown, status = 200): Response =>
-  new Response(status === 200 ? JSON.stringify(body) : '', {
-    status,
-    headers: { 'content-type': 'application/json' },
-  })
-
-const decodeBody = (body: HttpClientRequest.HttpClientRequest['body']): string =>
-  body._tag === 'Uint8Array' ? new TextDecoder().decode(body.body) : ''
-
 /**
  * A stub transport that records every request and routes it: a `category` search
- * answers with the configured archives, a `DocumentReference/<id>` GET answers
- * with that archive, and every PUT echoes the written body back (or a 503 when
+ * answers with the configured source files, a `DocumentReference/<id>` GET answers
+ * with that source file, and every PUT echoes the written body back (or a 503 when
  * `failWrite` says so). One stateless rule per shape — enough to drive the whole
  * flow and read the write log back.
  */
 const routingServer = (config: {
-  readonly archives?: readonly {
-    readonly id: string
-    readonly fileName: string
-    readonly harText: string
-  }[]
+  readonly sourceFiles?: readonly StoredSourceFile[]
   readonly failWrite?: (request: { readonly method: string; readonly url: string }) => boolean
 }): RunAuthed => {
-  const archives = config.archives ?? []
+  const sourceFiles = config.sourceFiles ?? []
   const httpLayer = Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) => {
@@ -654,8 +629,14 @@ const routingServer = (config: {
               continue
             }
             if (entryReq.method === 'GET') {
-              // No prior write in this suite — every classify probe answers 404.
-              responseEntries.push({ response: { status: '404 Not Found' } })
+              // The only resources this suite's server already holds are the
+              // configured source files; every other classify probe is a miss.
+              const stored = sourceFiles.find((one) => entryUrl.endsWith(`/${one.id}`))
+              responseEntries.push(
+                stored === undefined
+                  ? { response: { status: '404 Not Found' } }
+                  : { response: { status: '200 OK' }, resource: stored.wire }
+              )
               continue
             }
             responseEntries.push({
@@ -678,20 +659,15 @@ const routingServer = (config: {
 
       recorded.push({ method: request.method, url: request.url, body })
       if (request.method === 'GET' && params['category'] !== undefined) {
-        const wires = archives.map((archive) => archiveWire(archive))
+        const wires = sourceFiles.map((one) => one.wire)
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
       }
       if (request.method === 'GET') {
-        const id = idFromUrl(request.url)
-        const archive = archives.find((one) => one.id === id)
-        return Effect.succeed(
-          HttpClientResponse.fromWeb(
-            request,
-            jsonResponse(
-              archiveWire(archive ?? { id, fileName: `${id}.har`, harText: RECOGNIZED_HAR })
-            )
-          )
-        )
+        const sourceFile = sourceFiles.find((one) => one.id === idFromUrl(request.url))
+        if (sourceFile === undefined) {
+          return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 404)))
+        }
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(sourceFile.wire)))
       }
       if (config.failWrite?.({ method: request.method, url: request.url }) === true) {
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 503)))

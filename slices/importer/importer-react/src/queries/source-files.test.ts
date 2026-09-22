@@ -50,7 +50,7 @@ afterEach(() => {
 })
 
 describe('sourceFilesInfiniteQueryOptions', () => {
-  it('should search the comma-joined archive category over every registered format, sized and authed', async () => {
+  it('should search the comma-joined source file category over every registered format, sized and authed', async () => {
     // Arrange
     const queryClient = freshQueryClient()
     const options = sourceFilesInfiniteQueryOptions(runAuthedOver([searchset([])]))
@@ -93,6 +93,24 @@ describe('sourceFilesInfiniteQueryOptions', () => {
     ])
   })
 
+  it("should date each row by the stored resource's own meta.lastUpdated", async () => {
+    // The source file states no instant of its own; when the file reached the
+    // device is the server's to know.
+    const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
+    const queryClient = freshQueryClient()
+    const data = await queryClient.infiniteQuery(
+      sourceFilesInfiniteQueryOptions(
+        runAuthedOver([
+          searchset([
+            harArchiveWire({ id: 'har-1', fileName: 'session.har', uploadedAt }),
+            undatedHarArchiveWire({ id: 'har-2', fileName: 'undated.har' }),
+          ]),
+        ])
+      )
+    )
+    expect(data.pages[0]?.sourceFiles.map((row) => row.lastUpdated)).toEqual([uploadedAt, null])
+  })
+
   it('should page with the cursor from the bundle next link and stop when there is none', async () => {
     // Arrange
     const uploadedAt = DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z'))
@@ -133,7 +151,7 @@ describe('sourceFilesInfiniteQueryOptions', () => {
 
 // Helpers
 
-/** Text as base64, the way the archive codec stores the file's bytes. */
+/** Text as base64, the way the source file codec stores the file's bytes. */
 const base64 = Schema.encodeSync(Schema.StringFromBase64)
 
 /**
@@ -152,23 +170,22 @@ const harArchiveWire = (fields: {
     resourceType: 'DocumentReference',
     id: fields.id,
     status: 'current',
+    meta: { lastUpdated: iso },
     type: { coding },
     category: [{ coding }],
-    date: iso,
     content: [
       {
         attachment: {
           contentType: 'application/json',
           data: base64('{"log":{"version":"1.2","entries":[]}}'),
           title: fields.fileName,
-          creation: iso,
         },
       },
     ],
   }
 }
 
-/** One LifeLabs PDF archive `DocumentReference`, hand-built the same way. */
+/** One LifeLabs PDF source file `DocumentReference`, hand-built the same way. */
 const lifelabsPdfArchiveWire = (fields: {
   readonly id: string
   readonly fileName: string
@@ -180,9 +197,9 @@ const lifelabsPdfArchiveWire = (fields: {
     resourceType: 'DocumentReference',
     id: fields.id,
     status: 'current',
+    meta: { lastUpdated: iso },
     type: { coding },
     category: [{ coding }],
-    date: iso,
     content: [
       {
         attachment: {
@@ -191,7 +208,30 @@ const lifelabsPdfArchiveWire = (fields: {
           // base64 payload with a title suffices.
           data: base64('%PDF-1.4\n'),
           title: fields.fileName,
-          creation: iso,
+        },
+      },
+    ],
+  }
+}
+
+/** A HAR archive the server states no `meta.lastUpdated` for. */
+const undatedHarArchiveWire = (fields: {
+  readonly id: string
+  readonly fileName: string
+}): unknown => {
+  const coding = [{ system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE }]
+  return {
+    resourceType: 'DocumentReference',
+    id: fields.id,
+    status: 'current',
+    type: { coding },
+    category: [{ coding }],
+    content: [
+      {
+        attachment: {
+          contentType: 'application/json',
+          data: base64('{"log":{"version":"1.2","entries":[]}}'),
+          title: fields.fileName,
         },
       },
     ],

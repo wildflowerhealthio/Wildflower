@@ -13,10 +13,13 @@ const stubRenderer =
   async (_bytes: Uint8Array, _element: HTMLDivElement): Promise<RenderOutcome> =>
     outcome
 
+/** Every tag a file must carry to parse at all, and nothing else. */
 const MINIMAL_TAGS = {
   StudyInstanceUID: '1.2.3.4.5',
   SeriesInstanceUID: '1.2.3.4.6',
   SOPInstanceUID: '1.2.3.4.7',
+  SOPClassUID: '1.2.840.10008.5.1.4.1.1.7',
+  Modality: 'OT',
 } as const
 
 describe('DicomFilePreview', () => {

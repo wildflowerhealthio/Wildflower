@@ -578,17 +578,18 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader.Type> =>
     seriesInstanceUid: dicomUidArb(),
     seriesNumber: fc.option(fc.integer({ min: 1, max: 999 }), { nil: undefined }),
     seriesDescription: fc.option(dicomTextArb(40), { nil: undefined }),
-    modality: fc.option(
-      fc.constantFrom('CT', 'MR', 'US', 'CR', 'DX', 'XA', 'NM', 'PT', 'MG', 'OT'),
-      { nil: undefined }
-    ),
+    // Required: a header states its Modality, and the FHIR synthesis above
+    // names a series by it with nothing to fall back on.
+    modality: fc.constantFrom('CT', 'MR', 'US', 'CR', 'DX', 'XA', 'NM', 'PT', 'MG', 'OT'),
     bodyPartExamined: fc.option(
       fc.constantFrom('CHEST', 'HEAD', 'ABDOMEN', 'SPINE', 'KNEE', 'HAND', 'PELVIS'),
       { nil: undefined }
     ),
 
     sopInstanceUid: dicomUidArb(),
-    sopClassUid: fc.option(dicomUidArb(), { nil: undefined }),
+    // Required, for the same reason as `modality`: every synthesized instance
+    // names its SOP Class.
+    sopClassUid: dicomUidArb(),
     instanceNumber: fc.option(fc.integer({ min: 1, max: 999 }), { nil: undefined }),
     rows: fc.option(fc.integer({ min: 64, max: 4096 }), { nil: undefined }),
     columns: fc.option(fc.integer({ min: 64, max: 4096 }), { nil: undefined }),
@@ -703,9 +704,176 @@ const headerToTagMap = (header: DicomHeader.Type): DicomTagMap => ({
   InstitutionName: header.institutionName,
 })
 
+// ---------------------------------------------------------------------------
+// Study fixtures — one coherent study across several files
+// ---------------------------------------------------------------------------
+
+/** One file of a generated study: the name it is picked under, and its tags. */
+interface StudyFileFixture {
+  readonly fileName: string
+  readonly tags: DicomTagMap
+}
+
+/**
+ * A coherent DICOM study spread across several files, with the facts a test
+ * asserts against stated alongside the files themselves.
+ *
+ * @remarks
+ * A study is not a bag of independent headers: every file of it repeats the
+ * same `StudyInstanceUID`, patient and accession, and states one instance of
+ * one series. Reconstructing those invariants in each test is what a shared
+ * fixture exists to prevent — and the stated counts and orders are the oracle
+ * a property checks the synthesis against, so a test never re-derives from the
+ * tags what the generator already knows.
+ */
+interface StudyFixture {
+  readonly studyInstanceUid: string
+  readonly patientId: string
+  readonly accessionNumber: string | undefined
+  /** The study's series UIDs in `SeriesNumber` order — the order the synthesis must produce. */
+  readonly seriesUidsInOrder: readonly string[]
+  /** Every `SOPInstanceUID` in study order: series by series, `InstanceNumber` within each. */
+  readonly instanceUidsInOrder: readonly string[]
+  /** The files, one per instance, in no particular order. */
+  readonly files: readonly StudyFileFixture[]
+}
+
+/** Options for {@link dicomStudyArb}. */
+interface StudyArbOptions {
+  /** How many series the study has. Defaults to 1–3. */
+  readonly seriesCount?: { readonly min?: number; readonly max?: number }
+  /** How many instances each series has. Defaults to 1–4. */
+  readonly instancesPerSeries?: { readonly min?: number; readonly max?: number }
+}
+
+/**
+ * Numbers `1..count` in some order — what a series' `SeriesNumber`s and an
+ * instance's `InstanceNumber`s are drawn from.
+ *
+ * @remarks
+ * A *permutation*, not the identity, on purpose: UIDs are generated in index
+ * order, so numbering in index order too would make "ordered by number" and
+ * "ordered by UID" the same sequence, and a synthesis that ordered by the
+ * wrong one would pass. Shuffling them separates the two.
+ */
+const numberingArb = (count: number): fc.Arbitrary<readonly number[]> =>
+  fc.shuffledSubarray(
+    Array.from({ length: count }, (_, index) => index + 1),
+    { minLength: count, maxLength: count }
+  )
+
+const rangeOr = (
+  range: { readonly min?: number; readonly max?: number } | undefined,
+  fallback: { readonly min: number; readonly max: number }
+): { readonly min: number; readonly max: number } => ({
+  min: range?.min ?? fallback.min,
+  max: range?.max ?? fallback.max,
+})
+
+/**
+ * A study of N files: one `StudyInstanceUID`, one patient, several series, and
+ * one file per instance.
+ *
+ * @param options - How many series, and how many instances per series
+ * @returns The study's files and the ordering oracle {@link StudyFixture}
+ *   states
+ */
+const dicomStudyArb = (options: StudyArbOptions = {}): fc.Arbitrary<StudyFixture> => {
+  const series = rangeOr(options.seriesCount, { min: 1, max: 3 })
+  const instances = rangeOr(options.instancesPerSeries, { min: 1, max: 4 })
+  return fc
+    .record({
+      root: fc.integer({ min: 1, max: 99999 }),
+      patientId: fc.string({
+        minLength: 1,
+        maxLength: 8,
+        unit: fc.constantFrom(...'0123456789ABCDEF'.split('')),
+      }),
+      patientName: personNameArb(),
+      studyDate: dicomDateArb(),
+      studyTime: dicomTimeArb(),
+      accessionNumber: fc.option(
+        fc.string({ minLength: 1, maxLength: 8, unit: fc.constantFrom(...'0123456789'.split('')) }),
+        { nil: undefined }
+      ),
+      modality: fc.constantFrom('CT', 'MR', 'US', 'PT'),
+      sopClassUid: dicomUidArb(),
+      seriesCount: fc.integer(series),
+      instanceCounts: fc.array(fc.integer(instances), {
+        minLength: series.max,
+        maxLength: series.max,
+      }),
+    })
+    .chain((base) => {
+      const counts = base.instanceCounts.slice(0, base.seriesCount)
+      return fc
+        .record({
+          seriesNumbers: numberingArb(base.seriesCount),
+          instanceNumbers: fc.tuple(...counts.map((count) => numberingArb(count))),
+        })
+        .map(({ seriesNumbers, instanceNumbers }): StudyFixture => {
+          const studyInstanceUid = `1.2.826.0.1.${base.root}`
+          const seriesOf = counts.map((count, index) => ({
+            uid: `${studyInstanceUid}.${index + 1}`,
+            number: seriesNumbers[index],
+            instances: Array.from({ length: count }, (_, instanceIndex) => ({
+              uid: `${studyInstanceUid}.${index + 1}.${instanceIndex + 1}`,
+              number: instanceNumbers[index][instanceIndex],
+            })),
+          }))
+          const inStudyOrder = seriesOf
+            .toSorted((left, right) => left.number - right.number)
+            .map((one) => ({
+              ...one,
+              instances: one.instances.toSorted((left, right) => left.number - right.number),
+            }))
+
+          const files = seriesOf.flatMap((one) =>
+            one.instances.map((instance): StudyFileFixture => ({
+              fileName: `${instance.uid}.dcm`,
+              tags: {
+                StudyInstanceUID: studyInstanceUid,
+                SeriesInstanceUID: one.uid,
+                SeriesNumber: one.number,
+                SOPInstanceUID: instance.uid,
+                InstanceNumber: instance.number,
+                PatientID: base.patientId,
+                PatientName: base.patientName,
+                StudyDate: base.studyDate,
+                StudyTime: base.studyTime,
+                Modality: base.modality,
+                SOPClassUID: base.sopClassUid,
+                ...(base.accessionNumber === undefined
+                  ? {}
+                  : { AccessionNumber: base.accessionNumber }),
+              },
+            }))
+          )
+
+          return {
+            studyInstanceUid,
+            patientId: base.patientId,
+            accessionNumber: base.accessionNumber,
+            seriesUidsInOrder: inStudyOrder.map((one) => one.uid),
+            instanceUidsInOrder: inStudyOrder.flatMap((one) =>
+              one.instances.map((instance) => instance.uid)
+            ),
+            files,
+          }
+        })
+    })
+}
+
+/** A study fixture's files as named bytes, ready to pick. */
+const writeStudy = (
+  fixture: StudyFixture
+): readonly { readonly fileName: string; readonly bytes: Uint8Array }[] =>
+  fixture.files.map((file) => ({ fileName: file.fileName, bytes: writeDicom(file.tags) }))
+
 export {
   describePixelDataFixture,
   dicomDateArb,
+  dicomStudyArb,
   dicomHeaderArb,
   dicomTimeArb,
   dicomUidArb,
@@ -717,4 +885,6 @@ export {
   type PixelDataFixture,
   pixelDataFragmentLengthsArb,
   writeDicom,
+  writeStudy,
 }
+export type { StudyArbOptions, StudyFileFixture, StudyFixture }

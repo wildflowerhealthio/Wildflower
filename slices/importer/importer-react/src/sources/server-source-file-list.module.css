@@ -46,13 +46,21 @@
 
 .archiveMeta {
   display: flex;
-  flex-direction: column;
+  align-items: baseline;
   min-width: 0;
-  gap: var(--space-1);
+  gap: var(--space-2);
 }
 
 .archiveTitle {
   font-weight: var(--font-weight-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.archiveRelated {
+  color: var(--color-neutral-4);
+  font-size: var(--font-size-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -90,84 +98,12 @@
   border-color: var(--color-neutral-11);
 }
 
-.loadMore {
+/* The per-row selection control, beside the row's name. */
+.archiveSelect {
+  margin-inline-end: var(--space-2);
+}
+
+/* The one pick action, under the list. */
+.pickSelected {
   align-self: flex-start;
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-2);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  cursor: pointer;
-}
-
-/* Preview modal body */
-
-.preview {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-  min-width: min(80vw, 60rem);
-  max-width: 90vw;
-}
-
-.previewHeader {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.previewFileName {
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  color: var(--color-neutral-4);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.previewFrame {
-  width: 100%;
-  height: min(70vh, 40rem);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-2);
-  background: var(--color-background);
-}
-
-.previewText {
-  margin: 0;
-  padding: var(--space-3);
-  max-height: min(60vh, 32rem);
-  overflow: auto;
-  border: 1px solid var(--color-neutral-4);
-  border-radius: var(--radius-2);
-  background: var(--color-background);
-  font-family: var(--font-mono);
-  font-size: var(--font-size-1);
-  white-space: pre;
-  tab-size: 2;
-}
-
-.previewNote {
-  margin: 0;
-  color: var(--color-neutral-4);
-  font-size: var(--font-size-1);
-}
-
-.previewActions {
-  display: flex;
-  justify-content: flex-end;
-  gap: var(--space-2);
-}
-
-.downloadLink {
-  padding: var(--space-2) var(--space-4);
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-2);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-decoration: none;
-  cursor: pointer;
 }

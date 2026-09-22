@@ -6,7 +6,7 @@ import {
   type UseInfiniteQueryResult,
 } from '@tanstack/react-query'
 import type { DateTime } from 'effect'
-import { Array as Arr, Effect, Option } from 'effect'
+import { Array as Arr, Effect, Option, Schema } from 'effect'
 import type { RunAuthed } from 'fhir-r4-react'
 import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
@@ -71,7 +71,7 @@ const DEFAULT_PAGE_SIZE = 50
  * `DocumentReference` matching *any* of the tokens.
  */
 const SOURCE_FILES_CATEGORY_TOKEN = formatKinds
-  .map((kind) => formatRegistry[kind].categoryToken)
+  .map((kind) => PickedFile.categoryToken(formatRegistry[kind].sourceFileFormat))
   .join(',')
 
 /**
@@ -97,8 +97,28 @@ interface SourceFileRow {
   readonly format: FormatKind
   /** The source file's title — its original file name — or `null` when it carries none. */
   readonly title: string | null
-  /** When the source file was uploaded, or `null` when the resource states no instant. */
-  readonly creation: DateTime.Utc | null
+  /**
+   * When the stored resource was last written, or `null` when it states no
+   * instant.
+   *
+   * @remarks
+   * The server's own `meta.lastUpdated`, not anything the source file carries: an
+   * source file states what the file *is*, and the instant it reached the device is
+   * the server's to know.
+   */
+  readonly lastUpdated: DateTime.Utc | null
+  /**
+   * The resource this source file is one source of — `context.related` — or
+   * `null` when it names none.
+   *
+   * @remarks
+   * What lets the list show a study's files as one study rather than N loose
+   * rows. Only a group format writes it: a DICOM study's source files all name the
+   * `ImagingStudy` they were read into, which is the only thing on the stored
+   * resource that separates two studies of one patient (their `subject` is the
+   * same `Patient`). A format whose files stand alone leaves it `null`.
+   */
+  readonly related: string | null
 }
 
 /** One page of source-file rows, plus the cursor for the next page. */
@@ -140,7 +160,9 @@ interface SourceFilesQueryOptions {
  * deterministic across engines.
  */
 const classifySourceFile = (resource: DocumentReference.Type): FormatKind | undefined =>
-  formatKinds.find((kind) => formatRegistry[kind].isSourceFile(resource))
+  formatKinds.find((kind) =>
+    PickedFile.isSourceFile(formatRegistry[kind].sourceFileFormat)(resource)
+  )
 
 /**
  * Projects a searchset bundle's entries into source-file rows.
@@ -154,8 +176,8 @@ const classifySourceFile = (resource: DocumentReference.Type): FormatKind | unde
  * search returned it (the coding matched), but the format is not
  * registered here, so the shell has no reader for it. A source file with no
  * logical id is dropped too: a row exists to be selected, and a selection
- * needs an id to fetch by. The title and upload instant are read straight
- * off the attachment; neither decodes the bytes, so listing a page never
+ * needs an id to fetch by. The title comes off the attachment and the date off
+ * the resource's own `meta`; neither decodes the bytes, so listing a page never
  * pulls a single source file's contents onto the device.
  */
 const rowsOf = (
@@ -171,7 +193,8 @@ const rowsOf = (
       id: resource.id,
       format,
       title: attachment?.title ?? null,
-      creation: attachment?.creation ?? null,
+      lastUpdated: resource.meta?.lastUpdated ?? null,
+      related: resource.context?.related[0]?.reference ?? null,
     })
   })
 
@@ -330,56 +353,26 @@ const useSmartSourceFilesQuery = (
 }
 
 /**
- * Fetches one source file whole and reads it back as a {@link PickedFile}.
+ * Fetches one source file whole and reads it back as named bytes.
  *
  * @param runAuthed - The authed runner from router context
  * @param row - The row a selection or preview identified — its id and its
  *   classified format
- * @returns The source file's raw bytes and a `server` source pointing back at it
+ * @returns The stored file's own name and raw bytes
  *
  * @remarks
- * Dispatches to the row's format's `sourceFileFromDocumentReference`, so a
- * resource that is not a source file of that format fails as a `ParseError`
- * rather than yielding nonsense. The bytes are carried verbatim — every
- * downstream step reads bytes (`decode`, and the confirm's upload if the
- * pick were local) — and the `server` source carries the source file's own
- * reference so a later step links provenance to the stored source file
- * instead of uploading the same bytes again.
+ * Decodes through `PickedFile.FromDocumentReference` under the row's format's
+ * own constants, so a resource that is not a source file of that format fails as a
+ * `ParseError` rather than yielding nonsense. The bytes are carried verbatim —
+ * every downstream step reads bytes — and no id travels with them: a re-picked
+ * source file mints the same id from the same bytes and name, so the row it
+ * produces is the one already stored.
+ *
+ * One read for both consumers. The picker hands the result to the batch, which
+ * gives it its batch id; the preview dialog renders it. A preview does not
+ * pick, and there is nothing left for it to strip.
  */
 const fetchSourceFile = (
-  runAuthed: RunAuthed,
-  row: { readonly id: string; readonly format: FormatKind }
-): Promise<PickedFile.Type> =>
-  runAuthed(
-    Effect.gen(function* () {
-      const client = yield* FhirR4ResourcesHttpApiClient
-      const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      const { fileName, bytes } =
-        yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
-      return {
-        fileName,
-        bytes,
-        source: PickedFile.Source.server(row.id),
-      }
-    })
-  )
-
-/**
- * Fetches the raw bytes and file name of one source file, without turning it
- * into a {@link PickedFile}. The read half of the preview modal.
- *
- * @param runAuthed - The authed runner from router context
- * @param row - The row a preview opened — its id and its classified format
- * @returns The source file's file name and raw bytes, or a rejection when the
- *   decoded resource is not this format's source file
- *
- * @remarks
- * Same underlying read as {@link fetchSourceFile}, without the source
- * synthesis: a preview does not pick, so it needs no `server` source. The
- * split is what lets the preview modal live at arm's length from the
- * source pipeline.
- */
-const fetchSourceFileContents = (
   runAuthed: RunAuthed,
   row: { readonly id: string; readonly format: FormatKind }
 ): Promise<PickedFile.NamedBytes> =>
@@ -387,8 +380,9 @@ const fetchSourceFileContents = (
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
       const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      const { fileName, bytes } =
-        yield* formatRegistry[row.format].sourceFileFromDocumentReference(resource)
+      const { fileName, bytes } = yield* Schema.decode(PickedFile.FromDocumentReference)(
+        resource
+      ).pipe(Effect.provideService(PickedFile.Format, formatRegistry[row.format].sourceFileFormat))
       return { fileName, bytes }
     })
   )
@@ -396,7 +390,6 @@ const fetchSourceFileContents = (
 export {
   DEFAULT_PAGE_SIZE,
   fetchSourceFile,
-  fetchSourceFileContents,
   SOURCE_FILES_CATEGORY_TOKEN,
   type SourceFilePage,
   type SourceFilePageParam,

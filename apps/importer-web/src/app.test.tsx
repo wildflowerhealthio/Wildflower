@@ -20,7 +20,7 @@ import { ImporterApp } from './app.tsx'
  *
  * Only the transport is a stub. Everything above it — the real
  * `buildSmartRouterContext`, the router, the queries, the typed FHIR client, the
- * HAR parser and the archive codec — is the production path, so a break in any
+ * HAR parser and the source file codec — is the production path, so a break in any
  * of them fails here rather than only on a device.
  *
  * The two assertions this app owns, which no test one layer down can make:
@@ -32,7 +32,7 @@ import { ImporterApp } from './app.tsx'
  *   the recorded write log names exactly the resource types that string (and the
  *   gatekeeper seed beside it) allows.
  *
- * The opt-in seam itself — zero writes to reach a preview, archive before
+ * The opt-in seam itself — zero writes to reach a preview, source file before
  * resources, `meta.source` on each write — is `importer-react`'s
  * `importer-screen.test.tsx`. What is re-asserted here is only the ordering that
  * the app's own transport makes observable.
@@ -45,7 +45,7 @@ const ACCESS_TOKEN = 'tok-abc'
 let recorded: RecordedRequest[] = []
 
 /**
- * jsdom's `TextEncoder` hands back a `Uint8Array` from a realm the archive codec's
+ * jsdom's `TextEncoder` hands back a `Uint8Array` from a realm the source file codec's
  * `Uint8ArrayFromSelf` schema rejects on `instanceof` — a purely jsdom artifact,
  * since a browser has one realm and a real capture's bytes always satisfy the
  * check. Re-wrapping the encoder's output through the ambient `Uint8Array`
@@ -70,7 +70,7 @@ afterEach(() => {
 })
 
 describe('ImporterApp', () => {
-  it('should import a picked archive end to end, writing nothing before the confirm', async () => {
+  it('should import a picked source file end to end, writing nothing before the confirm', async () => {
     // Arrange — nothing on the server yet; the HAR comes off the local disk
     mount({})
 
@@ -86,18 +86,20 @@ describe('ImporterApp', () => {
     })
     expect(writes()).toHaveLength(0)
 
-    // Act — confirm (one Patient + two Observations + the source-file archive)
+    // Act — confirm (one Patient + two Observations + the source-file source file)
     await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
 
-    // Assert — the import completes, and the archive create lands before the
+    // Assert — the import completes, and the source file create lands before the
     // first resource write, so every written resource can name it
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
     })
-    const archiveCreate = writes().findIndex((write) => write.url.includes('/DocumentReference/'))
+    const sourceFileCreate = writes().findIndex((write) =>
+      write.url.includes('/DocumentReference/')
+    )
     const firstResource = writes().findIndex(isResourceWrite)
-    expect(archiveCreate).toBeGreaterThanOrEqual(0)
-    expect(firstResource).toBeGreaterThan(archiveCreate)
+    expect(sourceFileCreate).toBeGreaterThanOrEqual(0)
+    expect(firstResource).toBeGreaterThan(sourceFileCreate)
   })
 
   // The two halves that a self-hosted origin makes non-obvious: the app is not
@@ -108,9 +110,9 @@ describe('ImporterApp', () => {
   // else.
   it('should address every read and write to the FHIR server named by the handshake, with the granted token', async () => {
     // Arrange & Act — the whole flow, so the log holds reads and writes alike
-    await importOneArchive()
+    await importOneSourceFile()
 
-    // Assert — the source list, the archive create and every resource write
+    // Assert — the source list, the source file create and every resource write
     expect(recorded.length).toBeGreaterThan(0)
     for (const request of recorded) {
       expect(request.url.startsWith(`${SERVER_URL}/`)).toBe(true)
@@ -126,37 +128,42 @@ describe('ImporterApp', () => {
   // requested set does not name.
   it('should write only the resource types its requested scopes cover', async () => {
     // Arrange & Act
-    await importOneArchive()
+    await importOneSourceFile()
 
     // Assert
     const written = new Set(writes().map((write) => resourceTypeOf(write.url)))
     expect([...written].toSorted()).toEqual(['DocumentReference', 'Observation', 'Patient'])
   })
 
-  it('should read a server-held archive back off the FHIR server rather than creating a second copy', async () => {
-    // Arrange — one archive already on the server, carrying the recognized HAR
-    mount({ archives: [{ id: 'archive-1', fileName: 'server-session.har' }] })
+  it('should read a server-held source file back off the FHIR server and re-file it under one source file', async () => {
+    // Arrange — one source file already on the server, carrying the recognized HAR
+    mount({ sourceFiles: [{ id: 'archive-1', fileName: 'server-session.har' }] })
 
-    // Act — select it from the server list, then confirm
+    // Act — select it in the server list, pick it as the batch's source,
+    // then confirm
     await userEvent.click(
-      await screen.findByRole('button', { name: 'Use server-session.har as source' })
+      await screen.findByRole('checkbox', { name: 'Select server-session.har' })
     )
+    await userEvent.click(screen.getByRole('button', { name: 'Use selected as source' }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
     })
 
-    // Assert — the archive was fetched by id off the FHIR base, and no second
-    // archive was created for it
+    // Assert — the source file was fetched by id off the FHIR base, with the token
     const byId = recorded.find(
       (request) => request.method === 'GET' && request.url.includes('/DocumentReference/archive-1')
     )
     expect(byId?.url.startsWith(`${SERVER_URL}/`)).toBe(true)
     expect(byId?.authorization).toBe(`Bearer ${ACCESS_TOKEN}`)
-    expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
+    // Every pick is stored, and the id is a hash of the bytes and the name —
+    // so a file re-picked off the server is re-filed under exactly one source file,
+    // an upsert rather than a growing pile of copies.
+    const sourceFileWrites = writes().filter((write) => write.url.includes('/DocumentReference/'))
+    expect(sourceFileWrites).toHaveLength(1)
   })
 
   it('should render the app shell around the slice screen it mounts, on the Import tab by default', async () => {
@@ -246,8 +253,8 @@ interface RecordedRequest {
   readonly body: string
 }
 
-/** An archive the stub server holds, keyed by the id the flow addresses it at. */
-interface ServerArchive {
+/** A source file the stub server holds, keyed by the id the flow addresses it at. */
+interface ServerSourceFile {
   readonly id: string
   readonly fileName: string
 }
@@ -256,7 +263,7 @@ interface ServerArchive {
 const writes = (): readonly RecordedRequest[] =>
   recorded.filter((request) => request.method === 'PUT' || request.method === 'POST')
 
-/** Whether a write is a FHIR resource write (a Patient or Observation), not the archive. */
+/** Whether a write is a FHIR resource write (a Patient or Observation), not the source file. */
 const isResourceWrite = (write: RecordedRequest): boolean =>
   write.url.includes('/Patient/') || write.url.includes('/Observation/')
 
@@ -342,16 +349,16 @@ const RECOGNIZED_HAR: string = Effect.runSync(
 const harFile = (name: string): File =>
   new File([RECOGNIZED_HAR], name, { type: 'application/json' })
 
-/** Text as base64, the way the archive codec stores the file's bytes. */
+/** Text as base64, the way the source file codec stores the file's bytes. */
 const base64 = Schema.encodeSync(Schema.StringFromBase64)
 
-/** One archive `DocumentReference` wire, decodable by the codec and rowable by the list. */
-const archiveWire = (archive: ServerArchive): unknown => {
+/** One source file `DocumentReference` wire, decodable by the codec and rowable by the list. */
+const sourceFileWire = (sourceFile: ServerSourceFile): unknown => {
   const coding = [{ system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE }]
   const iso = DateTime.formatIso(DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z')))
   return {
     resourceType: 'DocumentReference',
-    id: archive.id,
+    id: sourceFile.id,
     status: 'current',
     type: { coding },
     category: [{ coding }],
@@ -361,7 +368,7 @@ const archiveWire = (archive: ServerArchive): unknown => {
         attachment: {
           contentType: 'application/json',
           data: base64(RECOGNIZED_HAR),
-          title: archive.fileName,
+          title: sourceFile.fileName,
           creation: iso,
         },
       },
@@ -381,11 +388,13 @@ const decodeBody = (body: HttpClientRequest.HttpClientRequest['body']): string =
 /**
  * A stub transport that records every request — including the header and URL the
  * app's own layer put on it — and routes it: a `category` search answers with the
- * configured archives, a `DocumentReference/<id>` GET answers with that archive,
+ * configured source files, a `DocumentReference/<id>` GET answers with that source file,
  * and every write echoes the written body back. One stateless rule per shape,
  * which is enough to drive the whole flow and read the log back.
  */
-const recordingServer = (archives: readonly ServerArchive[]): Layer.Layer<HttpClient.HttpClient> =>
+const recordingServer = (
+  sourceFiles: readonly ServerSourceFile[]
+): Layer.Layer<HttpClient.HttpClient> =>
   Layer.succeed(
     HttpClient.HttpClient,
     HttpClient.make((request) => {
@@ -453,15 +462,15 @@ const recordingServer = (archives: readonly ServerArchive[]): Layer.Layer<HttpCl
         return Effect.succeed(
           HttpClientResponse.fromWeb(
             request,
-            jsonResponse(searchsetOf(...archives.map((archive) => archiveWire(archive))))
+            jsonResponse(searchsetOf(...sourceFiles.map((one) => sourceFileWire(one))))
           )
         )
       }
       if (request.method === 'GET') {
         const id = idFromUrl(request.url)
-        const archive = archives.find((one) => one.id === id) ?? { id, fileName: `${id}.har` }
+        const sourceFile = sourceFiles.find((one) => one.id === id) ?? { id, fileName: `${id}.har` }
         return Effect.succeed(
-          HttpClientResponse.fromWeb(request, jsonResponse(archiveWire(archive)))
+          HttpClientResponse.fromWeb(request, jsonResponse(sourceFileWire(sourceFile)))
         )
       }
       // Echo the written wire back as a 200 so the client decodes it and succeeds.
@@ -500,22 +509,22 @@ const safeParseBundle = (body: string): RecordedBundleShape | undefined => {
  * Mount the app through the **real** `buildSmartRouterContext`, so the URL
  * prefixing and the bearer header under test are the production ones.
  */
-const mount = (config: { readonly archives?: readonly ServerArchive[] }): void => {
+const mount = (config: { readonly sourceFiles?: readonly ServerSourceFile[] }): void => {
   const context = buildSmartRouterContext(
     { serverUrl: SERVER_URL, accessToken: ACCESS_TOKEN },
-    recordingServer(config.archives ?? [])
+    recordingServer(config.sourceFiles ?? [])
   )
   render(<ImporterApp context={context} />)
 }
 
 /** Drive the local-pick flow from an empty server all the way to a completed import. */
-const importOneArchive = async (): Promise<void> => {
+const importOneSourceFile = async (): Promise<void> => {
   mount({})
   await userEvent.upload(await screen.findByLabelText('Import file'), harFile('portal-session.har'))
   await waitFor(() => {
     expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
   })
-  // One Patient + two Observations + the source-file archive (a local pick
+  // One Patient + two Observations + the source-file source file (a local pick
   // creates its own DocumentReference; a server-sourced HAR reuses the existing
   // one and previews only the three extracted resources).
   await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))

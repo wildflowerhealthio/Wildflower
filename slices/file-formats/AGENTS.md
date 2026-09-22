@@ -45,7 +45,14 @@ consumer slices.
   `effect` + `dicom-parser` only. The `test-helpers` subpath exports
   `writeDicom` (a minimal explicit-VR little-endian writer, which also emits
   native or encapsulated Pixel Data) and fast-check arbitraries for
-  synthesizing DICOM fixtures in tests.
+  synthesizing DICOM fixtures in tests — `dicomHeaderArb` for one header, and
+  **`dicomStudyArb` / `writeStudy`** for a coherent _study_ spread across
+  files: one `StudyInstanceUID` and patient, several series, one file per
+  instance, with the series and instance orders stated on the fixture as the
+  oracle a property asserts against. Its `SeriesNumber`s and `InstanceNumber`s
+  are a permutation rather than the index order, so "ordered by number" and
+  "ordered by UID" are different sequences and a consumer that orders by the
+  wrong one fails.
 - **[`dicom-react`](./dicom-react/AGENTS.md)** — browser-side DICOM rendering:
   `DicomFilePreview` (identifying patient and study tags, plus an Encoding
   block, under a cornerstone-rendered image pane) and the `renderInstance`

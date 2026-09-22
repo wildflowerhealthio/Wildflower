@@ -1,14 +1,14 @@
 /**
- * Stamping `meta.source` onto FHIR resources: the single-resource
- * {@link stamp} and the batch {@link stampDecoded} that walks every resource
- * in a decoded file's sections.
+ * Stamping `meta.source` onto FHIR resources: the typed {@link Reference} a
+ * stamp names, the single-resource {@link stamp}, and the batch
+ * {@link stampDecoded} that walks every resource in a decoded file's sections.
  *
  * @remarks
- * Both take a `SourceFile.Reference` rather than a bare `string` — the slice's
- * one currency for "which source file", so the only place it could be laundered
- * back into an unconstrained string is closed. That vocabulary is context-free,
- * so naming it here costs nothing: the codec it used to sit beside is a
- * separate module.
+ * Both stamps take a {@link Reference} rather than a bare `string` — the
+ * slice's one currency for "which source file" — so the only place it could be
+ * laundered back into an unconstrained string is closed. The vocabulary lives
+ * here, beside its one consumer, which keeps this module free of the codec and
+ * of any schema import.
  *
  * @packageDocumentation
  */
@@ -16,7 +16,17 @@
 import type { Meta } from 'fhir-r4/data-types'
 
 import type * as DecodedFile from './decoded-file.ts'
-import type * as SourceFile from './source-file.ts'
+
+const REFERENCE_PREFIX = 'DocumentReference/'
+
+/**
+ * A typed FHIR reference to a source file's `DocumentReference`, carrying the
+ * invariant that the string is `DocumentReference/<id>` at the type level.
+ */
+type Reference = `DocumentReference/${string}`
+
+/** The reference a resource stamped with this source file names. */
+const makeReference = (id: string): Reference => `${REFERENCE_PREFIX}${id}`
 
 interface Sourceable {
   readonly meta: typeof Meta.Schema.Type | null
@@ -24,7 +34,7 @@ interface Sourceable {
 
 const stamp = <TResource extends Sourceable>(
   resource: TResource,
-  source: SourceFile.Reference
+  source: Reference
 ): TResource => ({
   ...resource,
   meta: {
@@ -40,7 +50,7 @@ const stamp = <TResource extends Sourceable>(
 
 const stampDecoded = (
   decoded: DecodedFile.DecodedFile,
-  source: SourceFile.Reference
+  source: Reference
 ): DecodedFile.DecodedFile => ({
   ...decoded,
   sections: decoded.sections.map((section) => ({
@@ -52,4 +62,5 @@ const stampDecoded = (
   })),
 })
 
-export { type Sourceable, stamp, stampDecoded }
+export { makeReference, stamp, stampDecoded }
+export type { Reference, Sourceable }

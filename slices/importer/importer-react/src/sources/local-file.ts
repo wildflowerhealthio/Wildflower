@@ -1,5 +1,5 @@
 import { Effect } from 'effect'
-import { FormatDetector, PickedFile } from 'importer-fundamentals'
+import { FormatDetector, type PickedFile } from 'importer-fundamentals'
 
 /**
  * Reading a file the user dropped or chose, and rejecting one that no
@@ -29,7 +29,7 @@ import { FormatDetector, PickedFile } from 'importer-fundamentals'
  * again.
  */
 const REJECTION_MESSAGE =
-  "That file's format is not one the importer recognizes. Pick a `.har` capture or a LifeLabs `.pdf` report."
+  "That file's format is not one the importer recognizes. Pick a `.har` capture, a LifeLabs `.pdf` report, or a DICOM `.dcm` file."
 
 /**
  * The minimal surface {@link acceptLocalFile} reads off a file.
@@ -41,7 +41,7 @@ const REJECTION_MESSAGE =
  * satisfies it.
  */
 interface ReadableFile {
-  /** The file's name, carried onto the {@link PickedFile}. */
+  /** The file's name, carried onto the accepted pick. */
   readonly name: string
   /**
    * The file's contents as bytes, the way `File.arrayBuffer()` reads them.
@@ -71,8 +71,8 @@ const unrecognizedRejection = (file: ReadableFile): RejectedFile => ({
  *
  * @param detectors - The registered formats' detectors, in registry priority order
  * @param file - The dropped or chosen file
- * @returns A lazy `Effect` that yields the accepted {@link PickedFile} carrying
- *   a `local` source, or fails with the reason the file was rejected
+ * @returns A lazy `Effect` that yields the accepted file's name and bytes, or
+ *   fails with the reason the file was rejected
  *
  * @remarks
  * Validation is syntactic — `FormatDetector.claiming` runs each detector's
@@ -84,17 +84,13 @@ const unrecognizedRejection = (file: ReadableFile): RejectedFile => ({
 const acceptLocalFile = (
   detectors: readonly FormatDetector.Type[],
   file: ReadableFile
-): Effect.Effect<PickedFile.Type, string> =>
+): Effect.Effect<PickedFile.NamedBytes, string> =>
   Effect.promise(() => file.arrayBuffer()).pipe(
     Effect.flatMap((buffer) => {
       const bytes = new Uint8Array(buffer)
       const claim = FormatDetector.claiming(detectors, { fileName: file.name, bytes })
       if (claim === undefined) return Effect.fail(REJECTION_MESSAGE)
-      return Effect.succeed<PickedFile.Type>({
-        fileName: file.name,
-        bytes,
-        source: PickedFile.Source.local,
-      })
+      return Effect.succeed<PickedFile.NamedBytes>({ fileName: file.name, bytes })
     })
   )
 

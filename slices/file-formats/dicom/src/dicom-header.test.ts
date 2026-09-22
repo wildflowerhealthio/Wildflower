@@ -12,10 +12,13 @@ import {
   writeDicom,
 } from './test-helpers.ts'
 
+/** Every tag a file must carry to parse at all, and nothing else. */
 const MINIMAL_UIDS = {
   StudyInstanceUID: '1.2.3.4.5',
   SeriesInstanceUID: '1.2.3.4.6',
   SOPInstanceUID: '1.2.3.4.7',
+  SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
+  Modality: 'CT',
 } as const
 
 describe('DicomHeader.tryFromDicomFile', () => {
@@ -129,11 +132,8 @@ describe('DicomHeader.tryFromDicomFile', () => {
   })
 
   it('fails when StudyInstanceUID is missing', () => {
-    const bytes = writeDicom({
-      // No StudyInstanceUID
-      SeriesInstanceUID: '1.2.3.4',
-      SOPInstanceUID: '1.2.3.5',
-    })
+    const { StudyInstanceUID: _omitted, ...rest } = MINIMAL_UIDS
+    const bytes = writeDicom(rest)
     // Remove the study UID element by parsing and checking
     const result = DicomHeader.tryFromDicomFile(bytes)
     // writeDicom without StudyInstanceUID doesn't write the tag, so it fails
@@ -144,10 +144,8 @@ describe('DicomHeader.tryFromDicomFile', () => {
   })
 
   it('fails when SeriesInstanceUID is missing', () => {
-    const bytes = writeDicom({
-      StudyInstanceUID: '1.2.3.4',
-      SOPInstanceUID: '1.2.3.5',
-    })
+    const { SeriesInstanceUID: _omitted, ...rest } = MINIMAL_UIDS
+    const bytes = writeDicom(rest)
     const result = DicomHeader.tryFromDicomFile(bytes)
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
@@ -156,14 +154,33 @@ describe('DicomHeader.tryFromDicomFile', () => {
   })
 
   it('fails when SOPInstanceUID is missing', () => {
-    const bytes = writeDicom({
-      StudyInstanceUID: '1.2.3.4',
-      SeriesInstanceUID: '1.2.3.5',
-    })
+    const { SOPInstanceUID: _omitted, ...rest } = MINIMAL_UIDS
+    const bytes = writeDicom(rest)
     const result = DicomHeader.tryFromDicomFile(bytes)
     expect(Either.isLeft(result)).toBe(true)
     if (Either.isLeft(result)) {
       expect(result.left.reason).toContain('SOPInstanceUID')
+    }
+  })
+
+  it('fails when SOPClassUID is missing', () => {
+    // Required since the synthesis names every instance's SOP Class and has
+    // nothing to fall back on.
+    const { SOPClassUID: _omitted, ...rest } = MINIMAL_UIDS
+    const result = DicomHeader.tryFromDicomFile(writeDicom(rest))
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(result.left.reason).toContain('SOPClassUID')
+    }
+  })
+
+  it('fails when Modality is missing', () => {
+    // Required for the same reason: a series is named by its Modality.
+    const { Modality: _omitted, ...rest } = MINIMAL_UIDS
+    const result = DicomHeader.tryFromDicomFile(writeDicom(rest))
+    expect(Either.isLeft(result)).toBe(true)
+    if (Either.isLeft(result)) {
+      expect(result.left.reason).toContain('Modality')
     }
   })
 })

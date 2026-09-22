@@ -2,12 +2,13 @@ import { Option } from 'effect'
 import type { ServerComparison } from 'fhir-r4/clients'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type FormatDecode, DecodedFile, StagedImport } from 'importer-fundamentals'
-import { type JSX, useEffect, useMemo, useRef } from 'react'
+import { type JSX, useMemo } from 'react'
 import { Chip } from 'react-tundraish'
 
 import { describeResource, resourceTypeOf } from './describe-resource.ts'
 import { DiffBadge } from './diff-badge.tsx'
 import { NO_RESOURCES_MESSAGE, plural, UNREADABLE_FILE_MESSAGE } from './preview-text.ts'
+import { SectionToggle } from './section-toggle.tsx'
 import styles from './format-review-body.module.css'
 
 /**
@@ -143,54 +144,6 @@ const ResourceRow = ({
 }
 
 /**
- * A section's heading with a tri-state include toggle: checked when every
- * resource in the section is included, unchecked when none are, indeterminate
- * in between. Clicking it opts the whole section in or out in one go — out when
- * everything was included, in otherwise — through {@link StagedImport.setResourcesIncluded}.
- *
- * @remarks
- * `indeterminate` is not a React-settable attribute, so it is written onto the
- * input element through a ref after render whenever the mixed state changes.
- */
-const SectionToggle = ({
-  title,
-  resourceKeys,
-  selection,
-  onSelectionChange,
-}: {
-  readonly title: string
-  readonly resourceKeys: readonly string[]
-  readonly selection: StagedImport.Selection
-  readonly onSelectionChange: (selection: StagedImport.Selection) => void
-}): JSX.Element => {
-  const includedCount = resourceKeys.filter((key) =>
-    StagedImport.isResourceIncluded(selection, key)
-  ).length
-  const allIncluded = resourceKeys.length > 0 && includedCount === resourceKeys.length
-  const noneIncluded = includedCount === 0
-  const checkbox = useRef<HTMLInputElement>(null)
-  useEffect(() => {
-    if (checkbox.current !== null) checkbox.current.indeterminate = !allIncluded && !noneIncluded
-  }, [allIncluded, noneIncluded])
-  return (
-    <label className={styles['review-body__section-label']}>
-      <input
-        ref={checkbox}
-        type="checkbox"
-        checked={allIncluded}
-        aria-label={`Include all in ${title}`}
-        onChange={() => {
-          onSelectionChange(
-            StagedImport.setResourcesIncluded(selection, resourceKeys, !allIncluded)
-          )
-        }}
-      />
-      <h4 className={styles['review-body__section-heading']}>{title}</h4>
-    </label>
-  )
-}
-
-/**
  * One format's decoded sections and notes — the generalized review body
  * every format shares: a per-type tally, one titled section per decode
  * section with per-resource rows, and the format's diagnostic notes folded
@@ -245,9 +198,11 @@ const FormatReviewBody = ({
         >
           <SectionToggle
             title={section.title}
-            resourceKeys={section.resources.map((resource) => resource.key)}
-            selection={selection}
-            onSelectionChange={onSelectionChange}
+            keys={section.resources.map((resource) => resource.key)}
+            isIncluded={(key) => StagedImport.isResourceIncluded(selection, key)}
+            onSetIncluded={(keys, included) => {
+              onSelectionChange(StagedImport.setResourcesIncluded(selection, keys, included))
+            }}
           />
           <ul className={styles['review-body__resource-list']}>
             {section.resources.map((resource) => (

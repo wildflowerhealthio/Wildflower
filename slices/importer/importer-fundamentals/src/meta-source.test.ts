@@ -5,7 +5,6 @@ import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
 import * as MetaSource from './meta-source.ts'
-import * as SourceFile from './source-file.ts'
 
 const fakeResource = (id: string): FhirResource =>
   Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', id })
@@ -24,6 +23,17 @@ interface Marker {
 }
 
 const marker = (id: string): Marker => ({ resourceType: 'Basic', id, meta: null })
+
+describe('MetaSource.makeReference', () => {
+  it('property: a reference is the id under the DocumentReference type', () => {
+    fc.assert(
+      fc.property(fc.string({ minLength: 1 }), (id) => {
+        expect(MetaSource.makeReference(id)).toBe(`DocumentReference/${id}`)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
 
 describe('MetaSource.stamp', () => {
   it('should set meta.source and keep the rest of an existing meta', () => {
@@ -61,7 +71,7 @@ describe('MetaSource.stampDecoded', () => {
             ),
           })
         ),
-        fc.string({ minLength: 1 }).map(SourceFile.makeReference),
+        fc.string({ minLength: 1 }).map(MetaSource.makeReference),
         (sections, source) => {
           const stamped = MetaSource.stampDecoded({ sections, notes: [] }, source)
           expect(stamped.sections.map((section) => section.title)).toEqual(

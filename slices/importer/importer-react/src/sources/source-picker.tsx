@@ -1,5 +1,13 @@
 import { Array as Arr, Effect } from 'effect'
-import { useRef, useState, type ChangeEvent, type DragEvent, type JSX } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type JSX,
+  type RefObject,
+} from 'react'
 
 import type { PickedFile, FormatDetector } from 'importer-fundamentals'
 import { acceptLocalFile, type ReadableFile, type RejectedFile } from './local-file.ts'
@@ -7,21 +15,26 @@ import { ServerSourceFileList } from './server-source-file-list.tsx'
 import styles from './source-picker.module.css'
 
 /**
- * The one control that turns any of three sources into a {@link PickedFile}: a
- * file dropped on the zone, a file chosen through the OS picker, or an
- * uploaded archive on the device's own FHIR server.
+ * The one control that turns any of four sources into named bytes: a file
+ * dropped on the zone, files chosen through the OS dialog, a whole folder, or
+ * uploaded source files on the device's own FHIR server.
  *
  * @remarks
  * Drop is an enhancement, not the only path: the zone is itself a button that
  * opens the file picker, so the whole surface is reachable by keyboard and
- * named for a screen reader. A local file — dropped or chosen — is
+ * named for a screen reader. The picker also offers a **folder**: a DICOM
+ * study arrives as a directory of hundreds of `.dcm` files, and selecting
+ * them by hand is the kind of thing a folder pick exists for. It is the same
+ * path — the files a folder yields go through the same detectors, and
+ * the ones no format claims are reported by name exactly as a file pick's
+ * are. A local file — dropped or chosen — is
  * identified against the registered formats' detectors at the
  * picker, so a file no format claims is rejected *here*, next to the control
  * the user just used, rather than surfacing downstream. The server picks come
  * from {@link ServerSourceFileList}, which lists every registered format's
  * uploaded source files — HAR, LifeLabs PDF, and any future format — and fetches
- * the chosen one back through that format's archive codec; the resulting pick
- * carries the archive's own reference so a later step links provenance
+ * the chosen ones back through that format's source-file codec; each resulting
+ * pick carries the source file's own reference so a later step links provenance
  * without re-uploading the bytes.
  *
  * Presentation and interaction only. Nothing here parses HAR or opens a PDF —
@@ -31,17 +44,22 @@ import styles from './source-picker.module.css'
  */
 
 /**
- * How many files a caller consumes at once.
+ * Turn a file input into a directory input.
  *
  * @remarks
- * The picker offers the same three sources either way — dropped, chosen
- * through the OS picker, uploaded to the FHIR server — and clamps a local
- * batch to the mode. `'batch'` (the default) is the importer flow: several
- * files previewed and confirmed together. `'single'` is a one-at-a-time
- * flow: a batch that fell out of a multi-file drop is trimmed to the
- * first-accepted file, and the OS dialog only offers one file to begin with.
+ * Through a ref rather than as JSX: `webkitdirectory` is a non-standard
+ * attribute React's `InputHTMLAttributes` does not declare, and writing it as
+ * a prop would need a cast around the whole element. Setting the attribute
+ * imperatively needs none — and the input is a directory input from its first
+ * paint, before any click can reach it.
  */
-type SourcePickerMode = 'batch' | 'single'
+const useDirectoryInput = (): RefObject<HTMLInputElement | null> => {
+  const ref = useRef<HTMLInputElement>(null)
+  useEffect(() => {
+    ref.current?.setAttribute('webkitdirectory', '')
+  }, [])
+  return ref
+}
 
 /** Props for {@link SourcePicker}. */
 interface SourcePickerProps {
@@ -57,20 +75,14 @@ interface SourcePickerProps {
    * Called with the chosen files once a source resolves to at least one.
    *
    * @remarks
-   * Local picking is a batch in the default `'batch'` mode — the OS dialog
-   * allows several files and a drop can carry many — so this takes a list,
-   * previewed and confirmed together. A server archive is picked one at a
-   * time and arrives as a single-element list. In `'single'` mode this
-   * always fires with exactly one file. Fires only when at least one file
-   * was accepted; a re-pick replaces the previous batch. The picker holds
-   * no selection of its own; the caller owns what happens next.
+   * Picking is always a batch — the OS dialog allows several files, a drop can
+   * carry many, a folder carries a whole study, and the server list hands on
+   * every row that was selected — so this takes a list, previewed and
+   * confirmed together, and a local pick is never trimmed. Fires only when at
+   * least one file was accepted; a re-pick replaces the previous batch. The
+   * picker holds no selection of its own; the caller owns what happens next.
    */
-  readonly onPick: (picks: readonly PickedFile.Type[]) => void
-  /**
-   * Whether the caller consumes a batch of files or a single file at a
-   * time. Defaults to `'batch'`. See {@link SourcePickerMode}.
-   */
-  readonly mode?: SourcePickerMode
+  readonly onPick: (picks: readonly PickedFile.NamedBytes[]) => void
 }
 
 /**
@@ -102,10 +114,11 @@ const pickerError = (rejected: readonly RejectedFile[], acceptedCount: number): 
 
 /**
  * The picker: a drop-and-pick zone, the file input it opens, a rejection
- * notice, and the server archive list.
+ * notice, and the server source file list.
  */
-const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps): JSX.Element => {
+const SourcePicker = ({ detectors, onPick }: SourcePickerProps): JSX.Element => {
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useDirectoryInput()
   const [error, setError] = useState<string | null>(null)
   const [dragActive, setDragActive] = useState(false)
 
@@ -113,9 +126,7 @@ const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps):
   // concurrently, then split the outcomes with `Array.separate`: accepted
   // picks are handed on as a batch, rejected ones reported. A lone rejected
   // file keeps its rejection message (the case worth debugging); a mix
-  // reports names. In `single` mode the accepted list is clamped to the
-  // first file — a drop that carried several still reaches the caller as one,
-  // since the preview downstream is per file.
+  // reports names. Nothing is trimmed: every accepted file reaches the caller.
   const acceptFiles = (files: readonly ReadableFile[]): Promise<void> =>
     Effect.runPromise(
       Effect.forEach(
@@ -131,13 +142,13 @@ const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps):
           const [rejected, accepted] = Arr.separate(results)
           setError(pickerError(rejected, accepted.length))
           if (accepted.length === 0) return
-          const chosen = mode === 'single' ? accepted.slice(0, 1) : accepted
-          onPick(chosen)
+          onPick(accepted)
         })
       )
     )
 
   const openPicker = (): void => fileInputRef.current?.click()
+  const openFolderPicker = (): void => folderInputRef.current?.click()
 
   const onFileInputChange = (event: ChangeEvent<HTMLInputElement>): void => {
     const files = Array.from(event.target.files ?? [])
@@ -169,13 +180,27 @@ const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps):
         onDragOver={onDragOver}
         onDragLeave={() => setDragActive(false)}
       >
-        {mode === 'single' ? 'Choose a file, or drop it here' : 'Choose files, or drop them here'}
+        Choose files, or drop them here
       </button>
       <input
         ref={fileInputRef}
         type="file"
         aria-label="Import file"
-        multiple={mode === 'batch'}
+        multiple
+        className={styles.fileInput}
+        onChange={onFileInputChange}
+      />
+      <button type="button" className={styles.folderButton} onClick={openPicker}>
+        Choose files
+      </button>
+      <button type="button" className={styles.folderButton} onClick={openFolderPicker}>
+        Choose a folder
+      </button>
+      <input
+        ref={folderInputRef}
+        type="file"
+        aria-label="Import folder"
+        multiple
         className={styles.fileInput}
         onChange={onFileInputChange}
       />
@@ -187,11 +212,11 @@ const SourcePicker = ({ detectors, onPick, mode = 'batch' }: SourcePickerProps):
       <ServerSourceFileList
         onPick={(picked) => {
           setError(null)
-          onPick([picked])
+          onPick(picked)
         }}
       />
     </section>
   )
 }
 
-export { SourcePicker, type SourcePickerMode, type SourcePickerProps }
+export { SourcePicker, type SourcePickerProps }

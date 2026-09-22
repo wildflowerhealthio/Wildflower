@@ -6,10 +6,10 @@ import type { Extraction } from 'http-extraction-fundamentals'
 import type { HarSettings } from './har-settings.ts'
 
 /**
- * One archive entry as the structural {@link Extraction.Input} the recognizer
+ * One source file entry as the structural {@link Extraction.Input} the recognizer
  * consumes.
  *
- * @param entry - An entry read out of the HTTP Archive
+ * @param entry - An entry read out of the HTTP Source file
  * @returns The same eight fields, typed as an `Extraction.Input`
  *
  * @remarks
@@ -23,7 +23,7 @@ const toInput = (entry: HttpArchive.Entry): Extraction.Input => ({
   // `HttpArchive.Entry` carries the wire `HarMethodValue` (the seven verbs
   // plus `'UNKNOWN'`); the extraction pipeline speaks `Option<HttpMethod>`,
   // with `Option.none()` standing in for a HAR entry whose method the
-  // archive dropped. This is the one boundary where the wire↔option
+  // source file dropped. This is the one boundary where the wire↔option
   // conversion happens.
   method: entry.method === 'UNKNOWN' ? Option.none() : Option.some(entry.method),
   status: entry.status,
@@ -43,9 +43,9 @@ const utf8 = new TextDecoder()
  *
  * @param fileBytes - The bytes of a `.har` file (UTF-8 JSON)
  * @param _settings - The HAR settings (none today; accepted so the signature
- *   matches `FileImporter`'s `decodeOne`)
- * @returns The archive's entries as `Extraction.Input`s, failing only with a
- *   `ParseError` when the bytes are not a well-formed HTTP Archive; requires
+ *   matches the importer's `decodeFileSet`)
+ * @returns The source file's entries as `Extraction.Input`s, failing only with a
+ *   `ParseError` when the bytes are not a well-formed HTTP Source file; requires
  *   nothing, so the write client is unreachable from a decode by construction
  */
 const decodeHar = (

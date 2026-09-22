@@ -1,9 +1,27 @@
-import { writeDicom } from 'dicom/test-helpers'
-import { Effect, Either } from 'effect'
-import { PickedFile, type SourceFile } from 'importer-fundamentals'
+import {
+  dicomStudyArb,
+  writeDicom,
+  writeStudy,
+  type StudyFixture,
+  type DicomTagMap,
+} from 'dicom/test-helpers'
+import type { Array as Arr } from 'effect'
+import { Effect, Either, Schema } from 'effect'
+import * as fc from 'fast-check'
+import { DocumentReference, type FhirResource, type ImagingStudy } from 'fhir-r4/resources'
+import {
+  type DecodeFunction,
+  type FileImporter,
+  DecodedFile,
+  type FormatDecode,
+  type PickedFile,
+} from 'importer-fundamentals'
+import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { decodeDicom } from './decode.ts'
+import { DicomHeader } from 'dicom'
+import { decodeStudy, studyGroupKey, studyKey } from './decode.ts'
+import { dicomImporter } from './dicom-importer.ts'
 import { type DicomSettings } from './settings.ts'
 
 /**
@@ -13,38 +31,57 @@ import { type DicomSettings } from './settings.ts'
  */
 const defaultDicomSettings: DicomSettings = { timeZone: 'America/Toronto' }
 
-/** A local pick of the given bytes — what the picker hands every decode. */
-const pick = (bytes: Uint8Array): PickedFile.Type => ({
-  fileName: 'sample.dcm',
-  bytes,
-  source: PickedFile.Source.local,
-})
-
 /**
- * The source file the importer resolves before calling this decode; the
- * decode reads its id and recomputes nothing, so a stand-in id is enough.
+ * A stored source file with the given id — the shape the decode constructor hands
+ * each member. Only its `id` matters here: it is what an instance's
+ * `gridfsFileId` names.
  */
-const source: SourceFile.Reference = 'DocumentReference/doc-1'
-
-const sampleDicomBytes = (): Uint8Array =>
-  writeDicom({
-    StudyInstanceUID: '1.2.3.4.5',
-    SeriesInstanceUID: '1.2.3.4.5.1',
-    SOPInstanceUID: '1.2.3.4.5.1.1',
-    PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
-    PatientID: 'P001',
-    Modality: 'CT',
-    StudyDescription: 'Chest CT',
-    StudyDate: '20240315',
-    StudyTime: '143022',
-    AccessionNumber: 'ACC001',
+const sourceFileWithId = (id: string): DocumentReference.Type =>
+  Schema.decodeSync(DocumentReference.Schema)({
+    resourceType: 'DocumentReference',
+    id,
+    status: 'current',
+    content: [{ attachment: { contentType: 'application/dicom' } }],
   })
 
-describe('decodeDicom', () => {
+/**
+ * One file of a study — what the decode function hands this decode once it has
+ * grouped the pick and minted the source files. The header is parsed by
+ * `decodeStudy` itself, so nothing is passed alongside the bytes.
+ */
+const studyFile = (
+  tags: DicomTagMap,
+  { fileName = 'sample.dcm', sourceFileId = 'doc-1', index = 0 } = {}
+): DecodeFunction.WithSourceFile => ({
+  id: `${index}:${fileName}`,
+  fileName,
+  bytes: writeDicom(tags),
+  sourceFile: sourceFileWithId(sourceFileId),
+})
+
+const SAMPLE_TAGS: DicomTagMap = {
+  StudyInstanceUID: '1.2.3.4.5',
+  SeriesInstanceUID: '1.2.3.4.5.1',
+  SOPInstanceUID: '1.2.3.4.5.1.1',
+  SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
+  PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
+  PatientID: 'P001',
+  Modality: 'CT',
+  StudyDescription: 'Chest CT',
+  StudyDate: '20240315',
+  StudyTime: '143022',
+  AccessionNumber: 'ACC001',
+}
+
+const sample = (
+  overrides: DicomTagMap = {}
+): Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> => [
+  studyFile({ ...SAMPLE_TAGS, ...overrides }),
+]
+
+describe('decodeStudy', () => {
   it('resolves ImagingStudy.started against the settings time zone', async () => {
-    const result = await Effect.runPromise(
-      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
-    )
+    const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
     expect(study?.resourceType).toBe('ImagingStudy')
     if (study?.resourceType !== 'ImagingStudy') return
@@ -54,35 +91,22 @@ describe('decodeDicom', () => {
 
   it('reads the same file as a different instant under a different zone', async () => {
     const startedIn = async (timeZone: string): Promise<string | null | undefined> => {
-      const result = await Effect.runPromise(
-        decodeDicom(pick(sampleDicomBytes()), { timeZone }, source)
-      )
+      const result = await Effect.runPromise(decodeStudy(sample(), { timeZone }))
       const study = result.sections[0].resources.find((r) => r.key === 'imaging-study')?.resource
       return study?.resourceType === 'ImagingStudy' ? study.started : undefined
     }
     expect(await startedIn('America/Toronto')).not.toBe(await startedIn('America/Vancouver'))
   })
 
-  it('fails rather than guessing when the settings time zone is not a zone', async () => {
-    const result = await Effect.runPromise(
-      Effect.either(decodeDicom(pick(sampleDicomBytes()), { timeZone: 'Mars/Olympus' }, source))
-    )
-    expect(Either.isLeft(result)).toBe(true)
-  })
-
   it('yields one section with Patient, ServiceRequest, ImagingStudy', async () => {
-    const result = await Effect.runPromise(
-      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
-    )
+    const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     expect(result.sections).toHaveLength(1)
     const keys = result.sections[0].resources.map((r) => r.key)
     expect(keys).toEqual(['patient', 'service-request', 'imaging-study'])
   })
 
-  it('ImagingStudy instance carries the resolved source file id as its gridfsFileId', async () => {
-    const result = await Effect.runPromise(
-      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
-    )
+  it('ImagingStudy instance carries its own file id as its gridfsFileId', async () => {
+    const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
 
     const studyEntry = result.sections[0].resources.find((r) => r.key === 'imaging-study')
     const study = studyEntry?.resource
@@ -94,35 +118,26 @@ describe('decodeDicom', () => {
   })
 
   it('section title includes modality, description, and date', async () => {
-    const result = await Effect.runPromise(
-      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
-    )
+    const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
     expect(result.sections[0].title).toBe('CT Chest CT · 2024-03-15')
   })
 
   it('notes no ServiceRequest when AccessionNumber is absent', async () => {
-    const bytes = writeDicom({
-      StudyInstanceUID: '1.2.3.4.5',
-      SeriesInstanceUID: '1.2.3.4.5.1',
-      SOPInstanceUID: '1.2.3.4.5.1.1',
-      PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
-      PatientID: 'P001',
-      Modality: 'CT',
-    })
-    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
+    const result = await Effect.runPromise(
+      decodeStudy(sample({ AccessionNumber: undefined }), defaultDicomSettings)
+    )
     expect(result.notes.some((n) => n.includes('AccessionNumber'))).toBe(true)
     const keys = result.sections[0].resources.map((r) => r.key)
     expect(keys).not.toContain('service-request')
   })
 
   it('yields zero sections and a note when no patient identity', async () => {
-    const bytes = writeDicom({
-      StudyInstanceUID: '1.2.3.4.5',
-      SeriesInstanceUID: '1.2.3.4.5.1',
-      SOPInstanceUID: '1.2.3.4.5.1.1',
-      Modality: 'CT',
-    })
-    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({ PatientID: undefined, PatientName: undefined, AccessionNumber: undefined }),
+        defaultDicomSettings
+      )
+    )
     expect(result.sections).toEqual([])
     expect(result.notes.some((n) => n.includes('patient identity'))).toBe(true)
   })
@@ -132,62 +147,406 @@ describe('decodeDicom', () => {
     // parts: synthesizing one would write `name: [{ text: '' }]` (FHIR `string`
     // forbids an empty value) and derive the same Patient id for every such
     // file, collapsing unrelated studies onto one patient.
-    const bytes = writeDicom({
-      StudyInstanceUID: '1.2.3.4.5',
-      SeriesInstanceUID: '1.2.3.4.5.1',
-      SOPInstanceUID: '1.2.3.4.5.1.1',
-      PatientName: { family: '', given: '', text: '^^^' },
-      Modality: 'CT',
-    })
-    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({ PatientID: undefined, PatientName: { family: '', given: '', text: '^^^' } }),
+        defaultDicomSettings
+      )
+    )
     expect(result.sections).toEqual([])
     expect(result.notes.some((n) => n.includes('patient identity'))).toBe(true)
   })
 
-  it('fails with ParseError on truncated bytes', async () => {
-    const result = Effect.runSync(
-      Effect.either(
-        decodeDicom(pick(new Uint8Array([0x00, 0x01, 0x02])), defaultDicomSettings, source)
-      )
-    )
-    expect(result._tag).toBe('Left')
+  it('resource keys are stable across the empty settings', async () => {
+    const keysOf = async (): Promise<readonly string[]> => {
+      const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
+      return result.sections.flatMap((s) => s.resources.map((r) => r.key))
+    }
+    expect(await keysOf()).toEqual(await keysOf())
   })
 
-  it('resource keys are stable across the empty settings', async () => {
-    const result1 = await Effect.runPromise(
-      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
-    )
-    const result2 = await Effect.runPromise(
-      decodeDicom(pick(sampleDicomBytes()), defaultDicomSettings, source)
-    )
-    const keys1 = result1.sections.flatMap((s) => s.resources.map((r) => r.key))
-    const keys2 = result2.sections.flatMap((s) => s.resources.map((r) => r.key))
-    expect(keys1).toEqual(keys2)
+  describe('a study spread across files', () => {
+    const twoFiles: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> = [
+      studyFile(
+        { ...SAMPLE_TAGS, SeriesInstanceUID: '1.2.3.4.5.2', SeriesNumber: 2, SOPInstanceUID: 'I2' },
+        { fileName: 'b.dcm', sourceFileId: 'doc-b', index: 0 }
+      ),
+      studyFile(
+        { ...SAMPLE_TAGS, SeriesInstanceUID: '1.2.3.4.5.1', SeriesNumber: 1, SOPInstanceUID: 'I1' },
+        { fileName: 'a.dcm', sourceFileId: 'doc-a', index: 1 }
+      ),
+    ]
+
+    it('is still one section with the same three keys', async () => {
+      const result = await Effect.runPromise(decodeStudy(twoFiles, defaultDicomSettings))
+      expect(result.sections).toHaveLength(1)
+      expect(result.sections[0].resources.map((r) => r.key)).toEqual([
+        'patient',
+        'service-request',
+        'imaging-study',
+      ])
+    })
+
+    it('notes what each file contributed, in study order', async () => {
+      const result = await Effect.runPromise(decodeStudy(twoFiles, defaultDicomSettings))
+      expect(result.notes).toEqual([
+        'a.dcm: series 1, instance I1.',
+        'b.dcm: series 2, instance I2.',
+      ])
+    })
+
+    it('notes an AccessionNumber the files disagree on, and does not merge them', async () => {
+      const conflicting: Arr.NonEmptyReadonlyArray<DecodeFunction.WithSourceFile> = [
+        twoFiles[0],
+        studyFile(
+          {
+            ...SAMPLE_TAGS,
+            SeriesInstanceUID: '1.2.3.4.5.1',
+            SeriesNumber: 1,
+            SOPInstanceUID: 'I1',
+            AccessionNumber: 'ACC002',
+          },
+          { fileName: 'a.dcm', sourceFileId: 'doc-a', index: 1 }
+        ),
+      ]
+      const result = await Effect.runPromise(decodeStudy(conflicting, defaultDicomSettings))
+      expect(result.notes[0]).toContain('disagree on AccessionNumber')
+      const request = result.sections[0].resources.find(
+        (r) => r.key === 'service-request'
+      )?.resource
+      if (request?.resourceType !== 'ServiceRequest') throw new Error('expected a ServiceRequest')
+      // One request, built from the first accession in *study* order — a.dcm
+      // is series 1 — with the other nowhere on it: the two are not merged.
+      const values = request.identifier.map((one) => one.value)
+      expect(values).toContain('ACC002')
+      expect(values).not.toContain('ACC001')
+    })
+
+    it('says nothing per file when the study is one file', async () => {
+      const result = await Effect.runPromise(decodeStudy(sample(), defaultDicomSettings))
+      expect(result.notes).toEqual([])
+    })
   })
 })
 
 describe('sectionTitle', () => {
-  it('falls back to "DICOM study" when modality and description are absent', async () => {
-    const bytes = writeDicom({
-      StudyInstanceUID: '1.2.3.4.5',
-      SeriesInstanceUID: '1.2.3.4.5.1',
-      SOPInstanceUID: '1.2.3.4.5.1.1',
-      PatientID: 'P001',
-    })
-    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
-    expect(result.sections[0].title).toBe('DICOM study')
+  it('is the modality alone when nothing else is stated', async () => {
+    // Modality is required of every header, so a study always names at least
+    // that — there is no titleless study to fall back for.
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({ StudyDescription: undefined, StudyDate: undefined, StudyTime: undefined }),
+        defaultDicomSettings
+      )
+    )
+    expect(result.sections[0].title).toBe('CT')
   })
 
   it('includes modality and date when available', async () => {
-    const bytes = writeDicom({
-      StudyInstanceUID: '1.2.3.4.5',
-      SeriesInstanceUID: '1.2.3.4.5.1',
-      SOPInstanceUID: '1.2.3.4.5.1.1',
-      PatientID: 'P001',
-      Modality: 'MR',
-      StudyDate: '20240101',
-    })
-    const result = await Effect.runPromise(decodeDicom(pick(bytes), defaultDicomSettings, source))
+    const result = await Effect.runPromise(
+      decodeStudy(
+        sample({ Modality: 'MR', StudyDescription: undefined, StudyDate: '20240101' }),
+        defaultDicomSettings
+      )
+    )
     expect(result.sections[0].title).toBe('MR · 2024-01-01')
+  })
+})
+
+/**
+ * The batch decode as the importer exposes it: `DecodeFunction.make` is what
+ * provides the source-file context, and the source files it mints under the
+ * format's real coding constants are half of what these tests are about.
+ */
+const decode = dicomImporter.decode
+
+const SETTINGS: DicomSettings = { timeZone: 'America/Toronto' }
+
+/** The picks with the ids `readBatch` stamps them with, in pick order. */
+const asBatch = (files: readonly PickedFile.NamedBytes[]): readonly PickedFile.Type[] =>
+  files.map((file, index) => ({ ...file, id: `${index}:${file.fileName}` }))
+
+const run = (files: readonly PickedFile.NamedBytes[]): Promise<FormatDecode.Result<string>> =>
+  Effect.runPromise(decode(asBatch(files), SETTINGS))
+
+const resourcesOf = (result: FormatDecode.Result<string>): readonly DecodedFile.Resource[] =>
+  DecodedFile.resources(result.decoded)
+
+/** Every decoded resource of one type, across every section. */
+const of = <K extends FhirResource['resourceType']>(
+  result: FormatDecode.Result<string>,
+  resourceType: K
+): readonly Extract<FhirResource, { readonly resourceType: K }>[] =>
+  resourcesOf(result)
+    .map((entry) => entry.resource)
+    .filter(
+      (resource): resource is Extract<FhirResource, { readonly resourceType: K }> =>
+        resource.resourceType === resourceType
+    )
+
+const studiesOf = (result: FormatDecode.Result<string>): readonly ImagingStudy.Type[] =>
+  of(result, 'ImagingStudy')
+
+const sourceFilesOf = (result: FormatDecode.Result<string>): readonly DocumentReference.Type[] =>
+  of(result, 'DocumentReference')
+
+/** The sections a study was decoded into — the source file sections are the rest. */
+const studySections = (result: FormatDecode.Result<string>): readonly DecodedFile.Section[] =>
+  result.decoded.sections.filter((section) =>
+    section.resources.some((one) => one.key.endsWith('imaging-study'))
+  )
+
+/** A study fixture's files, ready to pick. */
+const picksOf = (fixture: StudyFixture): readonly PickedFile.NamedBytes[] => writeStudy(fixture)
+
+const TAGS = {
+  StudyInstanceUID: '1.2.3.4.5',
+  PatientID: 'P001',
+  PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
+  Modality: 'CT',
+  SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
+} as const
+
+/** One file of the canonical study, varied by whichever tags a case cares about. */
+const file = (fileName: string, overrides: DicomTagMap = {}): PickedFile.NamedBytes => ({
+  fileName,
+  bytes: writeDicom({
+    ...TAGS,
+    SeriesInstanceUID: '1.2.3.4.5.1',
+    SOPInstanceUID: `1.2.3.4.5.1.${fileName}`,
+    ...overrides,
+  }),
+})
+
+describe('the DICOM batch decode', () => {
+  it('reads N files of one study as one ImagingStudy', async () => {
+    const result = await run([
+      file('1', { SeriesInstanceUID: '1.2.3.4.5.1', SeriesNumber: 1, SOPInstanceUID: 'I1' }),
+      file('2', { SeriesInstanceUID: '1.2.3.4.5.1', SeriesNumber: 1, SOPInstanceUID: 'I2' }),
+      file('3', { SeriesInstanceUID: '1.2.3.4.5.2', SeriesNumber: 2, SOPInstanceUID: 'I3' }),
+    ])
+    const [study, ...rest] = studiesOf(result)
+    expect(rest).toEqual([])
+    expect(study.numberOfSeries).toBe(2)
+    expect(study.numberOfInstances).toBe(3)
+    expect(of(result, 'Patient')).toHaveLength(1)
+    expect(studySections(result)).toHaveLength(1)
+  })
+
+  it('mints one source file per file, all filed under the patient and related to the study', async () => {
+    const result = await run([
+      file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
+      file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
+    ])
+    const sourceFiles = sourceFilesOf(result)
+    expect(sourceFiles).toHaveLength(2)
+
+    const [study] = studiesOf(result)
+    const [patient] = of(result, 'Patient')
+    for (const sourceFile of sourceFiles) {
+      expect(sourceFile.subject?.reference).toBe(`Patient/${patient.id}`)
+      expect(sourceFile.context?.related.map((one) => one.reference)).toEqual([
+        `ImagingStudy/${study.id}`,
+      ])
+    }
+  })
+
+  it('lists the source files in one "Source files" section ahead of the study', async () => {
+    const result = await run([
+      file('1', { SOPInstanceUID: 'I1' }),
+      file('2', { SOPInstanceUID: 'I2' }),
+    ])
+    const [first] = result.decoded.sections
+    expect(first.title).toBe('Source files')
+    expect(first.resources.map((one) => one.key)).toEqual([
+      '0:1/source-file/1',
+      '1:2/source-file/2',
+    ])
+  })
+
+  it('gives each instance the source file of its own file', async () => {
+    const result = await run([
+      file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
+      file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
+    ])
+    const sourceFileIds = sourceFilesOf(result).map((one) => one.id)
+    const [study] = studiesOf(result)
+    const instanceFileIds = study.series.flatMap((series) =>
+      series.instance.map((instance) => instance.extension[0]?.valueString)
+    )
+    expect(new Set(instanceFileIds)).toEqual(new Set(sourceFileIds))
+  })
+
+  it('splits a pick spanning two studies into two file sets', async () => {
+    const result = await run([
+      file('1', { StudyInstanceUID: '1.2.3.4.5', SOPInstanceUID: 'I1' }),
+      file('2', { StudyInstanceUID: '9.9.9.9.9', SOPInstanceUID: 'I2' }),
+    ])
+    const studies = studiesOf(result)
+    expect(studies).toHaveLength(2)
+    expect(new Set(studies.map((one) => one.id)).size).toBe(2)
+    expect(studySections(result)).toHaveLength(2)
+  })
+
+  it('splits one study whose files name different patients', async () => {
+    const result = await run([
+      file('1', { PatientID: 'P001', SOPInstanceUID: 'I1' }),
+      file('2', { PatientID: 'P002', SOPInstanceUID: 'I2' }),
+    ])
+    // Same StudyInstanceUID, so the studies share an id — but they are two
+    // reviewable file sets under two patients, never one silently merged study.
+    expect(studiesOf(result)).toHaveLength(2)
+    expect(new Set(of(result, 'Patient').map((one) => one.id)).size).toBe(2)
+  })
+
+  it('reports an unparsable file on its own, leaving the study readable', async () => {
+    const result = await run([
+      file('1', { SOPInstanceUID: 'I1' }),
+      { fileName: 'junk.dcm', bytes: new Uint8Array([0x00, 0x01, 0x02]) },
+    ])
+    expect(result.unreadableFiles.map((one) => one.title)).toEqual(['junk.dcm'])
+    expect(studiesOf(result)).toHaveLength(1)
+  })
+
+  it('fails every file rather than guessing when the time zone is not a zone', async () => {
+    const files = [file('1', { SOPInstanceUID: 'I1' }), file('2', { SOPInstanceUID: 'I2' })]
+    const result = await Effect.runPromise(decode(asBatch(files), { timeZone: 'Mars/Olympus' }))
+    expect(result.unreadableFiles).toHaveLength(2)
+    expect(result.decoded.sections).toEqual([])
+  })
+
+  it('stamps every resource of a study with the smallest of its source file ids', async () => {
+    const result = await run([
+      file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
+      file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
+    ])
+    const smallest = sourceFilesOf(result)
+      .map((one) => one.id ?? '')
+      .toSorted((left, right) => left.localeCompare(right))[0]
+    // The source file rows are the set's own section, prepended after the stamp —
+    // what carries a `meta.source` is what was read *out of* the files.
+    const stamps = new Set(
+      resourcesOf(result)
+        .filter((entry) => entry.resource.resourceType !== 'DocumentReference')
+        .map((entry) => entry.resource.meta?.source)
+    )
+    expect(stamps).toEqual(new Set([`DocumentReference/${smallest}`]))
+  })
+
+  describe('over a generated study', () => {
+    const decodedStudy = async (
+      fixture: StudyFixture,
+      files: readonly PickedFile.NamedBytes[]
+    ): Promise<ImagingStudy.Type> => {
+      const result = await run(files)
+      expect(result.unreadableFiles).toEqual([])
+      const [study, ...rest] = studiesOf(result)
+      expect(rest).toEqual([])
+      expect(study.identifier.map((one) => one.value)).toContain(
+        `urn:oid:${fixture.studyInstanceUid}`
+      )
+      return study
+    }
+
+    it('has one instance per file, one series per distinct SeriesInstanceUID', async () => {
+      await fc.assert(
+        fc.asyncProperty(dicomStudyArb(), async (fixture) => {
+          const study = await decodedStudy(fixture, picksOf(fixture))
+          expect(study.numberOfInstances).toBe(fixture.files.length)
+          expect(study.numberOfSeries).toBe(fixture.seriesUidsInOrder.length)
+          expect(study.series.flatMap((one) => one.instance)).toHaveLength(fixture.files.length)
+        }),
+        { numRuns: numRunsFor({ base: 20 }) }
+      )
+    })
+
+    it('orders series and instances by their numbers, whatever order the files came in', async () => {
+      await fc.assert(
+        fc.asyncProperty(dicomStudyArb(), async (fixture) => {
+          const study = await decodedStudy(fixture, picksOf(fixture).toReversed())
+          expect(study.series.map((one) => one.uid)).toEqual(fixture.seriesUidsInOrder)
+          expect(study.series.flatMap((one) => one.instance.map((each) => each.uid))).toEqual(
+            fixture.instanceUidsInOrder
+          )
+        }),
+        { numRuns: numRunsFor({ base: 20 }) }
+      )
+    })
+
+    it('yields identical resources for any file order (property)', async () => {
+      await fc.assert(
+        fc.asyncProperty(dicomStudyArb(), async (fixture) => {
+          const files = picksOf(fixture)
+          const forward = await run(files)
+          const reversed = await run(files.toReversed())
+          const bodies = (result: FormatDecode.Result<string>): readonly unknown[] =>
+            resourcesOf(result)
+              .map((entry) => entry.resource)
+              .filter((resource) => resource.resourceType !== 'DocumentReference')
+              .toSorted((left, right) => (left.id ?? '').localeCompare(right.id ?? ''))
+          expect(bodies(reversed)).toEqual(bodies(forward))
+        }),
+        { numRuns: numRunsFor({ base: 20 }) }
+      )
+    })
+  })
+})
+
+describe('the DICOM importer', () => {
+  it('exposes the same importer shape every other format does', () => {
+    // The decode is the format's own, built from its `groupBy`: what a
+    // consumer holds is the same `FileImporter.Type` every format exposes.
+    const importer: FileImporter.Type<DicomSettings, 'dicom'> = dicomImporter
+    expect(importer.format).toBe('dicom')
+  })
+})
+
+describe('studyGroupKey', () => {
+  /** The key a picked file states, or the failure that keeps it out of every set. */
+  const keyOf = (picked: PickedFile.NamedBytes): Either.Either<string, unknown> =>
+    studyGroupKey({ ...picked, id: `0:${picked.fileName}` })
+
+  it('gives the files of one study one key, whatever order they were picked in', () => {
+    const keys = [
+      file('2', { SOPInstanceUID: 'I2', InstanceNumber: 2 }),
+      file('1', { SOPInstanceUID: 'I1', InstanceNumber: 1 }),
+    ].map(keyOf)
+    expect(keys.every(Either.isRight)).toBe(true)
+    expect(new Set(keys.map((key) => (Either.isRight(key) ? key.right : null))).size).toBe(1)
+  })
+
+  it('keys a study by its UID and its patient, so a differing patient splits it', () => {
+    const keys = [
+      file('1', { PatientID: 'P001', SOPInstanceUID: 'I1' }),
+      file('2', { PatientID: 'P002', SOPInstanceUID: 'I2' }),
+    ].map(keyOf)
+    expect(new Set(keys.map((key) => (Either.isRight(key) ? key.right : null))).size).toBe(2)
+  })
+
+  it('leaves a file whose header does not parse out of every set', () => {
+    const outcome = keyOf({ fileName: 'junk.dcm', bytes: new Uint8Array([0, 1, 2]) })
+    expect(Either.isLeft(outcome)).toBe(true)
+  })
+
+  it('property: every file of a generated study states the same key', () => {
+    fc.assert(
+      fc.property(dicomStudyArb(), (fixture) => {
+        const keys = picksOf(fixture).map(keyOf)
+        expect(keys.every(Either.isRight)).toBe(true)
+        const values = keys.map((key) => (Either.isRight(key) ? key.right : null))
+        expect(new Set(values).size).toBe(1)
+      }),
+      { numRuns: numRunsFor({ base: 20 }) }
+    )
+  })
+})
+
+describe('studyKey', () => {
+  it('names the study UID and the patient it is filed under', () => {
+    const parsed = DicomHeader.tryFromDicomFile(writeDicom(SAMPLE_TAGS))
+    expect(Either.isRight(parsed)).toBe(true)
+    if (!Either.isRight(parsed)) return
+    expect(studyKey(parsed.right)).toContain(SAMPLE_TAGS.StudyInstanceUID ?? '')
+    expect(studyKey(parsed.right)).not.toBe(parsed.right.studyInstanceUid)
   })
 })

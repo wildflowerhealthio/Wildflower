@@ -3,20 +3,19 @@
  * key in it is built from.
  *
  * @remarks
- * All of them are built on {@link fileSlot} — a file's *position* in the batch,
- * then its name. Position, because picking two files that share a name is
- * ordinary (two `report.pdf`s out of two folders) and a name-only slot would
- * collide; and position is stable across a settings re-decode, which hands the
- * same `files` array back, so everything keyed by a slot survives one.
+ * All of them are built on a picked file's `id` — minted once, over the whole
+ * batch in pick order, by `importer-core`'s `readBatch`. Position takes part in
+ * it because picking two files that share a name is ordinary (two `report.pdf`s
+ * out of two folders) and a name alone would collide; and a settings re-decode
+ * hands the same files back, so everything keyed by an id survives one.
  *
  * {@link keyPrefix} is the one that carries weight beyond uniqueness. A
- * format's `DecodeOne` keys resources within *one* file — DICOM's fixed
- * `patient`, HAR's per-archive `har-entry-<index>` — because that is all a
- * per-file decode can see, while the batch merges every claimed file's
- * sections into one review whose selection, server-diff verdicts and write
- * plan are keyed by `(format, key)`. Prefixing by slot is what keeps the
- * merged keys distinct, so unticking one file's row cannot drop another's
- * resource.
+ * `decodeFileSet` keys resources within *one* set — DICOM's fixed `patient`,
+ * HAR's per-archive `har-entry-<index>` — because that is all it can see, while
+ * the batch merges every claimed file's sections into one review whose
+ * selection, server-diff verdicts and write plan are keyed by `(format, key)`.
+ * Prefixing by the set's first picked file is what keeps the merged keys
+ * distinct, so unticking one file's row cannot drop another's resource.
  *
  * @packageDocumentation
  */
@@ -25,19 +24,15 @@ import { type ParseResult } from 'effect'
 import type * as DecodedFile from './decoded-file.ts'
 import type * as PickedFile from './picked-file.ts'
 
-/** One file's slot within the batch its format claimed: its position, then its name. */
-const fileSlot = (index: number, file: PickedFile.Type): string => `${index}:${file.fileName}`
-
 /** The id of one format's whole decode result — deterministic in its files and their order. */
 const makeId = (format: string, files: readonly PickedFile.Type[]): string =>
-  `${format}/${files.map((file, index) => fileSlot(index, file)).join(',')}`
+  `${format}/${files.map((file) => file.id).join(',')}`
 
 /** The id of one file within its format's batch — an {@link UnreadableFile} row's, and an unrecognized pick's. */
-const makeFileId = (format: string, index: number, file: PickedFile.Type): string =>
-  `${format}/${fileSlot(index, file)}`
+const makeFileId = (format: string, file: PickedFile.Type): string => `${format}/${file.id}`
 
-/** The namespace every review key decoded out of one file carries — see the module remarks. */
-const keyPrefix = (index: number, file: PickedFile.Type): string => `${fileSlot(index, file)}/`
+/** The namespace every review key decoded out of one file set carries — see the module remarks. */
+const keyPrefix = (file: PickedFile.Type): string => `${file.id}/`
 
 interface Result<TFormat extends string> {
   readonly id: string
@@ -65,7 +60,5 @@ const emptyResult = <K extends string>(kind: K): Result<K> => ({
   unreadableFiles: [],
 })
 
-// `fileSlot` stays private: it is the shared derivation the three id builders
-// below are written in terms of, not a unit anything outside composes with.
 export { emptyResult, keyPrefix, makeFileId, makeId }
 export type { Result, UnreadableFile }

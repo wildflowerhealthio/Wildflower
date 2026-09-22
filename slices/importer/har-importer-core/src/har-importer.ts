@@ -2,7 +2,7 @@ import { Effect } from 'effect'
 
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponseKind, SourceDescriptor } from 'http-extraction-fundamentals'
-import { FileImporter, PerFileDecodeFunction, type DecodedFile } from 'importer-fundamentals'
+import { DecodeFunction, type FileImporter, type DecodedFile } from 'importer-fundamentals'
 
 import {
   HAR_ARCHIVE_CODE,
@@ -72,25 +72,33 @@ const sourceFileFormat = {
   descriptionPrefix: `${display.title}: `,
 }
 
-const decodeConfig: PerFileDecodeFunction.Config<typeof format, HarSettings> = {
-  format,
-  decodeOne: (file, settings) =>
-    decodeHar(file.bytes, settings).pipe(
-      Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
-      Effect.map((previews): DecodedFile.DecodedFile => ({
-        sections: sectionsByUrl(previews),
-        notes: notesFor(previews),
-      }))
-    ),
-}
-
-const harImporter = FileImporter.make({
+/**
+ * The HAR importer: one source file per pick, its recognized responses folded into
+ * per-URL sections.
+ *
+ * @remarks
+ * No `groupBy` — a HAR stands alone, so every pick is its own set — and no
+ * `source file`: a captured browsing session is an engineering artifact, and
+ * filing it under a patient would put it in `Patient/$everything`.
+ */
+const harImporter: FileImporter.Type<HarSettings, typeof format> = {
   format,
   display,
-  sourceFileFormat,
-  decode: PerFileDecodeFunction.make(decodeConfig),
   detect: detectHar,
   defaultSettings: defaultHarSettings,
-})
+  sourceFileFormat,
+  decode: DecodeFunction.make({
+    format,
+    sourceFileFormat,
+    decodeFileSet: (members, settings) =>
+      decodeHar(members[0].bytes, settings).pipe(
+        Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
+        Effect.map((previews): DecodedFile.DecodedFile => ({
+          sections: sectionsByUrl(previews),
+          notes: notesFor(previews),
+        }))
+      ),
+  }),
+}
 
 export { harImporter, fhirSources }

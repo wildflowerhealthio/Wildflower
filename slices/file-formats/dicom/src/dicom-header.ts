@@ -74,9 +74,10 @@ const Tag = {
  * Image Pixel module and {@link Type.pixelData} are read by nothing in that
  * synthesis — they exist so a preview can explain why a file did not render.
  *
- * Every field is optional except the three instance UIDs, which a file must
- * carry to parse at all, and the two that describe the parse rather than a
- * tag: `hasRequestAttributesSequence` and `parserWarnings`.
+ * Every field is optional except the three instance UIDs, the SOP Class UID
+ * and the Modality — which a file must carry for the synthesis above to name
+ * what it is — and the two that describe the parse rather than a tag:
+ * `hasRequestAttributesSequence` and `parserWarnings`.
  */
 interface Type {
   // Patient module
@@ -100,12 +101,12 @@ interface Type {
   readonly seriesInstanceUid: string
   readonly seriesNumber: number | undefined
   readonly seriesDescription: string | undefined
-  readonly modality: string | undefined
+  readonly modality: string
   readonly bodyPartExamined: string | undefined
 
   // Instance module
   readonly sopInstanceUid: string
-  readonly sopClassUid: string | undefined
+  readonly sopClassUid: string
   readonly instanceNumber: number | undefined
   readonly rows: number | undefined
   readonly columns: number | undefined
@@ -157,8 +158,8 @@ interface ParseError {
  *
  * @remarks
  * A `Left` is fatal for the whole header, not for the field — an absent
- * optional tag is a `Right(undefined)`. Only the three instance UIDs, which a
- * file that is a DICOM instance at all must carry, can fail.
+ * optional tag is a `Right(undefined)`. Only the required tags, which a file
+ * that is a DICOM instance at all must carry, can fail.
  */
 type Reader<A> = (dataSet: DataSet) => Either.Either<A, ParseError>
 
@@ -209,6 +210,20 @@ const readRequiredUi =
   (tag: string, label: string): Reader<string> =>
   (dataSet) => {
     const value = uid(dataSet, tag)
+    return value === undefined ? Either.left({ reason: `Missing ${label}` }) : Either.right(value)
+  }
+
+/**
+ * Read a string tag the file must carry, failing the whole parse when it is
+ * absent.
+ *
+ * @param label - How the missing tag is named in the failure, e.g.
+ *   `'Modality (0008,0060)'`
+ */
+const readRequiredString =
+  (tag: string, label: string): Reader<string> =>
+  (dataSet) => {
+    const value = trimmedString(dataSet, tag)
     return value === undefined ? Either.left({ reason: `Missing ${label}` }) : Either.right(value)
   }
 
@@ -290,12 +305,12 @@ const READERS = {
   seriesInstanceUid: readRequiredUi(Tag.SeriesInstanceUID, 'SeriesInstanceUID (0020,000E)'),
   seriesNumber: readIs(Tag.SeriesNumber),
   seriesDescription: readString(Tag.SeriesDescription),
-  modality: readString(Tag.Modality),
+  modality: readRequiredString(Tag.Modality, 'Modality (0008,0060)'),
   bodyPartExamined: readString(Tag.BodyPartExamined),
 
   // Instance module
   sopInstanceUid: readRequiredUi(Tag.SOPInstanceUID, 'SOPInstanceUID (0008,0018)'),
-  sopClassUid: readUi(Tag.SOPClassUID),
+  sopClassUid: readRequiredUi(Tag.SOPClassUID, 'SOPClassUID (0008,0016)'),
   instanceNumber: readIs(Tag.InstanceNumber),
   rows: readUs(Tag.Rows),
   columns: readUs(Tag.Columns),
