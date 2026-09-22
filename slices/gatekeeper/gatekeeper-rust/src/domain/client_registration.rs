@@ -23,7 +23,7 @@ use crate::ports::SelfHostedRedirectTopology;
 /// How a pending authorization-code request compares against the current
 /// `clients` row — the Owner-facing warning the consent prompt renders.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ClientRegistration {
+pub enum ClientRegistration {
     /// The row exists, the `redirect_uri` resolves to an allowlist entry, and
     /// every requested scope is covered by `allowed_scopes`. The only verdict
     /// that may take the existing-grant fast path at `/authorize`.

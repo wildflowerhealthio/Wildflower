@@ -172,6 +172,46 @@ fn should_present_owner_token(
     peer_is_loopback && !forwarded && !is_public_surface
 }
 
+/// Native owner-approval dialog for a direct-loopback `wildflower-react` login.
+/// When `/authorize` detects a loopback caller presenting the `wildflower-react`
+/// `client_id`, it calls this prompt's [`ask`](gatekeeper_rust::LoopbackConsentPrompt::ask)
+/// on a `spawn_blocking` worker — the Tauri dialog blocks until the Owner
+/// clicks Approve or Cancel.
+struct TauriLoopbackConsentPrompt {
+    app_handle: tauri::AppHandle,
+}
+
+impl gatekeeper_rust::LoopbackConsentPrompt for TauriLoopbackConsentPrompt {
+    fn ask(
+        &self,
+        request: gatekeeper_rust::LoopbackConsentRequest,
+    ) -> gatekeeper_rust::LoopbackConsentDecision {
+        let message = format!(
+            "\"{}\" is requesting access to your Wildflower data.\n\n\
+             Origin: {}\n\
+             Scopes: {}\n\n\
+             Allow this login?",
+            request.client_id,
+            request.redirect_origin,
+            request.requested_scopes.join(", "),
+        );
+        let approved = self
+            .app_handle
+            .dialog()
+            .message(message)
+            .kind(MessageDialogKind::Warning)
+            .title("Wildflower — Login Request")
+            .ok_button_label("Approve")
+            .cancel_button_label("Deny")
+            .blocking_show();
+        if approved {
+            gatekeeper_rust::LoopbackConsentDecision::Approve
+        } else {
+            gatekeeper_rust::LoopbackConsentDecision::Deny
+        }
+    }
+}
+
 /// The current owner `Authorization: Bearer` header, built from the latest
 /// token on the watch channel. `None` before the host mints a token (or on the
 /// impossible header-parse failure). `borrow()` takes `&self` and needs no lock,
@@ -179,6 +219,32 @@ fn should_present_owner_token(
 fn current_owner_bearer(trust: &LoopbackOwnerTrust) -> Option<axum::http::HeaderValue> {
     let token = trust.token_rx.borrow().clone();
     token.and_then(|t| axum::http::HeaderValue::from_str(&format!("Bearer {t}")).ok())
+}
+
+/// Chrome's Local Network Access check: when a public-internet page (e.g.
+/// `wildflower-react` on GitHub Pages) fetches a private-network resource (our
+/// loopback API), Chrome sends a preflight with
+/// `Access-Control-Request-Private-Network: true` and expects
+/// `Access-Control-Allow-Private-Network: true` in the response. Without it, the
+/// preflight fails and the actual request is blocked. Applied inside
+/// `CorsLayer::very_permissive()` (which handles the standard CORS headers).
+async fn allow_private_network_access(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let wants_private = req
+        .headers()
+        .get("Access-Control-Request-Private-Network")
+        .and_then(|v| v.to_str().ok())
+        == Some("true");
+    let mut response = next.run(req).await;
+    if wants_private {
+        response.headers_mut().insert(
+            "Access-Control-Allow-Private-Network",
+            axum::http::HeaderValue::from_static("true"),
+        );
+    }
+    response
 }
 
 /// Resolves the directory the host keeps its databases and saved files in:
@@ -390,6 +456,9 @@ async fn run_server(
     // `setup_gatekeeper` publishes the freshly-minted host owner token (and
     // pending-consent heads) through the bridge publishers; `bridge::attach_bridge`
     // documents how the resident task delivers them to the webview.
+    let loopback_consent = Arc::new(TauriLoopbackConsentPrompt {
+        app_handle: app_handle.clone(),
+    });
     let gatekeeper = setup_gatekeeper(
         diesel_pool.clone(),
         revocation_store,
@@ -397,6 +466,7 @@ async fn run_server(
         &publishers.host_owner_token_sender,
         publishers.active_pending_consent_sender,
         redirect_resolver,
+        loopback_consent,
     )
     .context("failed to set up gatekeeper")?;
 
@@ -723,6 +793,7 @@ async fn run_server(
     // re-gating the gatekeeper's already-gated routes is harmless.
     let api_router = api_router
         .layer(require_loopback_peer_middleware())
+        .layer(axum::middleware::from_fn(allow_private_network_access))
         .layer(CorsLayer::very_permissive());
 
     // The reverse proxy wraps the API stack as the outermost layer: a forwarded

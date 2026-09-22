@@ -70,6 +70,7 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
         &token_tx,
         pending_consent_tx,
         std::sync::Arc::new(gatekeeper_rust::NoSelfHostedRedirects),
+        std::sync::Arc::new(gatekeeper_rust::NoLoopbackConsentPrompt),
     )
     .expect("setup");
     let host_owner_token = token_rx

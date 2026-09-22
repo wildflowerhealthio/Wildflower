@@ -74,4 +74,11 @@ pub struct GatekeeperState {
     /// The host wires the apps-store-backed impl; a host with no self-hosted apps
     /// (and tests) wires the no-op, so relative entries simply never match.
     pub(crate) self_hosted_redirects: Arc<dyn crate::ports::SelfHostedRedirectResolver>,
+    /// The loopback consent dialog seam. When a direct-loopback caller presents
+    /// the `wildflower-react` `client_id`, `/authorize` spawns this prompt on a
+    /// blocking worker — the Owner approves or denies in a native OS dialog. A
+    /// host with no native prompt (and tests) wires
+    /// [`NoLoopbackConsentPrompt`](crate::ports::NoLoopbackConsentPrompt), which
+    /// always denies — falling through to the normal Owner UI consent path.
+    pub(crate) loopback_consent: Arc<dyn crate::ports::LoopbackConsentPrompt>,
 }

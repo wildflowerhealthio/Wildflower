@@ -330,6 +330,29 @@ distinction lives in the two approve handlers' clamp: the device path measures
 against the request's `requestedScopes`. The shared scope-picker UI models the
 same split with its `expandable` vs `clamped` mode.
 
+### Loopback consent dialog
+
+A native OS dialog raised by `/authorize` when a **direct-loopback** caller (no
+`Forwarded` header) presents the `wildflower-react` `client_id` — the hosted
+owner UI (on GitHub Pages) logging in against the local server from the same
+machine. The dialog asks the Owner to approve or deny the login; on approve
+gatekeeper issues a one-shot authorization code (clamped to
+`WILDFLOWER_LOCAL_GRANTED_SCOPES`) and registers/widens the client, but does
+**not** upsert a standing [Grant](#grant), so a future request will prompt again.
+On deny (or dismiss/timeout) the request is denied with `access_denied` and
+redirected back to the client.
+
+The host (Tauri) implements the
+[`LoopbackConsentPrompt`](../gatekeeper-rust/src/ports/loopback_consent.rs)
+port with `tauri_plugin_dialog`'s blocking dialog; a host without native dialog
+support wires `NoLoopbackConsentPrompt`, which always denies — falling through to
+the normal Owner UI consent path (the polling page + host popup). A forwarded
+(tunnelled) request always takes the normal path regardless of `client_id`.
+
+The predicate is the pure function `should_prompt_loopback_consent(is_loopback,
+client_id)` in `authorize.rs`, table-tested to ensure the security-critical
+conjunction can't drift.
+
 ### Bootstrap URL
 
 Replaces the deleted PIN flow's "operator gets onto a cold deployment"

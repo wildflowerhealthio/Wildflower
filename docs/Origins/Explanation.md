@@ -127,6 +127,44 @@ slice trust the `Forwarded` header in the first place — a non-loopback peer is
 rejected before any handler runs. See [Apps Explanation](../Apps/Explanation.md)
 for how this lands in the apps auth posture.
 
+## Loopback owner dialog
+
+When the hosted `wildflower-react` UI (running on GitHub Pages) initiates an
+OAuth login against the local gatekeeper over the loopback interface, the
+request arrives **without** a `Forwarded` header — it is a direct
+loopback caller. The combination of `client_id = wildflower-react` and
+`!is_forwarded` triggers the **loopback consent dialog**: a blocking, native
+OS prompt asking the device Owner whether the public-origin page should be
+granted access.
+
+The dialog is surfaced through the [`LoopbackConsentPrompt`] port
+(gatekeeper-rust). The Tauri host implements it as a native message dialog
+(`tauri::api::dialog`), while the default `NoLoopbackConsentPrompt` denies
+unconditionally — a headless or test environment never auto-approves.
+
+On **approve**, gatekeeper issues an authorization code whose scopes are the
+intersection of the request's `scope` parameter and a fixed ceiling
+([`WILDFLOWER_LOCAL_GRANTED_SCOPES`] — the `system/*.cruds` +
+`wildflower/*.cruds` + `wildflower/launch` set). No standing Grant is
+created: approval is one-shot, so the Owner must re-approve if the token
+expires or is revoked. On **deny** (or dialog dismiss / timeout), the
+`/authorize` handler redirects back to `redirect_uri` with
+`error=access_denied`.
+
+The consent request also carries the current
+[`ClientRegistration`](../../slices/gatekeeper/gatekeeper-rust/src/domain/client_registration.rs)
+verdict — `Registered`, `New`, or `Changed` — so the dialog can communicate
+the app's trust status to the Owner.
+
+Because `wildflower-react` runs on a public origin and fetches a
+private-network resource, Chrome's Local Network Access preflight requires an
+`Access-Control-Allow-Private-Network: true` response header. The Tauri host
+adds this via a middleware layer placed between the loopback peer gate and the
+CORS layer.
+
+[`LoopbackConsentPrompt`]: ../../slices/gatekeeper/gatekeeper-rust/src/ports/loopback_consent.rs
+[`WILDFLOWER_LOCAL_GRANTED_SCOPES`]: ../../slices/gatekeeper/gatekeeper-rust/src/http/routes/oauth/authorize.rs
+
 ## SMART scopes
 
 The scope grammar a token carries (`patient`/`user`/`system` context,

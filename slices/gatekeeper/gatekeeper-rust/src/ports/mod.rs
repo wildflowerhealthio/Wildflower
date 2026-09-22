@@ -20,11 +20,17 @@
 //!    redirect entry against the request's provenance (the one seam gatekeeper
 //!    exposes *publicly*, since the host implements it from the apps store).
 
+mod loopback_consent;
 mod pending_consent_publisher;
 mod revocation;
 mod self_hosted_redirects;
 mod session_cookies;
 
+// Public (not `pub(crate)`): the host implements this seam and names its types
+// when wiring `GatekeeperState`, so they are re-exported from the crate root.
+pub use loopback_consent::{
+    LoopbackConsentDecision, LoopbackConsentPrompt, LoopbackConsentRequest, NoLoopbackConsentPrompt,
+};
 pub(crate) use pending_consent_publisher::PendingConsentPublisher;
 pub(crate) use revocation::Revocation;
 // Public (not `pub(crate)`): the host implements this seam and names its types

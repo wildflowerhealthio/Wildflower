@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use axum::extract::{Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use chrono::{Duration, Utc};
 use serde::Deserialize;
@@ -16,7 +16,9 @@ use crate::domain::client::Client;
 use crate::domain::client_redirect::{
     build_client_error_redirect_url, build_client_redirect_url, redirect_is_allowlisted,
 };
-use crate::domain::client_registration::{classify_registration, PendingRegistration};
+use crate::domain::client_registration::{
+    classify_registration, ClientRegistration, PendingRegistration,
+};
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::domain::page_paths;
 use crate::domain::GatekeeperStore;
@@ -25,6 +27,21 @@ use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
 use crate::ports;
+use crate::ports::{LoopbackConsentDecision, LoopbackConsentRequest};
+
+/// The `client_id` of the hosted owner UI app (`wildflower-react` on GitHub
+/// Pages). When a direct-loopback caller presents this id, `/authorize` raises a
+/// native OS dialog for the Owner instead of the normal polling-page consent.
+const WILDFLOWER_REACT_CLIENT_ID: &str = "wildflower-react";
+
+/// Whether `/authorize` should raise the native loopback consent dialog instead
+/// of the normal Owner UI consent path. The dialog is raised only for a
+/// **direct-loopback** caller (no `Forwarded` header) presenting the
+/// `wildflower-react` `client_id` — the hosted owner UI logging in from the same
+/// machine. A forwarded (tunnelled) request keeps the normal path.
+pub(crate) fn should_prompt_loopback_consent(is_loopback: bool, client_id: &str) -> bool {
+    is_loopback && client_id == WILDFLOWER_REACT_CLIENT_ID
+}
 
 /// A `code_challenge` for the S256 method is the base64url SHA-256 digest:
 /// exactly 43 unpadded base64url characters (RFC 7636 §4.2).
@@ -206,6 +223,7 @@ pub struct AuthorizeParams {
 pub(super) async fn handle_authorize_request(
     State(state): State<Arc<GatekeeperState>>,
     origin: ServedOrigin,
+    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
     ensure_active_signing_key(&state)?;
@@ -329,6 +347,38 @@ pub(super) async fn handle_authorize_request(
         // `None`), so this never surfaces the pre-approved request itself.
         ports::PendingConsentPublisher::republish_active(state.as_ref());
         return Ok(redirect_to_client(&parsed_redirect, &code, &params.state));
+    }
+
+    // Direct-loopback + wildflower-react: raise a native OS dialog instead of
+    // the normal polling-page consent path. The dialog blocks (on a
+    // `spawn_blocking` worker) until the Owner decides or it times out.
+    let is_loopback = !shared_structures_rust::served_origin::is_forwarded(&headers);
+    if should_prompt_loopback_consent(is_loopback, &params.client_id) {
+        let consent_request = LoopbackConsentRequest {
+            client_id: params.client_id.clone(),
+            redirect_origin: parsed_redirect.origin().unicode_serialization(),
+            registration: registration.clone(),
+            requested_scopes: requested_scopes.clone(),
+            request_id: request_id.clone(),
+        };
+        let prompt = Arc::clone(&state.loopback_consent);
+        let decision = tokio::task::spawn_blocking(move || prompt.ask(consent_request))
+            .await
+            .unwrap_or(LoopbackConsentDecision::Deny);
+
+        return match decision {
+            LoopbackConsentDecision::Approve => approve_loopback_consent(
+                &state,
+                &request_id,
+                &params,
+                &parsed_redirect,
+                &requested_scopes,
+                &registration,
+            ),
+            LoopbackConsentDecision::Deny => {
+                deny_loopback_consent(&state, &request_id, &params, &parsed_redirect)
+            }
+        };
     }
 
     // This request needs a human, so raise the host popup: the browser that
@@ -601,4 +651,137 @@ fn redirect_to_client(parsed_redirect: &Url, code: &str, client_state: &str) -> 
 
 fn html_bad_request(html: String) -> Response {
     (StatusCode::BAD_REQUEST, Html(html)).into_response()
+}
+
+/// Approve a loopback consent: register/widen the client, clamp scopes to the
+/// intersection of requested and [`WILDFLOWER_LOCAL_GRANTED_SCOPES`], issue an
+/// authorization code, and redirect back to the client. Unlike the normal
+/// approval path, this does **not** upsert a standing grant — the loopback
+/// dialog is a one-shot approval so a future request from the same client will
+/// prompt again (or fall through to the normal Owner UI consent).
+fn approve_loopback_consent(
+    state: &GatekeeperState,
+    request_id: &str,
+    params: &AuthorizeParams,
+    parsed_redirect: &Url,
+    requested_scopes: &[String],
+    registration: &ClientRegistration,
+) -> Result<Response, AuthorizeError> {
+    let ceiling: Vec<String> = scopes_rust::render_scopes(crate::WILDFLOWER_LOCAL_GRANTED_SCOPES);
+    let granted_scopes: Vec<String> = requested_scopes
+        .iter()
+        .filter(|requested| {
+            ceiling
+                .iter()
+                .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
+        })
+        .cloned()
+        .collect();
+    if granted_scopes.is_empty() {
+        return deny_loopback_consent(state, request_id, params, parsed_redirect);
+    }
+
+    let approved =
+        state
+            .store
+            .approve_authorization_request(request_id, &granted_scopes, None, None)?;
+    if !approved {
+        return Err(AuthorizeError::internal(
+            "loopback approve_authorization_request",
+            "authorization request was not pending",
+        ));
+    }
+
+    // Register/widen the client row so subsequent requests classify as
+    // `Registered` — but skip the standing grant, so each loopback login still
+    // prompts the Owner.
+    let redirect_is_new = matches!(
+        registration,
+        ClientRegistration::New
+            | ClientRegistration::Changed {
+                redirect_uri_is_new: true,
+                ..
+            }
+    );
+    if !matches!(registration, &ClientRegistration::Registered) {
+        use crate::domain::client::{AllowedGrantType, ClientKind, RegisteredRedirectUri};
+        let row = match state.store.client_by_id(&params.client_id)? {
+            Some(mut existing) => {
+                if redirect_is_new {
+                    existing
+                        .redirect_uris
+                        .push(RegisteredRedirectUri::Absolute(parsed_redirect.clone()));
+                }
+                existing.allowed_scopes =
+                    scopes_rust::widened_scopes(&existing.allowed_scopes, &granted_scopes);
+                existing
+            }
+            None => Client {
+                client_id: params.client_id.clone(),
+                name: params.client_id.clone(),
+                kind: ClientKind::Public,
+                redirect_uris: vec![RegisteredRedirectUri::Absolute(parsed_redirect.clone())],
+                allowed_scopes: scopes_rust::widened_scopes(&[], &granted_scopes),
+                allowed_grant_types: AllowedGrantType::ALL.to_vec(),
+                secret_hash: None,
+                registered_at: Utc::now(),
+                disabled_at: None,
+            },
+        };
+        state.store.upsert_client(&row)?;
+    }
+
+    let code = generate_authorization_code();
+    let issued_at = Utc::now();
+    let authorization_code = AuthorizationCode {
+        code: code.clone(),
+        request_id: request_id.to_string(),
+        client_id: params.client_id.clone(),
+        redirect_uri: parsed_redirect.clone(),
+        code_challenge: params.code_challenge.clone(),
+        granted_scopes,
+        patient: None,
+        issued_at,
+        expires_at: issued_at + AUTHORIZATION_CODE_TTL,
+    };
+    state.store.issue_authorization_code(&authorization_code)?;
+    ports::PendingConsentPublisher::republish_active(state);
+    Ok(redirect_to_client(parsed_redirect, &code, &params.state))
+}
+
+/// Deny the loopback consent: mark the request as denied and redirect back to
+/// the client with `access_denied`.
+fn deny_loopback_consent(
+    state: &GatekeeperState,
+    request_id: &str,
+    params: &AuthorizeParams,
+    parsed_redirect: &Url,
+) -> Result<Response, AuthorizeError> {
+    let _ = state.store.deny_authorization_request(request_id);
+    ports::PendingConsentPublisher::republish_active(state);
+    Ok(found_redirect(&build_client_error_redirect_url(
+        parsed_redirect,
+        OAuthErrorCode::AccessDenied,
+        &params.state,
+    )))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loopback_consent_predicate_truth_table() {
+        // loopback + wildflower-react → prompt
+        assert!(should_prompt_loopback_consent(true, "wildflower-react"));
+        // forwarded (tunnelled) + wildflower-react → no prompt
+        assert!(!should_prompt_loopback_consent(false, "wildflower-react"));
+        // loopback + any other client → no prompt
+        assert!(!should_prompt_loopback_consent(true, "wildflower-host"));
+        assert!(!should_prompt_loopback_consent(true, "some-smart-app"));
+        assert!(!should_prompt_loopback_consent(true, ""));
+        // forwarded + other client → no prompt
+        assert!(!should_prompt_loopback_consent(false, "wildflower-host"));
+        assert!(!should_prompt_loopback_consent(false, "some-smart-app"));
+    }
 }

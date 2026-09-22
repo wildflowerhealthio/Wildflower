@@ -54,6 +54,7 @@ pub use seeding::seed_dev_app_clients;
 // `SqliteGatekeeperStore` adapter. `GatekeeperStore` is the transaction seam
 // (and carries the standalone-convenience default methods); `GatekeeperTx` is
 // the primitive contract a composed transaction hands out.
+pub use domain::client_registration::ClientRegistration;
 pub use domain::pending_consent::PendingConsentHead;
 pub use domain::{GatekeeperStore, GatekeeperTx};
 // Re-exported so the host can name the pool type at the `setup_gatekeeper`
@@ -74,6 +75,12 @@ pub use http::{
     client_allowed_scopes, ensure_bearer_header, gatekeeper_auth_middleware,
     is_pre_auth_public_path, openapi_spec, require_loopback_peer_middleware, verify_owner_bearer,
     GatekeeperAuthMiddleware, GatekeeperState, RequireLoopbackPeerMiddleware,
+};
+// The loopback consent seam: the host implements it with a native dialog
+// (`tauri_plugin_dialog`); `NoLoopbackConsentPrompt` always denies, falling
+// through to the normal Owner UI consent path.
+pub use ports::{
+    LoopbackConsentDecision, LoopbackConsentPrompt, LoopbackConsentRequest, NoLoopbackConsentPrompt,
 };
 // The self-hosted redirect seam: the host implements it (backed by the apps
 // store) and passes it into `setup_gatekeeper`, so its trait + types are public.
@@ -247,6 +254,7 @@ pub fn setup_gatekeeper(
     local_owner_token_tx: &watch::Sender<Option<String>>,
     active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     self_hosted_redirects: Arc<dyn ports::SelfHostedRedirectResolver>,
+    loopback_consent: Arc<dyn ports::LoopbackConsentPrompt>,
 ) -> anyhow::Result<Gatekeeper> {
     // The host owner token is minted from `granted_scopes` (the live app sources
     // these from `tauri-shared-config.json`), but the `/access/*` owner gate
@@ -291,6 +299,7 @@ pub fn setup_gatekeeper(
         first_party_client_id: config.first_party_client_id.clone().into(),
         active_pending_consent_sender: active_pending_consent_tx,
         self_hosted_redirects,
+        loopback_consent,
     });
     // Seed the popup head from SQLite so a request that was pending
     // across an app restart still drives the modal on first webview
