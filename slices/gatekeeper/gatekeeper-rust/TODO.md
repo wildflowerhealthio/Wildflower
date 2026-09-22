@@ -32,17 +32,17 @@ constructible only in `seeding.rs`).
    authenticates through `LiveClientAuthenticator` and yields the proof (same
    check order as before); the exchange handlers take `&AuthenticatedClient`.
    `require_valid_client_for_token` deleted.
-3. **`…-3-token-exchange` — the three redemptions.** `RedeemedAuthorizationCode`,
-   `ConsumedDeviceRequest`, `RotatedRefreshToken` in `domain/authority/`, each
-   implementing `MintAuthority`; `RefreshFamilyStarter` writer (add
-   `.insert_refresh_token_family_row(` / `.insert_refresh_token(` to the guard);
-   `TokenExchanger` in `domain/capabilities/oauth/` composing them with
-   `AccessTokenMinter` (alternate-canonical scope widening moves into the minter
-   for OAuth proofs; `HostBootstrap` stays verbatim). `TokenExchangeError`
-   variants with the specific `invalid_grant` reasons; `http/errors/` collapses
-   them to the generic description and logs the variant. Delete
-   `token_exchange/{authorization_code,device_code,refresh_token}.rs` and the
-   minting half of `internal.rs`; remove the `internal.rs` `IN_FLIGHT` entry.
+3. **`…-3-token-exchange` — the three redemptions.** DONE.
+   `RedeemedAuthorizationCode`, `ConsumedDeviceRequest`, `ValidatedRefreshToken`
+   in `domain/authority/redemption.rs`, each implementing `MintAuthority`
+   (the redemption proofs carry the twinned scope spellings; `HostBootstrap`
+   stays verbatim); `RefreshFamilyWriter` (start a family, rotate; the two
+   refresh-token inserts added to the guard); `TokenExchanger` in
+   `domain/capabilities/oauth/` composing them with `AccessTokenMinter`.
+   `TokenExchangeError` / `InvalidGrantReason` carry the specific reasons;
+   `internal.rs` collapses them to the generic descriptions and logs the
+   reason. The three exchange submodules and the HTTP-side minting are
+   deleted; the `internal.rs` `IN_FLIGHT` entry is removed.
 4. **`…-4-authorize-device` — the pre-auth front door.** `StandingGrantCoverage`
    proof (constructor requires a `Registered` verdict and full coverage);
    `RequestApprover::approve_for_code` takes a `CodeAuthority` enum

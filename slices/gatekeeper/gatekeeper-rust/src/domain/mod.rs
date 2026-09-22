@@ -68,6 +68,9 @@ pub mod retention;
 pub(crate) mod session;
 pub mod signing_key;
 pub mod token;
+// The `/oauth/token` failure vocabulary: specific reasons the HTTP layer
+// collapses onto the generic RFC 6749 §5.2 descriptions.
+pub(crate) mod token_exchange_error;
 
 pub use authorization_code::PendingCodeConsent;
 pub use gatekeeper_store::{GatekeeperStore, GatekeeperTx};

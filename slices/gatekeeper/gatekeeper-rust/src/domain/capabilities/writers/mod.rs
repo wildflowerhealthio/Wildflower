@@ -9,6 +9,8 @@
 //!    `DelegatedScopes`).
 //!  - [`AccessTokenMinter`] — read the active signing key and mint a JWT (under
 //!    a `MintAuthority` proof).
+//!  - [`RefreshFamilyWriter`] — start a refresh-token family or rotate a token
+//!    into its successor (under a redemption proof).
 //!
 //! A writer is a borrowed view over a store, not a gate in itself; the gate is
 //! the proof each method demands. The source-guard test below keeps the
@@ -16,10 +18,12 @@
 
 mod access_token_minter;
 mod grant_recorder;
+mod refresh_family_writer;
 mod request_approver;
 
 pub(crate) use access_token_minter::{AccessTokenMinter, MintRequest, TokenIssuanceError};
 pub(crate) use grant_recorder::{GrantRecorder, RegistrationWrite};
+pub(crate) use refresh_family_writer::{RefreshFamilyWriter, Rotation};
 pub(crate) use request_approver::{CodeApproval, DeviceApproval, RequestApprover};
 
 #[cfg(test)]
@@ -28,7 +32,8 @@ mod tests {
 
     /// The store methods that grant authority — approving a request, issuing a
     /// code, recording or widening a grant, widening a client registration,
-    /// reading private key material to sign with, seeding a key. Each is written
+    /// reading private key material to sign with, seeding a key, issuing a
+    /// refresh token. Each is written
     /// with a leading `.` so `store.x(` and `tx.x(` match while a differently
     /// named method that merely ends the same way (`has_active_signing_key(`)
     /// does not.
@@ -42,6 +47,8 @@ mod tests {
         ".upsert_client(",
         ".active_signing_key(",
         ".insert_signing_key(",
+        ".insert_refresh_token_family_row(",
+        ".insert_refresh_token(",
     ];
 
     /// Where a privileged call may legitimately appear: the writers themselves,
@@ -62,8 +69,6 @@ mod tests {
     /// method, so the remaining work is visible here rather than hidden by a
     /// blanket exemption. Remove each entry as its PR lands.
     const IN_FLIGHT: &[(&str, &str)] = &[
-        // PR 3 (token exchange): minting moves behind `AccessTokenMinter`.
-        ("http/routes/oauth/internal.rs", ".active_signing_key("),
         // PR 4 (authorize): the pre-approved fast path moves behind
         // `RequestApprover` under a `StandingGrantCoverage` proof.
         (

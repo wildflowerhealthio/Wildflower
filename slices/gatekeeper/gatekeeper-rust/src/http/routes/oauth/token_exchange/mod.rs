@@ -4,31 +4,21 @@ use axum::extract::State;
 use axum::response::{IntoResponse, Response};
 use chrono::Utc;
 use serde::Deserialize;
-use uuid::Uuid;
 
-use super::internal::{issue_token_response, IssueTokenInput, TokenError};
+use super::internal::TokenError;
 use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
 use crate::cookies;
-use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
-use crate::domain::refresh_token::{RefreshToken, RefreshTokenFamily, REFRESH_TOKEN_FAMILY_TTL};
+use crate::domain::capabilities::oauth::{AuthorizationCodeGrant, ExchangedToken};
 use crate::http::state::GatekeeperState;
 use crate::http::wire_representations::{OAuthError, TokenResponse};
 use crate::http::ServedOrigin;
-use scopes_rust::KnownScope;
-
-use authorization_code::exchange_authorization_code;
-use device_code::exchange_device_code;
-use refresh_token::exchange_refresh_token;
-
-mod authorization_code;
-mod device_code;
-mod refresh_token;
+use crate::live_bindings::LiveTokenExchanger;
 
 /// Body of an RFC 6749 / RFC 8628 token endpoint request, dispatched by the
 /// wire-level `grant_type` field. Client credentials are not parsed here —
-/// they may also arrive via the `Authorization: Basic` header, so
-/// [`resolve_client_credentials`] owns both sources (any body
+/// they may also arrive via the `Authorization: Basic` header, so the
+/// [`TokenRequest`] extractor owns both sources (any body
 /// `client_id`/`client_secret` fields are simply ignored by this enum).
 #[derive(Debug, Deserialize)]
 #[serde(tag = "grant_type")]
@@ -70,180 +60,79 @@ pub(super) async fn handle_token_request(
     origin: ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Response {
-    // Whether to plant the owner-origin session cookie is a property of the
-    // *resolved* grant (its authenticated client), never of the wire
-    // `grant_type` — see [`DispatchedToken::plants_session_cookie`]. A
-    // third-party app's grant (auth-code redemption, or a refresh of its own
-    // lower-scoped token) must not overwrite the owner's `wf_auth`.
-    match dispatch_token_request(&state, &origin, request) {
-        Ok(DispatchedToken {
-            response: token,
-            plants_session_cookie: true,
-        }) => {
-            let max_age = token.expires_in;
-            // The companion cookie carries the absolute `exp`; deriving it from
-            // `expires_in` here (rather than re-reading the JWT) keeps the hint
-            // and its `Max-Age` consistent. The companion is advisory, so the
-            // sub-second skew vs the JWT's own `exp` (minted a moment earlier) is
-            // immaterial.
-            let exp_unix = Utc::now().timestamp() + max_age;
-            let access_token = token.access_token.clone();
-            let mut response = token.into_response();
-            cookies::append_session_cookies(
-                response.headers_mut(),
-                &access_token,
-                max_age,
-                exp_unix,
-                // `Secure` only over HTTPS: the direct-loopback web path is plain
-                // http, where Safari would drop a `Secure` cookie. See #218.
-                origin.starts_with("https://"),
-            );
-            response
-        }
-        Ok(DispatchedToken {
-            response: token, ..
-        }) => token.into_response(),
-        Err(error) => error.into_response(),
-    }
-}
-
-/// A minted token plus whether this grant should plant the owner-origin session
-/// cookie (`wf_auth` + `wf_auth_exp`).
-///
-/// `plants_session_cookie` is `true` only for the **first-party owner client's**
-/// (`FIRST_PARTY_CLIENT_ID`) session grants — the device-code login and its
-/// refresh, the two ways the owner SPA establishes/renews its own web session.
-/// It is deliberately keyed on the resolved grant's authenticated client, not on
-/// the wire `grant_type`: a third-party SMART app also uses `refresh_token`, and
-/// planting its (lower-scoped) token as `wf_auth` would silently downgrade or
-/// force-logout the owner's session (a session-fixation vector). See #218.
-struct DispatchedToken {
-    response: TokenResponse,
-    plants_session_cookie: bool,
-}
-
-/// Parse the grant, resolve client credentials, and dispatch on `grant_type`,
-/// surfacing every failure as a [`TokenError`]. On success, tags the response
-/// with whether the resolved grant plants the owner session cookie
-/// ([`DispatchedToken::plants_session_cookie`]).
-fn dispatch_token_request(
-    state: &GatekeeperState,
-    origin: &ServedOrigin,
-    request: TokenRequest<TokenPayload>,
-) -> Result<DispatchedToken, TokenError> {
     let TokenRequest { payload, client } = request;
-    // The extractor already authenticated `client`, and each exchange below
-    // validates that it owns the grant it redeems (the device request / refresh-
-    // token family), so after a successful exchange it IS the resolved client —
-    // the identity the cookie decision keys on.
-    let is_first_party = client.client_id() == &*state.first_party_client_id;
-    match payload {
+    let exchanger = LiveTokenExchanger::from_state(&state);
+    let now = Utc::now();
+    // Whether to plant the owner-origin session cookie (`wf_auth` +
+    // `wf_auth_exp`) is a property of the *resolved* grant, never of the wire
+    // `grant_type`: only the first-party owner client's session grants — the
+    // device-code login and its refresh, the two ways the owner SPA
+    // establishes/renews its web session — plant it. Auth-code redemption is
+    // the third-party SMART app path and never does; a third-party app's
+    // refresh (its own lower-scoped token) must not overwrite the owner's
+    // `wf_auth` either (a session-fixation vector). See #218.
+    let establishes_owner_session = !matches!(payload, TokenPayload::AuthorizationCode { .. });
+    let exchanged = match payload {
         TokenPayload::AuthorizationCode {
             code,
             code_verifier,
             redirect_uri,
-        } => {
-            let response = exchange_authorization_code(
-                state,
-                origin,
-                &client,
-                &AuthorizationCodeGrant {
-                    code: &code,
-                    code_verifier: &code_verifier,
-                    redirect_uri: &redirect_uri,
-                },
-            )?;
-            // Auth-code redemption is the third-party SMART app path — never an
-            // owner web session, so it never plants the cookie (the owner SPA
-            // logs in via the device-code grant).
-            Ok(DispatchedToken {
-                response,
-                plants_session_cookie: false,
-            })
-        }
+        } => exchanger.exchange_authorization_code(
+            &client,
+            &AuthorizationCodeGrant {
+                code: &code,
+                code_verifier: &code_verifier,
+                redirect_uri: &redirect_uri,
+            },
+            &origin,
+            now,
+        ),
         TokenPayload::DeviceCode { device_code } => {
-            let response = exchange_device_code(state, origin, &client, &device_code)?;
-            Ok(DispatchedToken {
-                response,
-                plants_session_cookie: is_first_party,
-            })
+            exchanger.exchange_device_code(&client, &device_code, &origin, now)
         }
         TokenPayload::RefreshToken { refresh_token } => {
-            let response = exchange_refresh_token(state, origin, &client, &refresh_token)?;
-            Ok(DispatchedToken {
-                response,
-                plants_session_cookie: is_first_party,
-            })
+            exchanger.exchange_refresh_token(&client, &refresh_token, &origin, now)
         }
-    }
-}
-
-/// Destructured fields of the `authorization_code` grant request, bundled into
-/// a named struct so the redemption helpers take one self-describing argument
-/// instead of a run of same-typed `&str` positionals (a transposition hazard).
-struct AuthorizationCodeGrant<'a> {
-    code: &'a str,
-    code_verifier: &'a str,
-    redirect_uri: &'a str,
-}
-
-/// When the grant carries [`KnownScope::OfflineAccess`], mint a new refresh-token
-/// family with its first token and return the token's plaintext for the
-/// response body. Grants without the scope get `Ok(None)` — no standing
-/// credential is created.
-///
-/// `grant_id` links the family to the durable [`Grant`](crate::domain::grant::Grant)
-/// that authorized it (both flows) — write-only plumbing for a future
-/// per-device revoke; `None` when no matching grant was resolved.
-fn start_refresh_token_family_if_granted(
-    state: &GatekeeperState,
-    client_id: &str,
-    granted_scopes: &[String],
-    patient: Option<&str>,
-    authorization_code: Option<&str>,
-    grant_id: Option<&str>,
-) -> Result<Option<String>, TokenError> {
-    if !granted_scopes
-        .iter()
-        .any(|s| s == KnownScope::OfflineAccess.as_str())
-    {
-        return Ok(None);
-    }
-    let plaintext = generate_refresh_token();
-    let now = Utc::now();
-    let family = RefreshTokenFamily {
-        family_id: Uuid::new_v4().to_string(),
-        client_id: client_id.to_string(),
-        scopes: granted_scopes.to_vec(),
-        patient: patient.map(str::to_string),
-        issued_at: now,
-        expires_at: now + REFRESH_TOKEN_FAMILY_TTL,
-        // Bind the family to the originating authorization code so a later
-        // replay of that code can revoke this lineage (RFC 6749 §4.1.2). The
-        // device-code grant carries no code and passes `None`.
-        authorization_code_hash: authorization_code.map(token_storage_hash),
-        grant_id: grant_id.map(str::to_string),
     };
-    let first_token = RefreshToken {
-        token_hash: token_storage_hash(&plaintext),
-        family_id: family.family_id.clone(),
-        issued_at: now,
-        consumed_at: None,
+    let token = match exchanged {
+        Ok(token) => token,
+        Err(error) => return TokenError::from(error).into_response(),
     };
-    crate::domain::refresh_token::insert_refresh_token_family(&state.store, &family, &first_token)?;
-    Ok(Some(plaintext))
+    let plants_session_cookie = establishes_owner_session && token.first_party;
+    let response = token_response(token);
+    if !plants_session_cookie {
+        return response.into_response();
+    }
+    let max_age = response.expires_in;
+    // The companion cookie carries the absolute `exp`; deriving it from
+    // `expires_in` here (rather than re-reading the JWT) keeps the hint and its
+    // `Max-Age` consistent. The companion is advisory, so the sub-second skew
+    // vs the JWT's own `exp` (minted a moment earlier) is immaterial.
+    let exp_unix = Utc::now().timestamp() + max_age;
+    let access_token = response.access_token.clone();
+    let mut response = response.into_response();
+    cookies::append_session_cookies(
+        response.headers_mut(),
+        &access_token,
+        max_age,
+        exp_unix,
+        // `Secure` only over HTTPS: the direct-loopback web path is plain http,
+        // where Safari would drop a `Secure` cookie. See #218.
+        origin.starts_with("https://"),
+    );
+    response
 }
 
-/// Mint a token for `input` and attach `refresh_token` (if the grant earned
-/// one). A signing failure surfaces as a cache-suppressed 500 [`TokenError`].
-fn issue_token(
-    state: &GatekeeperState,
-    input: &IssueTokenInput<'_>,
-    refresh_token: Option<String>,
-) -> Result<TokenResponse, TokenError> {
-    let mut token = issue_token_response(&state.store, input).map_err(TokenError::server_error)?;
-    token.refresh_token = refresh_token;
-    Ok(token)
+/// The RFC 6749 §5.1 body for an exchange.
+fn token_response(token: ExchangedToken) -> TokenResponse {
+    TokenResponse {
+        access_token: token.access_token,
+        token_type: "Bearer".to_string(),
+        expires_in: token.expires_in,
+        scope: token.scope.join(" "),
+        refresh_token: token.refresh_token,
+        patient: token.patient,
+    }
 }
 
 #[cfg(test)]

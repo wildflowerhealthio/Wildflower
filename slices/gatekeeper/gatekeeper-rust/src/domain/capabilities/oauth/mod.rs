@@ -3,9 +3,12 @@
 //! scopes, these are unlocked by the OAuth *client* itself: anything a client
 //! does on its own behalf takes an
 //! [`AuthenticatedClient`](crate::domain::authority::AuthenticatedClient) proof,
-//! and the one capability that produces it, [`ClientAuthenticator`], is the
-//! door the token-style request extractor goes through.
+//! produced by [`ClientAuthenticator`] (the door the token-style request
+//! extractor goes through) and consumed by [`TokenExchanger`], the
+//! `/oauth/token` flows.
 
 mod client_authenticator;
+mod token_exchanger;
 
 pub(crate) use client_authenticator::ClientAuthenticator;
+pub(crate) use token_exchanger::{AuthorizationCodeGrant, ExchangedToken, TokenExchanger};

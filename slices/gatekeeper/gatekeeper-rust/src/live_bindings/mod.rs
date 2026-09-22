@@ -20,6 +20,7 @@ mod grants_reader;
 mod grants_revoker;
 
 pub mod state;
+mod token_exchanger;
 mod token_revoker;
 
 pub(crate) use client_authenticator::LiveClientAuthenticator;
@@ -28,4 +29,5 @@ pub(crate) use consents_reader::LiveConsentReader;
 pub(crate) use grants_reader::LiveGrantsReader;
 pub(crate) use grants_revoker::LiveGrantsRevoker;
 pub use state::GatekeeperState;
+pub(crate) use token_exchanger::LiveTokenExchanger;
 pub(crate) use token_revoker::LiveTokenRevoker;
