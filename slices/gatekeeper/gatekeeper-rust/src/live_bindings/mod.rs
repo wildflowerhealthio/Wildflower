@@ -18,6 +18,7 @@ mod consents_decider;
 mod consents_reader;
 mod grants_reader;
 mod grants_revoker;
+mod oauth_front_door;
 
 pub mod state;
 mod token_exchanger;
@@ -28,6 +29,9 @@ pub(crate) use consents_decider::LiveConsentDecider;
 pub(crate) use consents_reader::LiveConsentReader;
 pub(crate) use grants_reader::LiveGrantsReader;
 pub(crate) use grants_revoker::LiveGrantsRevoker;
+pub(crate) use oauth_front_door::{
+    LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
+};
 pub use state::GatekeeperState;
 pub(crate) use token_exchanger::LiveTokenExchanger;
 pub(crate) use token_revoker::LiveTokenRevoker;

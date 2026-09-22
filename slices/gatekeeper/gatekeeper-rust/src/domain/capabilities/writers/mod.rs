@@ -3,7 +3,8 @@
 //! admission:
 //!
 //!  - [`RequestApprover`] — approve a pending request and, for the code flow,
-//!    issue its authorization code (under `DelegatedScopes`).
+//!    issue its authorization code (under a [`CodeAuthority`]: the Owner's
+//!    `DelegatedScopes` or a `StandingGrantCoverage`).
 //!  - [`GrantRecorder`] — insert or widen the standing grant and, for a client
 //!    trusted on first use, its registration, in one transaction (under
 //!    `DelegatedScopes`).
@@ -24,7 +25,7 @@ mod request_approver;
 pub(crate) use access_token_minter::{AccessTokenMinter, MintRequest, TokenIssuanceError};
 pub(crate) use grant_recorder::{GrantRecorder, RegistrationWrite};
 pub(crate) use refresh_family_writer::{RefreshFamilyWriter, Rotation};
-pub(crate) use request_approver::{CodeApproval, DeviceApproval, RequestApprover};
+pub(crate) use request_approver::{CodeApproval, CodeAuthority, DeviceApproval, RequestApprover};
 
 #[cfg(test)]
 mod tests {
@@ -65,21 +66,10 @@ mod tests {
     ];
 
     /// Call sites that still reach a privileged method directly and are moved
-    /// behind a writer by a later PR in the chain. Listed by file with the
-    /// method, so the remaining work is visible here rather than hidden by a
-    /// blanket exemption. Remove each entry as its PR lands.
-    const IN_FLIGHT: &[(&str, &str)] = &[
-        // PR 4 (authorize): the pre-approved fast path moves behind
-        // `RequestApprover` under a `StandingGrantCoverage` proof.
-        (
-            "http/routes/oauth/authorize.rs",
-            ".issue_authorization_code(",
-        ),
-        (
-            "http/routes/oauth/authorize.rs",
-            ".approve_authorization_request(",
-        ),
-    ];
+    /// behind a writer by a later PR in the chain, listed by file with the
+    /// method so the remaining work is visible here rather than hidden by a
+    /// blanket exemption. Empty: every privileged call is behind a writer.
+    const IN_FLIGHT: &[(&str, &str)] = &[];
 
     /// Default-safety guard: a privileged store method is called only inside a
     /// writer (or the adapter / port / fake / seeding files that define it). A

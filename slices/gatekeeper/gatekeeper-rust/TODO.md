@@ -43,15 +43,18 @@ constructible only in `seeding.rs`).
    `internal.rs` collapses them to the generic descriptions and logs the
    reason. The three exchange submodules and the HTTP-side minting are
    deleted; the `internal.rs` `IN_FLIGHT` entry is removed.
-4. **`…-4-authorize-device` — the pre-auth front door.** `StandingGrantCoverage`
-   proof (constructor requires a `Registered` verdict and full coverage);
-   `RequestApprover::approve_for_code` takes a `CodeAuthority` enum
-   (`OwnerDelegated` | `StandingGrant`) so the fast path reads as a named
-   authority. `CodeAuthorizationStarter` reusing the consent
-   `RegistrationContext`; `DeviceAuthorizer` with unique user-code generation;
-   `AuthorizationStatusReader`; `Client::allows_scopes` replacing the two
-   duplicated allowlist checks; `OAuthErrorKind` to domain. Remove the
-   `authorize.rs` `IN_FLIGHT` entries and the `oauth/` guard exemption.
+4. **`…-4-authorize-device` — the pre-auth front door.** DONE.
+   `StandingGrantCoverage` proof (`domain/authority/standing_grant.rs`;
+   requires a `Registered` verdict and full coverage) and the `CodeAuthority`
+   enum on `RequestApprover::approve_for_code` (`OwnerDelegated` |
+   `StandingGrant`), so the `/authorize` fast path reads as a named authority.
+   `CodeAuthorizationStarter`, `DeviceAuthorizer`, `AuthorizationStatusReader`
+   in `domain/capabilities/oauth/`; `RegistrationContext` moved to
+   `domain/client_registration.rs`; `Client::allows_scopes` replaces the two
+   duplicated allowlist checks; `OAuthErrorKind` moved to domain; the S256
+   challenge check moved to `crypto_util::pkce`. The `IN_FLIGHT` list is now
+   empty. The `oauth/` handler-guard exemption stays until PR 5 replaces the
+   `State<…>`-built live bindings with an extractor.
 5. **`…-5-verification-session` — the rest, guards flip.** Token verification
    policy to `domain/token_verification.rs` behind a `RevocationCheck` port;
    `PublicKeysReader`; `Authenticated<F>` in `scope-capabilities-rust`;
