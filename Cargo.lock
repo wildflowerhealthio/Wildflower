@@ -3263,9 +3263,9 @@ checksum = "2304e00983f87ffb38b55b444b5e3b60a884b5d30c0fca7d82fe33449bbe55ea"
 
 [[package]]
 name = "helios-audit"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "702453cb8f77ae7aaf2b4d50349d746dd810bff19a4854c885e55b56e8200510"
+checksum = "4eecac90071b637eee50fcf3d7c942f97b5c3096a042fce244c60a1d0e126df7"
 dependencies = [
  "async-trait",
  "axum",
@@ -3281,15 +3281,14 @@ dependencies = [
 
 [[package]]
 name = "helios-auth"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d428d2f42baada92d2e1e02e9d3c06ddb753940f9d4f3f7fab8191d505f3c574"
+checksum = "2384a63077b64446f7a179ded0cb3880d762d71d9bb66760c051c2533ea15364"
 dependencies = [
  "async-trait",
  "bitflags 2.9.4",
  "chrono",
  "jsonwebtoken 9.3.1",
- "moka",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -3300,9 +3299,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhir"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "81058510641273620f36d7114de4b26962d7a07abb979804923ac34114f265af"
+checksum = "def5175605f067a47ba3b765144814bc602e786c31b4c71f785ef688ea0e544e"
 dependencies = [
  "chrono",
  "clap 4.6.6",
@@ -3321,9 +3320,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhir-macro"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "98c2066f82529b482baa0748cf1d9aa969055d67b87da7342eb4d73ab4992c42"
+checksum = "11a7b3143830246b0c95ed9bacbe6710571ee40a45571512586bbceec16292d3"
 dependencies = [
  "heck 0.5.0",
  "helios-fhirpath-support",
@@ -3371,9 +3370,9 @@ dependencies = [
 
 [[package]]
 name = "helios-fhirpath-support"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "48260554625d36a31819f15bb59ee5ed89e47ffc852c2e3d811778992c36626b"
+checksum = "75243789f7ea8b86dfd9aac2447b343e4f7219b893b503341d2c71764f94e929"
 dependencies = [
  "rust_decimal",
 ]
@@ -3466,10 +3465,11 @@ dependencies = [
 
 [[package]]
 name = "helios-serde-support"
-version = "0.2.1"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d341a3e05b2efacdf27766e742eb5db94847194bfb7b241a61fcaa03bac892de"
+checksum = "dc82139f82d02c070b41a26f29856c6a1552154b4062e5c0040315d5a7906114"
 dependencies = [
+ "erased-serde",
  "serde",
  "serde_json",
 ]
@@ -4609,26 +4609,6 @@ dependencies = [
  "libc",
  "wasi",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "moka"
-version = "0.12.16"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4293f18e7567a1caf3c584855554377025c65e0aa445344d04171f5ad63d19b9"
-dependencies = [
- "async-lock",
- "crossbeam-channel",
- "crossbeam-epoch",
- "crossbeam-utils",
- "equivalent",
- "event-listener",
- "futures-util",
- "parking_lot",
- "portable-atomic",
- "smallvec",
- "tagptr",
- "uuid",
 ]
 
 [[package]]
@@ -5772,12 +5752,6 @@ dependencies = [
  "opaque-debug",
  "universal-hash",
 ]
-
-[[package]]
-name = "portable-atomic"
-version = "1.15.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05c8b63e8d9609db387f0324918f81d68fe27748f084ef092fb35954d0539a85"
 
 [[package]]
 name = "potential_utf"
@@ -7583,12 +7557,6 @@ dependencies = [
  "toml 0.8.2",
  "version-compare",
 ]
-
-[[package]]
-name = "tagptr"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b2093cf4c8eb1e67749a6762251bc9cd836b6fc171623bd0a9d324d37af2417"
 
 [[package]]
 name = "tao"
