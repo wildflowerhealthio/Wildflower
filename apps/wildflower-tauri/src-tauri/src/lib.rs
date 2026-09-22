@@ -20,7 +20,7 @@ use shared_structures_server_rust::{ProxyTable, TunnelSubdomainReverseProxy};
 use std::net::SocketAddr;
 use std::sync::Arc;
 use tauri::Manager;
-use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 use url::Url;
@@ -201,8 +201,10 @@ impl gatekeeper_rust::LoopbackConsentPrompt for TauriLoopbackConsentPrompt {
             .message(message)
             .kind(MessageDialogKind::Warning)
             .title("Wildflower — Login Request")
-            .ok_button_label("Approve")
-            .cancel_button_label("Deny")
+            .buttons(MessageDialogButtons::OkCancelCustom(
+                "Approve".into(),
+                "Deny".into(),
+            ))
             .blocking_show();
         if approved {
             gatekeeper_rust::LoopbackConsentDecision::Approve
