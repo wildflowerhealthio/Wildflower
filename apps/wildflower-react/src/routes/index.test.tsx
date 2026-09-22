@@ -65,6 +65,24 @@ describe('Landing', () => {
     })
   })
 
+  test('does not name the Local Network Access prompt from a plain-http page', async () => {
+    // Arrange / Act — a loopback failure on a page served over plain http (the
+    // default jsdom origin). That page is not making the public→local jump
+    // Chrome guards, so the reason shows but the prompt hint does not — this
+    // pins that the surface passes the page's own security through, rather than
+    // hard-coding it. The secure-page positive is covered by
+    // `local-network-hint.test.ts`.
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', {
+      bootSignInProblem: 'Could not reach the server.',
+    })
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText(/Could not reach the server\./)).toBeDefined()
+    })
+    expect(screen.queryByText(/Local Network Access/)).toBeNull()
+  })
+
   test('sends an already-signed-in reader on to the app', async () => {
     // Arrange — authed before the router mounts, which is what `main-web`'s
     // boot does after it redeems a callback.

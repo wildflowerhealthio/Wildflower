@@ -48,7 +48,7 @@ export {
   type RunAuthed,
 } from './queries/index.ts'
 
-export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
+export { NeedsAuthMessage, sanitizeReturnTo } from './components/NeedsAuthMessage.tsx'
 
 export {
   EMBEDDED_TOKEN_TIMEOUT,

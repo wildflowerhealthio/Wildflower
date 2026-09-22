@@ -9,8 +9,9 @@ import { type JSX, type SubmitEvent, useEffect, useState } from 'react'
 import { isAuthed, useSubscribable, useAuthStateSubscribable } from 'react-kitchen-sink'
 import { TextField, pageLayoutStyles } from 'react-tundraish'
 
+import { localNetworkAccessHint } from '../local-network-hint.ts'
 import type { RouterContext } from '../router-context.ts'
-import { signInEnvironment, startSignIn } from '../sign-in.ts'
+import { rememberReturnTo, signInEnvironment, startSignIn } from '../sign-in.ts'
 import { apiServerUrl, DEFAULT_SERVER_URL } from '../web-entry.ts'
 
 const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
@@ -93,13 +94,12 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
   // gives the transport, so the token is asked of whichever server the requests
   // will go to.
   const serverUrl = apiServerUrl(window.location.search)
+  const pageIsSecure = window.location.protocol === 'https:'
 
   // Said up front, while the reader is still looking at the address they
   // entered, rather than later as a discovery failure: an https page cannot
   // reach a plaintext server unless it is loopback.
-  const blockedReason = insecureTargetReason(serverUrl, {
-    pageIsSecure: window.location.protocol === 'https:',
-  })
+  const blockedReason = insecureTargetReason(serverUrl, { pageIsSecure })
 
   /**
    * Leave for `target`'s `/oauth/authorize` — the SMART standalone launch, the
@@ -113,6 +113,9 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
     setSignInProblem(undefined)
     void startSignIn(target, signInEnvironment(window)).then((started) => {
       if (started.tag === 'Ok') {
+        // Carry the gate's `?returnTo=` across the redirect: the registered
+        // redirect URI drops it, so it is stashed just before leaving.
+        rememberReturnTo(window)
         window.location.assign(started.value)
         return
       }
@@ -132,9 +135,7 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
       setSignInProblem(`“${candidate}” is not an address this page can reach.`)
       return
     }
-    const blocked = insecureTargetReason(normalized, {
-      pageIsSecure: window.location.protocol === 'https:',
-    })
+    const blocked = insecureTargetReason(normalized, { pageIsSecure })
     if (blocked !== undefined) {
       setSignInProblem(blocked)
       return
@@ -171,6 +172,13 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
   // A failed attempt outranks the up-front warning: the reader has already
   // acted, so what went wrong is the more useful thing to read.
   const status = signInProblem ?? blockedReason
+
+  // Only alongside an actual failure, and only for a loopback target from the
+  // published page: a network/CORS failure there is most often Chrome holding
+  // the request behind its Local Network Access prompt, which the reason on its
+  // own cannot name. See `local-network-hint.ts`.
+  const localNetworkHint =
+    status === undefined ? undefined : localNetworkAccessHint(serverUrl, { pageIsSecure })
 
   return (
     <div className={pageLayoutStyles['page']}>
@@ -243,6 +251,9 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
             </button>
           ) : null}
           {status === undefined ? null : <p className="text-body-3">{status}</p>}
+          {localNetworkHint === undefined ? null : (
+            <p className="text-body-3">{localNetworkHint}</p>
+          )}
         </div>
       </section>
     </div>
