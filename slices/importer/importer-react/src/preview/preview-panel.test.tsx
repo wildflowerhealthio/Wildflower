@@ -9,7 +9,12 @@ import {
   type FormatSettings,
   type UnrecognizedFile,
 } from 'importer-core'
-import { StagedImport, FormatDecode, type DecodedFile, PickedFile } from 'importer-fundamentals'
+import {
+  StagedImport,
+  FormatDecode,
+  type DecodedFile,
+  type PickedFile,
+} from 'importer-fundamentals'
 import type { JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
@@ -419,11 +424,11 @@ const patientWire = (wire: Record<string, unknown>): unknown =>
     Schema.decodeUnknownSync(Patient.Schema)({ resourceType: 'Patient', ...wire })
   )
 
-/** A `local` pick with the given name. */
+/** A pick with the given name, in the first batch slot. */
 const pickedFile = (fileName: string): PickedFile.Type => ({
+  id: `0:${fileName}`,
   fileName,
   bytes: new TextEncoder().encode('{}'),
-  source: PickedFile.Source.local,
 })
 
 /**

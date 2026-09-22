@@ -2,7 +2,8 @@ import { writeDicom } from 'dicom/test-helpers'
 import { Effect, ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import { PickedFile, FormatDecode } from 'importer-fundamentals'
+import type { PickedFile } from 'importer-fundamentals'
+import { FormatDecode } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -24,21 +25,21 @@ import { defaultFormatSettings, type FormatKind, formatKinds, formatRegistry } f
  */
 
 /** A pick claimed by the fake format named in its file name (`har-…`, `pdf-…`, `dcm-…`), or by none. */
-const pickArbitrary: fc.Arbitrary<PickedFile.Type> = fc
+const pickArbitrary: fc.Arbitrary<PickedFile.NamedBytes> = fc
   .tuple(
     fc.constantFrom('har', 'pdf', 'dcm', 'txt'),
     fc.stringMatching(/^[a-z0-9]{1,6}$/u),
     fc.uint8Array({ minLength: 1, maxLength: 4 })
   )
-  .map(([prefix, stem, bytes]) => ({
-    fileName: `${prefix}-${stem}`,
-    bytes,
-    source: PickedFile.Source.local,
-  }))
+  .map(([prefix, stem, bytes]) => ({ fileName: `${prefix}-${stem}`, bytes }))
 
-/** A batch of picks with unique file names — deterministic ids are keyed on file name, so duplicates would collide. */
-const batchArbitrary = (maxLength: number): fc.Arbitrary<PickedFile.Type[]> =>
+/** A batch of picks with unique file names, so a test can name one by its name alone. */
+const batchArbitrary = (maxLength: number): fc.Arbitrary<PickedFile.NamedBytes[]> =>
   fc.uniqueArray(pickArbitrary, { maxLength, selector: (pick) => pick.fileName })
+
+/** The picks with the ids `readBatch` stamps them with — its own derivation, restated. */
+const withIds = (picks: readonly PickedFile.NamedBytes[]): readonly PickedFile.Type[] =>
+  picks.map((pick, index) => ({ ...pick, id: `${index}:${pick.fileName}` }))
 
 const kindOf = (fileName: string): FormatKind | undefined => {
   if (fileName.startsWith('har-')) return 'har'
@@ -109,15 +110,31 @@ describe('groupByFormat', () => {
   it('property: every pick lands in exactly one group (or unrecognized), pick order kept within each', () => {
     fc.assert(
       fc.property(fc.array(pickArbitrary), (picks) => {
+        const stamped = withIds(picks)
         const { groups, unrecognized } = groupByFormat(fakeRegistry, picks)
         const regrouped = [...groups.values()].flat().concat(unrecognized)
         expect(regrouped.length).toBe(picks.length)
         for (const [kind, files] of groups) {
-          expect(files).toEqual(picks.filter((pick) => kindOf(pick.fileName) === kind))
+          expect(files).toEqual(stamped.filter((pick) => kindOf(pick.fileName) === kind))
         }
-        expect(unrecognized).toEqual(picks.filter((pick) => kindOf(pick.fileName) === undefined))
+        expect(unrecognized).toEqual(stamped.filter((pick) => kindOf(pick.fileName) === undefined))
       }),
       { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('property: the id it stamps is the slot in the whole batch, whatever format claimed it', () => {
+    fc.assert(
+      fc.property(fc.array(pickArbitrary, { maxLength: 8 }), (picks) => {
+        const { groups, unrecognized } = groupByFormat(fakeRegistry, picks)
+        const everyPick = [...groups.values()].flat().concat(unrecognized)
+        const ids = new Map(everyPick.map((pick) => [pick.id, pick]))
+        expect(ids.size).toBe(picks.length)
+        for (const [index, pick] of picks.entries()) {
+          expect(ids.get(`${index}:${pick.fileName}`)?.bytes).toEqual(pick.bytes)
+        }
+      }),
+      { numRuns: numRunsFor({ base: 60 }) }
     )
   })
 })
@@ -127,9 +144,10 @@ describe('readBatch', () => {
     await fc.assert(
       fc.asyncProperty(batchArbitrary(8), async (picks) => {
         const batch = await Effect.runPromise(readBatch(fakeRegistry, defaultFormatSettings, picks))
+        const stamped = withIds(picks)
         for (const kind of formatKinds) {
           const result = batch[kind]
-          const expectedFiles = picks.filter((pick) => kindOf(pick.fileName) === kind)
+          const expectedFiles = stamped.filter((pick) => kindOf(pick.fileName) === kind)
           expect(result.files).toEqual(expectedFiles)
           expect(result.format).toBe(kind)
           const expectedReadable = expectedFiles.filter((f) => f.bytes[0] !== 0)
@@ -150,9 +168,7 @@ describe('readBatch', () => {
   it('should decode each format under its own settings', async () => {
     const settings = { ...defaultFormatSettings, har: { disabledKinds: ['X'] } }
     const batch = await Effect.runPromise(
-      readBatch(fakeRegistry, settings, [
-        { fileName: 'har-a', bytes: new Uint8Array([1]), source: PickedFile.Source.local },
-      ])
+      readBatch(fakeRegistry, settings, [{ fileName: 'har-a', bytes: new Uint8Array([1]) }])
     )
     expect(batch.har.decoded.sections[0]?.title).toBe(`har:${JSON.stringify(settings.har)}`)
   })
@@ -195,17 +211,14 @@ describe('readBatch over the real registry', () => {
       StudyInstanceUID: '1.2.3.4.5',
       SeriesInstanceUID: '1.2.3.4.5.1',
       SOPInstanceUID: '1.2.3.4.5.1.1',
+      SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
       PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
       PatientID: 'P001',
       Modality: 'CT',
     })
-    const picks: readonly PickedFile.Type[] = [
-      {
-        fileName: 'notes.txt',
-        bytes: new TextEncoder().encode('hello'),
-        source: PickedFile.Source.local,
-      },
-      { fileName: 'scan.dcm', bytes: dicomBytes, source: PickedFile.Source.local },
+    const picks: readonly PickedFile.NamedBytes[] = [
+      { fileName: 'notes.txt', bytes: new TextEncoder().encode('hello') },
+      { fileName: 'scan.dcm', bytes: dicomBytes },
     ]
     const batch = await Effect.runPromise(readBatch(formatRegistry, defaultFormatSettings, picks))
     expect(batch.dicom.files.length).toBe(1)
@@ -233,7 +246,7 @@ describe('claimedFormats', () => {
   it('names no format for a batch of unrecognized picks only', async () => {
     const batch = await Effect.runPromise(
       readBatch(fakeRegistry, defaultFormatSettings, [
-        { fileName: 'txt-a', bytes: new Uint8Array([1]), source: PickedFile.Source.local },
+        { fileName: 'txt-a', bytes: new Uint8Array([1]) },
       ])
     )
     expect(claimedFormats(batch)).toEqual([])
@@ -242,10 +255,9 @@ describe('claimedFormats', () => {
 
 describe('unrecognized picks', () => {
   it('gives two same-named unrecognized picks distinct ids', async () => {
-    const pick = (): PickedFile.Type => ({
+    const pick = (): PickedFile.NamedBytes => ({
       fileName: 'txt-same',
       bytes: new Uint8Array([1]),
-      source: PickedFile.Source.local,
     })
     const batch = await Effect.runPromise(
       readBatch(fakeRegistry, defaultFormatSettings, [pick(), pick()])

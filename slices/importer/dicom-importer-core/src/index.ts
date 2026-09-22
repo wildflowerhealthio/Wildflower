@@ -7,14 +7,12 @@
  * @packageDocumentation
  */
 export {
-  archiveLinks,
+  archive,
   decodeStudy,
-  partitionStudies,
   sectionTitle,
+  studyGroupKey,
   studyKey,
-  type ParsedFile,
-  type StudyFileSet,
-  type StudyMember,
+  type StudyFile,
 } from './decode.ts'
 export { detectDicom } from './detect.ts'
 export { dicomImporter } from './dicom-importer.ts'

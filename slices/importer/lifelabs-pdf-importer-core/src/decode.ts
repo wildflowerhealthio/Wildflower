@@ -128,7 +128,7 @@ const decodeLifeLabsPdfDocument = (
  * JSON download.
  */
 const decodeLifeLabsPdf = (
-  file: PickedFile.Type,
+  file: PickedFile.NamedBytes,
   settings: LifeLabsPdfSettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> =>
   Effect.tryPromise({

@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import type { ServerComparison } from 'fhir-r4/clients'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
 import type { BatchDecodeResult, FormatKind } from 'importer-core'
-import { FormatDecode, PickedFile } from 'importer-fundamentals'
+import { FormatDecode } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -25,7 +25,7 @@ const formatResult = <K extends FormatKind>(
 ): FormatDecode.Result<K> => ({
   id: `${format}/test`,
   title: 'test',
-  files: [{ fileName: 'test', bytes: new Uint8Array([1]), source: PickedFile.Source.local }],
+  files: [{ id: '0:test', fileName: 'test', bytes: new Uint8Array([1]) }],
   format,
   decoded: {
     sections: [

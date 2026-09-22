@@ -34,7 +34,7 @@ resources, plus a note per thing that did not become a resource.
 | Importer        | `*-importer-core/src/<format>-importer.ts`     | one `FileImporter.Type` literal over `DecodeFunction.make`    |
 | Settings        | `*-importer-core/src/settings.ts`              | `TSettings` + `defaultSettings` (an empty record if none)     |
 | Persistence     | shell-owned                                    | one shared `persistBatchBundle` — write no sink               |
-| Source file     | the `sourceFileFormat` you state               | minted inside `decode` by `DecodeFunction.make`               |
+| Archive         | the `sourceFileFormat` you state               | minted inside `decode` by `DecodeFunction.make`               |
 | Settings picker | `*-importer-react/src/settings-picker.tsx`     | `SettingsPickerProps<TSettings>` (`importer-fundamentals`)    |
 | Registry entry  | `importer-core/src/registry.ts`                | `FormatSettings` + `formatRegistry` + `defaultFormatSettings` |
 | Picker entry    | `importer-react/src/registry.ts`               | the same key's `SettingsPicker`                               |
@@ -55,39 +55,35 @@ the graph acyclic. Do **not** widen HAR's binding to cover it.
 ## 1. The decode
 
 You write **one file set at a time**. `decodeFileSet(members, settings)` takes
-the picks that are decoded together — each a `{ file, index, sourceFile }`,
-where `file` is a `{ fileName, bytes, source }` (`local`, or `server` naming a
-source file already on the device) and `sourceFile` is the
-`DocumentReference/<id>` its resources will be stamped with — and yields a
-`DecodedFile`: titled sections of labeled resources, plus diagnostic notes.
+the picks that are decoded together — each a `PickedFile.Type`
+(`{ id, fileName, bytes }`, the `id` being the slot the batch read gave it) plus
+the `archive` minted for it — and yields a `DecodedFile`: titled sections of
+labeled resources, plus diagnostic notes.
 
 ```ts
 const decodeMyFormat = (
-  members: Arr.NonEmptyReadonlyArray<
-    DecodeFunction.Member & { readonly sourceFile: SourceFile.Reference }
-  >,
+  members: Arr.NonEmptyReadonlyArray<DecodeFunction.ArchivedFile>,
   settings: MySettings
 ): Effect.Effect<DecodedFile.DecodedFile, ParseResult.ParseError> => …
 ```
 
-A format whose files stand alone reads `members[0].file` and says nothing more:
-the default partition is "every pick is its own set, in pick order". A format
-whose files must be read **together** — a multi-part archive, a manifest naming
-its siblings, a DICOM study — states a `partition` instead (see §5).
+A format whose files stand alone reads `members[0]` and says nothing more: each
+pick is its own set by default, in pick order. A format whose files must be read
+**together** — a multi-part archive, a manifest naming its siblings, a DICOM
+study — states a `groupBy` instead (see §5).
 
 `DecodeFunction.make` lifts that into the batch `decode(files, settings)` the
 shell runs across every file the format claimed. That lifted decode is what:
 
-- resolves each pick's source file — minting one for a `local` pick and handing
-  your `decodeFileSet` its `DocumentReference/<id>` reference before the decode
-  runs, or passing a `server` pick's existing reference through verbatim,
-  minting nothing;
-- prepends the minted archives as their own **"Source file"** / **"Source
-  files"** section;
+- mints an archive for **every** pick and hands each member its own before the
+  decode runs;
+- lets the format finish each archive off the decode (`archive`, §4) and
+  prepends them as their own **"Source file"** / **"Source files"** section;
 - stamps every extracted resource's `meta.source` with the set's representative
-  reference;
-- **namespaces every review key** with the representative's slot in the batch,
-  so two sets cannot collide on a key (see the obligations below);
+  archive — the one with the lexicographically smallest id, which is a content
+  hash, so the stamp is the same however the files were picked;
+- **namespaces every review key** with the set's first picked file, so two sets
+  cannot collide on a key (see the obligations below);
 - folds a `ParseError` into one `unreadableFiles` row per pick of the failing
   set.
 
@@ -96,10 +92,9 @@ nothing — so a preview can never reach the write client by construction, and o
 bad file in a batch of five leaves the other four reviewable. The whole opt-in
 seam rests on this.
 
-A member's `sourceFile` is both what every extracted resource's `meta.source`
-will carry and — through `SourceFile.idFromReference` — where a format whose
-synthesized resources name the stored file (DICOM's `ImagingStudy`
-`gridfsFileId` extension) reads the bare id, rather than recomputing it.
+A member's `archive.id` is where a format whose synthesized resources name the
+stored file (DICOM's `ImagingStudy` `gridfsFileId` extension) reads it, rather
+than recomputing it.
 
 Three obligations:
 
@@ -109,7 +104,7 @@ Three obligations:
   per-resource exclusions and inline edits are keyed by it and must survive a
   settings re-decode. Key **within one set** and do not try to make keys unique
   across the batch yourself — `DecodeFunction.make` prefixes each set's keys
-  with its representative's slot (`FormatDecode.keyPrefix`), which is what makes
+  with its first picked file (`FormatDecode.keyPrefix`), which is what makes
   a fixed key like `patient` safe when the reviewer picked eight images at once.
 - **Sections are the display.** Pick a sectioning that means something to the
   reviewer: HAR sections by URL, LifeLabs by report. A section's `title` is the
@@ -139,61 +134,70 @@ exact list of resources to write, and the shell sends them as one `POST /` batch
 bundle per format. The confirm adds nothing to any resource: the `meta.source`
 links are already there, stamped by the decode.
 
-## 4. The source file
+## 4. The archive
 
-A source file is the picked file itself, stored as a FHIR `DocumentReference`
-with the bytes verbatim. It is **the format's**, not the shell's — but a binding
-does not write the encoding. You state one **`sourceFileFormat`** — a
-`SourceFile.FormatValue`: a `coding` (`{ system, code }`), a `contentType`, a
+An archive is the picked file itself, stored as a FHIR `DocumentReference` with
+the bytes verbatim. It is **the format's**, not the shell's — but a binding does
+not write the encoding. You state one **`sourceFileFormat`** — a
+`PickedFile.FormatValue`: a `coding` (`{ system, code }`), a `contentType`, a
 `descriptionPrefix` (conventionally `` `${display.title}: ` ``), and optionally
 a `securityLabel` — on the importer and hand the same constant to
-`DecodeFunction.make`. Everything else is `SourceFile`'s, read under those
+`DecodeFunction.make`. Everything else is `PickedFile`'s, read under those
 constants:
 
 | What you need                           | How to get it                                         |
 | --------------------------------------- | ----------------------------------------------------- |
-| the `system\|code` search token         | `SourceFile.categoryToken(sourceFileFormat)`          |
-| the disjoint predicate for a server row | `SourceFile.isSourceFile(sourceFileFormat)(resource)` |
-| the bytes-and-name reader               | `Schema.decode(SourceFile.FromDocumentReference)`     |
-| a preview's name and bytes, in one read | `SourceFile.NamedBytesFromDocumentReference`          |
+| the `system\|code` search token         | `PickedFile.categoryToken(sourceFileFormat)`          |
+| the disjoint predicate for a server row | `PickedFile.isSourceFile(sourceFileFormat)(resource)` |
+| the name-and-bytes reader               | `Schema.decode(PickedFile.FromDocumentReference)`     |
 
-Those schemas require the `SourceFile.Format` service. `DecodeFunction.make`
+That schema requires the `PickedFile.Format` service. `DecodeFunction.make`
 provides it internally from the `sourceFileFormat` you handed it, so nothing
 your binding exports carries the requirement; a reader above the binding — the
 shell's server source-file list, or your binding's own test — provides it from
 the importer's own constants:
 
 ```ts
-Schema.decode(SourceFile.FromDocumentReference)(resource).pipe(
-  Effect.provideService(SourceFile.Format, myImporter.sourceFileFormat)
+Schema.decode(PickedFile.FromDocumentReference)(resource).pipe(
+  Effect.provideService(PickedFile.Format, myImporter.sourceFileFormat)
 )
 ```
 
-The mint (`SourceFile.FromNamedBytes`) derives its id from the bytes' SHA-256
-and the file name through `fhir-r4/identity`'s `localResourceId`, so re-importing
-the same file under the same name upserts rather than piling up duplicates, and
-it reads the clock for the upload instant on every decode. A `server` pick mints
-nothing: its existing `DocumentReference/<id>` reference is what the extracted
-resources stamp.
+Encoding a pick **mints**: the id is the bytes' SHA-256 and the file name
+through `fhir-r4/identity`'s `localResourceId`, namespaced by the coding system,
+so re-importing the same file under the same name upserts rather than piling up
+duplicates — and a file re-picked off the server mints exactly the archive it
+came from, which the server diff then reads as `unchanged` and the initial
+selection pre-excludes. The archive carries **no instant**: what it states is
+what the file _is_, and when it reached the device is the server's own
+`meta.lastUpdated`. The encode ignores the value's own `id`, and reading an
+archive back yields the stored one, so decode-then-encode is the identity on it.
 
-Pass **`archiveLinks`** when the format's archives point at what was read out of
-them. It is called with the set's _decode_, so it reads the links off the
-resources already produced rather than parsing the files a second time:
+Pass **`archive`** when the format's archives point at what was read out of
+them. It runs after the decode, once per member, with that member's minted
+archive and the set's whole decode, so it reads the links off the resources
+already produced rather than parsing the files a second time:
 
 ```ts
-const archiveLinks = (decoded: DecodedFile.DecodedFile): DecodeFunction.ArchiveLinks => ({
+const archive = (
+  minted: DocumentReference.Type,
+  decoded: DecodedFile.DecodedFile
+): DocumentReference.Type => ({
+  ...minted,
   subject: patientReferenceOf(decoded),
-  related: Arr.getSomes([studyReferenceOf(decoded)]),
+  context: { ...(minted.context ?? emptyContext), related: relatedOf(decoded) },
 })
 ```
 
-The default is no `subject` and no `related`, which keeps an engineering
-artifact out of `Patient/$everything`; DICOM opts in because its header names
-the patient, and its `related` is what lets the server list show a study's
-archives as one section. The minted source file is reviewed like any other
-resource. The reviewer can exclude its row, in which case it is simply not
-written — and the extracted resources keep their `meta.source`, because the
-decode stamped them and nothing downstream rewrites them.
+**Do not change the `id`.** The row that is listed for review and the reference
+every resource's `meta.source` names are both read back off what you return.
+The default is the archive exactly as minted — no `subject`, no `related` —
+which keeps an engineering artifact out of `Patient/$everything`; DICOM opts in
+because its header names the patient, and its `related` is what tells a reader
+of the server list which study an archive was read into. The archive is reviewed
+like any other resource. The reviewer can exclude its row, in which case it is
+simply not written — and the extracted resources keep their `meta.source`,
+because the decode stamped them and nothing downstream rewrites them.
 
 ## 5. Assemble the importer
 
@@ -221,8 +225,9 @@ const myImporter: FileImporter.Type<MySettings, typeof format> = {
     sourceFileFormat,
     decodeFileSet: decodeMyFormat,
     // only when your files are read together:
-    partition: partitionMyFormat,
-    archiveLinks: myArchiveLinks,
+    groupBy: myGroupKey,
+    // only when your archives link to what was read out of them:
+    archive: myArchive,
   }),
 }
 ```
@@ -233,27 +238,28 @@ once and appears twice in that one object — on the importer, where a reader of
 the server list projects it, and in the `DecodeFunction.make` config, where the
 mint uses it — so the two cannot disagree.
 
-**A format whose files are read together states a `partition`.** It takes the
-claimed picks as `DecodeFunction.Member`s and returns a
-`DecodeFunction.Partition`: the non-empty `fileSets` decoded together, plus the
-`unreadable` picks it could not place (each with the `ParseError` that kept it
-out, reported ahead of any failing set, in pick order). Nothing else changes —
-the mint, the archive section, the key namespacing, the `meta.source` stamp and
-the failure folding are the constructor's either way.
+**A format whose files are read together states a `groupBy`.** It is called per
+picked file and returns the key that file shares with its set-mates, or a `Left`
+when the file states none — which reports it as its own `unreadableFiles` row,
+ahead of any failing set, in pick order. Sets come out in the order the picks
+that opened them arrived. Nothing else changes — the mint, the archive section,
+the key namespacing, the `meta.source` stamp and the failure folding are the
+constructor's either way.
 
 `dicom-importer-core` is the worked example. What decodes together there is a
 **study**: the files of one `StudyInstanceUID` (and patient) make up one
 `ImagingStudy` whose counts, modality set and earliest `started` no single file
-states. Its `partitionStudies` parses the headers, groups them by `studyKey`,
-and **sorts each set into study order**, because the first member of a set is
-its representative — the slot its review keys are namespaced by, and the archive
-its resources' `meta.source` names. Order a set by something intrinsic to it,
-not by the pick, or both change with the order the files were dropped in.
-`meta.source` holds one reference, so a set spanning files keeps per-file
-provenance some other way: DICOM stamps each `ImagingStudy.instance` with its
-own archive's id (`gridfsFileId`).
+states. Its `studyGroupKey` parses the header and returns `studyKey(header)`.
+Parsing there and again in `decodeStudy` is deliberate: there is no parsed-value
+passthrough, and the second parse buys a constructor with one less concept in
+it. Nothing about the set depends on the order it was picked in — the
+representative whose archive stamps `meta.source` is the member with the
+smallest archive id, and an archive id is a content hash. `meta.source` holds
+one reference, so a set spanning files keeps per-file provenance some other way:
+DICOM stamps each `ImagingStudy.instance` with its own archive's id
+(`gridfsFileId`).
 
-Do not smuggle cross-file state through `settings`: `partition` is where "these
+Do not smuggle cross-file state through `settings`: `groupBy` is where "these
 files belong together" is said.
 
 The result is a plain record, not a class instance — which is what lets
@@ -328,13 +334,13 @@ Changes must include tests (see [AGENTS.md](../../../AGENTS.md) and the
 `/javascript-testing-expert` command). Cover each layer where it lives:
 
 - **Decode** — a fixture file decodes to the expected sections and notes; keys
-  are stable across a settings change. Pin the source-file contract too: a
-  `local` pick yields a "Source file" first section and `meta.source` on every
-  extracted resource, a `server` pick yields no such section (and stamps the
-  pick's existing reference), and malformed bytes yield an `unreadableFiles`
-  entry rather than a failed Effect. A format with a `partition` also pins the
-  grouping itself: which picks land in which set, which land in `unreadable`,
-  and that the resources are identical whatever order the files were picked in.
+  are stable across a settings change. Pin the archive contract too: a pick
+  yields a "Source file" first section and `meta.source` on every extracted
+  resource, the minted id is the same for the same bytes and name, and malformed
+  bytes yield an `unreadableFiles` entry rather than a failed Effect. A format
+  with a `groupBy` also pins the grouping itself: which picks share a key, which
+  are `Left`, and that the resources are identical whatever order the files were
+  picked in.
 - **Settings picker** — a change reports the next settings value verbatim.
 - **Shell** — the end-to-end flow: zero writes to reach a review, the confirm
   (the source file and the resources in one bundle, `meta.source` on every
@@ -363,8 +369,8 @@ is a no-op here.
 - [lifelabs-pdf-importer-core AGENTS.md](../lifelabs-pdf-importer-core/AGENTS.md)
   — the worked document-format binding.
 - [dicom-importer-core AGENTS.md](../dicom-importer-core/AGENTS.md) — the worked
-  binding that states a `partition`, links its archives, and reads its source
-  file's id in the decode.
+  binding that states a `groupBy`, links its archives, and reads each archive's
+  id in the decode.
 - [Adding a Collector How-To](../../collector/docs/Adding%20a%20Collector%20How-To.md)
   — the live-transport counterpart, whose descriptor/registry shape this mirrors.
 - [Documentation Reference](../../../docs/Documentation/Reference.md) — the

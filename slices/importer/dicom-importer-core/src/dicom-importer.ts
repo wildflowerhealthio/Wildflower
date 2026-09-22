@@ -1,6 +1,6 @@
 import { DecodeFunction, type FileImporter } from 'importer-fundamentals'
 
-import { archiveLinks, decodeStudy, partitionStudies } from './decode.ts'
+import { archive, decodeStudy, studyGroupKey } from './decode.ts'
 import { detectDicom } from './detect.ts'
 import { defaultDicomSettings, type DicomSettings } from './settings.ts'
 import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from './source-system.ts'
@@ -22,7 +22,7 @@ const sourceFileFormat = {
  * out.
  *
  * @remarks
- * The one format so far that states a `partition`: a study's files are not
+ * The one format so far that states a `groupBy`: a study's files are not
  * independent — each states one instance of a study whose counts, modality set
  * and earliest `started` only the whole set knows. Its archives link to what
  * the study decoded to, because a DICOM file is a clinical document and
@@ -37,9 +37,9 @@ const dicomImporter: FileImporter.Type<DicomSettings, typeof format> = {
   decode: DecodeFunction.make({
     format,
     sourceFileFormat,
-    partition: partitionStudies,
+    groupBy: studyGroupKey,
     decodeFileSet: decodeStudy,
-    archiveLinks,
+    archive,
   }),
 }
 

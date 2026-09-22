@@ -133,7 +133,7 @@ describe('ImporterApp', () => {
     expect([...written].toSorted()).toEqual(['DocumentReference', 'Observation', 'Patient'])
   })
 
-  it('should read a server-held archive back off the FHIR server rather than creating a second copy', async () => {
+  it('should read a server-held archive back off the FHIR server and re-file it under one archive', async () => {
     // Arrange — one archive already on the server, carrying the recognized HAR
     mount({ archives: [{ id: 'archive-1', fileName: 'server-session.har' }] })
 
@@ -146,19 +146,22 @@ describe('ImporterApp', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: PREVIEW_HEADING })).toBeDefined()
     })
-    await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
+    await userEvent.click(screen.getByRole('button', { name: /Import 4 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: COMPLETE_HEADING })).toBeDefined()
     })
 
-    // Assert — the archive was fetched by id off the FHIR base, and no second
-    // archive was created for it
+    // Assert — the archive was fetched by id off the FHIR base, with the token
     const byId = recorded.find(
       (request) => request.method === 'GET' && request.url.includes('/DocumentReference/archive-1')
     )
     expect(byId?.url.startsWith(`${SERVER_URL}/`)).toBe(true)
     expect(byId?.authorization).toBe(`Bearer ${ACCESS_TOKEN}`)
-    expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
+    // Every pick is archived, and the id is a hash of the bytes and the name —
+    // so a file re-picked off the server is re-filed under exactly one archive,
+    // an upsert rather than a growing pile of copies.
+    const archiveWrites = writes().filter((write) => write.url.includes('/DocumentReference/'))
+    expect(archiveWrites).toHaveLength(1)
   })
 
   it('should render the app shell around the slice screen it mounts, on the Import tab by default', async () => {

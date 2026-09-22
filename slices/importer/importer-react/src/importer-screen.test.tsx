@@ -10,8 +10,9 @@ import type { JSX, ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
 import { CHECKING_SERVER_MESSAGE, ImporterScreen } from './importer-screen.tsx'
+import { formatRegistry } from './registry.ts'
 import { SKIPPED_HEADING } from './results/import-results.tsx'
-import { archiveWire, dicomFile, RECOGNIZED_HAR } from './screen-fixtures.ts'
+import { dicomFile, RECOGNIZED_HAR, storedArchive, type StoredArchive } from './screen-fixtures.ts'
 
 /**
  * The whole preview-then-confirm flow, driven end-to-end over the real
@@ -176,15 +177,18 @@ describe('ImporterScreen', () => {
     }
   })
 
-  it('links a server-sourced HAR to the fetched document and creates no archive', async () => {
-    // Arrange — one archive already on the server, carrying the recognized HAR
-    currentRunAuthed = routingServer({
-      archives: [{ id: 'archive-1', fileName: 'server-session.har', harText: RECOGNIZED_HAR }],
-    })
+  it('lists a re-picked server archive as a pre-excluded row and uploads nothing', async () => {
+    // Arrange — one archive already on the server, minted from the recognized
+    // HAR exactly as this format's decode would mint it
+    const stored = await storedArchive(
+      formatRegistry.har.sourceFileFormat,
+      'server-session.har',
+      RECOGNIZED_HAR
+    )
+    currentRunAuthed = routingServer({ archives: [stored] })
     render(<ImporterScreen />, { wrapper: withQueryClient })
 
-    // Act — select it in the server list and pick it as the batch's source,
-    // then confirm
+    // Act — select it in the server list and pick it as the batch's source
     await userEvent.click(
       await screen.findByRole('checkbox', { name: 'Select server-session.har' })
     )
@@ -192,20 +196,28 @@ describe('ImporterScreen', () => {
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Ready to import/ })).toBeDefined()
     })
+
+    // Assert — the archive is a reviewed row like any other, but the server
+    // already holds exactly it, so the diff reads `unchanged` and the initial
+    // selection leaves it out: three of the four rows are selected.
+    const archiveRow = screen.getByRole('checkbox', { name: /Include DocumentReference/ })
+    expect(archiveRow.hasAttribute('checked')).toBe(false)
+    expect(screen.getByRole('button', { name: /Import 3 resources/ })).toBeDefined()
+
+    // Act — confirm
     await userEvent.click(screen.getByRole('button', { name: /Import 3 resources/ }))
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Import complete/ })).toBeDefined()
     })
 
-    // Assert — no DocumentReference *create* (the archive already exists), and
-    // every resource links to the document it was fetched from
+    // Assert — no DocumentReference write (the archive is already there), and
+    // every resource links to the archive the re-pick minted, which is the one
+    // it came from.
     expect(writes().some((write) => write.url.includes('/DocumentReference/'))).toBe(false)
     const resourceWrites = writes().filter(isResourceWrite)
     expect(resourceWrites).toHaveLength(3)
     for (const write of resourceWrites) {
-      expect(JSON.parse(write.body)).toMatchObject({
-        meta: { source: 'DocumentReference/archive-1' },
-      })
+      expect(metaSourceOf(write.body)).toBe(`DocumentReference/${stored.id}`)
     }
   })
 
@@ -572,11 +584,7 @@ const idFromUrl = (url: string): string => {
  * flow and read the write log back.
  */
 const routingServer = (config: {
-  readonly archives?: readonly {
-    readonly id: string
-    readonly fileName: string
-    readonly harText: string
-  }[]
+  readonly archives?: readonly StoredArchive[]
   readonly failWrite?: (request: { readonly method: string; readonly url: string }) => boolean
 }): RunAuthed => {
   const archives = config.archives ?? []
@@ -614,8 +622,14 @@ const routingServer = (config: {
               continue
             }
             if (entryReq.method === 'GET') {
-              // No prior write in this suite — every classify probe answers 404.
-              responseEntries.push({ response: { status: '404 Not Found' } })
+              // The only resources this suite's server already holds are the
+              // configured archives; every other classify probe is a miss.
+              const stored = archives.find((one) => entryUrl.endsWith(`/${one.id}`))
+              responseEntries.push(
+                stored === undefined
+                  ? { response: { status: '404 Not Found' } }
+                  : { response: { status: '200 OK' }, resource: stored.wire }
+              )
               continue
             }
             responseEntries.push({
@@ -638,20 +652,15 @@ const routingServer = (config: {
 
       recorded.push({ method: request.method, url: request.url, body })
       if (request.method === 'GET' && params['category'] !== undefined) {
-        const wires = archives.map((archive) => archiveWire(archive))
+        const wires = archives.map((archive) => archive.wire)
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(searchset(wires))))
       }
       if (request.method === 'GET') {
-        const id = idFromUrl(request.url)
-        const archive = archives.find((one) => one.id === id)
-        return Effect.succeed(
-          HttpClientResponse.fromWeb(
-            request,
-            jsonResponse(
-              archiveWire(archive ?? { id, fileName: `${id}.har`, harText: RECOGNIZED_HAR })
-            )
-          )
-        )
+        const archive = archives.find((one) => one.id === idFromUrl(request.url))
+        if (archive === undefined) {
+          return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 404)))
+        }
+        return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(archive.wire)))
       }
       if (config.failWrite?.({ method: request.method, url: request.url }) === true) {
         return Effect.succeed(HttpClientResponse.fromWeb(request, jsonResponse(null, 503)))

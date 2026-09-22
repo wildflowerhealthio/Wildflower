@@ -10,9 +10,10 @@
  * @packageDocumentation
  */
 import { writeDicom, type DicomTagMap } from 'dicom/test-helpers'
-import { DateTime, Effect, Schema } from 'effect'
-import { HAR_ARCHIVE_CODE, WEB_TRACE_CODE_SYSTEM } from 'har-importer-core/source-file'
+import { Effect, Schema } from 'effect'
+import { DocumentReference } from 'fhir-r4/resources'
 import { emitHar, HarFromJson } from 'http-archive'
+import { PickedFile } from 'importer-fundamentals'
 import type { TraceBody } from 'web-trace-core'
 import { CAPTURE_FLOOR, jsonBody, traceExchange } from 'web-trace-core/test-helpers'
 
@@ -22,6 +23,7 @@ const STUDY_TAGS: DicomTagMap = {
   PatientID: 'P001',
   PatientName: { family: 'Doe', given: 'John', text: 'Doe John' },
   Modality: 'CT',
+  SOPClassUID: '1.2.840.10008.5.1.4.1.1.2',
   AccessionNumber: 'ACC001',
 }
 
@@ -108,36 +110,42 @@ const RECOGNIZED_HAR: string = Effect.runSync(
   // observed the method would carry through.
 ).replaceAll('"method":"UNKNOWN"', '"method":"GET"')
 
-/** Text as base64, the way the archive codec stores the file's bytes. */
-const base64 = Schema.encodeSync(Schema.StringFromBase64)
-
-/** One archive `DocumentReference` wire, decodable by the codec and rowable by the list. */
-const archiveWire = (fields: {
+/** One archive already on the server: its minted id and the wire it is served as. */
+interface StoredArchive {
   readonly id: string
   readonly fileName: string
-  readonly harText: string
-}): unknown => {
-  const coding = [{ system: WEB_TRACE_CODE_SYSTEM, code: HAR_ARCHIVE_CODE }]
-  const iso = DateTime.formatIso(DateTime.unsafeFromDate(new Date('2026-08-13T10:00:00.000Z')))
-  return {
-    resourceType: 'DocumentReference',
-    id: fields.id,
-    status: 'current',
-    type: { coding },
-    category: [{ coding }],
-    date: iso,
-    content: [
-      {
-        attachment: {
-          contentType: 'application/json',
-          data: base64(fields.harText),
-          title: fields.fileName,
-          creation: iso,
-        },
-      },
-    ],
-  }
+  readonly wire: unknown
 }
 
-export { archiveWire, dicomFile, RECOGNIZED_HAR }
-export type { DicomTagMap }
+/**
+ * The archive a file of this format would be stored as, minted exactly as the
+ * decode mints it.
+ *
+ * @param format - The format's archive constants, from its registry entry
+ * @param fileName - The stored file's name
+ * @param text - The stored file's contents
+ * @returns The archive's id and the FHIR JSON a server would serve
+ *
+ * @remarks
+ * Minted rather than hand-built, because the point of a server-picked file is
+ * that re-picking it mints *the same* archive: the id is deterministic in the
+ * bytes, the name and the coding system, so the row a re-decode produces is the
+ * one already stored and the server diff reads it as `unchanged`.
+ */
+const storedArchive = async (
+  format: PickedFile.FormatValue,
+  fileName: string,
+  text: string
+): Promise<StoredArchive> => {
+  const bytes = new Uint8Array(new TextEncoder().encode(text))
+  const resource = await Effect.runPromise(
+    Schema.encode(PickedFile.FromDocumentReference)({ id: `0:${fileName}`, fileName, bytes }).pipe(
+      Effect.provideService(PickedFile.Format, format)
+    )
+  )
+  const wire = await Effect.runPromise(Schema.encode(DocumentReference.Schema)(resource))
+  return { id: resource.id ?? '', fileName, wire }
+}
+
+export { dicomFile, RECOGNIZED_HAR, storedArchive }
+export type { DicomTagMap, StoredArchive }

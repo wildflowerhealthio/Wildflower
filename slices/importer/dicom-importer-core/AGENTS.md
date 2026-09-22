@@ -7,7 +7,7 @@ source-file coding that stores a DICOM file as a FHIR `DocumentReference`.
 
 The core stays pure in the layering sense — no DOM, no `fs`, no React. A
 pick of `.dcm` bytes in, Patient / ServiceRequest / ImagingStudy out. What
-decodes together is a **study**, not a file: the decode partitions a pick by
+decodes together is a **study**, not a file: the decode groups a pick by
 `StudyInstanceUID` (and patient) and yields one section per study, each
 carrying the one `ImagingStudy` its files make up.
 
@@ -66,19 +66,19 @@ carrying the one `ImagingStudy` its files make up.
   decodes. **`studyKey(header)`** is `StudyInstanceUID` **plus** the patient
   identity `patientOriginalId` derives: a `PatientID` the files disagree on
   splits the set rather than filing one patient's images in another's record.
-  **`partitionStudies`** parses every pick's header (headers only, cheap),
-  `Array.partitionMap`s the failures out — a file `dicom-parser` rejects is its
-  own `unreadable` row, since it states no study to belong to and folding it
-  into a neighbour would hide which file failed — then `Array.groupBy`s the
-  rest by `studyKey` and sorts each set into **study order** (`orderedInstances`),
-  so the representative `DecodeFunction.make` namespaces keys by and stamps
-  `meta.source` with is the same however the files were picked. **`ParsedFile`**
-  is a `DecodeFunction.Member` plus its header, and **`StudyFileSet`** is a
-  non-empty list of them.
-  **`decodeStudy`** takes one study's members — each carrying the
-  `SourceFile.Reference` of the archive storing it, which
-  `SourceFile.idFromReference` unwraps into the instance's `gridfsFileId` — and
-  yields one section of adopted, labeled FHIR resources. Titled
+  **`studyGroupKey`** is the `groupBy` the importer states: it parses the pick's
+  header (headers only, cheap) and returns `studyKey(header)`, or a `Left` —
+  a file `dicom-parser` rejects states no study to belong to, and folding it
+  into a neighbour would hide which file failed, so the decode constructor
+  reports it as its own `unreadableFiles` row. Nothing here depends on the
+  order the files were picked in: the archive whose id stamps `meta.source` is
+  the smallest of the set's, and an archive id is a content hash.
+  **`decodeStudy`** takes one study's members — each a picked file plus the
+  `archive` minted for it, whose `id` is the instance's `gridfsFileId` — and
+  **parses each header itself**. A header that parsed in `studyGroupKey` parses
+  again; that double parse is the deliberate price of a decode constructor with
+  no parsed-value passthrough. It yields one section of adopted, labeled FHIR
+  resources. Titled
   `<Modality> <StudyDescription> · <StudyDate>` off the study's representative
   header, with stable keys `patient`, `service-request`, `imaging-study`, fixed
   _within one study_ and namespaced outside it. Notes for missing patient
@@ -91,13 +91,14 @@ carrying the one `ImagingStudy` its files make up.
   recorded; one setting for the whole pick, so an unresolvable zone fails
   every set, and with it every file. A study that fails to decode becomes one
   `unreadableFiles` row per file of it, leaving the other studies reviewable.
-  **`archiveLinks`** reads the decode's own resources: `subject` = the
-  synthesized `Patient`, `related` = the study's `ImagingStudy` — `subject`
-  alone cannot separate two studies of one patient, and `related` is what lets
-  the server list show a study's archives as one section and re-pick them
-  together. The study-level resources' `meta.source` names the archive of the
-  representative instance; per-file provenance is the per-instance
-  `gridfsFileId`.
+  **`archive`** finishes each minted archive off the decode's own resources:
+  `subject` = the synthesized `Patient`, `context.related` = the study's
+  `ImagingStudy` — `subject` alone cannot separate two studies of one patient,
+  and `related` is what tells a reader of the server list which study an archive
+  was read into. It changes no `id`: the row listed for review and the reference
+  `meta.source` names are both read back off what it returns. The study-level
+  resources' `meta.source` names the set's smallest archive id; per-file
+  provenance is the per-instance `gridfsFileId`.
 - `src/source-file.ts` — the `/source-file` subpath: a narrowing of
   `source-system.ts` to just the coding constants (`DICOM_SYSTEM`,
   `DICOM_SOURCE_FILE_CODE`, `DICOM_SOURCE_FILE_CONTENT_TYPE`), so a reader
@@ -108,8 +109,8 @@ carrying the one `ImagingStudy` its files make up.
   literal for format `'dicom'`: the DICOM coding
   (`DICOM_SYSTEM|dicom-source-file`), content type `application/dicom`,
   `detectDicom`, the default settings, and a `DecodeFunction.make` over
-  `partitionStudies`, `decodeStudy` and `archiveLinks`. The one format so far
-  that states a `partition`: decoding a study's files independently would yield
+  `studyGroupKey`, `decodeStudy` and `archive`. The one format so far
+  that states a `groupBy`: decoding a study's files independently would yield
   N one-instance `ImagingStudy`s sharing an id, each overwriting the last —
   D3's known limit, which this binding closes. `sourceFileFormat` is spelled
   once and handed to the constructor, so the constants a reader of the server
@@ -119,7 +120,7 @@ carrying the one `ImagingStudy` its files make up.
 ## Layering
 
 - **Depends on**: `dicom` (DICOM tag parsing), `importer-fundamentals`
-  (`DecodeFunction.make`, the `FileImporter` contract, the `SourceFile`
+  (`DecodeFunction.make`, the `FileImporter` contract, the `PickedFile`
   vocabulary), `fhir-r4` (resource types + identity), `kitchen-sink`
   (`fnv1a64`, `checkTimeZone`), `effect`.
 - **Depended on by**: `dicom-importer-react` (settings picker),

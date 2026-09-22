@@ -24,27 +24,27 @@ shell's shared `persistBatchBundle`.
   The FHIR encoding
   itself is not written here — `har-importer.ts` passes that coding,
   `application/json`, and the web-trace raw `securityLabel` as its one
-  `sourceFileFormat`, which `SourceFile.categoryToken` / `SourceFile.isSourceFile`
-  / `SourceFile.FromDocumentReference` are read with and which the batch
+  `sourceFileFormat`, which `PickedFile.categoryToken` / `PickedFile.isSourceFile`
+  / `PickedFile.FromDocumentReference` are read with and which the batch
   `decode` mints the
-  source file inside itself, back.
+  archive inside itself, back.
   A whole source file lives as one attachment under the `har-archive`
   category, disjoint from a trace on the same axis (this format's
   `isSourceFile` and `isWebTrace` never both hold).
-- **The source file is minted inside `decode`.** The batch decode
-  `DecodeFunction.make` built mints a `local` pick's source-file `DocumentReference`
-  — a deterministic id from the file's SHA-256 and name, the upload instant
-  stamped, **no PUT** — prepends it as its own "Source file" section, and
+- **The archive is minted inside `decode`.** The batch decode
+  `DecodeFunction.make` built mints every pick's archive `DocumentReference`
+  — a deterministic id from the file's SHA-256 and name, no instant of any
+  kind, **no PUT** — prepends it as its own "Source file" section, and
   stamps every extracted resource's `meta.source` with
-  `DocumentReference/<id>`. A `server` pick mints nothing, gets no "Source
-  file" section, and its resources carry the reference it was picked by. The
+  `DocumentReference/<id>`. A file re-picked off the server mints exactly the
+  archive it came from, which the server diff then reads as `unchanged`. The
   shell reviews the minted resource like any other and writes it in the same
   `persistBatchBundle` as the extracted resources; re-importing the same file
   upserts rather than duplicating.
 - `src/har-importer.ts` — **`harImporter`**, the one value the shell's
   registry lists — a `FileImporter.Type` literal whose `decode` is a
-  `DecodeFunction.make` with no `partition` (a HAR stands alone) and no
-  `archiveLinks` (a captured session is an engineering artifact, kept out of
+  `DecodeFunction.make` with no `groupBy` (a HAR stands alone) and no
+  `archive` (a captured session is an engineering artifact, kept out of
   `Patient/$everything`). Its `decodeFileSet` runs the whole read half for one
   archive:
   `decodeHar`, then `review.ts`'s `preview` over the pool filtered by the

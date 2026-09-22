@@ -45,7 +45,7 @@ const pdfDetector: FormatDetector.Type = {
 
 const detectors: readonly FormatDetector.Type[] = [pdfDetector, harDetector]
 
-const runAccept = (file: ReadableFile): Promise<Either.Either<PickedFile.Type, string>> =>
+const runAccept = (file: ReadableFile): Promise<Either.Either<PickedFile.NamedBytes, string>> =>
   Effect.runPromise(Effect.either(acceptLocalFile(detectors, file)))
 
 describe('acceptLocalFile', () => {
@@ -55,7 +55,7 @@ describe('acceptLocalFile', () => {
     for (let i = 0; i < expected.length; i += 1) expect(actual[i]).toBe(expected[i])
   }
 
-  it('accepts a HAR file whose bytes look like JSON, carrying its name and bytes onto a local pick', async () => {
+  it('accepts a HAR file whose bytes look like JSON, carrying its name and bytes onto the pick', async () => {
     const bytes = bytesOf('{"log":{"version":"1.2"}}')
 
     const result = await runAccept(fileOf('portal-session.har', bytes))
@@ -63,7 +63,6 @@ describe('acceptLocalFile', () => {
     if (Either.isLeft(result)) throw new Error('expected an accepted pick')
     expect(result.right.fileName).toBe('portal-session.har')
     sameBytes(result.right.bytes, bytes)
-    expect(result.right.source).toEqual({ _tag: 'local' })
   })
 
   it('accepts a PDF file identified by magic bytes even without a .pdf extension', async () => {

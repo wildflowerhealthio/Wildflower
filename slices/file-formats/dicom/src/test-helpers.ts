@@ -578,17 +578,18 @@ const dicomHeaderArb = (): fc.Arbitrary<DicomHeader.Type> =>
     seriesInstanceUid: dicomUidArb(),
     seriesNumber: fc.option(fc.integer({ min: 1, max: 999 }), { nil: undefined }),
     seriesDescription: fc.option(dicomTextArb(40), { nil: undefined }),
-    modality: fc.option(
-      fc.constantFrom('CT', 'MR', 'US', 'CR', 'DX', 'XA', 'NM', 'PT', 'MG', 'OT'),
-      { nil: undefined }
-    ),
+    // Required: a header states its Modality, and the FHIR synthesis above
+    // names a series by it with nothing to fall back on.
+    modality: fc.constantFrom('CT', 'MR', 'US', 'CR', 'DX', 'XA', 'NM', 'PT', 'MG', 'OT'),
     bodyPartExamined: fc.option(
       fc.constantFrom('CHEST', 'HEAD', 'ABDOMEN', 'SPINE', 'KNEE', 'HAND', 'PELVIS'),
       { nil: undefined }
     ),
 
     sopInstanceUid: dicomUidArb(),
-    sopClassUid: fc.option(dicomUidArb(), { nil: undefined }),
+    // Required, for the same reason as `modality`: every synthesized instance
+    // names its SOP Class.
+    sopClassUid: dicomUidArb(),
     instanceNumber: fc.option(fc.integer({ min: 1, max: 999 }), { nil: undefined }),
     rows: fc.option(fc.integer({ min: 64, max: 4096 }), { nil: undefined }),
     columns: fc.option(fc.integer({ min: 64, max: 4096 }), { nil: undefined }),
@@ -796,6 +797,7 @@ const dicomStudyArb = (options: StudyArbOptions = {}): fc.Arbitrary<StudyFixture
         { nil: undefined }
       ),
       modality: fc.constantFrom('CT', 'MR', 'US', 'PT'),
+      sopClassUid: dicomUidArb(),
       seriesCount: fc.integer(series),
       instanceCounts: fc.array(fc.integer(instances), {
         minLength: series.max,
@@ -840,6 +842,7 @@ const dicomStudyArb = (options: StudyArbOptions = {}): fc.Arbitrary<StudyFixture
                 StudyDate: base.studyDate,
                 StudyTime: base.studyTime,
                 Modality: base.modality,
+                SOPClassUID: base.sopClassUid,
                 ...(base.accessionNumber === undefined
                   ? {}
                   : { AccessionNumber: base.accessionNumber }),

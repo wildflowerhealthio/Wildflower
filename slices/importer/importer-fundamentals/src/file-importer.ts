@@ -4,7 +4,7 @@
  * @packageDocumentation
  */
 import type * as DecodeFunction from './decode-function.ts'
-import type * as SourceFile from './source-file.ts'
+import type * as PickedFile from './picked-file.ts'
 
 /**
  * Everything the shell needs to turn a picked file of one format into
@@ -31,12 +31,12 @@ interface Type<TSettings, TFormat extends string> {
   /** The batch decode the shell runs: never failing, requiring nothing. */
   readonly decode: DecodeFunction.Type<TSettings, TFormat>
   /**
-   * The format's source-file constants — what its archives are written under,
+   * The format's archive constants — what its archives are written under,
    * and what a reader of the server's list searches, recognizes and decodes
-   * with (`SourceFile.categoryToken`, `SourceFile.isSourceFile`,
-   * `SourceFile.FromDocumentReference`).
+   * with (`PickedFile.categoryToken`, `PickedFile.isSourceFile`,
+   * `PickedFile.FromDocumentReference`).
    */
-  readonly sourceFileFormat: SourceFile.FormatValue
+  readonly sourceFileFormat: PickedFile.FormatValue
 }
 
 export type { Type }

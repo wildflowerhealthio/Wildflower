@@ -358,7 +358,7 @@ const instanceWire = ({ header, sourceFileId }: StudyInstance): Wire => {
     uid: header.sopInstanceUid,
     sopClass: {
       system: DICOM_UID_SYSTEM,
-      code: header.sopClassUid ?? '1.2.840.10008.5.1.4.1.1.7',
+      code: header.sopClassUid,
     },
   }
   if (header.instanceNumber !== undefined) wire['number'] = header.instanceNumber
@@ -378,7 +378,7 @@ const seriesWire = (series: StudySeries): Wire => {
   const head = series.instances[0].header
   const wire: Wire = {
     uid: series.uid,
-    modality: { system: DCM_CODING_SYSTEM, code: head.modality ?? 'OT' },
+    modality: { system: DCM_CODING_SYSTEM, code: head.modality },
     numberOfInstances: series.instances.length,
     instance: series.instances.map(instanceWire),
   }
@@ -421,12 +421,8 @@ const imagingStudyWire = (
 
   // Every modality the study's series carry, in series order — a study whose
   // files disagree is a PET/CT, not a conflict.
-  const modalities = Arr.dedupe(
-    Arr.filterMap(series, (one) => Option.fromNullable(one.instances[0].header.modality))
-  )
-  if (modalities.length > 0) {
-    wire['modality'] = modalities.map((code) => ({ system: DCM_CODING_SYSTEM, code }))
-  }
+  const modalities = Arr.dedupe(series.map((one) => one.instances[0].header.modality))
+  wire['modality'] = modalities.map((code) => ({ system: DCM_CODING_SYSTEM, code }))
 
   const described = Arr.findFirst(
     orderedInstances(instances),

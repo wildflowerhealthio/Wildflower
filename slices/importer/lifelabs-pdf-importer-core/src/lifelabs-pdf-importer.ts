@@ -21,8 +21,8 @@ const sourceFileFormat = {
  * The LifeLabs PDF importer: one report PDF per pick.
  *
  * @remarks
- * No `partition` — a report stands alone — and no `archiveLinks`: the stored
- * PDF is the format's own artifact, kept out of `Patient/$everything`.
+ * No `groupBy` — a report stands alone — and no `archive`: the stored PDF is
+ * the format's own artifact, kept out of `Patient/$everything`.
  */
 const lifeLabsPdfImporter: FileImporter.Type<LifeLabsPdfSettings, typeof format> = {
   format,
@@ -33,7 +33,7 @@ const lifeLabsPdfImporter: FileImporter.Type<LifeLabsPdfSettings, typeof format>
   decode: DecodeFunction.make({
     format,
     sourceFileFormat,
-    decodeFileSet: (members, settings) => decodeLifeLabsPdf(members[0].file, settings),
+    decodeFileSet: (members, settings) => decodeLifeLabsPdf(members[0], settings),
   }),
 }
 

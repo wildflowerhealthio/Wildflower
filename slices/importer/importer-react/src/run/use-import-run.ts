@@ -64,8 +64,8 @@ interface ImportRun {
   readonly settings: FormatSettings
   /** Whether a settings re-decode is in flight — the shell blocks confirm while true. */
   readonly redecoding: boolean
-  /** Read a freshly-picked batch of files into review units, replacing any previous one. */
-  readonly run: (picks: readonly PickedFile.Type[]) => void
+  /** Read a freshly-picked batch of files into one review, replacing any previous one. */
+  readonly run: (picks: readonly PickedFile.NamedBytes[]) => void
   /**
    * Change one format's settings and re-decode that format's files from
    * their retained picks. Other formats' results and every id are
@@ -115,7 +115,7 @@ const useImportRun = (): ImportRun => {
   }, [])
 
   const run = useCallback(
-    (picks: readonly PickedFile.Type[]): void => {
+    (picks: readonly PickedFile.NamedBytes[]): void => {
       if (picks.length === 0) return
       latest.current += 1
       batchCounter.current += 1

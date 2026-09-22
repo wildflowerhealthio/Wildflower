@@ -40,13 +40,13 @@ const tabOptions: readonly { value: Tab; label: string }[] = [
  * The anonymizer shell is server-blind; this app has an authed FHIR context,
  * so it passes the importer slice's uploaded-source-files list through the
  * `serverSource` slot. The anonymizer reads one file at a time, so the list is
- * mounted in `single` mode and the one pick it yields is handed straight on —
- * the importer's `PickedFile` and the anonymizer's both carry
+ * capped at one pick and the one file it yields is handed straight on — the
+ * importer's picked file and the anonymizer's both carry
  * `{ fileName, bytes }`, so there is nothing to re-encode.
  */
 const ServerSource = ({ onPick }: { readonly onPick: (file: PickedFile) => void }): JSX.Element => (
   <ServerSourceFileList
-    mode="single"
+    maxPicks={1}
     onPick={([picked]) => {
       if (picked !== undefined) onPick({ fileName: picked.fileName, bytes: picked.bytes })
     }}

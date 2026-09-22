@@ -5,13 +5,13 @@ pick-review-confirm flow, plus the React half of the closed format registry.
 One surface a host app mounts, reading the authed runner out of router context:
 
 - **`ImporterScreen`** — pick one or more files (local files dropped or
-  chosen, or a single source file already on the device's FHIR server), review
+  chosen, or source files already on the device's FHIR server), review
   exactly what every format would write in one combined, **generalized**
   view — each format's decoded sections with per-resource include/edit, under
   its own settings form — confirm once to write the reviewed, included
-  resources across the batch (every file's source file among them), and read
-  the per-format results. Local picking is a **batch**; the server list is
-  single-select.
+  resources across the batch (every file's archive among them), and read
+  the per-format results. Every source picks a **batch**: several local files,
+  several folder entries, several server rows.
 
 The whole read half — grouping a pick by format, running each format's
 `decode`, re-decoding under new settings, and planning a format's write — is
@@ -142,9 +142,9 @@ The importer has no HTTP wire union to derive, so there is no separate
   best-effort: `planFormatWrite` (in `importer-core`) then one
   `persistBatchBundle` of exactly those resources. It adds nothing to any
   resource — no id locking, no provenance stamping — because the format's
-  `decode` already minted the source file and stamped every extracted
+  `decode` already minted the archive and stamped every extracted
   resource's `meta.source`. One format's failure never stops the rest, and a
-  rejected source file is just one failed entry; there is no separate upload
+  rejected archive is just one failed entry; there is no separate upload
   step to fail.
   `resource-editor.tsx` (+ `resource-editor-helpers.ts`) is the inline JSON
   editor: **Keep** parses the text, decodes through
@@ -158,66 +158,66 @@ The importer has no HTTP wire union to derive, so there is no separate
   format result's `title` (its claimed file names) rather than a file name of
   its own, all on `collectImportSummary` semantics (any failure ⇒ partial);
   `import-results.tsx` renders the batch grouped by response code — every
-  submitted resource (the source file included) with its status, plus the
+  submitted resource (the archive included) with its status, plus the
   formats that had nothing to import — under one aggregate tally. Only claimed
   formats appear: a format that took no files is not a "nothing to import"
   row. There is no
-  upload-failed section: a rejected source file is an ordinary failure row.
-- **`src/sources/`** — the picker. `picked-file.ts` is a re-export shim of
-  `importer-fundamentals`' vocabulary (`PickedFile` — `{ fileName, bytes,
-source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
-  `serverSource`, and `sourceFileReference`); nothing here redefines it, since
-  every format's `decode` reads the same type. `local-file.ts` is the
+  upload-failed section: a rejected archive is an ordinary failure row.
+- **`src/sources/`** — the picker. Every source here yields
+  `PickedFile.NamedBytes` (`{ fileName, bytes }`); the id a pick is known by is
+  `importer-core`'s `readBatch` to mint, and nothing in this directory does.
+  `local-file.ts` is the
   format-blind "read a local file's bytes and identify it against the
   registered formats' `detect`" gate — no format's `decode` runs at
   pick time; `server-source-file-list.tsx` is the uploaded-source-files pick
-  source (sections of rows, paging, a per-row explicit **Preview** and the
-  raw-contents modal it opens), spanning every registered format through
-  `SourceFile.FromDocumentReference` under that format's constants, and
+  source (one flat list of rows, paged by a bottom sentinel, a per-row
+  selection control and an explicit **Preview** with the raw-contents modal it
+  opens), spanning every registered format through
+  `PickedFile.FromDocumentReference` under that format's constants, and
   exported for the anonymizer shell's `serverSource` slot as much as used
-  here. Its own `mode`: `'batch'` gives each row a checkbox, each multi-row
-  section the shared `SectionToggle`, and one **Use selected as source**
-  action that fetches every selected row and hands them on as one list;
-  `'single'` keeps the per-row **Use as source** action and hands on a list of
-  one.
+  here. Its one knob is **`maxPicks`**: left out there is no cap, and the one
+  **Use selected as source** action fetches every checked row and hands them on
+  as one list; `maxPicks={1}` renders the rows as radios sharing a name — so
+  selecting one deselects every other — and names the action **Use as source**;
+  any other cap disables the remaining checkboxes once it is reached.
   `source-picker.tsx` composes the drop-and-pick zone, the file input it opens,
-  a **folder** pick, and that server list. Two modes: `'batch'` (default; the
-  importer flow) accepts several files in one pick; `'single'` trims the
-  accepted list to the first file and drops the OS dialog's `multiple`
-  attribute. The folder pick is `'batch'`-only and is the same batch path —
+  a **Choose files** button, a **Choose a folder** button, and that server list.
+  There are no modes: a local pick is never trimmed, and the server list inside
+  it is mounted with no cap. The folder pick is the same batch path —
   a DICOM study arrives as a directory of hundreds of `.dcm` files, and the
   files it yields go through the same detectors and the same by-name rejection
-  notice. `queries/source-files.ts`'s `sourceFileSections` is the pure sectioning behind
-  the list: rows naming the same `context.related` resource (a study's archives
-  naming their `ImagingStudy`) form one section titled `Study · N files`, and
-  every other row is a section of one titled by the row. The list decides
-  nothing about what an import _is_ — it hands the selected rows on as one
-  pick and the format's `decode` partitions them.
+  notice. The list decides
+  nothing about what an import _is_ — and groups nothing: a row that names a
+  `context.related` resource shows it as a secondary line, the selected rows go
+  on as one pick, and the format's `decode` groups them.
 - **`src/queries/`** — the reads. `source-files.ts` is the paged, format-blind
   `DocumentReference` search: one request per page with `category` set to
   the comma-joined `system|code` tokens of every registered format
   (`SOURCE_FILES_CATEGORY_TOKEN`), each returned resource classified by
-  dispatching `SourceFile.isSourceFile` over every format's `sourceFileFormat`
+  dispatching `PickedFile.isSourceFile` over every format's `sourceFileFormat`
   in registry order (disjoint by construction) so rows are tagged with the
-  format they came from; plus `fetchSourceFile` — the row-select's
-  fetch-and-decode through `SourceFile.FromDocumentReference` under that
-  format's constants — `fetchSourceFileContents`, the composed
-  `SourceFile.NamedBytesFromDocumentReference` read the preview modal uses, and
-  `sourceFileSections`.
+  format they came from, each row dated by the stored resource's own
+  `meta.lastUpdated`; plus `fetchSourceFile` — the one
+  fetch-and-decode through `PickedFile.FromDocumentReference` under that
+  format's constants, which both a row selection and the preview modal read
+  through.
   `page-token.ts` pulls the continuation cursor out of a bundle's `next`
   link (a copy of the web-trace viewer's, see the trap); `keys.ts` holds
   the query-key roots.
-- **The source file is a reviewed resource the format minted.** A `local`
-  pick's source-file `DocumentReference` is minted inside that format's
+- **The archive is a reviewed resource the format minted.** Every pick's
+  archive `DocumentReference` is minted inside that format's
   `decode` (by the batch decode `DecodeFunction.make` built) and arrives as its own
   "Source file" section ahead of that file's extracted ones, keyed
-  `<slot>/source-file/<fileName>`. The shell neither mints it nor
+  `<pick id>/source-file/<fileName>`. The shell neither mints it nor
   keys it, and dispatches on no format tag to get it: it reviews the row like
   any other resource, so the reviewer can edit its JSON or skip it. A settings
   re-decode re-mints it at the same deterministic id, so the review key and the
-  `meta.source` links survive. The source-file list query is invalidated once at
-  end-of-batch (a fresh source file is a new `DocumentReference` the picker
-  should see next pick — cheap even when none wrote).
+  `meta.source` links survive — and so does re-picking the same file off the
+  server, which is why its row comes back `unchanged` from the diff and
+  pre-excluded from the initial selection. The source-file list query is
+  invalidated once at end-of-batch (a fresh archive is a new
+  `DocumentReference` the picker should see next pick — cheap even when none
+  wrote).
 
 ## Traps
 
@@ -245,14 +245,14 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   into the panel, or the shell and the view can disagree.
 - **A format's confirm is one `persistBatchBundle`, and nothing is stamped at
   confirm.** `planFormatWrite` (in `importer-core`) turns the format's decoded
-  sections plus the reviewer's selection into the exact resource list — a
-  `local` pick's set leads with its source file in the same bundle as its
+  sections plus the reviewer's selection into the exact resource list — a set
+  leads with its archives in the same bundle as its
   extracted resources, no upload-then-persist sequence and no ordering to
   protect. `importOneFormat` hands that list straight to
   `persistBatchBundle`: it does not look for the
-  source file, lock an id, or write `meta.source`, because the format's
-  `decode` already minted the source file at a deterministic id and stamped
-  every extracted resource with its reference. A source-file row the reviewer
+  archive, lock an id, or write `meta.source`, because the format's
+  `decode` already minted the archive at a deterministic id and stamped
+  every extracted resource with its reference. An archive row the reviewer
   **excluded** is simply not written, and the resources keep their
   `meta.source` — the link points at a `DocumentReference` this batch chose not
   to upload, which is the reviewer's decision, not a rewrite the shell makes.
@@ -289,9 +289,9 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   the comma-joined `system|code` tokens of every registered format's
   source file coding (`WEB_TRACE_CODE_SYSTEM|har-archive` for HAR, the LifeLabs and DICOM
   systems for theirs), built at module
-  load from `SourceFile.categoryToken` over each format's `sourceFileFormat`,
+  load from `PickedFile.categoryToken` over each format's `sourceFileFormat`,
   so it cannot drift from what the mint writes. Each returned resource is
-  classified in registry order through `SourceFile.isSourceFile`; the predicates
+  classified in registry order through `PickedFile.isSourceFile`; the predicates
   are disjoint by construction (each tests a different `system|code`),
   so at most one claims any row and a row no predicate claims is
   dropped. The web-trace viewer lists traces under a different category
@@ -317,26 +317,23 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   TanStack Query would take it for a real cursor and re-request page one forever.
 - **The list carries rows, not source files.** A source file's bytes are the whole
   file, potentially megabytes (a multi-MB HAR, a PDF); `SourceFileRow` holds
-  only the id, its classified format, the title, and the upload instant.
-  `fetchSourceFile` (row select) and `fetchSourceFileContents` (preview modal)
-  each read the one source file the user chose. Listing the bytes to render a
-  title would pull every source file onto the device to draw a list.
-- **A row selection decodes through its format's source-file schema and keeps
+  only the id, its classified format, the title, what it is a source of, and
+  the stored resource's `meta.lastUpdated`.
+  `fetchSourceFile` reads the one file the user selected or previewed. Listing
+  the bytes to render a title would pull every source file onto the device to
+  draw a list.
+- **A row selection decodes through its format's archive codec and keeps
   the bytes verbatim.** `fetchSourceFile` decodes
-  `SourceFile.FromDocumentReference` with the row's format's
-  `sourceFileFormat` provided as the `SourceFile.Format` service — one of the
-  two places above `importer-fundamentals` that provides it — so a
-  resource that is not a source file of that format fails as a `ParseError`,
-  never yields nonsense — and returns the source file's `bytes` on the
-  `PickedFile`. Every downstream step reads bytes (`decode`, and the
-  confirm's upload if the pick were local). The `server` source carries
-  `DocumentReference/<id>` (via `sourceFileReference`, format-blind) so a
-  later step links provenance to the stored source file rather than
-  re-uploading.
+  `PickedFile.FromDocumentReference` with the row's format's
+  `sourceFileFormat` provided as the `PickedFile.Format` service — the one
+  place above `importer-fundamentals` that provides it — so a
+  resource that is not an archive of that format fails as a `ParseError`,
+  never yields nonsense. It hands on the stored file's own name and bytes and
+  nothing else: re-picking mints the archive it came from, because the id is a
+  hash of exactly those two.
 - **A row's Preview action opens a read-only raw-contents modal that
   renders the file itself.** The modal fetches through
-  `fetchSourceFileContents` (the same read as a pick, composed straight to the
-  name and the bytes) and picks its renderer from the format's
+  `fetchSourceFile` (the same read as a pick) and picks its renderer from the format's
   `sourceFileFormat.contentType`: PDF via
   a `<iframe>` at a `blob:` URL over the
   bytes (revoked on unmount), JSON pretty-printed inside a `<pre>`
@@ -344,28 +341,30 @@ source }` — the `local` / `server` `PickedFileSource.Source`, `LOCAL_SOURCE`,
   fallback for a giant source file. The modal writes nothing and offers no
   editing — a preview is inspection, not another entry point to the
   review flow.
-- **A source file's id is derived from its bytes and name, so re-importing upserts.**
+- **An archive's id is derived from its bytes and name, so re-importing upserts.**
   The mint `DecodeFunction.make` runs inside each format's `decode`
   derives the resource id with `localResourceId` over the file's SHA-256 and
   name — deterministic, not a per-pick uuid — so its bundle entry is a PUT to a
   stable `DocumentReference/<id>` and re-importing the same file under the same
-  name overwrites in place rather than piling up duplicates. The attachment's
-  `hash` and `size` still describe the bytes. (Result ids are also
+  name overwrites in place rather than piling up duplicates; a file re-picked
+  off the server mints the archive it came from. The attachment's
+  `hash` and `size` still describe the bytes, and the archive states no instant
+  at all. (Result ids are also
   deterministic — `FormatDecode.makeId` over the format tag and each picked
-  file's slot — so there is no client-side `crypto.randomUUID()` anywhere in
+  file's id — so there is no client-side `crypto.randomUUID()` anywhere in
   the flow.)
-- **Upload takes bytes, not text.** The source-file mint stores the file
+- **Upload takes bytes, not text.** The archive mint stores the file
   verbatim so a truncated or mis-encoded upload is preserved and the
   attachment `hash` means something. `PickedFile.bytes` is a `Uint8Array` from
   the picker all the way to the mint, and nothing in between re-encodes it.
 - **A group format's files are re-picked together or not at all.** Picking one
   archive of a study off the server yields a one-file study, which is a
-  different `ImagingStudy` than the one that was imported. That is why the
-  server list sections by `context.related` and hands every selected row on as
-  one pick — and why the sectioning key is `context.related` rather than
-  `subject`, which every file of every study of one patient shares. The
-  sectioning is display and selection only: what the rows make up is the
-  decode's `partition` to decide.
+  different `ImagingStudy` than the one that was imported. That is why the list
+  is multi-select and hands every selected row on as one pick, and why each row
+  shows what it is a source of (`context.related` — a study's archives name the
+  `ImagingStudy` they were read into, which `subject` cannot distinguish, since
+  every study of one patient shares it). The line is a label, not a grouping:
+  what the rows make up is the decode's `groupBy` to decide.
 - **The drop zone is a button, so drop is an enhancement rather than the only
   path.** The zone itself opens the file picker on click, so the whole
   surface is keyboard-reachable and screen-reader named; the
@@ -403,10 +402,11 @@ Use the workspace-local `node_modules/.bin/vp` for jsdom runs.
 - `importer-screen.test.tsx` is the end-to-end one: it replaces only the router
   seam and drives the whole flow over a recording stub `HttpClient`, reading one
   ordered write log back. It pins the opt-in seam (zero writes to reach a review),
-  the confirm (the source file and the extracted resources go out in one
+  the confirm (the archive and the extracted resources go out in one
   bundle, every resource write carrying the `meta.source` its decode stamped),
-  the server-source case, the
-  multi-file batch, the per-file source-file failure, the partial-write fold,
+  the re-picked server archive (its row present and pre-excluded, nothing
+  uploaded), the multi-file batch, the per-file archive failure, the
+  partial-write fold,
   that a single-format import reports no blank "nothing to import" rows, and
   cancel. It re-wraps `TextEncoder` output through the ambient `Uint8Array` (a
   jsdom single-realm workaround; the production encode stays `new

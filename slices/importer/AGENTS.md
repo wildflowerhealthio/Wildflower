@@ -26,17 +26,19 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   interface a binding writes as a literal) and `DecodeFunction.make`, the one
   constructor of the batch `decode` the shell runs: a binding gives its
   `sourceFileFormat` (its coding constants), how one set of files decodes
-  (`decodeFileSet`), and — only if its files are read together — which files
-  those are (`partition`) and what their archives link to (`archiveLinks`).
+  (`decodeFileSet`), and — only if its files are read together — the key they
+  share (`groupBy`), plus an optional `archive` that finishes each minted
+  archive off the decode.
   Back comes one `FormatDecode.Result` per format: the merged sections and
   notes, plus an `unreadableFiles` row per pick that rejected. The constructor
-  owns the source-file half — the deterministic mint, the archive section, the
-  `meta.source` stamp — and provides the format's `SourceFile.Format` service
+  owns the archive half — the deterministic mint for every pick, the archive
+  section, the `meta.source` stamp — and provides the format's
+  `PickedFile.Format` service
   internally, which is what keeps `sourceFileFormat` spelled once per binding,
   and it namespaces each set's review keys so one set's keys cannot collide
-  with another's. Also the `PickedFile` vocabulary, the `FormatDetector` seam
-  the picker sniffs with, the `SourceFile` vocabulary and schemas that store
-  and read an archive back, and the pure per-resource `StagedImport` model.
+  with another's. Also the `PickedFile` vocabulary and the codec that stores a
+  pick as an archive and reads it back, the `FormatDetector` seam
+  the picker sniffs with, and the pure per-resource `StagedImport` model.
   There is no `persist` sink: the write is the shell's one
   `persistBatchBundle`.
 - **[`har-importer-core`](./har-importer-core/AGENTS.md)** (the HAR binding) —
@@ -66,7 +68,7 @@ Each package's own AGENTS.md is the authority on its shape; the roles:
   coding that stores a DICOM file as a FHIR `DocumentReference` filed under
   the Patient the decode synthesized and related to the `ImagingStudy` it was
   read into, header tag parsing, and FHIR R4 synthesis (Patient /
-  ServiceRequest / ImagingStudy). The one format that states a **`partition`**:
+  ServiceRequest / ImagingStudy). The one format that states a **`groupBy`**:
   its decode groups a pick by `StudyInstanceUID` (and patient) and yields one
   `ImagingStudy` per study, with one archive per file.
 - **[`dicom-importer-react`](./dicom-importer-react/AGENTS.md)** (the DICOM
@@ -138,15 +140,17 @@ sits above `http-extraction` and below every binding, exactly as
   toggle, the LifeLabs time zone) re-runs `decode` from the retained bytes —
   still the read half.
 - **The picker takes bytes, and identifies against every registered
-  format.** A picked file is a name + raw bytes + its provenance (`local`,
-  or `server` naming a source file already on the device): HAR is UTF-8 JSON, a
+  format.** A picked file is a name + raw bytes: HAR is UTF-8 JSON, a
   LifeLabs report is a PDF, a DICOM file is binary, and every downstream step
-  reads bytes. The picker runs each registered format's `detect` on every
+  reads bytes. Where the file came from rides nowhere — `readBatch` gives every
+  pick its id and every pick is archived, and a file re-picked off the server
+  mints the archive it came from, because the id is a hash of its bytes and its
+  name. The picker runs each registered format's `detect` on every
   drop and yields the pick tagged with the first format that claims it, so
   a batch may span formats — `importer-core`'s `readBatch` groups the pick by
   format and runs each format's own batch `decode` under that format's
-  settings. A format's `decode` mints its own source-file `DocumentReference`
-  for each `local` pick, lists it among the reviewed sections, and stamps every
+  settings. A format's `decode` mints its own archive `DocumentReference`
+  for every pick, lists it among the reviewed sections, and stamps every
   extracted resource's `meta.source` with it; nothing above the binding mints
   or stamps anything. Which files decode _together_ is its own business too:
   HAR and LifeLabs decode a file at a time, DICOM a whole study — the shell

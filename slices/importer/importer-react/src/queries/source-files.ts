@@ -12,7 +12,7 @@ import { useRunAuthed } from 'fhir-r4-react'
 import { fetchDocumentReferencePage, useSmartHandshake } from 'fhir-r4-react/smart'
 import { FhirR4ResourcesHttpApiClient } from 'fhir-r4/clients'
 import type { DocumentReference } from 'fhir-r4/resources'
-import { PickedFile, SourceFile } from 'importer-fundamentals'
+import { PickedFile } from 'importer-fundamentals'
 
 type SmartClient = Parameters<typeof fetchDocumentReferencePage>[0]
 
@@ -58,9 +58,6 @@ import { nextPageToken } from './page-token.ts'
  */
 const DEFAULT_PAGE_SIZE = 50
 
-/** How a source file with no title reads — as a row, and as its own section. */
-const UNTITLED_SOURCE_FILE = 'Untitled source file'
-
 /**
  * The comma-joined `system|code` search value covering every registered
  * format's source-file category token — the one value the server-side search
@@ -74,7 +71,7 @@ const UNTITLED_SOURCE_FILE = 'Untitled source file'
  * `DocumentReference` matching *any* of the tokens.
  */
 const SOURCE_FILES_CATEGORY_TOKEN = formatKinds
-  .map((kind) => SourceFile.categoryToken(formatRegistry[kind].sourceFileFormat))
+  .map((kind) => PickedFile.categoryToken(formatRegistry[kind].sourceFileFormat))
   .join(',')
 
 /**
@@ -100,8 +97,16 @@ interface SourceFileRow {
   readonly format: FormatKind
   /** The source file's title — its original file name — or `null` when it carries none. */
   readonly title: string | null
-  /** When the source file was uploaded, or `null` when the resource states no instant. */
-  readonly creation: DateTime.Utc | null
+  /**
+   * When the stored resource was last written, or `null` when it states no
+   * instant.
+   *
+   * @remarks
+   * The server's own `meta.lastUpdated`, not anything the archive carries: an
+   * archive states what the file *is*, and the instant it reached the device is
+   * the server's to know.
+   */
+  readonly lastUpdated: DateTime.Utc | null
   /**
    * The resource this source file is one source of — `context.related` — or
    * `null` when it names none.
@@ -156,7 +161,7 @@ interface SourceFilesQueryOptions {
  */
 const classifySourceFile = (resource: DocumentReference.Type): FormatKind | undefined =>
   formatKinds.find((kind) =>
-    SourceFile.isSourceFile(formatRegistry[kind].sourceFileFormat)(resource)
+    PickedFile.isSourceFile(formatRegistry[kind].sourceFileFormat)(resource)
   )
 
 /**
@@ -171,8 +176,8 @@ const classifySourceFile = (resource: DocumentReference.Type): FormatKind | unde
  * search returned it (the coding matched), but the format is not
  * registered here, so the shell has no reader for it. A source file with no
  * logical id is dropped too: a row exists to be selected, and a selection
- * needs an id to fetch by. The title and upload instant are read straight
- * off the attachment; neither decodes the bytes, so listing a page never
+ * needs an id to fetch by. The title comes off the attachment and the date off
+ * the resource's own `meta`; neither decodes the bytes, so listing a page never
  * pulls a single source file's contents onto the device.
  */
 const rowsOf = (
@@ -188,7 +193,7 @@ const rowsOf = (
       id: resource.id,
       format,
       title: attachment?.title ?? null,
-      creation: attachment?.creation ?? null,
+      lastUpdated: resource.meta?.lastUpdated ?? null,
       related: resource.context?.related[0]?.reference ?? null,
     })
   })
@@ -348,57 +353,26 @@ const useSmartSourceFilesQuery = (
 }
 
 /**
- * Fetches one source file whole and reads it back as a {@link PickedFile}.
+ * Fetches one source file whole and reads it back as named bytes.
  *
  * @param runAuthed - The authed runner from router context
  * @param row - The row a selection or preview identified — its id and its
  *   classified format
- * @returns The source file's raw bytes and a `server` source pointing back at it
+ * @returns The stored file's own name and raw bytes
  *
  * @remarks
- * Decodes through `SourceFile.FromDocumentReference` under the row's format's
- * own constants, so a resource that is not a source file of that format fails
- * as a `ParseError` rather than yielding nonsense. The bytes are carried verbatim — every
- * downstream step reads bytes (`decode`, and the confirm's upload if the
- * pick were local) — and the `server` source carries the source file's own
- * reference so a later step links provenance to the stored source file
- * instead of uploading the same bytes again.
+ * Decodes through `PickedFile.FromDocumentReference` under the row's format's
+ * own constants, so a resource that is not an archive of that format fails as a
+ * `ParseError` rather than yielding nonsense. The bytes are carried verbatim —
+ * every downstream step reads bytes — and no id travels with them: a re-picked
+ * archive mints the same id from the same bytes and name, so the row it
+ * produces is the one already stored.
+ *
+ * One read for both consumers. The picker hands the result to the batch, which
+ * gives it its batch id; the preview dialog renders it. A preview does not
+ * pick, and there is nothing left for it to strip.
  */
 const fetchSourceFile = (
-  runAuthed: RunAuthed,
-  row: { readonly id: string; readonly format: FormatKind }
-): Promise<PickedFile.Type> =>
-  runAuthed(
-    Effect.gen(function* () {
-      const client = yield* FhirR4ResourcesHttpApiClient
-      const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      const { fileName, bytes } = yield* Schema.decode(SourceFile.FromDocumentReference)(
-        resource
-      ).pipe(Effect.provideService(SourceFile.Format, formatRegistry[row.format].sourceFileFormat))
-      return {
-        fileName,
-        bytes,
-        source: PickedFile.Source.server(row.id),
-      }
-    })
-  )
-
-/**
- * Fetches the raw bytes and file name of one source file, without turning it
- * into a {@link PickedFile}. The read half of the preview modal.
- *
- * @param runAuthed - The authed runner from router context
- * @param row - The row a preview opened — its id and its classified format
- * @returns The source file's file name and raw bytes, or a rejection when the
- *   decoded resource is not this format's source file
- *
- * @remarks
- * Same underlying read as {@link fetchSourceFile}, composed straight to the
- * name and the bytes: a preview does not pick, so it needs no `server` source. The
- * split is what lets the preview modal live at arm's length from the
- * source pipeline.
- */
-const fetchSourceFileContents = (
   runAuthed: RunAuthed,
   row: { readonly id: string; readonly format: FormatKind }
 ): Promise<PickedFile.NamedBytes> =>
@@ -406,73 +380,17 @@ const fetchSourceFileContents = (
     Effect.gen(function* () {
       const client = yield* FhirR4ResourcesHttpApiClient
       const resource = yield* client.DocumentReference.GetById({ path: { id: row.id } })
-      return yield* Schema.decode(SourceFile.NamedBytesFromDocumentReference)(resource).pipe(
-        Effect.provideService(SourceFile.Format, formatRegistry[row.format].sourceFileFormat)
-      )
+      const { fileName, bytes } = yield* Schema.decode(PickedFile.FromDocumentReference)(
+        resource
+      ).pipe(Effect.provideService(PickedFile.Format, formatRegistry[row.format].sourceFileFormat))
+      return { fileName, bytes }
     })
   )
-
-/** One entry of the rendered source-file list: a titled section of rows. */
-interface SourceFileSection {
-  /** How the section reads: a study and its size, or the one row's own title. */
-  readonly title: string
-  /** The rows of this section, in the order the server listed them. Never empty. */
-  readonly rows: readonly SourceFileRow[]
-}
-
-/** How a group of a study's files is headed. */
-const studySectionTitle = (count: number): string => `Study · ${count} files`
-
-/**
- * Group the listed rows into the sections the list renders.
- *
- * @param rows - The source files listed so far, in server order
- * @returns One section per study whose files are listed together, and a
- *   section of one for every other row, each at the position of its first row
- *
- * @remarks
- * A group format stores one archive per file and links each to the resource
- * they were read into ({@link SourceFileRow.related}). Listed flat, a
- * twelve-file DICOM study is twelve rows that say nothing about being one
- * study. Sectioning is what lets the list name the study and offer its rows
- * together — it decides nothing about what a study *is*: the rows a reviewer
- * selects are handed on as one pick, and the format's decode partitions them.
- *
- * Pure, and over the rows already loaded: paging can split a study across
- * pages, in which case its later files join the section as those pages load.
- */
-const sourceFileSections = (rows: readonly SourceFileRow[]): readonly SourceFileSection[] => {
-  const byRelated = new Map<string, SourceFileRow[]>()
-  for (const row of rows) {
-    if (row.related === null) continue
-    const members = byRelated.get(row.related)
-    if (members === undefined) byRelated.set(row.related, [row])
-    else members.push(row)
-  }
-
-  const emitted = new Set<string>()
-  const sections: SourceFileSection[] = []
-  for (const row of rows) {
-    const members = row.related === null ? undefined : byRelated.get(row.related)
-    if (row.related === null || members === undefined || members.length < 2) {
-      sections.push({ title: row.title ?? UNTITLED_SOURCE_FILE, rows: [row] })
-      continue
-    }
-    if (emitted.has(row.related)) continue
-    emitted.add(row.related)
-    sections.push({ title: studySectionTitle(members.length), rows: members })
-  }
-  return sections
-}
 
 export {
   DEFAULT_PAGE_SIZE,
   fetchSourceFile,
-  fetchSourceFileContents,
   SOURCE_FILES_CATEGORY_TOKEN,
-  sourceFileSections,
-  type SourceFileSection,
-  UNTITLED_SOURCE_FILE,
   type SourceFilePage,
   type SourceFilePageParam,
   type SourceFileRow,

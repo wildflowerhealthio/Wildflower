@@ -81,9 +81,9 @@ function.
   and date of service, `'LifeLabs report'` when both are masked), and no notes.
   Both extraction failure and an unrecognized LifeLabs document surface as
   `ParseError` — the one error channel the batch decode folds into that file's
-  `unreadableFiles` entry. The `source` argument (the file's resolved
-  source-file id) is unused here: this format derives no id from its source
-  file, and the batch decode does the `meta.source` stamping.
+  `unreadableFiles` entry. It reads only the picked file's name and bytes: this
+  format derives no id from its archive, and the batch decode does the
+  `meta.source` stamping.
 - `src/detect.ts` — **`detectLifeLabsPdf`**, the importer's `detect`:
   `%PDF-` magic bytes or a `.pdf` extension. Kept syntactic so the picker can
   call every registered format's `detect` on every drop; the real recognition
@@ -106,12 +106,11 @@ function.
 - `src/lifelabs-pdf-importer.ts` — **`lifeLabsPdfImporter`**, the
   `FileImporter.Type` literal for format `'lifelabs-pdf'`, its `decode` a
   `DecodeFunction.make` with `decodeLifeLabsPdf` as its `decodeFileSet` — no
-  `partition` (a report stands alone) and no `archiveLinks`. The
-  batch decode it returns mints a `local` pick's source-file
+  `groupBy` (a report stands alone) and no `archive`. The
+  batch decode it returns mints every pick's archive
   `DocumentReference` and reviews it as its own "Source file" section, stamps
-  every synthesized resource's `meta.source` with it (a `server` pick mints
-  nothing and stamps the reference it came with), and folds a file whose bytes
-  yield no report into that file's `unreadableFiles` entry. What `decode`
+  every synthesized resource's `meta.source` with it, and folds a file whose
+  bytes yield no report into that file's `unreadableFiles` entry. What `decode`
   returns is what the user reviews — this format has no routing decisions to
   interpose, and the write is the shell's one `persistBatchBundle`, not an
   importer field.
@@ -131,8 +130,8 @@ Depends on `positioned-text` (the positioned-text schema — the neutral seam
 between extraction and the dialect), `positioned-text-web`
 (`extractPositionedText`, the shared pdfjs seam the anonymizer also drives),
 `fhir-r4` (resource schemas, `joinIdComponents`, `adoptResource`),
-`importer-fundamentals` (`DecodeFunction.make`, `DecodedFile`, `PickedFile`,
-`SourceFile`), `kitchen-sink`
+`importer-fundamentals` (`DecodeFunction.make`, `DecodedFile`, `PickedFile`),
+`kitchen-sink`
 (`fnv1a64` for deterministic id hashing, `numRunsFor` in tests), and `effect`
 (peer; `Report.tryFromDocument` returns an `Effect`). `fast-check` is a
 test-only `devDependency`, reached only from the `*-arbitrary.ts` modules,

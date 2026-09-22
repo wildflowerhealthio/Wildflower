@@ -1,7 +1,7 @@
 import { ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
 import { type FhirResource, Patient } from 'fhir-r4/resources'
-import { type FormatDecode, PickedFile, StagedImport } from 'importer-fundamentals'
+import { type FormatDecode, StagedImport } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
@@ -13,7 +13,7 @@ const resource = (id: string): FhirResource =>
 const formatResult = (keys: readonly string[]): FormatDecode.Result<string> => ({
   id: 'u',
   title: 'a.har',
-  files: [{ fileName: 'a.har', bytes: new Uint8Array([1]), source: PickedFile.Source.local }],
+  files: [{ id: '0:a.har', fileName: 'a.har', bytes: new Uint8Array([1]) }],
   format: 'har',
   decoded: {
     sections: [
@@ -32,18 +32,14 @@ describe('planFormatWrite', () => {
     const result: FormatDecode.Result<string> = {
       id: 'u',
       title: 'broken.har',
-      files: [{ fileName: 'broken.har', bytes: new Uint8Array(), source: PickedFile.Source.local }],
+      files: [{ id: '0:broken.har', fileName: 'broken.har', bytes: new Uint8Array() }],
       format: 'har',
       decoded: { sections: [], notes: [] },
       unreadableFiles: [
         {
           id: 'broken',
           title: 'broken.har',
-          pickedFile: {
-            fileName: 'broken.har',
-            bytes: new Uint8Array(),
-            source: PickedFile.Source.local,
-          },
+          pickedFile: { id: '0:broken.har', fileName: 'broken.har', bytes: new Uint8Array() },
           error: new ParseResult.ParseError({
             issue: new ParseResult.Type(Schema.Never.ast, 'x', 'unreadable'),
           }),

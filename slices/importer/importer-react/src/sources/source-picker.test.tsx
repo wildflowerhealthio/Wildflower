@@ -1,7 +1,7 @@
 // oxlint-disable import/max-dependencies
 import { HttpClient, HttpClientResponse, type HttpClientRequest } from '@effect/platform'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { userEvent } from '@testing-library/user-event'
 import { DICOM_SOURCE_FILE_CODE, DICOM_SYSTEM } from 'dicom-importer-core/source-file'
 import { DateTime, Effect, Layer, Schema } from 'effect'
@@ -74,13 +74,44 @@ let queryClient: QueryClient
 beforeEach(() => {
   sentRequests = []
   queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+  // jsdom has no `IntersectionObserver`; the server list's bottom sentinel
+  // builds one. Quiet by default, so only the paging test pages.
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      observe(): void {}
+      disconnect(): void {}
+    }
+  )
 })
 
 afterEach(() => {
   cleanup()
   queryClient.clear()
+  vi.unstubAllGlobals()
   vi.restoreAllMocks()
 })
+
+/**
+ * Replace the quiet stub with one that hands each observer's callback back,
+ * so a test can simulate the sentinel entering the viewport.
+ */
+const captureIntersectionObservers = (): readonly { readonly trigger: () => void }[] => {
+  const observers: { readonly trigger: () => void }[] = []
+  class MockIntersectionObserver {
+    constructor(callback: (entries: readonly { readonly isIntersecting: boolean }[]) => void) {
+      observers.push({
+        trigger: () => {
+          callback([{ isIntersecting: true }])
+        },
+      })
+    }
+    observe(): void {}
+    disconnect(): void {}
+  }
+  vi.stubGlobal('IntersectionObserver', MockIntersectionObserver)
+  return observers
+}
 
 describe('SourcePicker', () => {
   it('should reach the same HAR text from a dropped file, a chosen file, and a server archive', async () => {
@@ -89,7 +120,7 @@ describe('SourcePicker', () => {
       pages: [{ archives: [{ id: 'archive-1', fileName: 'portal-session.har' }] }],
       harTextById: { 'archive-1': VALID_HAR },
     })
-    const picks: Array<{ fileName: string; bytes: Uint8Array; source: unknown }> = []
+    const picks: Array<{ fileName: string; bytes: Uint8Array }> = []
     render(<SourcePicker detectors={testDetectors} onPick={(chosen) => picks.push(...chosen)} />, {
       wrapper: withQueryClient,
     })
@@ -115,10 +146,9 @@ describe('SourcePicker', () => {
     const decode = (bytes: Uint8Array): string => new TextDecoder().decode(bytes)
     expect(picks.map((pick) => decode(pick.bytes))).toEqual([VALID_HAR, VALID_HAR, VALID_HAR])
     expect(picks[0]?.fileName).toBe('portal-session.har')
-    expect(picks[0]?.source).toEqual({ _tag: 'local' })
-    expect(decode(picks[1]?.bytes ?? new Uint8Array())).toBe(VALID_HAR)
-    expect(picks[1]?.source).toEqual({ _tag: 'local' })
-    expect(picks[2]?.source).toEqual({ _tag: 'server', reference: 'DocumentReference/archive-1' })
+    expect(picks[1]?.fileName).toBe('portal-session.har')
+    // The server pick is titled by what the fetch read back off the archive.
+    expect(picks[2]?.fileName).toBe('archive-1.har')
   })
 
   it('should list server archives by title and date, and read the selected one over an authed search', async () => {
@@ -130,7 +160,7 @@ describe('SourcePicker', () => {
       ],
       harTextById: { 'archive-1': VALID_HAR },
     })
-    let picked: { bytes: Uint8Array; source: unknown } | undefined
+    let picked: { bytes: Uint8Array } | undefined
     render(<SourcePicker detectors={testDetectors} onPick={(chosen) => (picked = chosen[0])} />, {
       wrapper: withQueryClient,
     })
@@ -159,13 +189,13 @@ describe('SourcePicker', () => {
       expect(picked !== undefined).toBe(true)
     })
     expect(new TextDecoder().decode(picked?.bytes ?? new Uint8Array())).toBe(VALID_HAR)
-    expect(picked?.source).toEqual({ _tag: 'server', reference: 'DocumentReference/archive-1' })
     // The fetch was a second, authed request
     expect(sentRequests[1]?.headers['authorization']).toBe(`Bearer ${ACCESS_TOKEN}`)
   })
 
   it('should page the server list with the cursor from the bundle next link', async () => {
     // Arrange — page one carries a next cursor, page two does not
+    const observers = captureIntersectionObservers()
     serveArchives({
       pages: [
         { archives: [{ id: 'archive-1', fileName: 'first.har' }], nextCursor: 'cursor-2' },
@@ -180,8 +210,13 @@ describe('SourcePicker', () => {
       expect(screen.getByRole('checkbox', { name: 'Select first.har' })).toBeDefined()
     })
 
-    // Act
-    await userEvent.click(screen.getByRole('button', { name: 'Show more source files' }))
+    // Act — the bottom sentinel scrolls into view
+    await waitFor(() => {
+      expect(observers.length).toBeGreaterThan(0)
+    })
+    act(() => {
+      observers.at(-1)?.trigger()
+    })
 
     // Assert — the second search carried the cursor, and both pages are listed
     await waitFor(() => {
@@ -319,40 +354,6 @@ describe('SourcePicker', () => {
     expect(calls[0]).toEqual(['archive-1.har', 'archive-2.har'])
   })
 
-  it('should hand a one-at-a-time caller the server row it used, as a list of one', async () => {
-    serveArchives({
-      pages: [{ archives: [{ id: 'archive-1', fileName: 'portal-session.har' }] }],
-      harTextById: { 'archive-1': VALID_HAR },
-    })
-    const calls: string[][] = []
-    render(
-      <SourcePicker
-        detectors={testDetectors}
-        mode="single"
-        onPick={(chosen) => calls.push(chosen.map((one) => one.fileName))}
-      />,
-      { wrapper: withQueryClient }
-    )
-    const use = await screen.findByRole('button', { name: 'Use portal-session.har as source' })
-
-    await userEvent.click(use)
-
-    await waitFor(() => {
-      expect(calls).toHaveLength(1)
-    })
-    expect(calls[0]).toEqual(['archive-1.har'])
-    expect(screen.queryByRole('checkbox')).toBeNull()
-  })
-
-  it('should offer no folder pick to a caller that consumes one file at a time', () => {
-    serveArchives({ pages: [{ archives: [] }], harTextById: {} })
-    render(<SourcePicker detectors={testDetectors} onPick={() => undefined} mode="single" />, {
-      wrapper: withQueryClient,
-    })
-    expect(screen.queryByLabelText('Import folder')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Choose a folder' })).toBeNull()
-  })
-
   it('should pick the valid files in a mixed drop and name the ones that were not HARs', async () => {
     // Arrange
     serveArchives({ pages: [{ archives: [] }], harTextById: {} })
@@ -423,14 +424,13 @@ const archiveWire = (fields: {
     status: 'current',
     type: { coding },
     category: [{ coding }],
-    date: iso,
+    meta: { lastUpdated: iso },
     content: [
       {
         attachment: {
           contentType: 'application/json',
           data: base64(fields.harText ?? '{"log":{"version":"1.2","entries":[]}}'),
           title: fields.fileName,
-          creation: iso,
         },
       },
     ],

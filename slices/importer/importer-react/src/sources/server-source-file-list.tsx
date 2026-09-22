@@ -2,40 +2,36 @@ import { useQuery } from '@tanstack/react-query'
 import { DateTime, Match } from 'effect'
 import { useRunAuthed } from 'fhir-r4-react'
 import type { PickedFile } from 'importer-fundamentals'
-import { useEffect, useMemo, useState, type JSX } from 'react'
+import { useEffect, useMemo, useRef, useState, type JSX } from 'react'
 import { Dialog } from 'react-tundraish'
 
 import { DicomFilePreview } from 'dicom-importer-react'
-import { SectionToggle } from '../preview/section-toggle.tsx'
 import { SOURCE_FILES_QUERY_KEY } from '../queries/keys.ts'
 import {
   type SourceFileRow,
-  type SourceFileSection,
-  UNTITLED_SOURCE_FILE,
   fetchSourceFile,
-  fetchSourceFileContents,
-  sourceFileSections,
   useSmartSourceFilesQuery,
 } from '../queries/source-files.ts'
 import { formatRegistry } from '../registry.ts'
 import styles from './server-source-file-list.module.css'
 
 /**
- * Uploaded source files on the device's own FHIR server, as a pick source:
- * sections of rows across every registered format (HAR, LifeLabs PDF, DICOM),
- * paged by the bundle's next link. Each row carries an explicit **Preview**
- * action that opens a raw-contents modal; how one is picked depends on the
- * host's `mode`.
+ * Uploaded source files on the device's own FHIR server, as a pick source: one
+ * flat list of rows across every registered format (HAR, LifeLabs PDF, DICOM),
+ * paged as the reader scrolls. Each row carries a selection control and an
+ * explicit **Preview** action; the selection is handed on together by the one
+ * **Use selected as source** button.
  *
  * @remarks
  * Extracted from {@link SourcePicker} so a host outside this slice — the
  * anonymizer shell's `serverSource` slot — can offer the same server picks
  * without importing the whole picker. Reads only: the list is a search, a
  * preview is a `DocumentReference` GET plus a bytes render, a "use" is the
- * same GET plus a `PickedFile` synthesis; nothing here writes.
+ * same GET plus the file's own name and bytes; nothing here writes.
  *
- * The list decides nothing about what one import *is*: a batch pick hands
- * every selected row on as one list, and the format's decode partitions it.
+ * The list decides nothing about what one import *is* — and groups nothing. A
+ * selection is handed on as one list of files, and the format's decode is what
+ * says which of them belong together.
  *
  * @packageDocumentation
  */
@@ -44,10 +40,20 @@ import styles from './server-source-file-list.module.css'
 const UNDATED_LABEL = 'Upload date unknown'
 
 /** How a source file with no title reads in a row. */
-const UNTITLED_LABEL = UNTITLED_SOURCE_FILE
+const UNTITLED_LABEL = 'Untitled source file'
 
 /** The error shown when a chosen server source file cannot be read back. */
 const SERVER_READ_ERROR = 'That source file could not be read from the server.'
+
+/**
+ * The `name` the radio inputs share when the host takes exactly one file.
+ *
+ * @remarks
+ * One name across the rows is what makes them one group, so the browser's own
+ * radio semantics — arrow-key roving, one checked member — are what a reader
+ * gets, rather than a checkbox list that silently unticks its neighbours.
+ */
+const SINGLE_PICK_GROUP = 'server-source-file'
 
 /**
  * The cap at which a JSON source file stops rendering inline in the preview
@@ -57,78 +63,68 @@ const SERVER_READ_ERROR = 'That source file could not be read from the server.'
  */
 const JSON_PREVIEW_SIZE_LIMIT = 5 * 1024 * 1024
 
-/**
- * How many source files the host consumes at once.
- *
- * @remarks
- * `batch` is the importer flow: rows are selected across the sections and
- * picked together, so a study re-imports as the one study it was.
- * `single` is a one-at-a-time flow — the anonymizer's `serverSource` slot,
- * which has nowhere to put a twelve-file pick.
- */
-type SourceFileListMode = 'batch' | 'single'
-
 /** Props for {@link ServerSourceFileList}. */
 interface ServerSourceFileListProps {
-  /** Called with the fetched source files once the chosen rows resolve. */
-  readonly onPick: (picked: readonly PickedFile.Type[]) => void
-  /** Whether the host takes a batch of files or one at a time. */
-  readonly mode: SourceFileListMode
-}
-
-/** Props for {@link SourceFileListContent}. */
-interface SourceFileListContentProps {
-  readonly isError: boolean
-  readonly isPending: boolean
-  readonly rows: readonly SourceFileRow[]
-  readonly mode: SourceFileListMode
-  readonly selected: ReadonlySet<string>
-  readonly onPreview: (row: SourceFileRow) => void
-  readonly onUse: (row: SourceFileRow) => void
-  readonly onSetSelected: (ids: readonly string[], included: boolean) => void
+  /** Called with the fetched files once the selected rows resolve. */
+  readonly onPick: (picked: readonly PickedFile.NamedBytes[]) => void
+  /**
+   * How many rows may be selected at once. Left out, there is no cap.
+   *
+   * @remarks
+   * `1` is a host with nowhere to put a twelve-file pick — the anonymizer's
+   * `serverSource` slot, and the importer app's own tab, which imports one
+   * file at a time. It renders the rows as radios, so selecting one deselects
+   * every other, and names the action **Use as source**. Any other cap simply
+   * disables the remaining rows' checkboxes once it is reached.
+   */
+  readonly maxPicks?: number | undefined
 }
 
 /** Props for {@link SourceFileRowItem}. */
 interface SourceFileRowItemProps {
   readonly row: SourceFileRow
-  readonly mode: SourceFileListMode
   readonly isSelected: boolean
+  /** Whether the host takes exactly one file, which the row renders as a radio. */
+  readonly isSingle: boolean
+  /** Whether the cap is reached and this row is not one of the selected. */
+  readonly isCapped: boolean
   readonly onPreview: (row: SourceFileRow) => void
-  readonly onUse: (row: SourceFileRow) => void
-  readonly onSetSelected: (ids: readonly string[], included: boolean) => void
+  readonly onToggle: (row: SourceFileRow) => void
 }
 
 /**
- * One source file: its name and upload date, its Preview action, and the way
- * it is picked — a selection checkbox in `batch`, its own **Use as source**
- * action in `single`.
+ * One source file: its name, the resource it is a source of when it names one,
+ * its date, its selection control, and its Preview action.
  */
 const SourceFileRowItem = ({
   row,
-  mode,
   isSelected,
+  isSingle,
+  isCapped,
   onPreview,
-  onUse,
-  onSetSelected,
+  onToggle,
 }: SourceFileRowItemProps): JSX.Element => {
   const title = row.title ?? UNTITLED_LABEL
   return (
     <li className={styles.archiveRow}>
       <div className={styles.archiveMeta}>
-        {mode === 'batch' && (
-          <input
-            type="checkbox"
-            className={styles.archiveSelect}
-            checked={isSelected}
-            aria-label={`Select ${title}`}
-            onChange={() => {
-              onSetSelected([row.id], !isSelected)
-            }}
-          />
-        )}
+        <input
+          type={isSingle ? 'radio' : 'checkbox'}
+          {...(isSingle ? { name: SINGLE_PICK_GROUP } : {})}
+          className={styles.archiveSelect}
+          checked={isSelected}
+          disabled={isCapped}
+          aria-label={`Select ${title}`}
+          onChange={() => {
+            onToggle(row)
+          }}
+        />
         <span className={styles.archiveTitle}>{title}</span>
+        {row.related !== null && (
+          <span className={styles.archiveRelated}>source of {row.related}</span>
+        )}
         <span className={styles.archiveDate}>
-          {row.creation === null ? UNDATED_LABEL : DateTime.formatIsoDate(row.creation)}
+          {row.lastUpdated === null ? UNDATED_LABEL : DateTime.formatIsoDate(row.lastUpdated)}
         </span>
       </div>
       <div className={styles.archiveActions}>
@@ -142,76 +138,21 @@ const SourceFileRowItem = ({
         >
           Preview
         </button>
-        {mode === 'single' && (
-          <button
-            type="button"
-            className={`${styles.actionButton} ${styles.pickAction}`}
-            aria-label={`Use ${title} as source`}
-            onClick={() => {
-              onUse(row)
-            }}
-          >
-            Use as source
-          </button>
-        )}
       </div>
     </li>
   )
 }
 
-/** Props for {@link SourceFileSectionItem}. */
-interface SourceFileSectionItemProps extends Omit<
-  SourceFileListContentProps,
-  'isError' | 'isPending' | 'rows'
-> {
-  readonly section: SourceFileSection
-}
-
-/**
- * One section of the list: its rows, under a heading with the shared
- * {@link SectionToggle} when it holds more than one.
- *
- * @remarks
- * A section of one is rendered as its row alone — its title is the row's own,
- * and its toggle is the row's own checkbox, so a heading would repeat both.
- */
-const SourceFileSectionItem = ({
-  section,
-  mode,
-  selected,
-  onPreview,
-  onUse,
-  onSetSelected,
-}: SourceFileSectionItemProps): JSX.Element => {
-  const rows = section.rows.map((row) => (
-    <SourceFileRowItem
-      key={row.id}
-      row={row}
-      mode={mode}
-      isSelected={selected.has(row.id)}
-      onPreview={onPreview}
-      onUse={onUse}
-      onSetSelected={onSetSelected}
-    />
-  ))
-  if (section.rows.length === 1) return <>{rows}</>
-  return (
-    <li className={styles.archiveSection}>
-      {mode === 'batch' ? (
-        <SectionToggle
-          title={section.title}
-          keys={section.rows.map((row) => row.id)}
-          isIncluded={(id) => selected.has(id)}
-          onSetIncluded={onSetSelected}
-        />
-      ) : (
-        <div className={styles.archiveSectionHeading}>
-          <span className={styles.archiveTitle}>{section.title}</span>
-        </div>
-      )}
-      <ul className={styles.archiveList}>{rows}</ul>
-    </li>
-  )
+/** Props for {@link SourceFileListContent}. */
+interface SourceFileListContentProps {
+  readonly isError: boolean
+  readonly isPending: boolean
+  readonly rows: readonly SourceFileRow[]
+  readonly isSingle: boolean
+  readonly selected: ReadonlySet<string>
+  readonly isCapped: boolean
+  readonly onPreview: (row: SourceFileRow) => void
+  readonly onToggle: (row: SourceFileRow) => void
 }
 
 /** The inner list content, rendered via Match over the query state. */
@@ -219,11 +160,11 @@ const SourceFileListContent = ({
   isError,
   isPending,
   rows,
-  mode,
+  isSingle,
   selected,
+  isCapped,
   onPreview,
-  onUse,
-  onSetSelected,
+  onToggle,
 }: SourceFileListContentProps): JSX.Element =>
   Match.value({ isError, isPending, empty: rows.length === 0 }).pipe(
     Match.when({ isError: true }, () => (
@@ -241,15 +182,15 @@ const SourceFileListContent = ({
     )),
     Match.orElse(() => (
       <ul className={styles.archiveList}>
-        {sourceFileSections(rows).map((section) => (
-          <SourceFileSectionItem
-            key={section.rows[0]?.id ?? section.title}
-            section={section}
-            mode={mode}
-            selected={selected}
+        {rows.map((row) => (
+          <SourceFileRowItem
+            key={row.id}
+            row={row}
+            isSelected={selected.has(row.id)}
+            isSingle={isSingle}
+            isCapped={isCapped && !selected.has(row.id)}
             onPreview={onPreview}
-            onUse={onUse}
-            onSetSelected={onSetSelected}
+            onToggle={onToggle}
           />
         ))}
       </ul>
@@ -257,11 +198,11 @@ const SourceFileListContent = ({
   )
 
 /**
- * The uploaded-source-files list, heading and paging included. An explicit
- * **Preview** per row; a **Use selected as source** for a batch host, a
- * per-row **Use as source** for a single-file one.
+ * The uploaded-source-files list: a flat, multi-selectable list with an
+ * explicit **Preview** per row, one action that takes the selection, and a
+ * bottom sentinel that pages the rest in as it scrolls into view.
  */
-const ServerSourceFileList = ({ onPick, mode }: ServerSourceFileListProps): JSX.Element => {
+const ServerSourceFileList = ({ onPick, maxPicks }: ServerSourceFileListProps): JSX.Element => {
   const runAuthed = useRunAuthed()
   const sourceFiles = useSmartSourceFilesQuery()
   const [error, setError] = useState<string | null>(null)
@@ -269,9 +210,32 @@ const ServerSourceFileList = ({ onPick, mode }: ServerSourceFileListProps): JSX.
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set())
 
   const rows = sourceFiles.data?.pages.flatMap((page) => page.sourceFiles) ?? []
+  const isSingle = maxPicks === 1
+  // A cap of one is not a cap the rows enforce by going dead: the radios
+  // replace one another, so every row stays selectable.
+  const isCapped = !isSingle && maxPicks !== undefined && selected.size >= maxPicks
 
-  // The chosen rows are fetched together and handed on as one pick, so the
-  // decode sees every file the reviewer selected — and partitions them itself.
+  // Auto-load the next page when the bottom sentinel scrolls into view. The
+  // effect only builds an observer while there is a next page, so a
+  // fully-loaded list never touches `IntersectionObserver`.
+  const sentinelRef = useRef<HTMLDivElement | null>(null)
+  const { hasNextPage, isFetchingNextPage, fetchNextPage } = sourceFiles
+  useEffect(() => {
+    const node = sentinelRef.current
+    if (node === null || !hasNextPage) return undefined
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting) && !isFetchingNextPage) {
+        void fetchNextPage()
+      }
+    })
+    observer.observe(node)
+    return () => {
+      observer.disconnect()
+    }
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  // The selected rows are fetched together and handed on as one list, so the
+  // decode sees every file the reviewer selected — and groups them itself.
   const pickAsSource = async (chosen: readonly SourceFileRow[]): Promise<void> => {
     try {
       const picked = await Promise.all(chosen.map((row) => fetchSourceFile(runAuthed, row)))
@@ -283,14 +247,18 @@ const ServerSourceFileList = ({ onPick, mode }: ServerSourceFileListProps): JSX.
     }
   }
 
-  const setRowsSelected = (ids: readonly string[], included: boolean): void => {
+  // Selecting under a cap of one replaces the selection rather than adding to
+  // it — the radio behaviour the rows are rendered with.
+  const toggleRow = (row: SourceFileRow): void => {
     setSelected((current) => {
-      const next = new Set(current)
-      for (const id of ids) {
-        if (included) next.add(id)
-        else next.delete(id)
+      if (current.has(row.id)) {
+        const next = new Set(current)
+        next.delete(row.id)
+        return next
       }
-      return next
+      if (isSingle) return new Set([row.id])
+      if (maxPicks !== undefined && current.size >= maxPicks) return current
+      return new Set(current).add(row.id)
     })
   }
 
@@ -306,17 +274,15 @@ const ServerSourceFileList = ({ onPick, mode }: ServerSourceFileListProps): JSX.
         isError={sourceFiles.isError}
         isPending={sourceFiles.isPending}
         rows={rows}
-        mode={mode}
+        isSingle={isSingle}
         selected={selected}
+        isCapped={isCapped}
         onPreview={(row) => {
           setPreviewing(row)
         }}
-        onUse={(row) => {
-          void pickAsSource([row])
-        }}
-        onSetSelected={setRowsSelected}
+        onToggle={toggleRow}
       />
-      {mode === 'batch' && rows.length > 0 && (
+      {rows.length > 0 && (
         <button
           type="button"
           className={`${styles.actionButton} ${styles.pickAction} ${styles.pickSelected}`}
@@ -325,21 +291,15 @@ const ServerSourceFileList = ({ onPick, mode }: ServerSourceFileListProps): JSX.
             void pickAsSource(rows.filter((row) => selected.has(row.id)))
           }}
         >
-          Use selected as source
+          {isSingle ? 'Use as source' : 'Use selected as source'}
         </button>
       )}
-      {sourceFiles.hasNextPage && (
-        <button
-          type="button"
-          className={styles.loadMore}
-          disabled={sourceFiles.isFetchingNextPage}
-          onClick={() => {
-            void sourceFiles.fetchNextPage()
-          }}
-        >
-          {sourceFiles.isFetchingNextPage ? 'Loading…' : 'Show more source files'}
-        </button>
+      {isFetchingNextPage && (
+        <p role="status" className={styles.empty}>
+          Loading more…
+        </p>
       )}
+      {hasNextPage && <div ref={sentinelRef} aria-hidden="true" />}
       <SourceFilePreviewDialog
         row={previewing}
         onClose={() => {
@@ -386,7 +346,7 @@ const PreviewBody = ({
   const runAuthed = useRunAuthed()
   const query = useQuery({
     queryKey: [...SOURCE_FILES_QUERY_KEY, 'preview', row.format, row.id] as const,
-    queryFn: () => fetchSourceFileContents(runAuthed, row),
+    queryFn: () => fetchSourceFile(runAuthed, row),
     staleTime: 0,
     gcTime: 0,
     retry: false,
@@ -623,7 +583,6 @@ export {
   SERVER_READ_ERROR,
   ServerSourceFileList,
   type ServerSourceFileListProps,
-  type SourceFileListMode,
   UNDATED_LABEL,
   UNTITLED_LABEL,
 }

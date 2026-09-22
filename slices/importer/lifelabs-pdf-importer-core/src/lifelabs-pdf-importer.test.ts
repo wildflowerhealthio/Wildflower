@@ -6,7 +6,6 @@ import {
   type FileImporter,
   PickedFile,
   DecodedFile,
-  SourceFile,
   FormatDecode,
 } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
@@ -90,15 +89,15 @@ const readDecoded = (
 }
 
 describe('lifeLabsPdfImporter decode', () => {
-  it('property: a local pick is reviewed with its minted source file, and every resource points at it', async () => {
+  it('property: a pick is reviewed with its minted archive, and every resource points at it', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
         async (reports) => {
           const file: PickedFile.Type = {
+            id: '0:Reports.pdf',
             fileName: 'Reports.pdf',
             bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
-            source: PickedFile.Source.local,
           }
 
           const decoded = readDecoded(
@@ -109,9 +108,7 @@ describe('lifeLabsPdfImporter decode', () => {
           expect(sourceSection?.title).toBe('Source file')
           const sourceRow = sourceSection?.resources[0]
           expect(sourceSection?.resources).toHaveLength(1)
-          expect(sourceRow?.key).toBe(
-            `${FormatDecode.keyPrefix(0, file)}source-file/${file.fileName}`
-          )
+          expect(sourceRow?.key).toBe(`${FormatDecode.keyPrefix(file)}source-file/${file.fileName}`)
           expect(sourceRow?.resource.resourceType).toBe('DocumentReference')
           const sourceId = sourceRow?.resource.id
           expect(sourceId).toEqual(expect.any(String))
@@ -124,38 +121,11 @@ describe('lifeLabsPdfImporter decode', () => {
     )
   })
 
-  it('property: a server pick mints no source file and points its resources at the one it came with', async () => {
-    await fc.assert(
-      fc.asyncProperty(
-        fc.array(reportArbitrary, { minLength: 1, maxLength: 2 }),
-        async (reports) => {
-          const file: PickedFile.Type = {
-            fileName: 'Reports.pdf',
-            bytes: new TextEncoder().encode('%PDF-1.7 stand-in'),
-            source: PickedFile.Source.server('wf-already-uploaded'),
-          }
-
-          const decoded = readDecoded(
-            await Effect.runPromise(importerForReports(reports).decode([file], SETTINGS))
-          )
-
-          expect(decoded.sections.map((section) => section.title)).not.toContain('Source file')
-          const labeled = DecodedFile.resources(decoded)
-          expect(labeled.length).toBeGreaterThan(0)
-          for (const item of labeled) {
-            expect(item.resource.meta?.source).toBe(SourceFile.makeReference('wf-already-uploaded'))
-          }
-        }
-      ),
-      { numRuns: numRunsFor({ base: 10 }) }
-    )
-  })
-
   it('collects an unreadable file for bytes that are not a PDF', async () => {
     const file: PickedFile.Type = {
+      id: '0:not-a-report.pdf',
       fileName: 'not-a-report.pdf',
       bytes: new TextEncoder().encode('this is not a PDF at all'),
-      source: PickedFile.Source.local,
     }
 
     const result = await Effect.runPromise(
@@ -172,7 +142,7 @@ describe('lifeLabsPdfImporter decode', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The source file this format's importer mints — the schemas driven under
+// The archive this format's importer mints — the schema driven under
 // `lifeLabsPdfImporter`'s own format constants, which is the same context its
 // batch `decode` mints under.
 // ---------------------------------------------------------------------------
@@ -182,13 +152,14 @@ const mintArchive = (
   fileName = 'lab-report.pdf'
 ): Promise<DocumentReference.Type> =>
   Effect.runPromise(
-    Schema.decode(SourceFile.FromNamedBytes)({ fileName, bytes }).pipe(
-      Effect.flatMap(Schema.encode(SourceFile.FromDocumentReference)),
-      Effect.provideService(SourceFile.Format, lifeLabsPdfImporter.sourceFileFormat)
-    )
+    Schema.encode(PickedFile.FromDocumentReference)({
+      id: `0:${fileName}`,
+      fileName,
+      bytes,
+    }).pipe(Effect.provideService(PickedFile.Format, lifeLabsPdfImporter.sourceFileFormat))
   )
 
-describe('LifeLabs PDF source file coding', () => {
+describe('LifeLabs PDF archive coding', () => {
   it('carries the LifeLabs coding on type and category, no security label, and pdf content', async () => {
     const resource = await mintArchive(new TextEncoder().encode('%PDF-1.7\ntest'))
 
@@ -199,22 +170,22 @@ describe('LifeLabs PDF source file coding', () => {
     expect((resource.securityLabel ?? []).length).toBe(0)
     expect(resource.content[0]?.attachment?.contentType).toBe(LIFELABS_PDF_SOURCE_FILE_CONTENT_TYPE)
     expect(resource.description).toBe('LifeLabs report: lab-report.pdf')
-    expect(SourceFile.isSourceFile(lifeLabsPdfImporter.sourceFileFormat)(resource)).toBe(true)
+    expect(PickedFile.isSourceFile(lifeLabsPdfImporter.sourceFileFormat)(resource)).toBe(true)
   })
 
   it('exposes the category search token in system|code form', () => {
-    expect(SourceFile.categoryToken(lifeLabsPdfImporter.sourceFileFormat)).toBe(
+    expect(PickedFile.categoryToken(lifeLabsPdfImporter.sourceFileFormat)).toBe(
       `${LIFELABS_SYSTEM}|${LIFELABS_PDF_SOURCE_FILE_CODE}`
     )
   })
 
-  it('mints a resource that reads back as its own source file, bytes and name recovered', async () => {
+  it('mints a resource that reads back as its own archive, bytes and name recovered', async () => {
     const bytes = new TextEncoder().encode('%PDF-1.7\n%\xff\xfa\nround-trip')
     const resource = await mintArchive(bytes, 'my-report.pdf')
 
     const back = await Effect.runPromise(
-      Schema.decode(SourceFile.FromDocumentReference)(resource).pipe(
-        Effect.provideService(SourceFile.Format, lifeLabsPdfImporter.sourceFileFormat)
+      Schema.decode(PickedFile.FromDocumentReference)(resource).pipe(
+        Effect.provideService(PickedFile.Format, lifeLabsPdfImporter.sourceFileFormat)
       )
     )
     expect(back.fileName).toBe('my-report.pdf')

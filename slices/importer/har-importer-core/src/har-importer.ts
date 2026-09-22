@@ -77,8 +77,8 @@ const sourceFileFormat = {
  * per-URL sections.
  *
  * @remarks
- * No `partition` — a HAR stands alone, so every pick is its own set — and no
- * `archiveLinks`: a captured browsing session is an engineering artifact, and
+ * No `groupBy` — a HAR stands alone, so every pick is its own set — and no
+ * `archive`: a captured browsing session is an engineering artifact, and
  * filing it under a patient would put it in `Patient/$everything`.
  */
 const harImporter: FileImporter.Type<HarSettings, typeof format> = {
@@ -91,7 +91,7 @@ const harImporter: FileImporter.Type<HarSettings, typeof format> = {
     format,
     sourceFileFormat,
     decodeFileSet: (members, settings) =>
-      decodeHar(members[0].file.bytes, settings).pipe(
+      decodeHar(members[0].bytes, settings).pipe(
         Effect.flatMap((responses) => preview(fhirPool, responses, enabledKindNames(settings))),
         Effect.map((previews): DecodedFile.DecodedFile => ({
           sections: sectionsByUrl(previews),

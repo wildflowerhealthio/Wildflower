@@ -3,7 +3,7 @@ import * as fc from 'fast-check'
 import type { DocumentReference } from 'fhir-r4/resources'
 import { HarFromJson, HttpArchive, emitHar } from 'http-archive'
 import { SourceDescriptor } from 'http-extraction-fundamentals'
-import { PickedFile, SourceFile, FormatDecode, type DecodedFile } from 'importer-fundamentals'
+import { MetaSource, PickedFile, FormatDecode, type DecodedFile } from 'importer-fundamentals'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it, test } from 'vite-plus/test'
 import { type TraceBody, type TraceExchange } from 'web-trace-core'
@@ -110,17 +110,17 @@ const POOL_KIND_NAMES: string[] = SourceDescriptor.poolOf(fhirSources).map((kind
 /** The two kinds that claim the archive's Observation response. */
 const OBSERVATION_KINDS = ['ObservationListResponseKind', 'ObservationResponseKind']
 
-/** The fixture archive, picked from `source` under one file name. */
-const pickedHar = (source: PickedFile.Source.Type): PickedFile.Type => ({
+/** The fixture archive, as the batch read hands it over. */
+const pickedHar = (): PickedFile.Type => ({
+  id: '0:archive.har',
   fileName: 'archive.har',
   bytes: RECOGNIZED_WITH_NOISE,
-  source,
 })
 
 /**
  * Decode one pick and take the single result it yields, which must have been
- * read. Asynchronous because minting a local pick's source file hashes its
- * bytes through Web Crypto.
+ * read. Asynchronous because minting a pick's archive hashes its bytes through
+ * Web Crypto.
  */
 const readOne = async (
   file: PickedFile.Type,
@@ -135,7 +135,7 @@ const readOne = async (
   return result
 }
 
-/** The format's own sections — everything but the minted source file's. */
+/** The format's own sections — everything but the minted archive's. */
 const extractedSections = (
   sections: readonly DecodedFile.Section[]
 ): readonly DecodedFile.Section[] => sections.filter((section) => section.title !== 'Source file')
@@ -148,7 +148,7 @@ const metaSourcesOf = (
 
 describe('harImporter.decode', () => {
   it('should fold a recognized archive into one section per URL, in first-seen order', async () => {
-    const decoded = (await readOne(pickedHar(PickedFile.Source.local))).decoded
+    const decoded = (await readOne(pickedHar())).decoded
 
     expect(decoded.sections.map((section) => section.title)).toEqual([
       'Source file',
@@ -165,15 +165,13 @@ describe('harImporter.decode', () => {
   })
 
   it('should note the response no kind claimed instead of dropping it silently', async () => {
-    const decoded = (await readOne(pickedHar(PickedFile.Source.local))).decoded
+    const decoded = (await readOne(pickedHar())).decoded
 
     expect(decoded.notes).toEqual([`Matched no importer: ${NOISE_URL}`])
   })
 
   it("should fold a disabled kind's responses into notes instead of sections", async () => {
-    const decoded = (
-      await readOne(pickedHar(PickedFile.Source.local), { disabledKinds: OBSERVATION_KINDS })
-    ).decoded
+    const decoded = (await readOne(pickedHar(), { disabledKinds: OBSERVATION_KINDS })).decoded
 
     expect(extractedSections(decoded.sections).map((section) => section.title)).toEqual([
       PATIENT_URL,
@@ -184,7 +182,7 @@ describe('harImporter.decode', () => {
   })
 
   it('should keep the surviving resource keys identical across a settings change', async () => {
-    const file = pickedHar(PickedFile.Source.local)
+    const file = pickedHar()
     const withAll = extractedSections((await readOne(file)).decoded.sections)
     const withoutObservations = extractedSections(
       (await readOne(file, { disabledKinds: OBSERVATION_KINDS })).decoded.sections
@@ -195,40 +193,29 @@ describe('harImporter.decode', () => {
     )
   })
 
-  it("should list a local pick's minted source file as its own first section", async () => {
-    const decoded = (await readOne(pickedHar(PickedFile.Source.local))).decoded
+  it("should list a pick's minted archive as its own first section", async () => {
+    const decoded = (await readOne(pickedHar())).decoded
     const sourceSection = decoded.sections[0]
 
     expect(sourceSection?.title).toBe('Source file')
     // The key is namespaced by the file's slot in the batch, so two archives
     // in one pick cannot collide on it.
     expect(sourceSection?.resources.map((entry) => entry.key)).toEqual([
-      `${FormatDecode.keyPrefix(0, pickedHar(PickedFile.Source.local))}source-file/archive.har`,
+      `${FormatDecode.keyPrefix(pickedHar())}source-file/archive.har`,
     ])
     expect(sourceSection?.resources[0]?.resource.resourceType).toBe('DocumentReference')
   })
 
-  it('should mint no source file for a server pick and stamp the reference it was picked by', async () => {
-    const decoded = (await readOne(pickedHar(PickedFile.Source.server('doc-1')))).decoded
-
-    const sources = metaSourcesOf(decoded.sections)
-
-    expect(decoded.sections.map((section) => section.title)).not.toContain('Source file')
-    expect(sources.length).toBeGreaterThan(0)
-    expect(sources).toEqual(sources.map(() => SourceFile.makeReference('doc-1')))
-  })
-
-  test('property: every extracted resource names the minted source file, under any kind toggles', async () => {
+  test('property: every extracted resource names the minted archive, under any kind toggles', async () => {
     await fc.assert(
       fc.asyncProperty(fc.subarray(POOL_KIND_NAMES), async (disabledKinds) => {
-        const decoded = (await readOne(pickedHar(PickedFile.Source.local), { disabledKinds }))
-          .decoded
+        const decoded = (await readOne(pickedHar(), { disabledKinds })).decoded
         const minted = decoded.sections[0]?.resources[0]?.resource
 
         expect(decoded.sections[0]?.title).toBe('Source file')
         expect(minted?.id).toEqual(expect.any(String))
         for (const source of metaSourcesOf(extractedSections(decoded.sections))) {
-          expect(source).toBe(SourceFile.makeReference(minted?.id ?? ''))
+          expect(source).toBe(MetaSource.makeReference(minted?.id ?? ''))
         }
       }),
       { numRuns: numRunsFor({ base: 25 }) }
@@ -237,9 +224,9 @@ describe('harImporter.decode', () => {
 
   it('should report bytes that are not a well-formed HAR as one unreadable file', async () => {
     const file: PickedFile.Type = {
+      id: '0:archive.har',
       fileName: 'archive.har',
       bytes: new TextEncoder().encode('{ not a har }'),
-      source: PickedFile.Source.local,
     }
     const result = await Effect.runPromise(harImporter.decode([file], defaultHarSettings))
 
@@ -251,7 +238,7 @@ describe('harImporter.decode', () => {
 })
 
 // ---------------------------------------------------------------------------
-// The source file this format's importer mints — the schemas driven under
+// The archive this format's importer mints — the schema driven under
 // `harImporter`'s own format constants, which is the same context its batch
 // `decode` mints under.
 // ---------------------------------------------------------------------------
@@ -261,24 +248,25 @@ const mintArchive = (
   fileName = 'portal-session.har'
 ): Promise<DocumentReference.Type> =>
   Effect.runPromise(
-    Schema.decode(SourceFile.FromNamedBytes)({ fileName, bytes }).pipe(
-      Effect.flatMap(Schema.encode(SourceFile.FromDocumentReference)),
-      Effect.provideService(SourceFile.Format, harImporter.sourceFileFormat)
-    )
+    Schema.encode(PickedFile.FromDocumentReference)({
+      id: `0:${fileName}`,
+      fileName,
+      bytes,
+    }).pipe(Effect.provideService(PickedFile.Format, harImporter.sourceFileFormat))
   )
 
-const readArchive = (resource: DocumentReference.Type): Promise<SourceFile.Type> =>
+const readArchive = (resource: DocumentReference.Type): Promise<PickedFile.Type> =>
   Effect.runPromise(
-    Schema.decode(SourceFile.FromDocumentReference)(resource).pipe(
-      Effect.provideService(SourceFile.Format, harImporter.sourceFileFormat)
+    Schema.decode(PickedFile.FromDocumentReference)(resource).pipe(
+      Effect.provideService(PickedFile.Format, harImporter.sourceFileFormat)
     )
   )
 
-const isHarSourceFile = SourceFile.isSourceFile(harImporter.sourceFileFormat)
+const isHarSourceFile = PickedFile.isSourceFile(harImporter.sourceFileFormat)
 
 const { exchange: exchangeArbitrary } = arbitraries(fc)
 
-describe('HAR source file coding', () => {
+describe('HAR archive coding', () => {
   it('carries the web-trace har-archive coding on type and category, the raw label, and json content', async () => {
     const resource = await mintArchive(new TextEncoder().encode('{"log":{"version":"1.2"}}'))
 
@@ -298,13 +286,13 @@ describe('HAR source file coding', () => {
   })
 
   it('exposes the category search token in system|code form', () => {
-    expect(SourceFile.categoryToken(harImporter.sourceFileFormat)).toBe(
+    expect(PickedFile.categoryToken(harImporter.sourceFileFormat)).toBe(
       `${WEB_TRACE_CODE_SYSTEM}|${HAR_ARCHIVE_CODE}`
     )
   })
 })
 
-describe('HAR source file vs captured trace', () => {
+describe('HAR archive vs captured trace', () => {
   test('property: the two document kinds are disjoint — neither predicate sees the other', async () => {
     await fc.assert(
       fc.asyncProperty(
@@ -324,14 +312,14 @@ describe('HAR source file vs captured trace', () => {
     )
   })
 
-  test('property: a trace resource fails to decode as a source file, naming the coding it wants', async () => {
+  test('property: a trace resource fails to decode as an archive, naming the coding it wants', async () => {
     await fc.assert(
       fc.asyncProperty(exchangeArbitrary, async (exchange) => {
         const outcome = await Effect.runPromise(
           Effect.either(
-            Schema.decode(SourceFile.FromDocumentReference)(
+            Schema.decode(PickedFile.FromDocumentReference)(
               await Effect.runPromise(toDocumentReference(exchange))
-            ).pipe(Effect.provideService(SourceFile.Format, harImporter.sourceFileFormat))
+            ).pipe(Effect.provideService(PickedFile.Format, harImporter.sourceFileFormat))
           )
         )
         expect(outcome._tag).toBe('Left')
