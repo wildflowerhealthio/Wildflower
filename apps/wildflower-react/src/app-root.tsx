@@ -200,6 +200,18 @@ interface RenderAppOptions {
    * load.
    */
   readonly signInProblem?: string
+  /**
+   * The directory this build is served from, as a router `basepath`, when the
+   * copy is published under a subpath rather than at the origin root.
+   *
+   * `main-web` passes the served directory (e.g. `/staging/pr-42/app/` for a PR
+   * preview, `/app/` for the hosted build) so the router strips it before
+   * matching and re-adds it when it writes the address bar — otherwise every
+   * root-absolute route (`/`, `/home`, …) misses under the subpath and the app
+   * renders its own not-found. Omitted for entries served at the root
+   * (`main-single-web`, `main-tauri`), where it defaults to `/` (a no-op).
+   */
+  readonly basepath?: string
 }
 
 /**
@@ -246,6 +258,7 @@ const renderApp = ({
   readBearer,
   tokenResponseHandler,
   signInProblem,
+  basepath,
 }: RenderAppOptions): void => {
   // Router isn't built until after the query runtime (its context needs the
   // runtime), so the closures that navigate imperatively read it through this
@@ -302,6 +315,11 @@ const renderApp = ({
   const router = createRouter({
     routeTree,
     history,
+    // A copy served under a subpath (a PR preview, or the hosted `/app/`) sets
+    // this to its served directory so root-absolute routes resolve there; the
+    // root-served entries omit it and it defaults to `/`. See
+    // `RenderAppOptions.basepath`.
+    basepath,
     context: {
       queryClient,
       runAuthed,

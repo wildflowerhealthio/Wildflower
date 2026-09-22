@@ -106,6 +106,12 @@ describe('site layout', () => {
     ])
   })
 
+  it('serves the hosted owner UI from /app with its SPA entry', () => {
+    const [app] = resolveSections(repoRoot, outDir, [sectionFor('wildflower-react')])
+    expect(app?.to).toBe(join(outDir, 'app'))
+    expect(app?.requiredPaths).toEqual([join(outDir, 'app', 'index.html')])
+  })
+
   it('resolves every destination inside the output directory', () => {
     fc.assert(
       fc.property(fc.array(sectionArb), (sections) => {
@@ -163,6 +169,7 @@ describe('site layout', () => {
     expect(destPaths).toEqual(
       [
         '',
+        'app',
         'importer-app',
         'medications-app',
         'ohif-viewer',
@@ -250,6 +257,18 @@ describe('layout reconciliation with the packages it assembles', () => {
     const config = readFileSync(configPath, 'utf8')
     expect(config).not.toMatch(/\boutDir\s*:/)
     expect(sectionFor('wildflower-server-docs').sourceDir).toBe('apps/wildflower-server-docs/dist')
+  })
+
+  it('reads the hosted owner UI source dir from the wildflower-react web vite config', () => {
+    // Same derivation as the medications/web-trace cases: pin the section to the
+    // `outDir` the app's hosted (`web`) build declares, so this fails rather
+    // than silently publishing a stale copy if that build ever moves its output.
+    const configPath = join(repoRoot, 'apps', 'wildflower-react', 'vite.config.web.ts')
+    const config = readFileSync(configPath, 'utf8')
+    const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
+    expect(declared).toBeDefined()
+    const expected = resolve(join(repoRoot, 'apps', 'wildflower-react'), declared ?? '')
+    expect(join(repoRoot, sectionFor('wildflower-react').sourceDir)).toBe(expected)
   })
 
   it('reads the OHIF viewer from the dist its build script writes', () => {

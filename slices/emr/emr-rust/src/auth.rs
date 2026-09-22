@@ -7,43 +7,43 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use helios_audit::{sinks::NullSink, AuditSink, ExclusionFilter};
 use helios_auth::error::AuthError;
-use helios_auth::{AuthConfig, JtiCache, JwksBearerAuthProvider, JwksCache};
+use helios_auth::{AuthConfig, AuthProvider, JwksBearerAuthProvider, JwksCache, Principal};
 use helios_rest::AuthMiddlewareState;
 use shared_structures_rust::CANONICAL_ISSUER;
 use token_revocation_rust::RevocationStore;
 
-/// The FHIR-side revocation enforcement point: a `helios_auth::JtiCache` that
-/// treats a validated token's `jti` as a **revocation handle**, not a one-shot
-/// nonce. helios calls `check_and_store` once per validated token that carries a
-/// `jti`, expecting `Ok(true)` to mean "reject". So this reports a replay iff
-/// the `jti` is on the shared denylist — and it **never stores**. A gatekeeper
-/// access token is a multi-use bearer (one `wf_auth` cookie reused across many
-/// FHIR calls); a store-on-first-sight cache (helios's `memory` backend) would
-/// `401` every FHIR request after the first, which is why we supply our own.
-///
-/// helios only hands this `(jti, expires_at)` — never `sub`/`iat` — so it can
-/// enforce only the per-`jti` half. The per-subject *epoch* half needs those
-/// claims and is enforced by gatekeeper's `BearerGate`, which fronts every
-/// `/fhir-r4/*` request and runs *before* HFS. This is defense-in-depth behind
-/// that gate.
-struct RevocationJtiCache {
+/// The FHIR-side revocation enforcement point: wraps helios's JWKS validator
+/// and rejects a validated token iff its `jti` is on the shared denylist. It
+/// never stores, so a multi-use gatekeeper bearer passes on every call. Only the
+/// per-`jti` half — `Principal` has no `iat`, so the epoch half stays with
+/// gatekeeper's `BearerGate`, which runs first. See "Token revocation on the
+/// FHIR path" in `docs/Capability Statement.md`.
+struct RevocationCheckingProvider<P> {
+    inner: P,
     store: RevocationStore,
 }
 
 #[async_trait]
-impl JtiCache for RevocationJtiCache {
-    async fn check_and_store(
-        &self,
-        jti: &str,
-        _expires_at: chrono::DateTime<chrono::Utc>,
-    ) -> Result<bool, AuthError> {
-        // `Ok(true)` = reject (revoked); `Ok(false)` = allow. Never stores, so a
-        // live token passes on every call. A store read failure fails closed —
-        // an internal error rejects the request rather than admit a possibly
-        // revoked token.
-        self.store
+impl<P: AuthProvider> AuthProvider for RevocationCheckingProvider<P> {
+    async fn authenticate(&self, authorization_header: &str) -> Result<Principal, AuthError> {
+        let principal = self.inner.authenticate(authorization_header).await?;
+        let Some(jti) = principal.jti.as_deref() else {
+            return Ok(principal);
+        };
+        // A store read failure fails closed — an internal error rejects the
+        // request rather than admit a possibly revoked token.
+        let revoked = self
+            .store
             .is_revoked_by_jti(jti)
-            .map_err(|e| AuthError::InternalError(format!("revocation store read failed: {e}")))
+            .map_err(|e| AuthError::InternalError(format!("revocation store read failed: {e}")))?;
+        if revoked {
+            return Err(AuthError::ValidationError("token revoked".to_string()));
+        }
+        Ok(principal)
+    }
+
+    fn name(&self) -> &str {
+        self.inner.name()
     }
 }
 
@@ -58,7 +58,7 @@ impl JtiCache for RevocationJtiCache {
 ///
 /// `revocation_store` is the shared denylist the host wires into both this and
 /// gatekeeper; the returned provider consults it per validated token (see
-/// [`RevocationJtiCache`]).
+/// [`RevocationCheckingProvider`]).
 pub(crate) fn build_auth(
     jwks_url: Option<&str>,
     revocation_store: RevocationStore,
@@ -71,21 +71,14 @@ pub(crate) fn build_auth(
         enabled: true,
         jwks_url: Some(jwks_url.to_string()),
         expected_issuer: Some(CANONICAL_ISSUER.to_string()),
-        // Inert for our construction path: `jti_backend` only selects a cache in
-        // helios's own env-driven factory, which we bypass — we build the
-        // provider directly with our custom `RevocationJtiCache` below. Left as
-        // `"disabled"` so nothing reads it as a request to spin up helios's
-        // store-on-first-sight `memory` backend (which would break multi-use
-        // bearers — see [`RevocationJtiCache`]).
-        jti_backend: "disabled".to_string(),
         ..AuthConfig::default()
     };
 
     let jwks_cache = Arc::new(JwksCache::new(jwks_url, config.jwks_min_refresh_interval));
-    let jti_cache: Arc<dyn JtiCache> = Arc::new(RevocationJtiCache {
+    let provider = RevocationCheckingProvider {
+        inner: JwksBearerAuthProvider::new(jwks_cache, &config),
         store: revocation_store,
-    });
-    let provider = JwksBearerAuthProvider::new(jwks_cache, jti_cache, &config);
+    };
     let audit_sink: Arc<dyn AuditSink> = Arc::new(NullSink);
 
     let state = Arc::new(AuthMiddlewareState {
@@ -94,6 +87,8 @@ pub(crate) fn build_auth(
         audit_sink,
         audit_source_observer: "emr-rust".to_string(),
         audit_exclusion_filter: ExclusionFilter::new(vec![]),
+        // FHIR is mounted at a fixed prefix with no tenant path segment.
+        tenant_url_routing: false,
     });
 
     (config, Some(state))
@@ -101,13 +96,40 @@ pub(crate) fn build_auth(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_auth, RevocationJtiCache};
-    use helios_auth::JtiCache;
+    use super::{build_auth, RevocationCheckingProvider};
+    use async_trait::async_trait;
+    use helios_auth::error::AuthError;
+    use helios_auth::{AuthProvider, Principal, ScopeSet};
     use shared_structures_rust::CANONICAL_ISSUER;
     use token_revocation_rust::RevocationStore;
 
     fn store() -> RevocationStore {
         RevocationStore::open_in_memory().expect("open in-memory revocation store")
+    }
+
+    /// Stands in for helios's JWKS validator: accepts any header and hands back
+    /// a principal carrying the configured `jti`.
+    struct StubProvider {
+        jti: Option<String>,
+    }
+
+    #[async_trait]
+    impl AuthProvider for StubProvider {
+        async fn authenticate(&self, _authorization_header: &str) -> Result<Principal, AuthError> {
+            Ok(Principal {
+                subject: "patient-1".to_string(),
+                issuer: CANONICAL_ISSUER.to_string(),
+                tenant_id: None,
+                scopes: ScopeSet::empty(),
+                jti: self.jti.clone(),
+                expires_at: chrono::Utc::now() + chrono::Duration::hours(1),
+                custom_claims: serde_json::Map::new(),
+            })
+        }
+
+        fn name(&self) -> &str {
+            "stub"
+        }
     }
 
     #[test]
@@ -132,10 +154,6 @@ mod tests {
         assert_eq!(config.jwks_url.as_deref(), Some(url));
         // `iss` = `CANONICAL_ISSUER`; see `docs/Origins/Explanation.md`.
         assert_eq!(config.expected_issuer.as_deref(), Some(CANONICAL_ISSUER));
-        // `jti_backend` is inert here — we pass a custom `RevocationJtiCache`
-        // explicitly, bypassing helios's env factory. Left `"disabled"` so
-        // nothing spins up helios's single-use `memory` backend.
-        assert_eq!(config.jti_backend, "disabled");
         // `aud` left unvalidated by HFS (gatekeeper's bearer gate enforces it).
         // Asserted so adding HFS-side audience validation later is deliberate.
         assert!(config.expected_audience.is_none());
@@ -143,28 +161,73 @@ mod tests {
     }
 
     /// The HFS-side multi-use guard: a live `jti` passes on *every* call (the
-    /// cache never stores, so it doesn't turn a multi-use bearer single-use),
-    /// and a revoked `jti` is reported as a replay so HFS rejects it.
+    /// provider never stores, so it doesn't turn a multi-use bearer single-use),
+    /// and a revoked `jti` is rejected.
     #[tokio::test]
-    async fn revocation_jti_cache_is_multi_use_and_denylist_aware() {
+    async fn revocation_provider_is_multi_use_and_denylist_aware() {
         let store = store();
-        let cache = RevocationJtiCache {
+        let provider = RevocationCheckingProvider {
+            inner: StubProvider {
+                jti: Some("live-jti".to_string()),
+            },
             store: store.clone(),
         };
-        let exp = chrono::Utc::now() + chrono::Duration::hours(1);
 
-        // A live jti is allowed (`Ok(false)`) on repeated calls — NOT single-use.
+        // A live jti is admitted on repeated calls — NOT single-use.
         for _ in 0..3 {
-            assert!(
-                !cache.check_and_store("live-jti", exp).await.expect("check"),
-                "a live token must pass on every FHIR request"
-            );
+            let principal = provider
+                .authenticate("Bearer t")
+                .await
+                .expect("a live token must pass on every FHIR request");
+            assert_eq!(principal.jti.as_deref(), Some("live-jti"));
         }
-        // Once revoked, the same jti is reported as a replay (`Ok(true)`).
+        // Once revoked, the same jti is rejected.
+        let exp = chrono::Utc::now() + chrono::Duration::hours(1);
         store.revoke_jti("live-jti", exp, "test").expect("revoke");
         assert!(
-            cache.check_and_store("live-jti", exp).await.expect("check"),
-            "a revoked token must be rejected by the HFS cache"
+            provider.authenticate("Bearer t").await.is_err(),
+            "a revoked token must be rejected by the HFS provider"
+        );
+    }
+
+    /// A token without a `jti` has no revocation handle, so the denylist can't
+    /// name it; it passes through (the gate's epoch check still covers it).
+    #[tokio::test]
+    async fn revocation_provider_admits_a_token_without_jti() {
+        let provider = RevocationCheckingProvider {
+            inner: StubProvider { jti: None },
+            store: store(),
+        };
+        let principal = provider
+            .authenticate("Bearer t")
+            .await
+            .expect("a jti-less token is not on any denylist");
+        assert!(principal.jti.is_none());
+    }
+
+    /// A store that can't answer must reject, never admit a possibly revoked
+    /// token.
+    #[tokio::test]
+    async fn revocation_provider_fails_closed_when_the_store_read_fails() {
+        let conn = persistence_rust::Connection::open_in_memory().expect("open");
+        let store = RevocationStore::new(conn.clone()).expect("migrate");
+        conn.lock()
+            .execute("DROP TABLE revoked_jtis", [])
+            .expect("drop the denylist table");
+        let provider = RevocationCheckingProvider {
+            inner: StubProvider {
+                jti: Some("any-jti".to_string()),
+            },
+            store,
+        };
+
+        let err = provider
+            .authenticate("Bearer t")
+            .await
+            .expect_err("an unreadable store must reject the token");
+        assert!(
+            matches!(err, AuthError::InternalError(_)),
+            "expected InternalError, got {err:?}"
         );
     }
 }

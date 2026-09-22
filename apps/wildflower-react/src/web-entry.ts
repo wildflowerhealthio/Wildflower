@@ -39,6 +39,24 @@ const DEFAULT_SERVER_URL = `http://${loopbackHostname}:${loopbackPort}`
 const apiServerUrl = (search: string): string => serverUrlFromSearch(search) ?? DEFAULT_SERVER_URL
 
 /**
+ * Prefix a root-absolute in-app route with the served `basepath`, so a raw
+ * `history.push`/`replace` lands where the router — configured with that same
+ * `basepath` — will match it.
+ *
+ * A router navigation (`router.navigate`, `<Link>`) applies the basepath on its
+ * own, but a write straight to the history object does not, so a device-login
+ * return that pushes `/home` on a build served under `/app/` (or a PR preview's
+ * `/staging/pr-<n>/app/`) would land at `<origin>/home`, off the app. `basepath`
+ * is the slash-suffixed served directory (`basenameOf(location.pathname)`); at
+ * the origin root it is `/`, and the prefix is a no-op.
+ *
+ * @example underBasepath('/staging/pr-7/app/', '/home') // '/staging/pr-7/app/home'
+ * @example underBasepath('/', '/home') // '/home'
+ */
+const underBasepath = (basepath: string, route: string): string =>
+  `${basepath.replace(/\/$/, '')}${route}`
+
+/**
  * `renderApp` wiring for `main-web` — the build served from static hosting,
  * which runs **cross-origin** to whichever API server `?server=` names.
  *
@@ -94,4 +112,4 @@ const makeWebEntryOptions = (): Pick<
   }
 }
 
-export { apiServerUrl, DEFAULT_SERVER_URL, makeWebEntryOptions }
+export { apiServerUrl, DEFAULT_SERVER_URL, makeWebEntryOptions, underBasepath }

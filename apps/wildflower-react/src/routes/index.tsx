@@ -1,4 +1,5 @@
 import { createFileRoute, redirect, useNavigate } from '@tanstack/react-router'
+import { basenameOf } from 'branding-core'
 import {
   insecureTargetReason,
   normalizeServerUrl,
@@ -24,10 +25,15 @@ const WILDFLOWER_DOMAIN = '.wildflowerhealth.io'
  * throw away the page mid-action. It survives the sign-in round trip anyway:
  * the registered redirect carries no query, so `main-web`'s boot restores
  * `?server=` from the redeemed session rather than from the address bar.
+ *
+ * The current `pathname` is kept, not replaced with `/`: this build is served
+ * under a subpath (`/app/`, or a PR preview's `/staging/pr-<n>/app/`), so a
+ * hardcoded root would move the reader off the app onto the origin root and
+ * point `?server=` at a page that is not this app.
  */
 const rememberServer = (serverUrl: string): void => {
   const search = searchWithServerUrl(window.location.search, serverUrl)
-  window.history.replaceState(null, '', `/${search}`)
+  window.history.replaceState(null, '', `${window.location.pathname}${search}`)
 }
 
 /**
@@ -111,7 +117,11 @@ function Landing({ bootSignInProblem }: { readonly bootSignInProblem?: string })
   const signInTo = (target: string): void => {
     setLeavingToSignIn(true)
     setSignInProblem(undefined)
-    void startSignIn(target, signInEnvironment(window)).then((started) => {
+    // Sign-in only starts from this landing, which sits at the app root, so the
+    // page's own directory is the served base — the same value `main-web` hands
+    // the router and the callback re-derives. See `sign-in.ts`.
+    const basePath = basenameOf(window.location.pathname)
+    void startSignIn(target, signInEnvironment(window, basePath)).then((started) => {
       if (started.tag === 'Ok') {
         // Carry the gate's `?returnTo=` across the redirect: the registered
         // redirect URI drops it, so it is stashed just before leaving.

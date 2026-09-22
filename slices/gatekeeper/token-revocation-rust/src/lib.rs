@@ -19,8 +19,8 @@
 //!
 //! It carries no auth policy and no helios dependency, so both enforcement
 //! points can read it in-process without pulling each other in: `gatekeeper-rust`
-//! (the gate + the revoke control surface) and `emr-rust`'s HFS `JtiCache`
-//! adapter (per-`jti` denylist only — helios hands it just `(jti, expires_at)`).
+//! (the gate + the revoke control surface) and `emr-rust`'s HFS auth-provider
+//! wrapper (per-`jti` denylist only — helios's `Principal` carries no `iat`).
 
 use chrono::{DateTime, Duration, Utc};
 use persistence_rust::{Connection, DbResult};
@@ -137,8 +137,8 @@ impl RevocationStore {
     }
 
     /// The **denylist-only** check, for the enforcement point that sees just the
-    /// `jti` (emr-rust's HFS `JtiCache` adapter — helios never hands it `sub` or
-    /// `iat`, so it can't run the epoch half; the gate, which runs first, does).
+    /// `jti` (emr-rust's HFS auth-provider wrapper — helios's `Principal` carries
+    /// no `iat`, so it can't run the epoch half; the gate, which runs first, does).
     ///
     /// # Errors
     ///
