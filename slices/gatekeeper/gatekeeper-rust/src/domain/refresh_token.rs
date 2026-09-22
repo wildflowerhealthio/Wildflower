@@ -91,30 +91,10 @@ pub enum RefreshTokenConsumeOutcome {
     NotFound,
 }
 
-// The refresh-token rotation operations over the [`GatekeeperStore`] port — the
-// OAuth `/token` endpoint's transaction scripts, co-located with the types they
-// operate on (this module owns both the refresh-token vocabulary and its store
-// operations). Trivial single-call reads/writes
-// (`refresh_token_with_family_by_hash`, `expire_refresh_token_family*`) are not
-// here — their callers hit the store method directly.
-
-/// Persist a new refresh-token family plus its first token, sequencing the two
-/// primitive inserts so a family never persists tokenless: the family row first,
-/// then its token. No transaction — the token insert's foreign key rejects a
-/// token whose family didn't land, so an out-of-order or partial write can't
-/// leave a live tokenless family the redeemer would trust.
-///
-/// # Errors
-///
-/// [`GatekeeperError::Infrastructure`] if either store write fails.
-pub(crate) fn insert_refresh_token_family(
-    store: &impl GatekeeperStore,
-    family: &RefreshTokenFamily,
-    first_token: &RefreshToken,
-) -> Result<(), GatekeeperError> {
-    store.insert_refresh_token_family_row(family)?;
-    store.insert_refresh_token(first_token)
-}
+// The one refresh-token store operation that grants no authority — the atomic
+// consume — lives here beside the types. Issuing a family and inserting a
+// successor are privileged writes and live in
+// `domain::capabilities::writers::RefreshFamilyWriter`.
 
 /// Atomically consume a live refresh token, reporting which of the three
 /// [`RefreshTokenConsumeOutcome`] states the presented token was in. The guarded
@@ -144,109 +124,39 @@ pub(crate) fn consume_refresh_token(
     })
 }
 
-/// Rotate a refresh token: consume the presented token, and **only** if that
-/// consume won (transitioned a live row) insert its successor. The consume is
-/// itself atomic (see [`consume_refresh_token`]), so exactly one concurrent
-/// redeemer sees `Consumed` and inserts a successor; a `Replayed`/`NotFound`
-/// redeemer inserts nothing and the family is untouched. No wrapping transaction
-/// spans the consume and the insert — the ordering (consume before insert) means
-/// a failure of the second step leaves the presented token spent but no
-/// successor, which the caller treats as a failed rotation, never a usable extra
-/// token.
-///
-/// # Errors
-///
-/// [`GatekeeperError::Infrastructure`] if a store write fails.
-pub(crate) fn rotate_refresh_token(
-    store: &impl GatekeeperStore,
-    presented_hash: &str,
-    successor: &RefreshToken,
-    now: DateTime<Utc>,
-) -> Result<RefreshTokenConsumeOutcome, GatekeeperError> {
-    let outcome = consume_refresh_token(store, presented_hash, now)?;
-    if outcome == RefreshTokenConsumeOutcome::Consumed {
-        store.insert_refresh_token(successor)?;
-    }
-    Ok(outcome)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::test_fake::FakeGatekeeperStore;
 
-    fn family(family_id: &str) -> RefreshTokenFamily {
-        RefreshTokenFamily {
-            family_id: family_id.to_owned(),
-            client_id: "client".to_owned(),
-            scopes: vec!["read".to_owned()],
-            patient: None,
-            issued_at: Utc::now(),
-            expires_at: Utc::now() + Duration::days(90),
-            authorization_code_hash: None,
-            grant_id: None,
-        }
-    }
-
-    fn token(token_hash: &str, family_id: &str) -> RefreshToken {
-        RefreshToken {
-            token_hash: token_hash.to_owned(),
-            family_id: family_id.to_owned(),
-            issued_at: Utc::now(),
-            consumed_at: None,
-        }
-    }
-
-    #[test]
-    fn insert_refresh_token_family_persists_family_and_first_token() {
-        let store = FakeGatekeeperStore::default();
-        insert_refresh_token_family(&store, &family("fam"), &token("t0", "fam")).unwrap();
-        let (fetched_token, fetched_family) = store
-            .refresh_token_with_family_by_hash("t0")
-            .unwrap()
-            .expect("family and token both persisted");
-        assert_eq!(fetched_token.token_hash, "t0");
-        assert_eq!(fetched_family.family_id, "fam");
-    }
-
-    #[test]
-    fn rotate_consumes_presented_then_inserts_successor_and_replay_inserts_nothing() {
-        let store = FakeGatekeeperStore::default();
-        insert_refresh_token_family(&store, &family("fam"), &token("live", "fam")).unwrap();
+    fn live_token(store: &FakeGatekeeperStore, token_hash: &str) {
         let now = Utc::now();
-
-        assert_eq!(
-            rotate_refresh_token(&store, "live", &token("successor", "fam"), now).unwrap(),
-            RefreshTokenConsumeOutcome::Consumed,
-        );
-        assert_eq!(
-            store
-                .refresh_token_with_family_by_hash("live")
-                .unwrap()
-                .unwrap()
-                .0
-                .consumed_at,
-            Some(now)
-        );
-        assert!(store
-            .refresh_token_with_family_by_hash("successor")
-            .unwrap()
-            .is_some());
-
-        assert_eq!(
-            rotate_refresh_token(&store, "live", &token("successor-2", "fam"), now).unwrap(),
-            RefreshTokenConsumeOutcome::Replayed,
-        );
-        assert!(store
-            .refresh_token_with_family_by_hash("successor-2")
-            .unwrap()
-            .is_none());
+        store
+            .insert_refresh_token_family_row(&RefreshTokenFamily {
+                family_id: "fam".to_owned(),
+                client_id: "client".to_owned(),
+                scopes: vec!["read".to_owned()],
+                patient: None,
+                issued_at: now,
+                expires_at: now + Duration::days(90),
+                authorization_code_hash: None,
+                grant_id: None,
+            })
+            .unwrap();
+        store
+            .insert_refresh_token(&RefreshToken {
+                token_hash: token_hash.to_owned(),
+                family_id: "fam".to_owned(),
+                issued_at: now,
+                consumed_at: None,
+            })
+            .unwrap();
     }
 
     #[test]
     fn consume_reports_consumed_then_replayed_then_not_found() {
         let store = FakeGatekeeperStore::default();
-        insert_refresh_token_family(&store, &family("fam"), &token("live", "fam")).unwrap();
+        live_token(&store, "live");
         let now = Utc::now();
 
         assert_eq!(

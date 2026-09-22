@@ -16,6 +16,10 @@
 //!    requested/allowed ceiling **and** covered by the approver's own grant. No
 //!    grant, code, or widened registration can carry a scope the approver did
 //!    not hold.
+//!  - [`RedeemedAuthorizationCode`], [`ConsumedDeviceRequest`],
+//!    [`ValidatedRefreshToken`] — the redemptions an access token is minted
+//!    under at `/oauth/token`; each carries the scopes of the record it
+//!    redeemed, so a token holds only what the consent behind it recorded.
 //!  - [`HostBootstrap`] — the host's own boot-time owner token, the one authority
 //!    with no approving human; constructible only in `seeding` (guarded below).
 //!  - [`MintAuthority`] — the sealed trait the minter mints under; implementors
@@ -30,11 +34,19 @@ mod authenticated_client;
 mod delegated_scopes;
 mod host_bootstrap;
 mod mint_authority;
+mod redemption;
 
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
 pub(crate) use delegated_scopes::{DelegatedScopes, ScopeCeiling};
 pub(crate) use host_bootstrap::HostBootstrap;
 pub(crate) use mint_authority::MintAuthority;
+// The sealing trait, exposed only so a writer test can stub a redemption.
+#[cfg(test)]
+pub(crate) use mint_authority::sealed;
+pub(crate) use redemption::{
+    CodeRedemption, ConsumedDeviceRequest, GrantRedemption, RedeemedAuthorizationCode,
+    ValidatedRefreshToken,
+};
 
 #[cfg(test)]
 mod construction_site_guard {
