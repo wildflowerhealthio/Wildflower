@@ -7,6 +7,8 @@ import {
   DEVICE_LOGIN_ROUTE,
   makeActivePendingConsentStore,
   type ActivePendingConsentStore,
+  TokenResponseHandlerContext,
+  type TokenResponseHandler,
 } from 'gatekeeper-react'
 import type { NavTarget } from 'navigation-react'
 import { StrictMode } from 'react'
@@ -96,7 +98,7 @@ interface RenderAppOptions {
   /** Browser history for web, memory history for embedded WebView. */
   readonly history: RouterHistory
   /** Tagged onto Sentry events to distinguish web/embedded crashes. */
-  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri'
+  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri' | 'main-hosted'
   /**
    * Environment-specific {@link AuthStateStore}. Web entries pass
    * `makeWebAuthStateStore()` (cookie-derived auth signal — the real JWT
@@ -176,6 +178,18 @@ interface RenderAppOptions {
    * this shared code.
    */
   readonly redirectToDeviceLoginOnUnauthorized: boolean
+  /**
+   * Lazy bearer reader for the hosted entry. When provided, every
+   * relative HTTP request carries `Authorization: Bearer <token>`.
+   * Omitted for cookie-authed entries (web, Tauri).
+   */
+  readonly readBearer?: () => string | undefined
+  /**
+   * Token response handler for the hosted entry. When provided,
+   * `NeedsAuthMessage` writes the bearer and navigates client-side
+   * instead of doing a full-page reload.
+   */
+  readonly tokenResponseHandler?: TokenResponseHandler
 }
 
 /**
@@ -219,6 +233,8 @@ const renderApp = ({
   platformSettingsItems,
   platformTabs,
   redirectToDeviceLoginOnUnauthorized,
+  readBearer,
+  tokenResponseHandler,
 }: RenderAppOptions): void => {
   // Router isn't built until after the query runtime (its context needs the
   // runtime), so the closures that navigate imperatively read it through this
@@ -241,7 +257,11 @@ const renderApp = ({
   // here. Web entries redirect; `main-tauri` takes no action (see the field doc
   // and the entrypoints). A new entry must state its own behavior at its seam.
   const onUnauthorized = redirectToDeviceLoginOnUnauthorized ? redirectToDeviceLogin : () => {}
-  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(apiBaseUrl, onUnauthorized)
+  const { queryClient, runAuthed, runtimeLayer } = buildAppQueryRuntime(
+    apiBaseUrl,
+    onUnauthorized,
+    readBearer
+  )
 
   // Keyed on the auth *signal* (the store), not the bearer source: on web a
   // sign-in flips the cookie-derived signal and should flush the cache.
@@ -277,6 +297,7 @@ const renderApp = ({
       runtimeLayer,
       awaitAuthReady: resolvedAwaitAuthReady,
       transport: transportPromise,
+      entry,
       // Threaded so the apps launch POST reaches the host API origin — see
       // `RouterContext.apiBaseUrl`.
       apiBaseUrl,
@@ -313,14 +334,16 @@ const renderApp = ({
       >
         <QueryClientProvider client={queryClient}>
           <AuthStateProvider store={tokenStore}>
-            <ActivePendingConsentProvider store={activePendingConsentStore}>
-              <AppRootTree
-                router={router}
-                transportPromise={transportPromise}
-                platformSettingsItems={platformSettingsItems}
-                platformTabs={platformTabs}
-              />
-            </ActivePendingConsentProvider>
+            <TokenResponseHandlerContext value={tokenResponseHandler}>
+              <ActivePendingConsentProvider store={activePendingConsentStore}>
+                <AppRootTree
+                  router={router}
+                  transportPromise={transportPromise}
+                  platformSettingsItems={platformSettingsItems}
+                  platformTabs={platformTabs}
+                />
+              </ActivePendingConsentProvider>
+            </TokenResponseHandlerContext>
           </AuthStateProvider>
         </QueryClientProvider>
       </ErrorBoundary>

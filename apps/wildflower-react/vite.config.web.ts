@@ -3,9 +3,9 @@ import baseConfig from './vite.config.base.ts'
 
 export default defineConfig({
   ...baseConfig,
-  base: '/',
+  base: './',
   build: {
-    outDir: 'dist-web',
-    rolldownOptions: { input: 'index.html' },
+    outDir: 'dist-hosted',
+    rolldownOptions: { input: 'index-hosted.html' },
   },
 })

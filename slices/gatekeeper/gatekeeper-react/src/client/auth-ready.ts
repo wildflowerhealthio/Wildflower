@@ -161,10 +161,49 @@ const makeAwaitEmbeddedAuthReady =
       await Effect.runPromise(embeddedAuthReadyEffect(subscribable))
     })
 
+/**
+ * Hosted (`main-hosted`) auth-readiness logic. Same synchronous
+ * one-shot as the web gate, but redirects to the app root (`/`)
+ * instead of the device-login route. The hosted landing page at `/`
+ * houses the server picker and a "sign in" call to action; the
+ * device-login flow is reached from there, not directly.
+ *
+ * `returnTo` is threaded as a `?returnTo=` search param on the
+ * redirect so the landing page can forward it to the device-login
+ * flow once the user picks a server and starts sign-in.
+ */
+const hostedAuthReadyEffect = (
+  subscribable: Subscribable.Subscribable<AuthState>,
+  returnTo?: string
+): Effect.Effect<void, AnyRedirect> =>
+  pipe(
+    subscribable.get,
+    Effect.flatMap((signal) => {
+      if (isAuthed(signal)) return Effect.void
+      const search: Record<string, string> = {}
+      if (returnTo !== undefined && returnTo !== '') search['returnTo'] = returnTo
+      return Effect.fail<AnyRedirect>(redirect({ to: '/', search }))
+    })
+  )
+
+/**
+ * Hosted auth-readiness factory. Closes over the entry's token
+ * subscribable and returns the `awaitAuthReady` function the
+ * route's `beforeLoad` calls. Redirects unauthed users to the
+ * landing page (`/`) instead of the device-login route, preserving
+ * the `returnTo` so the landing → device-login flow can restore it.
+ */
+const makeAwaitHostedAuthReady =
+  (subscribable: Subscribable.Subscribable<AuthState>): ((returnTo?: string) => Promise<void>) =>
+  (returnTo) =>
+    withFiberFailureUnwrap(() => Effect.runPromise(hostedAuthReadyEffect(subscribable, returnTo)))
+
 export {
   embeddedAuthReadyEffect,
   EMBEDDED_TOKEN_TIMEOUT,
+  hostedAuthReadyEffect,
   makeAwaitEmbeddedAuthReady,
+  makeAwaitHostedAuthReady,
   makeAwaitWebAuthReady,
   TokenTimeout,
   webAuthReadyEffect,

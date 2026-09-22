@@ -53,6 +53,7 @@ export { NeedsAuthMessage } from './components/NeedsAuthMessage.tsx'
 export {
   EMBEDDED_TOKEN_TIMEOUT,
   makeAwaitEmbeddedAuthReady,
+  makeAwaitHostedAuthReady,
   makeAwaitWebAuthReady,
   TokenTimeout,
 } from './client/auth-ready.ts'
@@ -63,6 +64,17 @@ export {
   makeWebAuthStateStore,
   readAuthedSignalFromCookie,
 } from './client/auth-state-store.ts'
+
+export {
+  makeHostedAuthStateStore,
+  type HostedAuthStateStore,
+} from './client/hosted-auth-state-store.ts'
+
+export {
+  TokenResponseHandlerContext,
+  useTokenResponseHandler,
+  type TokenResponseHandler,
+} from './client/token-response-handler.ts'
 
 export {
   ActivePendingConsentProvider,

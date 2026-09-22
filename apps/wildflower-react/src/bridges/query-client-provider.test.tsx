@@ -3,6 +3,7 @@ import { QueryClient, useQueryClient } from '@tanstack/react-query'
 import { createMemoryHistory, createRootRoute, createRoute } from '@tanstack/react-router'
 import { act, cleanup, screen, waitFor } from '@testing-library/react'
 import { Effect, Layer, SubscriptionRef } from 'effect'
+import type * as GatekeeperReact from 'gatekeeper-react'
 import type { JSX, ReactNode } from 'react'
 import { type AuthState, Unauthed } from 'react-kitchen-sink'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
@@ -33,18 +34,22 @@ const { Passthrough } = vi.hoisted(() => ({
 // modal-host wrapping in `renderApp` doesn't blow up the tree, and
 // `makeActivePendingConsentStore` returns a no-op store —
 // `PendingConsentModalHost` is stubbed to nothing for the same reason.
-vi.mock('gatekeeper-react', () => ({
-  GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
-  ActivePendingConsentProvider: Passthrough,
-  makeActivePendingConsentStore: () => ({
-    subscribable: {
-      get: Effect.succeed(null),
-      changes: { pipe: () => ({}) },
-    },
-    setActiveHead: () => {},
-  }),
-  PendingConsentModalHost: (): null => null,
-}))
+vi.mock('gatekeeper-react', async (importOriginal) => {
+  const actual = await importOriginal<typeof GatekeeperReact>()
+  return {
+    GatekeeperRouterContext: { sliceRuntimeLayer: Layer.empty },
+    ActivePendingConsentProvider: Passthrough,
+    makeActivePendingConsentStore: () => ({
+      subscribable: {
+        get: Effect.succeed(null),
+        changes: { pipe: () => ({}) },
+      },
+      setActiveHead: () => {},
+    }),
+    PendingConsentModalHost: (): null => null,
+    TokenResponseHandlerContext: actual.TokenResponseHandlerContext,
+  }
+})
 vi.mock('react-kitchen-sink', () => ({
   AuthStateProvider: Passthrough,
   // The test seeds the store with `Unauthed()`; the mock only needs a value the
