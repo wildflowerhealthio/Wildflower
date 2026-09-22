@@ -12,20 +12,12 @@ use helios_rest::AuthMiddlewareState;
 use shared_structures_rust::CANONICAL_ISSUER;
 use token_revocation_rust::RevocationStore;
 
-/// The FHIR-side revocation enforcement point: an [`AuthProvider`] that wraps
-/// helios's JWKS validator and then treats the validated token's `jti` as a
-/// **revocation handle**. A token whose `jti` is on the shared denylist is
-/// rejected; every other token passes, on every call — a gatekeeper access
-/// token is a multi-use bearer (one `wf_auth` cookie reused across many FHIR
-/// calls), so nothing here is single-use.
-///
-/// helios has no per-token revocation hook of its own (as a resource server it
-/// keeps no `jti` replay cache), so the check lives in this wrapper, reading
-/// `Principal::jti`. `Principal` carries no `iat`, so this enforces only the
-/// per-`jti` half. The per-subject *epoch* half needs
-/// `iat` and is enforced by gatekeeper's `BearerGate`, which fronts every
-/// `/fhir-r4/*` request and runs *before* HFS. This is defense-in-depth behind
-/// that gate.
+/// The FHIR-side revocation enforcement point: wraps helios's JWKS validator
+/// and rejects a validated token iff its `jti` is on the shared denylist. It
+/// never stores, so a multi-use gatekeeper bearer passes on every call. Only the
+/// per-`jti` half — `Principal` has no `iat`, so the epoch half stays with
+/// gatekeeper's `BearerGate`, which runs first. See "Token revocation on the
+/// FHIR path" in `docs/Capability Statement.md`.
 struct RevocationCheckingProvider<P> {
     inner: P,
     store: RevocationStore,
