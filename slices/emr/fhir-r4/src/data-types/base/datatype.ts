@@ -47,7 +47,6 @@ type Name =
   | 'Signature'
   | 'SimpleQuantity'
   | 'Timing'
-  | 'MetaDataTypes'
   | 'ContactDetail'
   | 'Contributor'
   | 'Meta'
@@ -101,7 +100,6 @@ const names = [
   'Signature',
   'SimpleQuantity',
   'Timing',
-  'MetaDataTypes',
   'ContactDetail',
   'Contributor',
   'Meta',

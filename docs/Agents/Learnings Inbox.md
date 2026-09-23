@@ -389,6 +389,12 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Learning**: The host's API router used to answer any unmatched path with `200` and the embedded owner-UI shell, so an unimplemented API route surfaced as a client-side `ParseError` (see the SPA-fallback note in the Effect Patterns Reference) and a bare-prefix route like `POST /fhir-r4/` silently got HTML. It now answers `404` (`apps/wildflower-tauri/src-tauri/src/not_found.rs`): JSON `{ "error": "RouteNotFound", "path", "openInApp" }` for API clients, a small HTML page with the same link for browsers. Every URL the gatekeeper hands a browser (the device `verification_uri`, the `/authorize` polling page) now points at the hosted `main-web` build with `?server=<served origin>`, via `shared_structures_rust::owner_ui::OwnerUiBase` and the `owner_ui_base_url` / `owner_ui_dev_base_url` keys in `tauri-shared-config.json`. A debug host links to the `main-web` dev server on 5195, not to the Tauri dev server on 1420: that one serves `main-tauri`, which needs Tauri IPC and hangs in an ordinary browser.
 **Suggested destination**: Origins Explanation
 
+## `bundle.resources` paths must exist at compile time, even in debug builds
+
+**Discovered during**: ruthmarks/first-party-apps-own-dist (#541, narrowing the self-hosted-apps resource mapping)
+**Learning**: `tauri-build` resolves and copies every `bundle.resources` entry from the crate's `build.rs` on every compile, including debug builds and `cargo check`, not just when bundling a release. A path that doesn't exist fails with `ResourcePathNotFound`, and a glob that matches nothing fails with `GlobPathNotFound` (`tauri-utils` `resources.rs`). So a resource can only name a directory that a fresh clone and CI have. A gitignored vendored build such as `slices/apps/self-hosted-apps/patient-browser/` can't be named directly. Map a tracked parent directory instead, which is why `tauri.conf.json` still maps all of `self-hosted-apps/`.
+**Suggested destination**: slices/apps/self-hosted-apps/README.md already covers the specific case; a general note belongs in a Tauri/Rust reference
+
 ## A CSS `@import` of a package stylesheet ships it twice when the package's JS also imports it
 
 **Discovered during**: ruthmarks/fhir-r4-react-app-shell (#572, the shared SMART app shell)

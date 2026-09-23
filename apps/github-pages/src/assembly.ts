@@ -41,10 +41,7 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: 'medications-app',
-    // The medications app builds into the vendored self-hosted-apps tree (it
-    // also ships as a Tauri resource from there); this package consumes that
-    // output rather than redirecting it.
-    sourceDir: 'slices/apps/self-hosted-apps/medication',
+    sourceDir: 'apps/medications-app/dist',
     destPath: SECTION_PATHS.medications,
     // Two entries: the EHR launch endpoint and the app root (the redirect target,
     // which also serves the standalone connect menu on a bare visit).
@@ -52,12 +49,9 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: 'wildflower-importer',
-    // Same arrangement as the medications app: the importer builds into the
-    // vendored self-hosted-apps tree (where it also ships as a Tauri resource),
-    // and this package consumes that output rather than redirecting it. The
-    // folder is `importer` — the `content_folder` its seed migration records —
-    // while the published path is `/${SECTION_PATHS.importer}`.
-    sourceDir: 'slices/apps/self-hosted-apps/importer',
+    // The package lives in `apps/importer-web`; its published path is
+    // `/${SECTION_PATHS.importer}`.
+    sourceDir: 'apps/importer-web/dist',
     destPath: SECTION_PATHS.importer,
     // Two entries: the SMART-on-FHIR launch endpoint and the redirect target.
     requiredFiles: ['index.html', 'launch.html'],
@@ -71,10 +65,7 @@ const siteSections: readonly SiteSection[] = [
   },
   {
     packageName: 'wildflower-web-trace',
-    // Same arrangement as the medications app: the Web Trace app builds into
-    // the vendored self-hosted-apps tree it ships from as a Tauri resource, and
-    // this package copies that output rather than redirecting it.
-    sourceDir: 'slices/apps/self-hosted-apps/web-trace',
+    sourceDir: 'apps/web-trace/dist',
     destPath: SECTION_PATHS.webTrace,
     // Two entries: the EHR launch endpoint and the app root (the redirect target,
     // which also serves the standalone connect menu on a bare visit).

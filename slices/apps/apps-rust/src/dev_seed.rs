@@ -11,7 +11,10 @@
 //!
 //! So a **debug build** additionally gets one cloud row per app, id
 //! `<app>-dev`, whose launch URL names `localhost` and the app's fixed vite
-//! dev-server port. These rows cannot be a migration: migrations are embedded,
+//! dev-server port. There is no fallback content behind that port: the apps
+//! build into their own `dist/` for the published site, nothing is vendored for
+//! the host to serve, so the tile launches whatever is serving the port — and
+//! nothing when the dev server is down. These rows cannot be a migration: migrations are embedded,
 //! run unconditionally, and are tracked by version, so a row created by one
 //! would also exist in every release database. This runtime path is compiled
 //! out entirely in release: the whole module is behind

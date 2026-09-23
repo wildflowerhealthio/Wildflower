@@ -70,18 +70,14 @@ The header toggle switches `<App />` between two views over the same loaded
 
 ## Where the bundle is served
 
-Both places come from the same build output (`outDir`
-`slices/apps/self-hosted-apps/medication`, which cannot move — see the comment in
-`vite.config.ts`):
-
-- **On the published site**, at
-  [`/medications-app`](https://wildflowerhealth.io/medications-app) —
-  `github-pages` copies that directory into the Pages artifact
-  ([../github-pages/README.md](../github-pages/README.md)). This is the
-  **production** launch target: the `medications-app` registry row is a _cloud_
-  row pointing at that URL.
-- **On device**, as the fallback content of the debug-only `medications-app-dev`
-  self-hosted row, for when the vite dev server is not running.
+`vp build` writes this package's default `dist/`, and that build is served in
+one place: **the published site**, at
+[`/medications-app`](https://wildflowerhealth.io/medications-app).
+`github-pages` copies `dist/` into the Pages artifact
+([../github-pages/README.md](../github-pages/README.md)). This is the
+**production** launch target: the `medications-app` registry row is a _cloud_ row
+pointing at that URL. Nothing ships on device — in development the
+`medications-app-dev` row launches the vite dev server instead (below).
 
 ## Registration
 
@@ -106,12 +102,12 @@ are equal.
 vp run -F medications-app dev     # strictPort, from slices/apps/dev-app-ports.json
 ```
 
-Debug builds of the host additionally seed a `medications-app-dev` **self-hosted**
+Debug builds of the host additionally seed a `medications-app-dev` **cloud**
 row on that port plus its own OAuth client (`apps-rust`'s `seed_dev_apps` /
 `gatekeeper-rust`'s `seed_dev_app_clients`), so the homescreen carries a
 "Medications (Dev)" tile that launches whatever is serving that port — the vite
-dev server when it is up, otherwise the host's copy of the vendored build. The
-port has a single source, `slices/apps/dev-app-ports.json`: `vite.config.ts`
+dev server when it is up, nothing when it is down (there is no fallback build).
+The port has a single source, `slices/apps/dev-app-ports.json`: `vite.config.ts`
 reads it through the shared `devAppServer` helper in the root
 `vite.config.base.ts` and `apps-rust` embeds it, so the dev server and the row
 cannot drift.
