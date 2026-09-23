@@ -206,9 +206,9 @@ async fn canonical_audience_without_owner_marker_is_rejected() {
         &key,
         &NewJwtArgs {
             client_id: "impostor",
-            scope: &scopes,
+            scopes: &scopes,
             ttl: Duration::seconds(300),
-            origin: shared_structures_rust::CANONICAL_ISSUER,
+            issuer: shared_structures_rust::CANONICAL_ISSUER,
             audience: Some(shared_structures_rust::CANONICAL_ISSUER),
             patient: None,
             is_host_owner: false,

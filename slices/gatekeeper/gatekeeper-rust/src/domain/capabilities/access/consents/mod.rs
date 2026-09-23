@@ -29,8 +29,7 @@ mod oauth;
 
 use device::{approve_device_consent, deny_device_consent, load_pending_device_request};
 use oauth::{
-    approve_oauth_consent, deny_oauth_consent, load_pending_authorization_code_request,
-    ApprovalContext,
+    approve_oauth_consent, deny_oauth_consent, load_pending_code_request, ApprovalContext,
 };
 
 /// The scope gating [`ConsentReader`] — `wildflower/AuthorizationRequest.r`.
@@ -153,7 +152,7 @@ impl<S: GatekeeperStore> ConsentReader<S> {
             request,
             redirect_uri,
             ..
-        } = load_pending_authorization_code_request(&self.store, id)?;
+        } = load_pending_code_request(&self.store, id)?;
         // A missing row is the `New` verdict, and its name falls back to the raw
         // `client_id` — a store failure reads the same way, deliberately: the
         // prompt still renders, warning rather than silently reassuring.
@@ -296,14 +295,15 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
 
     use chrono::Duration;
 
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::client::RegisteredRedirectUri;
-    use crate::domain::test_fake::{client, code_request, device_request, FakeGatekeeperStore};
+    use crate::domain::test_fake::{
+        client, code_request, device_request, FakeGatekeeperStore, RecordingPublisher,
+    };
     use crate::ports::NoSelfHostedRedirects;
 
     /// The classifier the code-consent tests share: no self-hosted app (so
@@ -345,25 +345,6 @@ mod tests {
             approved_scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
             patient: None,
             acknowledged_registration: true,
-        }
-    }
-
-    /// A [`PendingConsentPublisher`] that just counts republish calls. Uses an
-    /// atomic (not a `Cell`) so it satisfies the port's `Send + Sync` bound.
-    #[derive(Default)]
-    struct RecordingPublisher {
-        republishes: AtomicU32,
-    }
-
-    impl RecordingPublisher {
-        fn count(&self) -> u32 {
-            self.republishes.load(Ordering::Relaxed)
-        }
-    }
-
-    impl PendingConsentPublisher for RecordingPublisher {
-        fn republish_active(&self) {
-            self.republishes.fetch_add(1, Ordering::Relaxed);
         }
     }
 
@@ -857,8 +838,7 @@ mod tests {
                 Utc::now() + Duration::minutes(5),
             ))
             .unwrap();
-        let loaded =
-            load_pending_authorization_code_request(&store, "req-1").expect("live request");
+        let loaded = load_pending_code_request(&store, "req-1").expect("live request");
         assert_eq!(loaded.request.id, "req-1");
         assert_eq!(loaded.redirect_uri.as_str(), "https://example.com/cb");
         assert_eq!(loaded.code_challenge.len(), 43);
@@ -873,7 +853,7 @@ mod tests {
             .unwrap();
         for id in ["expired", "ghost"] {
             assert_eq!(
-                load_pending_authorization_code_request(&store, id),
+                load_pending_code_request(&store, id),
                 Err(GatekeeperError::OAuthConsentNotFound { id: id.to_owned() }),
             );
         }

@@ -34,7 +34,7 @@ impl TokenEntitlement for HostOwnerEntitlement {
         &self.client_id
     }
 
-    fn scopes(&self) -> &[String] {
+    fn token_scopes(&self) -> &[String] {
         &self.scopes
     }
 

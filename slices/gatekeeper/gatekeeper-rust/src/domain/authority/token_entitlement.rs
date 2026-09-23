@@ -10,8 +10,11 @@
 pub(crate) trait TokenEntitlement: sealed::Sealed {
     /// The `sub` / `client_id` the token is issued to.
     fn client_id(&self) -> &str;
-    /// The scopes the token carries, exactly as the proof recorded them.
-    fn scopes(&self) -> &[String];
+    /// The scopes written into the token's `scope` claim, exactly as the proof
+    /// holds them. A redemption's differ from its `granted_scopes`: each SMART
+    /// scope's alternate spelling is added (see
+    /// [`scopes_rust::with_alternate_canonical_forms`]).
+    fn token_scopes(&self) -> &[String];
     /// SMART-on-FHIR patient context bound at approval, if any.
     fn patient(&self) -> Option<&str>;
     /// Whether this is the host's own owner token — the one token allowed to

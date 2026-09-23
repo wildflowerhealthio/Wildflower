@@ -75,7 +75,7 @@ where
             .authenticate(&presented.credentials)
             .map_err(|error| ClientAuthenticationFailure {
                 error,
-                attempted_via: presented.presented_via,
+                presented_via: presented.presented_via,
             })?;
         Ok(TokenRequest { payload, client })
     }

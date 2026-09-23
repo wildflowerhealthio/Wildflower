@@ -135,40 +135,16 @@ impl<S: GatekeeperStore> DeviceAuthorizer<S> {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::*;
     use crate::domain::authorization_request::{GrantType, RequestStatus};
-    use crate::domain::client_credentials::ClientCredentials;
-    use crate::domain::test_fake::{client, FakeGatekeeperStore};
 
-    #[derive(Default)]
-    struct RecordingPublisher {
-        republishes: AtomicU32,
-    }
-
-    impl PendingConsentPublisher for RecordingPublisher {
-        fn republish_active(&self) {
-            self.republishes.fetch_add(1, Ordering::SeqCst);
-        }
-    }
+    use crate::domain::test_fake::{
+        authenticated_public_client, client, owned_scopes, FakeGatekeeperStore, RecordingPublisher,
+    };
 
     fn authenticated(store: &FakeGatekeeperStore) -> AuthenticatedClient {
-        store
-            .upsert_client(&client("app", &["patient/*.rs", "openid"]))
-            .unwrap();
-        AuthenticatedClient::authenticate(
-            store,
-            &ClientCredentials {
-                client_id: "app".to_owned(),
-                client_secret: None,
-            },
-        )
-        .unwrap()
-    }
-
-    fn owned(scopes: &[&str]) -> Vec<String> {
-        scopes.iter().map(|s| (*s).to_owned()).collect()
+        authenticated_public_client(store, client("app", &["patient/*.rs", "openid"]))
     }
 
     /// A request inside the allowlist (by coverage, not spelling) is parked as
@@ -182,7 +158,7 @@ mod tests {
         let started = authorizer
             .start(
                 &client,
-                owned(&["patient/Patient.r", "openid"]),
+                owned_scopes(&["patient/Patient.r", "openid"]),
                 Some("Kitchen iPad".to_owned()),
             )
             .expect("starts");
@@ -198,7 +174,7 @@ mod tests {
         assert_eq!(parked.status, RequestStatus::Pending);
         assert_eq!(parked.requested_scopes, ["patient/Patient.r", "openid"]);
         assert_eq!(parked.device_name.as_deref(), Some("Kitchen iPad"));
-        assert_eq!(publisher.republishes.load(Ordering::SeqCst), 1);
+        assert_eq!(publisher.count(), 1);
     }
 
     /// A scope outside the allowlist refuses the whole request before anything
@@ -210,9 +186,9 @@ mod tests {
         let publisher = Arc::new(RecordingPublisher::default());
         let authorizer = DeviceAuthorizer::new(store, publisher.clone());
         assert!(matches!(
-            authorizer.start(&client, owned(&["system/*.cruds"]), None),
+            authorizer.start(&client, owned_scopes(&["system/*.cruds"]), None),
             Err(DeviceAuthorizationError::ScopeNotAllowed)
         ));
-        assert_eq!(publisher.republishes.load(Ordering::SeqCst), 0);
+        assert_eq!(publisher.count(), 0);
     }
 }

@@ -44,7 +44,7 @@ pub(super) struct ApprovalContext<'a> {
 /// `code_challenge`. On success the two optional fields are unwrapped into the
 /// returned [`PendingCodeRequest`]. A request whose `expires_at` has passed is
 /// treated as not found — the deadline is enforced here at read time.
-pub(super) fn load_pending_authorization_code_request(
+pub(super) fn load_pending_code_request(
     store: &impl GatekeeperStore,
     id: &str,
 ) -> Result<PendingCodeRequest, GatekeeperError> {
@@ -55,14 +55,7 @@ pub(super) fn load_pending_authorization_code_request(
                 && r.grant_type == GrantType::AuthorizationCode
                 && r.expires_at > Utc::now() =>
         {
-            match (r.redirect_uri.clone(), r.code_challenge.clone()) {
-                (Some(redirect_uri), Some(code_challenge)) => Ok(PendingCodeRequest {
-                    request: r,
-                    redirect_uri,
-                    code_challenge,
-                }),
-                _ => Err(make_consent_not_found()),
-            }
+            PendingCodeRequest::from_request(r).ok_or_else(make_consent_not_found)
         }
         _ => Err(make_consent_not_found()),
     }
@@ -91,7 +84,7 @@ pub(super) fn approve_oauth_consent(
 ) -> Result<ConsentOutcome, GatekeeperError> {
     let now = ctx.now;
     let make_consent_not_found = || GatekeeperError::OAuthConsentNotFound { id: id.to_owned() };
-    let pending = load_pending_authorization_code_request(store, id)?;
+    let pending = load_pending_code_request(store, id)?;
     let PendingCodeRequest {
         request,
         redirect_uri,
@@ -189,6 +182,6 @@ pub(super) fn deny_oauth_consent(
     publisher: &dyn PendingConsentPublisher,
     id: &str,
 ) -> Result<(), GatekeeperError> {
-    load_pending_authorization_code_request(store, id)?;
+    load_pending_code_request(store, id)?;
     deny_consent(store, publisher, id)
 }

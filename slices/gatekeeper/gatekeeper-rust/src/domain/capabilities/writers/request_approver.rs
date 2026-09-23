@@ -1,8 +1,9 @@
 //! [`RequestApprover`] — the writer that moves a pending authorization request
 //! to `approved` and, for the code flow, issues the authorization code the
-//! client redeems at `/oauth/token`. Both writes demand a
-//! [`DelegatedScopes`] proof: the scopes recorded on the request and the code
-//! are exactly the proof's, never a slice the flow assembled.
+//! client redeems at `/oauth/token`. Both writes demand a proof — the device
+//! flow a [`DelegatedScopes`], the code flow a [`CodeAuthority`] (delegated
+//! scopes or standing-grant coverage) — so the scopes recorded on the request
+//! and the code are exactly the proof's, never a slice the flow assembled.
 
 use chrono::{DateTime, Utc};
 
@@ -11,7 +12,7 @@ use crate::domain::authorization_code::{
     IssuedAuthorizationCode, PendingCodeRequest, AUTHORIZATION_CODE_TTL,
 };
 use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::domain::GatekeeperStore;
+use crate::domain::{GatekeeperStore, GatekeeperTx};
 
 /// On whose authority a code-flow request is approved — the two proofs that
 /// may issue an authorization code. Listing them here is the point: a reader
@@ -34,7 +35,7 @@ impl CodeAuthority<'_> {
 }
 
 /// Approve pending requests. A borrowed view over the store; the gate is the
-/// [`DelegatedScopes`] each method takes.
+/// proof each method takes.
 pub(crate) struct RequestApprover<'a, S: GatekeeperStore> {
     store: &'a S,
 }
@@ -51,8 +52,9 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
     /// [`AUTHORIZATION_CODE_TTL`] after `now`. The flow generates `code` (a
     /// CSPRNG opaque token) so tests can inject a known value.
     ///
-    /// Returns `None` when the request was no longer pending (a concurrent
-    /// decision or expiry won), in which case nothing is issued; the flow maps
+    /// The approval and the code land in one transaction. Returns `None` when
+    /// the request was no longer pending (a concurrent decision or expiry won),
+    /// in which case nothing is issued; the flow maps
     /// that to its own not-found outcome.
     ///
     /// # Errors
@@ -68,12 +70,6 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
     ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
         let scopes = authority.scopes();
         let request = &pending.request;
-        let approved =
-            self.store
-                .approve_authorization_request(&request.id, scopes, patient, None)?;
-        if !approved {
-            return Ok(None);
-        }
         let authorization_code = IssuedAuthorizationCode {
             code,
             request_id: request.id.clone(),
@@ -85,8 +81,14 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
             issued_at: now,
             expires_at: now + AUTHORIZATION_CODE_TTL,
         };
-        self.store.issue_authorization_code(&authorization_code)?;
-        Ok(Some(authorization_code))
+        // One transaction, so an approved request never exists without its code.
+        self.store.transaction(|tx| {
+            if !tx.approve_authorization_request(&request.id, scopes, patient, None)? {
+                return Ok(None);
+            }
+            tx.issue_authorization_code(&authorization_code)?;
+            Ok(Some(authorization_code))
+        })
     }
 
     /// Approve the device-flow request `request_id` under `delegated_scopes`,
@@ -116,39 +118,20 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
 
     use chrono::Duration;
-    use scopes_rust::Grant;
 
     use super::*;
-    use crate::domain::authority::ApprovableScopes;
     use crate::domain::authorization_request::RequestStatus;
-    use crate::domain::test_fake::{code_request, device_request, FakeGatekeeperStore};
-
-    fn delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
-        let requested: HashSet<&str> = scopes.iter().copied().collect();
-        DelegatedScopes::clamp(
-            &Grant::parse(["system/*.cruds"]),
-            scopes.iter().map(|s| (*s).to_owned()).collect(),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &requested,
-            },
-        )
-        .expect("owner covers everything")
-        .expect("non-empty")
-    }
+    use crate::domain::test_fake::{
+        code_request, delegated_scopes, device_request, FakeGatekeeperStore,
+    };
 
     /// The fixture code request `id`, in `status`, as the approver takes it.
     fn pending(store: &FakeGatekeeperStore, id: &str, status: RequestStatus) -> PendingCodeRequest {
         let request = code_request(id, status, Utc::now() + Duration::minutes(5));
         store.insert_authorization_request(&request).unwrap();
-        PendingCodeRequest {
-            redirect_uri: request.redirect_uri.clone().expect("a code request"),
-            code_challenge: request.code_challenge.clone().expect("a code request"),
-            request,
-        }
+        PendingCodeRequest::from_request(request).expect("a code request")
     }
 
     /// The code flow: the request flips to approved carrying the proof's scopes,

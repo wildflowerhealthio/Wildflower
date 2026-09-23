@@ -144,9 +144,9 @@ pub fn mint_scoped_token(db: &TestDb, scopes: &[&str]) -> String {
         &key,
         &NewJwtArgs {
             client_id: "scoped-app",
-            scope: &scope,
+            scopes: &scope,
             ttl: Duration::seconds(300),
-            origin: shared_structures_rust::CANONICAL_ISSUER,
+            issuer: shared_structures_rust::CANONICAL_ISSUER,
             audience: Some(LOOPBACK_ORIGIN),
             patient: None,
             is_host_owner: false,

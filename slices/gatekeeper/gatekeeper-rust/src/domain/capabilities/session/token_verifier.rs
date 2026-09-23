@@ -1,8 +1,7 @@
 //! [`TokenVerifier`] — the access-token verification policy both authN gates
 //! run: signature and issuer against the stored keys, the accepted audiences
 //! for the request's served origin, the canonical-audience rule for the host
-//! owner token, and revocation as the last gate. Moved out of the middleware so
-//! the policy is a unit-testable domain rule and the middleware only extracts
+//! owner token, and revocation as the last gate. The middleware only extracts
 //! the token, resolves the origin, and maps the outcome to a status.
 
 use std::sync::Arc;
@@ -89,7 +88,7 @@ mod tests {
 
     use super::*;
     use crate::domain::signing_key::SigningKey;
-    use crate::domain::test_fake::FakeGatekeeperStore;
+    use crate::domain::test_fake::{seed_active_signing_key, FakeGatekeeperStore};
     use crate::domain::token::{mint_access_token, NewJwtArgs};
 
     /// A revocation check that answers from a fixed set of revoked `jti`s and
@@ -120,9 +119,7 @@ mod tests {
 
     fn store_with_key() -> (FakeGatekeeperStore, SigningKey) {
         let store = FakeGatekeeperStore::default();
-        let mut key = SigningKey::generate().expect("key");
-        key.is_active = true;
-        store.insert_signing_key(&key).unwrap();
+        let key = seed_active_signing_key(&store);
         (store, key)
     }
 
@@ -131,9 +128,9 @@ mod tests {
             key,
             &NewJwtArgs {
                 client_id: "client",
-                scope: &["openid".to_owned()],
+                scopes: &["openid".to_owned()],
                 ttl: Duration::minutes(5),
-                origin: shared_structures_rust::CANONICAL_ISSUER,
+                issuer: shared_structures_rust::CANONICAL_ISSUER,
                 audience: Some(audience),
                 patient: None,
                 is_host_owner,

@@ -132,6 +132,17 @@ pub struct StartDeviceAuthorizationArgs {
     pub ttl: Duration,
 }
 
+/// The name a device grant is keyed on: the device name recorded on the
+/// request, or the client's own name when it has none. The approval records the
+/// grant under it and the token poll looks the grant up by it, so both go
+/// through here.
+pub(crate) fn device_grant_name<'a>(
+    request_device_name: Option<&'a str>,
+    client_name: &'a str,
+) -> &'a str {
+    request_device_name.unwrap_or(client_name)
+}
+
 impl AuthorizationRequest {
     #[must_use]
     pub fn new_code_authorization(input: StartCodeAuthorizationArgs) -> Self {

@@ -3,6 +3,7 @@ use chrono::{DateTime, Duration, Utc};
 use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation};
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::signing_key::{KeyMaterialError, SigningKey};
 
 /// Lifetime of access tokens minted by the gatekeeper. The consent UI's
@@ -61,8 +62,8 @@ pub struct AccessTokenClaims {
     /// Optional SMART-on-FHIR patient context.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub patient: Option<String>,
-    /// Marks the boot-minted host owner token — the only token `require_auth`
-    /// lets authenticate via the canonical audience. A private claim, absent
+    /// Marks the boot-minted host owner token — the only token the
+    /// `TokenVerifier` lets authenticate via the canonical audience. A private claim, absent
     /// (never `false`) on every other token. See `docs/Origins/Explanation.md`.
     #[serde(rename = "wf_owner", skip_serializing_if = "Option::is_none")]
     pub host_owner: Option<bool>,
@@ -73,17 +74,17 @@ pub struct NewJwtArgs<'a> {
     /// OAuth client requesting the token.
     pub client_id: &'a str,
     /// Scopes to embed in the token.
-    pub scope: &'a [String],
+    pub scopes: &'a [String],
     /// Duration the token should remain valid from `now`.
     pub ttl: Duration,
-    /// Origin minting the token; becomes the `iss` claim and the default `aud`.
-    pub origin: &'a str,
-    /// Optional explicit audience override; falls back to `origin` when `None`.
+    /// The `iss` claim, and the default `aud`.
+    pub issuer: &'a str,
+    /// Optional explicit audience override; falls back to `issuer` when `None`.
     pub audience: Option<&'a str>,
     /// Optional SMART-on-FHIR patient context.
     pub patient: Option<&'a str>,
     /// Mark the token as the host owner token, adding the `wf_owner` claim that
-    /// `require_auth` requires before honouring the canonical audience. Only
+    /// the `TokenVerifier` requires before honouring the canonical audience. Only
     /// [`mint_host_owner_token`](crate::seeding) sets this; every OAuth mint
     /// leaves it `false`.
     pub is_host_owner: bool,
@@ -100,6 +101,19 @@ pub enum MintError {
     JwsEncodeFailed(#[from] jsonwebtoken::errors::Error),
 }
 
+/// The ways minting can fail. `NoActiveSigningKey` is an operator problem
+/// (bootstrap has not run, or the key store was tampered with); `Signing` is a
+/// key-material or encoding failure from [`mint_access_token`].
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum TokenIssuanceError {
+    #[error("no active signing key in store")]
+    NoActiveSigningKey,
+    #[error("sign access token")]
+    Signing(#[from] MintError),
+    #[error(transparent)]
+    Store(#[from] GatekeeperError),
+}
+
 /// Mint a signed access token using `signing_key` and the supplied claim inputs.
 ///
 /// # Errors
@@ -113,17 +127,17 @@ pub fn mint_access_token(
 ) -> Result<String, MintError> {
     let now = Utc::now();
     let claims = AccessTokenClaims {
-        issuer: args.origin.to_string(),
+        issuer: args.issuer.to_string(),
         subject: args.client_id.to_string(),
         // A fresh random `jti` per mint — generated here, not taken from
         // `NewJwtArgs`, so *every* mint site (the OAuth token response, the boot
         // host-owner token, the refresh/token-exchange path) gets a unique id
         // without having to remember to pass one.
         jti: uuid::Uuid::new_v4().to_string(),
-        audience: args.audience.unwrap_or(args.origin).to_string(),
+        audience: args.audience.unwrap_or(args.issuer).to_string(),
         expires_at: now + args.ttl,
         issued_at: now,
-        scope: args.scope.join(" "),
+        scope: args.scopes.join(" "),
         patient: args.patient.map(str::to_string),
         host_owner: args.is_host_owner.then_some(true),
     };
@@ -166,7 +180,7 @@ pub struct VerifiedClaims {
     #[serde(default)]
     pub patient: Option<String>,
     /// Present and `true` only on the host owner token (the `wf_owner` claim);
-    /// `require_auth` requires it before accepting the canonical audience.
+    /// the `TokenVerifier` requires it before accepting the canonical audience.
     #[serde(rename = "wf_owner", default)]
     pub host_owner: Option<bool>,
 }

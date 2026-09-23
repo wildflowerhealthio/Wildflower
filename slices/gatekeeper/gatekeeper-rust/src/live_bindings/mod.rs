@@ -10,11 +10,12 @@
 //! - [`FromState`] is how a capability that no principal unlocks (the
 //!   pre-auth front door, the token verifier) is built: the `Live<F>` extractor
 //!   in `http` calls it, so a handler never names the state itself.
-//! - [`grants`], [`consents`], and [`tokens`] hold the per-resource
-//!   `FixedScopeCapability`/`Capability` bindings; each lifts the store + port
-//!   handles out of the state (never the whole state), so `domain/` stays free of
-//!   both `crate::http` and the concrete adapter types. The `Live…` aliases are
-//!   what the `/access` handlers name in `Scoped<…>`.
+//! - The remaining modules hold one binding each (the `/access` ones implement
+//!   `FixedScopeCapability`/`Capability`, the session ones
+//!   `AuthenticatedCapability`); each lifts the store + port handles out of the
+//!   state (never the whole state), so `domain/` stays free of both
+//!   `crate::http` and the concrete adapter types. The `Live…` aliases are what
+//!   the handlers name in `Scoped<…>`, `Authenticated<…>`, or `Live<…>`.
 
 mod client_authenticator;
 mod consents_decider;
@@ -44,9 +45,10 @@ pub(crate) use token_revoker::LiveTokenRevoker;
 
 /// A live capability built from the router state alone — the pre-auth
 /// front-door bindings and the token verifier, which no claims unlock (their
-/// gate, where they have one, is the proof their methods take). The `Live<F>`
-/// extractor in `http` is the only caller, so handlers acquire these without
-/// naming the state.
+/// gate, where they have one, is the proof their methods take). Handlers
+/// acquire them through the `Live<F>` extractor in `http`, so they never name
+/// the state; the auth middleware and the token-request extractor build theirs
+/// directly.
 pub(crate) trait FromState {
     /// Lift the handles this capability needs out of the state.
     fn from_state(state: &std::sync::Arc<GatekeeperState>) -> Self;

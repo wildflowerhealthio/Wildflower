@@ -19,9 +19,11 @@ pub mod gatekeeper_store;
 // that checks the rule each proof stands for.
 pub(crate) mod authority;
 
-// The capabilities: the scope-gated `/access` surface (`access/`) and the
-// proof-gated privileged writers (`writers/`), generic over the store port. The
-// `Capability` bindings to the concrete state live in `crate::live_bindings`.
+// The capabilities, generic over the store port: the scope-gated `/access`
+// surface (`access/`), the pre-auth `/oauth` front door (`oauth/`), the
+// caller's own session (`session/`), and the proof-gated privileged writers
+// (`writers/`). The bindings to the concrete state live in
+// `crate::live_bindings`.
 pub(crate) mod capabilities;
 
 // The in-memory `FakeGatekeeperStore` + fixtures the domain unit tests share.

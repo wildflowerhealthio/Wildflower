@@ -1,11 +1,21 @@
-//! Request / client / grant fixtures the per-entity domain tests share.
+//! Fixtures and small test doubles the domain unit tests share.
+
+use std::collections::HashSet;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use chrono::{DateTime, Duration, Utc};
+use scopes_rust::Grant;
 use url::Url;
 
+use super::FakeGatekeeperStore;
+use crate::domain::authority::{ApprovableScopes, AuthenticatedClient, DelegatedScopes};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
+use crate::domain::client_credentials::ClientCredentials;
 use crate::domain::grant::AuthorizationCodeGrant;
+use crate::domain::signing_key::SigningKey;
+use crate::domain::GatekeeperStore;
+use crate::ports::PendingConsentPublisher;
 
 /// A pending (by default) device-code authorization request fixture.
 pub(crate) fn device_request(
@@ -89,5 +99,71 @@ pub(crate) fn code_grant(id: &str, client_id: &str) -> AuthorizationCodeGrant {
         last_used_at: None,
         patient: None,
         redirect_uri: Url::parse("https://example.com/cb").unwrap(),
+    }
+}
+
+/// Owned scope strings from literals.
+pub(crate) fn owned_scopes(scopes: &[&str]) -> Vec<String> {
+    scopes.iter().map(|s| (*s).to_owned()).collect()
+}
+
+/// Seed a freshly generated signing key as the active one, and return it.
+pub(crate) fn seed_active_signing_key(store: &FakeGatekeeperStore) -> SigningKey {
+    let mut key = SigningKey::generate().expect("key");
+    key.is_active = true;
+    store.insert_signing_key(&key).unwrap();
+    key
+}
+
+/// Register `client` (which must be public) and authenticate as it.
+pub(crate) fn authenticated_public_client(
+    store: &FakeGatekeeperStore,
+    client: Client,
+) -> AuthenticatedClient {
+    let client_id = client.client_id.clone();
+    store.upsert_client(&client).unwrap();
+    AuthenticatedClient::authenticate(
+        store,
+        &ClientCredentials {
+            client_id,
+            client_secret: None,
+        },
+    )
+    .expect("a public client authenticates")
+}
+
+/// `scopes` as delegated by an owner-equivalent approver, with nothing clamped
+/// away.
+pub(crate) fn delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
+    let approvable: HashSet<&str> = scopes.iter().copied().collect();
+    DelegatedScopes::clamp(
+        &Grant::parse(["system/*.cruds", "wildflower/*.cruds"]),
+        owned_scopes(scopes),
+        &ApprovableScopes {
+            requested_scopes: &approvable,
+            allowed_scopes: &approvable,
+        },
+    )
+    .expect("the owner covers everything")
+    .expect("non-empty")
+}
+
+/// A [`PendingConsentPublisher`] that counts republish calls. Atomic (not a
+/// `Cell`) so it satisfies the port's `Send + Sync` bound.
+#[derive(Default)]
+pub(crate) struct RecordingPublisher {
+    republishes: AtomicU32,
+}
+
+impl RecordingPublisher {
+    /// How many times the popup head has been republished.
+    pub(crate) fn count(&self) -> u32 {
+        self.republishes.load(Ordering::SeqCst)
+    }
+}
+
+impl PendingConsentPublisher for RecordingPublisher {
+    fn republish_active(&self) {
+        self.republishes.fetch_add(1, Ordering::SeqCst);
     }
 }

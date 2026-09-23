@@ -22,21 +22,22 @@ use url::Url;
 
 use super::authenticated_client::AuthenticatedClient;
 use super::token_entitlement::{sealed, TokenEntitlement};
-use crate::crypto_util::pkce::compute_code_challenge;
+use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::token_storage_hash;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
 use crate::domain::authorization_request::{
-    AuthorizationRequest, GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
+    device_grant_name, AuthorizationRequest, GrantType, RequestStatus, DEVICE_CODE_POLL_INTERVAL,
 };
 use crate::domain::refresh_token::RefreshTokenFamily;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::domain::GatekeeperStore;
 
-/// The presented halves of an authorization-code redemption (RFC 6749 §4.1.3).
-pub(crate) struct CodeRedemption<'a> {
+/// The presented halves of an `authorization_code` grant request (RFC 6749
+/// §4.1.3), as the client sent them.
+pub(crate) struct PresentedAuthorizationCode<'a> {
     pub(crate) code: &'a str,
     pub(crate) code_verifier: &'a str,
-    pub(crate) redirect_uri: &'a Url,
+    pub(crate) redirect_uri: &'a str,
 }
 
 /// A redemption that may start a refresh-token family: the two grants that
@@ -70,27 +71,36 @@ pub(crate) struct RedeemedAuthorizationCode {
 }
 
 impl RedeemedAuthorizationCode {
-    /// Atomically read-and-consume the code, then verify every binding. A code
-    /// that is gone (redeemed or never issued) is a possible replay: any refresh
-    /// family minted from it is revoked before the refusal (RFC 6749 §4.1.2).
-    /// The binding failures all collapse to `invalid_grant` on the wire (the
-    /// reason is logged), so a response never reveals which check failed.
+    /// Check the presented request is well formed, then atomically
+    /// read-and-consume the code and verify every binding. A malformed request
+    /// is refused before the code is touched. A code that is gone (redeemed or
+    /// never issued) is a possible replay: any refresh family minted from it is
+    /// revoked before the refusal (RFC 6749 §4.1.2). The binding failures all
+    /// collapse to `invalid_grant` on the wire (the reason is logged), so a
+    /// response never reveals which check failed.
     ///
     /// # Errors
     ///
+    /// [`TokenExchangeError::InvalidCodeVerifier`] (RFC 7636 §4.1 length) or
+    /// [`TokenExchangeError::InvalidRedirectUri`] for a malformed request;
     /// [`TokenExchangeError::InvalidGrant`] with the specific reason;
     /// [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn redeem(
         store: &impl GatekeeperStore,
         client: &AuthenticatedClient,
-        redemption: &CodeRedemption<'_>,
+        presented: &PresentedAuthorizationCode<'_>,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
+        if !is_valid_code_verifier_length(presented.code_verifier) {
+            return Err(TokenExchangeError::InvalidCodeVerifier);
+        }
+        let redirect_uri = Url::parse(presented.redirect_uri)
+            .map_err(|_| TokenExchangeError::InvalidRedirectUri)?;
         // A concurrent redemption of the same code can only succeed once, so
         // any racer past this point sees `None` (RFC 6749 §10.5).
-        let Some(code) = store.redeem_authorization_code(redemption.code)? else {
+        let Some(code) = store.redeem_authorization_code(presented.code)? else {
             store.expire_refresh_token_families_for_authorization_code(
-                &token_storage_hash(redemption.code),
+                &token_storage_hash(presented.code),
                 now,
             )?;
             return Err(TokenExchangeError::InvalidGrant(
@@ -105,11 +115,11 @@ impl RedeemedAuthorizationCode {
                 },
             ));
         }
-        if code.redirect_uri != *redemption.redirect_uri {
+        if code.redirect_uri != redirect_uri {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::CodeRedirectMismatch {
                     code_redirect_uri: code.redirect_uri.to_string(),
-                    presented_redirect_uri: redemption.redirect_uri.to_string(),
+                    presented_redirect_uri: redirect_uri.to_string(),
                 },
             ));
         }
@@ -120,7 +130,7 @@ impl RedeemedAuthorizationCode {
                 },
             ));
         }
-        let computed = compute_code_challenge(redemption.code_verifier);
+        let computed = compute_code_challenge(presented.code_verifier);
         if !bool::from(code.code_challenge.as_bytes().ct_eq(computed.as_bytes())) {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::PkceMismatch {
@@ -132,7 +142,7 @@ impl RedeemedAuthorizationCode {
         // (write-only in v1); a grant revoked between approval and redemption
         // just leaves it `None`.
         let grant_id = store
-            .grant_by_client_and_redirect(client.client_id(), redemption.redirect_uri)?
+            .grant_by_client_and_redirect(client.client_id(), &redirect_uri)?
             .map(|grant| grant.id);
         Ok(RedeemedAuthorizationCode {
             token_scopes: token_scope_spellings(&code.granted_scopes),
@@ -149,7 +159,7 @@ impl TokenEntitlement for RedeemedAuthorizationCode {
         &self.code.client_id
     }
 
-    fn scopes(&self) -> &[String] {
+    fn token_scopes(&self) -> &[String] {
         &self.token_scopes
     }
 
@@ -249,12 +259,9 @@ impl ConsumedDeviceRequest {
             ));
         }
         let granted_scopes = request.granted_scopes.clone().unwrap_or_default();
-        // The durable device grant minted at approval is keyed on the
-        // *effective* device name — the request's, or the client name it
-        // defaulted to — the same fallback the approval recorded under.
-        let effective_device_name = request.device_name.as_deref().unwrap_or(client.name());
+        let grant_name = device_grant_name(request.device_name.as_deref(), client.name());
         let grant_id = store
-            .device_grant_by_client_and_device_name(&request.client_id, effective_device_name)?
+            .device_grant_by_client_and_device_name(&request.client_id, grant_name)?
             .map(|grant| grant.id);
         Ok(ConsumedDeviceRequest {
             token_scopes: token_scope_spellings(&granted_scopes),
@@ -272,7 +279,7 @@ impl TokenEntitlement for ConsumedDeviceRequest {
         &self.request.client_id
     }
 
-    fn scopes(&self) -> &[String] {
+    fn token_scopes(&self) -> &[String] {
         &self.token_scopes
     }
 
@@ -377,7 +384,7 @@ impl TokenEntitlement for ValidatedRefreshToken {
         &self.family.client_id
     }
 
-    fn scopes(&self) -> &[String] {
+    fn token_scopes(&self) -> &[String] {
         &self.token_scopes
     }
 
@@ -405,26 +412,20 @@ mod tests {
     use super::*;
     use crate::crypto_util::random_token::generate_authorization_code;
     use crate::domain::authorization_code::AUTHORIZATION_CODE_TTL;
-    use crate::domain::client_credentials::ClientCredentials;
+
     use crate::domain::refresh_token::RefreshToken;
-    use crate::domain::test_fake::{client, device_request, FakeGatekeeperStore};
+    use crate::domain::test_fake::{
+        authenticated_public_client, client, device_request, FakeGatekeeperStore,
+    };
 
     fn authenticated(store: &FakeGatekeeperStore, client_id: &str) -> AuthenticatedClient {
-        store
-            .upsert_client(&client(client_id, &["openid"]))
-            .unwrap();
-        AuthenticatedClient::authenticate(
-            store,
-            &ClientCredentials {
-                client_id: client_id.to_owned(),
-                client_secret: None,
-            },
-        )
-        .expect("public client")
+        authenticated_public_client(store, client(client_id, &["openid"]))
     }
 
+    const REDIRECT: &str = "https://example.com/cb";
+
     fn redirect() -> Url {
-        Url::parse("https://example.com/cb").unwrap()
+        Url::parse(REDIRECT).unwrap()
     }
 
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
@@ -464,10 +465,10 @@ mod tests {
         let now = Utc::now();
         let client = authenticated(&store, "app");
         let code = issued_code(&store, "app", now);
-        let redemption = CodeRedemption {
+        let redemption = PresentedAuthorizationCode {
             code: &code,
             code_verifier: VERIFIER,
-            redirect_uri: &redirect(),
+            redirect_uri: REDIRECT,
         };
         let proof =
             RedeemedAuthorizationCode::redeem(&store, &client, &redemption, now).expect("redeems");
@@ -475,7 +476,7 @@ mod tests {
         assert_eq!(proof.patient(), Some("pat-1"));
         assert_eq!(proof.granted_scopes(), ["patient/Patient.read"]);
         assert_eq!(
-            proof.scopes(),
+            proof.token_scopes(),
             ["patient/Patient.read", "patient/Patient.rs"]
         );
         assert_eq!(proof.authorization_code(), Some(code.as_str()));
@@ -499,13 +500,12 @@ mod tests {
         let now = Utc::now();
         let app = authenticated(&store, "app");
         let other = authenticated(&store, "other");
-        let elsewhere = Url::parse("https://elsewhere.example/cb").unwrap();
 
         let code = issued_code(&store, "app", now);
-        let wrong_client = CodeRedemption {
+        let wrong_client = PresentedAuthorizationCode {
             code: &code,
             code_verifier: VERIFIER,
-            redirect_uri: &redirect(),
+            redirect_uri: REDIRECT,
         };
         assert!(matches!(
             reason(RedeemedAuthorizationCode::redeem(
@@ -518,10 +518,10 @@ mod tests {
         ));
 
         let code = issued_code(&store, "app", now);
-        let wrong_redirect = CodeRedemption {
+        let wrong_redirect = PresentedAuthorizationCode {
             code: &code,
             code_verifier: VERIFIER,
-            redirect_uri: &elsewhere,
+            redirect_uri: "https://elsewhere.example/cb",
         };
         assert!(matches!(
             reason(RedeemedAuthorizationCode::redeem(
@@ -538,10 +538,10 @@ mod tests {
             "app",
             now - AUTHORIZATION_CODE_TTL - Duration::seconds(1),
         );
-        let expired = CodeRedemption {
+        let expired = PresentedAuthorizationCode {
             code: &code,
             code_verifier: VERIFIER,
-            redirect_uri: &redirect(),
+            redirect_uri: REDIRECT,
         };
         assert!(matches!(
             reason(RedeemedAuthorizationCode::redeem(
@@ -551,10 +551,10 @@ mod tests {
         ));
 
         let code = issued_code(&store, "app", now);
-        let bad_verifier = CodeRedemption {
+        let bad_verifier = PresentedAuthorizationCode {
             code: &code,
             code_verifier: "not-the-verifier-not-the-verifier-not-the-verif",
-            redirect_uri: &redirect(),
+            redirect_uri: REDIRECT,
         };
         assert!(matches!(
             reason(RedeemedAuthorizationCode::redeem(

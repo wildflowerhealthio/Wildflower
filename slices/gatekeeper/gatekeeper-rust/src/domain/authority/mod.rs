@@ -44,13 +44,13 @@ mod token_entitlement;
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
 pub(crate) use delegated_scopes::{ApprovableScopes, DelegatedScopes};
 pub(crate) use host_owner_entitlement::HostOwnerEntitlement;
-pub(crate) use token_entitlement::TokenEntitlement;
-// The sealing trait, exposed only so a writer test can stub a redemption.
 pub(crate) use redemption::{
-    CodeRedemption, ConsumedDeviceRequest, GrantRedemption, RedeemedAuthorizationCode,
+    ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode, RedeemedAuthorizationCode,
     ValidatedRefreshToken,
 };
 pub(crate) use standing_grant::{GrantCoverage, StandingGrantCoverage};
+pub(crate) use token_entitlement::TokenEntitlement;
+// The sealing trait, exposed only so a writer test can stub a redemption.
 #[cfg(test)]
 pub(crate) use token_entitlement::sealed;
 

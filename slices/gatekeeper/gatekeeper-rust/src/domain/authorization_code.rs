@@ -51,7 +51,7 @@ pub struct IssuedAuthorizationCode {
 /// [`RequestApprover::approve_for_code`](crate::domain::capabilities::writers::RequestApprover::approve_for_code)
 /// approves.
 ///
-/// Built by the consent flow's `load_pending_authorization_code_request` and
+/// Built by the consent flow's `load_pending_code_request` and
 /// by the `/authorize` flow from the request it just parked — the sibling of
 /// the [`IssuedAuthorizationCode`] it exists to mint, so it lives beside it
 /// rather than in a file of its own.
@@ -60,4 +60,20 @@ pub struct PendingCodeRequest {
     pub request: AuthorizationRequest,
     pub redirect_uri: Url,
     pub code_challenge: String,
+}
+
+impl PendingCodeRequest {
+    /// Unwrap `request`'s code-flow fields, or `None` when it lacks a
+    /// `redirect_uri` or a `code_challenge`. The caller has already checked the
+    /// grant type, status, and expiry.
+    #[must_use]
+    pub fn from_request(request: AuthorizationRequest) -> Option<Self> {
+        let redirect_uri = request.redirect_uri.clone()?;
+        let code_challenge = request.code_challenge.clone()?;
+        Some(PendingCodeRequest {
+            request,
+            redirect_uri,
+            code_challenge,
+        })
+    }
 }

@@ -1,8 +1,9 @@
 //! [`CodeAuthorizationStarter`] — the `/oauth/authorize` flow (RFC 6749 §3.1,
 //! §4.1.1; RFC 7636). Validates the request, parks it, and either issues a
-//! code on the spot under a [`StandingGrantCoverage`] proof (the one path that
-//! issues a code with no human in the loop — named as an authority so it can
-//! be audited as such) or hands it to the Owner.
+//! code on the spot under a
+//! [`StandingGrantCoverage`](crate::domain::authority::StandingGrantCoverage)
+//! proof (the one path that issues a code with no human in the loop — named as
+//! an authority so it can be audited as such) or hands it to the Owner.
 
 use std::sync::Arc;
 
@@ -10,7 +11,7 @@ use chrono::{DateTime, Duration, Utc};
 use url::Url;
 
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
-use crate::domain::authority::{GrantCoverage, StandingGrantCoverage};
+use crate::domain::authority::GrantCoverage;
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 use crate::domain::capabilities::writers::{CodeAuthority, RequestApprover};
@@ -76,7 +77,7 @@ pub(crate) enum AuthorizationStartError {
         error: OAuthErrorCode,
         client_state: String,
     },
-    /// The request this handler just parked was no longer pending when the fast
+    /// The request this flow just parked was no longer pending when the fast
     /// path approved it — an unexpected concurrent transition.
     RequestNotPending,
     Store(GatekeeperError),
@@ -146,15 +147,15 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             redirects: self.redirects.as_ref(),
             served_origin,
         };
-        let is_first_party = self.is_first_party(request.client_id);
-        let client = self.load_client(request.client_id, is_first_party)?;
+        let registration_is_locked = self.registration_is_locked(request.client_id);
+        let client = self.load_client(request.client_id, registration_is_locked)?;
         let redirect_uri = parse_redirect_uri(request.redirect_uri)?;
         // A redirect is trustworthy only when a client we already know already
         // registered it.
         let redirect_allowlisted = client
             .as_ref()
             .is_some_and(|client| classifier.redirect_is_allowlisted(client, &redirect_uri));
-        if is_first_party && !redirect_allowlisted {
+        if registration_is_locked && !redirect_allowlisted {
             return Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::RedirectUriNotAllowed,
             ));
@@ -167,7 +168,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             .collect();
         // Only the first-party host is held to its allowlist here; every other
         // client's unregistered scope becomes part of its registration verdict.
-        if let (true, Some(host)) = (is_first_party, client.as_ref()) {
+        if let (true, Some(host)) = (registration_is_locked, client.as_ref()) {
             if !host.allows_scopes(&requested_scopes) {
                 return Err(AuthorizationStartError::Redirectable {
                     redirect_uri,
@@ -182,7 +183,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             &redirect_uri,
             &requested_scopes,
         );
-        let coverage = StandingGrantCoverage::resolve(
+        let coverage = GrantCoverage::resolve(
             &self.store,
             &registration,
             request.client_id,
@@ -239,9 +240,10 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         })
     }
 
-    /// Whether `client_id` is the first-party host — the one client held to its
-    /// registration rather than trusted on first use.
-    fn is_first_party(&self, client_id: &str) -> bool {
+    /// Whether `client_id`'s registration is locked — true only for the
+    /// first-party host, the one client held to its registration rather than
+    /// trusted on first use.
+    fn registration_is_locked(&self, client_id: &str) -> bool {
         client_id == &*self.first_party_client_id
     }
 
@@ -251,10 +253,10 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
     fn load_client(
         &self,
         client_id: &str,
-        is_first_party: bool,
+        registration_is_locked: bool,
     ) -> Result<Option<Client>, AuthorizationStartError> {
         let Some(client) = self.store.client_by_id(client_id)? else {
-            return if is_first_party {
+            return if registration_is_locked {
                 Err(AuthorizationStartError::LocalPage(
                     OAuthErrorKind::UnknownClient,
                 ))
@@ -328,26 +330,16 @@ fn validate_code_params(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU32, Ordering};
 
     use super::*;
     use crate::domain::authorization_request::RequestStatus;
     use crate::domain::client::{ClientKind, RegisteredRedirectUri};
     use crate::domain::grant::AuthorizationCodeGrant;
-    use crate::domain::signing_key::SigningKey;
-    use crate::domain::test_fake::{client, code_grant, FakeGatekeeperStore};
+
+    use crate::domain::test_fake::{
+        client, code_grant, seed_active_signing_key, FakeGatekeeperStore, RecordingPublisher,
+    };
     use crate::ports::NoSelfHostedRedirects;
-
-    #[derive(Default)]
-    struct RecordingPublisher {
-        republishes: AtomicU32,
-    }
-
-    impl PendingConsentPublisher for RecordingPublisher {
-        fn republish_active(&self) {
-            self.republishes.fetch_add(1, Ordering::SeqCst);
-        }
-    }
 
     const CHALLENGE: &str = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM";
 
@@ -376,9 +368,7 @@ mod tests {
         CodeAuthorizationStarter<FakeGatekeeperStore>,
         Arc<RecordingPublisher>,
     ) {
-        let mut key = SigningKey::generate().expect("key");
-        key.is_active = true;
-        store.insert_signing_key(&key).unwrap();
+        seed_active_signing_key(&store);
         let publisher = Arc::new(RecordingPublisher::default());
         let starter = CodeAuthorizationStarter::new(
             store,
@@ -430,7 +420,7 @@ mod tests {
             .expect("parked");
         assert_eq!(parked.status, RequestStatus::Approved);
         assert_eq!(parked.patient.as_deref(), Some("pat-1"));
-        assert_eq!(publisher.republishes.load(Ordering::SeqCst), 1);
+        assert_eq!(publisher.count(), 1);
     }
 
     /// A request outside the registration (a scope the client never
@@ -468,7 +458,7 @@ mod tests {
             .expect("parked");
         assert_eq!(parked.status, RequestStatus::Pending);
         assert!(parked.pre_approved_scopes.is_empty());
-        assert_eq!(publisher.republishes.load(Ordering::SeqCst), 1);
+        assert_eq!(publisher.count(), 1);
     }
 
     /// Trust on first use: an unknown non-first-party client is parked for the

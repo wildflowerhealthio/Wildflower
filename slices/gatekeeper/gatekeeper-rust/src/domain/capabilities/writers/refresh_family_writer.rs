@@ -36,6 +36,10 @@ impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
     /// scopes and patient verbatim, the code it consumed (so a replay of that
     /// code can revoke the lineage), and the standing grant behind it.
     ///
+    /// The family row is inserted before its token, with no transaction: the
+    /// token insert's foreign key rejects a token whose family didn't land, so a
+    /// partial write can't leave a live tokenless family a redeemer would trust.
+    ///
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] on a store failure.
@@ -119,9 +123,10 @@ impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::authority::AuthenticatedClient;
-    use crate::domain::client_credentials::ClientCredentials;
-    use crate::domain::test_fake::{client, FakeGatekeeperStore};
+
+    use crate::domain::test_fake::{
+        authenticated_public_client, client, owned_scopes, FakeGatekeeperStore,
+    };
 
     /// A stand-in redemption for the family-start tests: the proof types'
     /// constructors are exercised in `domain::authority`; here only the
@@ -137,7 +142,7 @@ mod tests {
         fn client_id(&self) -> &str {
             "client"
         }
-        fn scopes(&self) -> &[String] {
+        fn token_scopes(&self) -> &[String] {
             &self.scopes
         }
         fn patient(&self) -> Option<&str> {
@@ -160,15 +165,11 @@ mod tests {
         }
     }
 
-    fn owned(scopes: &[&str]) -> Vec<String> {
-        scopes.iter().map(|s| (*s).to_owned()).collect()
-    }
-
     /// Only a grant carrying `offline_access` earns a refresh token.
     #[test]
     fn only_offline_access_earns_a_refresh_token() {
         let redemption = |scopes: &[&str]| FakeRedemption {
-            scopes: owned(scopes),
+            scopes: owned_scopes(scopes),
             code: None,
         };
         assert!(!redemption(&["openid"]).earns_refresh_token());
@@ -185,7 +186,7 @@ mod tests {
         let plaintext = writer
             .start_family(
                 &FakeRedemption {
-                    scopes: owned(&["openid", "offline_access"]),
+                    scopes: owned_scopes(&["openid", "offline_access"]),
                     code: Some("the-code".to_owned()),
                 },
                 now,
@@ -208,15 +209,7 @@ mod tests {
     }
 
     fn validated(store: &FakeGatekeeperStore, plaintext: &str) -> ValidatedRefreshToken {
-        store.upsert_client(&client("client", &["openid"])).unwrap();
-        let client = AuthenticatedClient::authenticate(
-            store,
-            &ClientCredentials {
-                client_id: "client".to_owned(),
-                client_secret: None,
-            },
-        )
-        .unwrap();
+        let client = authenticated_public_client(store, client("client", &["openid"]));
         ValidatedRefreshToken::validate(store, &client, plaintext, Utc::now()).unwrap()
     }
 
@@ -231,7 +224,7 @@ mod tests {
         let first = writer
             .start_family(
                 &FakeRedemption {
-                    scopes: owned(&["offline_access"]),
+                    scopes: owned_scopes(&["offline_access"]),
                     code: None,
                 },
                 now,

@@ -32,4 +32,4 @@ pub(crate) use code_authorization_starter::{
 };
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
 pub(crate) use public_keys_reader::PublicKeysReader;
-pub(crate) use token_exchanger::{IssuedTokens, PresentedAuthorizationCode, TokenExchanger};
+pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};

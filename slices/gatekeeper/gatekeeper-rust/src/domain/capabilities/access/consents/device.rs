@@ -11,7 +11,9 @@ use scopes_rust::Grant;
 use super::delegation::deny_consent;
 use super::{ApproveDeviceConsentInput, ConsentOutcome};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
-use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
+use crate::domain::authorization_request::{
+    device_grant_name, AuthorizationRequest, GrantType, RequestStatus,
+};
 use crate::domain::capabilities::writers::{GrantRecorder, RequestApprover};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
@@ -88,10 +90,10 @@ pub(super) fn approve_device_consent(
         return Err(make_consent_not_found());
     }
 
-    let effective_device_name = request_device_name.unwrap_or(client.name.as_str());
+    let grant_name = device_grant_name(request_device_name, &client.name);
     GrantRecorder::over(store).record_device_grant(
         &device_request.client_id,
-        effective_device_name,
+        grant_name,
         &delegated_scopes,
         input.patient.as_deref(),
         now,

@@ -6,8 +6,8 @@
 
 use chrono::{DateTime, Utc};
 
-use crate::domain::capabilities::writers::TokenIssuanceError;
 use crate::domain::gatekeeper_error::GatekeeperError;
+use crate::domain::token::TokenIssuanceError;
 
 /// Why a grant presented at `/oauth/token` was refused as `invalid_grant`.
 /// The fields carry only what an operator needs to tell the cases apart —
@@ -56,9 +56,10 @@ pub(crate) enum InvalidGrantReason {
     RefreshTokenVanished { family_id: String },
 }
 
-/// The ways a token exchange can fail. The first six are the caller's fault
-/// and render as `400` with the matching RFC 6749 §5.2 / RFC 8628 §3.5 error
-/// code; the last two are server-side.
+/// The ways a token exchange can fail. All but [`Issuance`](Self::Issuance) and
+/// [`Store`](Self::Store) are the caller's fault and render as `400` with the
+/// matching RFC 6749 §5.2 / RFC 8628 §3.5 error code; those two are
+/// server-side.
 #[derive(Debug)]
 pub(crate) enum TokenExchangeError {
     /// The authenticated client's registration does not allow this grant type

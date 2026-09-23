@@ -6,11 +6,9 @@
 //! writers, so a token is never minted for a grant that didn't redeem.
 
 use chrono::{DateTime, Utc};
-use url::Url;
 
-use crate::crypto_util::pkce::is_valid_code_verifier_length;
 use crate::domain::authority::{
-    AuthenticatedClient, CodeRedemption, ConsumedDeviceRequest, GrantRedemption,
+    AuthenticatedClient, ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode,
     RedeemedAuthorizationCode, TokenEntitlement, ValidatedRefreshToken,
 };
 use crate::domain::capabilities::writers::{AccessTokenMinter, RefreshFamilyWriter};
@@ -19,27 +17,24 @@ use crate::domain::token::ACCESS_TOKEN_TTL;
 use crate::domain::token_exchange_error::TokenExchangeError;
 use crate::domain::GatekeeperStore;
 
-/// The presented halves of an `authorization_code` grant request, as the
-/// client sent them (the `redirect_uri` still unparsed).
-pub(crate) struct PresentedAuthorizationCode<'a> {
-    pub(crate) code: &'a str,
-    pub(crate) code_verifier: &'a str,
-    pub(crate) redirect_uri: &'a str,
-}
-
 /// The tokens a successful exchange issued: what the RFC 6749 §5.1 token
-/// response carries, plus whether the redeeming client is the first-party host
-/// (the HTTP layer plants the owner session cookie only for the host's own
-/// session grants).
+/// response carries, plus whether they establish the owner's web session.
 pub(crate) struct IssuedTokens {
     pub(crate) access_token: String,
     /// Seconds until the access token expires.
     pub(crate) expires_in: i64,
     /// The scopes as granted (not the twinned spellings the JWT carries).
-    pub(crate) scope: Vec<String>,
+    pub(crate) granted_scopes: Vec<String>,
     pub(crate) refresh_token: Option<String>,
     pub(crate) patient: Option<String>,
-    pub(crate) first_party: bool,
+    /// Whether the HTTP layer plants the owner-origin session cookie. Only the
+    /// first-party host's session grants do — the device-code login and its
+    /// refresh, the two ways the owner SPA establishes and renews its web
+    /// session. Auth-code redemption is the third-party SMART app path and
+    /// never does, and a third-party app's refresh (its own lower-scoped
+    /// token) must not overwrite the owner's session either (a
+    /// session-fixation vector). See #218.
+    pub(crate) establishes_owner_session: bool,
 }
 
 /// Exchange grants for tokens on behalf of an [`AuthenticatedClient`]. Generic
@@ -66,11 +61,9 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     ///
     /// # Errors
     ///
-    /// [`TokenExchangeError::UnauthorizedGrantType`],
-    /// [`TokenExchangeError::InvalidCodeVerifier`] (RFC 7636 §4.1 length),
-    /// [`TokenExchangeError::InvalidRedirectUri`], the redemption's
-    /// [`InvalidGrant`](TokenExchangeError::InvalidGrant), or a minting /
-    /// store failure.
+    /// [`TokenExchangeError::UnauthorizedGrantType`], the redemption's refusals
+    /// (see [`RedeemedAuthorizationCode::redeem`]), or a minting / store
+    /// failure.
     pub(crate) fn exchange_authorization_code(
         &self,
         client: &AuthenticatedClient,
@@ -79,22 +72,8 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(client, AllowedGrantType::AuthorizationCode)?;
-        if !is_valid_code_verifier_length(presented.code_verifier) {
-            return Err(TokenExchangeError::InvalidCodeVerifier);
-        }
-        let redirect_uri = Url::parse(presented.redirect_uri)
-            .map_err(|_| TokenExchangeError::InvalidRedirectUri)?;
-        let redeemed = RedeemedAuthorizationCode::redeem(
-            &self.store,
-            client,
-            &CodeRedemption {
-                code: presented.code,
-                code_verifier: presented.code_verifier,
-                redirect_uri: &redirect_uri,
-            },
-            now,
-        )?;
-        self.issue_for_redemption(&redeemed, origin, now)
+        let redeemed = RedeemedAuthorizationCode::redeem(&self.store, client, presented, now)?;
+        self.issue_for_redemption(&redeemed, origin, now, false)
     }
 
     /// Poll a device request (RFC 8628 §3.4) and, once it is approved and this
@@ -114,7 +93,8 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(client, AllowedGrantType::DeviceCode)?;
         let consumed = ConsumedDeviceRequest::consume(&self.store, client, device_code, now)?;
-        self.issue_for_redemption(&consumed, origin, now)
+        let establishes_owner_session = self.is_first_party(&consumed);
+        self.issue_for_redemption(&consumed, origin, now, establishes_owner_session)
     }
 
     /// Trade a live refresh token for a fresh access token and the refresh
@@ -144,10 +124,10 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         Ok(IssuedTokens {
             access_token,
             expires_in: ACCESS_TOKEN_TTL.num_seconds(),
-            scope: validated.granted_scopes().to_vec(),
+            granted_scopes: validated.granted_scopes().to_vec(),
             refresh_token: Some(successor),
             patient: validated.patient().map(str::to_owned),
-            first_party: self.is_first_party(&validated),
+            establishes_owner_session: self.is_first_party(&validated),
         })
     }
 
@@ -171,6 +151,7 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         redemption: &impl GrantRedemption,
         origin: &str,
         now: DateTime<Utc>,
+        establishes_owner_session: bool,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         let access_token = self.mint(redemption, origin)?;
         let refresh_token = if redemption.earns_refresh_token() {
@@ -181,10 +162,10 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         Ok(IssuedTokens {
             access_token,
             expires_in: ACCESS_TOKEN_TTL.num_seconds(),
-            scope: redemption.granted_scopes().to_vec(),
+            granted_scopes: redemption.granted_scopes().to_vec(),
             refresh_token,
             patient: redemption.patient().map(str::to_owned),
-            first_party: self.is_first_party(redemption),
+            establishes_owner_session,
         })
     }
 
@@ -220,18 +201,19 @@ mod tests {
     use crate::crypto_util::pkce::compute_code_challenge;
     use crate::crypto_util::random_token::generate_authorization_code;
     use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
+    use crate::domain::authorization_request::RequestStatus;
     use crate::domain::client::Client;
-    use crate::domain::client_credentials::ClientCredentials;
-    use crate::domain::signing_key::SigningKey;
-    use crate::domain::test_fake::{client, FakeGatekeeperStore};
+
+    use crate::domain::test_fake::{
+        authenticated_public_client, client, device_request, seed_active_signing_key,
+        FakeGatekeeperStore,
+    };
 
     const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
 
     fn exchanger() -> TokenExchanger<FakeGatekeeperStore> {
         let store = FakeGatekeeperStore::default();
-        let mut key = SigningKey::generate().expect("key");
-        key.is_active = true;
-        store.insert_signing_key(&key).unwrap();
+        seed_active_signing_key(&store);
         TokenExchanger::new(store, "host".into())
     }
 
@@ -240,20 +222,13 @@ mod tests {
         client_id: &str,
         grant_types: &[AllowedGrantType],
     ) -> AuthenticatedClient {
-        store
-            .upsert_client(&Client {
+        authenticated_public_client(
+            store,
+            Client {
                 allowed_grant_types: grant_types.to_vec(),
                 ..client(client_id, &["openid"])
-            })
-            .unwrap();
-        AuthenticatedClient::authenticate(
-            store,
-            &ClientCredentials {
-                client_id: client_id.to_owned(),
-                client_secret: None,
             },
         )
-        .unwrap()
     }
 
     fn issue_code(store: &FakeGatekeeperStore, client_id: &str, scopes: &[&str]) -> String {
@@ -264,7 +239,7 @@ mod tests {
                 code: code.clone(),
                 request_id: "req".to_owned(),
                 client_id: client_id.to_owned(),
-                redirect_uri: Url::parse("https://example.com/cb").unwrap(),
+                redirect_uri: url::Url::parse("https://example.com/cb").unwrap(),
                 code_challenge: compute_code_challenge(VERIFIER),
                 granted_scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
                 patient: None,
@@ -326,10 +301,10 @@ mod tests {
                 Utc::now(),
             )
             .expect("exchanges");
-        assert_eq!(token.scope, ["openid"]);
+        assert_eq!(token.granted_scopes, ["openid"]);
         assert_eq!(token.refresh_token, None);
         assert_eq!(token.expires_in, ACCESS_TOKEN_TTL.num_seconds());
-        assert!(!token.first_party);
+        assert!(!token.establishes_owner_session);
 
         let host = authenticated(&exchanger.store, "host", &AllowedGrantType::ALL);
         let plain = issue_code(&exchanger.store, "host", &["openid", "offline_access"]);
@@ -346,7 +321,35 @@ mod tests {
             )
             .expect("exchanges");
         assert!(token.refresh_token.is_some());
-        assert!(token.first_party);
+        assert!(
+            !token.establishes_owner_session,
+            "auth-code redemption never plants the owner session, even for the host"
+        );
+    }
+
+    /// Of the device logins, only the first-party host's establishes the
+    /// owner's web session; a third-party device's never does.
+    #[test]
+    fn only_the_hosts_device_login_establishes_the_owner_session() {
+        let exchanger = exchanger();
+        for (client_id, expected) in [("host", true), ("app", false)] {
+            let client = authenticated(&exchanger.store, client_id, &AllowedGrantType::ALL);
+            let mut request = device_request(
+                &format!("dev-{client_id}"),
+                &format!("CODE-{client_id}"),
+                RequestStatus::Approved,
+            );
+            request.client_id = client_id.to_owned();
+            request.granted_scopes = Some(vec!["openid".to_owned()]);
+            exchanger
+                .store
+                .insert_authorization_request(&request)
+                .unwrap();
+            let token = exchanger
+                .exchange_device_code(&client, &request.id, "http://127.0.0.1", Utc::now())
+                .expect("exchanges");
+            assert_eq!(token.establishes_owner_session, expected, "{client_id}");
+        }
     }
 
     /// The refresh flow: rotation returns a successor, and presenting the spent
@@ -377,7 +380,7 @@ mod tests {
             .exchange_refresh_token(&client, &first, "http://127.0.0.1", now)
             .expect("rotates");
         let successor = rotated.refresh_token.expect("successor issued");
-        assert_eq!(rotated.scope, ["openid", "offline_access"]);
+        assert_eq!(rotated.granted_scopes, ["openid", "offline_access"]);
 
         let replay = exchanger.exchange_refresh_token(
             &client,

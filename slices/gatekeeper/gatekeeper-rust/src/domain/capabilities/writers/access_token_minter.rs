@@ -8,22 +8,8 @@
 use chrono::Duration;
 
 use crate::domain::authority::TokenEntitlement;
-use crate::domain::gatekeeper_error::GatekeeperError;
-use crate::domain::token::{mint_access_token, MintError, NewJwtArgs};
+use crate::domain::token::{mint_access_token, NewJwtArgs, TokenIssuanceError};
 use crate::domain::GatekeeperStore;
-
-/// The ways minting can fail. `NoActiveSigningKey` is an operator problem
-/// (bootstrap has not run, or the key store was tampered with); `Signing` is a
-/// key-material or encoding failure from [`mint_access_token`].
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum TokenIssuanceError {
-    #[error("no active signing key in store")]
-    NoActiveSigningKey,
-    #[error("sign access token")]
-    Signing(#[from] MintError),
-    #[error(transparent)]
-    Store(#[from] GatekeeperError),
-}
 
 /// Mint access tokens for one issuer and audience. A borrowed view over the
 /// store; the gate is the [`TokenEntitlement`] proof [`mint`](Self::mint) takes.
@@ -68,9 +54,9 @@ impl<'a, S: GatekeeperStore> AccessTokenMinter<'a, S> {
             &key,
             &NewJwtArgs {
                 client_id: entitlement.client_id(),
-                scope: entitlement.scopes(),
+                scopes: entitlement.token_scopes(),
                 ttl: self.ttl,
-                origin: self.issuer,
+                issuer: self.issuer,
                 audience: Some(self.audience),
                 patient: entitlement.patient(),
                 is_host_owner: entitlement.is_host_owner(),
@@ -83,8 +69,8 @@ impl<'a, S: GatekeeperStore> AccessTokenMinter<'a, S> {
 mod tests {
     use super::*;
     use crate::domain::authority::HostOwnerEntitlement;
-    use crate::domain::signing_key::SigningKey;
-    use crate::domain::test_fake::FakeGatekeeperStore;
+
+    use crate::domain::test_fake::{seed_active_signing_key, FakeGatekeeperStore};
     use crate::domain::token::{verify_jwt, VerifyOptions};
 
     fn minter(store: &FakeGatekeeperStore) -> AccessTokenMinter<'_, FakeGatekeeperStore> {
@@ -114,9 +100,7 @@ mod tests {
     #[test]
     fn mint_signs_exactly_the_proofs_claims() {
         let store = FakeGatekeeperStore::default();
-        let mut key = SigningKey::generate().expect("key");
-        key.is_active = true;
-        store.insert_signing_key(&key).unwrap();
+        seed_active_signing_key(&store);
         let scopes = vec!["system/*.cruds".to_owned(), "openid".to_owned()];
         let entitlement = HostOwnerEntitlement::for_host("host", &scopes);
         let access_token = minter(&store).mint(&entitlement).expect("mint");

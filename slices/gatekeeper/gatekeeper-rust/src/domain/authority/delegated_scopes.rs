@@ -30,8 +30,8 @@ pub(crate) struct DelegatedScopes {
 }
 
 impl DelegatedScopes {
-    /// Clamp the Owner's `approved` ticks to the `approvable` scopes, then
-    /// require that the `approver`'s own grant covers every **resource** scope
+    /// Clamp the Owner's `approved_scopes` ticks to the `approvable` scopes,
+    /// then require that the `approver_grant` covers every **resource** scope
     /// that survives.
     ///
     /// `Ok(None)` when nothing survives — the caller denies. Identity and session
@@ -46,19 +46,19 @@ impl DelegatedScopes {
     /// [`GatekeeperError::InsufficientApproverScope`] naming the resource scopes
     /// the approver cannot delegate.
     pub(crate) fn clamp(
-        approver: &Grant,
-        approved: Vec<String>,
+        approver_grant: &Grant,
+        approved_scopes: Vec<String>,
         approvable: &ApprovableScopes<'_>,
     ) -> Result<Option<Self>, GatekeeperError> {
         let scopes = grantable_scopes(
-            approved,
+            approved_scopes,
             approvable.requested_scopes,
             approvable.allowed_scopes,
         );
         if scopes.is_empty() {
             return Ok(None);
         }
-        let missing_scopes = uncovered_resource_scopes(&scopes, approver);
+        let missing_scopes = uncovered_resource_scopes(&scopes, approver_grant);
         if missing_scopes.is_empty() {
             Ok(Some(DelegatedScopes { scopes }))
         } else {
@@ -73,11 +73,11 @@ impl DelegatedScopes {
     }
 }
 
-/// The resource scopes in `granted` the `approver`'s grant does not cover,
+/// The resource scopes in `granted` the `approver_grant` does not cover,
 /// checked across both canonical spellings.
-fn uncovered_resource_scopes(granted: &[String], approver: &Grant) -> Vec<String> {
+fn uncovered_resource_scopes(granted: &[String], approver_grant: &Grant) -> Vec<String> {
     let approver_authority = Grant::new(
-        approver
+        approver_grant
             .scopes
             .iter()
             .flat_map(|held| [Some(held.clone()), held.as_alternate_canonical_form()])
@@ -104,13 +104,10 @@ fn uncovered_resource_scopes(granted: &[String], approver: &Grant) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::test_fake::owned_scopes;
 
     fn set<'a>(scopes: &[&'a str]) -> HashSet<&'a str> {
         scopes.iter().copied().collect()
-    }
-
-    fn owned(scopes: &[&str]) -> Vec<String> {
-        scopes.iter().map(|s| (*s).to_owned()).collect()
     }
 
     fn grant(scopes: &[&str]) -> Grant {
@@ -125,7 +122,7 @@ mod tests {
         let allowed = set(&["patient/Patient.r", "openid", "patient/Observation.r"]);
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
-            owned(&["patient/Patient.r", "openid"]),
+            owned_scopes(&["patient/Patient.r", "openid"]),
             &ApprovableScopes {
                 requested_scopes: &requested,
                 allowed_scopes: &allowed,
@@ -144,7 +141,7 @@ mod tests {
         let allowed = set(&["patient/Patient.r"]);
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
-            owned(&["patient/Patient.r", "patient/Observation.r"]),
+            owned_scopes(&["patient/Patient.r", "patient/Observation.r"]),
             &ApprovableScopes {
                 requested_scopes: &requested,
                 allowed_scopes: &allowed,
@@ -163,7 +160,7 @@ mod tests {
         let allowed = set(&["patient/Patient.r"]);
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
-            owned(&["patient/Observation.r"]),
+            owned_scopes(&["patient/Observation.r"]),
             &ApprovableScopes {
                 requested_scopes: &requested,
                 allowed_scopes: &allowed,
@@ -182,7 +179,7 @@ mod tests {
         let allowed = requested.clone();
         let outcome = DelegatedScopes::clamp(
             &grant(&["patient/Patient.r"]),
-            owned(&["patient/Patient.r", "patient/Observation.r"]),
+            owned_scopes(&["patient/Patient.r", "patient/Observation.r"]),
             &ApprovableScopes {
                 requested_scopes: &requested,
                 allowed_scopes: &allowed,
@@ -191,7 +188,7 @@ mod tests {
         assert_eq!(
             outcome,
             Err(GatekeeperError::InsufficientApproverScope {
-                missing_scopes: owned(&["patient/Observation.r"]),
+                missing_scopes: owned_scopes(&["patient/Observation.r"]),
             }),
         );
     }
@@ -204,7 +201,7 @@ mod tests {
         let allowed = requested.clone();
         let outcome = DelegatedScopes::clamp(
             &grant(&[]),
-            owned(&["patient/Patient.r"]),
+            owned_scopes(&["patient/Patient.r"]),
             &ApprovableScopes {
                 requested_scopes: &requested,
                 allowed_scopes: &allowed,
@@ -224,7 +221,7 @@ mod tests {
         let allowed = requested.clone();
         let delegated = DelegatedScopes::clamp(
             &grant(&["patient/Patient.r"]),
-            owned(&["openid", "offline_access"]),
+            owned_scopes(&["openid", "offline_access"]),
             &ApprovableScopes {
                 requested_scopes: &requested,
                 allowed_scopes: &allowed,
@@ -243,7 +240,7 @@ mod tests {
         let allowed = requested.clone();
         let delegated = DelegatedScopes::clamp(
             &grant(&["patient/Patient.rs"]),
-            owned(&["patient/Patient.read"]),
+            owned_scopes(&["patient/Patient.read"]),
             &ApprovableScopes {
                 requested_scopes: &requested,
                 allowed_scopes: &allowed,

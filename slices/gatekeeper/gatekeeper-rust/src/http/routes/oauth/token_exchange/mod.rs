@@ -6,7 +6,8 @@ use super::internal::TokenError;
 use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
 use crate::cookies;
-use crate::domain::capabilities::oauth::{IssuedTokens, PresentedAuthorizationCode};
+use crate::domain::authority::PresentedAuthorizationCode;
+use crate::domain::capabilities::oauth::IssuedTokens;
 use crate::http::extractors::Live;
 use crate::http::wire_representations::{OAuthError, TokenResponse};
 use crate::http::ServedOrigin;
@@ -59,15 +60,6 @@ pub(super) async fn handle_token_request(
 ) -> Response {
     let TokenRequest { payload, client } = request;
     let now = Utc::now();
-    // Whether to plant the owner-origin session cookie (`wf_auth` +
-    // `wf_auth_exp`) is a property of the *resolved* grant, never of the wire
-    // `grant_type`: only the first-party owner client's session grants — the
-    // device-code login and its refresh, the two ways the owner SPA
-    // establishes/renews its web session — plant it. Auth-code redemption is
-    // the third-party SMART app path and never does; a third-party app's
-    // refresh (its own lower-scoped token) must not overwrite the owner's
-    // `wf_auth` either (a session-fixation vector). See #218.
-    let establishes_owner_session = !matches!(payload, TokenPayload::AuthorizationCode { .. });
     let exchanged = match payload {
         TokenPayload::AuthorizationCode {
             code,
@@ -94,9 +86,9 @@ pub(super) async fn handle_token_request(
         Ok(token) => token,
         Err(error) => return TokenError::from(error).into_response(),
     };
-    let plants_session_cookie = establishes_owner_session && token.first_party;
+    let establishes_owner_session = token.establishes_owner_session;
     let response = token_response(token);
-    if !plants_session_cookie {
+    if !establishes_owner_session {
         return response.into_response();
     }
     let max_age = response.expires_in;
@@ -125,7 +117,7 @@ fn token_response(token: IssuedTokens) -> TokenResponse {
         access_token: token.access_token,
         token_type: "Bearer".to_string(),
         expires_in: token.expires_in,
-        scope: token.scope.join(" "),
+        scope: token.granted_scopes.join(" "),
         refresh_token: token.refresh_token,
         patient: token.patient,
     }

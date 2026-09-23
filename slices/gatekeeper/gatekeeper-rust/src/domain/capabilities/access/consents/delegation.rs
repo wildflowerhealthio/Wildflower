@@ -1,7 +1,4 @@
 //! The shared consent tail: the unconditional deny (mark denied + republish).
-//! The approver-authority clamp that used to sit beside it is now the
-//! [`DelegatedScopes`](crate::domain::authority::DelegatedScopes) proof's
-//! constructor.
 
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;

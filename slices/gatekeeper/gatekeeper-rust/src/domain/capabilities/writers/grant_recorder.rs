@@ -209,31 +209,13 @@ fn widen_registration(
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
-    use scopes_rust::Grant;
 
     use super::*;
-    use crate::domain::authority::ApprovableScopes;
     use crate::domain::client_registration::uncovered_scopes;
-    use crate::domain::test_fake::{client, FakeGatekeeperStore};
+    use crate::domain::test_fake::{client, delegated_scopes, FakeGatekeeperStore};
 
     fn redirect() -> Url {
         Url::parse("https://example.com/cb").expect("a valid redirect")
-    }
-
-    fn delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
-        let requested: HashSet<&str> = scopes.iter().copied().collect();
-        DelegatedScopes::clamp(
-            &Grant::parse(["system/*.cruds", "wildflower/*.cruds"]),
-            scopes.iter().map(|s| (*s).to_owned()).collect(),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &requested,
-            },
-        )
-        .expect("owner covers everything")
-        .expect("non-empty")
     }
 
     /// A first record inserts the grant; a second on the same `(client,

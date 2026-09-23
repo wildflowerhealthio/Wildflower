@@ -28,7 +28,10 @@ use crate::domain::GatekeeperStore;
 mod fixtures;
 mod tx;
 
-pub(crate) use fixtures::{client, code_grant, code_request, device_request};
+pub(crate) use fixtures::{
+    authenticated_public_client, client, code_grant, code_request, delegated_scopes,
+    device_request, owned_scopes, seed_active_signing_key, RecordingPublisher,
+};
 
 /// An in-memory [`GatekeeperStore`] modelling the primitive port semantics with
 /// no diesel and no database — enough to exercise the actions' semantic mapping

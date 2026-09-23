@@ -49,7 +49,7 @@ pub fn gatekeeper_auth_middleware(
             let (claims, (token, source)) = match verify_request_claims(
                 &gate.state,
                 &headers,
-                "verify_auth_token_claims failed",
+                "access-token verification failed",
             ) {
                 Ok(verified) => verified,
                 Err(response) => return *response,

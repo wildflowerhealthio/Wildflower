@@ -6,8 +6,8 @@ use super::client_auth::{
     ClientAuthenticationMethod, ResolveClientCredentialsError, BASIC_AUTH_CHALLENGE,
 };
 use crate::domain::authority::ClientAuthenticationError;
-use crate::domain::capabilities::writers::TokenIssuanceError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
+use crate::domain::token::TokenIssuanceError;
 use crate::domain::token_exchange_error::{InvalidGrantReason, TokenExchangeError};
 use crate::http::errors::InternalError;
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
@@ -217,7 +217,7 @@ impl IntoResponse for TokenError {
 #[derive(Debug)]
 pub struct ClientAuthenticationFailure {
     pub error: ClientAuthenticationError,
-    pub attempted_via: ClientAuthenticationMethod,
+    pub presented_via: ClientAuthenticationMethod,
 }
 
 impl IntoResponse for ClientAuthenticationFailure {
@@ -253,7 +253,7 @@ impl IntoResponse for ClientAuthenticationFailure {
             OAuthErrorCode::InvalidClient,
             Some(description),
         );
-        match self.attempted_via {
+        match self.presented_via {
             ClientAuthenticationMethod::HttpBasic => (
                 [(header::WWW_AUTHENTICATE, BASIC_AUTH_CHALLENGE)],
                 unauthorized,

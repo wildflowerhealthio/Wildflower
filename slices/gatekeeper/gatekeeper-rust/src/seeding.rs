@@ -18,9 +18,10 @@ use thiserror::Error;
 
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::authority::HostOwnerEntitlement;
-use crate::domain::capabilities::writers::{AccessTokenMinter, TokenIssuanceError};
+use crate::domain::capabilities::writers::AccessTokenMinter;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
+use crate::domain::token::TokenIssuanceError;
 // The persistence port trait — brought into scope so the store's methods
 // (`active_signing_key`, `insert_signing_key`, `upsert_client`, …) resolve on
 // the concrete `SqliteGatekeeperStore` this boot code holds directly.

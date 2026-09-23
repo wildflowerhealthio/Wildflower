@@ -252,11 +252,7 @@ impl Client {
 
 #[cfg(test)]
 mod allows_scopes_tests {
-    use crate::domain::test_fake::client;
-
-    fn owned(scopes: &[&str]) -> Vec<String> {
-        scopes.iter().map(|s| (*s).to_owned()).collect()
-    }
+    use crate::domain::test_fake::{client, owned_scopes};
 
     /// Coverage, not spelling: a broad allowlist admits a narrower request it
     /// covers; a permission or context outside it is refused; an empty request
@@ -264,9 +260,9 @@ mod allows_scopes_tests {
     #[test]
     fn allows_scopes_is_coverage_aware() {
         let client = client("app", &["patient/*.rs", "openid"]);
-        assert!(client.allows_scopes(&owned(&["patient/Observation.r", "openid"])));
+        assert!(client.allows_scopes(&owned_scopes(&["patient/Observation.r", "openid"])));
         assert!(client.allows_scopes(&[]));
-        assert!(!client.allows_scopes(&owned(&["patient/Observation.c"])));
-        assert!(!client.allows_scopes(&owned(&["system/*.r"])));
+        assert!(!client.allows_scopes(&owned_scopes(&["patient/Observation.c"])));
+        assert!(!client.allows_scopes(&owned_scopes(&["system/*.r"])));
     }
 }
