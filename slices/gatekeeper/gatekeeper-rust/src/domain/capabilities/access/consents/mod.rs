@@ -1,22 +1,15 @@
 //! Consent capabilities — the `wildflower/AuthorizationRequest.*` capabilities
-//! behind `/access/oauth-consents/*` and `/access/devices/*`, and the consent
-//! operations they own. The flows (load-and-validate, approve, deny) live here
-//! as `&impl GatekeeperStore` functions so they stay unit-testable against the
-//! in-memory fake; the capabilities are the scope-gated entries, generic over the
-//! store and holding the port dependencies lifted from the state. An approval's
-//! privileged writes — approving the request, issuing the code, recording the
-//! grant and registration — go through the
+//! behind `/access/oauth-consents/*` and `/access/devices/*`. The flows
+//! (load-and-validate, approve, deny) are `&impl GatekeeperStore` functions in
+//! the submodules; an approval's privileged writes go through the
 //! [`writers`](crate::domain::capabilities::writers) under the
-//! [`DelegatedScopes`](crate::domain::authority::DelegatedScopes) proof the
-//! approve flows obtain, so what the Owner clicked can never be recorded wider
-//! than what the Owner holds.
+//! [`DelegatedScopes`](crate::domain::authority::DelegatedScopes) proof it
+//! obtains, so what the Owner clicked is never recorded wider than what the
+//! Owner holds.
 //!
-//! The code-flow surfaces additionally carry the **registration verdict** (see
-//! [`crate::domain::client_registration`]): the prompt renders it, and an
-//! approval that steps outside the registration must acknowledge it. Computing
-//! it needs the self-hosted redirect seam and the request's served origin, which
-//! is why both consent capabilities hold a
-//! [`SelfHostedRedirectResolver`] and take a `served_origin`.
+//! The code-flow surfaces also carry the **registration verdict** (see
+//! [`crate::domain::client_registration`]), which is why both capabilities hold
+//! a [`SelfHostedRedirectResolver`] and take a `served_origin`.
 
 use std::sync::Arc;
 

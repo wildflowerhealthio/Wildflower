@@ -68,27 +68,19 @@ pub(super) fn load_pending_authorization_code_request(
     }
 }
 
-/// Approve an authorization-code consent prompt: judge the client's
-/// registration, narrow the approved scopes to the grantable set, transition the
-/// request, mint and persist the authorization code the polling endpoint hands
-/// back, register-or-widen the client and refresh the standing grant, republish
-/// the popup head, and return the client callback URL. An approval that grants
-/// nothing is applied as a **deny**.
+/// Approve an authorization-code consent prompt: clamp the Owner's ticks into a
+/// [`DelegatedScopes`] proof, issue the code, record the standing grant (and,
+/// for a client trusted on first use, its registration), republish the popup
+/// head, and return the client callback URL. An approval that grants nothing is
+/// applied as a **deny**.
 ///
-/// Two authority checks stand between the Owner's click and a grant.
-/// `ctx.approver` is the deciding Owner's granted scopes — the approval can't
-/// delegate a resource scope the approver doesn't hold, which is what the
-/// [`DelegatedScopes`] proof the writers demand stands for. And a request the
+/// A request the
 /// [registration verdict](crate::domain::client_registration::ClientRegistration)
 /// finds new or changed must carry the Owner's
-/// [`acknowledged_registration`](ApproveOAuthConsentInput::acknowledged_registration);
-/// without it the approval fails with
+/// [`acknowledged_registration`](ApproveOAuthConsentInput::acknowledged_registration),
+/// else it fails with
 /// [`RegistrationNotAcknowledged`](GatekeeperError::RegistrationNotAcknowledged)
 /// and nothing is written.
-///
-/// The scopes the clamp allows are the registered `allowed_scopes` for the
-/// first-party host and `allowed_scopes ∪ requested_scopes` for every other
-/// client (the approval then widens the registration to what was granted).
 pub(super) fn approve_oauth_consent(
     store: &impl GatekeeperStore,
     publisher: &dyn PendingConsentPublisher,

@@ -1,23 +1,10 @@
 //! The `/access` surface's capabilities — the **scope-gated** group, unlocked
-//! by the caller's scopes: the authorization (authZ) half of the Owner surface,
-//! living in `domain/` beside the store port they operate through (not in
-//! `crate::http`), so a forgotten permission check is structurally hard rather
-//! than merely a discipline. Their privileged writes go through the sibling
+//! by the caller's scopes. The generic machinery (the [`Scoped`] extractor and
+//! the [`Capability`]/[`FixedScopeCapability`] traits) lives in
+//! [`scope_capabilities_rust`]; this module supplies one capability per
+//! (resource, permission) the surface gates, split by resource: [`grants`],
+//! [`consents`], [`tokens`]. Their privileged writes go through the sibling
 //! [`writers`](crate::domain::capabilities::writers) under an authority proof.
-//!
-//! The generic machinery — the [`Scoped`] extractor and the
-//! [`Capability`]/[`FixedScopeCapability`] traits — lives in
-//! [`scope_capabilities_rust`]; this module supplies the gatekeeper-specific
-//! capabilities, one per (resource, permission) the surface gates, split by
-//! resource type: [`grants`], [`consents`], [`tokens`]. Each capability is
-//! **generic over the store port** (`Cap<S: GatekeeperStore>`) and holds the port
-//! dependencies (store, [`Revocation`](crate::ports::Revocation),
-//! [`PendingConsentPublisher`](crate::ports::PendingConsentPublisher)) **lifted
-//! from the state** — never an `Arc<GatekeeperState>` it reaches into — so its
-//! logic is unit-testable against the in-memory fake. The `Capability` bindings
-//! that name the concrete `SqliteGatekeeperStore` and build a capability from the
-//! router state live in the composition layer (`crate::live_bindings`), so `domain/`
-//! stays store-agnostic.
 //!
 //! The (resource, permission) → required-scope mapping lives in one place — each
 //! capability's `*_scopes()` function — read by **both** its `Capability` binding

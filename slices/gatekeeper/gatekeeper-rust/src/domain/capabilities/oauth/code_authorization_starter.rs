@@ -122,18 +122,12 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
     /// code under the standing grant's authority and sent back to the client;
     /// anything else joins the pending-consent queue.
     ///
-    /// Clients other than the first-party host are **trusted on first use**: an
-    /// unknown `client_id`, an unregistered `redirect_uri`, and scopes outside
-    /// the registration are carried to the Owner's prompt as a registration
-    /// warning rather than rejected here, and nothing is written to `clients`
-    /// until the Owner approves. Such a request never takes the fast path, and
-    /// while its redirect is untrusted every other failure renders locally
-    /// (redirecting to an unvouched-for URI would be an open redirect). The
-    /// first-party host keeps the strict treatment; a disabled client is
-    /// rejected either way.
-    ///
-    /// `served_origin` is the origin the request arrived on, the base an
-    /// app-relative redirect entry resolves against.
+    /// Clients other than the first-party host are trusted on first use (see
+    /// [`crate::domain::client_registration`]): a request outside the
+    /// registration is parked with a warning rather than rejected, never takes
+    /// the fast path, and — while its redirect is untrusted — renders every
+    /// failure locally rather than risk an open redirect. `served_origin` is the
+    /// base an app-relative redirect entry resolves against.
     ///
     /// # Errors
     ///
