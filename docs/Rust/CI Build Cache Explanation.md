@@ -111,6 +111,9 @@ the merged release PR can only read.
 
 ## See Also
 
+- [TypeScript CI Build Cache Explanation](../TypeScript/CI%20Build%20Cache%20Explanation.md)
+  — the same default-branch warming for the `vp run pack` outputs
+
 - [AGENTS.md](../../AGENTS.md) — the CI gate list this scheme belongs to
 - [CONTRIBUTING.md](../../CONTRIBUTING.md) — git hooks and the local checks that
   share `scripts/checks/rust.sh` with CI

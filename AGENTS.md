@@ -104,6 +104,7 @@ All docs follow the [four-kinds convention](./docs/Documentation/Explanation.md)
 - [Bridge Explanation](./docs/Messaging/Bridge%20Explanation.md) — The webview ↔ host bridge; [Wire Pinning How-To](./docs/Messaging/Wire%20Pinning%20How-To.md) for TS ⇄ Rust wire shapes
 - [Version Override Explanation](./docs/Dependencies/Version%20Override%20Explanation.md) — Why `pnpm.overrides` exists and when to add/remove one
 - [CI Build Cache Explanation](./docs/Rust/CI%20Build%20Cache%20Explanation.md) — The Rust cache keys CI jobs share, and what forks them
+- [TypeScript CI Build Cache Explanation](./docs/TypeScript/CI%20Build%20Cache%20Explanation.md) — The `vp run pack` cache `ci-typescript.yml` restores and `ts-cache-warm.yml` warms on `main`
 
 ## Commands
 
@@ -124,7 +125,7 @@ On a fresh container the full test pass needs a build first: a workspace-wide `v
 
 `vp run ready` covers the TypeScript side of CI. The full gate set (see `.github/workflows/`):
 
-- **TS format/lint/typecheck/test** — `vp check` + `vp test`. The enforced lint/format rules are oxlint+oxfmt, configured in `vite.config.ts` under the `lint:`/`fmt:` keys — **not** `eslint.config.mjs`, which runs only the informational TSDoc check (`lint:comments`, `continue-on-error`). Editing eslint config never fixes a lint failure.
+- **TS format/lint/typecheck/test** — `vp check` + `vp test`. Its `vp run pack` outputs are cached, and `ts-cache-warm.yml` warms that cache on `main`: [TypeScript CI Build Cache Explanation](./docs/TypeScript/CI%20Build%20Cache%20Explanation.md). The enforced lint/format rules are oxlint+oxfmt, configured in `vite.config.ts` under the `lint:`/`fmt:` keys — **not** `eslint.config.mjs`, which runs only the informational TSDoc check (`lint:comments`, `continue-on-error`). Editing eslint config never fixes a lint failure.
 - **Rust fmt + clippy (`-D warnings`) + nextest** — `./scripts/checks/rust.sh` is the canonical Rust check; both the git hooks and CI (`ci-rust.yml`, which compiles the full workspace incl. the Tauri crates in one job) call it. It self-skips when `cargo` is absent, so a frontend-only change stays green locally while CI still gates it on PRs.
 - **cargo-deny** (licenses/advisories, `deny.toml`) gates new Rust deps.
 - **Rust build cache** — each cargo job names its build environment with a

@@ -1,0 +1,20 @@
+name: Cache vp pack outputs
+description: >-
+  Restores, and at job end saves, the `vp run pack` outputs under the one key
+  ci-typescript.yml reads and ts-cache-warm.yml writes. The paths live only here
+  because actions/cache shares entries only between identical path lists; see
+  docs/TypeScript/CI Build Cache Explanation.md.
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v6
+      with:
+        path: |
+          node_modules/.vite/task-cache
+          apps/*/dist
+          global/**/dist
+          slices/**/dist
+        key: vp-pack-${{ runner.os }}-${{ github.sha }}
+        restore-keys: |
+          vp-pack-${{ runner.os }}-

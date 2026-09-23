@@ -22,6 +22,7 @@ on:
       - 'pnpm-lock.yaml'
       - 'pnpm-workspace.yaml'
       - '.github/workflows/ci-typescript.yml'
+      - '.github/actions/vp-pack-cache/**'
 
 permissions:
   contents: read
@@ -56,22 +57,11 @@ jobs:
         with:
           cache: true
 
-      # vp's task cache (node_modules/.vite/task-cache) stores only terminal
-      # output, not the dist/ files that `vp run pack` produces. Caching both
-      # together keeps cache hits in sync with the dist/ outputs that typecheck
-      # reads (dist/*.d.ts via workspace exports). setup-vp already caches the
-      # pnpm store, so this only covers build outputs.
+      # Restores the newest `vp run pack` outputs this ref can see — main's,
+      # written by ts-cache-warm.yml, until this PR saves its own. Key, paths
+      # and why: docs/TypeScript/CI Build Cache Explanation.md.
       - name: Cache vp pack outputs
-        uses: actions/cache@v6
-        with:
-          path: |
-            node_modules/.vite/task-cache
-            apps/*/dist
-            global/**/dist
-            slices/**/dist
-          key: vp-pack-${{ runner.os }}-${{ github.sha }}
-          restore-keys: |
-            vp-pack-${{ runner.os }}-
+        uses: ./.github/actions/vp-pack-cache
 
       - name: Install dependencies
         run: vp install
