@@ -95,6 +95,33 @@ const restoredUrl = (location: RestorableLocation): string | undefined => {
 }
 
 /**
+ * The URL that sends a deep link to its app's root, carrying the route in
+ * {@link REDIRECT_PARAM} — the redirect `apps/github-pages/404.html` performs,
+ * for a server that already knows the app's `basename` (a dev server). The
+ * inverse of {@link restoredUrl}.
+ *
+ * @param location - The deep link the browser asked for
+ * @param basename - The app's directory, slash-suffixed
+ * @returns `basename` with the route below it set as {@link REDIRECT_PARAM}
+ *   and every other parameter and the fragment preserved — or `undefined` when
+ *   `location` is the app root itself or lies outside `basename`
+ *
+ * @example
+ * ```ts
+ * redirectedUrl({ pathname: '/gatekeeper/devices', search: '?server=x', hash: '' }, '/')
+ * // → '/?server=x&redirect=%2Fgatekeeper%2Fdevices'
+ * ```
+ */
+const redirectedUrl = (location: RestorableLocation, basename: string): string | undefined => {
+  if (!location.pathname.startsWith(basename)) return undefined
+  const route = location.pathname.slice(basename.length)
+  if (route === '') return undefined
+  const parameters = new URLSearchParams(location.search)
+  parameters.set(REDIRECT_PARAM, `/${route}`)
+  return `${basename}?${parameters.toString()}${location.hash}`
+}
+
+/**
  * Complete a 404 redirect in the address bar, before anything reads the URL.
  *
  * @param target - `window`, or a double carrying just `location` and `history`
@@ -119,5 +146,5 @@ const restoreRedirectedUrl = (target: RestorationTarget): string | undefined => 
   return url
 }
 
-export { REDIRECT_PARAM, basenameOf, restoreRedirectedUrl, restoredUrl }
+export { REDIRECT_PARAM, basenameOf, redirectedUrl, restoreRedirectedUrl, restoredUrl }
 export type { RestorableHistory, RestorableLocation, RestorationTarget }

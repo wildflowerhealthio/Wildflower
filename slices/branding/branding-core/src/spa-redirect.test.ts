@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vite-plus/test'
 import {
   REDIRECT_PARAM,
   basenameOf,
+  redirectedUrl,
   restoreRedirectedUrl,
   restoredUrl,
   type RestorableLocation,
@@ -239,6 +240,50 @@ describe('restoreRedirectedUrl', () => {
         })
         const returned = restoreRedirectedUrl(target)
         expect(target.replaceState).toHaveBeenCalledExactlyOnceWith(null, '', returned)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+})
+
+describe('redirectedUrl', () => {
+  it('should send a deep link to the app root with the route in ?redirect=', () => {
+    expect(
+      redirectedUrl(
+        { pathname: '/gatekeeper/oauth-polling/abc', search: '?server=https%3A%2F%2Fx', hash: '' },
+        '/'
+      )
+    ).toBe('/?server=https%3A%2F%2Fx&redirect=%2Fgatekeeper%2Foauth-polling%2Fabc')
+  })
+
+  it('should leave the app root and paths outside the app alone', () => {
+    expect(redirectedUrl({ pathname: '/app/', search: '', hash: '' }, '/app/')).toBeUndefined()
+    expect(redirectedUrl({ pathname: '/other/x', search: '', hash: '' }, '/app/')).toBeUndefined()
+  })
+
+  it('should always be undone by restoredUrl', () => {
+    fc.assert(
+      fc.property(basenameArb, routeArb, otherParametersArb, (basename, route, others) => {
+        // Arrange — a deep link below the app, with whatever query rode along.
+        const query = others.toString()
+        const deepLink = `${basename}${route.slice(1)}${query === '' ? '' : `?${query}`}`
+        const asked = parse(deepLink)
+
+        // Act — redirect to the app root, then restore as the app would.
+        const redirected = redirectedUrl(
+          { pathname: asked.pathname, search: asked.search, hash: '' },
+          basename
+        )
+        const landed = parse(redirected ?? '')
+        const restored = restoredUrl({
+          pathname: landed.pathname,
+          search: landed.search,
+          hash: '',
+        })
+
+        // Assert — the app ends up exactly where the browser asked to go.
+        expect(landed.pathname).toBe(basename)
+        expect(restored).toBe(deepLink)
       }),
       { numRuns: numRunsFor({ base: 100 }) }
     )

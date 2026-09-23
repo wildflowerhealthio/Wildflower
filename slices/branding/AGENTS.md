@@ -41,6 +41,14 @@ the route back in the address bar with `history.replaceState` and drops the
 module of ours, so `config/app-config.js` hand-rolls the same steps. The two
 must stay in step — `spa-redirect.ts` is the reference.
 
+A dev server has no `404.html`, and Vite's SPA fallback serves `index.html` at
+the deep path itself, so an entry that takes its basename from the path it
+loaded at (`apps/wildflower-react`'s `main-web`) would boot under the wrong
+basename. `redirectedUrl` is the redirect `404.html` performs, for a server
+that knows the basename; `apps/wildflower-react`'s dev-server plugin
+(`src/dev-server/deep-link-redirect.ts`) applies it so a dev deep link takes
+the same `?redirect=` detour as the published site.
+
 ## The app landing page
 
 A SMART app visited without a launch (`apps/medications-app`,

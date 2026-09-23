@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite-plus'
 import sharedConfig from '../wildflower-tauri/tauri-shared-config.json' with { type: 'json' }
+import { devDeepLinkRedirect } from './src/dev-server/deep-link-redirect.ts'
 import baseConfig from './vite.config.base.ts'
 
 // The port the debug Tauri host sends browsers to for its owner-UI pages (the
@@ -10,6 +11,9 @@ const devPort = Number(new URL(sharedConfig.owner_ui_dev_base_url).port)
 export default defineConfig({
   ...baseConfig,
   base: './',
+  // Deep links on the dev server take the same `?redirect=` detour GitHub Pages
+  // gives them, so boot sees the app root either way. See the plugin.
+  plugins: [...(baseConfig.plugins ?? []), devDeepLinkRedirect()],
   build: {
     outDir: 'dist-web',
     rolldownOptions: { input: 'index.html' },
