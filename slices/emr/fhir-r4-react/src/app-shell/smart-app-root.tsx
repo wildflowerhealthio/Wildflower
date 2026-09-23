@@ -44,16 +44,10 @@ interface SmartAppRootProps {
  *   `ErrorBanner` for a launch that failed and landed back here.
  *
  * @remarks
- * The branch is latched on mount rather than derived per render: fhirclient's
- * `oauth2.ready()` strips `code`/`state` from the URL once the exchange
- * completes, so re-reading the URL on a later render would flip a completed
- * launch back to the connect menu underneath the authenticated app.
- *
- * The page root is both the OAuth redirect target and the standalone landing
- * page, so `ConnectMenu`'s redirect URI is derived from the current URL — it
- * works at whatever origin and path the bundle is served from. It is derived
- * in render, not at module load, so this module reads `window` only once a
- * tree is mounting — never as a side effect of being imported.
+ * The branch is latched on mount: fhirclient's `oauth2.ready()` strips
+ * `code`/`state` once the exchange completes, so re-reading the URL later
+ * would flip a finished launch back to the connect menu. See the
+ * `fhir-r4-react/app-shell` guardrail in `slices/emr/AGENTS.md`.
  */
 function SmartAppRoot({ app, standalone, launched, children }: SmartAppRootProps): JSX.Element {
   const [isLaunched] = useState(() => launched ?? shouldCompleteSmartLaunch())
@@ -71,6 +65,8 @@ function SmartAppRoot({ app, standalone, launched, children }: SmartAppRootProps
   // double-mount.
   const [queryClient] = useState(() => buildSmartQueryClient())
 
+  // The page root is also the OAuth redirect target. Derived in render, not at
+  // module load, so importing this module never reads `window`.
   const redirectUri = new URL('.', window.location.href).href
 
   return (
