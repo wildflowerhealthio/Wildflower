@@ -12,7 +12,7 @@ use crate::domain::client_redirect::{build_client_error_redirect_url, build_clie
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::extractors::Live;
-use crate::http::wire_representations::OAuthError;
+use crate::http::wire_representations::{CacheSuppressed, OAuthError};
 use crate::live_bindings::LiveAuthorizationStatusReader;
 
 /// Polling response for the Owner UI watching an authorization request as it
@@ -38,8 +38,12 @@ pub enum AuthorizationStatus {
 }
 
 impl IntoResponse for AuthorizationStatus {
+    /// Rendered through [`CacheSuppressed`]: the `Approved` variant carries the
+    /// client redirect with a redeemable authorization `code`, which no cache may
+    /// retain. Every variant is suppressed so the poll's caching can't differ by
+    /// state.
     fn into_response(self) -> Response {
-        Json(self).into_response()
+        CacheSuppressed(Json(self)).into_response()
     }
 }
 

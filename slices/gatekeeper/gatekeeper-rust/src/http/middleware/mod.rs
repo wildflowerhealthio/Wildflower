@@ -1,5 +1,7 @@
+mod cache_suppression;
 mod require_loopback_peer;
 mod require_valid_bearer_token;
+pub use cache_suppression::cache_suppress;
 pub use require_loopback_peer::{require_loopback_peer_middleware, RequireLoopbackPeerMiddleware};
 pub mod require_auth;
 pub use require_auth::require_valid_session;

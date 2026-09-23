@@ -80,6 +80,8 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .await
         .expect("oneshot");
     assert_eq!(res.status(), StatusCode::OK);
+    // The Approved redirect carries a redeemable code, so no cache may keep it.
+    assert_cache_suppressed(&res, "the Approved status poll");
     let status = body_json(res.into_body()).await;
     assert_eq!(status["status"], "approved");
     let redirect = status["redirect"].as_str().expect("redirect");

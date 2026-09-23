@@ -69,7 +69,9 @@ pub fn router(state: Arc<GatekeeperState>) -> Router {
         .layer(axum_middleware::from_fn_with_state(
             state.clone(),
             middleware::require_valid_session,
-        ));
+        ))
+        // Outermost, so the session gate's 401s are cache-suppressed too.
+        .layer(axum_middleware::from_fn(middleware::cache_suppress));
 
     Router::new()
         .merge(documented)

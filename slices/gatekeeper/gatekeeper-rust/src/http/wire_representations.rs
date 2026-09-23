@@ -5,8 +5,9 @@
 //! flows) has one home and the trees can't drift.
 //!
 //! Also home to [`CacheSuppressed`], the RFC 6749 §5.1/§5.2 cache-suppression
-//! wrapper the token-surface responses render through — a wire concern (headers
-//! on the response), not route logic.
+//! wrapper the token-surface responses, the authorize-status poll, and the
+//! `/access` surface render through — a wire concern (headers on the response),
+//! not route logic.
 
 use axum::http::header;
 use axum::response::{IntoResponse, Response};
@@ -20,7 +21,9 @@ use crate::domain::oauth_error_code::OAuthErrorCode;
 /// (`Cache-Control: no-store`, `Pragma: no-cache`) onto the wrapped response.
 /// Token- and device-authorization-endpoint responses — success or error —
 /// must never be cached; wrapping makes that part of the value instead of a
-/// step a call site can forget.
+/// step a call site can forget. The same wrapper renders the authorize-status
+/// poll (its `Approved` redirect carries a redeemable code) and, applied as a
+/// blanket layer, every Owner `/access/*` response.
 pub(crate) struct CacheSuppressed<T>(pub(crate) T);
 
 impl<T: IntoResponse> IntoResponse for CacheSuppressed<T> {
