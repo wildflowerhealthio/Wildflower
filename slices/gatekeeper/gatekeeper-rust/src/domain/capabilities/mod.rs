@@ -32,9 +32,9 @@ pub(crate) mod writers;
 
 pub use access::grantable_admin_scopes;
 pub(crate) use access::{
-    ApproveDeviceConsentInput, ApproveOAuthConsentInput, Capability, ConsentDecider,
-    ConsentOutcome, ConsentReader, DeviceConsentView, FixedScopeCapability, GrantsReader,
-    GrantsRevoker, OAuthConsentView, Scoped, TokenRevoker,
+    ApproveDeviceConsentInput, ApproveOAuthConsentInput, Capability, ClientView, ClientsDisabler,
+    ClientsReader, ConsentDecider, ConsentOutcome, ConsentReader, DeviceConsentView,
+    FixedScopeCapability, GrantsReader, GrantsRevoker, OAuthConsentView, Scoped, TokenRevoker,
 };
 
 #[cfg(test)]

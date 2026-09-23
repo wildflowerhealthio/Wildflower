@@ -11,12 +11,16 @@ import {
 } from 'react-tundraish'
 
 import { RevokeGrantDialog } from '../../../components/RevokeGrantDialog.tsx'
+import { TrustedAppsSection } from '../../../components/TrustedAppsSection.tsx'
 import { formatInstant } from '../../../format-date.ts'
 import {
+  clientsQueryOptions,
   grantsQueryOptions,
+  useClientsQuery,
   useGrantsQuery,
   useRevokeGrantMutation,
   type AppGrant,
+  type Client,
   type DeviceGrant,
   type Grant,
 } from '../../../queries/index.ts'
@@ -24,13 +28,14 @@ import type { RouterContext } from '../../../router-context.ts'
 
 interface AccessIndexBodyProps {
   readonly grants: readonly Grant[]
+  readonly clients: readonly Client[]
 }
 
 /** Navigate to the shared per-grant detail route (both variants link here). */
 const grantDetailHref = (id: string): string =>
   `/settings/gatekeeper/approved/${encodeURIComponent(id)}`
 
-const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
+const AccessIndexBody = ({ grants, clients }: AccessIndexBodyProps): JSX.Element => {
   const navigate = useNavigate()
   const revokeMutation = useRevokeGrantMutation()
   const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null)
@@ -107,6 +112,10 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
         />
       ) : null}
 
+      {/* Every client the Owner trusts (seeded, or trusted on first use from a
+          consent prompt), with the switch that takes that trust back. */}
+      <TrustedAppsSection clients={clients} />
+
       <ItemList
         title="Devices"
         items={[
@@ -153,7 +162,8 @@ const AccessIndexBody = ({ grants }: AccessIndexBodyProps): JSX.Element => {
 
 const AccessIndexScreen = (): JSX.Element => {
   const { data: grants } = useGrantsQuery()
-  return <AccessIndexBody grants={grants} />
+  const { data: clients } = useClientsQuery()
+  return <AccessIndexBody grants={grants} clients={clients} />
 }
 
 interface AccessIndexErrorViewProps {
@@ -164,10 +174,10 @@ interface AccessIndexErrorViewProps {
 /**
  * The route's `errorComponent`. The Retry button must do more than `reset`
  * (which only clears the `CatchBoundary`'s local error state): it explicitly
- * invalidates the grants query so the suspense query re-runs its `queryFn`
- * instead of replaying the cached rejection. The grants key is derived from
- * `grantsQueryOptions` so it can't drift from what the loader / `useGrantsQuery`
- * read. The annotated `select` keeps the context typed in the standalone
+ * invalidates the grants and clients queries so the suspense queries re-run
+ * their `queryFn` instead of replaying a cached rejection. The keys are derived
+ * from `grantsQueryOptions` / `clientsQueryOptions` so they can't drift from
+ * what the loader and the hooks read. The annotated `select` keeps the context typed in the standalone
  * (router-not-registered) build — no cast.
  */
 const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.Element => {
@@ -180,6 +190,7 @@ const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.
   })
   const retry = (): void => {
     void queryClient.invalidateQueries({ queryKey: grantsQueryOptions(runAuthed).queryKey })
+    void queryClient.invalidateQueries({ queryKey: clientsQueryOptions(runAuthed).queryKey })
     reset()
   }
   return <AsyncErrorView error={error} retry={retry} title="Error Loading Gatekeeper Settings" />
@@ -195,7 +206,10 @@ const AccessIndexErrorView = ({ error, reset }: AccessIndexErrorViewProps): JSX.
  */
 const Route = createFileRoute('/settings/gatekeeper/')({
   loader: ({ context }) =>
-    context.queryClient.query({ ...grantsQueryOptions(context.runAuthed), staleTime: 'static' }),
+    Promise.all([
+      context.queryClient.query({ ...grantsQueryOptions(context.runAuthed), staleTime: 'static' }),
+      context.queryClient.query({ ...clientsQueryOptions(context.runAuthed), staleTime: 'static' }),
+    ]),
   component: AccessIndexScreen,
   errorComponent: ({ error, reset }) => <AccessIndexErrorView error={error} reset={reset} />,
 })

@@ -23,6 +23,15 @@ pub enum GatekeeperError {
     DeviceConsentNotFound { user_code: String },
     /// No standing grant has this id — the `/access/grants/{id}` 404.
     GrantNotFound { id: String },
+    /// No registered client has this `client_id` — the
+    /// `/access/clients/{clientId}/{disable,enable}` 404.
+    ClientNotFound { client_id: String },
+    /// The Owner tried to disable the first-party host client — the
+    /// `/access/clients/{clientId}/disable` **409**. The host client is how the
+    /// Owner reaches this surface at all, so disabling it would lock them out;
+    /// its registration is locked (like its consent registration is never
+    /// trusted on first use). Nothing is written when it is raised.
+    FirstPartyClientLocked { client_id: String },
     /// No authorization request has this id — the `/oauth/authorize/{id}`
     /// polling endpoint's 404.
     AuthorizationRequestNotFound { id: String },
@@ -65,6 +74,12 @@ impl std::fmt::Display for GatekeeperError {
                 write!(f, "no pending device consent with user code {user_code}")
             }
             GatekeeperError::GrantNotFound { id } => write!(f, "no grant with id {id}"),
+            GatekeeperError::ClientNotFound { client_id } => {
+                write!(f, "no client with id {client_id}")
+            }
+            GatekeeperError::FirstPartyClientLocked { client_id } => {
+                write!(f, "the first-party client {client_id} cannot be disabled")
+            }
             GatekeeperError::AuthorizationRequestNotFound { id } => {
                 write!(f, "no authorization request with id {id}")
             }

@@ -51,6 +51,41 @@ const GrantNotFoundSchema = Schema.Struct({
 })
 
 /**
+ * A registered OAuth `Client` as the Owner's "Trusted apps" list reads it — one
+ * `clients` row, seeded by a migration or created when the Owner approved an
+ * unknown app (trust on first use). `secret_hash` never leaves the server.
+ *
+ * - `disabledAt` is set while the Owner has disabled the client: `/oauth/authorize`
+ *   and `/oauth/token` refuse it until it's re-enabled.
+ * - `firstParty` marks the Wildflower host client, which can't be disabled (it's
+ *   how the Owner reaches this surface at all).
+ */
+const ClientSchema = Schema.Struct({
+  clientId: Schema.String,
+  name: Schema.String,
+  kind: Schema.Literal('public', 'confidential'),
+  redirectUris: Schema.Array(Schema.String),
+  allowedScopes: Schema.Array(Schema.String),
+  allowedGrantTypes: Schema.Array(Schema.String),
+  registeredAt: Schema.DateTimeUtc,
+  disabledAt: Schema.NullOr(Schema.DateTimeUtc),
+  firstParty: Schema.Boolean,
+})
+
+const ClientsSchema = Schema.Array(ClientSchema)
+
+const ClientNotFoundSchema = Schema.Struct({
+  error: Schema.Literal('ClientNotFound'),
+  clientId: Schema.String,
+})
+
+/** `409` from `DisableClient` when the named client is the first-party host. */
+const FirstPartyClientLockedSchema = Schema.Struct({
+  error: Schema.Literal('FirstPartyClientLocked'),
+  clientId: Schema.String,
+})
+
+/**
  * `HttpRequest`: a record of an inbound FHIR request that the gatekeeper
  * has parked for the Owner to approve or deny. The wire shape mirrors
  * the server's `httpRequests` storage row 1:1.
@@ -97,6 +132,9 @@ const SessionSchema = Schema.Struct({
  *   recorded consent decisions. Revoking a Grant means the next
  *   `/oauth/authorize` for that `(clientId, redirectUri)` will hit the
  *   consent UI again instead of auto-approving.
+ * - `ListClients` / `DisableClient` / `EnableClient`: see every client the
+ *   Owner trusts and take that trust back (or restore it). Both switches are
+ *   idempotent; disabling the first-party host client is a `409`.
  * - `ListRequests` / `GetRequest`: inspect parked FHIR requests waiting
  *   on Owner decision.
  * - `ApproveRequest` / `DenyRequest`: Owner decision for a parked FHIR
@@ -120,6 +158,18 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
     HttpApiEndpoint.del('RevokeGrant', '/grants/:id')
       .setPath(Schema.Struct({ id: Schema.String }))
       .addError(GrantNotFoundSchema, { status: 404 })
+  )
+  .add(HttpApiEndpoint.get('ListClients', '/clients').addSuccess(ClientsSchema))
+  .add(
+    HttpApiEndpoint.post('DisableClient', '/clients/:clientId/disable')
+      .setPath(Schema.Struct({ clientId: Schema.String }))
+      .addError(ClientNotFoundSchema, { status: 404 })
+      .addError(FirstPartyClientLockedSchema, { status: 409 })
+  )
+  .add(
+    HttpApiEndpoint.post('EnableClient', '/clients/:clientId/enable')
+      .setPath(Schema.Struct({ clientId: Schema.String }))
+      .addError(ClientNotFoundSchema, { status: 404 })
   )
   .add(HttpApiEndpoint.get('ListRequests', '/requests').addSuccess(HttpRequestsSchema))
   .add(
@@ -149,6 +199,10 @@ const httpApiGroup = HttpApiGroup.make('access-management', { topLevel: false })
 
 export {
   httpApiGroup,
+  ClientNotFoundSchema,
+  ClientSchema,
+  ClientsSchema,
+  FirstPartyClientLockedSchema,
   GrantSchema,
   GrantsSchema,
   GrantNotFoundSchema,

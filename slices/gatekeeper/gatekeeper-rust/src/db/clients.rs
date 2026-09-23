@@ -6,6 +6,7 @@
 //! [`GatekeeperError::Infrastructure`](crate::domain::gatekeeper_error::GatekeeperError::Infrastructure)
 //! on a real db failure.
 
+use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use diesel::sqlite::SqliteConnection;
 
@@ -56,6 +57,30 @@ pub(super) fn client_by_id(
         .first(conn)
         .optional()
         .map_err(|e| GatekeeperError::infrastructure("client_by_id failed", e))
+}
+
+/// Every registered client, ordered by `client_id`.
+pub(super) fn list_clients(conn: &mut SqliteConnection) -> Result<Vec<Client>, GatekeeperError> {
+    clients::table
+        .order(clients::client_id.asc())
+        .select(Client::as_select())
+        .load(conn)
+        .map_err(|e| GatekeeperError::infrastructure("list_clients failed", e))
+}
+
+/// Set or clear a client's `disabled_at`, returning whether a row matched. Only
+/// the one column is written, so the client's registration (redirects, scopes,
+/// secret, `registered_at`) survives a disable → enable round trip unchanged.
+pub(super) fn set_client_disabled(
+    conn: &mut SqliteConnection,
+    client_id: &str,
+    disabled_at: Option<DateTime<Utc>>,
+) -> Result<bool, GatekeeperError> {
+    let updated = diesel::update(clients::table.find(client_id))
+        .set(clients::disabled_at.eq(disabled_at))
+        .execute(conn)
+        .map_err(|e| GatekeeperError::infrastructure("set_client_disabled failed", e))?;
+    Ok(updated > 0)
 }
 
 /// Insert a client, or update its policy fields if one with the same
@@ -152,6 +177,84 @@ mod tests {
                 .expect("query")
                 .expect("row present");
             prop_assert_eq!(fetched, client);
+        }
+    }
+
+    /// The migrations seed a fixed set of clients, so the list/disable
+    /// properties run against the delta the test itself upserts.
+    fn seeded_client_ids(store: &SqliteGatekeeperStore) -> Vec<String> {
+        store
+            .list_clients()
+            .expect("list seeded clients")
+            .into_iter()
+            .map(|c| c.client_id)
+            .collect()
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(32))]
+
+        /// `list_clients` returns every stored row — the migration seeds plus
+        /// whatever was upserted — exactly once each, sorted by `client_id`, with
+        /// each upserted row decoding back unchanged.
+        #[test]
+        fn list_clients_returns_every_row_sorted_by_id(
+            upserted in prop::collection::vec(arb_client(), 0..6),
+        ) {
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let mut expected: std::collections::BTreeMap<String, Client> = store
+                .list_clients()
+                .expect("list seeds")
+                .into_iter()
+                .map(|c| (c.client_id.clone(), c))
+                .collect();
+            for client in &upserted {
+                // Fresh ids only: a repeat upsert keeps the first row's
+                // `registered_at` / `disabled_at` by design, which is
+                // `upsert_client`'s property, not this one's.
+                if !expected.contains_key(&client.client_id) {
+                    store.upsert_client(client).expect("upsert");
+                    expected.insert(client.client_id.clone(), client.clone());
+                }
+            }
+
+            let listed = store.list_clients().expect("list");
+            prop_assert_eq!(listed, expected.into_values().collect::<Vec<_>>());
+        }
+
+        /// Setting then clearing `disabled_at` touches only that column: every
+        /// other field of the row reads back exactly as registered, and the
+        /// stamp itself reads back as written at each step.
+        #[test]
+        fn set_client_disabled_round_trips_only_the_stamp(
+            client in arb_client(),
+            stamp in arb_timestamp(),
+        ) {
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            // A seeded id would keep the seed's policy on upsert; use a fresh one.
+            prop_assume!(!seeded_client_ids(&store).contains(&client.client_id));
+            store.upsert_client(&client).expect("upsert");
+
+            prop_assert!(store.set_client_disabled(&client.client_id, Some(stamp)).expect("disable"));
+            let disabled = store.client_by_id(&client.client_id).expect("query").expect("row");
+            prop_assert_eq!(&disabled, &Client { disabled_at: Some(stamp), ..client.clone() });
+
+            prop_assert!(store.set_client_disabled(&client.client_id, None).expect("enable"));
+            let enabled = store.client_by_id(&client.client_id).expect("query").expect("row");
+            prop_assert_eq!(enabled, Client { disabled_at: None, ..client });
+        }
+
+        /// An id with no row reports `false` and creates nothing.
+        #[test]
+        fn set_client_disabled_on_an_unknown_id_is_a_miss(
+            client_id in "[a-zA-Z0-9_-]{1,32}",
+            stamp in arb_opt_timestamp(),
+        ) {
+            let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+            let before = seeded_client_ids(&store);
+            prop_assume!(!before.contains(&client_id));
+            prop_assert!(!store.set_client_disabled(&client_id, stamp).expect("update"));
+            prop_assert_eq!(seeded_client_ids(&store), before);
         }
     }
 

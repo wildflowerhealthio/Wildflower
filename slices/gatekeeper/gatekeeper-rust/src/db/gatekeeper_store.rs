@@ -158,6 +158,18 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
         clients::upsert_client(self.conn, client)
     }
 
+    fn list_clients(&mut self) -> Result<Vec<Client>, GatekeeperError> {
+        clients::list_clients(self.conn)
+    }
+
+    fn set_client_disabled(
+        &mut self,
+        client_id: &str,
+        disabled_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, GatekeeperError> {
+        clients::set_client_disabled(self.conn, client_id, disabled_at)
+    }
+
     // ----- signing keys --------------------------------------------------
 
     fn all_signing_keys(&mut self) -> Result<Vec<SigningKey>, GatekeeperError> {

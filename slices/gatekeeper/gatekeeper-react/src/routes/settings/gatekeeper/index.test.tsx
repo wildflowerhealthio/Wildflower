@@ -5,7 +5,7 @@ import { AccessManagement } from 'gatekeeper-core/http-api-definition'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
-import { GRANTS_QUERY_KEY } from '../../../queries/index.ts'
+import { CLIENTS_QUERY_KEY, GRANTS_QUERY_KEY } from '../../../queries/index.ts'
 import { AccessIndexBody, AccessIndexErrorView } from './index.tsx'
 
 /**
@@ -59,7 +59,7 @@ afterEach(() => {
 })
 
 describe('AccessIndexErrorView Retry', () => {
-  test('invalidates the grants query and clears the boundary on retry', () => {
+  test('invalidates the grants and clients queries and clears the boundary on retry', () => {
     const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
     const reset = vi.fn()
 
@@ -68,6 +68,7 @@ describe('AccessIndexErrorView Retry', () => {
     fireEvent.click(screen.getByText('Retry'))
 
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: GRANTS_QUERY_KEY })
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: CLIENTS_QUERY_KEY })
     expect(reset).toHaveBeenCalledTimes(1)
   })
 })
@@ -108,7 +109,7 @@ describe('AccessIndexBody grant splitting', () => {
 
     render(
       <QueryClientProvider client={queryClient}>
-        <AccessIndexBody grants={grants} />
+        <AccessIndexBody grants={grants} clients={[]} />
       </QueryClientProvider>
     )
 
@@ -122,11 +123,37 @@ describe('AccessIndexBody grant splitting', () => {
   test('omits the Authorized Devices section when there are no device grants', () => {
     render(
       <QueryClientProvider client={queryClient}>
-        <AccessIndexBody grants={[decodeGrant(appGrantBody)]} />
+        <AccessIndexBody grants={[decodeGrant(appGrantBody)]} clients={[]} />
       </QueryClientProvider>
     )
 
     expect(screen.getByText('Approved Apps')).toBeTruthy()
     expect(screen.queryByText('Authorized Devices')).toBeNull()
+  })
+})
+
+describe('AccessIndexBody trusted apps', () => {
+  test('renders the Trusted Apps section beside the grants when clients are registered', () => {
+    const client = Schema.decodeUnknownSync(AccessManagement.ClientSchema)({
+      clientId: 'ohif-viewer',
+      name: 'OHIF Viewer',
+      kind: 'public',
+      redirectUris: ['/'],
+      allowedScopes: ['openid'],
+      allowedGrantTypes: ['authorization_code'],
+      registeredAt: '2026-01-15T09:30:00.000Z',
+      disabledAt: null,
+      firstParty: false,
+    })
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <AccessIndexBody grants={[decodeGrant(appGrantBody)]} clients={[client]} />
+      </QueryClientProvider>
+    )
+
+    expect(screen.getByText('Approved Apps')).toBeTruthy()
+    expect(screen.getByText('Trusted Apps')).toBeTruthy()
+    expect(screen.getByText('OHIF Viewer')).toBeTruthy()
   })
 })

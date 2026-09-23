@@ -1,5 +1,6 @@
 /**
- * Spec-drift contract test — gatekeeper OAuth + discovery surface.
+ * Spec-drift contract test — gatekeeper OAuth + discovery surface, plus the
+ * documented slice of `/access` (client management).
  *
  * Diffs the Rust/axum server's OpenAPI spec (emitted by `utoipa`, committed at
  * `gatekeeper-rust/openapi/gatekeeper-oauth.openapi.json`) against the TypeScript
@@ -29,6 +30,9 @@ defineSpecDriftTest({
     ['/oauth/authorize/{id}', 'get'],
     ['/oauth/token', 'post'],
     ['/oauth/device_authorization', 'post'],
+    ['/access/clients', 'get'],
+    ['/access/clients/{clientId}/disable', 'post'],
+    ['/access/clients/{clientId}/enable', 'post'],
   ],
   /**
    * `get /oauth/authorize` is a browser front door: success is a 302 redirect and

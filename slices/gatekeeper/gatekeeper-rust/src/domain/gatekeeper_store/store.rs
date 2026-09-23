@@ -106,6 +106,28 @@ pub trait GatekeeperStore {
         self.with_connection(|tx| tx.upsert_client(client))
     }
 
+    /// See [`GatekeeperTx::list_clients`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GatekeeperTx::list_clients`]'s error.
+    fn list_clients(&self) -> Result<Vec<Client>, GatekeeperError> {
+        self.with_connection(|tx| tx.list_clients())
+    }
+
+    /// See [`GatekeeperTx::set_client_disabled`].
+    ///
+    /// # Errors
+    ///
+    /// Propagates [`GatekeeperTx::set_client_disabled`]'s error.
+    fn set_client_disabled(
+        &self,
+        client_id: &str,
+        disabled_at: Option<DateTime<Utc>>,
+    ) -> Result<bool, GatekeeperError> {
+        self.with_connection(|tx| tx.set_client_disabled(client_id, disabled_at))
+    }
+
     /// See [`GatekeeperTx::all_signing_keys`].
     ///
     /// # Errors

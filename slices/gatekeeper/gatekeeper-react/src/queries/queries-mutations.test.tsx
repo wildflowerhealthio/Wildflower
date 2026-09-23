@@ -4,6 +4,7 @@ import { Effect } from 'effect'
 import { type JSX, type ReactNode } from 'react'
 import { afterEach, describe, expect, test, vi } from 'vite-plus/test'
 
+import { useSetClientDisabledMutation } from './clients.ts'
 import { useDeviceConsentMutation } from './device-consent.ts'
 import { useRevokeGrantMutation } from './grants.ts'
 import { foldExpiredConsent, useOAuthConsentMutation } from './oauth-consent.ts'
@@ -65,6 +66,22 @@ describe('useRevokeGrantMutation invalidation', () => {
     })
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'grant', 'grant-1'] })
   })
+})
+
+describe('useSetClientDisabledMutation invalidation', () => {
+  test.each(['disable', 'enable'] as const)(
+    '%s invalidates the clients list root',
+    async (action) => {
+      const { result, queryClient } = renderWithClient(() => useSetClientDisabledMutation())
+      const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+      await result.current.mutateAsync({ clientId: 'ohif-viewer', action })
+
+      await waitFor(() => {
+        expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: ['gatekeeper', 'clients'] })
+      })
+    }
+  )
 })
 
 describe('useDecideRequestMutation invalidation', () => {

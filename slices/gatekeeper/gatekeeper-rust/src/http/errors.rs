@@ -93,6 +93,26 @@ pub(crate) struct GrantNotFoundBody {
     pub(crate) id: String,
 }
 
+/// Wire shape for `ClientNotFound` (404) — no registered client has this
+/// `client_id`.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ClientNotFoundBody {
+    /// Always `"ClientNotFound"`.
+    pub(crate) error: &'static str,
+    pub(crate) client_id: String,
+}
+
+/// Wire shape for `FirstPartyClientLocked` (409) — the named client is the
+/// first-party host, which can't be disabled without locking the Owner out.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct FirstPartyClientLockedBody {
+    /// Always `"FirstPartyClientLocked"`.
+    pub(crate) error: &'static str,
+    pub(crate) client_id: String,
+}
+
 /// Wire shape for `OAuthConsentNotFound` (404) — no pending authorization-code
 /// consent has this id.
 #[derive(Debug, Serialize, ToSchema)]
@@ -158,6 +178,22 @@ impl IntoResponse for GatekeeperError {
                 Json(GrantNotFoundBody {
                     error: "GrantNotFound",
                     id,
+                }),
+            )
+                .into_response(),
+            GatekeeperError::ClientNotFound { client_id } => (
+                StatusCode::NOT_FOUND,
+                Json(ClientNotFoundBody {
+                    error: "ClientNotFound",
+                    client_id,
+                }),
+            )
+                .into_response(),
+            GatekeeperError::FirstPartyClientLocked { client_id } => (
+                StatusCode::CONFLICT,
+                Json(FirstPartyClientLockedBody {
+                    error: "FirstPartyClientLocked",
+                    client_id,
                 }),
             )
                 .into_response(),

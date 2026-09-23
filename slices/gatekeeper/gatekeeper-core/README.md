@@ -82,6 +82,9 @@ and 90 days respectively). See the
   on a pending device-flow request.
 - `/access/grants`, `/access/grants/:id` — list / inspect / revoke
   standing grants.
+- `/access/clients`, `/access/clients/:clientId/disable`, `/enable` — list
+  every registered client and take trust back (or restore it); the
+  first-party host can't be disabled (`409 FirstPartyClientLocked`).
 - `/access/requests`, `/access/requests/:id` (+ `/approve`, `/deny`) —
   gate decisions on inbound HTTP requests.
 
