@@ -79,9 +79,9 @@ pub(crate) struct PresentedClientRegistration<'a> {
     /// The current `clients` row, or `None` when the `client_id` is unknown.
     pub(crate) maybe_existing_client: Option<&'a Client>,
     /// The `redirect_uri` the request presented, already parsed.
-    pub(crate) requested_redirect_uri: &'a Url,
-    /// The whitespace-split requested scopes, in request order.
-    pub(crate) requested_scopes: &'a [String],
+    pub(crate) redirect_uri: &'a Url,
+    /// The scopes the request presented, whitespace-split, in request order.
+    pub(crate) scopes: &'a [String],
     /// The request's served origin, parsed — the base an app-relative allowlist
     /// entry resolves against. `None` when it could not be parsed, which simply
     /// makes every relative entry resolve to nothing.
@@ -114,13 +114,13 @@ pub(crate) fn classify_registration(
     };
     let redirect_uri_is_new = !redirect_is_allowlisted(
         existing_client,
-        presented_registration.requested_redirect_uri,
+        presented_registration.redirect_uri,
         presented_registration.served_origin,
         presented_registration.topology,
     );
     let unregistered_requested_scopes = uncovered_scopes(
         &existing_client.allowed_scopes,
-        presented_registration.requested_scopes,
+        presented_registration.scopes,
     );
     if redirect_uri_is_new || !unregistered_requested_scopes.is_empty() {
         ClientRegistrationVerdict::WouldWiden {
@@ -179,8 +179,8 @@ impl RegistrationClassifier<'_> {
         let served_origin = self.parsed_served_origin();
         classify_registration(&PresentedClientRegistration {
             maybe_existing_client,
-            requested_redirect_uri,
-            requested_scopes,
+            redirect_uri: requested_redirect_uri,
+            scopes: requested_scopes,
             served_origin: served_origin.as_ref(),
             topology: topology.as_ref(),
         })
@@ -234,8 +234,8 @@ mod tests {
         let requested: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
         classify_registration(&PresentedClientRegistration {
             maybe_existing_client,
-            requested_redirect_uri,
-            requested_scopes: &requested,
+            redirect_uri: requested_redirect_uri,
+            scopes: &requested,
             served_origin: None,
             topology: None,
         })
@@ -352,8 +352,8 @@ mod tests {
         assert_eq!(
             classify_registration(&PresentedClientRegistration {
                 maybe_existing_client: Some(&app),
-                requested_redirect_uri: &callback,
-                requested_scopes: &requested,
+                redirect_uri: &callback,
+                scopes: &requested,
                 served_origin: Some(&served),
                 topology: Some(&topology),
             }),
@@ -362,8 +362,8 @@ mod tests {
         assert_eq!(
             classify_registration(&PresentedClientRegistration {
                 maybe_existing_client: Some(&app),
-                requested_redirect_uri: &callback,
-                requested_scopes: &requested,
+                redirect_uri: &callback,
+                scopes: &requested,
                 served_origin: Some(&served),
                 topology: None,
             }),
@@ -403,8 +403,8 @@ mod tests {
             }
             let verdict = classify_registration(&PresentedClientRegistration {
                 maybe_existing_client: Some(&app),
-                requested_redirect_uri: &redirect(),
-                requested_scopes: &requested,
+                redirect_uri: &redirect(),
+                scopes: &requested,
                 served_origin: None,
                 topology: None,
             });
@@ -442,8 +442,8 @@ mod tests {
             prop_assert_eq!(
                 classify_registration(&PresentedClientRegistration {
                     maybe_existing_client: Some(&app),
-                    requested_redirect_uri: &redirect(),
-                    requested_scopes: &requested,
+                    redirect_uri: &redirect(),
+                    scopes: &requested,
                     served_origin: None,
                     topology: None,
                 }),
