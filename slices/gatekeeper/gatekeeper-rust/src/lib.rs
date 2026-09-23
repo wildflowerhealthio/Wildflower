@@ -35,7 +35,7 @@ use std::sync::Arc;
 use anyhow::Context;
 use chrono::{Duration, Utc};
 use scopes_rust::{
-    ContextLevel, FhirResourceScope, KnownScope, Permission, ResourceType, Scope,
+    ContextLevel, FhirResourceScope, Grant, KnownScope, Permission, ResourceType, Scope,
     WildflowerResourceScope, WildflowerResourceType,
 };
 use token_revocation_rust::RevocationStore;
@@ -78,6 +78,12 @@ pub use http::{
 // The self-hosted redirect seam: the host implements it (backed by the apps
 // store) and passes it into `setup_gatekeeper`, so its trait + types are public.
 pub use ports::{NoSelfHostedRedirects, SelfHostedRedirectResolver, SelfHostedRedirectTopology};
+// The loopback-dialog seam: the host implements it with its native dialog
+// plugin and passes it into `setup_gatekeeper`, so its trait + types are public.
+pub use ports::{
+    LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,
+    LoopbackRegistrationNotice, NoLoopbackConsentPrompt,
+};
 
 /// `client_id` of the host application's first-party OAuth client. The host
 /// uses this identity to mint Owner tokens for itself and to recognise its
@@ -234,6 +240,10 @@ pub struct Gatekeeper {
 /// on the shared database and threads into both this setup and emr-rust's HFS
 /// adapter, so the auth gate and the FHIR server read one denylist/epoch store.
 ///
+/// `loopback_consent_prompt` is the host's native dialog for a direct-loopback
+/// login by the hosted owner UI (see [`LoopbackConsentPrompt`]); a host without
+/// one passes [`NoLoopbackConsentPrompt`].
+///
 /// # Errors
 ///
 /// Returns an error if opening and seeding the store fails, minting the
@@ -246,6 +256,7 @@ pub fn setup_gatekeeper(
     local_owner_token_tx: &watch::Sender<Option<String>>,
     active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     self_hosted_redirects: Arc<dyn ports::SelfHostedRedirectResolver>,
+    loopback_consent_prompt: Arc<dyn ports::LoopbackConsentPrompt>,
 ) -> anyhow::Result<Gatekeeper> {
     // The host owner token is minted from `host_owner_scopes` (the live app sources
     // these from `tauri-shared-config.json`), but the `/access/*` owner gate
@@ -293,6 +304,8 @@ pub fn setup_gatekeeper(
         first_party_client_id: config.first_party_client_id.clone().into(),
         active_pending_consent_sender: active_pending_consent_tx,
         self_hosted_redirects,
+        loopback_consent_prompt,
+        host_owner_grant: Grant::parse(config.host_owner_scopes.iter().map(String::as_str)),
     });
     // Seed the popup head from SQLite so a request that was pending
     // across an app restart still drives the modal on first webview

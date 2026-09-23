@@ -124,6 +124,21 @@ impl DelegatedScopes {
     }
 }
 
+/// The `scopes` an approver holding `approver_grant` may delegate: every
+/// identity or session marker, and every resource scope the grant covers
+/// (across both SMART spellings), in their given order. An approval surface
+/// that approves "everything requested, within my authority" passes this as the
+/// Owner's ticks, so [`DelegatedScopes::clamp`] narrows the request instead of
+/// failing it with [`GatekeeperError::InsufficientApproverScope`].
+pub(crate) fn within_approver_grant(scopes: &[String], approver_grant: &Grant) -> Vec<String> {
+    let uncovered = uncovered_resource_scopes(scopes, approver_grant);
+    scopes
+        .iter()
+        .filter(|scope| !uncovered.contains(scope))
+        .cloned()
+        .collect()
+}
+
 /// The resource scopes in `granted` the `approver_grant` does not cover,
 /// checked across both canonical spellings.
 fn uncovered_resource_scopes(granted: &[String], approver_grant: &Grant) -> Vec<String> {

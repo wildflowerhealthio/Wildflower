@@ -1,13 +1,16 @@
+use std::sync::Arc;
+
 use axum::extract::Query;
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{Html, IntoResponse, Response};
 use serde::Deserialize;
+use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
 use utoipa::IntoParams;
 use uuid::Uuid;
 
 use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::capabilities::oauth::{
-    AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
+    asks_loopback_dialog, AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
 };
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::domain::page_paths;
@@ -15,7 +18,7 @@ use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
 use crate::http::ServedOrigin;
-use crate::live_bindings::LiveCodeAuthorizationStarter;
+use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveLoopbackOwnerApprover};
 
 /// `302 Found` redirect. RFC 6749's examples use 302 and the TypeScript
 /// implementation emits 302, so all `/oauth/authorize` redirects use it for
@@ -184,7 +187,9 @@ pub struct AuthorizeParams {
 )]
 pub(super) async fn handle_authorize_request(
     code_authorization_starter: Live<LiveCodeAuthorizationStarter>,
+    loopback_owner_approver: Live<LiveLoopbackOwnerApprover>,
     origin: ServedOrigin,
+    headers: HeaderMap,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
     // Log the SMART App Launch params (see the `launch` / `aud` field docs) so
@@ -228,8 +233,26 @@ pub(super) async fn handle_authorize_request(
             &client_state,
         )),
         // Otherwise the Owner UI's polling page, which waits for whichever
-        // surface — its inline consent or the host popup — decides first.
+        // surface — its inline consent, the host popup, or (for the hosted owner
+        // UI over direct loopback) the host's native dialog — decides first.
         AuthorizeNextStep::AwaitOwner { request_id } => {
+            let is_direct_loopback = matches!(
+                request_provenance(&headers),
+                Some(RequestProvenance::Loopback)
+            );
+            if asks_loopback_dialog(is_direct_loopback, &params.client_id) {
+                let asking = Arc::new(loopback_owner_approver.0).ask_and_decide(
+                    request_id.clone(),
+                    origin.0.clone(),
+                    generate_authorization_code,
+                );
+                tokio::spawn(async move {
+                    match asking.await {
+                        Ok(decision) => tracing::info!(?decision, "loopback dialog decided"),
+                        Err(error) => tracing::error!(%error, "loopback dialog failed"),
+                    }
+                });
+            }
             found_redirect(&page_paths::oauth_polling_url(&origin, &request_id))
         }
     })

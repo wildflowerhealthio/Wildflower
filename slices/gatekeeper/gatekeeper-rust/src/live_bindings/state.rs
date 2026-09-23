@@ -71,4 +71,16 @@ pub struct GatekeeperState {
     /// The host wires the apps-store-backed impl; a host with no self-hosted apps
     /// (and tests) wires the no-op, so relative entries simply never match.
     pub(crate) self_hosted_redirects: Arc<dyn crate::ports::SelfHostedRedirectResolver>,
+    /// The host's native loopback dialog (see
+    /// [`LoopbackConsentPrompt`](crate::ports::LoopbackConsentPrompt)):
+    /// `/authorize` puts a direct-loopback login by the hosted owner UI to it. A
+    /// host with no native dialog (and tests) wires
+    /// [`NoLoopbackConsentPrompt`](crate::ports::NoLoopbackConsentPrompt), which
+    /// abstains, leaving every such login to the Owner UI.
+    pub(crate) loopback_consent_prompt: Arc<dyn crate::ports::LoopbackConsentPrompt>,
+    /// The host Owner's grant, parsed from
+    /// [`GatekeeperConfig::host_owner_scopes`](crate::GatekeeperConfig::host_owner_scopes)
+    /// — the approving authority when the Owner answers the loopback dialog,
+    /// the same scopes the host owner token carries.
+    pub(crate) host_owner_grant: scopes_rust::Grant,
 }

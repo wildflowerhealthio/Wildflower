@@ -167,12 +167,14 @@ pub trait GatekeeperTx {
         device_name: Option<&str>,
     ) -> Result<bool, GatekeeperError>;
 
-    /// Mark `id` denied.
+    /// Mark a *pending* `id` denied, returning `true` iff a pending row was
+    /// transitioned. A request already in a terminal state is left as it is,
+    /// so the first decision on a request wins.
     ///
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] if the update fails.
-    fn deny_authorization_request(&mut self, id: &str) -> Result<(), GatekeeperError>;
+    fn deny_authorization_request(&mut self, id: &str) -> Result<bool, GatekeeperError>;
 
     /// Atomically claim an `approved` request for single-use redemption
     /// (`approved` → `expired` only if still `approved`), returning `true` iff

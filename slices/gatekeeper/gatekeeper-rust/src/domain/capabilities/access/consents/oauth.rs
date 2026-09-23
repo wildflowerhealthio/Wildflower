@@ -20,19 +20,36 @@ use scopes_rust::Grant;
 
 /// Everything an approval needs beyond the prompt itself: who is approving, how
 /// to judge the client's registration, which client's registration is locked,
-/// and the instant the writes are stamped with. Bundled (rather than five more
-/// parameters) so [`approve_oauth_consent`]'s signature stays readable.
-pub(super) struct ApprovalContext<'a> {
+/// whether the approval is remembered, and the instant the writes are stamped
+/// with. Bundled (rather than six more parameters) so
+/// [`approve_oauth_consent`]'s signature stays readable.
+pub(crate) struct ApprovalContext<'a> {
     /// The deciding Owner's own granted scopes — the bound on what the
     /// approval may delegate (see [`DelegatedScopes::clamp`]).
-    pub(super) approver_grant: &'a Grant,
+    pub(crate) approver_grant: &'a Grant,
     /// Judges the request against the client's current registration.
-    pub(super) classifier: &'a RegistrationClassifier<'a>,
+    pub(crate) classifier: &'a RegistrationClassifier<'a>,
     /// The first-party host's `client_id` — the one client whose registration
     /// is locked: never trusted on first use, never widened by an approval.
-    pub(super) first_party_client_id: &'a str,
+    pub(crate) first_party_client_id: &'a str,
+    /// Whether the approval becomes a standing grant.
+    pub(crate) memory: ApprovalMemory,
     /// The instant stamped onto the code and the standing grant.
-    pub(super) now: DateTime<Utc>,
+    pub(crate) now: DateTime<Utc>,
+}
+
+/// Whether an approved code-flow prompt is remembered as a standing grant — the
+/// one difference between the approval surfaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ApprovalMemory {
+    /// Record (or widen) the standing grant, so a later request inside it takes
+    /// the `/authorize` fast path. The Owner UI's consent prompt.
+    RememberAsStandingGrant,
+    /// Record no grant: the next request from the client asks the Owner again.
+    /// The host's loopback dialog, which prompts on every login. A client
+    /// trusted on first use is still registered, so the next request is
+    /// `Registered` rather than `New`.
+    AskEveryTime,
 }
 
 /// Load the authorization request for `id` and verify it's a pending, unexpired
@@ -40,7 +57,7 @@ pub(super) struct ApprovalContext<'a> {
 /// `code_challenge`. On success the two optional fields are unwrapped into the
 /// returned [`PendingCodeRequest`]. A request whose `expires_at` has passed is
 /// treated as not found — the deadline is enforced here at read time.
-pub(super) fn load_pending_code_request(
+pub(crate) fn load_pending_code_request(
     store: &impl GatekeeperStore,
     id: &str,
 ) -> Result<PendingCodeRequest, GatekeeperError> {
@@ -58,10 +75,10 @@ pub(super) fn load_pending_code_request(
 }
 
 /// Approve an authorization-code consent prompt: clamp the Owner's ticks into a
-/// [`DelegatedScopes`] proof, issue the code, record the standing grant (and,
-/// for a client trusted on first use, its registration), republish the popup
-/// head, and return the client callback URL. An approval that grants nothing is
-/// applied as a **deny**.
+/// [`DelegatedScopes`] proof, issue the code, record the standing grant (unless
+/// [`ApprovalMemory::AskEveryTime`]) and, for a client trusted on first use, its
+/// registration, republish the popup head, and return the client callback URL.
+/// An approval that grants nothing is applied as a **deny**.
 ///
 /// A request the
 /// [registration verdict](crate::domain::client_registration::ClientRegistrationVerdict)
@@ -70,7 +87,7 @@ pub(super) fn load_pending_code_request(
 /// else it fails with
 /// [`RegistrationNotAcknowledged`](GatekeeperError::RegistrationNotAcknowledged)
 /// and nothing is written.
-pub(super) fn approve_oauth_consent(
+pub(crate) fn approve_oauth_consent(
     store: &impl GatekeeperStore,
     publisher: &dyn PendingConsentPublisher,
     id: &str,
@@ -113,7 +130,8 @@ pub(super) fn approve_oauth_consent(
         ),
     )?
     else {
-        return deny_consent(store, publisher, id).map(|()| ConsentOutcome::Denied);
+        return deny_consent(store, publisher, id, make_consent_not_found)
+            .map(|()| ConsentOutcome::Denied);
     };
 
     let Some(issued_code) = RequestApprover::over(store).approve_for_code(
@@ -130,14 +148,26 @@ pub(super) fn approve_oauth_consent(
     // Persist the (possibly brand-new) registration with the grant it justifies:
     // one transaction, so a client row never outlives a failed approval.
     let registration_to_widen = (!registration_is_locked).then_some(&registration_verdict);
-    GrantRecorder::over(store).record_code_grant(
-        &request.client_id,
-        requested_redirect_uri,
-        &delegated_scopes,
-        input.patient.as_deref(),
-        now,
-        registration_to_widen,
-    )?;
+    let grant_recorder = GrantRecorder::over(store);
+    match (ctx.memory, registration_to_widen) {
+        (ApprovalMemory::RememberAsStandingGrant, _) => grant_recorder.record_code_grant(
+            &request.client_id,
+            requested_redirect_uri,
+            &delegated_scopes,
+            input.patient.as_deref(),
+            now,
+            registration_to_widen,
+        )?,
+        (ApprovalMemory::AskEveryTime, Some(registration_verdict)) => grant_recorder
+            .record_registration(
+                &request.client_id,
+                requested_redirect_uri,
+                &delegated_scopes,
+                now,
+                registration_verdict,
+            )?,
+        (ApprovalMemory::AskEveryTime, None) => {}
+    }
 
     // This request was the popup head (or queued behind one) until the approval
     // above flipped it out of `pending`, so the head has to be recomputed — the
@@ -155,11 +185,13 @@ pub(super) fn approve_oauth_consent(
 /// Deny the pending authorization-code request `id`. Validates it's a live
 /// code-flow prompt first (so a stale/unknown id is the structured 404), then
 /// marks it denied and republishes the popup head.
-pub(super) fn deny_oauth_consent(
+pub(crate) fn deny_oauth_consent(
     store: &impl GatekeeperStore,
     publisher: &dyn PendingConsentPublisher,
     id: &str,
 ) -> Result<(), GatekeeperError> {
     load_pending_code_request(store, id)?;
-    deny_consent(store, publisher, id)
+    deny_consent(store, publisher, id, || {
+        GatekeeperError::OAuthConsentNotFound { id: id.to_owned() }
+    })
 }

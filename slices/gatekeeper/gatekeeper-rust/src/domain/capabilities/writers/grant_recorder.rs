@@ -64,19 +64,14 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
         let delegated = delegated_scopes.scopes();
         self.store.immediate_transaction(|tx| {
             if let Some(registration_verdict) = registration_to_widen {
-                let row = match tx.client_by_id(client_id)? {
-                    Some(existing_client) => widen_registration(
-                        existing_client,
-                        redirect_uri,
-                        delegated,
-                        registration_verdict.redirect_uri_is_new(),
-                    ),
-                    None => new_registration(client_id, redirect_uri, delegated, now),
-                };
-                // `upsert_client` updates in place, preserving `registered_at` and
-                // any admin `disabled_at` — a widening never resurrects a disabled
-                // client.
-                tx.upsert_client(&row)?;
+                write_registration(
+                    tx,
+                    client_id,
+                    redirect_uri,
+                    delegated,
+                    now,
+                    registration_verdict,
+                )?;
             }
             match tx.grant_by_client_and_redirect(client_id, redirect_uri)? {
                 Some(mut grant) => {
@@ -93,6 +88,39 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
                     redirect_uri: redirect_uri.clone(),
                 }),
             }
+        })
+    }
+
+    /// Register (or widen) a client trusted on first use by what the Owner
+    /// just approved, **without** recording a standing grant — the approval
+    /// surfaces that ask the Owner every time (the host's loopback dialog) use
+    /// this in place of [`record_code_grant`](Self::record_code_grant), so the
+    /// next request from the same client is `Registered` but never covered by a
+    /// grant, and asks again. The row is created or widened exactly as
+    /// [`record_code_grant`](Self::record_code_grant) would, under the same
+    /// `BEGIN IMMEDIATE` read-then-write.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] on a store failure; the transaction
+    /// rolls back.
+    pub(crate) fn record_registration(
+        &self,
+        client_id: &str,
+        redirect_uri: &Url,
+        delegated_scopes: &DelegatedScopes,
+        now: DateTime<Utc>,
+        registration_verdict: &ClientRegistrationVerdict,
+    ) -> Result<(), GatekeeperError> {
+        self.store.immediate_transaction(|tx| {
+            write_registration(
+                tx,
+                client_id,
+                redirect_uri,
+                delegated_scopes.scopes(),
+                now,
+                registration_verdict,
+            )
         })
     }
 
@@ -132,6 +160,31 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
             }
         })
     }
+}
+
+/// Create the `clients` row for `client_id`, or widen the existing one, by the
+/// `delegated` scopes and (when the verdict found it new) the redirect — inside
+/// the caller's transaction, after reading the row under its write lock.
+fn write_registration<T: GatekeeperTx>(
+    tx: &mut T,
+    client_id: &str,
+    redirect_uri: &Url,
+    delegated: &[String],
+    now: DateTime<Utc>,
+    registration_verdict: &ClientRegistrationVerdict,
+) -> Result<(), GatekeeperError> {
+    let row = match tx.client_by_id(client_id)? {
+        Some(existing_client) => widen_registration(
+            existing_client,
+            redirect_uri,
+            delegated,
+            registration_verdict.redirect_uri_is_new(),
+        ),
+        None => new_registration(client_id, redirect_uri, delegated, now),
+    };
+    // `upsert_client` updates in place, preserving `registered_at` and any admin
+    // `disabled_at` — a widening never resurrects a disabled client.
+    tx.upsert_client(&row)
 }
 
 /// The `clients` row a first approval of an unregistered client creates: a

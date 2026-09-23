@@ -49,7 +49,7 @@ mod standing_grant;
 mod token_entitlement;
 
 pub(crate) use authenticated_client::{AuthenticatedClient, ClientAuthenticationError};
-pub(crate) use delegated_scopes::{ApprovableScopes, DelegatedScopes};
+pub(crate) use delegated_scopes::{within_approver_grant, ApprovableScopes, DelegatedScopes};
 pub(crate) use host_owner_entitlement::HostOwnerEntitlement;
 pub(crate) use redemption::{
     ConsumedDeviceRequest, GrantRedemption, PresentedAuthorizationCode, RedeemedAuthorizationCode,

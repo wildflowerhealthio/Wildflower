@@ -3,6 +3,7 @@ mod client_auth;
 mod common;
 mod device_code;
 mod grant_flows;
+mod loopback_dialog;
 mod oauth_endpoints;
 mod revocation;
 mod scope_gating;

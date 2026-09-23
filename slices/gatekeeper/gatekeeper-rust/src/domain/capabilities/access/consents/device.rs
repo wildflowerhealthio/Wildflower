@@ -65,7 +65,8 @@ pub(super) fn approve_device_consent(
         &ApprovableScopes::for_device(&client),
     )?
     else {
-        return deny_consent(store, publisher, &device_request.id).map(|()| ConsentOutcome::Denied);
+        return deny_consent(store, publisher, &device_request.id, make_consent_not_found)
+            .map(|()| ConsentOutcome::Denied);
     };
 
     let request_device_name = input
@@ -103,5 +104,9 @@ pub(super) fn deny_device_consent(
     user_code: &str,
 ) -> Result<(), GatekeeperError> {
     let device_request = load_pending_device_request(store, user_code)?;
-    deny_consent(store, publisher, &device_request.id)
+    deny_consent(store, publisher, &device_request.id, || {
+        GatekeeperError::DeviceConsentNotFound {
+            user_code: user_code.to_owned(),
+        }
+    })
 }
