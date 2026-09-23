@@ -125,7 +125,7 @@ jobs:
           cache-shared-key: workspace-linux-dev
           cache-on-failure: true
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@v2.87.16
+        uses: taiki-e/install-action@v2.87.17
         with:
           tool: nextest
       # fmt / clippy / nextest go through scripts/checks/rust.sh — the single
