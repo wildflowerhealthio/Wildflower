@@ -1,86 +1,64 @@
 import { HttpClientError } from '@effect/platform'
 import { AppsHttpApiClient } from 'apps-core/clients'
-import { Effect, Either } from 'effect'
+import type { Schemas } from 'apps-core/http-api-definition'
+import { Effect, Either, type Schema } from 'effect'
 import { unwrapFiberFailure } from 'kitchen-sink'
 import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
 
-import type { AppRegistration } from '../../../queries.ts'
 import type { RunAuthed } from '../../../router-context.ts'
 import { encodeLaunchError, launchErrorTag, type LaunchErrorBody } from './-launch-error.ts'
 
+/** A forwarded launch's answer: the URL for this page to navigate to. */
+type LaunchTarget = Schema.Schema.Type<typeof Schemas.LaunchTargetSchema>
+
 /**
- * Inputs the {@link launchApp} dispatch needs to pick — and reach — its arm.
+ * What {@link launchApp} needs to launch an app and follow the result.
  *
- * - `apiBaseUrl`: the host API origin, set only on the Tauri webview whose page
- *   is served from the dev server / asset protocol (no `/apps` route). Its
- *   presence is *purely* the branch signal: set ⇒ the loopback (owner-gated)
- *   arm, which launches through the authed Effect client so the owner bearer
- *   rides along and the SPA stays mounted; unset ⇒ the web arm, a native
- *   `<a href="/apps/{id}">` the browser follows through the server's `302`. The
- *   loopback arm doesn't use `apiBaseUrl` as a fetch base — the typed client
- *   owns the host origin — so it stays in the context only as the arm selector.
- * - `runAuthed`: runs an Effect HttpApi client call with the owner bearer
- *   attached. The loopback launch is owner-gated server-side (it `401`s without
- *   a valid bearer), so this arm goes through `runAuthed` rather than a raw
- *   `fetch`. Mirrors how `useAppsListQuery` and the admin mutations call the
- *   client (see {@link AppsHttpApiClient}).
+ * - `runAuthed`: runs the typed `POST /apps/{id}` with the owner bearer attached
+ *   — the launch is scope-gated server-side, so it can't be a raw `fetch`.
+ * - `navigate`: moves the tab to a launch URL the server answered with. Only a
+ *   forwarded caller (the hosted owner UI reaching a server through its tunnel)
+ *   gets one; for a loopback caller the host opened the app in a native popup and
+ *   there is nowhere to go. Injected so a test can observe it.
  */
-export interface LaunchContext {
-  readonly apiBaseUrl: string | undefined
+interface LaunchContext {
   readonly runAuthed: RunAuthed
+  readonly navigate: (url: string) => void
 }
 
 /**
- * The `href` for a home-screen tile's launch anchor, or `undefined` on Tauri.
- *
- * On **web** (`apiBaseUrl` unset) the tile is a real `<a href="/apps/{id}">`:
- * the page IS the API origin, so a page-relative path reaches the server's
- * launch route and the auth cookie rides the navigation. A plain click navigates
- * the current tab; a cmd/ctrl-click opens a new one — both native affordances a
- * form-submit or `fetch` can't preserve.
- *
- * On **Tauri** (`apiBaseUrl` set) there is deliberately no href: the loopback
- * arm launches through the authed client and the tile renders a plain button, so
- * a click never navigates the webview — it stays mounted while the host opens the
- * native popup. Returning `undefined` is what steers the tile to a `<button>`
- * rather than an anchor pointing at a route the Tauri page can't serve.
+ * How a successful launch ended: the page was sent to the app's URL (a
+ * forwarded launch), or the host opened the app itself in a native popup (a
+ * loopback launch), leaving nowhere to navigate.
  */
-const launchHref = (apiBaseUrl: string | undefined, id: string): string | undefined =>
-  apiBaseUrl === undefined ? `/apps/${encodeURIComponent(id)}` : undefined
+type LaunchOutcome = 'navigated' | 'openedOnHost'
 
 /**
- * Dispatch a launch of `app` against the arm selected by `ctx.apiBaseUrl`.
+ * Launch the app `appId` through `AppsHttpApiClient.LaunchApp` and follow the
+ * result: navigate to the URL a forwarded launch answers with, or do nothing
+ * when the host opened the app itself. A failure is caught and returned as an
+ * encoded `?launchError` body (see {@link postLaunch}), not thrown to the
+ * caller.
  *
- * - **Web / tunnel browser (apiBaseUrl unset)** — a no-op: the tile is a native
- *   `<a href>` (see {@link launchHref}) and the browser follows it, so there is
- *   nothing for JS to do. Kept as an explicit arm so a web tile that still wires
- *   a click to this never falls through to the authed loopback client.
- * - **Loopback / Tauri (apiBaseUrl set)** — `AppsHttpApiClient.LaunchApp`
- *   through `runAuthed`, so the owner bearer is attached. The loopback launch is
- *   owner-gated (the host `401`s an anonymous launch); the host's launch sink
- *   opens the native popup and `204`s, which the typed client resolves while the
- *   SPA stays mounted. A failure is caught and returned as an encoded
- *   `?launchError` body (see {@link postLaunch}), not thrown to the click handler.
- *
- * Returns the encoded `?launchError` param the caller reflects into the home
- * route's search (so the banner names the missing scopes for a `403`), or `null`
- * on success / the web arm.
+ * Returns the {@link LaunchOutcome}, or that body on failure, for the caller to
+ * reflect into the home route's search (so the banner names the missing scopes
+ * for a `403`).
  */
 const launchApp = async (
   ctx: LaunchContext,
-  app: AppRegistration
-): Promise<Either.Either<void, string>> => {
-  // Web arm: the tile is a native `<a href>` the browser follows, and a failed
-  // navigation is redirected server-side to `/home?launchError=…` — nothing for JS
-  // to do or report, so `null`.
-  if (ctx.apiBaseUrl === undefined) return Either.right(undefined)
-  return postLaunch(ctx.runAuthed, app.id)
+  appId: string
+): Promise<Either.Either<LaunchOutcome, string>> => {
+  const launched = await postLaunch(ctx.runAuthed, appId)
+  return Either.map(launched, (target): LaunchOutcome => {
+    if (target === undefined) return 'openedOnHost'
+    ctx.navigate(target.url)
+    return 'navigated'
+  })
 }
 
 /**
- * Classify a rejected loopback launch into the {@link LaunchErrorBody} the home
- * banner reads (mirrors the tags the Rust launch middleware forwards). `runAuthed`
- * rejects with a `FiberFailure`, so unwrap it first.
+ * Classify a rejected launch into the {@link LaunchErrorBody} the home banner
+ * reads. `runAuthed` rejects with a `FiberFailure`, so unwrap it first.
  */
 const launchErrorBody = (error: unknown): LaunchErrorBody => {
   const cause = unwrapFiberFailure(error)
@@ -97,19 +75,23 @@ const launchErrorBody = (error: unknown): LaunchErrorBody => {
   return { error: 'LaunchFailed' }
 }
 
-/** Run the loopback launch; `null` on success, else the encoded launch-error body. */
+/**
+ * Run the launch: on success the launch target a forwarded launch answers with
+ * (`undefined` when the host opened the app), else the encoded launch-error body.
+ */
 const postLaunch = async (
   runAuthed: RunAuthed,
   id: string
-): Promise<Either.Either<void, string>> => {
+): Promise<Either.Either<LaunchTarget | undefined, string>> => {
   try {
-    await runAuthed(Effect.flatMap(AppsHttpApiClient, (c) => c.apps.LaunchApp({ path: { id } })))
-    return Either.right(undefined)
+    const target = await runAuthed(
+      Effect.flatMap(AppsHttpApiClient, (c) => c.apps.LaunchApp({ path: { id } }))
+    )
+    return Either.right(target ?? undefined)
   } catch (error: unknown) {
     return Either.left(encodeLaunchError(launchErrorBody(error)))
   }
 }
 
-// `LaunchContext` stays an inline `export interface` above; the functions are
-// grouped here to satisfy `import/group-exports` (one export decl).
-export { launchApp, launchHref }
+export { launchApp }
+export type { LaunchContext, LaunchOutcome }

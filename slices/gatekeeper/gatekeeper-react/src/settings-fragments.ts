@@ -23,9 +23,13 @@ const gatekeeperSettingsItemsFragment: readonly SettingsItem[] = [
 ]
 
 /**
- * The **web-only** "Logout" settings row. Ends the standalone-web session by
+ * The **same-origin cookie** "Logout" settings row. Ends a cookie session by
  * POSTing to `/access/logout`, where gatekeeper-rust clears the `wf_auth` +
- * `wf_auth_exp` cookies and 303s home.
+ * `wf_auth_exp` cookies and 303s to the hosted owner UI.
+ *
+ * No in-tree entry uses it: `main-web` runs cross-origin with a bearer and has
+ * its own action row (`apps/wildflower-react/src/bearer-logout.ts`). It stays
+ * with the rest of the cookie-session machinery until that is removed.
  *
  * A real same-origin `<form method="post">` (the `formAction` variant), NOT a
  * link: a GET logout would be CSRF-able, since a `SameSite=Lax` cookie IS
@@ -35,8 +39,7 @@ const gatekeeperSettingsItemsFragment: readonly SettingsItem[] = [
  * meaningful only on the standalone-web entries. On Tauri the session is
  * connection-provenance (the host's loopback-owner trust re-authenticates every
  * request), so clearing a cookie is a no-op — and the page origin there doesn't
- * even serve `/access/logout`. The web entries thread this into router context
- * (`platformSettingsItems`); `main-tauri` passes none.
+ * even serve `/access/logout`.
  */
 const gatekeeperLogoutSettingsItem: SettingsItem = {
   id: 'logout',

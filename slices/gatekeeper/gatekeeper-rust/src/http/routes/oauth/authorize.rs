@@ -13,10 +13,9 @@ use crate::domain::capabilities::oauth::{
     asks_loopback_dialog, AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
 };
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
-use crate::domain::page_paths;
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
-use crate::http::extractors::Live;
+use crate::http::extractors::{Live, OwnerUiPages};
 use crate::http::ServedOrigin;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveLoopbackOwnerApprover};
 
@@ -190,6 +189,7 @@ pub(super) async fn handle_authorize_request(
     loopback_owner_approver: Live<LiveLoopbackOwnerApprover>,
     origin: ServedOrigin,
     headers: HeaderMap,
+    pages: OwnerUiPages,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
     // Log the SMART App Launch params (see the `launch` / `aud` field docs) so
@@ -253,7 +253,7 @@ pub(super) async fn handle_authorize_request(
                     }
                 });
             }
-            found_redirect(&page_paths::oauth_polling_url(&origin, &request_id))
+            found_redirect(&pages.oauth_polling_url(&request_id))
         }
     })
 }

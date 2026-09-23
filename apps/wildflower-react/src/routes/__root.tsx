@@ -1,11 +1,40 @@
-import { createRootRouteWithContext } from '@tanstack/react-router'
+import { createRootRouteWithContext, retainSearchParams } from '@tanstack/react-router'
 
 import type { RouterContext } from '../router-context.ts'
 import { RootShell } from '../session/root-shell.tsx'
 
 /**
+ * The search every route carries: `server`, the API server `main-web` points
+ * at (`web-entry.ts` reads it at boot). Absent for `main-tauri`.
+ */
+interface RootSearch {
+  readonly server?: string
+}
+
+/** Keep a string `server`, drop anything else this route doesn't own. */
+const validateRootSearch = (search: Record<string, unknown>): RootSearch => {
+  const server = search['server']
+  return typeof server === 'string' ? { server } : {}
+}
+
+/**
  * App root. Hosts the slice client providers (`RootShell`) and renders
  * the matched child via `<Outlet />`. Slice route directories are
  * mounted beneath via virtual-route config in `vite.config.base.ts`.
+ *
+ * `?server=` is retained across every navigation, so the address bar — and
+ * any link the router builds, like a home tile's launch link opened in a new
+ * tab — still names the server this page talks to, and a reload stays on it.
  */
-export const Route = createRootRouteWithContext<RouterContext>()({ component: RootShell })
+/** The root's search handling, shared with its test. */
+const rootSearchOptions = {
+  validateSearch: validateRootSearch,
+  search: { middlewares: [retainSearchParams<RootSearch>(['server'])] },
+}
+
+const Route = createRootRouteWithContext<RouterContext>()({
+  ...rootSearchOptions,
+  component: RootShell,
+})
+
+export { Route, rootSearchOptions }

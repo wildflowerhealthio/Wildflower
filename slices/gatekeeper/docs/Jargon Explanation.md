@@ -252,6 +252,10 @@ client. Flow:
    POSTs `/oauth/device_authorization` with `client_id`, the built `scope`, and
    the chosen `device_name`. Server creates a `flow='device_code'`
    `AuthorizationRequest` and returns `{ device_code, user_code, verification_uri, ... }`.
+   The verification URIs point at the hosted owner UI
+   (`https://wildflowerhealth.io/app/gatekeeper/devices?server=<origin>`,
+   the host's `owner_ui_base_url`), not at the server itself — the host
+   serves no UI of its own.
 2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device — or answers the popup the request raised there through the

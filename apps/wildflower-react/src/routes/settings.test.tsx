@@ -5,10 +5,11 @@ import {
   createRouter,
   RouterProvider,
 } from '@tanstack/react-router'
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
-import { gatekeeperLogoutSettingsItem } from 'gatekeeper-react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { makeBearerAuthStateStore } from 'gatekeeper-react'
 import type { SettingsItem } from 'shared-structures-react'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
+import { makeBearerLogoutSettingsItem } from '../bearer-logout.ts'
 
 // The `/settings` auth gate now lives in the route's `beforeLoad`
 // (shared `authGatedRouteOptions`), not inside `SettingsLayout` — so
@@ -110,20 +111,31 @@ describe('SettingsScreen', () => {
     })
   })
 
-  test('renders the web logout row as a same-origin POST form when the entry provides it', async () => {
-    // The standalone-web entries thread `gatekeeperLogoutSettingsItem` into
-    // `platformSettingsItems`. It must render as a real `<form method="post">`
-    // — NOT a link — so it can't be driven as a forced-logout CSRF.
-    renderSettingsScreen([gatekeeperLogoutSettingsItem])
+  test('renders main-web’s logout row as a button that logs the session out', async () => {
+    // `main-web` threads its bearer logout row into `platformSettingsItems`.
+    // It is an action row: the page holds a bearer, not a cookie, so a
+    // same-origin form post would carry no credential and log nothing out.
+    const store = makeBearerAuthStateStore()
+    store.writeBearer('eyJ.owner.token')
+    const left = Promise.withResolvers<undefined>()
+    renderSettingsScreen([
+      makeBearerLogoutSettingsItem({
+        apiBaseUrl: 'https://abc.tunnel.example',
+        bearerStore: store,
+        fetch: () => Promise.resolve(new Response(null, { status: 204 })),
+        leave: () => left.resolve(undefined),
+      }),
+    ])
     const button = await screen.findByRole('button', { name: /Logout/ })
-    const form = button.closest('form')
-    expect(form?.getAttribute('method')).toBe('post')
-    expect(form?.getAttribute('action')).toBe('/access/logout')
+    expect(button.closest('form')).toBeNull()
+    fireEvent.click(button)
+    await left.promise
+    expect(store.bearer()).toBeUndefined()
   })
 
   test('omits the logout row when the entry contributes no platform items', async () => {
-    // `main-tauri` passes `platformSettingsItems: []` — a cookie logout is a
-    // no-op under connection-provenance auth, so the row must not appear.
+    // `main-tauri` passes `platformSettingsItems: []` — the host authenticates
+    // the webview by connection provenance, so there is nothing to log out of.
     renderSettingsScreen([])
     await screen.findByRole('navigation', { name: 'Primary' })
     expect(screen.queryByRole('button', { name: /Logout/ })).toBeNull()

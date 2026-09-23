@@ -59,14 +59,16 @@ and 90 days respectively). See the
   `client_id`, an unregistered `redirect_uri`, or scopes outside the
   registration are carried to the consent prompt as a registration verdict
   rather than rejected (`wildflower-host` excepted). Always
-  redirects to the polling page (`/gatekeeper/oauth-polling/:id`); the
-  browser's JS picks same-device-vs-cross-device based on whether it's
-  already authenticated (the `wf_auth` cookie on web, the host-provided
-  token on device).
+  redirects to the polling page (`/gatekeeper/oauth-polling/:id`) on the
+  hosted owner UI, with `?server=<served origin>` so the page knows which
+  server to poll (the host serves no UI of its own; `page_paths.rs` builds
+  the URL from the host-configured `OwnerUiBase`); the page picks
+  same-device-vs-cross-device based on whether it's already authenticated.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
-  `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`).
+  `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`
+  on the hosted owner UI, carrying `?server=`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.

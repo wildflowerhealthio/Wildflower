@@ -22,9 +22,8 @@ import { buildAppQueryRuntime } from './bridges/app-query-runtime.ts'
 import { AppRootTree, type AppRootTreeProps } from './bridges/app-root-tree.tsx'
 import type { ReactTransport } from './bridges/transport-context.ts'
 import { routeTree } from './routeTree.gen.ts'
-// Self-hosted Wildflower fonts — loaded here so every entry (web, single-web,
-// and the Tauri shell via `wildflower-react/app-root`) picks them up through a
-// single import.
+// Self-hosted Wildflower fonts — loaded here so every entry (web and the Tauri
+// shell via `wildflower-react/app-root`) picks them up through a single import.
 import './styles/fonts.ts'
 
 /**
@@ -98,17 +97,15 @@ interface RenderAppOptions {
   /** Browser history for web, memory history for embedded WebView. */
   readonly history: RouterHistory
   /** Tagged onto Sentry events to distinguish web/embedded crashes. */
-  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri'
+  readonly entry: 'main-web' | 'main-tauri'
   /**
-   * Environment-specific {@link AuthStateStore}. Web entries pass
-   * `makeWebAuthStateStore()` (cookie-derived auth signal — the real JWT
-   * is the `HttpOnly` `wf_auth` cookie, invisible to JS); embedded passes
-   * `makeEmbeddedAuthStateStore()` (in-memory raw JWT, see its docstring
-   * for the why). Threaded into `<AuthStateProvider>` for descendants and
+   * Environment-specific {@link AuthStateStore}. `main-web` passes
+   * `makeBearerAuthStateStore()` (an in-memory bearer it attaches itself, see
+   * `readBearer`); embedded passes `makeEmbeddedAuthStateStore()` (in-memory
+   * raw JWT, see its docstring for the why). Threaded into `<AuthStateProvider>` for descendants and
    * into a token-rotation invalidator that flushes TanStack Query's cache
    * when the auth signal changes (so 401-pinned entries don't outlive a
-   * sign-in or rotation). HTTP clients are tokenless — auth rides the
-   * same-origin `HttpOnly` `wf_auth` cookie, not a JS-attached header.
+   * sign-in or rotation).
    */
   readonly tokenStore: AuthStateStore
   /**
@@ -154,8 +151,8 @@ interface RenderAppOptions {
    * Platform-specific settings rows this entry contributes to the shared
    * `/settings` list. Threaded into `AppRootTree`, which provides them to the
    * tree for the settings route to append (see
-   * `session/platform-settings-items-context.ts`). Standalone-web entries pass
-   * the web logout item; `main-tauri` passes `[]`. Keeping the choice at the
+   * `session/platform-settings-items-context.ts`). `main-web` passes its
+   * bearer logout item; `main-tauri` passes `[]`. Keeping the choice at the
    * entry — the only place that knows the platform — means the settings route
    * stays a dumb renderer with no `entry`-sniffing branch.
    */
@@ -181,7 +178,7 @@ interface RenderAppOptions {
   /**
    * Lazy bearer reader for `main-web`, the cross-origin entry. When provided,
    * every relative HTTP request carries `Authorization: Bearer <token>`.
-   * Omitted for cookie-authed entries (single-web, Tauri).
+   * Omitted for `main-tauri`, which the host authenticates.
    */
   readonly readBearer?: () => string | undefined
   /**
@@ -208,8 +205,8 @@ interface RenderAppOptions {
    * preview, `/app/` for the hosted build) so the router strips it before
    * matching and re-adds it when it writes the address bar — otherwise every
    * root-absolute route (`/`, `/home`, …) misses under the subpath and the app
-   * renders its own not-found. Omitted for entries served at the root
-   * (`main-single-web`, `main-tauri`), where it defaults to `/` (a no-op).
+   * renders its own not-found. Omitted for `main-tauri`, served at the root,
+   * where it defaults to `/` (a no-op).
    */
   readonly basepath?: string
 }

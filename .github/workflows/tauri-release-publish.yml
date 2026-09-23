@@ -314,10 +314,8 @@ jobs:
         run: vp install
 
       - name: Build workspace (vp run pack)
-        # `wildflower-tauri` bundles the workspace-built webviews:
-        #   - `apps/wildflower-react/dist-single-web/index-single-web.html` is
-        #     `include_str!`ed by `spa.rs` (produced by `build:single-web`).
-        #   - `apps/wildflower-tauri/dist` is the Tauri `frontendDist`.
+        # `wildflower-tauri` bundles the workspace-built webview:
+        #   `apps/wildflower-tauri/dist` is the Tauri `frontendDist`.
         # `vp run pack` builds every package in dependency order and is the
         # single command the project's own release checklist uses.
         run: vp run pack

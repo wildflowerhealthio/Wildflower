@@ -24,7 +24,7 @@ import type { ActivePendingConsentStore } from './active-pending-consent/store.t
  * @remarks
  * Takes only the *setters* because no other handler in this record needs the
  * read sides. Per-entry construction in the page-app entrypoint wires the real
- * stores (Tauri) or no-op setters (web/single-web, where no host emits these).
+ * stores (Tauri) or no-op setters (web, where no host emits these).
  */
 const makeGatekeeperWebHandlers = (
   setAuthState: AuthStateStore['setAuthState'],

@@ -9,6 +9,11 @@ pub use gatekeeper_rust::{
 pub use tokio::sync::watch;
 
 pub const LOOPBACK_ORIGIN: &str = "http://127.0.0.1";
+
+/// The hosted owner UI the gatekeeper's browser-facing pages resolve on in
+/// these tests — deliberately not the production address, so an assertion
+/// can't pass by accident against a hard-coded one.
+pub const OWNER_UI_BASE: &str = "https://owner-ui.test/app/";
 pub use chrono::{Duration, Utc};
 pub use gatekeeper_rust::crypto_util::base64;
 pub use gatekeeper_rust::crypto_util::client_secret::hash_client_secret;
@@ -24,6 +29,7 @@ pub use gatekeeper_rust::domain::token::{mint_access_token, NewJwtArgs};
 pub use gatekeeper_rust::{GatekeeperStore, PendingConsentHead, SqliteGatekeeperStore};
 pub use persistence_rust::{Connection, DieselPool};
 pub use serde_json::Value;
+pub use shared_structures_rust::owner_ui::OwnerUiBase;
 pub use tower::ServiceExt;
 pub use url::Url;
 
@@ -85,6 +91,7 @@ fn spin_up_on(
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         host_owner_scopes: gatekeeper_rust::default_local_granted_scopes(),
         first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
+        owner_ui_base: OwnerUiBase::parse(OWNER_UI_BASE).expect("OWNER_UI_BASE is a valid URL"),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);
     let (pending_consent_tx, pending_consent_rx) =
@@ -367,14 +374,33 @@ pub fn location_of(res: &axum::response::Response) -> String {
 
 /// Assert `res` is a 302 to the Owner UI's polling page and return the pending
 /// request id it names — the shape every parked `/authorize` request takes.
+/// Which server `?server=` names is pinned where it matters
+/// (`polling_redirect_names_the_served_origin`).
 pub fn parked_request_id(res: &axum::response::Response) -> String {
     assert_eq!(res.status(), StatusCode::FOUND);
     let location = location_of(res);
+    // The polling page lives on the hosted owner UI, pointed back at the
+    // request's served origin (loopback, or the forwarded public one) — the
+    // host serves no UI of its own.
+    let url = Url::parse(&location).expect("polling URL is absolute");
     assert!(
-        location.contains("/gatekeeper/") && !location.contains("error="),
+        location.starts_with(&format!("{OWNER_UI_BASE}gatekeeper/oauth-polling/"))
+            && url
+                .query_pairs()
+                .any(|(key, value)| key == "server" && !value.is_empty()),
         "expected a polling-page redirect, got {location}"
     );
-    location.rsplit('/').next().expect("request id").to_string()
+    polling_request_id(&location)
+}
+
+/// The pending request id an owner-UI polling-page URL names: its last path
+/// segment (the URL also carries `?server=`, so the raw string's tail is not it).
+pub fn polling_request_id(polling_url: &str) -> String {
+    let url = Url::parse(polling_url).expect("polling URL is absolute");
+    url.path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .expect("request id")
+        .to_string()
 }
 
 /// Load the Owner-facing consent prompt for `request_id` as JSON.
@@ -451,7 +477,7 @@ pub async fn authorize_and_approve(
         .and_then(|v| v.to_str().ok())
         .expect("location")
         .to_string();
-    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+    let request_id = polling_request_id(&polling);
     let approve = loopback_request(
         Request::post(format!("/access/oauth-consents/{request_id}/approve"))
             .header("host", "127.0.0.1")

@@ -60,7 +60,6 @@
     "fast-check": "catalog:",
     "jose": "catalog:",
     "kitchen-sink": "workspace:*",
-    "navigation-core": "workspace:*",
     "openapi-to-effect": "^0.9.3",
     "prettier": "^3.9.6",
     "prettier-plugin-jsdoc": "^1.3.0",
@@ -76,7 +75,6 @@
     "effect-messaging-core": "workspace:*",
     "jose": "catalog:",
     "kitchen-sink": "workspace:*",
-    "navigation-core": "workspace:*",
     "shared-structures-core": "workspace:*"
   }
 }

@@ -1,12 +1,10 @@
 import { isInsufficientScopeBody } from 'shared-structures-core/http-api-definition'
 
 /**
- * The JSON error body a launch failure carries to the home screen — the same
- * shape both arms produce. The Rust `redirect_browser_launch_errors` middleware
- * base64s the server's failed response body (an `InsufficientScope` naming the
- * missing scopes, an `AppNotFound`, a `LaunchUnavailable`) into `?launchError`, and
- * the loopback (Tauri) arm builds an equivalent from its decoded typed error (see
- * `-launch.ts`).
+ * The JSON error body a launch failure carries to the home screen through
+ * `?launchError` — an `InsufficientScope` naming the missing scopes, an
+ * `AppNotFound`, a `LaunchUnavailable` — built from the typed client's decoded
+ * error (see `-launch.ts`).
  */
 interface LaunchErrorBody {
   readonly error: string

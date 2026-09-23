@@ -1,6 +1,7 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { CSSProperties, JSX } from 'react'
+import { Link } from '@tanstack/react-router'
+import type { CSSProperties, JSX, MouseEvent } from 'react'
 import { cn } from 'react-kitchen-sink'
 import { StatusBadge, type StatusTone } from 'react-tundraish'
 
@@ -57,16 +58,8 @@ interface SortableAppTileProps {
    * "Hide" control removes the app from the home screen.
    */
   readonly editing: boolean
-  /**
-   * The web launch target (`/apps/{id}`), or `undefined` on Tauri. Defined ⇒ the
-   * view-mode tile is a real `<a href>` the browser follows — native plain-click
-   * / cmd-click affordances, and the auth cookie rides the navigation.
-   * `undefined` ⇒ a plain `<button>` whose click drives `onLaunch` through the
-   * authed loopback client, so the Tauri webview never navigates. See
-   * `launchHref` in `-launch.ts`.
-   */
-  readonly href: string | undefined
-  readonly onLaunch: (app: AppRegistration) => void
+  /** Launch `app` here or in a new tab, per the click (see {@link launchPlaceFor}). */
+  readonly onLaunch: (app: AppRegistration, place: LaunchPlace) => void
   readonly onDisable: (app: AppRegistration) => void
 }
 
@@ -90,43 +83,59 @@ const TileContent = ({ app }: { readonly app: AppRegistration }): JSX.Element =>
   </>
 )
 
+/** Where a click on a launch tile opens the app. */
+type LaunchPlace = 'here' | 'newTab'
+
 /**
- * The view-mode launch target: a real `<a href>` on web (so a plain click
- * navigates this tab, a cmd/ctrl-click opens a new one, and the auth cookie rides
- * the navigation) or a plain `<button>` on Tauri (`href` is `undefined`; the
- * click drives the authed loopback launch through `onLaunch` and the webview
- * never navigates). Split out so the tile's `editing` branch stays a flat
- * two-way choice rather than a nested ternary.
+ * Where a click on a launch tile should open the app, or `undefined` to leave
+ * the click to the browser. A plain primary click launches here; a primary
+ * click with ctrl, cmd or shift, or a middle click, launches in a new tab —
+ * what those clicks do to any link. Anything else (a right click's context
+ * menu) is the browser's own.
+ */
+const launchPlaceFor = (click: {
+  readonly button: number
+  readonly ctrlKey: boolean
+  readonly metaKey: boolean
+  readonly shiftKey: boolean
+}): LaunchPlace | undefined => {
+  if (click.button === 1) return 'newTab'
+  if (click.button !== 0) return undefined
+  return click.ctrlKey || click.metaKey || click.shiftKey ? 'newTab' : 'here'
+}
+
+/**
+ * The view-mode launch target: a real link to the app's launch route,
+ * so it behaves like any link — hover shows where it goes, and right-click →
+ * "Open in new tab" works through the route. Clicks the page can serve itself
+ * (see {@link launchPlaceFor}) are taken over, so the launch rides this page's
+ * session instead of a fresh tab signing in first. Split out so the tile's
+ * `editing` branch stays a flat two-way choice rather than a nested ternary.
  */
 const TileLaunchTarget = ({
   app,
-  href,
   onLaunch,
 }: {
   readonly app: AppRegistration
-  readonly href: string | undefined
-  readonly onLaunch: (app: AppRegistration) => void
+  readonly onLaunch: (app: AppRegistration, place: LaunchPlace) => void
 }): JSX.Element => {
-  const className = cn(tileStyles['app-tile__body'], tileStyles['app-tile__launch'])
-  // No `onClick` on the anchor: the navigation *is* the launch. `rel` keeps
-  // crawlers off the launch route and withholds the referrer from the target.
-  if (href !== undefined) {
-    return (
-      <a className={className} href={href} rel="nofollow noreferrer">
-        <TileContent app={app} />
-      </a>
-    )
+  const takeOver = (event: MouseEvent<HTMLAnchorElement>): void => {
+    const place = launchPlaceFor(event)
+    if (place === undefined) return
+    event.preventDefault()
+    onLaunch(app, place)
   }
   return (
-    <button
-      type="button"
-      className={className}
-      onClick={() => {
-        onLaunch(app)
-      }}
+    <Link
+      to="/home/launch/$id"
+      params={{ id: app.id }}
+      className={cn(tileStyles['app-tile__body'], tileStyles['app-tile__launch'])}
+      rel="nofollow noreferrer"
+      onClick={takeOver}
+      onAuxClick={takeOver}
     >
       <TileContent app={app} />
-    </button>
+    </Link>
   )
 }
 
@@ -134,20 +143,16 @@ const TileLaunchTarget = ({
  * A single home-screen app tile, cribbing the iOS home-screen rearrange
  * language. `useSortable` is gated on `editing` via its `disabled` flag — the
  * hook always runs (so it stays inside `DndContext`), but a drag can only start
- * in edit mode. In view mode the whole tile is a launch target — a real
- * `<a href>` on web (so a plain click navigates and a cmd/ctrl-click opens a new
- * tab, both native) or a plain `<button>` on Tauri (`href` is `undefined`; the
- * click drives the authed loopback launch and the webview stays put). In edit
+ * in edit mode. In view mode the whole tile is a launch link. In edit
  * mode the content gently wiggles inside an inner wrapper (so the wiggle composes
  * with, rather than fights, dnd-kit's drag transform on the `<li>`), a click no
  * longer launches, and a stationary "×" badge pinned to the corner hides the app.
  * dnd-kit's pointer sensor only starts a drag past its activation distance, so a
- * plain click still reaches the anchor/button (and the corner badge's `onClick`).
+ * plain click still reaches the link (and the corner badge's `onClick`).
  */
 const SortableAppTile = ({
   app,
   editing,
-  href,
   onLaunch,
   onDisable,
 }: SortableAppTileProps): JSX.Element => {
@@ -196,11 +201,11 @@ const SortableAppTile = ({
           </button>
         </>
       ) : (
-        <TileLaunchTarget app={app} href={href} onLaunch={onLaunch} />
+        <TileLaunchTarget app={app} onLaunch={onLaunch} />
       )}
     </li>
   )
 }
 
-export { kindLabel, SortableAppTile, tilePills }
-export type { Pill, SortableAppTileProps }
+export { kindLabel, launchPlaceFor, SortableAppTile, tilePills }
+export type { LaunchPlace, Pill, SortableAppTileProps }

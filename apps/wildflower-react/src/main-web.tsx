@@ -105,7 +105,7 @@ const boot = async (): Promise<void> => {
   }
 
   // Built after the rewrite above, because it reads `?server=`.
-  const { bearerStore, ...entryOptions } = makeWebEntryOptions()
+  const { bearerStore, ...entryOptions } = makeWebEntryOptions(basepath)
 
   if (session !== undefined) {
     // The bearer is held first and the signal set second: the store publishes

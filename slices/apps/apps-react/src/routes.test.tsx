@@ -28,6 +28,7 @@ describe('apps route tree', () => {
       .toSorted()
     expect(ids).toEqual([
       '/_auth/home/',
+      '/_auth/home/launch/$id',
       '/settings/apps/',
       '/settings/apps/$id',
       '/settings/apps/cloud/$id',
@@ -43,6 +44,7 @@ describe('apps route tree', () => {
       .toSorted()
     expect(paths).toEqual([
       '/home/',
+      '/home/launch/$id',
       '/settings/apps/',
       '/settings/apps/$id',
       '/settings/apps/cloud/$id',

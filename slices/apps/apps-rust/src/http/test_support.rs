@@ -103,7 +103,7 @@ pub(crate) fn self_hosted_service(tunnel: Arc<dyn TunnelService>) -> Arc<SelfHos
 }
 
 /// The `Set-Cookie` value [`RecordingLaunchCookies`] plants — a fixed sentinel a
-/// test can assert lands on the launch `302` without pulling in the gatekeeper
+/// test can assert lands on a forwarded launch response without pulling in the gatekeeper
 /// cookie format (apps-rust can't depend on gatekeeper-rust).
 pub(crate) const SENTINEL_SET_COOKIE: &str =
     "wf_auth=re.scoped.jwt; Domain=demo.example.com; Path=/";

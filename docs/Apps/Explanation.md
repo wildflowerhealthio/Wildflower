@@ -209,26 +209,28 @@ so an under-scoped caller gets a `403 { error: "InsufficientScope", missingScope
 - `GET /apps` and the admin surface (`/cloud-apps`, `/self-hosted-apps`,
   `/system-apps`, `DELETE /apps/{id}`, `PUT /home-screen`) are gated on
   `wildflower/Apps.{r,c,u,d}` — a read/create/update/delete grant per capability.
-- The launch (`GET`/`POST /apps/{id}`) is gated in two layers: a static
+- The launch (`POST /apps/{id}`) is gated in two layers: a static
   `wildflower/launch` **umbrella** the `Scoped<AppLauncher>` extractor enforces (a
   _known_ scope, granted to the owner explicitly — the `wildflower/*` wildcard does
   not cover it), and — for a **SMART** app (a host-only `client_id`) — a per-app
   check that the caller's grant covers the app's OAuth client's requested
   **resource** scopes (its FHIR / Wildflower data access; the OIDC and SMART
   launch-context scopes are the app's own OAuth concern, so the owner isn't required
-  to hold them). A shortfall on the per-app check renders the shared
-  `InsufficientScope` JSON body for both arms: the loopback/SPA arm decodes it
-  directly, and a forwarded browser `GET` has it base64'd into `?launchError` and
-  decoded by the home banner — keeping the missing scopes structured so the banner
-  names them (and a future "request permissions" action can read them).
-- Both the loopback and the forwarded launch ride the same bearer gate. On the web
-  the home tile is a native `<a href="/apps/{id}">`, so the launch is a `GET`: a
-  plain click navigates the current tab and a cmd/ctrl-click opens a new one —
-  affordances a form-`POST`/`fetch` can't preserve. The web auth cookie rides that
-  anchor navigation (even the initial document request, before any JS), so the
-  forwarded `GET` authenticates. `GET` and `POST` share one handler; a launch is a
-  navigation (like an OAuth `authorize`), so a `GET` minting a `{launch}` nonce —
-  and bringing the tunnel up for a `requires_tunnel` app — is intentional.
+  to hold them). A shortfall on the per-app check returns the shared
+  `InsufficientScope` JSON body, which the owner UI's typed client decodes into
+  the home banner — keeping the missing scopes structured so the banner names them
+  (and a future "request permissions" action can read them).
+- Both the loopback and the forwarded launch ride the same bearer gate: every
+  owner UI launches through the typed client with its bearer. A loopback launch
+  `204`s after the host opens the app in a native popup. A forwarded launch (the
+  hosted owner UI reaching the server through its tunnel) answers `200 { url }`,
+  and the page navigates the tab there — a redirect would be followed invisibly by
+  `fetch` rather than moving the tab. A home tile is a real link to the owner
+  UI's launch route (`/home/launch/{id}`, carrying `?server=`): a plain click
+  launches in place, and a ctrl/cmd/shift or middle click opens the new tab
+  inside the click (so no popup blocker stops it) and launches into it on this
+  page's session. A tab the browser opens by itself from the link signs in on
+  arrival, then the route launches.
 
 Separately, a Self-Hosted app reachable remotely is served by the host's
 **subdomain reverse proxy**: a forwarded `<id>.<public_host>` request is proxied
@@ -241,14 +243,16 @@ future hardening.)
 
 ### The forwarded launch plants the app's session cookie
 
-A forwarded launch of a Self-Hosted app redirects the browser to the app's own
+A forwarded launch of a Self-Hosted app sends the browser to the app's own
 subdomain, `https://<id>.<public_host>/`. The web owner session cookie
 (`wf_auth`) is **host-only** on `<public_host>`, so it never rides to that
 subdomain — the app's origin would carry no session and its own calls back to the
-FHIR API (from a different origin) would be unauthenticated. So the launch `302`
-carries a `Set-Cookie` that **re-scopes the caller's own session** onto
-`<public_host>` (`Domain=`, subdomain-inclusive), planting it on the app's
-subdomain once the browser follows the redirect. This only widens the scope of a
+FHIR API (from a different origin) would be unauthenticated. So the launch
+response carries a `Set-Cookie` that **re-scopes the caller's own session** onto
+`<public_host>` (`Domain=`, subdomain-inclusive), for the app's subdomain to
+receive. The re-scope reads the caller's `wf_auth` cookie; a caller holding a
+bearer instead (the hosted owner UI) has no cookie to re-scope, so its forwarded
+self-hosted launch plants nothing. This only widens the scope of a
 token the caller already holds — it mints nothing, and the `Domain` is always the
 full tunnel `public_host` (never its registrable parent), so the bearer never
 reaches a sibling tenant. The cookie name and attributes stay owned by the

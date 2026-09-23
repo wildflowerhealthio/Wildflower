@@ -35,7 +35,7 @@
 		7A7886025F46CD24E0A887A3 /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		8859CE99A54E214C620075DD /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
 		89620063203F4196786DA490 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
-		9055207B0F3313595066EDB4 /* spa.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = spa.rs; sourceTree = "<group>"; };
+		9055207B0F3313595066EDB4 /* not_found.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = not_found.rs; sourceTree = "<group>"; };
 		A11F1F801116E6492B08EAE4 /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
 		A21D4F5CEFE1B521B3638F62 /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		ACA699C626D17D0C85728DDE /* wildflower-tauri_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "wildflower-tauri_iOS.entitlements"; sourceTree = "<group>"; };
@@ -141,7 +141,7 @@
 				4BF3E98649443DDDF7EDDCE7 /* bridge.rs */,
 				57A3C147DE83C9898C705F16 /* lib.rs */,
 				AF9A88A79F74A288235FAF72 /* main.rs */,
-				9055207B0F3313595066EDB4 /* spa.rs */,
+				9055207B0F3313595066EDB4 /* not_found.rs */,
 			);
 			name = src;
 			path = ../../src;

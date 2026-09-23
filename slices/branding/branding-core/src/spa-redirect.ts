@@ -95,6 +95,39 @@ const restoredUrl = (location: RestorableLocation): string | undefined => {
 }
 
 /**
+ * The URL that sends a deep link to its app's root, carrying the route in
+ * {@link REDIRECT_PARAM} — the redirect `apps/github-pages/404.html` performs,
+ * for a server that already knows the app's `basename` (a dev server). The
+ * inverse of {@link restoredUrl}.
+ *
+ * @param location - The deep link the browser asked for
+ * @param basename - The app's directory, slash-suffixed
+ * @returns `basename` with the deep link's full path set as
+ *   {@link REDIRECT_PARAM} and every other parameter and the fragment
+ *   preserved — or `undefined` when `location` is the app root itself or lies
+ *   outside `basename`
+ *
+ * @remarks
+ * The path goes over site-absolute, not app-relative as `404.html` sends it.
+ * {@link restoredUrl} accepts both, but an app-relative route named like the
+ * app's own directory (`/app` below `/app/`) is indistinguishable from the
+ * basename without its trailing slash, and restores to the app root.
+ *
+ * @example
+ * ```ts
+ * redirectedUrl({ pathname: '/app/gatekeeper/devices', search: '?server=x', hash: '' }, '/app/')
+ * // → '/app/?server=x&redirect=%2Fapp%2Fgatekeeper%2Fdevices'
+ * ```
+ */
+const redirectedUrl = (location: RestorableLocation, basename: string): string | undefined => {
+  if (!location.pathname.startsWith(basename)) return undefined
+  if (location.pathname === basename) return undefined
+  const parameters = new URLSearchParams(location.search)
+  parameters.set(REDIRECT_PARAM, location.pathname)
+  return `${basename}?${parameters.toString()}${location.hash}`
+}
+
+/**
  * Complete a 404 redirect in the address bar, before anything reads the URL.
  *
  * @param target - `window`, or a double carrying just `location` and `history`
@@ -119,5 +152,5 @@ const restoreRedirectedUrl = (target: RestorationTarget): string | undefined => 
   return url
 }
 
-export { REDIRECT_PARAM, basenameOf, restoreRedirectedUrl, restoredUrl }
+export { REDIRECT_PARAM, basenameOf, redirectedUrl, restoreRedirectedUrl, restoredUrl }
 export type { RestorableHistory, RestorableLocation, RestorationTarget }

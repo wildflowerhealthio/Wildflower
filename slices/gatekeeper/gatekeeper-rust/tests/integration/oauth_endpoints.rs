@@ -34,6 +34,44 @@ async fn authorize_unknown_client_parks_a_pending_request() {
 /// may NOT be 302'd to it (RFC 6749 §4.1.2.1's open-redirect rule): a malformed
 /// PKCE challenge and a non-`code` `response_type` both render the local HTML
 /// page instead.
+/// The polling redirect names the request's served origin as `?server=`, so the
+/// hosted owner UI polls the server the browser actually reached: loopback for a
+/// direct caller, the forwarded public origin for one relayed through the front.
+#[tokio::test]
+async fn polling_redirect_names_the_served_origin() {
+    let (g, _host_owner_token, _db) = spin_up();
+    let server_of = |res: &axum::response::Response| {
+        let url = Url::parse(&location_of(res)).expect("absolute polling URL");
+        url.query_pairs()
+            .find(|(key, _)| key == "server")
+            .map(|(_, value)| value.into_owned())
+    };
+
+    let direct = get_authorize(&g.router, &authorize_query("ghost", "read")).await;
+    assert_eq!(server_of(&direct).as_deref(), Some(LOOPBACK_ORIGIN));
+
+    let forwarded = g
+        .router
+        .clone()
+        .oneshot(loopback_request(
+            Request::get(format!(
+                "/oauth/authorize?{}",
+                authorize_query("ghost", "read")
+            ))
+            .header(
+                "forwarded",
+                "host=ruth.wildflowerhealth.example;proto=https",
+            ),
+            Body::empty(),
+        ))
+        .await
+        .expect("oneshot");
+    assert_eq!(
+        server_of(&forwarded).as_deref(),
+        Some("https://ruth.wildflowerhealth.example")
+    );
+}
+
 #[tokio::test]
 async fn authorize_unknown_client_renders_later_failures_locally() {
     let (g, _host_owner_token, _db) = spin_up();
@@ -443,7 +481,7 @@ async fn authorize_accepts_smart_launch_and_aud_params() {
     // The pending request was actually parked: polling it reports `pending`
     // (the owner hasn't approved yet), proving the SMART params didn't divert
     // or reject the flow.
-    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+    let request_id = polling_request_id(&polling);
     let res = g
         .router
         .clone()
@@ -479,9 +517,13 @@ async fn device_authorization_happy_path() {
         serde_json::json!({
             "device_code": device_code,
             "user_code": user_code,
-            "verification_uri": format!("{LOOPBACK_ORIGIN}/gatekeeper/devices"),
-            "verification_uri_complete":
-                format!("{LOOPBACK_ORIGIN}/gatekeeper/devices?user_code={user_code}"),
+            // On the hosted owner UI, pointed back at this (loopback) server.
+            "verification_uri": format!(
+                "{OWNER_UI_BASE}gatekeeper/devices?server=http%3A%2F%2F127.0.0.1"
+            ),
+            "verification_uri_complete": format!(
+                "{OWNER_UI_BASE}gatekeeper/devices?server=http%3A%2F%2F127.0.0.1&user_code={user_code}"
+            ),
             "expires_in": 300,
             "interval": 5,
         })

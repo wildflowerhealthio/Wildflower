@@ -2,8 +2,11 @@
   "_comment": "BOTH languages derive from this file at compile time, so the config can never silently drift: Rust reads it in `src-tauri/build.rs` (which re-emits environment variables for `src-tauri/src/lib.rs` to read via `env!`), and TS reads it in `vite.config.ts` (which injects values in `src/main.tsx`). Change the values here and rebuild — both sides follow.",
   "_local_granted_scopes_comment": "The host's granted scopes: gatekeeper seeds the `wildflower-host` client's allowed_scopes and mints the host owner token from this (Rust), and the WebView requests exactly this set at device-login (TS, NeedsAuthMessage). MUST cover gatekeeper-rust's WILDFLOWER_WIDEST_SCOPES (`system/*.cruds` + `wildflower/*.cruds`) or the Owner UI loses `/access/*` — gatekeeper asserts this at boot. `wildflower/launch` is an owner *capability* (not part of WIDEST): a *known* scope not covered by the `wildflower/*` wildcard, so the app-launch surface would 403 the owner without it listed explicitly.",
   "_first_party_client_id_comment": "The `client_id` of the host's first-party OAuth client. gatekeeper-rust seeds the client row and mints the host owner token under this id (Rust), and the WebView's device-login request identifies itself with it (TS, NeedsAuthMessage). Both sides derive it from here so the id can't drift across the boundary; the `FIRST_PARTY_CLIENT_ID` consts in gatekeeper-rust/gatekeeper-core are the standalone/test fallback only.",
+  "_owner_ui_base_url_comment": "The hosted owner UI (`apps/wildflower-react`'s `main-web` build) the host links browsers to — see `shared_structures_rust::owner_ui`. Release builds use `owner_ui_base_url` (held to branding-core's `sectionUrl('app')` by `apps/wildflower-react/src/owner-ui-address.test.ts`); debug builds use `owner_ui_dev_base_url`, the `main-web` dev server, whose `vite.config.web.ts` binds this URL's port.",
   "loopback_hostname": "127.0.0.1",
   "loopback_port": 8080,
   "local_granted_scopes": "system/*.cruds wildflower/*.cruds wildflower/launch",
-  "first_party_client_id": "wildflower-host"
+  "first_party_client_id": "wildflower-host",
+  "owner_ui_base_url": "https://wildflowerhealth.io/app/",
+  "owner_ui_dev_base_url": "http://localhost:5195/"
 }

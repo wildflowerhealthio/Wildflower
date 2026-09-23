@@ -10,10 +10,8 @@ use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
 use crate::domain::capabilities::oauth::DeviceAuthorizationError;
 use crate::domain::oauth_error_code::OAuthErrorCode;
-use crate::domain::page_paths;
-use crate::http::extractors::Live;
+use crate::http::extractors::{Live, OwnerUiPages};
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
-use crate::http::ServedOrigin;
 use crate::live_bindings::LiveDeviceAuthorizer;
 
 /// Body of an RFC 8628 device authorization request. Client credentials are
@@ -63,7 +61,7 @@ impl IntoResponse for DeviceAuthorizationResponse {
 )]
 pub(super) async fn handle_device_authorization_request(
     authorizer: Live<LiveDeviceAuthorizer>,
-    origin: ServedOrigin,
+    pages: OwnerUiPages,
     headers: HeaderMap,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Response {
@@ -72,15 +70,15 @@ pub(super) async fn handle_device_authorization_request(
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok());
-    device_authorization(&authorizer, &origin, user_agent, request).into_response()
+    device_authorization(&authorizer, &pages, user_agent, request).into_response()
 }
 
 /// Parse the request, hand it to the [`LiveDeviceAuthorizer`], and frame the
-/// RFC 8628 §3.2 response on this request's served origin, surfacing every
+/// RFC 8628 §3.2 response with the hosted owner UI's verification pages, surfacing every
 /// failure as a [`TokenError`].
 fn device_authorization(
     authorizer: &LiveDeviceAuthorizer,
-    origin: &ServedOrigin,
+    pages: &OwnerUiPages,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
@@ -122,11 +120,8 @@ fn device_authorization(
         })?;
     Ok(DeviceAuthorizationResponse {
         device_code: device_codes.device_code,
-        verification_uri: page_paths::device_entry_url(origin),
-        verification_uri_complete: page_paths::device_entry_url_with_code(
-            origin,
-            &device_codes.user_code,
-        ),
+        verification_uri: pages.device_entry_url(),
+        verification_uri_complete: pages.device_entry_url_with_code(&device_codes.user_code),
         user_code: device_codes.user_code,
         expires_in: device_codes.expires_in,
         interval: device_codes.interval,

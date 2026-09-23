@@ -6,13 +6,16 @@ import {
   RouterProvider,
 } from '@tanstack/react-router'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import * as fc from 'fast-check'
 import { serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import { makeBearerAuthStateStore, type BearerAuthStateStore } from 'gatekeeper-react'
+import { numRunsFor } from 'kitchen-sink/test'
 import { AuthedUntil, AuthStateProvider } from 'react-kitchen-sink'
 import { afterEach, describe, expect, test } from 'vite-plus/test'
 
+import type { SignInStep } from '../sign-in.ts'
 import { DEFAULT_SERVER_URL } from '../web-entry.ts'
-import { Landing } from './index.tsx'
+import { Landing, shouldSignInOnArrival, type LandingSignIn } from './index.tsx'
 
 /**
  * The landing page is the whole entry point for `main-web` — the only screen an
@@ -30,28 +33,75 @@ describe('Landing', () => {
   })
 
   test('offers the server picker but no sign-in until a server is chosen', async () => {
-    // Arrange / Act — a bare visit, before any server has been picked.
-    await mountLanding('/')
+    // Arrange
+    const signIn = recordingSignIn(pendingStart)
 
-    // Assert — signing in needs a target, so the call to action is absent.
+    // Act — a bare visit, before any server has been picked.
+    await mountLanding('/', { signIn: signIn.stub })
+
+    // Assert — signing in needs a target, so nothing starts and the call to
+    // action is absent.
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /local server/i })).toBeDefined()
     })
     expect(screen.queryByRole('button', { name: /sign in/i })).toBeNull()
+    expect(signIn.started).toEqual([])
   })
 
-  test('offers sign-in to the server already named by ?server=', async () => {
-    // Arrange / Act — a reader who arrived on a shared link, or who was bounced
-    // here by the auth gate, has nothing to pick and just needs the way in.
-    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080')
+  test('signs in straight away to the server named by ?server=', async () => {
+    // Arrange — a server's own link into the app, or the auth gate's bounce:
+    // the reader has nothing to pick, so a button would only be a dead step.
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Ok', value: 'http://127.0.0.1:8080/oauth/authorize?x=1' })
+    )
 
-    // Assert — the target is named on the control, so the reader can see which
-    // server they are about to hand a token to.
+    // Act
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', { signIn: signIn.stub })
+
+    // Assert — the sign-in targets the named server and leaves for its
+    // authorization URL.
     await waitFor(() => {
-      expect(
-        screen.getByRole('button', { name: /sign in to http:\/\/127\.0\.0\.1:8080/i })
-      ).toBeDefined()
+      expect(signIn.left).toEqual(['http://127.0.0.1:8080/oauth/authorize?x=1'])
     })
+    expect(signIn.started).toEqual(['http://127.0.0.1:8080'])
+  })
+
+  test('shows why an automatic sign-in failed and does not retry it', async () => {
+    // Arrange — the server named by ?server= can't be reached.
+    const signIn = recordingSignIn(() =>
+      Promise.resolve({ tag: 'Failed', reason: 'Could not reach the server.' })
+    )
+
+    // Act
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', { signIn: signIn.stub })
+
+    // Assert — the reason shows, the manual control is back, and the page does
+    // not loop trying again.
+    await waitFor(() => {
+      expect(screen.getByText(/Could not reach the server\./)).toBeDefined()
+    })
+    expect(
+      screen.getByRole('button', { name: /sign in to http:\/\/127\.0\.0\.1:8080/i })
+    ).toBeDefined()
+    expect(signIn.started).toHaveLength(1)
+  })
+
+  test('does not sign in on arrival after a sign-in just failed', async () => {
+    // Arrange — the previous attempt came back failed; starting another on
+    // arrival would bounce the reader straight back to the same failure.
+    const signIn = recordingSignIn(pendingStart)
+
+    // Act
+    await mountLanding('/?server=http%3A%2F%2F127.0.0.1%3A8080', {
+      signIn: signIn.stub,
+      bootSignInProblem: 'The authorization request was denied.',
+    })
+
+    // Assert
+    await waitFor(() => {
+      expect(screen.getByText(/was denied/)).toBeDefined()
+    })
+    expect(signIn.started).toEqual([])
   })
 
   test('shows a sign-in that failed before the tree existed', async () => {
@@ -106,7 +156,7 @@ describe('Landing', () => {
   test('keeps the served subpath when a server is chosen', async () => {
     // Arrange — the hosted build is served under a subpath, not the origin root.
     const appBase = '/staging/pr-719/app/'
-    await mountLanding(appBase, { basepath: appBase })
+    await mountLanding(appBase, { basepath: appBase, signIn: recordingSignIn(pendingStart).stub })
 
     // Act — picking the local server records `?server=` in the address bar. The
     // record is written synchronously, before the sign-in redirect leaves.
@@ -117,6 +167,44 @@ describe('Landing', () => {
     // page that is not this app.
     expect(window.location.pathname).toBe(appBase)
     expect(serverUrlFromSearch(window.location.search)).toBe(DEFAULT_SERVER_URL)
+  })
+})
+
+describe('shouldSignInOnArrival', () => {
+  test('should sign in when a usable, reachable server is named and nothing just failed', () => {
+    expect(
+      shouldSignInOnArrival({
+        hasServerInUrl: true,
+        blockedReason: undefined,
+        bootSignInProblem: undefined,
+      })
+    ).toBe(true)
+  })
+
+  test('should never sign in on arrival while anything stands in the way', () => {
+    fc.assert(
+      fc.property(
+        fc.boolean(),
+        fc.option(fc.string(), { nil: undefined }),
+        fc.option(fc.string(), { nil: undefined }),
+        (hasServerInUrl, blockedReason, bootSignInProblem) => {
+          // Arrange — at least one of: no server named, the server is
+          // unreachable from this page, or a sign-in just failed.
+          fc.pre(!hasServerInUrl || blockedReason !== undefined || bootSignInProblem !== undefined)
+
+          // Act
+          const decision = shouldSignInOnArrival({
+            hasServerInUrl,
+            blockedReason,
+            bootSignInProblem,
+          })
+
+          // Assert
+          expect(decision).toBe(false)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 
@@ -138,6 +226,8 @@ const mountLanding = async (
      * there. See `web-basepath.test.tsx`.
      */
     readonly basepath?: string
+    /** The sign-in stand-in; a never-settling one by default, so no test reaches the network. */
+    readonly signIn?: LandingSignIn
   } = {}
 ): Promise<{ readonly pathname: () => string }> => {
   window.history.replaceState(null, '', url)
@@ -146,7 +236,12 @@ const mountLanding = async (
   const indexRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: '/',
-    component: () => <Landing bootSignInProblem={options.bootSignInProblem} />,
+    component: () => (
+      <Landing
+        bootSignInProblem={options.bootSignInProblem}
+        signIn={options.signIn ?? recordingSignIn(pendingStart).stub}
+      />
+    ),
   })
   const homeRoute = createRoute({
     getParentRoute: () => rootRoute,
@@ -168,4 +263,28 @@ const mountLanding = async (
     expect(router.state.status).toBe('idle')
   })
   return { pathname: () => router.state.location.pathname }
+}
+
+/** A sign-in start that never settles — the page stays "taking you to sign in". */
+const pendingStart = (): Promise<SignInStep<string>> => new Promise(() => {})
+
+/** A {@link LandingSignIn} stand-in that records each target and departure. */
+const recordingSignIn = (
+  start: (target: string) => Promise<SignInStep<string>>
+): { readonly stub: LandingSignIn; readonly started: string[]; readonly left: string[] } => {
+  const started: string[] = []
+  const left: string[] = []
+  return {
+    started,
+    left,
+    stub: {
+      start: (target) => {
+        started.push(target)
+        return start(target)
+      },
+      leave: (authorizationUrl) => {
+        left.push(authorizationUrl)
+      },
+    },
+  }
 }

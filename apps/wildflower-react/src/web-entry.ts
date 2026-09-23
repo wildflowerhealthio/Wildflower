@@ -1,4 +1,4 @@
-import { serverUrlFromSearch } from 'gatekeeper-core/smart-client'
+import { searchWithServerUrl, serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import {
   makeAwaitLandingAuthReady,
   makeBearerAuthStateStore,
@@ -16,6 +16,7 @@ import {
 } from '../../wildflower-tauri/tauri-shared-config.json'
 
 import type { RenderAppOptions } from './app-root.tsx'
+import { makeBearerLogoutSettingsItem } from './bearer-logout.ts'
 import { stubTransport } from './bridges/transport-context.ts'
 
 /**
@@ -60,11 +61,9 @@ const underBasepath = (basepath: string, route: string): string =>
  * `renderApp` wiring for `main-web` — the build served from static hosting,
  * which runs **cross-origin** to whichever API server `?server=` names.
  *
- * That origin is the whole difference from `main-single-web` (see
- * `single-web-entry.ts`). Cross-origin means the `HttpOnly` `wf_auth` cookie is
- * never carried (it is `SameSite=Lax`), so this entry holds a bearer in page
- * memory and attaches it itself; the single-web bundle is served by the API
- * server and rides the cookie instead.
+ * Cross-origin means the `HttpOnly` `wf_auth` cookie is never carried (it is
+ * `SameSite=Lax`), so this entry holds a bearer in page memory and attaches it
+ * itself.
  *
  * - `tokenStore`: in-memory bearer via `makeBearerAuthStateStore()`.
  *   A page reload returns to `Unauthed` (the bearer is in memory only).
@@ -76,15 +75,18 @@ const underBasepath = (basepath: string, route: string): string =>
  * - `readBearer`: wired to the store's `bearer()` reader, so
  *   every relative request gets an `Authorization` header.
  * - `makeTransport`: pre-resolved stub (no host bridge).
- * - `platformSettingsItems`: none — the logout row posts a same-origin
- *   `POST /access/logout`, which does nothing for a page holding a bearer.
+ * - `platformSettingsItems`: the bearer logout row (`bearer-logout.ts`) —
+ *   forgets the bearer, revokes it at `{server}/access/logout`, and reloads the
+ *   landing page at `basepath`, still pointed at the same server.
  * - `platformTabs`: none.
  * - `redirectToDeviceLoginOnUnauthorized`: true — a 401 that outlives the
  *   boot-race retry still falls back to the device-code screen. The landing
  *   page signs in by SMART redirect instead (`sign-in.ts`), so that route is
  *   reached only from this fallback and from a step-up, not from the picker.
  */
-const makeWebEntryOptions = (): Pick<
+const makeWebEntryOptions = (
+  basepath: string
+): Pick<
   RenderAppOptions,
   | 'tokenStore'
   | 'awaitAuthReady'
@@ -106,7 +108,18 @@ const makeWebEntryOptions = (): Pick<
     makeTransport: () => Promise.resolve(stubTransport),
     apiBaseUrl,
     readBearer: bearerStore.bearer,
-    platformSettingsItems: [],
+    platformSettingsItems: [
+      makeBearerLogoutSettingsItem({
+        apiBaseUrl,
+        bearerStore,
+        fetch: (input, init) => window.fetch(input, init),
+        leave: () => {
+          window.location.assign(
+            `${underBasepath(basepath, '/')}${searchWithServerUrl('', apiBaseUrl)}`
+          )
+        },
+      }),
+    ],
     platformTabs: [],
     redirectToDeviceLoginOnUnauthorized: true,
   }

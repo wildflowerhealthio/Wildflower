@@ -62,6 +62,9 @@ shared-structures-rust = { path = "../../../slices/shared-structures/shared-stru
   # The unified `/docs` Scalar surface — merge each slice's `openapi_spec()`
   # into one document and serve it (see `api_router` in `src/lib.rs`).
   "openapi-docs",
+  # `served_base_url_for`: the unmatched-route 404 links back to the request's
+  # served origin (see `src/not_found.rs`).
+  "served-origin",
 ] }
 # Provides `resolve_http_url`, the http(s)-only validator the apps launch flow
 # gates its `RequestSandboxedWebView { url }` on before handing the URL to the

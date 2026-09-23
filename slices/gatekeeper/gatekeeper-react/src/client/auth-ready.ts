@@ -110,8 +110,9 @@ const embeddedAuthReadyEffect = (
   )
 
 /**
- * Device-login auth-readiness factory, used by `main-single-web` (the
- * same-origin shell the host serves). Closes over the entry's token
+ * Device-login auth-readiness factory for a same-origin, cookie-authed entry;
+ * no in-tree entry uses it (it stays with the cookie-session machinery until
+ * that is removed). Closes over the entry's token
  * subscribable and returns the `awaitAuthReady` function the route's
  * `beforeLoad` calls. Resolves immediately when a token is already present
  * (the cookie store reads its expiry hint synchronously at construction);

@@ -31,7 +31,7 @@ type RunAuthed = BaseRouterContext.RunAuthedWith<SliceServices>
 
 interface RouterContext extends BaseRouterContext.RouterContextWith<SliceServices> {
   /** Which entry point mounted the app — routes use this to vary behavior. */
-  readonly entry: 'main-web' | 'main-single-web' | 'main-tauri'
+  readonly entry: 'main-web' | 'main-tauri'
   /**
    * Resolves to the page-side `BridgeTransport` (narrowed to the React
    * surface — only `sendMessage`) once the boot-time `signalReady`

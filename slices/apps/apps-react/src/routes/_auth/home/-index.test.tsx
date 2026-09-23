@@ -1,4 +1,5 @@
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import type { ReactNode } from 'react'
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vite-plus/test'
 
 // `AppsHomeBody` reads its home-screen mutation from `queries.ts` and two
@@ -12,10 +13,8 @@ const { homeScreenStub, routeContext } = vi.hoisted(() => ({
     isError: false,
     error: null as Error | null,
   },
-  // Mutable root-context stub the `useRouteContext` mock reads. `apiBaseUrl`
-  // undefined = the web arm (tiles are anchors); set = the Tauri arm (buttons).
-  // Tests flip it per case; `beforeEach` resets it to web.
-  routeContext: { apiBaseUrl: undefined as string | undefined, runAuthed: vi.fn() },
+  // Root-context stub the `useRouteContext` mock reads.
+  routeContext: { runAuthed: vi.fn() },
 }))
 
 vi.mock('@tanstack/react-router', async (importOriginal) => {
@@ -25,8 +24,24 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
     // The body imports `createFileRoute` at module load; stub it so importing the
     // module doesn't pull in the real router.
     createFileRoute: () => (options: unknown) => options,
-    // The body reads `apiBaseUrl` + `runAuthed` off the root context.
+    // The body reads `runAuthed` off the root context.
     useRouteContext: ({ select }: { select: (ctx: unknown) => unknown }) => select(routeContext),
+    // A tile's launch link: a plain anchor at the route's path, so the tile
+    // renders without a router.
+    Link: ({
+      to,
+      params,
+      children,
+      ...rest
+    }: {
+      readonly to: string
+      readonly params: { readonly id: string }
+      readonly children: ReactNode
+    }) => (
+      <a href={to.replace('$id', params.id)} {...rest}>
+        {children}
+      </a>
+    ),
   }
 })
 
@@ -214,38 +229,67 @@ describe('<AppsHomeBody> live content', () => {
 
 describe('<AppsHomeBody> launch tiles', () => {
   beforeEach(() => {
-    homeScreenStub.isError = false
-    homeScreenStub.error = null
-    homeScreenStub.mutate.mockClear()
-    // Default each case to the web arm; the Tauri test opts in explicitly.
-    routeContext.apiBaseUrl = undefined
+    // The host opened the app (a loopback `204`): `LaunchApp` resolves empty.
+    routeContext.runAuthed.mockReset()
+    routeContext.runAuthed.mockResolvedValue(undefined)
   })
 
   afterEach(() => {
     cleanup()
-    routeContext.apiBaseUrl = undefined
+    vi.restoreAllMocks()
   })
 
-  test('web arm: each view-mode tile is an <a href="/apps/{id}"> the browser follows', () => {
+  test('each view-mode tile is a link to its app’s launch route', () => {
     render(<AppsHomeBody apps={[APP]} />)
 
-    // A real anchor to the page-relative launch route — a plain click navigates
-    // this tab, a cmd/ctrl-click opens a new one, and the auth cookie rides the
-    // request. `rel` keeps crawlers off the launch route and withholds referrer.
-    const link = screen.getByRole('link')
-    expect(link.getAttribute('href')).toBe('/apps/cloud-app')
-    expect(link.getAttribute('rel')).toBe('nofollow noreferrer')
+    // A real link, so hover shows it and right-click → "Open in new tab" works.
+    const link = screen.getByRole('link', { name: /Cloud App/ })
+    expect(link.getAttribute('href')).toBe('/home/launch/cloud-app')
   })
 
-  test('Tauri arm (apiBaseUrl set): the tile is a non-navigating button, not an anchor', () => {
-    routeContext.apiBaseUrl = 'http://127.0.0.1:8080'
-
+  test('a plain click launches here, through this page’s session', () => {
+    const open = vi.spyOn(window, 'open')
     render(<AppsHomeBody apps={[APP]} />)
 
-    // No anchor — the loopback arm launches through the authed client and the
-    // webview must never navigate. The tile still renders (its name is present),
-    // it's just a button rather than a link.
-    expect(screen.queryByRole('link')).toBeNull()
-    expect(screen.getByText('Cloud App')).toBeDefined()
+    const followed = fireEvent.click(screen.getByRole('link', { name: /Cloud App/ }))
+
+    expect(followed).toBe(false)
+    expect(routeContext.runAuthed).toHaveBeenCalledTimes(1)
+    expect(open).not.toHaveBeenCalled()
+  })
+
+  test('a cmd/ctrl click opens a tab inside the click, then launches into it', async () => {
+    // Arrange — the tab the page opens; the host opens this app natively, so
+    // the tab has nothing to show and closes again.
+    const tab = { close: vi.fn(), opener: null, location: { replace: vi.fn() } }
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a stand-in for the opened Window
+    const open = vi.spyOn(window, 'open').mockReturnValue(tab as unknown as Window)
+    render(<AppsHomeBody apps={[APP]} />)
+
+    // Act
+    const followed = fireEvent.click(screen.getByRole('link', { name: /Cloud App/ }), {
+      ctrlKey: true,
+    })
+
+    // Assert — opened synchronously (popup blockers allow it only there), the
+    // launch still rides this page's bearer, and the empty tab closes.
+    expect(followed).toBe(false)
+    expect(open).toHaveBeenCalledWith('', '_blank')
+    expect(routeContext.runAuthed).toHaveBeenCalledTimes(1)
+    await waitFor(() => {
+      expect(tab.close).toHaveBeenCalled()
+    })
+  })
+
+  test('a right click is left to the browser', () => {
+    render(<AppsHomeBody apps={[APP]} />)
+
+    const followed = fireEvent(
+      screen.getByRole('link', { name: /Cloud App/ }),
+      new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 2 })
+    )
+
+    expect(followed).toBe(true)
+    expect(routeContext.runAuthed).not.toHaveBeenCalled()
   })
 })
