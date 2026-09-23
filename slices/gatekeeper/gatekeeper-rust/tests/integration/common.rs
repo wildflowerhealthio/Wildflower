@@ -40,24 +40,47 @@ pub struct TestDb {
     /// which is the only observable difference between "parked a request" and
     /// "parked a request and asked the Owner about it".
     pending_consent_rx: watch::Receiver<Option<PendingConsentHead>>,
+    /// The directory holding a file-backed database, when there is one — held
+    /// so the file outlives the test's handles (see
+    /// [`spin_up_with_loopback_prompt`]).
+    _database_dir: Option<tempfile::TempDir>,
 }
 
 pub fn spin_up() -> (Gatekeeper, String, TestDb) {
-    spin_up_with_loopback_prompt(std::sync::Arc::new(
-        gatekeeper_rust::NoLoopbackConsentPrompt,
-    ))
-}
-
-/// [`spin_up`] with the host's loopback dialog played by `loopback_prompt` — for
-/// the tests that drive a direct-loopback `wildflower-react` login through it.
-pub fn spin_up_with_loopback_prompt(
-    loopback_prompt: std::sync::Arc<dyn gatekeeper_rust::LoopbackConsentPrompt>,
-) -> (Gatekeeper, String, TestDb) {
     // One shared in-memory diesel pool, built once and handed to the slice —
     // mirrors how the host wires the app-wide `persistence_rust::open_pool`
     // pool into each diesel-backed slice. `db.pool` is that shared handle;
     // `store_handle` clones it to reach the same database.
     let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
+    spin_up_on(
+        pool,
+        None,
+        std::sync::Arc::new(gatekeeper_rust::NoLoopbackConsentPrompt),
+    )
+}
+
+/// [`spin_up`] with the host's loopback dialog played by `loopback_prompt` — for
+/// the tests that drive a direct-loopback `wildflower-react` login through it.
+///
+/// Runs on a temporary **file-backed** database, like the app's, rather than
+/// the shared-cache in-memory one: the dialog's decision writes from a blocking
+/// worker while the runtime drives the startup tasks `setup_gatekeeper`
+/// spawns, and shared-cache `SQLite` fails such an overlap with "database table
+/// is locked" instead of waiting on `busy_timeout` as a file database does.
+pub fn spin_up_with_loopback_prompt(
+    loopback_prompt: std::sync::Arc<dyn gatekeeper_rust::LoopbackConsentPrompt>,
+) -> (Gatekeeper, String, TestDb) {
+    let database_dir = tempfile::tempdir().expect("temp database dir");
+    let pool = persistence_rust::open_pool(&database_dir.path().join("wildflower.db"))
+        .expect("open file-backed pool");
+    spin_up_on(pool, Some(database_dir), loopback_prompt)
+}
+
+fn spin_up_on(
+    pool: DieselPool,
+    database_dir: Option<tempfile::TempDir>,
+    loopback_prompt: std::sync::Arc<dyn gatekeeper_rust::LoopbackConsentPrompt>,
+) -> (Gatekeeper, String, TestDb) {
     let config = GatekeeperConfig {
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
         host_owner_scopes: gatekeeper_rust::default_local_granted_scopes(),
@@ -94,6 +117,7 @@ pub fn spin_up_with_loopback_prompt(
             pool,
             revocation_conn,
             pending_consent_rx,
+            _database_dir: database_dir,
         },
     )
 }

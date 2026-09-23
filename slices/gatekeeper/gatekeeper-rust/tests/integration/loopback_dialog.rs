@@ -7,9 +7,9 @@
 //! The decision lands on its own task after `/authorize` has answered, so each
 //! test waits for it through the pending-consent head (the request under
 //! decision is the oldest pending one, so the head leaves it exactly when it is
-//! decided) and touches the database only while no decision is in flight — the
-//! in-memory test database is shared-cache `SQLite`, which fails a write that
-//! overlaps another connection's access instead of waiting.
+//! decided). These tests run on a file-backed database (see
+//! `spin_up_with_loopback_prompt`), where the decision's writes wait on
+//! `busy_timeout` instead of failing when they overlap other work.
 //!
 //! An answer that arrives after the Owner UI decided changes nothing, so it
 //! leaves no event to wait on here; that ordering is pinned by the approver's
