@@ -3,8 +3,6 @@
 //! [`RequestApprover`] transitions the request, the [`GrantRecorder`] records
 //! the standing device grant.
 
-use std::collections::HashSet;
-
 use chrono::{DateTime, Utc};
 use scopes_rust::Grant;
 
@@ -59,18 +57,12 @@ pub(super) fn approve_device_consent(
         .client_by_id(&device_request.client_id)?
         .ok_or_else(make_consent_not_found)?;
 
-    // Device consent is expandable: the Owner may grant anything the client is
-    // allowed, whatever the device asked for. The proof every write below
-    // demands is the Owner's ticks clamped to that and covered by the
-    // approver's own grant.
-    let allowed_scopes: HashSet<&str> = client.allowed_scopes.iter().map(String::as_str).collect();
+    // The proof every write below demands: the Owner's approval clamped to
+    // what a device prompt may grant and covered by the approver's own grant.
     let Some(delegated_scopes) = DelegatedScopes::clamp(
         approver,
         input.approved_scopes,
-        &ApprovableScopes {
-            requested_scopes: &allowed_scopes,
-            allowed_scopes: &allowed_scopes,
-        },
+        &ApprovableScopes::for_device(&client),
     )?
     else {
         return deny_consent(store, publisher, &device_request.id).map(|()| ConsentOutcome::Denied);

@@ -6,18 +6,64 @@ use std::collections::HashSet;
 
 use scopes_rust::{grantable_scopes, Grant, Scope};
 
+use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 
-/// The scopes an approval may grant at most: those the request asked for that
-/// the client is also allowed. The Owner's ticks are clamped into this
-/// intersection; the approver's own grant then bounds it again. Each consent
-/// flow decides both halves (the device flow passes the client's
-/// `allowed_scopes` for both, since device consent is expandable; the code flow
-/// allows the registration, widened by the request for a client trusted on
-/// first use).
-pub(crate) struct ApprovableScopes<'a> {
-    pub(crate) requested_scopes: &'a HashSet<&'a str>,
-    pub(crate) allowed_scopes: &'a HashSet<&'a str>,
+/// The scopes one consent prompt may grant at most, decided by its flow. An
+/// approved scope must be covered by a scope of the request **and** by a scope
+/// of the client's allowance; each constructor names the policy that fills
+/// those two halves.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ApprovableScopes {
+    requested_scopes: Vec<String>,
+    allowed_scopes: Vec<String>,
+}
+
+impl ApprovableScopes {
+    /// A device-code prompt. Device consent is **expandable**: the Owner may
+    /// grant anything the client is allowed, whatever the device asked for, so
+    /// the client's `allowed_scopes` fill both halves.
+    pub(crate) fn for_device(client: &Client) -> Self {
+        ApprovableScopes {
+            requested_scopes: client.allowed_scopes.clone(),
+            allowed_scopes: client.allowed_scopes.clone(),
+        }
+    }
+
+    /// An authorization-code prompt for `requested_scopes`. A locked
+    /// registration (the first-party host) allows only what it lists; any other
+    /// client is trusted on first use, so it is also allowed what this request
+    /// asked for — its registration is widened with the grant.
+    pub(crate) fn for_code(
+        requested_scopes: &[String],
+        maybe_existing_client: Option<&Client>,
+        registration_is_locked: bool,
+    ) -> Self {
+        let registered_scopes = maybe_existing_client
+            .iter()
+            .flat_map(|client| client.allowed_scopes.iter().cloned());
+        let allowed_scopes = if registration_is_locked {
+            registered_scopes.collect()
+        } else {
+            registered_scopes
+                .chain(requested_scopes.iter().cloned())
+                .collect()
+        };
+        ApprovableScopes {
+            requested_scopes: requested_scopes.to_vec(),
+            allowed_scopes,
+        }
+    }
+
+    /// The subset of the Owner's `approved_scopes` this prompt may grant: each
+    /// one covered by a requested scope and by an allowed scope (coverage, not
+    /// spelling — see [`scopes_rust::grantable_scopes`]). Rendered in canonical
+    /// form, deduplicated, in the Owner's order.
+    pub(crate) fn grantable_subset(&self, approved_scopes: Vec<String>) -> Vec<String> {
+        let requested: HashSet<&str> = self.requested_scopes.iter().map(String::as_str).collect();
+        let allowed: HashSet<&str> = self.allowed_scopes.iter().map(String::as_str).collect();
+        grantable_scopes(approved_scopes, &requested, &allowed)
+    }
 }
 
 /// A scope set an Owner has approved **and** is entitled to delegate. Holding
@@ -30,7 +76,8 @@ pub(crate) struct DelegatedScopes {
 }
 
 impl DelegatedScopes {
-    /// Clamp the Owner's `approved_scopes` ticks to the `approvable` scopes,
+    /// Clamp the Owner's `approved_scopes` to the `approvable` scopes' grantable
+    /// subset,
     /// then require that the `approver_grant` covers every **resource** scope
     /// that survives.
     ///
@@ -48,13 +95,9 @@ impl DelegatedScopes {
     pub(crate) fn clamp(
         approver_grant: &Grant,
         approved_scopes: Vec<String>,
-        approvable: &ApprovableScopes<'_>,
+        approvable: &ApprovableScopes,
     ) -> Result<Option<Self>, GatekeeperError> {
-        let scopes = grantable_scopes(
-            approved_scopes,
-            approvable.requested_scopes,
-            approvable.allowed_scopes,
-        );
+        let scopes = approvable.grantable_subset(approved_scopes);
         if scopes.is_empty() {
             return Ok(None);
         }
@@ -104,10 +147,16 @@ fn uncovered_resource_scopes(granted: &[String], approver_grant: &Grant) -> Vec<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::test_fake::owned_scopes;
+    use crate::domain::test_fake::{client, owned_scopes};
 
-    fn set<'a>(scopes: &[&'a str]) -> HashSet<&'a str> {
-        scopes.iter().copied().collect()
+    /// A prompt for a locked registration: exactly what `requested` asks
+    /// within what `allowed` lists.
+    fn approvable(requested: &[&str], allowed: &[&str]) -> ApprovableScopes {
+        ApprovableScopes::for_code(
+            &owned_scopes(requested),
+            Some(&client("app", allowed)),
+            true,
+        )
     }
 
     fn grant(scopes: &[&str]) -> Grant {
@@ -118,15 +167,12 @@ mod tests {
     /// approver's own authority come back as the delegated set, verbatim.
     #[test]
     fn clamp_admits_covered_approvable_scopes() {
-        let requested = set(&["patient/Patient.r", "openid"]);
-        let allowed = set(&["patient/Patient.r", "openid", "patient/Observation.r"]);
+        let requested: &[&str] = &["patient/Patient.r", "openid"];
+        let allowed: &[&str] = &["patient/Patient.r", "openid", "patient/Observation.r"];
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
             owned_scopes(&["patient/Patient.r", "openid"]),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &allowed,
-            },
+            &approvable(requested, allowed),
         )
         .expect("approver covers everything")
         .expect("something was granted");
@@ -137,15 +183,12 @@ mod tests {
     /// not delegated.
     #[test]
     fn clamp_drops_ticks_outside_the_approvable_scopes() {
-        let requested = set(&["patient/Patient.r"]);
-        let allowed = set(&["patient/Patient.r"]);
+        let requested: &[&str] = &["patient/Patient.r"];
+        let allowed: &[&str] = &["patient/Patient.r"];
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
             owned_scopes(&["patient/Patient.r", "patient/Observation.r"]),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &allowed,
-            },
+            &approvable(requested, allowed),
         )
         .expect("approver covers everything")
         .expect("something was granted");
@@ -156,15 +199,12 @@ mod tests {
     /// recording an empty grant.
     #[test]
     fn clamp_yields_none_when_nothing_survives() {
-        let requested = set(&["patient/Patient.r"]);
-        let allowed = set(&["patient/Patient.r"]);
+        let requested: &[&str] = &["patient/Patient.r"];
+        let allowed: &[&str] = &["patient/Patient.r"];
         let delegated = DelegatedScopes::clamp(
             &grant(&["system/*.cruds"]),
             owned_scopes(&["patient/Observation.r"]),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &allowed,
-            },
+            &approvable(requested, allowed),
         )
         .expect("no approver check runs on an empty set");
         assert_eq!(delegated, None);
@@ -175,15 +215,12 @@ mod tests {
     /// delegated or silently narrowed.
     #[test]
     fn clamp_rejects_a_resource_scope_the_approver_does_not_hold() {
-        let requested = set(&["patient/Patient.r", "patient/Observation.r"]);
-        let allowed = requested.clone();
+        let requested: &[&str] = &["patient/Patient.r", "patient/Observation.r"];
+        let allowed = requested;
         let outcome = DelegatedScopes::clamp(
             &grant(&["patient/Patient.r"]),
             owned_scopes(&["patient/Patient.r", "patient/Observation.r"]),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &allowed,
-            },
+            &approvable(requested, allowed),
         );
         assert_eq!(
             outcome,
@@ -197,15 +234,12 @@ mod tests {
     /// "gain scope from nothing" case.
     #[test]
     fn clamp_rejects_every_resource_scope_for_an_empty_approver() {
-        let requested = set(&["patient/Patient.r"]);
-        let allowed = requested.clone();
+        let requested: &[&str] = &["patient/Patient.r"];
+        let allowed = requested;
         let outcome = DelegatedScopes::clamp(
             &grant(&[]),
             owned_scopes(&["patient/Patient.r"]),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &allowed,
-            },
+            &approvable(requested, allowed),
         );
         assert!(matches!(
             outcome,
@@ -217,15 +251,12 @@ mod tests {
     /// holds none of them may still delegate them.
     #[test]
     fn clamp_passes_identity_markers_through_the_approver_check() {
-        let requested = set(&["openid", "offline_access"]);
-        let allowed = requested.clone();
+        let requested: &[&str] = &["openid", "offline_access"];
+        let allowed = requested;
         let delegated = DelegatedScopes::clamp(
             &grant(&["patient/Patient.r"]),
             owned_scopes(&["openid", "offline_access"]),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &allowed,
-            },
+            &approvable(requested, allowed),
         )
         .expect("markers need no resource authority")
         .expect("granted");
@@ -236,18 +267,70 @@ mod tests {
     /// a delegation spelled in the word form, and vice versa.
     #[test]
     fn clamp_covers_across_the_two_smart_spellings() {
-        let requested = set(&["patient/Patient.read"]);
-        let allowed = requested.clone();
+        let requested: &[&str] = &["patient/Patient.read"];
+        let allowed = requested;
         let delegated = DelegatedScopes::clamp(
             &grant(&["patient/Patient.rs"]),
             owned_scopes(&["patient/Patient.read"]),
-            &ApprovableScopes {
-                requested_scopes: &requested,
-                allowed_scopes: &allowed,
-            },
+            &approvable(requested, allowed),
         )
         .expect("letter authority covers the word spelling")
         .expect("granted");
         assert_eq!(delegated.scopes(), ["patient/Patient.read"]);
+    }
+
+    /// Device consent is expandable: anything the client is allowed is
+    /// grantable, whatever the device asked for, and nothing beyond it.
+    #[test]
+    fn a_device_prompt_grants_within_the_client_allowance() {
+        let approvable =
+            ApprovableScopes::for_device(&client("tv", &["patient/*.rs", "offline_access"]));
+        assert_eq!(
+            approvable.grantable_subset(owned_scopes(&[
+                "patient/Observation.r",
+                "offline_access",
+                "system/*.r",
+            ])),
+            ["patient/Observation.r", "offline_access"],
+        );
+    }
+
+    /// A client trusted on first use may be granted what its request asked
+    /// for even when its registration does not list it (or it has none yet);
+    /// a locked registration may not.
+    #[test]
+    fn a_code_prompt_widens_the_allowance_only_for_an_unlocked_registration() {
+        let requested = owned_scopes(&["patient/Patient.r", "openid"]);
+        let registered = client("app", &["openid"]);
+        let approved = || owned_scopes(&["patient/Patient.r", "openid"]);
+
+        let unlocked = ApprovableScopes::for_code(&requested, Some(&registered), false);
+        assert_eq!(
+            unlocked.grantable_subset(approved()),
+            ["patient/Patient.r", "openid"]
+        );
+        let unknown = ApprovableScopes::for_code(&requested, None, false);
+        assert_eq!(
+            unknown.grantable_subset(approved()),
+            ["patient/Patient.r", "openid"]
+        );
+
+        let locked = ApprovableScopes::for_code(&requested, Some(&registered), true);
+        assert_eq!(locked.grantable_subset(approved()), ["openid"]);
+    }
+
+    /// Even for an unlocked registration, a code prompt never grants past what
+    /// the request asked for.
+    #[test]
+    fn a_code_prompt_never_grants_beyond_the_request() {
+        let approvable = ApprovableScopes::for_code(
+            &owned_scopes(&["openid"]),
+            Some(&client("app", &["openid", "patient/Patient.r"])),
+            false,
+        );
+        assert_eq!(
+            approvable.grantable_subset(owned_scopes(&["openid", "patient/Patient.r"])),
+            ["openid"],
+        );
     }
 }

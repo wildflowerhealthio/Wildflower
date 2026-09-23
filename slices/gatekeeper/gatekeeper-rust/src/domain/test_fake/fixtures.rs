@@ -1,6 +1,5 @@
 //! Fixtures and small test doubles the domain unit tests share.
 
-use std::collections::HashSet;
 use std::sync::atomic::{AtomicU32, Ordering};
 
 use chrono::{DateTime, Duration, Utc};
@@ -135,14 +134,10 @@ pub(crate) fn authenticated_public_client(
 /// `scopes` as delegated by an owner-equivalent approver, with nothing clamped
 /// away.
 pub(crate) fn delegated_scopes(scopes: &[&str]) -> DelegatedScopes {
-    let approvable: HashSet<&str> = scopes.iter().copied().collect();
     DelegatedScopes::clamp(
         &Grant::parse(["system/*.cruds", "wildflower/*.cruds"]),
         owned_scopes(scopes),
-        &ApprovableScopes {
-            requested_scopes: &approvable,
-            allowed_scopes: &approvable,
-        },
+        &ApprovableScopes::for_device(&client("delegate", scopes)),
     )
     .expect("the owner covers everything")
     .expect("non-empty")

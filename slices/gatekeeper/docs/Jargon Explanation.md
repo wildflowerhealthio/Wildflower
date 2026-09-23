@@ -325,9 +325,9 @@ device did **not** request, up to the client's `allowedScopes`, as well as narro
 what was asked. This contrasts with the **clamped** authorization-code / app
 consent path, where the grant may only be narrowed within the requested set
 (`granted ⊆ requested`) — a third-party app can never widen its own grant. The
-distinction lives in the two approve handlers' clamp: the device path measures
-`grantable_scopes` against `client.allowedScopes`; the code path measures it
-against the request's `requestedScopes`. The shared scope-picker UI models the
+distinction lives in the two `ApprovableScopes` constructors: `for_device`
+measures the grantable subset against `client.allowedScopes`; `for_code`
+measures it against the request's `requestedScopes`. The shared scope-picker UI models the
 same split with its `expandable` vs `clamped` mode.
 
 ### Bootstrap URL

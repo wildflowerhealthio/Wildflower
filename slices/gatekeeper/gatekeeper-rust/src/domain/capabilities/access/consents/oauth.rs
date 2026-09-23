@@ -3,8 +3,6 @@
 //! the [`RequestApprover`] issues the code, the [`GrantRecorder`] records the
 //! standing grant and (for a client trusted on first use) the registration.
 
-use std::collections::HashSet;
-
 use chrono::{DateTime, Utc};
 
 use super::delegation::deny_consent;
@@ -108,32 +106,16 @@ pub(super) fn approve_oauth_consent(
         return Err(GatekeeperError::RegistrationNotAcknowledged { id: id.to_owned() });
     }
 
-    let requested_scopes: HashSet<&str> = request
-        .requested_scopes
-        .iter()
-        .map(String::as_str)
-        .collect();
-    let registered_scopes = maybe_existing_client
-        .iter()
-        .flat_map(|client| client.allowed_scopes.iter().map(String::as_str));
-    // A locked registration allows only what it lists; any other client is
-    // also allowed what this request asked for.
-    let allowed_scopes: HashSet<&str> = if registration_is_locked {
-        registered_scopes.collect()
-    } else {
-        registered_scopes
-            .chain(requested_scopes.iter().copied())
-            .collect()
-    };
-    // The proof every write below demands: the Owner's ticks clamped to the
-    // approvable scopes and covered by the approver's own grant.
+    // The proof every write below demands: the Owner's approval clamped to
+    // what this prompt may grant and covered by the approver's own grant.
     let Some(delegated_scopes) = DelegatedScopes::clamp(
         ctx.approver,
         input.approved_scopes,
-        &ApprovableScopes {
-            requested_scopes: &requested_scopes,
-            allowed_scopes: &allowed_scopes,
-        },
+        &ApprovableScopes::for_code(
+            &request.requested_scopes,
+            maybe_existing_client.as_ref(),
+            registration_is_locked,
+        ),
     )?
     else {
         return deny_consent(store, publisher, id).map(|()| ConsentOutcome::Denied);
