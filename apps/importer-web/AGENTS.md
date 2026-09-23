@@ -1,8 +1,8 @@
 # AGENTS.md — apps/importer-web
 
 The Importer, shipped as a **cloud** SMART-on-FHIR app served from the published
-GitHub Pages site (`/importer-app`), with a debug-only self-hosted dev row for
-local development. It pairs
+GitHub Pages site (`/importer-app`), with a debug-only cloud dev row for local
+development. It pairs
 [`importer-react`](../../slices/importer/importer-react/AGENTS.md)'s
 `ImporterScreen` with
 [`anonymizer-react`](../../slices/anonymizer/anonymizer-react/AGENTS.md)'s
@@ -15,7 +15,7 @@ carry `{ fileName, bytes }`, so the adapter is the identity). The unselected
 screen is unmounted, not hidden.
 
 `apps/web-trace` is the template for this shape (two HTML entries, a relative
-`base`, a build straight into the vendored `self-hosted-apps` tree, a memory
+`base`, a build into the package's own `dist/`, a memory
 router carrying a SMART-built context, and a standalone `ConnectMenu` beside the
 EHR launch). **One thing is deliberately different: this app writes.** Everything
 that follows from that is called out below.
@@ -23,8 +23,8 @@ that follows from that is called out below.
 The npm package is `wildflower-importer` (the web-trace naming convention — its
 package is `wildflower-web-trace` while its app id is `web-trace-app`). The app
 id and the OAuth `client_id` are both `importer-app` — the published path
-segment, matching `medications-app` / `web-trace-app`. The vendored build folder
-is `importer`, and the debug-only dev row is `importer-app-dev`. Those identities
+segment, matching `medications-app` / `web-trace-app`. The debug-only dev row
+is `importer-app-dev`. Those identities
 are load-bearing — see [Seeded registration](#seeded-registration).
 
 ## Why this app has a router and a bearer token
@@ -42,7 +42,7 @@ runtime:
 
 - **It is served from a different origin than the API** — the published Pages
   site (`https://wildflowerhealth.io/importer-app/`) in production, or the
-  loopback dev origin (`http://127.0.0.1:5193/`) under the debug-only
+  loopback dev origin (`http://localhost:5193/`) under the debug-only
   `importer-app-dev` row. The typed FHIR client emits _relative_ paths
   (`/fhir-r4/DocumentReference`), which would resolve against the app's own
   origin and 404. So the layer prefixes them with the FHIR base the SMART
@@ -201,17 +201,17 @@ registered client cannot launch:
 The `clientId` in `src/config.ts` must equal the app id in both. `local_only` is
 **0**, like the other two cloud apps.
 
-A **debug build** additionally seeds a self-hosted `importer-app-dev` row
-(`apps-rust`'s `dev_seed.rs`) bound to this app's vite dev-server port
-(`slices/apps/dev-app-ports.json` → `5193`), plus its sibling OAuth client
+A **debug build** additionally seeds a cloud `importer-app-dev` row
+(`apps-rust`'s `dev_seed.rs`) whose launch URL names this app's vite dev-server
+port (`slices/apps/dev-app-ports.json` → `5193`), plus its sibling OAuth client
 (`gatekeeper-rust`'s `seed_dev_app_clients`) carrying the same write scopes. That
-row is what a developer running `vp run -F wildflower-importer dev` launches; its
-`content_folder` is the vendored `importer` build, which serves as fallback when
-vite is not holding the port.
+row is what a developer running `vp run -F wildflower-importer dev` launches;
+there is no fallback build, so the tile opens nothing when vite is not holding
+the port.
 
 ## Published on GitHub Pages
 
-`apps/github-pages` stages this app's build at `/importer-app` on
+`apps/github-pages` stages this app's `dist/` at `/importer-app` on
 <https://wildflowerhealth.io>, alongside the medications and web-trace apps. The
 relative `base: './'` in `vite.config.ts` is the whole subpath mechanism. No SPA
 fallback is needed: the router is a memory history, so the site has no deep links
@@ -284,7 +284,7 @@ workspace `source` condition at bundle time.
   app is cloned from.
 - [Store and Install Explanation](../../docs/Apps/Store%20and%20Install%20Explanation.md)
   — how a first-party app is registered as a cloud row and served, and how the
-  debug-only `-dev` self-hosted rows work.
-- [self-hosted-apps README](../../slices/apps/self-hosted-apps/README.md) — the
-  vendored-build sync this app's `outDir` feeds.
+  debug-only `-dev` rows work.
+- [self-hosted-apps README](../../slices/apps/self-hosted-apps/README.md) — why
+  first-party apps are cloud rows and nothing of this app is vendored.
 - [apps/AGENTS.md](../AGENTS.md) — the rules every app follows.
