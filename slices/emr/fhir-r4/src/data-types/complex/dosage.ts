@@ -6,7 +6,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../base/backbone-element.ts'
 import {
-  choiceElementSetExclusive,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
 } from '../base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../base/choice-element-set.ts'
@@ -69,7 +69,10 @@ const DosageStruct = mutableEncoded(
     maxDosePerLifetime: OrNullAsOptional(Schema.suspend(() => SimpleQuantity.Schema)),
   })
 ).pipe(
-  choiceElementSetExclusive('asNeeded', ChoiceElementSet.FhirR4SetChoices['Dosage.asNeeded[x]'])
+  filterForExclusiveChoiceElementSet(
+    'asNeeded',
+    ChoiceElementSet.FhirR4SetChoices['Dosage.asNeeded[x]']
+  )
 )
 
 const DosageSchema: Schema.Schema<typeof DosageStruct.Type, FhirR4.Dosage, never> = DosageStruct

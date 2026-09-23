@@ -4,7 +4,7 @@ import * as fc from 'fast-check'
 /**
  * Arbitrary over the decoded slots of one choice element (`value[x]`,
  * `effective[x]`, …) that populates at most one of them — the only shapes
- * `choiceElementSetExclusive` lets through. Each field schema must accept
+ * `filterForExclusiveChoiceElementSet` lets through. Each field schema must accept
  * `null` (e.g. `Schema.NullOr(Period.Schema)`); every slot but the chosen one
  * is set to `null`, and choosing index `fields.length` leaves them all `null`.
  */

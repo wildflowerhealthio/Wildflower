@@ -5,7 +5,7 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import {
-  choiceElementSetExclusive,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
 } from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
@@ -215,7 +215,7 @@ const DiagnosticReportStruct = Schema.extend(
   )
 )
   .pipe(
-    choiceElementSetExclusive(
+    filterForExclusiveChoiceElementSet(
       'effective',
       ChoiceElementSet.FhirR4SetChoices['DiagnosticReport.effective[x]']
     )

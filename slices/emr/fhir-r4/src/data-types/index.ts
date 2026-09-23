@@ -15,7 +15,7 @@ export * as Element from './base/element.ts'
 export * as Meta from './base/meta.ts'
 export * as Resource from './base/resource.ts'
 export {
-  choiceElementSetExclusive,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
 } from './base/choice-element-passthrough-fields.ts'
 

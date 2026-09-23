@@ -7,11 +7,11 @@ import { describe, expect, it } from 'vite-plus/test'
 // `registerDatatypeSchema(...)`, so the registered slots below resolve.
 import '../index.ts'
 import {
-  choiceElementSetExclusive,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
 } from './choice-element-passthrough-fields.ts'
 
-describe('choiceElementSetExclusive', () => {
+describe('filterForExclusiveChoiceElementSet', () => {
   it('should decode a payload with exactly one populated slot', () => {
     // Arrange
     const wire = { valueString: 'Negative for influenza A' }
@@ -86,7 +86,7 @@ describe('choiceElementSetExclusive', () => {
   it('should reject encoding a non-null value in an unregistered slot', () => {
     // Arrange
     const Priced = Schema.Struct(choiceElementSetPassthroughFields('value', ['Money'])).pipe(
-      choiceElementSetExclusive('value', ['Money'])
+      filterForExclusiveChoiceElementSet('value', ['Money'])
     )
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the unregistered slot's decoded type is `null`; a non-null value is constructed on purpose to exercise the encode failure
     const priced = { valueMoney: { value: 12.5, currency: 'CAD' } } as unknown as typeof Priced.Type
@@ -148,8 +148,8 @@ const Reading = Schema.Struct({
   ...choiceElementSetPassthroughFields('value', valueNames),
   ...choiceElementSetPassthroughFields('effective', effectiveNames),
 }).pipe(
-  choiceElementSetExclusive('value', valueNames),
-  choiceElementSetExclusive('effective', effectiveNames)
+  filterForExclusiveChoiceElementSet('value', valueNames),
+  filterForExclusiveChoiceElementSet('effective', effectiveNames)
 )
 
 // Every `value[x]` slot of `Reading`, each paired with a wire value.

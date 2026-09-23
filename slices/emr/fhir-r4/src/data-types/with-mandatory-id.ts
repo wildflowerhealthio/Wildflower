@@ -14,7 +14,7 @@ const reapplyRefinements = (source: SchemaAST.AST, target: SchemaAST.AST): Schem
  *
  * @remarks
  * `Schema.omit` drops refinements, so the top-level filters on `schema` (e.g.
- * the `choiceElementSetExclusive` guards) are re-applied around the result.
+ * the `filterForExclusiveChoiceElementSet` guards) are re-applied around the result.
  * Each filter then sees the narrowed value, which carries the same fields it
  * checks — `id` is the only field whose type changes.
  */

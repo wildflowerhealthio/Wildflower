@@ -50,7 +50,7 @@ const nullStubDeclarationFor = <K extends Datatype.Name>(
 
 // Per-K typed null stub for an unregistered datatype's slot. Composed onto
 // `Schema.Null` so its Type side is a strict `null` check: encoding through a
-// refinement (`choiceElementSetExclusive`) first re-decodes the value against
+// refinement (`filterForExclusiveChoiceElementSet`) first re-decodes the value against
 // the Type side, and the bare declaration would map a non-null slot to `null`
 // there, dropping it instead of failing.
 const nullStubFor = <K extends Datatype.Name>(
@@ -132,7 +132,7 @@ const choiceElementSetPassthroughFields = <
  * populated slot. `Schema.omit` / `Schema.pick` drop the refinement — see
  * "Choice element at-most-one rule" in `fhir-r4/docs/Client Capabilities Reference.md`.
  */
-const choiceElementSetExclusive =
+const filterForExclusiveChoiceElementSet =
   <const Prefix extends string, const DatatypeNames extends readonly Datatype.Name[]>(
     prefix: Prefix,
     datatypeNames: DatatypeNames
@@ -158,9 +158,9 @@ const choiceElementSetExclusive =
   }
 
 // The decoded slots a `(prefix, datatypeNames)` choice element contributes to
-// a struct — the constraint `choiceElementSetExclusive` reads through.
+// a struct — the constraint `filterForExclusiveChoiceElementSet` reads through.
 type ChoiceSlots<Prefix extends string, DatatypeNames extends readonly Datatype.Name[]> = Readonly<
   Record<`${Prefix}${Capitalize<DatatypeNames[number]>}`, unknown>
 >
 
-export { choiceElementSetExclusive, choiceElementSetPassthroughFields }
+export { filterForExclusiveChoiceElementSet, choiceElementSetPassthroughFields }

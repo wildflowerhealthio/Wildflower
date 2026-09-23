@@ -5,7 +5,7 @@ import { mutableEncoded, OrNullAsOptional, StructNoContext } from 'kitchen-sink/
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import {
-  choiceElementSetExclusive,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
 } from '../base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../base/choice-element-set.ts'
@@ -49,6 +49,6 @@ const ExtensionSchema: Schema.Schema<ExtensionType, FhirR4.Extension, never> = m
     url: Schema.String,
     ...valueChoiceFields,
   })
-).pipe(choiceElementSetExclusive('value', Datatype.names))
+).pipe(filterForExclusiveChoiceElementSet('value', Datatype.names))
 
 export { ExtensionSchema as Schema, emptyValueChoice, type ExtensionType as Type }

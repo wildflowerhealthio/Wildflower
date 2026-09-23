@@ -7,7 +7,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import {
   Annotation,
   ChoiceElementSet,
-  choiceElementSetExclusive,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
   CodeableConcept,
   Dosage,
@@ -236,11 +236,11 @@ const MedicationDispenseStruct = Schema.extend(
   )
 )
   .pipe(
-    choiceElementSetExclusive(
+    filterForExclusiveChoiceElementSet(
       'statusReason',
       ChoiceElementSet.FhirR4SetChoices['MedicationDispense.statusReason[x]']
     ),
-    choiceElementSetExclusive(
+    filterForExclusiveChoiceElementSet(
       'medication',
       ChoiceElementSet.FhirR4SetChoices['MedicationDispense.medication[x]']
     )

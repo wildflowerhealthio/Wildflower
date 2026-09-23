@@ -6,7 +6,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../../data-types/base/backbone-element.ts'
 import {
-  choiceElementSetExclusive,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
 } from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
@@ -32,7 +32,7 @@ const ObservationComponentStruct = mutableEncoded(
     ),
   })
 ).pipe(
-  choiceElementSetExclusive(
+  filterForExclusiveChoiceElementSet(
     'value',
     ChoiceElementSet.FhirR4SetChoices['Observation.component.value[x]']
   )
