@@ -10,9 +10,7 @@ use super::{ApproveOAuthConsentInput, ConsentOutcome};
 use crate::domain::authority::{ApprovableScopes, DelegatedScopes};
 use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::{GrantType, RequestStatus};
-use crate::domain::capabilities::writers::{
-    CodeAuthority, GrantRecorder, RegistrationWidening, RequestApprover,
-};
+use crate::domain::capabilities::writers::{CodeAuthority, GrantRecorder, RequestApprover};
 use crate::domain::client_redirect::build_client_redirect_url;
 use crate::domain::client_registration::RegistrationClassifier;
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -134,15 +132,14 @@ pub(super) fn approve_oauth_consent(
 
     // Persist the (possibly brand-new) registration with the grant it justifies:
     // one transaction, so a client row never outlives a failed approval.
-    let widening =
-        (!registration_is_locked).then(|| RegistrationWidening::for_approval(&registration));
+    let registration_to_widen = (!registration_is_locked).then_some(&registration);
     GrantRecorder::over(store).record_code_grant(
         &request.client_id,
         redirect_uri,
         &delegated_scopes,
         input.patient.as_deref(),
         now,
-        widening,
+        registration_to_widen,
     )?;
 
     // This request was the popup head (or queued behind one) until the approval

@@ -16,30 +16,6 @@ use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
 use crate::domain::{GatekeeperStore, GatekeeperTx};
 
-/// How recording a code-flow grant widens the client's registration, for a
-/// client trusted on first use: the `clients` row is created when absent,
-/// otherwise widened in place. The first-party host, whose registration an
-/// approval never widens, records its grant with no widening at all.
-///
-/// The scopes a widening adds are always the grant's own [`DelegatedScopes`]
-/// (the proof [`GrantRecorder::record_code_grant`] takes), so the only thing
-/// this records is whether the approved redirect joins the allowlist.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct RegistrationWidening {
-    adds_redirect: bool,
-}
-
-impl RegistrationWidening {
-    /// The widening an approval of a request with this `registration` verdict
-    /// applies: the approved redirect is appended exactly when the verdict
-    /// found it new.
-    pub(crate) fn for_approval(registration: &ClientRegistration) -> Self {
-        RegistrationWidening {
-            adds_redirect: registration.redirect_uri_is_new(),
-        }
-    }
-}
-
 /// Record standing grants. A borrowed view over the store; the gate is the
 /// [`DelegatedScopes`] each method takes.
 pub(crate) struct GrantRecorder<'a, S: GatekeeperStore> {
@@ -54,13 +30,20 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
 
     /// Register (or widen) the client and insert or cumulatively update the
     /// standing authorization-code grant for `(client_id, redirect_uri)`, all
-    /// inside one `BEGIN IMMEDIATE` transaction: apply the `widening` (if any)
-    /// to the `clients` row, then read the standing grant — if present, fold the
+    /// inside one `BEGIN IMMEDIATE` transaction: widen the `clients` row by the
+    /// `registration_to_widen` verdict (if any), then read the standing grant — if present, fold the
     /// re-approval in via [`CumulativeConsent::absorb_reapproval`] and write it
     /// back; otherwise mint a fresh grant. `BEGIN IMMEDIATE` takes the write lock
     /// before the read, so two concurrent approvals serialise at the read rather
     /// than both reading the pre-merge row and one losing its scope union — and
     /// the registration lands with the grant it justifies or not at all.
+    ///
+    /// `registration_to_widen` is the verdict the Owner acknowledged, for a
+    /// client trusted on first use: the `clients` row is created when absent,
+    /// otherwise widened in place, and the approved redirect joins its
+    /// allowlist exactly when the verdict found it new. `None` — the
+    /// first-party host, whose registration an approval never widens — writes
+    /// no `clients` row at all.
     ///
     /// The grant (and any widened registration) records exactly the proof's
     /// scopes, so a scope the Owner pruned is never added to either.
@@ -76,15 +59,18 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
         delegated_scopes: &DelegatedScopes,
         patient: Option<&str>,
         now: DateTime<Utc>,
-        widening: Option<RegistrationWidening>,
+        registration_to_widen: Option<&ClientRegistration>,
     ) -> Result<(), GatekeeperError> {
         let scopes = delegated_scopes.scopes();
         self.store.immediate_transaction(|tx| {
-            if let Some(widening) = widening {
+            if let Some(registration) = registration_to_widen {
                 let row = match tx.client_by_id(client_id)? {
-                    Some(existing) => {
-                        widen_registration(existing, redirect_uri, scopes, widening.adds_redirect)
-                    }
+                    Some(existing) => widen_registration(
+                        existing,
+                        redirect_uri,
+                        scopes,
+                        registration.redirect_uri_is_new(),
+                    ),
                     None => new_registration(client_id, redirect_uri, scopes, now),
                 };
                 // `upsert_client` updates in place, preserving `registered_at` and
@@ -266,7 +252,7 @@ mod tests {
         assert_eq!(merged.patient.as_deref(), Some("pat-2"));
     }
 
-    /// No widening writes no client row at all, even when none exists — the
+    /// No registration to widen writes no client row at all, even when none exists — the
     /// first-party host is never registered by an approval.
     #[test]
     fn record_code_grant_without_widening_never_creates_a_client() {
@@ -284,7 +270,7 @@ mod tests {
         assert_eq!(store.client_by_id("host").unwrap(), None);
     }
 
-    /// A widening on an unknown client creates the trust-on-first-use row
+    /// Widening an unknown client's `New` verdict creates the trust-on-first-use row
     /// holding exactly the delegated scopes and the approved redirect.
     #[test]
     fn record_code_grant_widen_registers_a_new_client_with_the_delegated_scopes() {
@@ -296,7 +282,7 @@ mod tests {
                 &delegated_scopes(&["patient/Patient.r", "openid"]),
                 None,
                 Utc::now(),
-                Some(RegistrationWidening::for_approval(&ClientRegistration::New)),
+                Some(&ClientRegistration::New),
             )
             .unwrap();
         let row = store
@@ -311,9 +297,9 @@ mod tests {
         assert_eq!(row.kind, ClientKind::Public);
     }
 
-    /// A widening for a known client whose redirect is already allowlisted
-    /// widens the scopes but leaves the allowlist alone; one whose redirect is
-    /// new appends it.
+    /// Widening a known client by a verdict whose redirect is already
+    /// allowlisted widens the scopes but leaves the allowlist alone; one whose
+    /// redirect is new appends it.
     #[test]
     fn record_code_grant_widening_appends_only_a_new_redirect() {
         let elsewhere = Url::parse("https://other.example/cb").unwrap();
@@ -340,7 +326,7 @@ mod tests {
                     &delegated_scopes(&["patient/Patient.r"]),
                     None,
                     Utc::now(),
-                    Some(RegistrationWidening::for_approval(&verdict)),
+                    Some(&verdict),
                 )
                 .unwrap();
             let row = store.client_by_id("app").unwrap().expect("present");

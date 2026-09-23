@@ -23,7 +23,7 @@ mod refresh_family_writer;
 mod request_approver;
 
 pub(crate) use access_token_minter::AccessTokenMinter;
-pub(crate) use grant_recorder::{GrantRecorder, RegistrationWidening};
+pub(crate) use grant_recorder::GrantRecorder;
 pub(crate) use refresh_family_writer::RefreshFamilyWriter;
 pub(crate) use request_approver::{CodeAuthority, RequestApprover};
 
