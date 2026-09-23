@@ -12,6 +12,8 @@ export default defineConfig({
       index: 'src/index.ts',
       'smart/index': 'src/smart/index.ts',
       'connect/index': 'src/connect/index.ts',
+      'app-shell/index': 'src/app-shell/index.ts',
+      'app-shell/styles': 'src/app-shell/styles.ts',
     },
   },
   test: {

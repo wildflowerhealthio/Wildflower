@@ -293,12 +293,6 @@ importers:
       '@effect/platform':
         specifier: 0.96.1
         version: 0.96.1(effect@3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9))
-      '@fontsource-variable/atkinson-hyperlegible-mono':
-        specifier: 'catalog:'
-        version: 5.3.0
-      '@fontsource-variable/atkinson-hyperlegible-next':
-        specifier: 'catalog:'
-        version: 5.3.0
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.102.8(react@19.3.0)
@@ -347,9 +341,6 @@ importers:
       shared-structures-react:
         specifier: workspace:*
         version: link:../../slices/shared-structures/shared-structures-react
-      tundra-css:
-        specifier: 'catalog:'
-        version: 0.14.0
     devDependencies:
       '@testing-library/dom':
         specifier: 'catalog:'
@@ -463,12 +454,6 @@ importers:
 
   apps/medications-app:
     dependencies:
-      '@fontsource-variable/atkinson-hyperlegible-mono':
-        specifier: 'catalog:'
-        version: 5.3.0
-      '@fontsource-variable/atkinson-hyperlegible-next':
-        specifier: 'catalog:'
-        version: 5.3.0
       '@tanstack/react-query':
         specifier: 'catalog:'
         version: 5.102.8(react@19.3.0)
@@ -514,9 +499,6 @@ importers:
       react-tundraish:
         specifier: workspace:*
         version: link:../../global/react-tundraish
-      tundra-css:
-        specifier: 'catalog:'
-        version: 0.14.0
     devDependencies:
       '@testing-library/dom':
         specifier: 'catalog:'
@@ -2332,9 +2314,18 @@ importers:
 
   slices/emr/fhir-r4-react:
     dependencies:
+      '@fontsource-variable/atkinson-hyperlegible-mono':
+        specifier: 'catalog:'
+        version: 5.3.0
+      '@fontsource-variable/atkinson-hyperlegible-next':
+        specifier: 'catalog:'
+        version: 5.3.0
       fhirclient:
         specifier: ^2.5.4
         version: 2.6.3(@types/node@26.1.0)(expo@57.0.7)(react-native@0.86.0(@babel/core@7.29.7)(@types/react@19.3.0)(react@19.3.0))
+      tundra-css:
+        specifier: 'catalog:'
+        version: 0.14.0
     devDependencies:
       '@effect/platform':
         specifier: 0.96.1
@@ -2360,6 +2351,12 @@ importers:
       '@types/react-dom':
         specifier: 'catalog:'
         version: 19.3.0(@types/react@19.3.0)
+      branding-core:
+        specifier: workspace:*
+        version: link:../../branding/branding-core
+      branding-react:
+        specifier: workspace:*
+        version: link:../../branding/branding-react
       effect:
         specifier: 3.21.4
         version: 3.21.4(patch_hash=1780f13a04cdfd8f28c4306250ecfbaf315209b83b03f9b1f73008dd75be87f9)

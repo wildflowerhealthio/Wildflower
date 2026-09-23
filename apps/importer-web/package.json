@@ -18,8 +18,6 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
-    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
-    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
     "anonymizer-fundamentals": "workspace:*",
@@ -35,8 +33,7 @@
     "react-dom": "catalog:",
     "react-kitchen-sink": "workspace:*",
     "react-tundraish": "workspace:*",
-    "shared-structures-react": "workspace:*",
-    "tundra-css": "catalog:"
+    "shared-structures-react": "workspace:*"
   },
   "devDependencies": {
     "@testing-library/dom": "catalog:",
