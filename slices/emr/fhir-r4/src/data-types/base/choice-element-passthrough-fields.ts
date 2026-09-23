@@ -48,15 +48,11 @@ const nullStubDeclarationFor = <K extends Datatype.Name>(
     equivalence: (): Equivalence.Equivalence<null> => (a, b) => a === b,
   })
 
-// Per-K typed null stub for an unregistered datatype's slot. Decoded as
-// `null`; encoded as `undefined` for null input, and a loud failure for
-// non-null input. The declaration is composed onto `Schema.Null` so the
-// stub's Type side is a strict `null` check. A declaration's Type side is the
-// declaration itself, and its decode maps any input to `null` — so a
-// refinement over the containing struct (e.g. `choiceElementSetExclusive`),
-// which re-decodes the in-memory value against the Type side before encoding,
-// would otherwise turn a non-null slot into `null` and drop it instead of
-// failing.
+// Per-K typed null stub for an unregistered datatype's slot. Composed onto
+// `Schema.Null` so its Type side is a strict `null` check: encoding through a
+// refinement (`choiceElementSetExclusive`) first re-decodes the value against
+// the Type side, and the bare declaration would map a non-null slot to `null`
+// there, dropping it instead of failing.
 const nullStubFor = <K extends Datatype.Name>(
   name: K
 ): Schema.Schema<null, Schema.Schema.Encoded<Datatype.SchemaFor<K>> | undefined, never> =>
@@ -126,21 +122,15 @@ const choiceElementSetPassthroughFields = <
 
 /**
  * Refinement enforcing FHIR R4's at-most-one rule for a choice element: of
- * the `${prefix}${Capitalize<name>}` slots that
- * {@link choiceElementSetPassthroughFields} builds for the same
- * `(prefix, datatypeNames)`, no more than one may be non-null. Pipe the
- * containing struct through it; the per-slot field types are unchanged.
+ * the `${prefix}${Capitalize<name>}` slots {@link choiceElementSetPassthroughFields}
+ * builds for the same `(prefix, datatypeNames)`, no more than one may be
+ * non-null. Pipe the containing struct through it; per-slot field types are
+ * unchanged.
  *
  * @remarks
- * The check runs on the decoded (Type) side, so it fails a decode whose wire
- * payload populates two slots and an encode of a value with two slots set.
- * The failure is a `ParseResult.Type` issue whose message names every
- * populated slot in the choice element's variant order, e.g. `choice element
- * value[x] allows at most one populated slot, but found 2: valueString,
- * valueInteger` for `Observation.value[x]`.
- *
- * `Schema.omit` / `Schema.pick` drop refinements, so a schema derived that way
- * loses the guard unless it re-applies it (see `withMandatoryId`).
+ * Decode and encode both fail with a `ParseResult.Type` issue naming every
+ * populated slot. `Schema.omit` / `Schema.pick` drop the refinement — see
+ * "Choice element at-most-one rule" in `fhir-r4/docs/Client Capabilities Reference.md`.
  */
 const choiceElementSetExclusive =
   <const Prefix extends string, const DatatypeNames extends readonly Datatype.Name[]>(
