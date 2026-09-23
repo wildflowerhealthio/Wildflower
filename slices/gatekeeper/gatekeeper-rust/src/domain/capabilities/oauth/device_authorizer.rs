@@ -80,11 +80,11 @@ impl<S: GatekeeperStore> DeviceAuthorizer<S> {
     /// [`DeviceAuthorizationError::UserCodeExhausted`], or a store failure.
     pub(crate) fn start(
         &self,
-        client: &AuthenticatedClient,
+        authenticated_client: &AuthenticatedClient,
         requested_scopes: Vec<String>,
         device_name: Option<String>,
     ) -> Result<DeviceCodes, DeviceAuthorizationError> {
-        if !client.allows_scopes(&requested_scopes) {
+        if !authenticated_client.allows_scopes(&requested_scopes) {
             return Err(DeviceAuthorizationError::ScopeNotAllowed);
         }
         // 256-bit CSPRNG opaque token per RFC 6749 §10.10, like an
@@ -94,7 +94,7 @@ impl<S: GatekeeperStore> DeviceAuthorizer<S> {
         let request =
             AuthorizationRequest::new_device_authorization(StartDeviceAuthorizationArgs {
                 id: device_code.clone(),
-                client_id: client.client_id().to_owned(),
+                client_id: authenticated_client.client_id().to_owned(),
                 requested_scopes,
                 user_code: user_code.clone(),
                 device_name,

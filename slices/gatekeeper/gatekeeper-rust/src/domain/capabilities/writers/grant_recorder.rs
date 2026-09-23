@@ -61,17 +61,17 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
         now: DateTime<Utc>,
         registration_to_widen: Option<&ClientRegistration>,
     ) -> Result<(), GatekeeperError> {
-        let scopes = delegated_scopes.scopes();
+        let delegated = delegated_scopes.scopes();
         self.store.immediate_transaction(|tx| {
-            if let Some(registration) = registration_to_widen {
+            if let Some(registration_verdict) = registration_to_widen {
                 let row = match tx.client_by_id(client_id)? {
-                    Some(existing) => widen_registration(
-                        existing,
+                    Some(existing_client) => widen_registration(
+                        existing_client,
                         redirect_uri,
-                        scopes,
-                        registration.redirect_uri_is_new(),
+                        delegated,
+                        registration_verdict.redirect_uri_is_new(),
                     ),
-                    None => new_registration(client_id, redirect_uri, scopes, now),
+                    None => new_registration(client_id, redirect_uri, delegated, now),
                 };
                 // `upsert_client` updates in place, preserving `registered_at` and
                 // any admin `disabled_at` — a widening never resurrects a disabled
@@ -80,13 +80,13 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
             }
             match tx.grant_by_client_and_redirect(client_id, redirect_uri)? {
                 Some(mut grant) => {
-                    grant.absorb_reapproval(scopes, patient, now);
+                    grant.absorb_reapproval(delegated, patient, now);
                     tx.update_authorization_code_grant(&grant)
                 }
                 None => tx.create_authorization_code_grant(&AuthorizationCodeGrant {
                     id: Uuid::new_v4().to_string(),
                     client_id: client_id.to_owned(),
-                    scopes: scopes.to_vec(),
+                    scopes: delegated.to_vec(),
                     granted_at: now,
                     last_used_at: None,
                     patient: patient.map(str::to_owned),
@@ -113,17 +113,17 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
         patient: Option<&str>,
         now: DateTime<Utc>,
     ) -> Result<(), GatekeeperError> {
-        let scopes = delegated_scopes.scopes();
+        let delegated = delegated_scopes.scopes();
         self.store.immediate_transaction(|tx| {
             match tx.device_grant_by_client_and_device_name(client_id, device_name)? {
                 Some(mut grant) => {
-                    grant.absorb_reapproval(scopes, patient, now);
+                    grant.absorb_reapproval(delegated, patient, now);
                     tx.update_device_grant(&grant)
                 }
                 None => tx.create_device_grant(&DeviceGrant {
                     id: Uuid::new_v4().to_string(),
                     client_id: client_id.to_owned(),
-                    scopes: scopes.to_vec(),
+                    scopes: delegated.to_vec(),
                     granted_at: now,
                     last_used_at: None,
                     patient: patient.map(str::to_owned),

@@ -44,12 +44,12 @@ impl GrantCoverage {
     /// [`GatekeeperError::Infrastructure`] on a store failure.
     pub(crate) fn resolve(
         store: &impl GatekeeperStore,
-        registration: &ClientRegistration,
+        registration_verdict: &ClientRegistration,
         requested_client_id: &str,
         requested_redirect_uri: &Url,
         requested_scopes: &[String],
     ) -> Result<GrantCoverage, GatekeeperError> {
-        if !registration.is_registered() {
+        if !registration_verdict.is_registered() {
             return Ok(GrantCoverage::Uncovered);
         }
         let Some(grant) =
@@ -71,7 +71,7 @@ impl GrantCoverage {
         // means nothing was filtered out.
         if pre_approved_scopes.len() == requested_scopes.len() {
             Ok(GrantCoverage::Full(StandingGrantCoverage {
-                scopes: pre_approved_scopes,
+                covered_scopes: pre_approved_scopes,
                 patient: grant.patient,
             }))
         } else {
@@ -89,7 +89,7 @@ impl GrantCoverage {
             GrantCoverage::Partial {
                 pre_approved_scopes,
             } => pre_approved_scopes,
-            GrantCoverage::Full(full) => &full.scopes,
+            GrantCoverage::Full(full) => &full.covered_scopes,
         }
     }
 }
@@ -100,14 +100,14 @@ impl GrantCoverage {
 /// one.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct StandingGrantCoverage {
-    scopes: Vec<String>,
+    covered_scopes: Vec<String>,
     patient: Option<String>,
 }
 
 impl StandingGrantCoverage {
     /// The covered scopes — the request's, verbatim.
-    pub(crate) fn scopes(&self) -> &[String] {
-        &self.scopes
+    pub(crate) fn covered_scopes(&self) -> &[String] {
+        &self.covered_scopes
     }
 
     /// The grant's SMART-on-FHIR patient context, if any.
@@ -155,7 +155,7 @@ mod tests {
         let GrantCoverage::Full(proof) = coverage else {
             panic!("expected full coverage");
         };
-        assert_eq!(proof.scopes(), ["patient/Observation.r", "openid"]);
+        assert_eq!(proof.covered_scopes(), ["patient/Observation.r", "openid"]);
         assert_eq!(proof.patient(), Some("pat-1"));
     }
 

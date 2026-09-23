@@ -153,7 +153,7 @@ pub(crate) fn uncovered_scopes(allowed: &[String], requested: &[String]) -> Vec<
 /// is computed exactly the way `/authorize` computed it.
 pub(crate) struct RegistrationClassifier<'a> {
     /// Resolves a `client_id` to a self-hosted app's `{port, subdomain}`.
-    pub(crate) redirects: &'a dyn SelfHostedRedirectResolver,
+    pub(crate) self_hosted_redirects: &'a dyn SelfHostedRedirectResolver,
     /// The origin this request was served on, unparsed.
     pub(crate) served_origin: &'a str,
 }
@@ -172,7 +172,7 @@ impl RegistrationClassifier<'_> {
         requested_redirect_uri: &Url,
         requested_scopes: &[String],
     ) -> ClientRegistration {
-        let topology = self.redirects.resolve(requested_client_id);
+        let topology = self.self_hosted_redirects.resolve(requested_client_id);
         let served_origin = self.parsed_served_origin();
         classify_registration(&PendingRegistration {
             maybe_existing_client,
@@ -192,7 +192,9 @@ impl RegistrationClassifier<'_> {
         existing_client: &Client,
         requested_redirect_uri: &Url,
     ) -> bool {
-        let topology = self.redirects.resolve(&existing_client.client_id);
+        let topology = self
+            .self_hosted_redirects
+            .resolve(&existing_client.client_id);
         let served_origin = self.parsed_served_origin();
         redirect_is_allowlisted(
             existing_client,

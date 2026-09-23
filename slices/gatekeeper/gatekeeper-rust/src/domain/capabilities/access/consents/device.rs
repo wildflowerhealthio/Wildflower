@@ -24,12 +24,12 @@ pub(super) fn load_pending_device_request(
     user_code: &str,
 ) -> Result<AuthorizationRequest, GatekeeperError> {
     match store.pending_authorization_request_by_user_code(user_code)? {
-        Some(r)
-            if r.grant_type == GrantType::DeviceCode
-                && r.status == RequestStatus::Pending
-                && r.expires_at > Utc::now() =>
+        Some(request)
+            if request.grant_type == GrantType::DeviceCode
+                && request.status == RequestStatus::Pending
+                && request.expires_at > Utc::now() =>
         {
-            Ok(r)
+            Ok(request)
         }
         _ => Err(GatekeeperError::DeviceConsentNotFound {
             user_code: user_code.to_owned(),
@@ -46,7 +46,7 @@ pub(super) fn approve_device_consent(
     publisher: &dyn PendingConsentPublisher,
     user_code: &str,
     input: ApproveDeviceConsentInput,
-    approver: &Grant,
+    approver_grant: &Grant,
     now: DateTime<Utc>,
 ) -> Result<ConsentOutcome, GatekeeperError> {
     let make_consent_not_found = || GatekeeperError::DeviceConsentNotFound {
@@ -60,7 +60,7 @@ pub(super) fn approve_device_consent(
     // The proof every write below demands: the Owner's approval clamped to
     // what a device prompt may grant and covered by the approver's own grant.
     let Some(delegated_scopes) = DelegatedScopes::clamp(
-        approver,
+        approver_grant,
         input.owner_approved_scopes,
         &ApprovableScopes::for_device(&client),
     )?

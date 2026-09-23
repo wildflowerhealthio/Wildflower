@@ -151,7 +151,7 @@ impl RedeemedAuthorizationCode {
     /// [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn redeem(
         store: &impl GatekeeperStore,
-        client: &AuthenticatedClient,
+        authenticated_client: &AuthenticatedClient,
         presented: &PresentedAuthorizationCode<'_>,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
@@ -171,11 +171,11 @@ impl RedeemedAuthorizationCode {
                 InvalidGrantReason::CodeNotFoundOrRedeemed,
             ));
         };
-        if code.client_id != client.client_id() {
+        if code.client_id != authenticated_client.client_id() {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::CodeClientMismatch {
                     code_client_id: code.client_id,
-                    presented_client_id: client.client_id().to_owned(),
+                    presented_client_id: authenticated_client.client_id().to_owned(),
                 },
             ));
         }
@@ -198,7 +198,7 @@ impl RedeemedAuthorizationCode {
         if !bool::from(code.code_challenge.as_bytes().ct_eq(computed.as_bytes())) {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::PkceMismatch {
-                    client_id: client.client_id().to_owned(),
+                    client_id: authenticated_client.client_id().to_owned(),
                 },
             ));
         }
@@ -206,7 +206,7 @@ impl RedeemedAuthorizationCode {
         // (write-only in v1); a grant revoked between approval and redemption
         // just leaves it `None`.
         let grant_id = store
-            .grant_by_client_and_redirect(client.client_id(), &redirect_uri)?
+            .grant_by_client_and_redirect(authenticated_client.client_id(), &redirect_uri)?
             .map(|grant| grant.id);
         Ok(RedeemedAuthorizationCode {
             token_scopes: token_scope_spellings(&code.granted_scopes),
@@ -274,14 +274,14 @@ impl ConsumedDeviceRequest {
     /// request, [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn consume(
         store: &impl GatekeeperStore,
-        client: &AuthenticatedClient,
+        authenticated_client: &AuthenticatedClient,
         device_code: &str,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
         let request = match store.authorization_request_by_id(device_code)? {
             Some(record)
                 if record.grant_type == GrantType::DeviceCode
-                    && record.client_id == client.client_id() =>
+                    && record.client_id == authenticated_client.client_id() =>
             {
                 record
             }
@@ -290,7 +290,7 @@ impl ConsumedDeviceRequest {
             _ => {
                 return Err(TokenExchangeError::InvalidGrant(
                     InvalidGrantReason::DeviceRequestNotFound {
-                        presented_client_id: client.client_id().to_owned(),
+                        presented_client_id: authenticated_client.client_id().to_owned(),
                     },
                 ))
             }
@@ -320,7 +320,8 @@ impl ConsumedDeviceRequest {
             ));
         }
         let granted_scopes = request.granted_scopes.clone().unwrap_or_default();
-        let grant_name = device_grant_name(request.device_name.as_deref(), client.name());
+        let grant_name =
+            device_grant_name(request.device_name.as_deref(), authenticated_client.name());
         let grant_id = store
             .device_grant_by_client_and_device_name(&request.client_id, grant_name)?
             .map(|grant| grant.id);
@@ -381,7 +382,7 @@ impl ValidatedRefreshToken {
     /// [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn validate(
         store: &impl GatekeeperStore,
-        client: &AuthenticatedClient,
+        authenticated_client: &AuthenticatedClient,
         presented_refresh_token: &str,
         now: DateTime<Utc>,
     ) -> Result<Self, TokenExchangeError> {
@@ -391,11 +392,11 @@ impl ValidatedRefreshToken {
                 InvalidGrantReason::RefreshTokenNotFound,
             ));
         };
-        if family.client_id != client.client_id() {
+        if family.client_id != authenticated_client.client_id() {
             return Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenClientMismatch {
                     family_client_id: family.client_id,
-                    presented_client_id: client.client_id().to_owned(),
+                    presented_client_id: authenticated_client.client_id().to_owned(),
                 },
             ));
         }

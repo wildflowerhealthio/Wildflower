@@ -91,7 +91,7 @@ async fn handle_get_oauth_consent(
         request,
         requested_redirect_uri,
         client_name,
-        registration,
+        registration_verdict,
     } = consents.oauth_consent(&id, &origin)?;
     Ok(Json(OAuthConsent {
         id: id.clone(),
@@ -101,6 +101,6 @@ async fn handle_get_oauth_consent(
         redirect_uri: requested_redirect_uri,
         pre_approved_scopes: request.pre_approved_scopes,
         patient: request.patient,
-        registration: registration.into(),
+        registration: registration_verdict.into(),
     }))
 }

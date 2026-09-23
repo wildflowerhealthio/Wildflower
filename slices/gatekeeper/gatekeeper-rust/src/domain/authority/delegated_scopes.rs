@@ -103,13 +103,13 @@ impl DelegatedScopes {
         owner_approved_scopes: Vec<String>,
         approvable: &ApprovableScopes,
     ) -> Result<Option<Self>, GatekeeperError> {
-        let scopes = approvable.grantable_subset(owner_approved_scopes);
-        if scopes.is_empty() {
+        let grantable = approvable.grantable_subset(owner_approved_scopes);
+        if grantable.is_empty() {
             return Ok(None);
         }
-        let approver_missing_scopes = uncovered_resource_scopes(&scopes, approver_grant);
+        let approver_missing_scopes = uncovered_resource_scopes(&grantable, approver_grant);
         if approver_missing_scopes.is_empty() {
-            Ok(Some(DelegatedScopes { scopes }))
+            Ok(Some(DelegatedScopes { scopes: grantable }))
         } else {
             Err(GatekeeperError::InsufficientApproverScope {
                 approver_missing_scopes,

@@ -27,10 +27,13 @@ pub(crate) enum CodeAuthority<'a> {
 }
 
 impl CodeAuthority<'_> {
-    fn scopes(&self) -> &[String] {
+    /// The scopes this authority lets a code carry.
+    fn authorized_scopes(&self) -> &[String] {
         match self {
             CodeAuthority::OwnerDelegated(delegated) => delegated.scopes(),
-            CodeAuthority::StandingGrant(standing) => standing.scopes(),
+            CodeAuthority::StandingGrant(standing_grant_coverage) => {
+                standing_grant_coverage.covered_scopes()
+            }
         }
     }
 }
@@ -69,7 +72,7 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
         code: String,
         now: DateTime<Utc>,
     ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
-        let scopes = authority.scopes();
+        let authorized_scopes = authority.authorized_scopes();
         let request = pending_request.request();
         let authorization_code = IssuedAuthorizationCode {
             code,
@@ -77,14 +80,14 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
             client_id: request.client_id.clone(),
             redirect_uri: pending_request.redirect_uri().clone(),
             code_challenge: pending_request.code_challenge().to_owned(),
-            granted_scopes: scopes.to_vec(),
+            granted_scopes: authorized_scopes.to_vec(),
             patient: patient.map(str::to_owned),
             issued_at: now,
             expires_at: now + AUTHORIZATION_CODE_TTL,
         };
         // One transaction, so an approved request never exists without its code.
         self.store.transaction(|tx| {
-            if !tx.approve_authorization_request(&request.id, scopes, patient, None)? {
+            if !tx.approve_authorization_request(&request.id, authorized_scopes, patient, None)? {
                 return Ok(None);
             }
             tx.issue_authorization_code(&authorization_code)?;

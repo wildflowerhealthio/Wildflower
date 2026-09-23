@@ -84,7 +84,10 @@ fn device_authorization(
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
-    let TokenRequest { payload, client } = request;
+    let TokenRequest {
+        payload,
+        authenticated_client,
+    } = request;
     let requested_scopes: Vec<String> = payload
         .scope
         .as_deref()
@@ -105,7 +108,7 @@ fn device_authorization(
         .map(str::to_string)
         .or_else(|| user_agent.and_then(device_name_from_user_agent));
     let device_codes = authorizer
-        .start(&client, requested_scopes, device_name)
+        .start(&authenticated_client, requested_scopes, device_name)
         .map_err(|error| match error {
             DeviceAuthorizationError::ScopeNotAllowed => TokenError::bad_request(
                 OAuthErrorCode::InvalidScope,

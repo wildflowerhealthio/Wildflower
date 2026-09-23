@@ -87,15 +87,15 @@ impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
     /// [`TokenExchangeError::Store`] on a store failure.
     pub(crate) fn rotate(
         &self,
-        token: &ValidatedRefreshToken,
+        validated_refresh_token: &ValidatedRefreshToken,
         now: DateTime<Utc>,
     ) -> Result<String, TokenExchangeError> {
-        match consume_refresh_token(self.store, token.presented_hash(), now)? {
+        match consume_refresh_token(self.store, validated_refresh_token.presented_hash(), now)? {
             RefreshTokenConsumeOutcome::Consumed => {
                 let successor = generate_refresh_token();
                 self.store.insert_refresh_token(&RefreshToken {
                     token_hash: token_storage_hash(&successor),
-                    family_id: token.family_id().to_owned(),
+                    family_id: validated_refresh_token.family_id().to_owned(),
                     issued_at: now,
                     consumed_at: None,
                 })?;
@@ -103,17 +103,17 @@ impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
             }
             RefreshTokenConsumeOutcome::Replayed => {
                 self.store
-                    .expire_refresh_token_family(token.family_id(), now)?;
+                    .expire_refresh_token_family(validated_refresh_token.family_id(), now)?;
                 Err(TokenExchangeError::InvalidGrant(
                     InvalidGrantReason::RefreshTokenReplayed {
-                        family_id: token.family_id().to_owned(),
-                        client_id: token.client_id().to_owned(),
+                        family_id: validated_refresh_token.family_id().to_owned(),
+                        client_id: validated_refresh_token.client_id().to_owned(),
                     },
                 ))
             }
             RefreshTokenConsumeOutcome::NotFound => Err(TokenExchangeError::InvalidGrant(
                 InvalidGrantReason::RefreshTokenVanished {
-                    family_id: token.family_id().to_owned(),
+                    family_id: validated_refresh_token.family_id().to_owned(),
                 },
             )),
         }

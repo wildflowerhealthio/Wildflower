@@ -57,7 +57,7 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
 
     /// Redeem an authorization code with its PKCE verifier (RFC 6749 §4.1.3,
     /// RFC 7636 §4.6) and mint the token the code's consent authorized.
-    /// `origin` is the served origin the token's `aud` is bound to.
+    /// `served_origin` is the served served_origin the token's `aud` is bound to.
     ///
     /// # Errors
     ///
@@ -66,16 +66,17 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     /// failure.
     pub(crate) fn exchange_authorization_code(
         &self,
-        client: &AuthenticatedClient,
+        authenticated_client: &AuthenticatedClient,
         presented: &PresentedAuthorizationCode<'_>,
-        origin: &str,
+        served_origin: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        self.ensure_grant_type_allowed(client, AllowedGrantType::AuthorizationCode)?;
-        let redeemed_code = RedeemedAuthorizationCode::redeem(&self.store, client, presented, now)?;
+        self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::AuthorizationCode)?;
+        let redeemed_code =
+            RedeemedAuthorizationCode::redeem(&self.store, authenticated_client, presented, now)?;
         self.issue_for_redemption(
             GrantRedemption::AuthorizationCode(&redeemed_code),
-            origin,
+            served_origin,
             now,
             false,
         )
@@ -91,18 +92,18 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     /// minting / store failure.
     pub(crate) fn exchange_device_code(
         &self,
-        client: &AuthenticatedClient,
+        authenticated_client: &AuthenticatedClient,
         device_code: &str,
-        origin: &str,
+        served_origin: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        self.ensure_grant_type_allowed(client, AllowedGrantType::DeviceCode)?;
+        self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::DeviceCode)?;
         let consumed_device_request =
-            ConsumedDeviceRequest::consume(&self.store, client, device_code, now)?;
+            ConsumedDeviceRequest::consume(&self.store, authenticated_client, device_code, now)?;
         let establishes_owner_session = self.is_first_party(consumed_device_request.client_id());
         self.issue_for_redemption(
             GrantRedemption::DeviceCode(&consumed_device_request),
-            origin,
+            served_origin,
             now,
             establishes_owner_session,
         )
@@ -122,17 +123,21 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     /// after which the family is revoked), or a minting / store failure.
     pub(crate) fn exchange_refresh_token(
         &self,
-        client: &AuthenticatedClient,
+        authenticated_client: &AuthenticatedClient,
         presented_refresh_token: &str,
-        origin: &str,
+        served_origin: &str,
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        self.ensure_grant_type_allowed(client, AllowedGrantType::RefreshToken)?;
-        let validated_refresh_token =
-            ValidatedRefreshToken::validate(&self.store, client, presented_refresh_token, now)?;
+        self.ensure_grant_type_allowed(authenticated_client, AllowedGrantType::RefreshToken)?;
+        let validated_refresh_token = ValidatedRefreshToken::validate(
+            &self.store,
+            authenticated_client,
+            presented_refresh_token,
+            now,
+        )?;
         let access_token = self.mint(
             TokenEntitlement::RefreshToken(&validated_refresh_token),
-            origin,
+            served_origin,
         )?;
         let successor =
             RefreshFamilyWriter::over(&self.store).rotate(&validated_refresh_token, now)?;
@@ -149,10 +154,10 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     /// The registration must list the grant type the client is using.
     fn ensure_grant_type_allowed(
         &self,
-        client: &AuthenticatedClient,
+        authenticated_client: &AuthenticatedClient,
         grant_type: AllowedGrantType,
     ) -> Result<(), TokenExchangeError> {
-        if client.allows_grant_type(grant_type) {
+        if authenticated_client.allows_grant_type(grant_type) {
             Ok(())
         } else {
             Err(TokenExchangeError::UnauthorizedGrantType)
@@ -164,11 +169,11 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     fn issue_for_redemption(
         &self,
         redemption: GrantRedemption<'_>,
-        origin: &str,
+        served_origin: &str,
         now: DateTime<Utc>,
         establishes_owner_session: bool,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        let access_token = self.mint(redemption.entitlement(), origin)?;
+        let access_token = self.mint(redemption.entitlement(), served_origin)?;
         let refresh_token = if redemption.earns_refresh_token() {
             Some(RefreshFamilyWriter::over(&self.store).start_family(redemption, now)?)
         } else {
@@ -189,9 +194,9 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     fn mint(
         &self,
         entitlement: TokenEntitlement<'_>,
-        origin: &str,
+        served_origin: &str,
     ) -> Result<String, TokenExchangeError> {
-        let audience = format!("{origin}/fhir-r4");
+        let audience = format!("{served_origin}/fhir-r4");
         let minter = AccessTokenMinter::new(
             &self.store,
             shared_structures_rust::CANONICAL_ISSUER,

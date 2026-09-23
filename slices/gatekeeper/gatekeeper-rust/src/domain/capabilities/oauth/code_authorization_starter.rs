@@ -96,7 +96,7 @@ impl From<GatekeeperError> for AuthorizationStartError {
 pub(crate) struct CodeAuthorizationStarter<S: GatekeeperStore> {
     store: S,
     publisher: Arc<dyn PendingConsentPublisher>,
-    redirects: Arc<dyn SelfHostedRedirectResolver>,
+    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
     first_party_client_id: Arc<str>,
 }
 
@@ -107,18 +107,18 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
     pub(crate) fn new(
         store: S,
         publisher: Arc<dyn PendingConsentPublisher>,
-        redirects: Arc<dyn SelfHostedRedirectResolver>,
+        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
         first_party_client_id: Arc<str>,
     ) -> Self {
         CodeAuthorizationStarter {
             store,
             publisher,
-            redirects,
+            self_hosted_redirects,
             first_party_client_id,
         }
     }
 
-    /// Validate `request` (client and redirect first, then the redirectable
+    /// Validate `authorize_query` (client and redirect first, then the redirectable
     /// params), park it, and decide: a fully pre-approved request is issued a
     /// code under the standing grant's authority and sent back to the client;
     /// anything else joins the pending-consent queue.
@@ -135,7 +135,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
     /// See [`AuthorizationStartError`].
     pub(crate) fn start(
         &self,
-        request: &AuthorizeRequest<'_>,
+        authorize_query: &AuthorizeRequest<'_>,
         served_origin: &str,
         ids: FreshIds,
         now: DateTime<Utc>,
@@ -144,12 +144,13 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             return Err(AuthorizationStartError::NoActiveSigningKey);
         }
         let classifier = RegistrationClassifier {
-            redirects: self.redirects.as_ref(),
+            self_hosted_redirects: self.self_hosted_redirects.as_ref(),
             served_origin,
         };
-        let registration_is_locked = self.registration_is_locked(request.client_id);
-        let maybe_existing_client = self.load_client(request.client_id, registration_is_locked)?;
-        let requested_redirect_uri = parse_redirect_uri(request.redirect_uri)?;
+        let registration_is_locked = self.registration_is_locked(authorize_query.client_id);
+        let maybe_existing_client =
+            self.load_client(authorize_query.client_id, registration_is_locked)?;
+        let requested_redirect_uri = parse_redirect_uri(authorize_query.redirect_uri)?;
         // A redirect is trustworthy only when a client we already know already
         // registered it.
         let redirect_allowlisted = maybe_existing_client
@@ -162,8 +163,12 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
                 OAuthErrorKind::RedirectUriNotAllowed,
             ));
         }
-        validate_code_params(request, &requested_redirect_uri, redirect_allowlisted)?;
-        let requested_scopes: Vec<String> = request
+        validate_code_params(
+            authorize_query,
+            &requested_redirect_uri,
+            redirect_allowlisted,
+        )?;
+        let requested_scopes: Vec<String> = authorize_query
             .scope
             .split_whitespace()
             .map(str::to_string)
@@ -175,20 +180,20 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
                 return Err(AuthorizationStartError::Redirectable {
                     redirect_uri: requested_redirect_uri,
                     error: OAuthErrorCode::InvalidScope,
-                    client_state: request.client_state.to_owned(),
+                    client_state: authorize_query.client_state.to_owned(),
                 });
             }
         }
-        let registration = classifier.classify(
-            request.client_id,
+        let registration_verdict = classifier.classify(
+            authorize_query.client_id,
             maybe_existing_client.as_ref(),
             &requested_redirect_uri,
             &requested_scopes,
         );
         let coverage = GrantCoverage::resolve(
             &self.store,
-            &registration,
-            request.client_id,
+            &registration_verdict,
+            authorize_query.client_id,
             &requested_redirect_uri,
             &requested_scopes,
         )?;
@@ -197,27 +202,27 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         let parked_request =
             PendingCodeRequest::new_code_authorization(StartCodeAuthorizationArgs {
                 id: ids.request_id.clone(),
-                client_id: request.client_id.to_owned(),
+                client_id: authorize_query.client_id.to_owned(),
                 requested_scopes,
-                code_challenge: request.code_challenge.to_owned(),
+                code_challenge: authorize_query.code_challenge.to_owned(),
                 redirect_uri: requested_redirect_uri.clone(),
-                client_state: request.client_state.to_owned(),
+                client_state: authorize_query.client_state.to_owned(),
                 pre_approved_scopes: coverage.pre_approved_scopes().to_vec(),
                 ttl: AUTHORIZATION_REQUEST_TTL,
             });
         self.store
             .insert_authorization_request(parked_request.request())?;
 
-        if let GrantCoverage::Full(standing) = coverage {
+        if let GrantCoverage::Full(standing_grant_coverage) = coverage {
             // The fast path: the standing grant is the authority. The insert
             // above parked this request as pending for the width of the
             // approval, so the popup head is recomputed afterwards rather than
             // left on a request the consent surface now 404s for; recomputing
             // can only publish the genuinely-pending head, never this one.
             let issued_code = RequestApprover::over(&self.store).approve_for_code(
-                CodeAuthority::StandingGrant(&standing),
+                CodeAuthority::StandingGrant(&standing_grant_coverage),
                 &parked_request,
-                standing.patient(),
+                standing_grant_coverage.patient(),
                 ids.code,
                 now,
             )?;
@@ -228,7 +233,7 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             return Ok(AuthorizeNextStep::RedirectToClient {
                 redirect_uri: requested_redirect_uri,
                 code: issued_code.code,
-                client_state: request.client_state.to_owned(),
+                client_state: authorize_query.client_state.to_owned(),
             });
         }
 
@@ -289,7 +294,7 @@ fn parse_redirect_uri(redirect_uri: &str) -> Result<Url, AuthorizationStartError
 /// The response type and PKCE challenge — spec'd errors delivered back to the
 /// client only once the redirect is trusted, else as a local page.
 fn validate_code_params(
-    request: &AuthorizeRequest<'_>,
+    authorize_query: &AuthorizeRequest<'_>,
     redirect_uri: &Url,
     redirect_trusted: bool,
 ) -> Result<(), AuthorizationStartError> {
@@ -298,14 +303,14 @@ fn validate_code_params(
             AuthorizationStartError::Redirectable {
                 redirect_uri: redirect_uri.clone(),
                 error,
-                client_state: request.client_state.to_owned(),
+                client_state: authorize_query.client_state.to_owned(),
             }
         } else {
             AuthorizationStartError::LocalPage(local)
         }
     };
     // Only the authorization-code grant is implemented (RFC 6749 §4.1.2.1).
-    if request.response_type != "code" {
+    if authorize_query.response_type != "code" {
         return Err(fail(
             OAuthErrorCode::UnsupportedResponseType,
             OAuthErrorKind::UnsupportedResponseType,
@@ -313,13 +318,13 @@ fn validate_code_params(
     }
     // Only S256 PKCE is supported; anything else is `invalid_request` (RFC
     // 7636 §4.4.1), as is a malformed challenge.
-    if request.code_challenge_method != "S256" {
+    if authorize_query.code_challenge_method != "S256" {
         return Err(fail(
             OAuthErrorCode::InvalidRequest,
             OAuthErrorKind::UnsupportedCodeChallengeMethod,
         ));
     }
-    if !is_valid_s256_code_challenge(request.code_challenge) {
+    if !is_valid_s256_code_challenge(authorize_query.code_challenge) {
         return Err(fail(
             OAuthErrorCode::InvalidRequest,
             OAuthErrorKind::InvalidCodeChallenge,

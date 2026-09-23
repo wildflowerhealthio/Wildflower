@@ -25,7 +25,7 @@ use scopes_rust::Grant;
 pub(super) struct ApprovalContext<'a> {
     /// The deciding Owner's own granted scopes — the bound on what the
     /// approval may delegate (see [`DelegatedScopes::clamp`]).
-    pub(super) approver: &'a Grant,
+    pub(super) approver_grant: &'a Grant,
     /// Judges the request against the client's current registration.
     pub(super) classifier: &'a RegistrationClassifier<'a>,
     /// The first-party host's `client_id` — the one client whose registration
@@ -46,12 +46,12 @@ pub(super) fn load_pending_code_request(
 ) -> Result<PendingCodeRequest, GatekeeperError> {
     let make_consent_not_found = || GatekeeperError::OAuthConsentNotFound { id: id.to_owned() };
     match store.authorization_request_by_id(id)? {
-        Some(r)
-            if r.status == RequestStatus::Pending
-                && r.grant_type == GrantType::AuthorizationCode
-                && r.expires_at > Utc::now() =>
+        Some(request)
+            if request.status == RequestStatus::Pending
+                && request.grant_type == GrantType::AuthorizationCode
+                && request.expires_at > Utc::now() =>
         {
-            PendingCodeRequest::from_request(r).ok_or_else(make_consent_not_found)
+            PendingCodeRequest::from_request(request).ok_or_else(make_consent_not_found)
         }
         _ => Err(make_consent_not_found()),
     }
@@ -91,20 +91,20 @@ pub(super) fn approve_oauth_consent(
     if registration_is_locked && maybe_existing_client.is_none() {
         return Err(make_consent_not_found());
     }
-    let registration = ctx.classifier.classify(
+    let registration_verdict = ctx.classifier.classify(
         &request.client_id,
         maybe_existing_client.as_ref(),
         requested_redirect_uri,
         &request.requested_scopes,
     );
-    if registration.needs_acknowledgement() && !input.acknowledged_registration {
+    if registration_verdict.needs_acknowledgement() && !input.acknowledged_registration {
         return Err(GatekeeperError::RegistrationNotAcknowledged { id: id.to_owned() });
     }
 
     // The proof every write below demands: the Owner's approval clamped to
     // what this prompt may grant and covered by the approver's own grant.
     let Some(delegated_scopes) = DelegatedScopes::clamp(
-        ctx.approver,
+        ctx.approver_grant,
         input.owner_approved_scopes,
         &ApprovableScopes::for_code(
             &request.requested_scopes,
@@ -129,7 +129,7 @@ pub(super) fn approve_oauth_consent(
 
     // Persist the (possibly brand-new) registration with the grant it justifies:
     // one transaction, so a client row never outlives a failed approval.
-    let registration_to_widen = (!registration_is_locked).then_some(&registration);
+    let registration_to_widen = (!registration_is_locked).then_some(&registration_verdict);
     GrantRecorder::over(store).record_code_grant(
         &request.client_id,
         requested_redirect_uri,
@@ -144,10 +144,12 @@ pub(super) fn approve_oauth_consent(
     // popup must close, or advance to whatever was queued behind it.
     publisher.republish_active();
 
-    let redirect = request.client_state.as_deref().map(|client_state| {
+    let client_callback_url = request.client_state.as_deref().map(|client_state| {
         build_client_redirect_url(requested_redirect_uri, &issued_code.code, client_state)
     });
-    Ok(ConsentOutcome::Approved { redirect })
+    Ok(ConsentOutcome::Approved {
+        redirect: client_callback_url,
+    })
 }
 
 /// Deny the pending authorization-code request `id`. Validates it's a live

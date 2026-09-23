@@ -63,7 +63,7 @@ pub(crate) struct OAuthConsentView {
     /// stands now** — the warning the prompt leads with when the app, its
     /// redirect, or its scopes are new to the Owner. Recomputed on every read,
     /// never stored.
-    pub(crate) registration: ClientRegistration,
+    pub(crate) registration_verdict: ClientRegistration,
 }
 
 /// A device-code consent prompt loaded for the Owner UI — adds the client's full
@@ -126,15 +126,21 @@ pub(crate) struct ApproveDeviceConsentInput {
 /// `/access/oauth-consents/{id}` and `/access/devices/{userCode}`.
 pub(crate) struct ConsentReader<S: GatekeeperStore> {
     store: S,
-    redirects: Arc<dyn SelfHostedRedirectResolver>,
+    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
 }
 
 impl<S: GatekeeperStore> ConsentReader<S> {
     /// Build the reader over a store handle and the self-hosted redirect seam,
     /// both lifted from the state. The seam feeds the
     /// [registration verdict](ClientRegistration) each prompt carries.
-    pub(crate) fn new(store: S, redirects: Arc<dyn SelfHostedRedirectResolver>) -> Self {
-        ConsentReader { store, redirects }
+    pub(crate) fn new(
+        store: S,
+        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
+    ) -> Self {
+        ConsentReader {
+            store,
+            self_hosted_redirects,
+        }
     }
 
     /// Load a pending authorization-code consent prompt for the Owner UI, with
@@ -159,10 +165,10 @@ impl<S: GatekeeperStore> ConsentReader<S> {
             |existing_client| existing_client.name.clone(),
         );
         let classifier = RegistrationClassifier {
-            redirects: self.redirects.as_ref(),
+            self_hosted_redirects: self.self_hosted_redirects.as_ref(),
             served_origin,
         };
-        let registration = classifier.classify(
+        let registration_verdict = classifier.classify(
             &request.client_id,
             maybe_existing_client.as_ref(),
             &requested_redirect_uri,
@@ -172,7 +178,7 @@ impl<S: GatekeeperStore> ConsentReader<S> {
             request,
             requested_redirect_uri,
             client_name,
-            registration,
+            registration_verdict,
         })
     }
 
@@ -204,8 +210,8 @@ impl<S: GatekeeperStore> ConsentReader<S> {
 pub(crate) struct ConsentDecider<S: GatekeeperStore> {
     store: S,
     publisher: Arc<dyn PendingConsentPublisher>,
-    approver: Grant,
-    redirects: Arc<dyn SelfHostedRedirectResolver>,
+    approver_grant: Grant,
+    self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
     first_party_client_id: Arc<str>,
 }
 
@@ -218,15 +224,15 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
     pub(crate) fn new(
         store: S,
         publisher: Arc<dyn PendingConsentPublisher>,
-        approver: Grant,
-        redirects: Arc<dyn SelfHostedRedirectResolver>,
+        approver_grant: Grant,
+        self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
         first_party_client_id: Arc<str>,
     ) -> Self {
         ConsentDecider {
             store,
             publisher,
-            approver,
-            redirects,
+            approver_grant,
+            self_hosted_redirects,
             first_party_client_id,
         }
     }
@@ -252,9 +258,9 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
             input,
             generate_code,
             &ApprovalContext {
-                approver: &self.approver,
+                approver_grant: &self.approver_grant,
                 classifier: &RegistrationClassifier {
-                    redirects: self.redirects.as_ref(),
+                    self_hosted_redirects: self.self_hosted_redirects.as_ref(),
                     served_origin,
                 },
                 first_party_client_id: &self.first_party_client_id,
@@ -281,7 +287,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
             self.publisher.as_ref(),
             user_code,
             input,
-            &self.approver,
+            &self.approver_grant,
             now,
         )
     }
@@ -308,7 +314,7 @@ mod tests {
     /// The classifier the code-consent tests share: no self-hosted app (so
     /// app-relative entries resolve to nothing) and the loopback served origin.
     const TEST_CLASSIFIER: RegistrationClassifier<'static> = RegistrationClassifier {
-        redirects: &NoSelfHostedRedirects,
+        self_hosted_redirects: &NoSelfHostedRedirects,
         served_origin: "http://127.0.0.1",
     };
 
@@ -320,7 +326,7 @@ mod tests {
         publisher: &RecordingPublisher,
         id: &str,
         input: ApproveOAuthConsentInput,
-        approver: &Grant,
+        approver_grant: &Grant,
         generate_code: impl FnOnce() -> String,
     ) -> Result<ConsentOutcome, GatekeeperError> {
         approve_oauth_consent(
@@ -330,7 +336,7 @@ mod tests {
             input,
             generate_code,
             &ApprovalContext {
-                approver,
+                approver_grant,
                 classifier: &TEST_CLASSIFIER,
                 first_party_client_id: crate::FIRST_PARTY_CLIENT_ID,
                 now: Utc::now(),
@@ -742,13 +748,13 @@ mod tests {
     #[test]
     fn approve_oauth_consent_rejects_a_resource_scope_the_approver_cannot_delegate() {
         let (store, publisher) = resource_scope_code_store("system/Patient.r");
-        let approver = Grant::parse(["system/Observation.r"]);
+        let approver_grant = Grant::parse(["system/Observation.r"]);
         let result = approve_code(
             &store,
             &publisher,
             "req-1",
             approved(&["system/Patient.r"]),
-            &approver,
+            &approver_grant,
             || panic!("must not mint a code when the approver lacks authority"),
         );
         assert_eq!(
@@ -778,7 +784,7 @@ mod tests {
         store
             .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
-        let approver = Grant::parse(["system/Observation.r"]);
+        let approver_grant = Grant::parse(["system/Observation.r"]);
         let result = approve_device_consent(
             &store,
             &publisher,
@@ -788,7 +794,7 @@ mod tests {
                 patient: None,
                 device_name: None,
             },
-            &approver,
+            &approver_grant,
             Utc::now(),
         );
         assert_eq!(
@@ -810,7 +816,7 @@ mod tests {
         store
             .insert_authorization_request(&device_request("dev-1", "UC-1", RequestStatus::Pending))
             .unwrap();
-        let approver = Grant::parse(["system/*.cruds"]);
+        let approver_grant = Grant::parse(["system/*.cruds"]);
         let outcome = approve_device_consent(
             &store,
             &publisher,
@@ -820,7 +826,7 @@ mod tests {
                 patient: None,
                 device_name: Some("My Phone".to_owned()),
             },
-            &approver,
+            &approver_grant,
             Utc::now(),
         )
         .unwrap();

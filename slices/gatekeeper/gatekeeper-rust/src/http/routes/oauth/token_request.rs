@@ -41,7 +41,7 @@ const FORM_URLENCODED: &str = "application/x-www-form-urlencoded";
 pub(crate) struct TokenRequest<P> {
     pub payload: P,
     /// The verified client — the proof every client-gated operation takes.
-    pub client: AuthenticatedClient,
+    pub authenticated_client: AuthenticatedClient,
 }
 
 impl<P> FromRequest<Arc<GatekeeperState>> for TokenRequest<P>
@@ -71,13 +71,16 @@ where
             TokenError::bad_request(OAuthErrorCode::InvalidRequest, Some("Malformed payload"))
         })?;
         let presented = resolve_client_credentials(authorization.as_deref(), &body)?;
-        let client = LiveClientAuthenticator::from_state(state)
+        let authenticated_client = LiveClientAuthenticator::from_state(state)
             .authenticate(&presented.credentials)
             .map_err(|error| ClientAuthenticationFailure {
                 error,
                 presented_via: presented.presented_via,
             })?;
-        Ok(TokenRequest { payload, client })
+        Ok(TokenRequest {
+            payload,
+            authenticated_client,
+        })
     }
 }
 

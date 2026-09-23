@@ -58,7 +58,10 @@ pub(super) async fn handle_token_request(
     origin: ServedOrigin,
     request: TokenRequest<TokenPayload>,
 ) -> Response {
-    let TokenRequest { payload, client } = request;
+    let TokenRequest {
+        payload,
+        authenticated_client,
+    } = request;
     let now = Utc::now();
     let exchanged = match payload {
         TokenPayload::AuthorizationCode {
@@ -66,7 +69,7 @@ pub(super) async fn handle_token_request(
             code_verifier,
             redirect_uri,
         } => exchanger.exchange_authorization_code(
-            &client,
+            &authenticated_client,
             &PresentedAuthorizationCode {
                 code: &code,
                 code_verifier: &code_verifier,
@@ -76,10 +79,10 @@ pub(super) async fn handle_token_request(
             now,
         ),
         TokenPayload::DeviceCode { device_code } => {
-            exchanger.exchange_device_code(&client, &device_code, &origin, now)
+            exchanger.exchange_device_code(&authenticated_client, &device_code, &origin, now)
         }
         TokenPayload::RefreshToken { refresh_token } => {
-            exchanger.exchange_refresh_token(&client, &refresh_token, &origin, now)
+            exchanger.exchange_refresh_token(&authenticated_client, &refresh_token, &origin, now)
         }
     };
     let token = match exchanged {

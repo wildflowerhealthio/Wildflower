@@ -25,7 +25,7 @@ impl<S: GatekeeperStore> TokenVerifier<S> {
         TokenVerifier { store, revocation }
     }
 
-    /// Verify `token` for `origin`, accepting the per-request served-origin
+    /// Verify `token` for `served_origin`, accepting the per-request served-origin
     /// audiences (`{origin}` and `{origin}/fhir-r4`) plus the canonical
     /// audience — honoured only for the `wf_owner`-marked host owner token,
     /// which is presented at every served origin (#256). See
@@ -44,14 +44,18 @@ impl<S: GatekeeperStore> TokenVerifier<S> {
     /// non-owner-canonical-audience token; [`VerifyError::Revoked`] for a
     /// revoked one; the server-side variants when the key or revocation store
     /// can't be read.
-    pub(crate) fn verify(&self, origin: &str, token: &str) -> Result<VerifiedClaims, VerifyError> {
+    pub(crate) fn verify(
+        &self,
+        served_origin: &str,
+        token: &str,
+    ) -> Result<VerifiedClaims, VerifyError> {
         let keys = self
             .store
             .all_signing_keys()
             .map_err(VerifyError::KeyStoreUnavailable)?;
         let accepted = vec![
-            format!("{origin}/fhir-r4"),
-            origin.to_string(),
+            format!("{served_origin}/fhir-r4"),
+            served_origin.to_string(),
             shared_structures_rust::CANONICAL_ISSUER.to_string(),
         ];
         let claims = verify_jwt(
