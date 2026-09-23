@@ -74,16 +74,20 @@ redirects), and `allowedScopes: ['owner']`.
 
 ### Trust on first use
 
-`/oauth/authorize` compares an authorization-code request against the
-current [`clients`](#client) row and computes a **registration verdict**:
+An authorization-code request **presents** a client registration: its
+`client_id`, `redirect_uri`, and scopes (`PresentedClientRegistration` in
+Rust). `/oauth/authorize` judges whether to accept it as it stands against
+the current [`clients`](#client) row, and computes a **registration verdict**
+(`ClientRegistrationVerdict`):
 
 - **`registered`** — the row exists, the `redirect_uri` resolves to an
   allowlist entry, and every requested scope is covered by `allowedScopes`.
   Only this verdict may take the existing-[`Grant`](#grant) fast path.
 - **`new`** — no row exists. The consent prompt names the app by its
   `client_id` and shows the redirect origin.
-- **`changed`** — the row exists but the `redirect_uri` is not allowlisted
-  and/or some requested scopes (`newScopes`) fall outside `allowedScopes`.
+- **`changed`** (`WouldWiden` in Rust) — the row exists but the
+  `redirect_uri` is not allowlisted and/or some requested scopes (`newScopes`)
+  fall outside `allowedScopes`, so approving would widen the row.
 
 The verdict is computed at read time (both at `/authorize` and on
 `GET /access/oauth-consents/:id`, which returns it as `registration`), never

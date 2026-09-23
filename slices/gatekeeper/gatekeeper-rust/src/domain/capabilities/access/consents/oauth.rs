@@ -64,7 +64,7 @@ pub(super) fn load_pending_code_request(
 /// applied as a **deny**.
 ///
 /// A request the
-/// [registration verdict](crate::domain::client_registration::ClientRegistration)
+/// [registration verdict](crate::domain::client_registration::ClientRegistrationVerdict)
 /// finds new or changed must carry the Owner's
 /// [`acknowledged_registration`](ApproveOAuthConsentInput::acknowledged_registration),
 /// else it fails with

@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 use crate::domain::authority::DelegatedScopes;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind, RegisteredRedirectUri};
-use crate::domain::client_registration::ClientRegistration;
+use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::grant::{AuthorizationCodeGrant, CumulativeConsent, DeviceGrant};
 use crate::domain::{GatekeeperStore, GatekeeperTx};
@@ -59,7 +59,7 @@ impl<'a, S: GatekeeperStore> GrantRecorder<'a, S> {
         delegated_scopes: &DelegatedScopes,
         patient: Option<&str>,
         now: DateTime<Utc>,
-        registration_to_widen: Option<&ClientRegistration>,
+        registration_to_widen: Option<&ClientRegistrationVerdict>,
     ) -> Result<(), GatekeeperError> {
         let delegated = delegated_scopes.scopes();
         self.store.immediate_transaction(|tx| {
@@ -282,7 +282,7 @@ mod tests {
                 &delegated_scopes(&["patient/Patient.r", "openid"]),
                 None,
                 Utc::now(),
-                Some(&ClientRegistration::New),
+                Some(&ClientRegistrationVerdict::New),
             )
             .unwrap();
         let row = store
@@ -315,7 +315,7 @@ mod tests {
         ] {
             let store = FakeGatekeeperStore::default();
             store.upsert_client(&client("app", &["openid"])).unwrap();
-            let verdict = ClientRegistration::Changed {
+            let verdict = ClientRegistrationVerdict::WouldWiden {
                 redirect_uri_is_new,
                 unregistered_requested_scopes: vec!["patient/Patient.r".to_owned()],
             };

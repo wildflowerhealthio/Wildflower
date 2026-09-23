@@ -21,10 +21,11 @@ use crate::domain::client_redirect::redirect_is_allowlisted;
 use crate::ports::SelfHostedRedirectResolver;
 use crate::ports::SelfHostedRedirectTopology;
 
-/// How a pending authorization-code request compares against the current
+/// Whether the registration an authorization-code request presents (see
+/// [`PresentedClientRegistration`]) is accepted as it stands against the current
 /// `clients` row — the Owner-facing warning the consent prompt renders.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) enum ClientRegistration {
+pub(crate) enum ClientRegistrationVerdict {
     /// The row exists, the `redirect_uri` resolves to an allowlist entry, and
     /// every requested scope is covered by `allowed_scopes`. The only verdict
     /// that may take the existing-grant fast path at `/authorize`.
@@ -32,8 +33,9 @@ pub(crate) enum ClientRegistration {
     /// No row exists for this `client_id`. Nothing is persisted for such a
     /// client until the Owner approves.
     New,
-    /// The row exists but the request steps outside it.
-    Changed {
+    /// The row exists but the presented registration steps outside it, so
+    /// approving would widen the row (for a client trusted on first use).
+    WouldWiden {
         /// The presented `redirect_uri` resolves to no allowlist entry.
         redirect_uri_is_new: bool,
         /// The requested scopes no `allowed_scopes` entry covers, in request
@@ -42,20 +44,20 @@ pub(crate) enum ClientRegistration {
     },
 }
 
-impl ClientRegistration {
+impl ClientRegistrationVerdict {
     /// Whether this request matches the registration exactly — the gate on the
     /// `/authorize` standing-grant fast path.
     pub(crate) fn is_registered(&self) -> bool {
-        matches!(self, ClientRegistration::Registered)
+        matches!(self, ClientRegistrationVerdict::Registered)
     }
 
     /// Whether the presented `redirect_uri` is outside the registration — always
     /// for a [`New`](Self::New) client, which has no allowlist yet.
     pub(crate) fn redirect_uri_is_new(&self) -> bool {
         match self {
-            ClientRegistration::Registered => false,
-            ClientRegistration::New => true,
-            ClientRegistration::Changed {
+            ClientRegistrationVerdict::Registered => false,
+            ClientRegistrationVerdict::New => true,
+            ClientRegistrationVerdict::WouldWiden {
                 redirect_uri_is_new,
                 ..
             } => *redirect_uri_is_new,
@@ -69,10 +71,11 @@ impl ClientRegistration {
     }
 }
 
-/// The pending authorization-code request to classify, paired with the client
-/// row it names and the provenance needed to resolve an app-relative redirect
+/// The client registration an authorization-code request presents (its
+/// redirect and scopes), paired with the stored row for its `client_id` it is
+/// judged against and the provenance needed to resolve an app-relative redirect
 /// entry.
-pub(crate) struct PendingRegistration<'a> {
+pub(crate) struct PresentedClientRegistration<'a> {
     /// The current `clients` row, or `None` when the `client_id` is unknown.
     pub(crate) maybe_existing_client: Option<&'a Client>,
     /// The `redirect_uri` the request presented, already parsed.
@@ -89,12 +92,12 @@ pub(crate) struct PendingRegistration<'a> {
     pub(crate) topology: Option<&'a SelfHostedRedirectTopology>,
 }
 
-/// Classify `pending_registration` against its current client row.
+/// Classify `presented_registration` against its current client row.
 ///
-/// @returns [`New`](ClientRegistration::New) when no row exists,
-/// [`Registered`](ClientRegistration::Registered) when the redirect resolves to
+/// @returns [`New`](ClientRegistrationVerdict::New) when no row exists,
+/// [`Registered`](ClientRegistrationVerdict::Registered) when the redirect resolves to
 /// an allowlist entry and every requested scope is covered, and
-/// [`Changed`](ClientRegistration::Changed) otherwise — carrying which of the two
+/// [`WouldWiden`](ClientRegistrationVerdict::WouldWiden) otherwise — carrying which of the two
 /// stepped outside the registration.
 ///
 /// Scope coverage is the same coverage-aware check the rest of the slice uses
@@ -104,28 +107,28 @@ pub(crate) struct PendingRegistration<'a> {
 /// registration lists it verbatim — deliberately, since the Owner should see an
 /// unrecognized scope string.
 pub(crate) fn classify_registration(
-    pending_registration: &PendingRegistration<'_>,
-) -> ClientRegistration {
-    let Some(existing_client) = pending_registration.maybe_existing_client else {
-        return ClientRegistration::New;
+    presented_registration: &PresentedClientRegistration<'_>,
+) -> ClientRegistrationVerdict {
+    let Some(existing_client) = presented_registration.maybe_existing_client else {
+        return ClientRegistrationVerdict::New;
     };
     let redirect_uri_is_new = !redirect_is_allowlisted(
         existing_client,
-        pending_registration.requested_redirect_uri,
-        pending_registration.served_origin,
-        pending_registration.topology,
+        presented_registration.requested_redirect_uri,
+        presented_registration.served_origin,
+        presented_registration.topology,
     );
     let unregistered_requested_scopes = uncovered_scopes(
         &existing_client.allowed_scopes,
-        pending_registration.requested_scopes,
+        presented_registration.requested_scopes,
     );
     if redirect_uri_is_new || !unregistered_requested_scopes.is_empty() {
-        ClientRegistration::Changed {
+        ClientRegistrationVerdict::WouldWiden {
             redirect_uri_is_new,
             unregistered_requested_scopes,
         }
     } else {
-        ClientRegistration::Registered
+        ClientRegistrationVerdict::Registered
     }
 }
 
@@ -143,7 +146,7 @@ pub(crate) fn uncovered_scopes(allowed: &[String], requested: &[String]) -> Vec<
 }
 
 /// Classifies requests served on one origin against their client
-/// registrations. It holds what the [registration verdict](ClientRegistration)
+/// registrations. It holds what the [registration verdict](ClientRegistrationVerdict)
 /// needs beyond the store: the self-hosted redirect seam (to expand an
 /// app-relative allowlist entry) and the origin this request was served on (the
 /// base it expands against).
@@ -171,10 +174,10 @@ impl RegistrationClassifier<'_> {
         maybe_existing_client: Option<&Client>,
         requested_redirect_uri: &Url,
         requested_scopes: &[String],
-    ) -> ClientRegistration {
+    ) -> ClientRegistrationVerdict {
         let topology = self.self_hosted_redirects.resolve(requested_client_id);
         let served_origin = self.parsed_served_origin();
-        classify_registration(&PendingRegistration {
+        classify_registration(&PresentedClientRegistration {
             maybe_existing_client,
             requested_redirect_uri,
             requested_scopes,
@@ -227,9 +230,9 @@ mod tests {
         maybe_existing_client: Option<&Client>,
         requested_redirect_uri: &Url,
         scopes: &[&str],
-    ) -> ClientRegistration {
+    ) -> ClientRegistrationVerdict {
         let requested: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
-        classify_registration(&PendingRegistration {
+        classify_registration(&PresentedClientRegistration {
             maybe_existing_client,
             requested_redirect_uri,
             requested_scopes: &requested,
@@ -242,7 +245,7 @@ mod tests {
     fn an_unknown_client_is_new() {
         assert_eq!(
             classify(None, &redirect(), &["read"]),
-            ClientRegistration::New
+            ClientRegistrationVerdict::New
         );
     }
 
@@ -251,7 +254,7 @@ mod tests {
         let client = client("app", &["read"]);
         assert_eq!(
             classify(Some(&client), &redirect(), &["read"]),
-            ClientRegistration::Registered
+            ClientRegistrationVerdict::Registered
         );
     }
 
@@ -263,7 +266,7 @@ mod tests {
         let client = client("app", &["patient/Observation.rs"]);
         assert_eq!(
             classify(Some(&client), &redirect(), &["patient/Observation.r"]),
-            ClientRegistration::Registered
+            ClientRegistrationVerdict::Registered
         );
     }
 
@@ -273,7 +276,7 @@ mod tests {
         let elsewhere = Url::parse("https://other.example/cb").unwrap();
         assert_eq!(
             classify(Some(&client), &elsewhere, &["read"]),
-            ClientRegistration::Changed {
+            ClientRegistrationVerdict::WouldWiden {
                 redirect_uri_is_new: true,
                 unregistered_requested_scopes: Vec::new(),
             }
@@ -281,18 +284,18 @@ mod tests {
     }
 
     /// The redirect is new for an unknown client (it has no allowlist yet) and
-    /// for a `Changed` verdict that says so — never for a `Registered` one or
-    /// a `Changed` one that only added scopes.
+    /// for a `WouldWiden` verdict that says so — never for a `Registered` one or
+    /// a `WouldWiden` one that only added scopes.
     #[test]
     fn redirect_uri_is_new_follows_the_verdict() {
-        assert!(ClientRegistration::New.redirect_uri_is_new());
-        assert!(!ClientRegistration::Registered.redirect_uri_is_new());
-        assert!(ClientRegistration::Changed {
+        assert!(ClientRegistrationVerdict::New.redirect_uri_is_new());
+        assert!(!ClientRegistrationVerdict::Registered.redirect_uri_is_new());
+        assert!(ClientRegistrationVerdict::WouldWiden {
             redirect_uri_is_new: true,
             unregistered_requested_scopes: Vec::new(),
         }
         .redirect_uri_is_new());
-        assert!(!ClientRegistration::Changed {
+        assert!(!ClientRegistrationVerdict::WouldWiden {
             redirect_uri_is_new: false,
             unregistered_requested_scopes: vec!["write".to_owned()],
         }
@@ -306,7 +309,7 @@ mod tests {
         let client = client("app", &["read"]);
         assert_eq!(
             classify(Some(&client), &redirect(), &["write", "read", "admin"]),
-            ClientRegistration::Changed {
+            ClientRegistrationVerdict::WouldWiden {
                 redirect_uri_is_new: false,
                 unregistered_requested_scopes: vec!["write".to_owned(), "admin".to_owned()],
             }
@@ -320,11 +323,11 @@ mod tests {
         let client = client("app", &["not a scope!!"]);
         assert_eq!(
             classify(Some(&client), &redirect(), &["not a scope!!"]),
-            ClientRegistration::Registered
+            ClientRegistrationVerdict::Registered
         );
         assert_eq!(
             classify(Some(&client), &redirect(), &["something else!!"]),
-            ClientRegistration::Changed {
+            ClientRegistrationVerdict::WouldWiden {
                 redirect_uri_is_new: false,
                 unregistered_requested_scopes: vec!["something else!!".to_owned()],
             }
@@ -347,24 +350,24 @@ mod tests {
         };
         let requested = vec!["read".to_owned()];
         assert_eq!(
-            classify_registration(&PendingRegistration {
+            classify_registration(&PresentedClientRegistration {
                 maybe_existing_client: Some(&app),
                 requested_redirect_uri: &callback,
                 requested_scopes: &requested,
                 served_origin: Some(&served),
                 topology: Some(&topology),
             }),
-            ClientRegistration::Registered
+            ClientRegistrationVerdict::Registered
         );
         assert_eq!(
-            classify_registration(&PendingRegistration {
+            classify_registration(&PresentedClientRegistration {
                 maybe_existing_client: Some(&app),
                 requested_redirect_uri: &callback,
                 requested_scopes: &requested,
                 served_origin: Some(&served),
                 topology: None,
             }),
-            ClientRegistration::Changed {
+            ClientRegistrationVerdict::WouldWiden {
                 redirect_uri_is_new: true,
                 unregistered_requested_scopes: Vec::new(),
             }
@@ -383,7 +386,7 @@ mod tests {
 
         /// The verdict is exactly one of the three, and each is decided by the
         /// two facts it reports: `Registered` iff the redirect is allowlisted and
-        /// nothing is uncovered, and a `Changed` verdict never carries both
+        /// nothing is uncovered, and a `WouldWiden` verdict never carries both
         /// "nothing new" flags (that would be `Registered`). The reported
         /// `unregistered_requested_scopes` are always a subset of what was requested, in request
         /// order.
@@ -398,7 +401,7 @@ mod tests {
             if !allowlisted {
                 app.redirect_uris = Vec::new();
             }
-            let verdict = classify_registration(&PendingRegistration {
+            let verdict = classify_registration(&PresentedClientRegistration {
                 maybe_existing_client: Some(&app),
                 requested_redirect_uri: &redirect(),
                 requested_scopes: &requested,
@@ -407,12 +410,12 @@ mod tests {
             });
             let uncovered = uncovered_scopes(&app.allowed_scopes, &requested);
             match verdict {
-                ClientRegistration::New => prop_assert!(false, "a known client is never New"),
-                ClientRegistration::Registered => {
+                ClientRegistrationVerdict::New => prop_assert!(false, "a known client is never New"),
+                ClientRegistrationVerdict::Registered => {
                     prop_assert!(allowlisted);
                     prop_assert!(uncovered.is_empty());
                 }
-                ClientRegistration::Changed { redirect_uri_is_new, unregistered_requested_scopes } => {
+                ClientRegistrationVerdict::WouldWiden { redirect_uri_is_new, unregistered_requested_scopes } => {
                     prop_assert_eq!(redirect_uri_is_new, !allowlisted);
                     prop_assert_eq!(&unregistered_requested_scopes, &uncovered);
                     prop_assert!(redirect_uri_is_new || !unregistered_requested_scopes.is_empty());
@@ -437,14 +440,14 @@ mod tests {
             app.allowed_scopes = registered;
             app.allowed_scopes.extend(requested.iter().cloned());
             prop_assert_eq!(
-                classify_registration(&PendingRegistration {
+                classify_registration(&PresentedClientRegistration {
                     maybe_existing_client: Some(&app),
                     requested_redirect_uri: &redirect(),
                     requested_scopes: &requested,
                     served_origin: None,
                     topology: None,
                 }),
-                ClientRegistration::Registered,
+                ClientRegistrationVerdict::Registered,
             );
         }
     }

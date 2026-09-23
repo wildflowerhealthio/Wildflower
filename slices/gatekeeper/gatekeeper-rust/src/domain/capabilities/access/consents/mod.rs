@@ -17,7 +17,7 @@ use chrono::{DateTime, Utc};
 use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
 use crate::domain::authorization_request::AuthorizationRequest;
-use crate::domain::client_registration::{ClientRegistration, RegistrationClassifier};
+use crate::domain::client_registration::{ClientRegistrationVerdict, RegistrationClassifier};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 use crate::ports::{PendingConsentPublisher, SelfHostedRedirectResolver};
@@ -54,7 +54,7 @@ pub(crate) fn consent_decider_scopes() -> Vec<Scope> {
 
 /// A consent prompt loaded for the Owner UI to render — the data a `GET`
 /// authorization-code consent handler needs, with the client's display name and
-/// its [registration verdict](ClientRegistration) already resolved.
+/// its [registration verdict](ClientRegistrationVerdict) already resolved.
 pub(crate) struct OAuthConsentView {
     pub(crate) request: AuthorizationRequest,
     pub(crate) requested_redirect_uri: url::Url,
@@ -63,7 +63,7 @@ pub(crate) struct OAuthConsentView {
     /// stands now** — the warning the prompt leads with when the app, its
     /// redirect, or its scopes are new to the Owner. Recomputed on every read,
     /// never stored.
-    pub(crate) registration_verdict: ClientRegistration,
+    pub(crate) registration_verdict: ClientRegistrationVerdict,
 }
 
 /// A device-code consent prompt loaded for the Owner UI — adds the client's full
@@ -98,11 +98,11 @@ pub(crate) struct ApproveOAuthConsentInput {
     pub patient: Option<String>,
     /// The Owner's explicit acknowledgement that they recognise this app and
     /// its redirect address. Required when the
-    /// [registration verdict](ClientRegistration) is
-    /// [`New`](ClientRegistration::New) or
-    /// [`Changed`](ClientRegistration::Changed) — approving without it fails
+    /// [registration verdict](ClientRegistrationVerdict) is
+    /// [`New`](ClientRegistrationVerdict::New) or
+    /// [`WouldWiden`](ClientRegistrationVerdict::WouldWiden) — approving without it fails
     /// with [`GatekeeperError::RegistrationNotAcknowledged`]. Ignored for a
-    /// [`Registered`](ClientRegistration::Registered) request, which shows no
+    /// [`Registered`](ClientRegistrationVerdict::Registered) request, which shows no
     /// warning to acknowledge.
     pub acknowledged_registration: bool,
 }
@@ -132,7 +132,7 @@ pub(crate) struct ConsentReader<S: GatekeeperStore> {
 impl<S: GatekeeperStore> ConsentReader<S> {
     /// Build the reader over a store handle and the self-hosted redirect seam,
     /// both lifted from the state. The seam feeds the
-    /// [registration verdict](ClientRegistration) each prompt carries.
+    /// [registration verdict](ClientRegistrationVerdict) each prompt carries.
     pub(crate) fn new(
         store: S,
         self_hosted_redirects: Arc<dyn SelfHostedRedirectResolver>,
@@ -219,7 +219,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
     /// Build the decider over a store handle, the republish port, the approver's
     /// own granted scopes, the self-hosted redirect seam, and the first-party
     /// `client_id` — all lifted from the state + claims. The last two feed the
-    /// [registration verdict](ClientRegistration) a code-flow approval is checked
+    /// [registration verdict](ClientRegistrationVerdict) a code-flow approval is checked
     /// against.
     pub(crate) fn new(
         store: S,
@@ -239,8 +239,8 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
 
     /// Approve an authorization-code consent; a resource scope beyond the
     /// approver's own authority fails the approval with a `403`, and an
-    /// unacknowledged [`New`](ClientRegistration::New) /
-    /// [`Changed`](ClientRegistration::Changed) registration fails it with a
+    /// unacknowledged [`New`](ClientRegistrationVerdict::New) /
+    /// [`WouldWiden`](ClientRegistrationVerdict::WouldWiden) registration fails it with a
     /// `409`. `served_origin` is the origin the approval arrived on, so the
     /// verdict matches the one the prompt rendered.
     pub(crate) fn approve_oauth(

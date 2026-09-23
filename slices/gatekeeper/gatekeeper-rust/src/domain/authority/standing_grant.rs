@@ -10,7 +10,7 @@
 
 use url::Url;
 
-use crate::domain::client_registration::ClientRegistration;
+use crate::domain::client_registration::ClientRegistrationVerdict;
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::GatekeeperStore;
 
@@ -31,7 +31,7 @@ impl GrantCoverage {
     /// Look up the standing grant for `(requested_client_id,
     /// requested_redirect_uri)` and compute
     /// which of `requested_scopes` it covers. A request whose `registration`
-    /// verdict is not [`Registered`](ClientRegistration::Registered) never
+    /// verdict is not [`Registered`](ClientRegistrationVerdict::Registered) never
     /// resolves past [`GrantCoverage::Uncovered`], whatever the grant says.
     ///
     /// "Covers" is [`scopes_rust::allowed_scope_covers`], not string equality: a
@@ -44,7 +44,7 @@ impl GrantCoverage {
     /// [`GatekeeperError::Infrastructure`] on a store failure.
     pub(crate) fn resolve(
         store: &impl GatekeeperStore,
-        registration_verdict: &ClientRegistration,
+        registration_verdict: &ClientRegistrationVerdict,
         requested_client_id: &str,
         requested_redirect_uri: &Url,
         requested_scopes: &[String],
@@ -146,7 +146,7 @@ mod tests {
         let store = store_with_grant(&["patient/*.cruds", "openid"], Some("pat-1"));
         let coverage = GrantCoverage::resolve(
             &store,
-            &ClientRegistration::Registered,
+            &ClientRegistrationVerdict::Registered,
             "client",
             &redirect(),
             &owned_scopes(&["patient/Observation.r", "openid"]),
@@ -165,7 +165,7 @@ mod tests {
         let store = store_with_grant(&["openid"], None);
         let coverage = GrantCoverage::resolve(
             &store,
-            &ClientRegistration::Registered,
+            &ClientRegistrationVerdict::Registered,
             "client",
             &redirect(),
             &owned_scopes(&["patient/Observation.r", "openid"]),
@@ -184,7 +184,7 @@ mod tests {
         let requested = owned_scopes(&["openid"]);
         let outside = GrantCoverage::resolve(
             &store,
-            &ClientRegistration::New,
+            &ClientRegistrationVerdict::New,
             "client",
             &redirect(),
             &requested,
@@ -195,7 +195,7 @@ mod tests {
 
         let no_grant = GrantCoverage::resolve(
             &store,
-            &ClientRegistration::Registered,
+            &ClientRegistrationVerdict::Registered,
             "stranger",
             &redirect(),
             &requested,
