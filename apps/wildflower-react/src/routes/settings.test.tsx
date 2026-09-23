@@ -113,8 +113,8 @@ describe('SettingsScreen', () => {
 
   test('renders main-web’s logout row as a button that logs the session out', async () => {
     // `main-web` threads its bearer logout row into `platformSettingsItems`.
-    // It is an action row: the page holds a bearer, not a cookie, so a
-    // same-origin form post would carry no credential and log nothing out.
+    // It is an action row: the page holds its bearer in memory, so logging
+    // out means forgetting it and revoking it with an authenticated request.
     const store = makeBearerAuthStateStore()
     store.writeBearer('eyJ.owner.token')
     const left = Promise.withResolvers<undefined>()

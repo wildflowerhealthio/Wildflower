@@ -101,8 +101,9 @@ interface RenderAppOptions {
   /**
    * Environment-specific {@link AuthStateStore}. `main-web` passes
    * `makeBearerAuthStateStore()` (an in-memory bearer it attaches itself, see
-   * `readBearer`); embedded passes `makeEmbeddedAuthStateStore()` (in-memory
-   * raw JWT, see its docstring for the why). Threaded into `<AuthStateProvider>` for descendants and
+   * `readBearer`); `main-tauri` passes `makeEmbeddedAuthStateStore()` (an
+   * in-memory signal the host flips; the page holds no credential). Threaded
+   * into `<AuthStateProvider>` for descendants and
    * into a token-rotation invalidator that flushes TanStack Query's cache
    * when the auth signal changes (so 401-pinned entries don't outlive a
    * sign-in or rotation).
@@ -263,7 +264,7 @@ const renderApp = ({
   const routerHandle: { current: AnyRouter | null } = { current: null }
 
   // Fires when an authed query/mutation ends in a 401 that outlived the
-  // boot-race retry — the cookie session is genuinely gone, so send the user to
+  // boot-race retry — the credential is genuinely gone, so send the user to
   // device login, preserving where they were as `returnTo`. The guard skips a
   // redundant navigation when they're already on the device-login route.
   const redirectToDeviceLogin = (): void => {
@@ -285,7 +286,7 @@ const renderApp = ({
   )
 
   // Keyed on the auth *signal* (the store), not the bearer source: on web a
-  // sign-in flips the cookie-derived signal and should flush the cache.
+  // sign-in flips the bearer store's signal and should flush the cache.
   forkTokenRotationInvalidator(tokenStore.subscribable, queryClient)
 
   const navigate = (to: NavTarget): void => {

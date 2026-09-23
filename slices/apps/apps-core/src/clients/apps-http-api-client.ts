@@ -14,9 +14,9 @@ const adminHc = defineSliceHttpClient({
 
 /**
  * Effect Service providing the resolved `AppsApi` HttpApi client —
- * `ListApps` + `LaunchApp`. Tokenless: hosts that gate the apps surface
- * (e.g. the Tauri host's Rust server) authenticate via the request's
- * cookie. `LaunchApp` resolves to the launch URL for a forwarded caller
+ * `ListApps` + `LaunchApp`. Tokenless: the composing app's `HttpClient`
+ * layer carries whatever credential a host that gates the apps surface
+ * (e.g. the Tauri host's Rust server) requires. `LaunchApp` resolves to the launch URL for a forwarded caller
  * to navigate to, or to nothing when the host opened the app itself.
  */
 class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
@@ -26,8 +26,8 @@ class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
 /**
  * Effect Service providing the resolved `AppsAdminApi` (owner-only)
  * HttpApi client — app writes (create / update / delete). The composing
- * app wraps `AppsAdminApi` in `RequireAuthMiddleware`; auth rides the
- * same-origin cookie the browser sends with each request.
+ * app wraps `AppsAdminApi` in `RequireAuthMiddleware`; the composing app's
+ * `HttpClient` layer carries the bearer that middleware checks.
  */
 class AppsAdminHttpApiClient extends adminHc.ClientTag<AppsAdminHttpApiClient>() {
   static readonly layer = adminHc.makeLayerFactory(AppsAdminHttpApiClient)()

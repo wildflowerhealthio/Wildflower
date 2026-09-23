@@ -6,10 +6,7 @@ mod self_hosted_redirect_resolver;
 mod tunnel_adapters;
 
 use anyhow::Context;
-use apps_rust::{
-    ports::{AppLaunchScopes, LaunchCookies},
-    setup_apps, AppsConfig, SelfHostedAppsService,
-};
+use apps_rust::{ports::AppLaunchScopes, setup_apps, AppsConfig, SelfHostedAppsService};
 use axum::Router;
 use emr_rust::{setup_fhir_r4, EmrConfig};
 use gatekeeper_rust::{
@@ -24,7 +21,7 @@ use std::sync::Arc;
 use tauri::Manager;
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tokio::net::TcpListener;
-use tower_http::cors::CorsLayer;
+use tower_http::cors::{AllowHeaders, AllowMethods, AllowOrigin, CorsLayer};
 use url::Url;
 
 // Loopback hostname/port for the embedded API server, derived at compile time
@@ -102,24 +99,6 @@ impl AppLaunchScopes for GatekeeperAppLaunchScopes {
     }
 }
 
-/// The host's [`apps_rust::LaunchCookies`]: delegates to
-/// [`gatekeeper_rust::rescope_owner_session_set_cookies`] (which owns the cookie
-/// name + attribute set) to re-scope the caller's owner session onto a forwarded
-/// self-hosted app's public host. Loopback launches instead `204` to a native
-/// popup whose cookies are seeded separately (see `native_webview_handle`).
-#[derive(Clone, Copy)]
-struct GatekeeperLaunchCookies;
-
-impl LaunchCookies for GatekeeperLaunchCookies {
-    fn rescope_for_host(
-        &self,
-        headers: &axum::http::HeaderMap,
-        host: &str,
-    ) -> Vec<axum::http::HeaderValue> {
-        gatekeeper_rust::rescope_owner_session_set_cookies(headers, host)
-    }
-}
-
 /// Desktop loopback-owner trust: presents the host's owner `Authorization:
 /// Bearer` header on behalf of a direct-local caller. Holds a `watch::Receiver`
 /// for the minted host owner token; each request reads the current token off
@@ -135,11 +114,9 @@ struct LoopbackOwnerTrust {
 
 /// Present the host's own owner token on behalf of a **direct-local** request —
 /// one that reached the loopback API over a loopback socket peer AND without a
-/// `Forwarded` header (a tunnel-relayed remote caller carries one). WKWebView
-/// won't carry the host-planted `wf_auth` cookie cross-site (wry drops
-/// `SameSite=None`, and WebKit won't send a `Secure` cookie over http loopback),
-/// so the desktop webview authenticates on *connection provenance* instead: the
-/// host attaches its owner bearer, and the gatekeeper gate and emr's own JWKS
+/// `Forwarded` header (a tunnel-relayed remote caller carries one). The desktop
+/// webview holds no credential of its own, so it authenticates on *connection
+/// provenance*: the host attaches its owner bearer, and the gatekeeper gate and emr's own JWKS
 /// bearer check both validate it normally — no slice-side special-casing.
 ///
 /// SECURITY: this trusts *every* direct-loopback caller as owner, not only the
@@ -184,15 +161,25 @@ fn should_present_owner_token(
     peer_is_loopback && !forwarded && !is_public_surface
 }
 
-/// The API surface's CORS policy: mirror any origin (every endpoint is
-/// loopback-gated and bearer-authenticated, so CORS is not the access control)
-/// and answer Chrome's Local Network Access preflight. A page on a public
-/// origin — the hosted owner UI at `wildflowerhealth.io/app/` — fetching this
-/// loopback server makes Chrome send `Access-Control-Request-Private-Network:
-/// true`, and it blocks the request unless the preflight answers
-/// `Access-Control-Allow-Private-Network: true`.
+/// The API surface's CORS policy: mirror any origin, method and request headers
+/// (every endpoint is loopback-gated and bearer-authenticated, so CORS is not the
+/// access control), **never** allow credentials, and answer Chrome's Local
+/// Network Access preflight.
+///
+/// Mirroring headers rather than `*` matters: the CORS spec's header wildcard
+/// excludes `Authorization`, the one header the bearer clients need. Credentials
+/// stay off because the server authenticates by `Authorization: Bearer` alone —
+/// no ambient credential (cookie, HTTP auth) exists for a cross-origin page to
+/// ride. A page on a public origin — the hosted owner UI at
+/// `wildflowerhealth.io/app/` — fetching this loopback server makes Chrome send
+/// `Access-Control-Request-Private-Network: true`, and it blocks the request
+/// unless the preflight answers `Access-Control-Allow-Private-Network: true`.
 fn api_cors_layer() -> CorsLayer {
-    CorsLayer::very_permissive().allow_private_network(true)
+    CorsLayer::new()
+        .allow_origin(AllowOrigin::mirror_request())
+        .allow_methods(AllowMethods::mirror_request())
+        .allow_headers(AllowHeaders::mirror_request())
+        .allow_private_network(true)
 }
 
 /// The current owner `Authorization: Bearer` header, built from the latest
@@ -349,13 +336,13 @@ async fn run_server(
         .context("failed to open token-revocation store")?;
 
     // Bind BEFORE minting/publishing the Owner token: `setup_gatekeeper`
-    // pushes the freshly-minted token onto the bridge publisher, and the
-    // bridge plants it as the webview's `wf_auth` cookie (and emits a
-    // contentless `AuthTokenIssued` notify to flip the page's
-    // auth-readiness signal). If the port were already taken, minting
-    // first would mean planting a full-Owner bearer cookie while a
-    // *foreign* process owns `127.0.0.1:<port>`. Binding first guarantees
-    // the token is only ever minted once this process owns the port.
+    // pushes the freshly-minted token onto the owner-token channel the
+    // loopback owner trust presents (and the bridge emits a contentless
+    // `AuthTokenIssued` notify to flip the page's auth-readiness signal).
+    // If the port were already taken, minting first would mean minting a
+    // full-Owner bearer while a *foreign* process owns `127.0.0.1:<port>`.
+    // Binding first guarantees the token is only ever minted once this
+    // process owns the port.
     let listener = TcpListener::bind(&loopback_host)
         .await
         .with_context(|| format!("failed to bind to {loopback_host}"))?;
@@ -532,15 +519,11 @@ async fn run_server(
     // `TunnelControl` implements `TunnelService`, so it's handed straight in.
     let tunnel_service: Arc<dyn tunnel_rust::TunnelService> = Arc::new(tunnel.control.clone());
     // Install the host's on-device webview handle: a loopback launch hands it the
-    // resolved URL to open in a native popup (the server 204s). It carries the
-    // owner-token watch + tunnel service to seed the popup's session cookies (#256).
-    // See `native_webview_handle`.
-    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> =
-        Arc::new(native_webview_handle::NativeWebviewHandle::new(
-            app_handle.clone(),
-            publishers.host_owner_token_sender.subscribe(),
-            Arc::clone(&tunnel_service),
-        ));
+    // resolved URL to open in a native popup (the server 204s). See
+    // `native_webview_handle`.
+    let webview_handle: Arc<dyn apps_rust::OnDeviceWebviewHandle> = Arc::new(
+        native_webview_handle::NativeWebviewHandle::new(app_handle.clone()),
+    );
     // The per-app SMART launch-scope seam: resolves a SMART app's OAuth client
     // scopes so the launch handler can require the caller's grant to cover them.
     // The launch umbrella (`wildflower/launch`) is enforced separately by the
@@ -606,15 +589,12 @@ async fn run_server(
         Arc::clone(&tunnel_service),
     ));
 
-    // The forwarded self-hosted launch cookie seam (see `GatekeeperLaunchCookies`).
-    let launch_cookies: Arc<dyn LaunchCookies> = Arc::new(GatekeeperLaunchCookies);
     let apps = setup_apps(
         diesel_pool,
         &apps_config,
         Arc::clone(&tunnel_service),
         webview_handle,
         Arc::clone(&self_hosted),
-        launch_cookies,
         launch_scopes,
     )
     .context("failed to set up apps")?;
@@ -700,12 +680,10 @@ async fn run_server(
     // asset protocol (`tauri://localhost`) in builds, while API fetches
     // target this server absolutely (the React tauri entry's
     // `apiBaseUrl`). So every API request is cross-origin and the API
-    // must impose no CORS restriction. `very_permissive()` mirrors the
-    // requesting origin/method/headers back (rather than `*`, whose
-    // header wildcard the CORS spec defines as excluding
-    // `Authorization` — the one header the bearer clients need).
-    // Trust doesn't come from CORS here anyway: the loopback gate
-    // rejects non-local peers and auth rides the bearer header.
+    // must impose no CORS restriction beyond refusing credentials (see
+    // `api_cors_layer`). Trust doesn't come from CORS here anyway: the
+    // loopback gate rejects non-local peers and auth rides the bearer
+    // header.
     //
     // The whole API stack — built first because it's the reverse proxy's
     // fallback, handed in at construction. A forwarded request that doesn't
@@ -741,8 +719,7 @@ async fn run_server(
         })))
         // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
         // present the host owner token for a direct-local caller so the webview
-        // authenticates on connection provenance rather than the cross-site
-        // cookie WKWebView won't carry. Inner of CORS (which answers preflight
+        // authenticates on connection provenance. Inner of CORS (which answers preflight
         // first) and of the loopback-peer gate applied below.
         .layer(axum::middleware::from_fn_with_state(
             LoopbackOwnerTrust {
@@ -999,6 +976,34 @@ mod tests {
                 .get("access-control-allow-origin")
                 .and_then(|value| value.to_str().ok()),
             Some("https://wildflowerhealth.io")
+        );
+    }
+
+    /// A cross-origin request is never told it may send credentials: the API
+    /// authenticates by bearer alone, so no ambient credential may ride.
+    #[tokio::test]
+    async fn cross_origin_credentials_are_never_allowed() {
+        let router = axum::Router::new()
+            .route("/fhir-r4/metadata", axum::routing::get(|| async { "ok" }))
+            .layer(api_cors_layer());
+        let preflight = axum::http::Request::options("/fhir-r4/metadata")
+            .header("origin", "https://evil.example")
+            .header("access-control-request-method", "GET")
+            .header("access-control-request-headers", "authorization")
+            .body(axum::body::Body::empty())
+            .expect("preflight request");
+        let response = router.oneshot(preflight).await.expect("preflight");
+        assert!(response
+            .headers()
+            .get("access-control-allow-credentials")
+            .is_none());
+        // `Authorization` is still allowed, so bearer clients keep working.
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-headers")
+                .and_then(|value| value.to_str().ok()),
+            Some("authorization")
         );
     }
 

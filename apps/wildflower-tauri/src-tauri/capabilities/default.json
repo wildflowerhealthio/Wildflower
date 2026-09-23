@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Capability for the React SPA webview. Matches on `webviews` only (not `windows`) so the grant is narrowed to webviews literally labeled 'main' — any child webview added to the main window with a different label (e.g. the sniffer) doesn't inherit the broad core:default surface. Per Tauri 2 ACL semantics, `windows` and `webviews` match independently (OR), so listing `windows: ['main']` here would have broadened the grant to every webview inside the main window regardless of label. The Owner bearer is never exposed to JS in any webview: the host plants it as an `HttpOnly` `wf_auth` cookie scoped to the loopback API host (`127.0.0.1`) directly in this main webview's cookie jar, so the SPA's loopback fetches authenticate by cookie without script ever reading it. There is no host command that returns the bearer.",
+  "description": "Capability for the React SPA webview. Matches on `webviews` only (not `windows`) so the grant is narrowed to webviews literally labeled 'main' — any child webview added to the main window with a different label (e.g. the sniffer) doesn't inherit the broad core:default surface. Per Tauri 2 ACL semantics, `windows` and `webviews` match independently (OR), so listing `windows: ['main']` here would have broadened the grant to every webview inside the main window regardless of label. The Owner bearer is never exposed to JS in any webview: the host keeps it host-side and presents it on the SPA's direct-loopback API requests (loopback-provenance owner trust), so script never reads it. There is no host command that returns the bearer.",
   "webviews": ["main"],
   "permissions": [
     "core:default",

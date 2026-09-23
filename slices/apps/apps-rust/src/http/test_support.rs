@@ -3,10 +3,9 @@
 //! copied into each. Request-builder helpers (`post`/`get`/…) stay per-test
 //! module.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use async_trait::async_trait;
-use axum::http::{HeaderMap, HeaderValue};
 use scopes_rust::Scope;
 use shared_structures_rust::test_utils::RecordingStubWebviewHandle;
 use shared_structures_rust::tunnel_service::{
@@ -18,7 +17,7 @@ use url::Url;
 use crate::db::SqliteAppsStore;
 use crate::domain::{AppRegistration, AppsError};
 use crate::live_bindings::state::AppsState;
-use crate::ports::{AppLaunchScopes, LaunchCookies, NoAppLaunchScopes, NoLaunchCookies};
+use crate::ports::{AppLaunchScopes, NoAppLaunchScopes};
 use crate::self_hosted_apps_service::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
@@ -102,32 +101,6 @@ pub(crate) fn self_hosted_service(tunnel: Arc<dyn TunnelService>) -> Arc<SelfHos
     ))
 }
 
-/// The `Set-Cookie` value [`RecordingLaunchCookies`] plants — a fixed sentinel a
-/// test can assert lands on a forwarded launch response without pulling in the gatekeeper
-/// cookie format (apps-rust can't depend on gatekeeper-rust).
-pub(crate) const SENTINEL_SET_COOKIE: &str =
-    "wf_auth=re.scoped.jwt; Domain=demo.example.com; Path=/";
-
-/// A recording [`LaunchCookies`] double: records every `host` it is asked to
-/// re-scope onto, and plants the single [`SENTINEL_SET_COOKIE`]. Lets a test
-/// assert both that the launch attaches the seam's output *and* that the seam is
-/// invoked for exactly the forwarded self-hosted case (its `hosts` stays empty
-/// otherwise).
-#[derive(Default)]
-pub(crate) struct RecordingLaunchCookies {
-    pub(crate) hosts: Mutex<Vec<String>>,
-}
-
-impl LaunchCookies for RecordingLaunchCookies {
-    fn rescope_for_host(&self, _headers: &HeaderMap, host: &str) -> Vec<HeaderValue> {
-        self.hosts
-            .lock()
-            .expect("hosts mutex")
-            .push(host.to_owned());
-        vec![HeaderValue::from_static(SENTINEL_SET_COOKIE)]
-    }
-}
-
 /// An [`AppLaunchScopes`] fake that requires a fixed scope set for any SMART app —
 /// drives the per-app SMART launch check. The launch capability only consults it
 /// for a SMART app (a `client_id`), so a non-SMART launch never reaches it.
@@ -151,13 +124,12 @@ impl AppLaunchScopes for FixedLaunchScopes {
 }
 
 /// Build apps state over a fresh in-memory store with a specific `tunnel`,
-/// on-device webview handle, launch-cookie seam, and launch-scope seam, using the
+/// on-device webview handle, and launch-scope seam, using the
 /// shared loopback base URL. The most general fixture; the others below pin one or
 /// two of the knobs.
 pub(crate) fn state_full(
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
-    launch_cookies: Arc<dyn LaunchCookies>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> Arc<AppsState> {
     let store = SqliteAppsStore::open_in_memory().expect("store");
@@ -168,24 +140,8 @@ pub(crate) fn state_full(
         tunnel,
         webview_handle,
         self_hosted,
-        launch_cookies,
         launch_scopes,
     ))
-}
-
-/// Apps state with a specific `tunnel` + launch-cookie seam and a throwaway
-/// recording handle — drives the forwarded self-hosted cookie-planting branch. No
-/// per-app SMART scopes required.
-pub(crate) fn state_with_launch_cookies(
-    tunnel: Arc<dyn TunnelService>,
-    launch_cookies: Arc<dyn LaunchCookies>,
-) -> Arc<AppsState> {
-    state_full(
-        tunnel,
-        Arc::new(RecordingStubWebviewHandle::default()),
-        launch_cookies,
-        Arc::new(NoAppLaunchScopes),
-    )
 }
 
 /// Apps state with a specific `tunnel` + on-device handle. Lets a test drive the
@@ -194,12 +150,7 @@ pub(crate) fn state_with_tunnel_and_handle(
     tunnel: Arc<dyn TunnelService>,
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
 ) -> Arc<AppsState> {
-    state_full(
-        tunnel,
-        webview_handle,
-        Arc::new(NoLaunchCookies),
-        Arc::new(NoAppLaunchScopes),
-    )
+    state_full(tunnel, webview_handle, Arc::new(NoAppLaunchScopes))
 }
 
 /// Apps state with the given tunnel and a throwaway recording handle — for tests
@@ -226,10 +177,5 @@ pub(crate) fn state_with_launch_scopes(
     webview_handle: Arc<dyn OnDeviceWebviewHandle>,
     launch_scopes: Arc<dyn AppLaunchScopes>,
 ) -> Arc<AppsState> {
-    state_full(
-        tunnel_unavailable(),
-        webview_handle,
-        Arc::new(NoLaunchCookies),
-        launch_scopes,
-    )
+    state_full(tunnel_unavailable(), webview_handle, launch_scopes)
 }

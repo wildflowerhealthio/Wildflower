@@ -68,10 +68,9 @@ on purpose:
 
 One deliberate exception: the **host owner token** carries
 `aud = CANONICAL_ISSUER` (same value as its `iss`). The host presents that one
-boot-minted token over loopback (the provenance-injected bearer) **and** at the
-tunnel origin (the `wf_auth` cookie seeded into the native-webview popup for
-cloud-app launches), so a served-origin audience would bind it to exactly one of
-the two. Gatekeeper's bearer gate therefore accepts the canonical audience
+boot-minted token over loopback (the provenance-injected bearer), and the same
+token must also verify on a forwarded (tunnel-origin) request, so a served-origin
+audience would bind it to exactly one of the two. Gatekeeper's bearer gate therefore accepts the canonical audience
 alongside the per-request served-origin pair. OAuth-minted tokens always get
 `{origin}/fhir-r4` — the canonical audience is never mintable through the OAuth
 surface.

@@ -6,9 +6,7 @@ use axum::extract::{Request, State};
 use axum::http::{header, HeaderMap, HeaderValue};
 use axum::middleware::{FromFnLayer, Next};
 
-use crate::http::middleware::require_auth::{
-    try_bearer_token_from_headers, verify_request_claims, AccessTokenSource,
-};
+use crate::http::middleware::require_auth::{try_bearer_token_from_headers, verify_request_claims};
 
 /// State for [`gatekeeper_auth_middleware`]'s gate handler.
 #[derive(Clone)]
@@ -46,7 +44,7 @@ pub fn gatekeeper_auth_middleware(
             if is_exempt(req.uri().path(), &gate.exempt) {
                 return next.run(req).await;
             }
-            let (claims, (token, source)) = match verify_request_claims(
+            let claims = match verify_request_claims(
                 &gate.state,
                 &headers,
                 "access-token verification failed",
@@ -58,24 +56,16 @@ pub fn gatekeeper_auth_middleware(
                 .insert(scope_capabilities_rust::ScopeClaims::new(
                     claims.scope.clone(),
                 ));
-            // Cookie-sourced: inject a Bearer header for downstream HFS auth.
-            if source == AccessTokenSource::Cookie {
-                if let Ok(bearer) = HeaderValue::from_str(&format!("Bearer {token}")) {
-                    ensure_bearer_header(req.headers_mut(), &bearer);
-                }
-            }
             next.run(req).await
         })
     };
     axum::middleware::from_fn_with_state(gate, handler)
 }
 
-/// If `headers` carries no `Authorization: Bearer`, insert `bearer`. Lets a
-/// cookie-sourced (already-verified) token — or, on desktop, the host's owner
-/// token — satisfy a downstream check that reads only the bearer header, without
-/// disturbing a request that already presents one. Shared by the FHIR bearer
-/// gate here and the Tauri loopback-owner-trust middleware, so the "insert a
-/// bearer only when absent" rule lives in exactly one place.
+/// If `headers` carries no `Authorization: Bearer`, insert `bearer`. Lets the
+/// desktop host's owner token (the Tauri loopback-owner-trust middleware)
+/// satisfy the bearer gate and any downstream check that reads only the bearer
+/// header, without disturbing a request that already presents one.
 pub fn ensure_bearer_header(headers: &mut HeaderMap, bearer: &HeaderValue) {
     if try_bearer_token_from_headers(headers).is_some() {
         return;
@@ -140,9 +130,8 @@ mod tests {
 
     #[test]
     fn ensure_bearer_header_injects_when_absent() {
-        // A request that authenticated by the `wf_auth` cookie carries no
-        // Authorization header; the gate injects the prebuilt bearer so a
-        // bearer-only downstream (emr's HFS auth) accepts it.
+        // A direct-loopback desktop request carries no Authorization header;
+        // the host injects its owner bearer so the bearer gate accepts it.
         let mut headers = HeaderMap::new();
         ensure_bearer_header(
             &mut headers,

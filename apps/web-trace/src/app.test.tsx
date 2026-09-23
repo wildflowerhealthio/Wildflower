@@ -84,7 +84,7 @@ describe('TraceApp', () => {
 
   // The two halves that a self-hosted origin makes non-obvious: the app is not
   // served by the API, so a relative path would resolve against port 8091, and
-  // the API's cookie is not sent cross-origin so the token is the credential.
+  // the granted token is the app's only credential.
   it('should read from the FHIR server named by the handshake, with the granted token', async () => {
     // Arrange & Act
     mount(searchset([traceExchangeToWire(traceExchange({ sessionId: 'morning', requestId: 'a' }))]))

@@ -2,7 +2,7 @@
 //! and the composition point that names the concrete [`SqliteAppsStore`] adapter.
 //! It also holds the loopback base URL the non-tunnel launch origin + self-hosted
 //! hostname derive from, the tunnel-launch resolver, the on-device webview seam,
-//! and the host-seam ports (launch cookies, per-app launch scopes).
+//! and the host-seam port (per-app launch scopes).
 //!
 //! It lives at the crate root (not under [`crate::http`]) deliberately: the
 //! scope-gated [`capabilities`](crate::domain::capabilities) in `domain/` are
@@ -17,7 +17,7 @@ use shared_structures_rust::tunnel_service::TunnelService;
 use url::Url;
 
 use crate::db::SqliteAppsStore;
-use crate::ports::{AppLaunchScopes, LaunchCookies};
+use crate::ports::AppLaunchScopes;
 use crate::self_hosted_apps_service::SelfHostedAppsService;
 use crate::OnDeviceWebviewHandle;
 
@@ -50,10 +50,6 @@ pub struct AppsState {
     /// the install and delete actions drive: stage + start on an upload, stop + discard
     /// on a delete.
     pub(crate) self_hosted: Arc<SelfHostedAppsService>,
-    /// Re-scopes the caller's owner session onto a **forwarded self-hosted** app's
-    /// public host (see [`LaunchCookies`]). The host wires the gatekeeper cookie
-    /// builder; a host with no cookie-auth path wires a no-op.
-    pub(crate) launch_cookies: Arc<dyn LaunchCookies>,
     /// Resolves a **SMART** app's required launch scopes (its OAuth client's
     /// allowed scopes) for the per-app launch check (see [`AppLaunchScopes`]). The
     /// host wires a gatekeeper-backed adapter; tests use a fake / no-op.
@@ -68,7 +64,6 @@ impl AppsState {
         tunnel: Arc<dyn TunnelService>,
         webview_handle: Arc<dyn OnDeviceWebviewHandle>,
         self_hosted: Arc<SelfHostedAppsService>,
-        launch_cookies: Arc<dyn LaunchCookies>,
         launch_scopes: Arc<dyn AppLaunchScopes>,
     ) -> Self {
         Self {
@@ -77,7 +72,6 @@ impl AppsState {
             tunnel,
             on_device_webview_handle: webview_handle,
             self_hosted,
-            launch_cookies,
             launch_scopes,
         }
     }

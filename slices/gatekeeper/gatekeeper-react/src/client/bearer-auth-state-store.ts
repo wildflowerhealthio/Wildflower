@@ -1,17 +1,15 @@
 /**
  * {@link AuthStateStore} factory for an entry that holds its credential as a
- * **bearer token in page memory** — not in a cookie or a host-side jar. The
- * `main-web` entry of `apps/wildflower-react` is the one that does.
+ * **bearer token in page memory**. The `main-web` entry of
+ * `apps/wildflower-react` is the one that does.
  *
  * Named for the mechanism rather than the deployment, alongside
- * {@link makeCookieAuthStateStore}: which one an entry picks is decided by how
- * its credential travels, and a page that runs cross-origin to its API server
- * has no choice. The `HttpOnly` `wf_auth` cookie is set `SameSite=Lax`, so it
- * is never carried by a cross-origin fetch; the token response's
- * `access_token` is held here instead and attached as an `Authorization`
- * header by the transport wrapper in `apps/wildflower-react`. A page reload
- * returns to `Unauthed` — the bearer is in memory only, no `localStorage` and
- * no cookie, which is the policy
+ * {@link makeEmbeddedAuthStateStore}: which one an entry picks is decided by
+ * how its credential travels. A page that runs cross-origin to its API server
+ * has no host to authenticate for it, so the token response's `access_token`
+ * is held here and attached as an `Authorization` header by the transport
+ * wrapper in `apps/wildflower-react`. A page reload returns to `Unauthed` —
+ * the bearer is in memory only, no `localStorage`, which is the policy
  * `slices/gatekeeper/docs/Auth Token Storage Explanation.md` sets for a
  * credential a public page holds.
  *

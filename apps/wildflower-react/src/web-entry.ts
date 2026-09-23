@@ -61,9 +61,8 @@ const underBasepath = (basepath: string, route: string): string =>
  * `renderApp` wiring for `main-web` — the build served from static hosting,
  * which runs **cross-origin** to whichever API server `?server=` names.
  *
- * Cross-origin means the `HttpOnly` `wf_auth` cookie is never carried (it is
- * `SameSite=Lax`), so this entry holds a bearer in page memory and attaches it
- * itself.
+ * Cross-origin means no host authenticates on this page's behalf, so this entry
+ * holds a bearer in page memory and attaches it itself.
  *
  * - `tokenStore`: in-memory bearer via `makeBearerAuthStateStore()`.
  *   A page reload returns to `Unauthed` (the bearer is in memory only).

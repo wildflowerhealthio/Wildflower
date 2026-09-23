@@ -22,7 +22,7 @@ describe('isFreshlyAuthed', () => {
   })
 
   it('treats an AuthedUntil at or before now as not fresh', () => {
-    // A lapsed cookie hint that `isAuthed` would still count as authed.
+    // A lapsed expiry that `isAuthed` would still count as authed.
     expect(isFreshlyAuthed(AuthedUntil({ exp: now }), now)).toBe(false)
     expect(isFreshlyAuthed(AuthedUntil({ exp: now - 1 }), now)).toBe(false)
     expect(isAuthed(AuthedUntil({ exp: now - 1 }))).toBe(true)

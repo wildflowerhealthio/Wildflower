@@ -21,8 +21,8 @@ describe('makeGatekeeperWebHandlers', () => {
     Effect.runSync(handlers.AuthTokenIssued({ _tag: 'AuthTokenIssued' }))
 
     // `HostAuthed` — authed with no page-known expiry — is the only signal this
-    // platform can make: the credential is the host-synced cookie, never a JWT
-    // on the JS side.
+    // platform can make: the host attaches the credential to loopback requests
+    // itself, so the JS side never holds a JWT.
     expect(setAuthState).toHaveBeenCalledTimes(1)
     const [signal] = setAuthState.mock.calls[0] ?? []
     expect(signal !== undefined && Equal.equals(signal, HostAuthed())).toBe(true)

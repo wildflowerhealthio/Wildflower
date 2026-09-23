@@ -6,10 +6,7 @@
 
 use std::sync::Arc;
 
-use apps_rust::{
-    ports::{NoAppLaunchScopes, NoLaunchCookies},
-    setup_apps, Apps, AppsConfig, SelfHostedAppsService,
-};
+use apps_rust::{ports::NoAppLaunchScopes, setup_apps, Apps, AppsConfig, SelfHostedAppsService};
 use axum::body::{to_bytes, Body};
 use axum::http::{Request, StatusCode};
 use serde_json::Value;
@@ -70,7 +67,6 @@ fn spin_up_with_handle() -> (Apps, Arc<RecordingStubWebviewHandle>) {
         tunnel,
         handle.clone(),
         self_hosted,
-        Arc::new(NoLaunchCookies),
         Arc::new(NoAppLaunchScopes),
     )
     .expect("setup_apps");

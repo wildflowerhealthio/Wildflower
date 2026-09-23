@@ -49,10 +49,9 @@ const logOutBearerSession = async (deps: BearerLogoutDeps): Promise<void> => {
 }
 
 /**
- * `main-web`'s "Logout" settings row. An action row (`onClick`), not the
- * same-origin form `gatekeeper-react`'s `gatekeeperLogoutSettingsItem` posts:
- * this page runs cross-origin to its server and holds a bearer, not a cookie,
- * so a form post would carry no credential and clear nothing.
+ * `main-web`'s "Logout" settings row. An action row (`onClick`): the page
+ * holds its bearer in memory, so logging out means forgetting that bearer and
+ * revoking it with an authenticated request — see {@link logOutBearerSession}.
  */
 const makeBearerLogoutSettingsItem = (deps: BearerLogoutDeps): SettingsItem => ({
   id: 'logout',

@@ -10,9 +10,10 @@ import type { ActivePendingConsentStore } from './active-pending-consent/store.t
  *
  * - `AuthTokenIssued`: contentless notify that the host has (or refreshed) an
  *   Owner session. The handler flips the auth-readiness signal by publishing
- *   `HostAuthed` into the {@link AuthStateStore}; the actual credential is the
- *   `wf_auth` cookie the host syncs into the webview. The bearer never travels
- *   the bridge or the JS side, and the page holds no token, so `HostAuthed`
+ *   `HostAuthed` into the {@link AuthStateStore}; the host itself attaches its
+ *   owner bearer to the webview's direct-loopback requests by connection
+ *   provenance. The bearer never travels the bridge or the JS side, and the
+ *   page holds no token, so `HostAuthed`
  *   (authed, no page-known expiry) is exactly the signal this platform can make.
  * - `PendingConsentRequested`: forwards the active pending-consent head
  *   (or `null` clear) into the SPA's {@link ActivePendingConsentStore} — the

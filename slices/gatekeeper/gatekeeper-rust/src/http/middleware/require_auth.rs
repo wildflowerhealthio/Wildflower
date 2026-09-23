@@ -13,7 +13,7 @@ use crate::http::state::GatekeeperState;
 use crate::live_bindings::{FromState, LiveTokenVerifier};
 
 /// The `/access` authN gate: verify the request carries a **valid, non-revoked**
-/// bearer (or `wf_auth` cookie) token and stash the resulting [`VerifiedClaims`]
+/// bearer token and stash the resulting [`VerifiedClaims`]
 /// in the request's extensions for the scope-gated capability extractors
 /// (`domain::capabilities`) to read — a missing/invalid token is a `401`.
 ///
@@ -39,7 +39,7 @@ pub async fn require_valid_session(
     next: Next,
 ) -> Response {
     let claims = match verify_request_claims(&state, &headers, "require_valid_session failed") {
-        Ok((claims, _source)) => claims,
+        Ok(claims) => claims,
         Err(response) => return *response,
     };
     // Hand the verified claims (incl. the `scope` claim) to the handler layer.
@@ -49,8 +49,8 @@ pub async fn require_valid_session(
     next.run(req).await
 }
 
-/// The shared authN pipeline both claims-inserting gates run: extract the access
-/// token (bearer header or `wf_auth` cookie), resolve the request's served
+/// The shared authN pipeline both claims-inserting gates run: extract the
+/// `Authorization: Bearer` access token, resolve the request's served
 /// origin, verify the token against it through the
 /// [`TokenVerifier`](crate::domain::capabilities::session::TokenVerifier)
 /// (signature, issuer/audience, revocation), and map each failure to its
@@ -60,18 +60,16 @@ pub async fn require_valid_session(
 /// [`require_valid_session`] and
 /// [`require_valid_bearer_token`](super::require_valid_bearer_token::require_valid_bearer_token)
 /// cannot drift in how a token becomes claims; they differ only in the extension
-/// type they insert (and the bearer gate's exempt paths + cookie normalization).
+/// type they insert (and the bearer gate's exempt paths).
 ///
-/// Returns the claims plus the raw token and its [`AccessTokenSource`] (the
-/// bearer gate re-presents a cookie-sourced token as a bearer header
-/// downstream). The error is the prepared failure `Response`, boxed so the
-/// happy-path `Ok` stays small (the `Response` is large — `clippy::result_large_err`).
-pub(crate) fn verify_request_claims<'h>(
+/// The error is the prepared failure `Response`, boxed so the happy-path `Ok`
+/// stays small (the `Response` is large — `clippy::result_large_err`).
+pub(crate) fn verify_request_claims(
     state: &Arc<GatekeeperState>,
-    headers: &'h HeaderMap,
+    headers: &HeaderMap,
     log_context: &'static str,
-) -> Result<(VerifiedClaims, (&'h str, AccessTokenSource)), Box<Response>> {
-    let Some((token, source)) = try_access_token_from_request(headers) else {
+) -> Result<VerifiedClaims, Box<Response>> {
+    let Some(token) = try_bearer_token_from_headers(headers) else {
         return Err(Box::new(errors::unauthorized()));
     };
     // Verify against the request's served origin (loopback for a direct hit,
@@ -84,46 +82,16 @@ pub(crate) fn verify_request_claims<'h>(
         )));
     };
     let origin = shared_structures_rust::origin_string(&base_url);
-    let claims = LiveTokenVerifier::from_state(state)
+    LiveTokenVerifier::from_state(state)
         .verify(&origin, token)
-        .map_err(|e| Box::new(errors::verify_error_response(log_context, e)))?;
-    Ok((claims, (token, source)))
+        .map_err(|e| Box::new(errors::verify_error_response(log_context, e)))
 }
 
-/// Where a verified access token was extracted from. The FHIR bearer gate
-/// carries this from extraction to injection so it only re-inserts an
-/// `Authorization: Bearer` header for the cookie path — a bearer request already
-/// carries one, so it skips the `format!` + parse entirely.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AccessTokenSource {
-    /// An `Authorization: Bearer` header (already present downstream).
-    Bearer,
-    /// The `wf_auth` cookie — the web path, where no bearer header is present.
-    Cookie,
-}
-
-/// Extract the access token from a request, preferring the `Authorization:
-/// Bearer` header and falling back to the [`wf_auth`](crate::cookies)
-/// cookie when no bearer header is present. Returns the token alongside its
-/// [`AccessTokenSource`].
-///
-/// The bearer branch preserves the embedded (Tauri) path, which keeps attaching
-/// the header from its JS-held token; the cookie branch serves the web path,
-/// where the token is `HttpOnly` and invisible to JS (see #218). Verification
-/// downstream is identical regardless of source — it verifies a token *string*.
-/// An empty cookie value (e.g. a just-cleared `wf_auth=`) is treated as absent.
-///
-/// Both sources borrow straight out of `headers`, so a request pays no
+/// Extract the access token from the request's `Authorization: Bearer` header —
+/// the only credential the server accepts. The scheme match is
+/// case-insensitive; `None` when the header is absent, not UTF-8, or another
+/// scheme. The returned slice borrows the header, so a request pays no
 /// per-request JWT copy on the way to verification.
-pub fn try_access_token_from_request(headers: &HeaderMap) -> Option<(&str, AccessTokenSource)> {
-    if let Some(bearer) = try_bearer_token_from_headers(headers) {
-        return Some((bearer, AccessTokenSource::Bearer));
-    }
-    let cookie = crate::cookies::cookie_value(headers, crate::cookies::AUTH_COOKIE_NAME)
-        .filter(|token| !token.is_empty())?;
-    Some((cookie, AccessTokenSource::Cookie))
-}
-
 pub fn try_bearer_token_from_headers(headers: &HeaderMap) -> Option<&str> {
     let value = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     let prefix = "bearer ";

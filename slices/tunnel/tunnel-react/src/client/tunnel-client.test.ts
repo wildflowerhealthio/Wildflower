@@ -11,9 +11,9 @@ const STATE_BODY = Tunnel.freshTunnelState
 
 // Stub the request transport with one that captures the outgoing
 // `Authorization` header and replies with a canned JSON body matching
-// the `TunnelStateViewSchema` shape. The client is tokenless — auth
-// rides the same-origin cookie — so the captured header must always be
-// `undefined`.
+// the `TunnelStateViewSchema` shape. The client is tokenless — the host
+// app's `HttpClient` layer carries any credential — so with this bare stub
+// the captured header must always be `undefined`.
 const capturingHttpClientLayer = (
   captures: Array<string | undefined>
 ): Layer.Layer<HttpClient.HttpClient> =>
@@ -50,7 +50,7 @@ describe('buildTunnelAdminClientLayer', () => {
     Effect.runSync(program.pipe(Effect.provide(layer)))
   })
 
-  test('never sets an Authorization header (cookie auth)', async () => {
+  test('never sets an Authorization header of its own', async () => {
     const captures: Array<string | undefined> = []
 
     const program = Effect.gen(function* () {

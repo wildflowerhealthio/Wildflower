@@ -42,10 +42,9 @@ Two facts about a self-hosted app drive everything in that runtime:
   emits _relative_ paths (`/fhir-r4/DocumentReference`), which would resolve
   against that origin and 404. So the layer prefixes them with the FHIR base the
   SMART handshake named.
-- **The API's `wf_auth` cookie is not sent cross-origin.** That cookie is what
-  authenticates the host's own webview; a third-party origin gets none of it. So
-  this app authenticates the way any SMART app does — with the token it was
-  granted, attached as a bearer header.
+- **The granted SMART token is its only credential.** So this app
+  authenticates the way any SMART app does — with the token it was granted,
+  attached as a bearer header.
 
 `web-trace-react` reads its authed runner out of **route context**
 (`fhir-r4-react`'s `useRunAuthed`), which is how every consumer of that package's

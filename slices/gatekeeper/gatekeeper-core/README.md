@@ -202,13 +202,12 @@ not part of the page contract.
 The host process (`gatekeeper-rust`, native shell, dev server) has direct
 access to the signing key and can mint an owner access token directly.
 
-The web SPA has no client-side URL-token consumption: it authenticates via
-the `HttpOnly` `wf_auth` cookie the server sets at issuance, which JS can't
-plant from a `?token=` param. Bootstrapping a web session from a URL would
-need a server endpoint that accepts a minted token and sets the cookie;
-until then the device flow is the path onto a cold web deployment. (The
-embedded/Tauri path receives the host-minted token over the gatekeeper
-bridge — see the Auth Token Storage Explanation.)
+The web SPA has no client-side URL-token consumption: it holds only the
+bearer its own sign-in (SMART redirect or device flow) obtains, in page
+memory. The Tauri webview holds no token at all — the host stamps its
+minted owner token onto the webview's direct-loopback requests by
+connection provenance, and only a contentless "authed" notify crosses the
+gatekeeper bridge (see the Auth Token Storage Explanation).
 
 **The minting helpers are a dev convenience, not a shipping pattern**, and
 the long-term story for first-Owner onboarding (native shell, fresh

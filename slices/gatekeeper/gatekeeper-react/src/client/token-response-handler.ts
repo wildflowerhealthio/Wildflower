@@ -5,10 +5,10 @@
  * it writes the bearer and does a client-side navigation instead of a
  * full-page reload.
  *
- * Entries that authenticate via `HttpOnly` cookies (web, Tauri) do not
- * wrap the tree in this provider, so the context reads `undefined` and
- * `NeedsAuthMessage` falls back to its existing `window.location.assign`
- * behavior.
+ * The Tauri entry holds no credential (the host authenticates its
+ * direct-loopback requests by connection provenance), so it does not
+ * wrap the tree in this provider; the context reads `undefined` and
+ * `NeedsAuthMessage` falls back to a full-page `window.location.assign`.
  */
 
 import { createContext, useContext } from 'react'

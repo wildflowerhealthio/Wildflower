@@ -26,8 +26,8 @@ import type { OAuthConsentResult } from '../../../queries/index.ts'
  *
  * The pending branch delegates to `PendingView`, which is also tested
  * directly here: a *freshly* authenticated viewer gets the inline consent
- * form; an unauthenticated one — or one whose `AuthedUntil` has lapsed (a
- * stale `wf_auth_exp` cookie) — keeps the "Waiting for Approval" spinner,
+ * form; an unauthenticated one — or one whose `AuthedUntil` has lapsed —
+ * keeps the "Waiting for Approval" spinner,
  * and a genuine consent-query error is surfaced rather than hidden behind
  * that spinner.
  */
@@ -51,7 +51,7 @@ vi.mock('../../../screens/oauth-consent/oauth-consent-form.tsx', () => ({
 }))
 
 // When set, the (mocked) consent query throws synchronously during render
-// — the stale-cookie 401 the quiet error boundary is meant to swallow.
+// — a failure the error boundary surfaces as the inline error view.
 let consentQueryThrows = false
 vi.mock('../../../queries/index.ts', () => ({
   useOAuthConsentQuery: (id: string) => {
@@ -111,8 +111,8 @@ describe('PendingView', () => {
     expect(screen.getByTestId('consent-form')).toBeTruthy()
     cleanup()
 
-    // A stale `wf_auth_exp` cookie (exp already past) is treated as unauthed:
-    // the spinner, not a doomed inline fetch (issue #256).
+    // A lapsed `AuthedUntil` (exp already past) is treated as unauthed: the
+    // spinner, not a doomed inline fetch (issue #256).
     renderWithAuth(<PendingView id="req-1" />, AuthedUntil({ exp: nowSeconds - 1 }))
     expect(screen.getByText('Waiting for Approval')).toBeTruthy()
     expect(screen.queryByTestId('consent-form')).toBeNull()
@@ -184,9 +184,9 @@ describe('PendingView', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {})
     consentQueryThrows = true
 
-    // The viewer is genuinely (freshly) authed, so the stale-cookie gate does
-    // not apply — this is a real failure, and the boundary now shows it rather
-    // than hiding it behind the waiting-for-phone spinner.
+    // The viewer is genuinely (freshly) authed, so the freshness gate does not
+    // apply — this is a real failure, and the boundary shows it rather than
+    // hiding it behind the waiting-for-phone spinner.
     renderWithAuth(<PendingView id="req-1" />, HostAuthed())
 
     expect(screen.getByText('Authorization Error')).toBeTruthy()

@@ -12,10 +12,6 @@
       "source": "./src/web-bridge.ts",
       "default": "./dist/web-bridge.js"
     },
-    "./test-support": {
-      "source": "./src/test-support.ts",
-      "default": "./dist/test-support.js"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {

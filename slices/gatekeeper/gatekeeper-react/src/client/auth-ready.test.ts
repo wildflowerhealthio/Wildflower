@@ -6,7 +6,6 @@ import { AuthedUntil, type AuthState, HostAuthed, isAuthed, Unauthed } from 'rea
 import { describe, expect, test } from 'vite-plus/test'
 
 import {
-  deviceLoginAuthReadyEffect,
   EMBEDDED_TOKEN_TIMEOUT,
   embeddedAuthReadyEffect,
   landingAuthReadyEffect,
@@ -15,87 +14,16 @@ import {
 
 /**
  * Pins the injected `awaitAuthReady` cores the entries thread into the
- * router context. The device-login gate is a synchronous authed/unauthed
+ * router context. The landing gate is a synchronous authed/unauthed
  * decision; embedded waits the host handshake up to `EMBEDDED_TOKEN_TIMEOUT`
  * and is driven here with `TestClock` so the 5s window is exercised without
  * real time.
  *
- * The gate keys purely on the {@link AuthState} tag (`isAuthed`); the
- * cookie-expiry logic that turns a stale hint into `Unauthed` lives in
- * `auth-state-store`'s `readAuthedSignalFromCookie` and is pinned there.
+ * Both gates key purely on the {@link AuthState} tag (`isAuthed`).
  */
 
 const makeRef = (initial: AuthState): Effect.Effect<SubscriptionRef.SubscriptionRef<AuthState>> =>
   SubscriptionRef.make<AuthState>(initial)
-
-describe('deviceLoginAuthReadyEffect', () => {
-  test('resolves when the signal is authed (standalone web)', async () => {
-    const result = await Effect.runPromise(
-      Effect.flatMap(makeRef(AuthedUntil({ exp: 9_999_999_999 })), (ref) =>
-        Effect.either(deviceLoginAuthReadyEffect(ref))
-      )
-    )
-
-    expect(result).toStrictEqual(Either.void)
-  })
-
-  test('rejects with a TanStack redirect to the device-login route when unauthed', async () => {
-    const result = await Effect.runPromise(
-      Effect.flatMap(makeRef(Unauthed()), (ref) => Effect.either(deviceLoginAuthReadyEffect(ref)))
-    )
-
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(isRedirect(result.left)).toBe(true)
-      if (isRedirect(result.left)) {
-        expect(result.left.options.to).toBe('/gatekeeper/device-login')
-        // Omitting returnTo still emits a well-formed search whose
-        // returnTo reads as absent, so the consumer falls back to its
-        // default destination rather than seeing a stray value.
-        expect(result.left.options.search).toStrictEqual({ returnTo: undefined })
-      }
-    }
-  })
-
-  test('bakes the supplied returnTo into the redirect search', async () => {
-    const returnTo = '/home?tab=labs'
-    const result = await Effect.runPromise(
-      Effect.flatMap(makeRef(Unauthed()), (ref) =>
-        Effect.either(deviceLoginAuthReadyEffect(ref, returnTo))
-      )
-    )
-
-    expect(Either.isLeft(result)).toBe(true)
-    if (Either.isLeft(result)) {
-      expect(isRedirect(result.left)).toBe(true)
-      if (isRedirect(result.left)) {
-        expect(result.left.options.to).toBe('/gatekeeper/device-login')
-        // The originally-requested path rides the redirect verbatim so
-        // `NeedsAuthMessage` can return the user there post-sign-in.
-        expect(result.left.options.search).toStrictEqual({ returnTo })
-      }
-    }
-  })
-
-  test('Right ↔ authed signal (property)', async () => {
-    // Pins the gate's truth-table: a `Right` corresponds exactly to a
-    // non-`Unauthed` signal, across every `AuthState` variant.
-    const anySignal: fc.Arbitrary<AuthState> = fc.oneof(
-      fc.constant(Unauthed()),
-      fc.constant(HostAuthed()),
-      fc.integer().map((exp) => AuthedUntil({ exp }))
-    )
-    await fc.assert(
-      fc.asyncProperty(anySignal, async (signal) => {
-        const result = await Effect.runPromise(
-          Effect.flatMap(makeRef(signal), (ref) => Effect.either(deviceLoginAuthReadyEffect(ref)))
-        )
-        expect(Either.isRight(result)).toBe(isAuthed(signal))
-      }),
-      { numRuns: numRunsFor({ base: 100 }) }
-    )
-  })
-})
 
 describe('landingAuthReadyEffect', () => {
   test('keeps the search the reader was on, so ?server= survives the bounce', async () => {
@@ -149,6 +77,25 @@ describe('landingAuthReadyEffect', () => {
     )
 
     expect(result).toStrictEqual(Either.void)
+  })
+
+  test('Right ↔ authed signal (property)', async () => {
+    // Pins the gate's truth-table: a `Right` corresponds exactly to a
+    // non-`Unauthed` signal, across every `AuthState` variant.
+    const anySignal: fc.Arbitrary<AuthState> = fc.oneof(
+      fc.constant(Unauthed()),
+      fc.constant(HostAuthed()),
+      fc.integer().map((exp) => AuthedUntil({ exp }))
+    )
+    await fc.assert(
+      fc.asyncProperty(anySignal, async (signal) => {
+        const result = await Effect.runPromise(
+          Effect.flatMap(makeRef(signal), (ref) => Effect.either(landingAuthReadyEffect(ref)))
+        )
+        expect(Either.isRight(result)).toBe(isAuthed(signal))
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 })
 

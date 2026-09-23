@@ -23,7 +23,7 @@ describe('runAuthed runner', () => {
     expect(status).toBe(204)
   })
 
-  it('should never attach an Authorization header (cookie auth)', async () => {
+  it('should attach no Authorization header of its own (the entry decides)', async () => {
     // Arrange
     const captures: Array<string | undefined> = []
     const { runAuthed } = makeRunner(captures)
@@ -115,8 +115,8 @@ const fetchWithHttpInScope: Effect.Effect<number, never, HttpClient.HttpClient> 
 ).pipe(Effect.orDie)
 
 // `HttpClient` stub whose first request fails with a 401 `ResponseError` and
-// whose second succeeds `204` — the boot-race shape (cookie lands between the
-// two sends).
+// whose second succeeds `204` — the boot-race shape (the Tauri host mints its
+// owner token between the two sends).
 const flakyUnauthorizedThenOkLayer = (): Layer.Layer<HttpClient.HttpClient> => {
   let calls = 0
   return Layer.succeed(

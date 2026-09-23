@@ -5,7 +5,6 @@ use serde::Deserialize;
 use super::internal::TokenError;
 use super::openapi::TokenRequestBody;
 use super::token_request::TokenRequest;
-use crate::cookies;
 use crate::domain::authority::PresentedAuthorizationCode;
 use crate::domain::capabilities::oauth::IssuedTokens;
 use crate::http::extractors::Live;
@@ -89,29 +88,7 @@ pub(super) async fn handle_token_request(
         Ok(token) => token,
         Err(error) => return TokenError::from(error).into_response(),
     };
-    let establishes_owner_session = token.establishes_owner_session;
-    let response = token_response(token);
-    if !establishes_owner_session {
-        return response.into_response();
-    }
-    let max_age = response.expires_in;
-    // The companion cookie carries the absolute `exp`; deriving it from
-    // `expires_in` here (rather than re-reading the JWT) keeps the hint and its
-    // `Max-Age` consistent. The companion is advisory, so the sub-second skew
-    // vs the JWT's own `exp` (minted a moment earlier) is immaterial.
-    let exp_unix = Utc::now().timestamp() + max_age;
-    let access_token = response.access_token.clone();
-    let mut response = response.into_response();
-    cookies::append_session_cookies(
-        response.headers_mut(),
-        &access_token,
-        max_age,
-        exp_unix,
-        // `Secure` only over HTTPS: the direct-loopback web path is plain http,
-        // where Safari would drop a `Secure` cookie. See #218.
-        origin.starts_with("https://"),
-    );
-    response
+    token_response(token).into_response()
 }
 
 /// The RFC 6749 §5.1 body for an exchange.

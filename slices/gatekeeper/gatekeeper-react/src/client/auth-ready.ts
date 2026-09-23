@@ -4,8 +4,6 @@ import { unwrapFiberFailure } from 'kitchen-sink'
 
 import { type AuthState, isAuthed } from 'react-kitchen-sink'
 
-import { buildDeviceLoginTarget } from '../device-login-route.ts'
-
 /**
  * Embedded WebView waited the full {@link EMBEDDED_TOKEN_TIMEOUT} for
  * the host to deliver an `AuthTokenIssued` over the gatekeeper bridge
@@ -33,52 +31,7 @@ const withFiberFailureUnwrap = async (run: () => Promise<void>): Promise<void> =
 }
 
 /**
- * Auth-readiness logic for an entry whose unauthed path is the **device-login
- * route**, parameterized over the token subscribable so it's unit-testable.
- * Reads via `Subscribable.get` once: present → succeed; absent → fails with a
- * TanStack `redirect` to that route, so the app-level gate's bubble path lands
- * the user in the device flow without any intermediate `instanceof`
- * translation. No waiting — a standalone browser has no host to
- * deliver a token later. See {@link makeAwaitDeviceLoginAuthReady} for the
- * factory that closes over a concrete subscribable, and
- * {@link landingAuthReadyEffect} for the entry that sends an unauthed reader
- * to the server picker instead.
- *
- * The optional `returnTo` (the originally-requested same-origin path,
- * supplied by the gate from `location.href`) rides the redirect as a
- * `?returnTo=` search param so `NeedsAuthMessage` can send the user
- * back where they were headed once sign-in completes. Omitted when the
- * gate has no path to preserve; the consumer falls back to its default
- * destination. The raw path is sanitized at the consumer boundary
- * (`sanitizeReturnTo`), not here.
- *
- * @remarks
- * The redirect is constructed (not thrown) and routed through
- * `Effect.fail`, so the failure channel carries TanStack's own
- * redirect sentinel. `Effect.runPromise` rejects with that sentinel;
- * the gate lets it bubble, which TanStack's `beforeLoad` machinery
- * interprets as a redirect. The destination comes from the shared
- * {@link buildDeviceLoginTarget} so the gate and the app's 401 redirect
- * can't drift on the route path or the `returnTo` param.
- */
-const deviceLoginAuthReadyEffect = (
-  subscribable: Subscribable.Subscribable<AuthState>,
-  returnTo?: string
-): Effect.Effect<void, AnyRedirect> =>
-  pipe(
-    // `Subscribable.Subscribable<T>` exposes `.get` as an `Effect<T>`
-    // and `.changes` as a `Stream<T>` directly on the value (no
-    // namespace helper). Read once for the synchronous web gate.
-    subscribable.get,
-    Effect.flatMap((signal) =>
-      isAuthed(signal)
-        ? Effect.void
-        : Effect.fail<AnyRedirect>(redirect(buildDeviceLoginTarget(returnTo)))
-    )
-  )
-
-/**
- * Embedded auth-readiness logic, parameterized over the token
+ * Tauri auth-readiness logic, parameterized over the token
  * subscribable so it's unit-testable (drive it with `TestClock` to
  * exercise the timeout). Subscribes to `subscribable.changes` (which
  * replays the current value) and takes the first present emission, so
@@ -110,27 +63,7 @@ const embeddedAuthReadyEffect = (
   )
 
 /**
- * Device-login auth-readiness factory for a same-origin, cookie-authed entry;
- * no in-tree entry uses it (it stays with the cookie-session machinery until
- * that is removed). Closes over the entry's token
- * subscribable and returns the `awaitAuthReady` function the route's
- * `beforeLoad` calls. Resolves immediately when a token is already present
- * (the cookie store reads its expiry hint synchronously at construction);
- * rejects with a TanStack `redirect` to the device-login route
- * otherwise. The gate's `returnTo` (the originally-requested path)
- * rides that redirect's `?returnTo=` so sign-in returns the user
- * there. Any `FiberFailure` wrapping is unwrapped so callers see the
- * raw redirect sentinel and not a runtime shell.
- */
-const makeAwaitDeviceLoginAuthReady =
-  (subscribable: Subscribable.Subscribable<AuthState>): ((returnTo?: string) => Promise<void>) =>
-  (returnTo) =>
-    withFiberFailureUnwrap(() =>
-      Effect.runPromise(deviceLoginAuthReadyEffect(subscribable, returnTo))
-    )
-
-/**
- * Embedded (`main-embedded`) auth-readiness factory. The host flips the
+ * Tauri (`main-tauri`) auth-readiness factory. The host flips the
  * SPA's auth signal over the gatekeeper bridge once the page-side transport
  * calls `transport.signalReady`, so on first paint the embedded
  * `AuthStateStore.subscribable` is `Unauthed` AND the transport may not yet be
@@ -168,11 +101,13 @@ const makeAwaitEmbeddedAuthReady =
 
 /**
  * Auth-readiness logic for an entry whose unauthed path is the **landing page**
- * at `/`, used by `main-web` (the cross-origin build). Same synchronous
- * one-shot as {@link deviceLoginAuthReadyEffect}, but redirects to the app root
- * rather than to the device-login route: that entry picks its API server at
- * runtime, so an unauthed reader needs the server picker before any sign-in can
- * name a target.
+ * at `/`, used by `main-web` (the cross-origin build), parameterized over the
+ * token subscribable so it's unit-testable. Reads via `Subscribable.get` once:
+ * present → succeed; absent → fails with a TanStack `redirect` to the app root.
+ * No waiting — a standalone browser has no host to deliver a token later. The
+ * redirect targets the landing page rather than the device-login route because
+ * that entry picks its API server at runtime, so an unauthed reader needs the
+ * server picker before any sign-in can name a target.
  *
  * `returnTo` is threaded as a `?returnTo=` search param on the redirect so the
  * landing page can send the reader back where they were headed once sign-in
@@ -218,11 +153,9 @@ const makeAwaitLandingAuthReady =
     withFiberFailureUnwrap(() => Effect.runPromise(landingAuthReadyEffect(subscribable, returnTo)))
 
 export {
-  deviceLoginAuthReadyEffect,
   embeddedAuthReadyEffect,
   EMBEDDED_TOKEN_TIMEOUT,
   landingAuthReadyEffect,
-  makeAwaitDeviceLoginAuthReady,
   makeAwaitEmbeddedAuthReady,
   makeAwaitLandingAuthReady,
   TokenTimeout,

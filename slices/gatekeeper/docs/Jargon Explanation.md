@@ -232,11 +232,11 @@ The authorization wall on every Owner-facing JSON endpoint
    verifies fine but doesn't pass this gate.
 
 HTML pages in the `gatekeeper-pages` group do **not** carry this
-middleware; they're public. The web SPA derives its auth state from the
-readable `wf_auth_exp` cookie and authenticates the JSON endpoints this
-middleware protects via the `HttpOnly` `wf_auth` cookie; the embedded/Tauri
-SPA sends an `Authorization: Bearer` header from its host-provided token
-instead.
+middleware; they're public. The middleware reads the access token from the
+`Authorization: Bearer` header only — the server issues and accepts no
+cookies. The hosted web SPA attaches its in-memory bearer; the Tauri SPA
+attaches nothing and is authenticated by the host's loopback-provenance
+owner trust, which presents the host-minted token on its behalf.
 
 ### Device flow (RFC 8628)
 
@@ -393,13 +393,10 @@ access token directly. It verifies normally
 because `wildflower-host` is a registered [`Client`](#client) and
 `'owner' ∈ scope` — no new endpoint, no redemption table.
 
-The web SPA has no client-side URL-token consumption: its access token is
-the `HttpOnly` `wf_auth` cookie the server sets at token issuance, which JS
-can't plant from a `?token=` param. So a cold _web_ deployment is entered
-through the device flow; reviving a URL bootstrap would take a small server
-endpoint that accepts the minted token and sets the cookie. The
-embedded/Tauri path receives the host-minted token over the gatekeeper
-bridge instead.
+The web SPA has no client-side URL-token consumption: it signs in through
+SMART (or the device flow) and holds the resulting bearer in memory. The
+Tauri path never holds the host-minted token at all — the host presents it
+on the page's direct-loopback requests.
 
 ### `gatekeeper-pages` group
 
@@ -577,8 +574,8 @@ semantics. Issued at `/oauth/token` only when the granted scopes include
 ### Access-token revocation (`jti` denylist + subject epoch)
 
 Refresh-token revocation (above) stops a client minting _new_ access tokens;
-this stops an _already-issued, still-unexpired_ access token — the leaked-cookie
-case (#218/#269). Every minted access token now carries a unique `jti` (RFC 7519
+this stops an _already-issued, still-unexpired_ access token — the leaked-token
+case (#269). Every minted access token now carries a unique `jti` (RFC 7519
 §4.1.7), which is a **revocation handle, not a single-use nonce** — normal reuse
 of the one multi-use bearer is untouched. The shared store (`token-revocation-rust`,
 its own `token_revocation` migration namespace on the same database) holds two

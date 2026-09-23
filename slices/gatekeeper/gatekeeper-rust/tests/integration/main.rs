@@ -1,3 +1,4 @@
+mod bearer_only;
 mod cache_suppression;
 mod client_auth;
 mod common;
@@ -7,5 +8,4 @@ mod loopback_dialog;
 mod oauth_endpoints;
 mod revocation;
 mod scope_gating;
-mod session_cookies;
 mod smoke;

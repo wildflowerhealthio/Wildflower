@@ -43,8 +43,9 @@ const ErrorComponent = (error: unknown): JSX.Element => (
  * heartbeats until a terminal status), not a one-shot read, so it runs
  * through `react-kitchen-sink`'s generic `useStream` against the
  * composed `runtimeLayer` from router context — NOT a one-shot TanStack
- * query. The polling endpoint is public, and the tokenless client adds
- * no `Authorization` header (auth, where needed, rides the cookie).
+ * query. The polling endpoint is public, so the tokenless slice client
+ * needs no credential of its own; any `Authorization` header comes from
+ * the host app's `HttpClient` layer.
  */
 function OAuthPollingScreen({ id }: { readonly id: string }): JSX.Element {
   const runtimeLayer = useGatekeeperRuntimeLayer()
@@ -144,9 +145,9 @@ const DeclinedView = (): JSX.Element => (
  * without the full stream subscription.
  */
 const PendingView = ({ id }: { readonly id: string }): JSX.Element => {
-  // Gate on a *fresh* signal, not merely `isAuthed`: a stale `wf_auth_exp` cookie
-  // reads as authed but the server will 401 the consent fetch (#256). A lapsed
-  // `AuthedUntil` keeps this viewer on the spinner (stream still mounted, so a
+  // Gate on a *fresh* signal, not merely `isAuthed`: an `AuthedUntil` whose
+  // `exp` has passed still reads as authed, but the server will 401 the consent
+  // fetch its expired bearer carries (#256). A lapsed `AuthedUntil` keeps this viewer on the spinner (stream still mounted, so a
   // phone-side approval advances the page) instead of mounting a doomed
   // `InlineConsent` — so only genuine errors reach the boundary below.
   const authSignal = useSubscribable(useAuthStateSubscribable())
@@ -180,7 +181,7 @@ interface ConsentErrorBoundaryState {
  * rather than letting it bubble to the app-root boundary (which would replace
  * the whole SPA for what is a single embedded consent card).
  *
- * The expected stale-cookie 401 (issue #256) no longer reaches here:
+ * The expected expired-credential 401 (issue #256) never reaches here:
  * {@link PendingView} gates on {@link isFreshlyAuthed}, so a lapsed session
  * shows the spinner and never mounts `InlineConsent`. What remains are genuine
  * failures worth showing — this boundary makes them visible instead of hiding

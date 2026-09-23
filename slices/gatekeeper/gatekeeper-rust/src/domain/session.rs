@@ -1,4 +1,4 @@
-//! Owner web-**session** operations — today just the logout token revoke, lifted
+//! Owner **session** operations — today just the logout token revoke, lifted
 //! out of the logout handler so the best-effort denylist decision is a pure,
 //! testable domain operation over the [`Revocation`](crate::ports::Revocation)
 //! port (no real revocation store in the way).
@@ -8,13 +8,13 @@ use chrono::{DateTime, Utc};
 use crate::ports::Revocation;
 
 /// Denylist the logged-out session token's `jti` until `expires_at`, so a leaked
-/// copy of the cookie can't be replayed after logout.
+/// copy of the token can't be replayed after logout.
 ///
 /// **Best-effort by design:** the `/access` gate already verified the request's
 /// token, so this only recovers the trusted `jti` + `exp` to denylist; any store
-/// hiccup (already revoked, transient failure) must never block the cookie clear
-/// — leaving the session cookie in place would be the worse outcome — so a
-/// failure is logged and swallowed rather than returned. See #218 / #269.
+/// hiccup (already revoked, transient failure) must never fail the logout — the
+/// client has already forgotten the token — so a failure is logged and
+/// swallowed rather than returned. See #269.
 pub(crate) fn revoke_session_token(
     revoker: &(impl Revocation + ?Sized),
     jti: &str,
@@ -72,7 +72,7 @@ mod tests {
     }
 
     #[test]
-    fn swallows_a_store_failure_so_the_cookie_clear_still_proceeds() {
+    fn swallows_a_store_failure_so_the_logout_still_proceeds() {
         let revoker = RecordingRevoker {
             fail: true,
             ..RecordingRevoker::default()
