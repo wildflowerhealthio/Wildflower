@@ -3,6 +3,7 @@ import { userEvent } from '@testing-library/user-event'
 import { Effect, Layer, SubscriptionRef } from 'effect'
 import * as fc from 'fast-check'
 import { GatekeeperHttpApiClient } from 'gatekeeper-core/clients'
+import { CLIENT_BASE_URL_PARAM } from 'gatekeeper-core/smart-client'
 import { numRunsFor } from 'kitchen-sink/test'
 import type { JSX, ReactNode } from 'react'
 import {
@@ -67,10 +68,15 @@ const scopesHolder: { current: string | undefined } = { current: undefined }
 // fallback; a set value proves the device-login request forwards the injected id.
 const clientIdHolder: { current: string | undefined } = { current: undefined }
 
+// Stands in for the host-threaded `clientBaseUrl` router-context value.
+// `undefined` (the default) is the Tauri shape, which names no base.
+const clientBaseUrlHolder: { current: string | undefined } = { current: undefined }
+
 vi.mock('../router-context.ts', () => ({
   useGatekeeperRuntimeLayer: (): Layer.Layer<GatekeeperHttpApiClient> => layerHolder.current,
   useGatekeeperLocalGrantedScopes: (): string | undefined => scopesHolder.current,
   useGatekeeperFirstPartyClientId: (): string | undefined => clientIdHolder.current,
+  useGatekeeperClientBaseUrl: (): string | undefined => clientBaseUrlHolder.current,
 }))
 
 // The device flow publishes the freshly-authed signal through the
@@ -98,6 +104,7 @@ afterEach(() => {
   setAuthStateMock.mockReset()
   scopesHolder.current = undefined
   clientIdHolder.current = undefined
+  clientBaseUrlHolder.current = undefined
 })
 
 /** The canned RFC 8628 §3.2 device-authorization response the stubs return. */
@@ -216,6 +223,37 @@ describe('<NeedsAuthMessage> device flow', () => {
     expect(payload['scope']).toBe('system/*.rs wildflower/*.rs')
     // No host-threaded id → the standalone `FIRST_PARTY_CLIENT_ID` fallback.
     expect(payload['client_id']).toBe('wildflower-host')
+    // No host-threaded base → none named, so the server's configured one applies.
+    expect(payload).not.toHaveProperty(CLIENT_BASE_URL_PARAM)
+  })
+
+  test('names the host-threaded owner UI copy so the verification_uri points back at it', async () => {
+    // A PR preview (or any copy other than the host's configured one) must get a
+    // `verification_uri` on itself, which the server builds from this field.
+    clientBaseUrlHolder.current = 'https://wildflowerhealthio.github.io/staging/pr-736/app/'
+    let capturedInput: unknown
+    layerHolder.current = makeClientLayer({
+      DeviceAuthorization: (input) => {
+        capturedInput = input
+        return Effect.succeed(DEVICE_AUTH_RESPONSE)
+      },
+      TokenExchange: () => PENDING_FOREVER,
+    })
+
+    render(withTokenStore(<NeedsAuthMessage />))
+    await startSignIn()
+
+    await waitFor(
+      () => {
+        expect(capturedInput).toBeDefined()
+      },
+      { timeout: 2000 }
+    )
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- test assertion: narrow the captured `unknown` to read the payload
+    const payload = (capturedInput as { readonly payload: Record<string, unknown> }).payload
+    expect(payload[CLIENT_BASE_URL_PARAM]).toBe(
+      'https://wildflowerhealthio.github.io/staging/pr-736/app/'
+    )
   })
 
   test('identifies the request with the host-threaded first-party client id', async () => {

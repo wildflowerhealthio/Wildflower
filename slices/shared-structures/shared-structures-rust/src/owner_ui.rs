@@ -11,6 +11,9 @@
 //! [`OwnerUiBase`] is the one place those URLs are spelled. The host decides the
 //! base (from `tauri-shared-config.json`, switching to the local `main-web` dev
 //! server in debug builds) and threads it in; slices never name the address.
+//! A first-party client can name a different copy of the UI to send its own
+//! browser back to (gatekeeper's `wildflower_client_base_url`); the gatekeeper
+//! parses that value into an [`OwnerUiBase`] too.
 
 use url::Url;
 

@@ -14,20 +14,43 @@
 
 use std::sync::Arc;
 
+use axum::extract::Query;
+use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::post;
 use axum::Router;
 use scope_capabilities_rust::Authenticated;
+use serde::Deserialize;
 
+use crate::domain::client_base_url::ClientBaseUrl;
 use crate::http::extractors::OwnerUiPages;
 use crate::http::state::GatekeeperState;
+use crate::http::ServedOrigin;
 use crate::live_bindings::LiveSessionEnder;
 
 pub fn router() -> Router<Arc<GatekeeperState>> {
     Router::new().route("/logout", post(handle_logout))
 }
+/// `POST /access/logout`'s optional query.
+#[derive(Debug, Deserialize)]
+struct LogoutQuery {
+    /// The served root of the owner UI copy logging out — see the module docs.
+    wildflower_client_base_url: Option<String>,
+}
 
-async fn handle_logout(session: Authenticated<LiveSessionEnder>, pages: OwnerUiPages) -> Response {
+async fn handle_logout(
+    session: Authenticated<LiveSessionEnder>,
+    origin: ServedOrigin,
+    pages: OwnerUiPages,
+    Query(query): Query<LogoutQuery>,
+) -> Response {
+    let client_base_url =
+        match ClientBaseUrl::parse_optional(query.wildflower_client_base_url.as_deref()) {
+            Ok(client_base_url) => client_base_url,
+            Err(error) => return (StatusCode::BAD_REQUEST, error.to_string()).into_response(),
+        };
+    let pages = pages.for_client(session.client_id(), client_base_url);
+
     // Revoke the presented session token so a leaked copy can't outlive the
     // logout. Best-effort by design: a store hiccup must never fail the logout.
     session.end();

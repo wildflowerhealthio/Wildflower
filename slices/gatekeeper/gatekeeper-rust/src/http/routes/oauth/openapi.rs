@@ -54,7 +54,7 @@ pub(super) enum TokenRequestBody {
 
 /// `POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the
 /// optional `scope` plus the body credentials, and the non-standard
-/// `device_name` extension. Form-urlencoded.
+/// `device_name` and `wildflower_client_base_url` extensions. Form-urlencoded.
 #[derive(Serialize, ToSchema)]
 pub(super) struct DeviceAuthorizationRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -65,6 +65,8 @@ pub(super) struct DeviceAuthorizationRequest {
     scope: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     device_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    wildflower_client_base_url: Option<String>,
 }
 
 /// The JSON 404 body `not_found("AuthorizationRequestNotFound", "id", ...)`

@@ -3,6 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { CLIENT_BASE_URL_PARAM } from '../client-base-url.ts'
 import {
   parsePendingAuthorization,
   serializePendingAuthorization,
@@ -106,6 +107,25 @@ describe('beginSignIn', () => {
       ),
       { numRuns: numRunsFor({ base: 30 }) }
     )
+  })
+
+  it('names the owner UI copy only when the environment carries one', async () => {
+    // Arrange
+    const clientBaseUrl = 'https://wildflowerhealthio.github.io/staging/pr-736/app/'
+    const plain = testEnvironment({ store: memoryStore(), fetch: discoveryOnly() })
+    const ownerUiCopy = { ...plain, clientBaseUrl }
+
+    // Act
+    const [withoutBase, withBase] = await Promise.all([
+      runToEither(beginSignIn(SERVER, plain)),
+      runToEither(beginSignIn(SERVER, ownerUiCopy)),
+    ])
+
+    // Assert
+    if (Either.isLeft(withoutBase)) throw new Error(withoutBase.left.reason)
+    if (Either.isLeft(withBase)) throw new Error(withBase.left.reason)
+    expect(new URL(withoutBase.right).searchParams.has(CLIENT_BASE_URL_PARAM)).toBe(false)
+    expect(new URL(withBase.right).searchParams.get(CLIENT_BASE_URL_PARAM)).toBe(clientBaseUrl)
   })
 
   it('stashes the verifier that matches the challenge it sent', async () => {

@@ -103,6 +103,11 @@ interface SignInEnvironment {
   readonly redirectUri: string
   /** Whether the client itself is on a secure page (an `https:` document). */
   readonly pageIsSecure: boolean
+  /**
+   * The served root of the owner UI copy signing in, for a client that is one
+   * (sent as `CLIENT_BASE_URL_PARAM` on the authorization request).
+   */
+  readonly clientBaseUrl?: string
 }
 
 /**
@@ -152,6 +157,9 @@ const beginSignIn = (
       state,
       codeChallenge,
       audience: fhirAudienceFor(serverUrl),
+      ...(environment.clientBaseUrl === undefined
+        ? {}
+        : { clientBaseUrl: environment.clientBaseUrl }),
     })
   })
 

@@ -1,3 +1,4 @@
+import { CLIENT_BASE_URL_PARAM } from 'gatekeeper-core/smart-client'
 import { Unauthed } from 'react-kitchen-sink'
 import type { SettingsItem } from 'shared-structures-react'
 import type { BearerAuthStateStore } from './client/bearer-auth-state-store.ts'
@@ -6,6 +7,12 @@ import type { BearerAuthStateStore } from './client/bearer-auth-state-store.ts'
 interface BearerLogoutDeps {
   /** The API server the page is signed in to — the `?server=` it runs against. */
   readonly apiBaseUrl: string
+  /**
+   * This copy's served root (`sign-in.ts`'s `clientBaseUrlFor`), named on the
+   * revoke so the server's `303` points back at this copy. Omitted when the
+   * page has none to name.
+   */
+  readonly clientBaseUrl?: string
   /** The page's bearer store: read for the token to revoke, then emptied. */
   readonly bearerStore: Pick<BearerAuthStateStore, 'bearer' | 'setAuthState'>
   /** `window.fetch`, injected so a test can observe the revoke request. */
@@ -16,6 +23,13 @@ interface BearerLogoutDeps {
    * owner data, in-flight streams) outlives the logout.
    */
   readonly leave: () => void
+}
+
+/** `POST {server}/access/logout`, naming this copy's served root when it has one. */
+const logoutUrl = (deps: Pick<BearerLogoutDeps, 'apiBaseUrl' | 'clientBaseUrl'>): string => {
+  const url = `${deps.apiBaseUrl.replace(/\/+$/, '')}/access/logout`
+  if (deps.clientBaseUrl === undefined) return url
+  return `${url}?${new URLSearchParams({ [CLIENT_BASE_URL_PARAM]: deps.clientBaseUrl }).toString()}`
 }
 
 /**
@@ -35,7 +49,7 @@ const logOutBearerSession = async (deps: BearerLogoutDeps): Promise<void> => {
   deps.bearerStore.setAuthState(Unauthed())
   if (bearer !== undefined) {
     try {
-      await deps.fetch(`${deps.apiBaseUrl.replace(/\/+$/, '')}/access/logout`, {
+      await deps.fetch(logoutUrl(deps), {
         method: 'POST',
         headers: { Authorization: `Bearer ${bearer}` },
         redirect: 'manual',

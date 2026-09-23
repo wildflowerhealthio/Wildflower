@@ -12,6 +12,7 @@ use crate::crypto_util::random_token::generate_authorization_code;
 use crate::domain::capabilities::oauth::{
     asks_loopback_dialog, AuthorizationStartError, AuthorizeNextStep, AuthorizeRequest, FreshIds,
 };
+use crate::domain::client_base_url::ClientBaseUrl;
 use crate::domain::client_redirect::{build_client_error_redirect_url, build_client_redirect_url};
 use crate::http::errors::InternalError;
 use crate::http::errors::{oauth_error_html, OAuthErrorKind};
@@ -136,6 +137,14 @@ pub struct AuthorizeParams {
     /// <https://github.com/Assessment-is/Wildflower/issues/257>.
     #[serde(default)]
     pub aud: Option<String>,
+    /// Wildflower extension: the served root of the owner UI copy starting
+    /// this sign-in (e.g. `https://wildflowerhealth.io/app/`, or a PR
+    /// preview's `…/staging/pr-<n>/app/`). For a first-party client the polling
+    /// page resolves there rather than on the configured owner UI; any other
+    /// client's value is ignored. Must be an absolute `http`/`https` URL — see
+    /// [`crate::domain::client_base_url`].
+    #[serde(default)]
+    pub wildflower_client_base_url: Option<String>,
 }
 
 /// The authorization endpoint (RFC 6749 §3.1), the public front door of the
@@ -192,6 +201,12 @@ pub(super) async fn handle_authorize_request(
     pages: OwnerUiPages,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
+    // Checked before anything is parked, so a malformed value can't leave a
+    // pending request behind. A local page, like every failure before the
+    // `redirect_uri` is vouched for.
+    let client_base_url =
+        ClientBaseUrl::parse_optional(params.wildflower_client_base_url.as_deref())
+            .map_err(|_| AuthorizeError::LocalPage(OAuthErrorKind::InvalidClientBaseUrl))?;
     // Log the SMART App Launch params (see the `launch` / `aud` field docs) so
     // an operator can correlate a SMART app's request back to the click that
     // triggered it.
@@ -253,6 +268,7 @@ pub(super) async fn handle_authorize_request(
                     }
                 });
             }
+            let pages = pages.for_client(&params.client_id, client_base_url);
             found_redirect(&pages.oauth_polling_url(&request_id))
         }
     })

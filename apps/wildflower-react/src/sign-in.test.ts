@@ -22,6 +22,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import {
   authStateForSession,
   CLIENT_ID,
+  clientBaseUrlFor,
   finishSignIn,
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,
@@ -33,6 +34,29 @@ import {
   startSignIn,
   takeReturnTo,
 } from './sign-in.ts'
+
+describe('clientBaseUrlFor', () => {
+  it('property: is the origin plus the served base, whatever route the page is on', () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom('https://wildflowerhealth.io', 'http://localhost:5195'),
+        fc.array(fc.stringMatching(/^[a-z0-9-]{1,8}$/), { maxLength: 3 }),
+        fc.array(fc.stringMatching(/^[a-z0-9-]{1,8}$/), { maxLength: 3 }),
+        (origin, baseSegments, routeSegments) => {
+          const basePath = `/${baseSegments.map((segment) => `${segment}/`).join('')}`
+          const href = `${origin}${basePath}${routeSegments.join('/')}?server=x#y`
+          expect(clientBaseUrlFor(href, basePath)).toBe(`${origin}${basePath}`)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('names nothing for a page not served over http or https', () => {
+    expect(clientBaseUrlFor('file:///Users/ruth/app/index.html')).toBeUndefined()
+    expect(clientBaseUrlFor('not a url')).toBeUndefined()
+  })
+})
 
 describe('signInEnvironment', () => {
   it('returns to the fixed /home route, not to the section the reader signed in from', () => {
@@ -62,6 +86,20 @@ describe('signInEnvironment', () => {
     // silently); the preview derives its own base, correct for where it is served.
     expect(production.redirectUri).toBe(REGISTERED_REDIRECT_URI)
     expect(preview.redirectUri).toBe('https://wildflowerhealthio.github.io/staging/pr-719/app/home')
+  })
+
+  it('names the served root of the copy signing in, whichever section it started from', () => {
+    // Arrange / Act — the server resolves its polling page on this value, so a
+    // preview must name itself and not the published `/app/`.
+    const preview = signInEnvironment(
+      pageAt('https://wildflowerhealthio.github.io/staging/pr-736/app/settings'),
+      '/staging/pr-736/app/'
+    )
+    const dev = signInEnvironment(pageAt('http://localhost:5195/gatekeeper/grants'))
+
+    // Assert
+    expect(preview.clientBaseUrl).toBe('https://wildflowerhealthio.github.io/staging/pr-736/app/')
+    expect(dev.clientBaseUrl).toBe('http://localhost:5195/')
   })
 
   it('falls back to the published URI from an address a sign-in must not return to', () => {

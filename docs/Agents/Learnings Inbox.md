@@ -406,3 +406,9 @@ The reason it cost a day is worth keeping separately: the failure did not look l
 **Discovered during**: claude/wildflower-cookie-auth-audit-z4hncx (removing `wf_auth` / `wf_auth_exp`)
 **Learning**: The gatekeeper extractor reads `Authorization: Bearer` and nothing else, no grant or logout sets a cookie, and the API's CORS layer never allows credentials. So a top-level browser navigation to a gated route (a `/fhir-r4/...` URL opened in a browser tab, a non-SMART self-hosted app on a remote subdomain) is always a `401`: only a page whose JS attaches a bearer, or a direct-loopback caller on the desktop (the host's loopback-provenance owner trust), is authenticated. Anything that needs remote access to on-device data must be a SMART app that earns its own bearer. Before adding a gated route meant to be opened as a page, re-read "Bearer-only auth makes HTML pages public" in Strategies.md.
 **Suggested destination**: Origins Explanation or the gatekeeper Jargon Explanation
+
+## The web owner UI talks to gatekeeper as two different clients
+
+**Discovered during**: claude/oauth-redirect-routing-9cmhrj (sending a PR preview's sign-in back to the preview)
+**Learning**: `main-web` signs in by SMART redirect as `client_id=wildflower-react`, but its device-login fallback and step-up screen (`NeedsAuthMessage`) start the device flow as `wildflower-host`. With no host-threaded id it falls back to `FIRST_PARTY_CLIENT_ID`. A web session's token can therefore be bound to either id, so a server-side rule meant for "the web owner UI" has to accept both. `wildflower_client_base_url` does (`gatekeeper-rust/src/domain/client_base_url.rs`). The debug host's configured owner UI is the `main-web` dev server on `localhost:5195`, so before this parameter a deployed preview that signed in through a debug host's tunnel was sent to `localhost`.
+**Suggested destination**: gatekeeper Jargon Explanation (Client)

@@ -3,6 +3,7 @@ import * as fc from 'fast-check'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { CLIENT_BASE_URL_PARAM } from '../client-base-url.ts'
 import {
   authorizationRedirectOutcome,
   authorizationRequestUrl,
@@ -122,6 +123,27 @@ describe('authorizationRequestUrl', () => {
       code_challenge_method: 'S256',
       aud: 'https://ruth.wildflowerhealth.io/fhir-r4',
     })
+  })
+
+  it('names the owner UI copy signing in when given its served root', () => {
+    // Arrange
+    const clientBaseUrl = 'https://wildflowerhealthio.github.io/staging/pr-736/app/'
+
+    // Act
+    const url = new URL(
+      authorizationRequestUrl('https://ruth.wildflowerhealth.io/oauth/authorize', {
+        clientId: 'wildflower-react',
+        redirectUri: `${clientBaseUrl}home`,
+        scope: 'openid',
+        state: 's',
+        codeChallenge: 'c',
+        audience: 'https://ruth.wildflowerhealth.io/fhir-r4',
+        clientBaseUrl,
+      })
+    )
+
+    // Assert
+    expect(url.searchParams.get(CLIENT_BASE_URL_PARAM)).toBe(clientBaseUrl)
   })
 
   it('keeps a query the discovery document already put on the endpoint', () => {

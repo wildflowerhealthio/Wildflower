@@ -28,7 +28,9 @@ pub struct GatekeeperConfig {
     pub first_party_client_id: String,
 
     /// The hosted owner UI the device-flow `verification_uri` and the
-    /// `/authorize` polling page live on (see [`OwnerUiBase`]). The live Tauri
-    /// app sources it from `tauri-shared-config.json`.
+    /// `/authorize` polling page live on (see [`OwnerUiBase`]), unless a
+    /// first-party client names its own copy (see
+    /// [`crate::domain::client_base_url`]). The live Tauri app sources it from
+    /// `tauri-shared-config.json`.
     pub owner_ui_base: OwnerUiBase,
 }

@@ -151,6 +151,11 @@ interface RenderAppOptions {
    */
   readonly firstPartyClientId?: string
   /**
+   * The served root of this copy of the owner UI — see
+   * `RouterContext.clientBaseUrl`. `main-web` passes it; other entries omit it.
+   */
+  readonly clientBaseUrl?: string
+  /**
    * Platform-specific settings rows this entry contributes to the shared
    * `/settings` list. Threaded into `AppRootTree`, which provides them to the
    * tree for the settings route to append (see
@@ -252,6 +257,7 @@ const renderApp = ({
   apiBaseUrl,
   localGrantedScopes,
   firstPartyClientId,
+  clientBaseUrl,
   platformSettingsItems,
   platformTabs,
   redirectToDeviceLoginOnUnauthorized,
@@ -337,6 +343,9 @@ const renderApp = ({
       // gatekeeper seeds the first-party client under — see
       // `RouterContext.firstPartyClientId`.
       firstPartyClientId,
+      // Threaded so `NeedsAuthMessage`'s device-flow `verification_uri` points
+      // back at this copy — see `RouterContext.clientBaseUrl`.
+      clientBaseUrl,
       // Threaded so the landing page can report a sign-in that failed before
       // the tree existed — see `RouterContext.signInProblem`.
       signInProblem,

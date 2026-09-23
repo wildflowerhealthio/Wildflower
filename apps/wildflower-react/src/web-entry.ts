@@ -18,6 +18,7 @@ import {
 
 import type { RenderAppOptions } from './app-root.tsx'
 import { stubTransport } from './bridges/transport-context.ts'
+import { clientBaseUrlFor } from './sign-in.ts'
 
 /**
  * The API origin assumed when the URL carries no usable `?server=`: the loopback
@@ -71,6 +72,9 @@ const underBasepath = (basepath: string, route: string): string =>
  *   until the reader picks one — the picker and the sign-in live at the root.
  * - `apiBaseUrl`: read from `?server=`, defaulting to the local
  *   loopback origin.
+ * - `clientBaseUrl`: this copy's served root (origin + `basepath`), named to
+ *   the server on the device-flow request and the logout so the pages it hands
+ *   back point at this copy — see `sign-in.ts`'s `clientBaseUrlFor`.
  * - `readBearer`: wired to the store's `bearer()` reader, so
  *   every relative request gets an `Authorization` header.
  * - `makeTransport`: pre-resolved stub (no host bridge).
@@ -91,6 +95,7 @@ const makeWebEntryOptions = (
   | 'awaitAuthReady'
   | 'makeTransport'
   | 'apiBaseUrl'
+  | 'clientBaseUrl'
   | 'readBearer'
   | 'platformSettingsItems'
   | 'platformTabs'
@@ -99,6 +104,7 @@ const makeWebEntryOptions = (
   const bearerStore = makeBearerAuthStateStore()
 
   const apiBaseUrl = apiServerUrl(window.location.search)
+  const clientBaseUrl = clientBaseUrlFor(window.location.href, basepath)
 
   return {
     bearerStore,
@@ -106,10 +112,12 @@ const makeWebEntryOptions = (
     awaitAuthReady: () => makeAwaitLandingAuthReady(bearerStore.subscribable),
     makeTransport: () => Promise.resolve(stubTransport),
     apiBaseUrl,
+    ...(clientBaseUrl === undefined ? {} : { clientBaseUrl }),
     readBearer: bearerStore.bearer,
     platformSettingsItems: [
       gatekeeperLogoutSettingsItem({
         apiBaseUrl,
+        ...(clientBaseUrl === undefined ? {} : { clientBaseUrl }),
         bearerStore,
         fetch: (input, init) => window.fetch(input, init),
         leave: () => {

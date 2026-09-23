@@ -255,7 +255,9 @@ client. Flow:
    The verification URIs point at the hosted owner UI
    (`https://wildflowerhealth.io/app/gatekeeper/devices?server=<origin>`,
    the host's `owner_ui_base_url`), not at the server itself — the host
-   serves no UI of its own.
+   serves no UI of its own. A first-party client that names the owner UI copy
+   it runs from ([client base URL](#client-base-url)) gets them on that copy
+   instead.
 2. Owner enters the `user_code` at `/gatekeeper/devices` (or scans the QR
    for `verification_uri_complete`) on a separate, already-Owner-authed
    device — or answers the popup the request raised there through the
@@ -355,6 +357,23 @@ Forwarded (tunnel) requests and every other `client_id` never reach the dialog.
 Anyone on loopback can present the `client_id`. The dialog names the redirect
 origin, and the Owner is at the machine, which is the same trade-off as trust on
 first use.
+
+### Client base URL
+
+The served root of the owner UI copy a first-party client runs from — the
+published `https://wildflowerhealth.io/app/`, a PR preview's
+`https://wildflowerhealthio.github.io/staging/pr-<n>/app/`, a local dev server.
+The client names it with the non-standard `wildflower_client_base_url`
+parameter (`CLIENT_BASE_URL_PARAM` in `gatekeeper-core/src/client-base-url.ts`)
+on `/oauth/authorize`, `/oauth/device_authorization` and `/access/logout`, and
+the page each hands back — the polling page, the verification URIs, logout's
+landing — resolves on that copy rather than on the host's configured
+`owner_ui_base_url`. Only the first-party ids (`wildflower-react` and the
+host's first-party `client_id`) are honoured; any other client's value is
+ignored, since the polling page is where that client's consent is decided. A
+value that is not an absolute `http`/`https` URL is rejected with a `400`
+before the endpoint has any effect. The decision lives in `gatekeeper-rust`'s
+`domain/client_base_url.rs`.
 
 ### Expandable consent
 

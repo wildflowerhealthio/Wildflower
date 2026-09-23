@@ -134,6 +134,27 @@ type SignInStep<A> =
   | { readonly tag: 'Failed'; readonly reason: string }
 
 /**
+ * The served root of the copy at `href` — its origin plus `basePath` — which the
+ * page names to the server as gatekeeper-core's `CLIENT_BASE_URL_PARAM` so the
+ * pages the server hands back (the `/authorize` polling page, the device-flow
+ * `verification_uri`, logout's landing) resolve on this copy rather than on the
+ * host's configured owner UI. `undefined` for a page not served over
+ * `http`/`https`, which the server would reject.
+ *
+ * @example clientBaseUrlFor('https://wildflowerhealth.io/app/settings', '/app/') // 'https://wildflowerhealth.io/app/'
+ */
+const clientBaseUrlFor = (href: string, basePath = '/'): string | undefined => {
+  let here: URL
+  try {
+    here = new URL(href)
+  } catch {
+    return undefined
+  }
+  if (here.protocol !== 'http:' && here.protocol !== 'https:') return undefined
+  return new URL(basePath.endsWith('/') ? basePath : `${basePath}/`, here.origin).href
+}
+
+/**
  * The impure edges — and this entry's registered values — the flow runs against.
  *
  * `basePath` is the served base (the router's basepath) the redirect returns
@@ -143,15 +164,18 @@ type SignInStep<A> =
  * landing on the way out; the base the 404 redirect lands on when the code
  * comes back). See {@link POST_SIGN_IN_ROUTE}.
  */
-const signInEnvironment = (page: SignInPage, basePath = '/'): SignInEnvironment =>
-  browserSignInEnvironment(page, {
+const signInEnvironment = (page: SignInPage, basePath = '/'): SignInEnvironment => {
+  const clientBaseUrl = clientBaseUrlFor(page.location.href, basePath)
+  return browserSignInEnvironment(page, {
     clientId: CLIENT_ID,
     pendingKey: PENDING_AUTHORIZATION_KEY,
     scope: standaloneLaunchScopeParameter(),
     redirectUri:
       redirectUriForRoute(page.location.href, POST_SIGN_IN_ROUTE, basePath) ??
       REGISTERED_REDIRECT_URI,
+    ...(clientBaseUrl === undefined ? {} : { clientBaseUrl }),
   })
+}
 
 /** Fold a sign-in Effect's failure channel into a {@link SignInStep}. */
 const runStep = <A>(effect: Effect.Effect<A, SignInError>): Promise<SignInStep<A>> =>
@@ -279,6 +303,7 @@ const postSignInUrl = (returnTo: string, serverUrl: string, origin: string): str
 export {
   authStateForSession,
   CLIENT_ID,
+  clientBaseUrlFor,
   finishSignIn,
   PENDING_AUTHORIZATION_KEY,
   postSignInUrl,

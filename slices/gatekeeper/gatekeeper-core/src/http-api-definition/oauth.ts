@@ -1,5 +1,6 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from '@effect/platform'
 import { Schema } from 'effect'
+import { CLIENT_BASE_URL_PARAM } from '../client-base-url.ts'
 
 const AuthorizationStatusSchema = Schema.Union(
   Schema.Struct({ status: Schema.Literal('pending') }),
@@ -58,6 +59,9 @@ const AuthorizeUrlParamsSchema = Schema.Struct({
   state: Schema.String,
   launch: Schema.optional(Schema.String),
   aud: Schema.optional(Schema.String),
+  // Wildflower extension: the served root of the owner UI copy signing in —
+  // see `CLIENT_BASE_URL_PARAM`.
+  [CLIENT_BASE_URL_PARAM]: Schema.optional(Schema.String),
 })
 
 // Error response shapes per OAuth 2.0 §5.2 / RFC 8628 §3.5. One schema
@@ -166,6 +170,9 @@ const DeviceAuthorizationPayloadSchema = Schema.Struct({
   // surfaced to the approver so they can tell who is asking. Strict RFC clients simply
   // omit it. Kept snake_case + form-urlencoded like the rest of the request body.
   device_name: Schema.optional(Schema.String),
+  // Wildflower extension: the served root of the owner UI copy starting the
+  // pairing — see `CLIENT_BASE_URL_PARAM`.
+  [CLIENT_BASE_URL_PARAM]: Schema.optional(Schema.String),
 }).pipe(
   HttpApiSchema.withEncoding({
     kind: 'UrlParams',

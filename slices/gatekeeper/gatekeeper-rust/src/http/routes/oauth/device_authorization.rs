@@ -9,6 +9,7 @@ use super::internal::TokenError;
 use super::openapi::DeviceAuthorizationRequest;
 use super::token_request::TokenRequest;
 use crate::domain::capabilities::oauth::DeviceAuthorizationError;
+use crate::domain::client_base_url::ClientBaseUrl;
 use crate::domain::oauth_error_code::OAuthErrorCode;
 use crate::http::extractors::{Live, OwnerUiPages};
 use crate::http::wire_representations::{CacheSuppressed, OAuthError};
@@ -24,6 +25,12 @@ pub struct DeviceAuthorizationPayload {
     /// Non-standard RFC 8628 extension: a human-chosen name for the device being paired,
     /// surfaced to the approver. Absent for strict RFC clients.
     pub device_name: Option<String>,
+    /// Wildflower extension: the served root of the owner UI copy starting the
+    /// pairing. For a first-party client the `verification_uri`s resolve there
+    /// rather than on the configured owner UI; any other client's value is
+    /// ignored. Must be an absolute `http`/`https` URL — see
+    /// [`crate::domain::client_base_url`].
+    pub wildflower_client_base_url: Option<String>,
 }
 
 /// Body returned by `/oauth/device_authorization` per RFC 8628 §3.2.
@@ -70,7 +77,7 @@ pub(super) async fn handle_device_authorization_request(
     let user_agent = headers
         .get(header::USER_AGENT)
         .and_then(|value| value.to_str().ok());
-    device_authorization(&authorizer, &pages, user_agent, request).into_response()
+    device_authorization(&authorizer, pages, user_agent, request).into_response()
 }
 
 /// Parse the request, hand it to the [`LiveDeviceAuthorizer`], and frame the
@@ -78,7 +85,7 @@ pub(super) async fn handle_device_authorization_request(
 /// failure as a [`TokenError`].
 fn device_authorization(
     authorizer: &LiveDeviceAuthorizer,
-    pages: &OwnerUiPages,
+    pages: OwnerUiPages,
     user_agent: Option<&str>,
     request: TokenRequest<DeviceAuthorizationPayload>,
 ) -> Result<DeviceAuthorizationResponse, TokenError> {
@@ -86,6 +93,15 @@ fn device_authorization(
         payload,
         authenticated_client,
     } = request;
+    // Checked before a device code is issued, so a malformed value can't leave
+    // a pending pairing behind.
+    let client_base_url = ClientBaseUrl::parse_optional(
+        payload.wildflower_client_base_url.as_deref(),
+    )
+    .map_err(|error| {
+        TokenError::bad_request(OAuthErrorCode::InvalidRequest, Some(&error.to_string()))
+    })?;
+    let pages = pages.for_client(authenticated_client.client_id(), client_base_url);
     let requested_scopes: Vec<String> = payload
         .scope
         .as_deref()

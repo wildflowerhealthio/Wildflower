@@ -67,6 +67,15 @@ interface RouterContext extends BaseRouterContext.RouterContextWith<SliceService
    */
   readonly firstPartyClientId?: string
   /**
+   * The served root of this copy of the owner UI (e.g.
+   * `https://wildflowerhealth.io/app/`, or a PR preview's
+   * `…/staging/pr-<n>/app/`). Read by the gatekeeper slice's `NeedsAuthMessage`,
+   * which names it on the device-flow request so the `verification_uri` points
+   * back at this copy. Set by `main-web`; omitted on Tauri, whose pages the
+   * host's configured owner UI already serves.
+   */
+  readonly clientBaseUrl?: string
+  /**
    * Why the web entry's boot-time SMART sign-in failed, when it did — the
    * `reason` off a `SignInError`, already written for a reader. `main-web`
    * redeems the authorization code before it mounts the router, so a failed

@@ -15,6 +15,7 @@
  */
 
 import { Data, Either, Option } from 'effect'
+import { CLIENT_BASE_URL_PARAM } from '../client-base-url.ts'
 
 /**
  * Raised when a returning authorization cannot be completed: the server refused
@@ -105,6 +106,12 @@ interface AuthorizationRequestParameters {
    * it is derived from the server URL rather than configured.
    */
   readonly audience: string
+  /**
+   * The served root of the owner UI copy signing in, sent as
+   * {@link CLIENT_BASE_URL_PARAM} so the server's polling page lands on this
+   * copy. Omitted by a client that isn't a copy of the owner UI.
+   */
+  readonly clientBaseUrl?: string
 }
 
 /**
@@ -126,6 +133,8 @@ const authorizationRequestUrl = (
   url.searchParams.set('code_challenge', parameters.codeChallenge)
   url.searchParams.set('code_challenge_method', 'S256')
   url.searchParams.set('aud', parameters.audience)
+  if (parameters.clientBaseUrl !== undefined)
+    url.searchParams.set(CLIENT_BASE_URL_PARAM, parameters.clientBaseUrl)
   return url.toString()
 }
 

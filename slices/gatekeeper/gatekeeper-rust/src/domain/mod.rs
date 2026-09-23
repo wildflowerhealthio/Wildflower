@@ -39,6 +39,9 @@ pub mod client_credentials;
 // Pure builders for the OAuth client-callback URLs (`redirect_uri` + `code`/`error`
 // + `state`) — no axum/store coupling, so the `/oauth` surface and the Owner
 // consent action can return the same URL. Lifted out of `http::routes::oauth`.
+// Which owner UI a first-party client's browser-facing pages resolve on — the
+// base it names with `wildflower_client_base_url`, or the configured one.
+pub mod client_base_url;
 pub mod client_redirect;
 // The trust-on-first-use registration verdict: how a pending authorization-code
 // request compares against the `clients` row it names right now. Derived on every

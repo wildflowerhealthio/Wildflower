@@ -108,6 +108,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "wildflower_client_base_url",
+            "in": "query",
+            "description": "Wildflower extension: the served root of the owner UI copy starting\nthis sign-in (e.g. `https://wildflowerhealth.io/app/`, or a PR\npreview's `…/staging/pr-<n>/app/`). For a first-party client the polling\npage resolves there rather than on the configured owner UI; any other\nclient's value is ignored. Must be an absolute `http`/`https` URL — see\n[`crate::domain::client_base_url`].",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -385,7 +394,7 @@
       },
       "DeviceAuthorizationRequest": {
         "type": "object",
-        "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials, and the non-standard\n`device_name` extension. Form-urlencoded.",
+        "description": "`POST /oauth/device_authorization` request body (RFC 8628 §3.1) — the\noptional `scope` plus the body credentials, and the non-standard\n`device_name` and `wildflower_client_base_url` extensions. Form-urlencoded.",
         "properties": {
           "client_id": {
             "type": [
@@ -406,6 +415,12 @@
             ]
           },
           "device_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wildflower_client_base_url": {
             "type": [
               "string",
               "null"

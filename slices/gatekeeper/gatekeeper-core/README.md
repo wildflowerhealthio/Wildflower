@@ -64,11 +64,18 @@ and 90 days respectively). See the
   server to poll (the host serves no UI of its own; `page_paths.rs` builds
   the URL from the host-configured `OwnerUiBase`); the page picks
   same-device-vs-cross-device based on whether it's already authenticated.
+  A first-party client (`wildflower-react`, or the host's first-party id)
+  may name the owner UI copy it runs from with `wildflower_client_base_url`
+  (`CLIENT_BASE_URL_PARAM`, `src/client-base-url.ts`), and the polling page
+  then resolves on that copy — a PR preview's polling page stays on the
+  preview. Other clients' values are ignored; a value that is not an
+  absolute `http`/`https` URL is a `400`.
 - `/oauth/authorize/:id` — long-poll JSON status of an authorization
   request.
 - `/oauth/device_authorization` — RFC 8628 device flow: returns
   `device_code` + `user_code` + verification URIs (under `/gatekeeper/devices`
-  on the hosted owner UI, carrying `?server=`).
+  on the hosted owner UI, carrying `?server=`; on the named copy for a
+  first-party client that sends `wildflower_client_base_url`).
 - `/oauth/token` — OAuth 2.0 token exchange. Accepts
   `grant_type=authorization_code` and
   `grant_type=urn:ietf:params:oauth:grant-type:device_code`.

@@ -21,6 +21,11 @@ impl SessionEnder {
         SessionEnder { revocation, claims }
     }
 
+    /// The `client_id` the caller's token is bound to (its `sub`).
+    pub(crate) fn client_id(&self) -> &str {
+        &self.claims.subject
+    }
+
     /// Denylist the presented token's `jti` until its `exp`, so a leaked copy
     /// can't outlive the logout. Best-effort by design (see
     /// [`revoke_session_token`]): a legacy token with no `jti` or `exp` has

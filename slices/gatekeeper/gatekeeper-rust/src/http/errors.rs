@@ -223,6 +223,10 @@ fn title_and_body(kind: &OAuthErrorKind) -> (&'static str, &'static str) {
             "Invalid PKCE code challenge",
             "The supplied code_challenge is not a well-formed S256 challenge.",
         ),
+        OAuthErrorKind::InvalidClientBaseUrl => (
+            "Invalid client base URL",
+            "The supplied wildflower_client_base_url must be an absolute http or https URL.",
+        ),
     }
 }
 

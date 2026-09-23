@@ -35,6 +35,14 @@ type RouterContext = BaseRouterContext.RouterContextWith<GatekeeperHttpApiClient
    * falls back to gatekeeper-core's `FIRST_PARTY_CLIENT_ID`.
    */
   readonly firstPartyClientId?: string
+  /**
+   * The served root of the owner UI copy this slice is mounted in, threaded by
+   * the web entry. `NeedsAuthMessage` names it on its device-authorization
+   * request (gatekeeper-core's `CLIENT_BASE_URL_PARAM`) so the returned
+   * `verification_uri` points back at this copy. Omitted on Tauri, where the
+   * host's configured owner UI is already the right one.
+   */
+  readonly clientBaseUrl?: string
 }
 
 /**
@@ -94,8 +102,20 @@ const useGatekeeperFirstPartyClientId = (): string | undefined =>
     select: (context: RouterContext) => context.firstPartyClientId,
   })
 
+/**
+ * The owner UI copy's served root from router context (see
+ * {@link RouterContext.clientBaseUrl}), or `undefined` where the host doesn't
+ * thread one.
+ */
+const useGatekeeperClientBaseUrl = (): string | undefined =>
+  useRouteContext({
+    from: '__root__',
+    select: (context: RouterContext) => context.clientBaseUrl,
+  })
+
 export {
   sliceRuntimeLayer,
+  useGatekeeperClientBaseUrl,
   useGatekeeperFirstPartyClientId,
   useGatekeeperLocalGrantedScopes,
   useGatekeeperRuntimeLayer,

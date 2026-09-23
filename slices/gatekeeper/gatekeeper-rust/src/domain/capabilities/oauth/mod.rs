@@ -35,6 +35,8 @@ pub(crate) use code_authorization_starter::{
     FreshIds,
 };
 pub(crate) use device_authorizer::{DeviceAuthorizationError, DeviceAuthorizer};
-pub(crate) use loopback_owner_approver::{asks_loopback_dialog, LoopbackOwnerApprover};
+pub(crate) use loopback_owner_approver::{
+    asks_loopback_dialog, LoopbackOwnerApprover, HOSTED_OWNER_UI_CLIENT_ID,
+};
 pub(crate) use public_keys_reader::PublicKeysReader;
 pub(crate) use token_exchanger::{IssuedTokens, TokenExchanger};
