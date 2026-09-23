@@ -127,6 +127,30 @@ slice trust the `Forwarded` header in the first place — a non-loopback peer is
 rejected before any handler runs. See [Apps Explanation](../Apps/Explanation.md)
 for how this lands in the apps auth posture.
 
+## Loopback owner dialog
+
+A direct-loopback caller is the one caller the host can put a question to in
+person: nothing relayed it, so whoever started it is at this machine. The
+desktop host uses that for one login. When the hosted owner UI
+(`wildflower-react`, served from `https://wildflowerhealth.io/app/`) signs in to
+the server on the same machine, gatekeeper parks the `/oauth/authorize` request
+as usual and also asks the host to show a native Approve / Reject dialog. The
+dialog names the app, the origin the login returns to, and whether the app or
+that address is new. See the gatekeeper
+[Jargon](../../slices/gatekeeper/docs/Jargon%20Explanation.md#loopback-owner-dialog)
+for how the answer is applied.
+
+"Direct loopback" is the same test as everywhere else in this doc: the request
+carries **no** `Forwarded` header. A request relayed by the trusted front never
+raises the dialog, whatever its `client_id`. It is decided in the Owner UI
+alone, because the person who started it is remote.
+
+The hosted page is on a public origin and calls a private-network address, so
+Chrome's Local Network Access check sends a preflight carrying
+`Access-Control-Request-Private-Network: true`. The host's API CORS layer
+answers it with `Access-Control-Allow-Private-Network: true`. Without that
+header Chrome blocks the call before it is sent.
+
 ## SMART scopes
 
 The scope grammar a token carries (`patient`/`user`/`system` context,

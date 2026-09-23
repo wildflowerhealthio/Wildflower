@@ -228,7 +228,7 @@ impl GatekeeperTx for SqliteGatekeeperTx<'_> {
         )
     }
 
-    fn deny_authorization_request(&mut self, id: &str) -> Result<(), GatekeeperError> {
+    fn deny_authorization_request(&mut self, id: &str) -> Result<bool, GatekeeperError> {
         authorization_requests::deny_authorization_request(self.conn, id)
     }
 

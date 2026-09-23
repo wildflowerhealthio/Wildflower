@@ -15,17 +15,25 @@
 //!    the revoking capabilities, logout, and the token verifier go through;
 //!  - [`SelfHostedRedirectResolver`] — resolve a `client_id` to a self-hosted
 //!    app's `{port, subdomain}` so `/authorize` can expand an app-relative
-//!    redirect entry against the request's provenance (the one seam gatekeeper
-//!    exposes *publicly*, since the host implements it from the apps store).
+//!    redirect entry against the request's provenance (public, since the host
+//!    implements it from the apps store);
+//!  - [`LoopbackConsentPrompt`] — ask the Owner at the machine, in a native
+//!    dialog, to approve a direct-loopback login by the hosted owner UI (public,
+//!    since the host implements it with its dialog plugin).
 
+mod loopback_consent;
 mod pending_consent_publisher;
 mod revocation;
 mod self_hosted_redirects;
 
 pub(crate) use pending_consent_publisher::PendingConsentPublisher;
 pub(crate) use revocation::{Revocation, RevocationCheck};
-// Public (not `pub(crate)`): the host implements this seam and names its types
-// when wiring `GatekeeperState`, so they are re-exported from the crate root.
+// Public (not `pub(crate)`): the host implements these seams and names their
+// types when wiring `GatekeeperState`, so they are re-exported from the crate root.
+pub use loopback_consent::{
+    LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest,
+    LoopbackRegistrationNotice, NoLoopbackConsentPrompt,
+};
 pub use self_hosted_redirects::{
     NoSelfHostedRedirects, SelfHostedRedirectResolver, SelfHostedRedirectTopology,
 };

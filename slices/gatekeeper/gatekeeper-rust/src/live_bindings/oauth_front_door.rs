@@ -10,7 +10,8 @@ use super::state::GatekeeperState;
 use super::FromState;
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::capabilities::oauth::{
-    AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, PublicKeysReader,
+    AuthorizationStatusReader, CodeAuthorizationStarter, DeviceAuthorizer, LoopbackOwnerApprover,
+    PublicKeysReader,
 };
 use crate::ports::PendingConsentPublisher;
 
@@ -23,6 +24,24 @@ impl FromState for LiveCodeAuthorizationStarter {
         CodeAuthorizationStarter::new(
             state.store.clone(),
             publisher,
+            state.self_hosted_redirects.clone(),
+            state.first_party_client_id.clone(),
+        )
+    }
+}
+
+/// Put a direct-loopback login to the host's dialog — built by the
+/// `/oauth/authorize` handler, which drives it off the async runtime.
+pub(crate) type LiveLoopbackOwnerApprover = LoopbackOwnerApprover<SqliteGatekeeperStore>;
+
+impl FromState for LiveLoopbackOwnerApprover {
+    fn from_state(state: &Arc<GatekeeperState>) -> Self {
+        let publisher: Arc<dyn PendingConsentPublisher> = state.clone();
+        LoopbackOwnerApprover::new(
+            state.store.clone(),
+            publisher,
+            state.loopback_consent_prompt.clone(),
+            state.host_owner_grant.clone(),
             state.self_hosted_redirects.clone(),
             state.first_party_client_id.clone(),
         )

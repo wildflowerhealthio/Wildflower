@@ -1,4 +1,5 @@
 mod bridge;
+mod loopback_consent_dialog;
 mod native_webview_handle;
 mod self_hosted_redirect_resolver;
 mod spa;
@@ -170,6 +171,17 @@ fn should_present_owner_token(
     is_public_surface: bool,
 ) -> bool {
     peer_is_loopback && !forwarded && !is_public_surface
+}
+
+/// The API surface's CORS policy: mirror any origin (every endpoint is
+/// loopback-gated and bearer-authenticated, so CORS is not the access control)
+/// and answer Chrome's Local Network Access preflight. A page on a public
+/// origin — the hosted owner UI at `wildflowerhealth.io/app/` — fetching this
+/// loopback server makes Chrome send `Access-Control-Request-Private-Network:
+/// true`, and it blocks the request unless the preflight answers
+/// `Access-Control-Allow-Private-Network: true`.
+fn api_cors_layer() -> CorsLayer {
+    CorsLayer::very_permissive().allow_private_network(true)
 }
 
 /// The current owner `Authorization: Bearer` header, built from the latest
@@ -387,6 +399,14 @@ async fn run_server(
         ),
     );
 
+    // The native Approve / Reject dialog gatekeeper raises when the hosted owner
+    // UI logs in over direct loopback (see `loopback_consent_dialog`).
+    let loopback_consent_prompt =
+        Arc::new(loopback_consent_dialog::TauriLoopbackConsentPrompt::new(
+            app_handle.clone(),
+            gatekeeper_config.host_owner_scopes.clone(),
+        ));
+
     // `setup_gatekeeper` publishes the freshly-minted host owner token (and
     // pending-consent heads) through the bridge publishers; `bridge::attach_bridge`
     // documents how the resident task delivers them to the webview.
@@ -397,6 +417,7 @@ async fn run_server(
         &publishers.host_owner_token_sender,
         publishers.active_pending_consent_sender,
         redirect_resolver,
+        loopback_consent_prompt,
     )
     .context("failed to set up gatekeeper")?;
 
@@ -723,7 +744,7 @@ async fn run_server(
     // re-gating the gatekeeper's already-gated routes is harmless.
     let api_router = api_router
         .layer(require_loopback_peer_middleware())
-        .layer(CorsLayer::very_permissive());
+        .layer(api_cors_layer());
 
     // The reverse proxy wraps the API stack as the outermost layer: a forwarded
     // request whose `Forwarded` host matches `<app-id>.<configured-public-host>`
@@ -928,7 +949,39 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::should_present_owner_token;
+    use super::{api_cors_layer, should_present_owner_token};
+    use tower::ServiceExt;
+
+    /// A preflight from a public origin asking to reach this private-network
+    /// server is answered with `Access-Control-Allow-Private-Network: true`;
+    /// without it, Chrome blocks the hosted owner UI from calling loopback.
+    #[tokio::test]
+    async fn a_private_network_preflight_is_allowed() {
+        let router = axum::Router::new()
+            .route("/fhir-r4/metadata", axum::routing::get(|| async { "ok" }))
+            .layer(api_cors_layer());
+        let preflight = axum::http::Request::options("/fhir-r4/metadata")
+            .header("origin", "https://wildflowerhealth.io")
+            .header("access-control-request-method", "GET")
+            .header("access-control-request-private-network", "true")
+            .body(axum::body::Body::empty())
+            .expect("preflight request");
+        let response = router.oneshot(preflight).await.expect("preflight");
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-private-network")
+                .and_then(|value| value.to_str().ok()),
+            Some("true")
+        );
+        assert_eq!(
+            response
+                .headers()
+                .get("access-control-allow-origin")
+                .and_then(|value| value.to_str().ok()),
+            Some("https://wildflowerhealth.io")
+        );
+    }
 
     /// The owner bearer is stamped only for a direct-local, non-forwarded request
     /// off the pre-auth public surface. Each guard, flipped alone, must withhold

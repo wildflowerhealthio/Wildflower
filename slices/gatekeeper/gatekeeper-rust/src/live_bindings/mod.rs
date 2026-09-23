@@ -36,7 +36,7 @@ pub(crate) use grants_reader::LiveGrantsReader;
 pub(crate) use grants_revoker::LiveGrantsRevoker;
 pub(crate) use oauth_front_door::{
     LiveAuthorizationStatusReader, LiveCodeAuthorizationStarter, LiveDeviceAuthorizer,
-    LivePublicKeysReader,
+    LiveLoopbackOwnerApprover, LivePublicKeysReader,
 };
 pub(crate) use session::{LiveSessionEnder, LiveSessionReader, LiveTokenVerifier};
 pub use state::GatekeeperState;

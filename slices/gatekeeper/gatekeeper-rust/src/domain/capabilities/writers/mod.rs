@@ -6,7 +6,8 @@
 //!    issue its authorization code (under a [`CodeAuthority`]: the Owner's
 //!    `DelegatedScopes` or a `StandingGrantCoverage`).
 //!  - [`GrantRecorder`] — insert or widen the standing grant and, for a client
-//!    trusted on first use, its registration, in one transaction (under
+//!    trusted on first use, its registration, in one transaction; or the
+//!    registration alone, for an approval that is not remembered (under
 //!    `DelegatedScopes`).
 //!  - [`AccessTokenMinter`] — read the active signing key and mint a JWT (under
 //!    a `TokenEntitlement` proof).

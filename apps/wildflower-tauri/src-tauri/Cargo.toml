@@ -88,3 +88,9 @@ dotenvy = "0.15.7"
 # Opt the host into the workspace lints (notably `unsafe_code = "forbid"`).
 [lints]
 workspace = true
+
+[dev-dependencies]
+# Builds the `LoopbackConsentRequest` (its `expires_at`) the dialog tests render.
+chrono = { version = "0.4", default-features = false }
+# `ServiceExt::oneshot`, to drive the API CORS layer with a preflight in tests.
+tower = { version = "0.5", features = ["util"] }

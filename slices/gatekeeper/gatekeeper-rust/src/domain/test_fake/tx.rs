@@ -145,11 +145,16 @@ impl GatekeeperTx for FakeGatekeeperTx<'_> {
         Ok(true)
     }
 
-    fn deny_authorization_request(&mut self, id: &str) -> Result<(), GatekeeperError> {
-        if let Some(request) = self.store.authorization_requests.borrow_mut().get_mut(id) {
-            request.status = RequestStatus::Denied;
+    fn deny_authorization_request(&mut self, id: &str) -> Result<bool, GatekeeperError> {
+        let mut requests = self.store.authorization_requests.borrow_mut();
+        let Some(request) = requests.get_mut(id) else {
+            return Ok(false);
+        };
+        if request.status != RequestStatus::Pending {
+            return Ok(false);
         }
-        Ok(())
+        request.status = RequestStatus::Denied;
+        Ok(true)
     }
 
     fn consume_approved_authorization_request(

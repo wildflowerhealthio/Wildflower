@@ -43,6 +43,16 @@ pub struct TestDb {
 }
 
 pub fn spin_up() -> (Gatekeeper, String, TestDb) {
+    spin_up_with_loopback_prompt(std::sync::Arc::new(
+        gatekeeper_rust::NoLoopbackConsentPrompt,
+    ))
+}
+
+/// [`spin_up`] with the host's loopback dialog played by `loopback_prompt` — for
+/// the tests that drive a direct-loopback `wildflower-react` login through it.
+pub fn spin_up_with_loopback_prompt(
+    loopback_prompt: std::sync::Arc<dyn gatekeeper_rust::LoopbackConsentPrompt>,
+) -> (Gatekeeper, String, TestDb) {
     // One shared in-memory diesel pool, built once and handed to the slice —
     // mirrors how the host wires the app-wide `persistence_rust::open_pool`
     // pool into each diesel-backed slice. `db.pool` is that shared handle;
@@ -70,6 +80,7 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
         &token_tx,
         pending_consent_tx,
         std::sync::Arc::new(gatekeeper_rust::NoSelfHostedRedirects),
+        loopback_prompt,
     )
     .expect("setup");
     let host_owner_token = token_rx
@@ -91,6 +102,13 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
 /// slice's pending-consent watch channel.
 pub fn pending_consent_head(db: &TestDb) -> Option<PendingConsentHead> {
     db.pending_consent_rx.borrow().clone()
+}
+
+/// A fresh receiver on the slice's pending-consent head, for a test that waits
+/// for a background decision to move the head — an in-memory signal, so the
+/// wait never reads the database while that decision is writing it.
+pub fn pending_consent_watch(db: &TestDb) -> watch::Receiver<Option<PendingConsentHead>> {
+    db.pending_consent_rx.clone()
 }
 
 /// A second `SqliteGatekeeperStore` handle on the *same* shared pool the running

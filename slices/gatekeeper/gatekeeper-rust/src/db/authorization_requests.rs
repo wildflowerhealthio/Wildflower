@@ -289,16 +289,24 @@ pub(super) fn approve_authorization_request(
     Ok(affected == 1)
 }
 
-/// Mark `id` denied.
+/// Mark a *pending* `id` denied, returning `true` iff a pending row was
+/// actually transitioned — the same `status = 'pending'` guard as
+/// [`approve_authorization_request`], so when two surfaces decide one request
+/// (the Owner UI and the host's loopback dialog) the first terminal transition
+/// wins and a late deny can't overwrite an approval.
 pub(super) fn deny_authorization_request(
     conn: &mut SqliteConnection,
     id: &str,
-) -> Result<(), GatekeeperError> {
-    diesel::update(authorization_requests::table.find(id))
-        .set(authorization_requests::status.eq(RequestStatus::Denied))
-        .execute(conn)
-        .map_err(|e| GatekeeperError::infrastructure("deny_authorization_request failed", e))?;
-    Ok(())
+) -> Result<bool, GatekeeperError> {
+    let affected = diesel::update(
+        authorization_requests::table
+            .find(id)
+            .filter(authorization_requests::status.eq(RequestStatus::Pending)),
+    )
+    .set(authorization_requests::status.eq(RequestStatus::Denied))
+    .execute(conn)
+    .map_err(|e| GatekeeperError::infrastructure("deny_authorization_request failed", e))?;
+    Ok(affected == 1)
 }
 
 /// Atomically claim an `approved` request for single-use redemption,
@@ -891,6 +899,40 @@ mod tests {
             .expect("query")
             .expect("row present");
         assert_eq!(after.status, RequestStatus::Pending);
+    }
+
+    // A deny transitions only a `pending` request: the first decision on a
+    // request wins, so a late deny (the loopback dialog after the Owner UI
+    // approved, or the reverse) leaves the terminal row untouched and reports
+    // that it did nothing.
+    #[test]
+    fn deny_authorization_request_transitions_only_a_pending_row() {
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        for (id, status) in [
+            ("dev-pending", RequestStatus::Pending),
+            ("dev-approved", RequestStatus::Approved),
+            ("dev-denied", RequestStatus::Denied),
+            ("dev-expired", RequestStatus::Expired),
+        ] {
+            store
+                .insert_authorization_request(&device_request_with_status(id, status))
+                .expect("insert");
+            let denied = store.deny_authorization_request(id).expect("deny query");
+            assert_eq!(denied, status == RequestStatus::Pending, "{id}");
+            let after = store
+                .authorization_request_by_id(id)
+                .expect("query")
+                .expect("row present");
+            let expected = if status == RequestStatus::Pending {
+                RequestStatus::Denied
+            } else {
+                status
+            };
+            assert_eq!(after.status, expected, "{id}");
+        }
+        assert!(!store
+            .deny_authorization_request("unknown")
+            .expect("deny query"));
     }
 
     /// The [`RequestStatus`] and [`GrantType`] text-enum mappings reject an unknown

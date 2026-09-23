@@ -322,6 +322,36 @@ the request stays pending and answerable from its standalone surface — Setting
 for a device request, the requesting browser's polling page for a code request —
 until it expires.
 
+### Loopback owner dialog
+
+A native Approve / Reject dialog the desktop host raises for one kind of login:
+a **direct-loopback** `/oauth/authorize` (no `Forwarded` header) whose
+`client_id` is `wildflower-react`, the hosted owner UI signing in to the server
+on the same machine. The person at the keyboard is the Owner, so the host asks
+them in place rather than sending them to the in-app consent page.
+
+The request is parked and queued exactly as any other code request: the browser
+is still sent to the polling page, and the request still appears in the Owner
+UI. The dialog is one more approver (`LoopbackOwnerApprover`, behind the
+`LoopbackConsentPrompt` port). Whichever surface decides first wins, because a
+deny, like an approve, only changes a request that is still `pending`.
+
+- **Approve** runs the ordinary code-flow approval with the host Owner as the
+  approver: the requested scopes within `host_owner_scopes` are delegated, and
+  the dialog itself is the registration acknowledgement. It registers or widens
+  the client as [trust on first use](#trust-on-first-use) does, but records
+  **no** standing [Grant](#grant) (`ApprovalMemory::AskEveryTime`), so every
+  loopback login asks again.
+- **Reject**, closing the dialog, or leaving it unanswered until the request
+  expires denies it (`access_denied` at the polling page).
+- A host with no native dialog wires `NoLoopbackConsentPrompt`, which
+  **abstains**, leaving the request to the Owner UI.
+
+Forwarded (tunnel) requests and every other `client_id` never reach the dialog.
+Anyone on loopback can present the `client_id`. The dialog names the redirect
+origin, and the Owner is at the machine, which is the same trade-off as trust on
+first use.
+
 ### Expandable consent
 
 The device-code consent path is **expandable**: the Owner may grant scopes the

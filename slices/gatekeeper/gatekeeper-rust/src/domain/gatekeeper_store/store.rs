@@ -222,7 +222,7 @@ pub trait GatekeeperStore {
     /// # Errors
     ///
     /// Propagates [`GatekeeperTx::deny_authorization_request`]'s error.
-    fn deny_authorization_request(&self, id: &str) -> Result<(), GatekeeperError> {
+    fn deny_authorization_request(&self, id: &str) -> Result<bool, GatekeeperError> {
         self.with_connection(|tx| tx.deny_authorization_request(id))
     }
 

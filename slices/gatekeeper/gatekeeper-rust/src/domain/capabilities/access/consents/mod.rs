@@ -27,8 +27,13 @@ mod device;
 mod oauth;
 
 use device::{approve_device_consent, deny_device_consent, load_pending_device_request};
-use oauth::{
+// The code-flow load/approve/deny are shared with the host's loopback dialog
+// (`capabilities::oauth::LoopbackOwnerApprover`), which decides the same
+// prompts with no Owner token — so they are crate-visible, not just the
+// `ConsentDecider`'s.
+pub(crate) use oauth::{
     approve_oauth_consent, deny_oauth_consent, load_pending_code_request, ApprovalContext,
+    ApprovalMemory,
 };
 
 /// The scope gating [`ConsentReader`] — `wildflower/AuthorizationRequest.r`.
@@ -263,6 +268,7 @@ impl<S: GatekeeperStore> ConsentDecider<S> {
                     served_origin,
                 },
                 first_party_client_id: &self.first_party_client_id,
+                memory: ApprovalMemory::RememberAsStandingGrant,
                 now,
             },
         )
@@ -338,6 +344,7 @@ mod tests {
                 approver_grant,
                 classifier: &TEST_CLASSIFIER,
                 first_party_client_id: crate::FIRST_PARTY_CLIENT_ID,
+                memory: ApprovalMemory::RememberAsStandingGrant,
                 now: Utc::now(),
             },
         )
