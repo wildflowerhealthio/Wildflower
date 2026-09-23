@@ -23,7 +23,7 @@
 //!
 //! The surface is exposed as two routers so the host can gate them differently:
 //! both [`gated_router`] (list + cloud-admin + `PUT /home-screen`) and
-//! [`launch_router`] (`GET` + `POST /apps/{id}`) carry no middleware and are each
+//! [`launch_router`] (`POST /apps/{id}`) carry no middleware and are each
 //! wrapped by the host's bearer gate (which inserts the caller's scope claims). The
 //! gated surface is scope-gated per handler on `wildflower/Apps.*`; the launch
 //! surface on the `wildflower/launch` umbrella (plus a per-app SMART check in the
@@ -73,7 +73,7 @@ pub fn gated_router(state: Arc<AppsState>) -> Router {
     router.with_state(state)
 }
 
-/// Build the launch routes (`GET` + `POST /apps/{id}`). Carries no middleware — the
+/// Build the launch route (`POST /apps/{id}`). Carries no middleware — the
 /// host wraps it with its bearer gate; the `wildflower/launch` umbrella is enforced
 /// by the [`Scoped<LiveAppLauncher>`](crate::live_bindings::LiveAppLauncher)
 /// extractor before the handler runs, and a SMART app additionally requires the

@@ -12,6 +12,8 @@
  *   UPDATE_OPENAPI=1 cargo test -p apps-rust openapi_spec_snapshot_is_up_to_date
  */
 
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { OpenApi } from '@effect/platform'
 import { defineSpecDriftTest } from 'shared-structures-core/openapi-drift/testing'
 import { describe, expect, test } from 'vite-plus/test'
@@ -28,32 +30,32 @@ defineSpecDriftTest({
   scope: [
     ['/apps', 'get'],
     ['/apps/{id}', 'post'],
-    ['/apps/{id}', 'get'],
   ],
   /**
-   * `post`/`get /apps/{id}` (LaunchApp / LaunchAppGet) are launches: the server
-   * answers a 302 (web) or 204 (Tauri host sink) with no JSON body. The TS side
-   * declares those two empty success statuses (so the loopback typed client
-   * decodes them — see the focused test below) but deliberately omits the
-   * server's `401`/`503` error bodies, which the client never models. Their path
-   * parameter is still compared; their responses are not. (`get /apps/{id}` is
-   * the native-anchor web arm — modelled for spec symmetry but never called by a
-   * typed client; the browser follows its `302` directly.)
+   * `post /apps/{id}` (LaunchApp) declares the two successes the client decodes
+   * (see the focused test below) but deliberately omits the server's `503`
+   * error body, which the client never models. Its path parameter is still
+   * compared; its responses are not.
    */
-  responsesNotCompared: new Set<string>(['post /apps/{id}', 'get /apps/{id}']),
+  responsesNotCompared: new Set<string>(['post /apps/{id}']),
 })
 
 describe('LaunchApp success statuses', () => {
-  // The loopback launch arm drives `POST /apps/{id}` through the typed client, so
-  // the empty success statuses the host returns — `204` (host sink opened the
-  // popup) and `302` (redirect) — must be *declared* as accepted. If `204` isn't,
-  // it matches no declared status and the client rejects, logging a spurious
-  // failure on every successful loopback launch. This pins the declaration so a
-  // future edit can't silently drop it.
-  test('declares 204 and 302 so the loopback typed client decodes them as success', () => {
+  // Every owner UI drives `POST /apps/{id}` through the typed client, so both
+  // success statuses the host returns — `204` (host sink opened the popup) and
+  // `200` (the URL for a forwarded caller to navigate to) — must be *declared*.
+  // An undeclared one matches no success and the client rejects, reporting a
+  // failed launch for one that worked. The server's own statuses are read from
+  // its committed spec, so a status added on either side alone fails here.
+  test('declares exactly the success statuses the server answers', () => {
     const spec = OpenApi.fromApi(AppsApi)
-    const responses = spec.paths['/apps/{id}']?.post?.responses ?? {}
-    expect(Object.keys(responses)).toEqual(expect.arrayContaining(['204', '302']))
+    const clientStatuses = Object.keys(spec.paths['/apps/{id}']?.post?.responses ?? {}).filter(
+      (status) => status.startsWith('2')
+    )
+    const serverStatuses = Object.keys(
+      serverLaunchResponses(JSON.parse(readFileSync(fileURLToPath(serverSpec), 'utf8')))
+    ).filter((status) => status.startsWith('2'))
+    expect(clientStatuses.toSorted()).toEqual(serverStatuses.toSorted())
   })
 })
 
@@ -93,3 +95,17 @@ describe('CreateSelfHostedApp request body', () => {
     })
   })
 })
+
+// Helpers
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+/** The `responses` object of `POST /apps/{id}` in a parsed server spec. */
+const serverLaunchResponses = (spec: unknown): Record<string, unknown> => {
+  const paths = isRecord(spec) ? spec['paths'] : undefined
+  const path = isRecord(paths) ? paths['/apps/{id}'] : undefined
+  const post = isRecord(path) ? path['post'] : undefined
+  const responses = isRecord(post) ? post['responses'] : undefined
+  return isRecord(responses) ? responses : {}
+}

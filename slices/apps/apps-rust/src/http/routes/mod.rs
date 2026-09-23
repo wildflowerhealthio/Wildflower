@@ -1,6 +1,6 @@
 //! HTTP routes for the apps slice, grouped into a [`gated_openapi_router`]
 //! (list, home-screen, and the per-kind resources) and a [`launch_openapi_router`]
-//! (`GET` + `POST /apps/{id}`), merged into [`openapi_router`] for the spec + route
+//! (`POST /apps/{id}`), merged into [`openapi_router`] for the spec + route
 //! tests. The served routes and the OpenAPI spec come from the same
 //! `#[utoipa::path]`-annotated handlers. One file per route named by operation,
 //! under a folder tree mirroring the URL tree: [`apps`] holds `/apps` (list,
@@ -66,25 +66,11 @@ pub(crate) fn gated_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
         .merge(upload_router)
 }
 
-/// The launch routes (`GET` + `POST /apps/{id}`) as an `OpenApiRouter` — the
-/// spec-bearing inner of [`launch_router`](super::launch_router), which documents
-/// why they're kept ungated and separate from [`gated_openapi_router`]. `GET` is
-/// the native-anchor web arm; `POST` is the typed loopback (Tauri) arm — both
-/// share one handler body.
+/// The launch route (`POST /apps/{id}`) as an `OpenApiRouter` — the spec-bearing
+/// inner of [`launch_router`](super::launch_router), which documents why it's kept
+/// ungated and separate from [`gated_openapi_router`].
 pub(crate) fn launch_openapi_router() -> OpenApiRouter<Arc<AppsState>> {
-    OpenApiRouter::new()
-        .routes(routes!(
-            apps::launch::handle_launch_app,
-            apps::launch::handle_launch_app_get
-        ))
-        // Bounce a failed *browser* (`GET`) launch to `/home?launchError=<kind>`
-        // rather than rendering its raw error body as a page; the typed `POST` arm
-        // (which decodes the JSON) is left untouched. Scoped to the launch routes
-        // only — a `.layer` here survives the merge into `openapi_router` without
-        // touching the gated surface (mirrors the `upload_router` body limit).
-        .layer(axum::middleware::from_fn(
-            apps::launch::redirect_browser_launch_errors,
-        ))
+    OpenApiRouter::new().routes(routes!(apps::launch::handle_launch_app))
 }
 
 /// The full apps surface (gated routes + launch) as one `OpenApiRouter`. Backs
@@ -192,6 +178,13 @@ mod tests {
         Request::builder().uri(uri).body(Body::empty()).unwrap()
     }
 
+    /// The launch URL a forwarded launch's `200` body names.
+    async fn launch_url(res: axum::response::Response) -> String {
+        let bytes = res.into_body().collect().await.expect("body").to_bytes();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("json body");
+        body["url"].as_str().expect("a url field").to_owned()
+    }
+
     /// A loopback launch — `POST /apps/{id}`, no `Forwarded` header.
     fn post_launch(uri: &str) -> Request<Body> {
         Request::builder()
@@ -213,38 +206,6 @@ mod tests {
             )
             .body(Body::empty())
             .unwrap()
-    }
-
-    /// A loopback launch via the web arm's `GET` — `GET /apps/{id}`, no
-    /// `Forwarded` header (a plain `<a>` click the browser followed).
-    fn get_launch(uri: &str) -> Request<Body> {
-        get(uri)
-    }
-
-    /// A `GET` launch as the trusted front would relay it — the web arm reaching
-    /// the server through the front (carries the `Forwarded` header).
-    fn get_forwarded(uri: &str) -> Request<Body> {
-        Request::builder()
-            .uri(uri)
-            .header(
-                "forwarded",
-                "for=192.0.2.1;host=demo.example.com;proto=https",
-            )
-            .body(Body::empty())
-            .unwrap()
-    }
-
-    /// Decode the base64 `launchError` param a browser-launch redirect carries into
-    /// the JSON error body the SPA banner reads.
-    fn launch_error_body(location: &str) -> serde_json::Value {
-        use base64::Engine as _;
-        let encoded = location
-            .strip_prefix("/home?launchError=")
-            .expect("a /home?launchError= redirect");
-        let bytes = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .decode(encoded)
-            .expect("valid URL-safe base64");
-        serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null)
     }
 
     fn post_json(uri: &str, body: serde_json::Value) -> Request<Body> {
@@ -473,13 +434,13 @@ mod tests {
     }
 
     /// A forwarded launch is gated on the umbrella too (the host wraps the launch
-    /// router with the same bearer gate): with the scope it 302s, without it 403s —
-    /// the front no longer bypasses authorization.
+    /// router with the same bearer gate): with the scope it answers the launch URL,
+    /// without it 403s — the front doesn't bypass authorization.
     #[tokio::test]
     async fn forwarded_launch_requires_the_umbrella_scope() {
         let st = state();
         let ok = send_raw(&st, post_forwarded("/apps/api-docs")).await;
-        assert_eq!(ok.status(), StatusCode::FOUND);
+        assert_eq!(ok.status(), StatusCode::OK);
 
         let denied = send_raw_scoped(
             &st,
@@ -488,54 +449,6 @@ mod tests {
         )
         .await;
         assert_eq!(denied.status(), StatusCode::FORBIDDEN);
-    }
-
-    /// A forwarded `GET` of a self-hosted app 302s to the public subdomain.
-    #[tokio::test]
-    async fn get_launch_forwarded_redirects_to_subdomain() {
-        let st = state_with_tunnel(tunnel_with_public_host("demo.example.com"));
-        let res = send_raw(&st, get_forwarded("/apps/patient-browser")).await;
-        assert_eq!(res.status(), StatusCode::FOUND);
-        let location = res.headers().get("location").unwrap().to_str().unwrap();
-        assert_eq!(location, "https://patient-browser.demo.example.com/");
-    }
-
-    /// A forwarded `GET` (browser) without the umbrella scope bounces to the banner
-    /// too (`303` → `/home?launchError=forbidden`), like the loopback `GET` — both
-    /// browser arms redirect rather than paint a raw `403`. (The umbrella gate still
-    /// runs; only the failed response's *shape* changes.)
-    #[tokio::test]
-    async fn get_launch_forwarded_without_umbrella_redirects_home() {
-        let st = state();
-        let denied = send_raw_scoped(
-            &st,
-            get_forwarded("/apps/api-docs"),
-            Some("wildflower/*.cruds"),
-        )
-        .await;
-        assert_eq!(denied.status(), StatusCode::SEE_OTHER);
-        let body = launch_error_body(denied.headers().get("location").unwrap().to_str().unwrap());
-        assert_eq!(body["error"], "InsufficientScope");
-    }
-
-    /// A loopback `GET` (browser) without the umbrella scope bounces to the
-    /// home-screen banner — a `303` to `/home?launchError=forbidden` — not a raw
-    /// `403` page. (The typed `POST` arm still `403`s: see
-    /// `loopback_launch_without_umbrella_scope_is_403`.)
-    #[tokio::test]
-    async fn get_launch_loopback_without_umbrella_redirects_home() {
-        let st = state();
-        let res = send_raw_scoped(
-            &st,
-            get_launch("/apps/api-docs"),
-            Some("wildflower/*.cruds"),
-        )
-        .await;
-        assert_eq!(res.status(), StatusCode::SEE_OTHER);
-        // The base64 body is the `InsufficientScope` the extractor returned, so the
-        // SPA banner can name the missing scopes.
-        let body = launch_error_body(res.headers().get("location").unwrap().to_str().unwrap());
-        assert_eq!(body["error"], "InsufficientScope");
     }
 
     /// Seed a **SMART** cloud app (a `client_id` present) that launches against the
@@ -609,34 +522,6 @@ mod tests {
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 
-    /// A forwarded browser `GET` under-scoped SMART launch bounces to the home
-    /// banner (`303` → `/home?launchError=…`) carrying the **structured**
-    /// `InsufficientScope` body — `missingScopes` and all — so the banner names the
-    /// gap and a future "request permissions" action can read the exact scopes. (The
-    /// old browser body was `text/plain`, which the SPA couldn't decode — it fell
-    /// through to a generic "couldn't be launched" message.)
-    #[tokio::test]
-    async fn get_launch_forwarded_under_scoped_smart_redirects_home_with_scopes() {
-        let st = state_with_launch_scopes(
-            Arc::new(RecordingStubWebviewHandle::default()) as Arc<dyn OnDeviceWebviewHandle>,
-            FixedLaunchScopes::requiring("patient/Observation.r"),
-        );
-        seed_smart_cloud(&st.store, "smart-app");
-        let res = send_raw_scoped(
-            &st,
-            get_forwarded("/apps/smart-app"),
-            Some("wildflower/launch"),
-        )
-        .await;
-        assert_eq!(res.status(), StatusCode::SEE_OTHER);
-        let body = launch_error_body(res.headers().get("location").unwrap().to_str().unwrap());
-        assert_eq!(body["error"], "InsufficientScope");
-        assert_eq!(
-            body["missingScopes"],
-            serde_json::json!(["patient/Observation.r"])
-        );
-    }
-
     /// A non-SMART app ignores the launch-scopes port entirely: even with a port
     /// requiring a scope the caller lacks, a system app launches (the SMART check
     /// short-circuits on `is_smart() == false`).
@@ -655,41 +540,6 @@ mod tests {
         )
         .await;
         assert_eq!(res.status(), StatusCode::NO_CONTENT);
-    }
-
-    /// A loopback `GET` of a system app 204s after handing the URL to the host sink.
-    #[tokio::test]
-    async fn get_launch_loopback_opens_the_host_sink() {
-        let handle = Arc::new(RecordingStubWebviewHandle::default());
-        let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
-        let res = send_raw(&st, get_launch("/apps/api-docs")).await;
-        assert_eq!(res.status(), StatusCode::NO_CONTENT);
-        let opened = handle.0.lock().expect("handle mutex").clone();
-        assert_eq!(opened, vec!["http://127.0.0.1:8080/docs".to_string()]);
-    }
-
-    /// A `GET` (browser) launch of an unknown id bounces to the banner
-    /// (`303` → `/home?launchError=not-found`) rather than a raw `404` page; the
-    /// typed `POST` arm still `404`s with JSON (`launch_unknown_id_is_404`).
-    #[tokio::test]
-    async fn get_launch_unknown_id_redirects_home() {
-        let st = state();
-        let res = send_raw(&st, get_launch("/apps/no-such-thing")).await;
-        assert_eq!(res.status(), StatusCode::SEE_OTHER);
-        let body = launch_error_body(res.headers().get("location").unwrap().to_str().unwrap());
-        assert_eq!(body["error"], "AppNotFound");
-    }
-
-    /// A `GET` (browser) launch with no reachable target (a forwarded self-hosted
-    /// launch with no public host — a `503`) bounces to
-    /// `/home?launchError=unavailable`.
-    #[tokio::test]
-    async fn get_launch_unavailable_redirects_home() {
-        let st = state();
-        let res = send_raw(&st, get_forwarded("/apps/patient-browser")).await;
-        assert_eq!(res.status(), StatusCode::SEE_OTHER);
-        let body = launch_error_body(res.headers().get("location").unwrap().to_str().unwrap());
-        assert_eq!(body["error"], "LaunchUnavailable");
     }
 
     /// A system app launches via its stored source URL, resolved against the
@@ -723,15 +573,19 @@ mod tests {
         assert_eq!(res.status(), StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    /// A forwarded launch of a self-hosted app with `public_host` redirects to the
-    /// public subdomain.
+    /// A forwarded launch of a self-hosted app with `public_host` answers the
+    /// public subdomain for the caller's page to navigate to — a `200` body, not a
+    /// redirect a `fetch` would follow invisibly.
     #[tokio::test]
-    async fn launch_self_hosted_forwarded_redirects_to_subdomain() {
+    async fn launch_self_hosted_forwarded_answers_the_subdomain() {
         let st = state_with_tunnel(tunnel_with_public_host("demo.example.com"));
         let res = send_raw(&st, post_forwarded("/apps/patient-browser")).await;
-        assert_eq!(res.status(), StatusCode::FOUND);
-        let location = res.headers().get("location").unwrap().to_str().unwrap();
-        assert_eq!(location, "https://patient-browser.demo.example.com/");
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(res.headers().get("location").is_none());
+        assert_eq!(
+            launch_url(res).await,
+            "https://patient-browser.demo.example.com/"
+        );
     }
 
     /// A forwarded self-hosted launch plants the re-scoped owner session.
@@ -743,18 +597,18 @@ mod tests {
             Arc::clone(&recorder) as Arc<dyn LaunchCookies>,
         );
         let res = send_raw(&st, post_forwarded("/apps/patient-browser")).await;
-        assert_eq!(res.status(), StatusCode::FOUND);
-        assert_eq!(
-            res.headers().get("location").unwrap().to_str().unwrap(),
-            "https://patient-browser.demo.example.com/",
-        );
-        let cookies: Vec<&str> = res
+        assert_eq!(res.status(), StatusCode::OK);
+        let cookies: Vec<String> = res
             .headers()
             .get_all("set-cookie")
             .iter()
-            .map(|v| v.to_str().unwrap())
+            .map(|v| v.to_str().unwrap().to_owned())
             .collect();
-        assert_eq!(cookies, vec![SENTINEL_SET_COOKIE]);
+        assert_eq!(cookies, vec![SENTINEL_SET_COOKIE.to_owned()]);
+        assert_eq!(
+            launch_url(res).await,
+            "https://patient-browser.demo.example.com/",
+        );
         assert_eq!(
             *recorder.hosts.lock().unwrap(),
             vec!["demo.example.com".to_string()],
@@ -772,7 +626,7 @@ mod tests {
         );
         seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
-        assert_eq!(res.status(), StatusCode::FOUND);
+        assert_eq!(res.status(), StatusCode::OK);
         assert!(res.headers().get("set-cookie").is_none());
         assert!(recorder.hosts.lock().unwrap().is_empty());
     }
@@ -860,16 +714,16 @@ mod tests {
         );
     }
 
-    /// A forwarded cloud launch resolves `{origin}` against the served origin.
+    /// A forwarded cloud launch resolves `{origin}` against the served origin and
+    /// answers the URL rather than opening a host popup.
     #[tokio::test]
-    async fn launch_cloud_forwarded_uses_served_origin_and_302s() {
+    async fn launch_cloud_forwarded_answers_the_served_origin_url() {
         let handle = Arc::new(RecordingStubWebviewHandle::default());
         let st = state_with_sink(Arc::clone(&handle) as Arc<dyn OnDeviceWebviewHandle>);
         seed_cloud(&st.store, "app-y", AppUrl::OriginRelative("/y".to_owned()));
         let res = send_raw(&st, post_forwarded("/apps/app-y")).await;
-        assert_eq!(res.status(), StatusCode::FOUND);
-        let location = res.headers().get("location").unwrap().to_str().unwrap();
-        assert_eq!(location, "https://demo.example.com/y");
+        assert_eq!(res.status(), StatusCode::OK);
+        assert_eq!(launch_url(res).await, "https://demo.example.com/y");
         assert!(handle.0.lock().expect("handle mutex").is_empty());
     }
 

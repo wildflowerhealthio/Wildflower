@@ -26,7 +26,7 @@ import {
 } from '../../../queries.ts'
 import type { RouterContext } from '../../../router-context.ts'
 import { launchBannerError } from './-launch-error.ts'
-import { launchApp, launchHref } from './-launch.ts'
+import { launchApp } from './-launch.ts'
 import { reorderApps } from './-reorder.ts'
 import { SortableAppTile } from './-tiles.tsx'
 import tileStyles from '../../../styles/app-tiles.module.css'
@@ -64,10 +64,8 @@ const AppsHomeScreen = (): JSX.Element => {
       apps={apps}
       launchError={launchError}
       onLaunchResult={(launchResult) => {
-        // Only the loopback (Tauri) arm reaches here — the web tile is a bare
-        // `<a href>` with no `onClick` (see `-tiles.tsx`), so this never races a
-        // full-page navigation. Reflect the outcome into the `?launchError` param:
-        // a failure shows the banner; a later success clears a stale one.
+        // Reflect the outcome into the `?launchError` param: a failure shows the
+        // banner; a later success clears a stale one.
         Either.match(launchResult, {
           onLeft: (errorBody) => {
             void navigate({ search: { launchError: errorBody } })
@@ -88,11 +86,15 @@ interface AppsHomeBodyProps {
   /** The base64 launch-error body from the `?launchError` search param, if any. */
   readonly launchError?: string
   /**
-   * Called with the loopback launch outcome — the encoded `?launchError` body on
-   * failure, `null` on success — so the route can reflect it into the search param.
-   * Only ever invoked on the Tauri arm (the web tile launches by anchor navigation).
+   * Called with the launch outcome — the encoded `?launchError` body on failure,
+   * `right` on success — so the route can reflect it into the search param.
    */
   readonly onLaunchResult?: (result: Either.Either<void, string>) => void
+}
+
+/** Move this tab to a launch URL a forwarded launch answered with. */
+const navigateToLaunch = (url: string): void => {
+  window.location.assign(url)
 }
 
 const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps): JSX.Element => {
@@ -101,14 +103,8 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
   // (disable) control; "Done" returns to launch mode.
   const [editMode, setEditMode] = useState(false)
   const homeScreenMutation = useReplaceHomeScreenMutation()
-  // Set only on the Tauri webview; its presence is the launch-arm signal —
-  // see `launchApp` and `RouterContext.apiBaseUrl`.
-  const apiBaseUrl = useRouteContext({
-    from: '__root__',
-    select: (context: RouterContext) => context.apiBaseUrl,
-  })
-  // The loopback launch arm rides `runAuthed` so the owner bearer is attached
-  // (the host 401s an anonymous launch) — same runner the list read uses.
+  // The launch rides `runAuthed` so the owner bearer is attached (the host 401s
+  // an anonymous launch) — same runner the list read uses.
   const runAuthed = useRouteContext({
     from: '__root__',
     select: (context: RouterContext) => context.runAuthed,
@@ -156,12 +152,11 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
   )
 
-  // Only the Tauri (loopback) arm runs JS on launch — the web arm is the
-  // anchor's own navigation (see `launchHref` / `launchApp`). The loopback outcome
-  // (a failure kind, or `null` on success) is handed up so the route reflects it
-  // into the `?launchError` banner.
+  // The outcome (an encoded failure body, or `right` on success) is handed up
+  // so the route reflects it into the `?launchError` banner. A forwarded launch
+  // answers a URL, which moves this tab (see `launchApp`).
   const launch = (app: AppRegistration): void => {
-    void launchApp({ apiBaseUrl, runAuthed }, app).then((kind) => {
+    void launchApp({ runAuthed, navigate: navigateToLaunch }, app).then((kind) => {
       onLaunchResult?.(kind)
     })
   }
@@ -259,11 +254,6 @@ const AppsHomeBody = ({ apps, launchError, onLaunchResult }: AppsHomeBodyProps):
                   key={app.id}
                   app={app}
                   editing={editMode}
-                  // On web, `href` makes the tile a real `<a href="/apps/{id}">`
-                  // the browser follows (the cookie rides the navigation); on
-                  // Tauri it's `undefined`, so the tile is a button that drives
-                  // the authed loopback launch and the webview stays put.
-                  href={launchHref(apiBaseUrl, app.id)}
                   onLaunch={launch}
                   onDisable={disable}
                 />

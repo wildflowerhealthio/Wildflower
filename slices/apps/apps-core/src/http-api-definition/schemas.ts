@@ -7,7 +7,7 @@ import { InsufficientScopeSchema } from 'shared-structures-core/http-api-definit
  * Accepts an `https://` absolute URL, an origin-relative `/path` (not `//`, a
  * protocol-relative authority), or a template starting with `{origin}`
  * (substituted at launch). Rejects `http://`, `javascript:`, `data:`, `file:`,
- * etc. — open-redirect / XSS vectors when issued through `LaunchApp`'s 302.
+ * etc. — open-redirect / XSS vectors when a launch hands the URL to a browser.
  */
 const AppUrlSchema = Schema.String.pipe(
   Schema.filter((value) => {
@@ -226,6 +226,13 @@ const InvalidHomeScreenSchema = Schema.Struct({
  * with the other slices (databases, gatekeeper) and the Rust `InsufficientScopeBody`.
  */
 
+/**
+ * A forwarded launch's `200` body: the resolved launch URL for the calling page to
+ * navigate to (mirrors the Rust `LaunchTargetBody`). A loopback launch answers
+ * `204` instead — the host opened the app itself.
+ */
+const LaunchTargetSchema = Schema.Struct({ url: Schema.String })
+
 export {
   AppIdPathSchema,
   AppListSchema,
@@ -243,6 +250,7 @@ export {
   InvalidHomeScreenSchema,
   KindSchema,
   LaunchPathSchema,
+  LaunchTargetSchema,
   SelfHostedAppBodySchema,
   SelfHostedAppDetailSchema,
   SystemAppDetailSchema,

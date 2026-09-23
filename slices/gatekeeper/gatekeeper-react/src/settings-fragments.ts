@@ -25,7 +25,7 @@ const gatekeeperSettingsItemsFragment: readonly SettingsItem[] = [
 /**
  * The **same-origin cookie** "Logout" settings row. Ends a cookie session by
  * POSTing to `/access/logout`, where gatekeeper-rust clears the `wf_auth` +
- * `wf_auth_exp` cookies and 303s home.
+ * `wf_auth_exp` cookies and 303s to the hosted owner UI.
  *
  * No in-tree entry uses it: `main-web` runs cross-origin with a bearer and has
  * its own action row (`apps/wildflower-react/src/bearer-logout.ts`). It stays

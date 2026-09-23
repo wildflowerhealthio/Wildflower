@@ -1,5 +1,5 @@
 //! `POST /access/logout` — ends the owner's web session by clearing the
-//! `wf_auth` + `wf_auth_exp` cookies and redirecting to `/`.
+//! `wf_auth` + `wf_auth_exp` cookies and redirecting to the hosted owner UI.
 //!
 //! **Self-service, authN-only:** logout is a caller ending *their own* session,
 //! not an admin resource operation, so it takes no scope — the `/access` mount's
@@ -29,6 +29,7 @@ use axum::Router;
 use scope_capabilities_rust::Authenticated;
 
 use crate::cookies;
+use crate::http::extractors::OwnerUiPages;
 use crate::http::state::GatekeeperState;
 use crate::http::ServedOrigin;
 use crate::live_bindings::LiveSessionEnder;
@@ -37,7 +38,11 @@ pub fn router() -> Router<Arc<GatekeeperState>> {
     Router::new().route("/logout", post(handle_logout))
 }
 
-async fn handle_logout(session: Authenticated<LiveSessionEnder>, origin: ServedOrigin) -> Response {
+async fn handle_logout(
+    session: Authenticated<LiveSessionEnder>,
+    origin: ServedOrigin,
+    pages: OwnerUiPages,
+) -> Response {
     // Revoke the presented session token so a leaked copy can't outlive the
     // logout. Best-effort by design: any hiccup must never block the cookie
     // clear — leaving the session cookie in place would be the worse outcome.
@@ -48,9 +53,10 @@ async fn handle_logout(session: Authenticated<LiveSessionEnder>, origin: ServedO
     // `Set-Cookie` isn't dropped by Safari over http loopback — otherwise logout
     // wouldn't actually clear the session there.
     cookies::append_clear_session_cookies(&mut headers, origin.starts_with("https://"));
-    // Attach the clearing `Set-Cookie`s to a `303 See Other` → `/`: the browser
-    // drops the session cookies and navigates home in one hop, and `303`
-    // downgrades a `POST` logout to a `GET` of the home page. `Redirect::to`
-    // sets `Location`; the `HeaderMap` carries the `Set-Cookie`s alongside it.
-    (headers, Redirect::to("/")).into_response()
+    // Attach the clearing `Set-Cookie`s to a `303 See Other` → the hosted owner
+    // UI's root (this server serves no UI of its own): the browser drops the
+    // session cookies and lands on the UI in one hop, and `303` downgrades a
+    // `POST` logout to a `GET`. `Redirect::to` sets `Location`; the `HeaderMap`
+    // carries the `Set-Cookie`s alongside it.
+    (headers, Redirect::to(pages.root_url())).into_response()
 }

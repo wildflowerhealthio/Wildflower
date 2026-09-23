@@ -16,9 +16,8 @@ const adminHc = defineSliceHttpClient({
  * Effect Service providing the resolved `AppsApi` HttpApi client —
  * `ListApps` + `LaunchApp`. Tokenless: hosts that gate the apps surface
  * (e.g. the Tauri host's Rust server) authenticate via the request's
- * cookie. Note `LaunchApp` is normally driven by a raw `POST` the
- * browser follows (the server 302s to the app, or 204s on the Tauri
- * host), not through this client.
+ * cookie. `LaunchApp` resolves to the launch URL for a forwarded caller
+ * to navigate to, or to nothing when the host opened the app itself.
  */
 class AppsHttpApiClient extends publicHc.ClientTag<AppsHttpApiClient>() {
   static readonly layer = publicHc.makeLayerFactory(AppsHttpApiClient)()

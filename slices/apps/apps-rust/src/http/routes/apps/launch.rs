@@ -1,11 +1,4 @@
-//! `GET` / `POST /apps/{id}` — resolve an app id to a launch target.
-//!
-//! Both methods share one handler body ([`launch`]): the web arm is a native
-//! `<a href="/apps/{id}">` the browser follows (a `GET`, so a plain click
-//! navigates and a cmd/ctrl-click opens a new tab), while the loopback (Tauri)
-//! arm drives the typed client's `POST`. A `GET` that mints a `{launch}` nonce
-//! (and may bring the tunnel up) is intentional — a launch is a navigation, like
-//! an OAuth `authorize`. See `docs/Apps/Explanation.md`.
+//! `POST /apps/{id}` — resolve an app id to a launch target.
 //!
 //! Two orthogonal axes meet here: the app's kind (its [`AppConfiguration`] variant)
 //! fixes how the launch URL is *resolved*, while the *request's*
@@ -20,25 +13,25 @@
 //!      (the host wraps the launch router with the bearer gate that inserts the
 //!      caller's scope claims). An under-umbrella caller `403`s before `find_app`
 //!      or target resolution, so it triggers no `tunnel.try_start()` and learns
-//!      nothing about existence (`404`) or reachability (`503`). (This retired the
-//!      former in-handler loopback owner gate.)
+//!      nothing about existence (`404`) or reachability (`503`).
 //!   3. Look up the app (`404 AppNotFound` if absent).
 //!   4. Per-app SMART gate: a **SMART** app additionally requires the caller's
 //!      grant to cover its OAuth client's requested *resource* scopes (the OIDC /
 //!      launch-context scopes are the app's own OAuth concern, filtered out). A
 //!      shortfall `403`s with the shared `InsufficientScope` JSON body naming the
-//!      missing scopes, before any side-effect — the loopback/SPA arm decodes it
-//!      directly, and a forwarded browser `GET` has it base64'd into `?launchError`
-//!      (see [`redirect_browser_launch_errors`]) and decoded by the home banner. A
-//!      non-SMART app needs only the umbrella.
+//!      missing scopes, before any side-effect. A non-SMART app needs only the
+//!      umbrella.
 //!   5. Resolve the launch target by the app's kind (System → compiled-in source,
 //!      Self-Hosted → loopback/subdomain, Cloud → the stored template). Fails
 //!      `503 LaunchUnavailable` when no *reachable* target exists.
 //!   6. Dispatch on the request's provenance: a loopback launch `204`s after
-//!      handing the URL to the host webview; a forwarded launch `302`s. A forwarded
-//!      **self-hosted** launch additionally plants a `Set-Cookie` re-scoping the
-//!      caller's owner session onto the app's public host — see
-//!      [`crate::http::LaunchCookies`] and `docs/Apps/Explanation.md`.
+//!      handing the URL to the host webview; a forwarded launch answers `200` with
+//!      the URL ([`LaunchTargetBody`]) for the caller's page to navigate to — the
+//!      caller is the hosted owner UI's `fetch`, which would follow a redirect
+//!      invisibly rather than move the tab. A forwarded **self-hosted** launch
+//!      additionally plants a `Set-Cookie` re-scoping the caller's owner session
+//!      onto the app's public host — see [`crate::http::LaunchCookies`] and
+//!      `docs/Apps/Explanation.md`.
 //!
 //! The auth posture (scope-gated on `wildflower/launch` + a per-app SMART check;
 //! a forwarded launch rides the front trust boundary) is canonical in
@@ -46,13 +39,12 @@
 
 use std::sync::Arc;
 
-use axum::extract::{Path, Request, State};
-use axum::http::header::{LOCATION, SET_COOKIE};
-use axum::http::{HeaderMap, HeaderValue, Method, StatusCode};
-use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use base64::Engine as _;
+use axum::extract::{Path, State};
+use axum::http::header::SET_COOKIE;
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
+use axum::response::{IntoResponse, Json, Response};
+use serde::Serialize;
+use utoipa::ToSchema;
 
 use scope_capabilities_rust::{InsufficientScopeBody, Scoped};
 use shared_structures_rust::served_origin::{request_provenance, RequestProvenance};
@@ -66,21 +58,20 @@ use crate::id_utils::mint_launch_nonce;
 use crate::live_bindings::state::AppsState;
 use crate::live_bindings::LiveAppLauncher;
 
-/// `POST /apps/{id}` — launch an app (`404` if no app has this id). The loopback
-/// (Tauri) arm drives this through the typed client so the owner bearer rides
-/// along. Scope-gated on the `wildflower/launch` umbrella through
+/// `POST /apps/{id}` — launch an app (`404` if no app has this id). Every owner UI
+/// drives this through the typed client so the owner bearer rides along.
+/// Scope-gated on the `wildflower/launch` umbrella through
 /// [`Scoped<LiveAppLauncher>`]; a SMART app additionally requires the caller's grant
 /// to cover its OAuth client's scopes (checked in [`launch`]). See the module docs
-/// for the resolve-then-dispatch flow and the auth posture; the body is shared with
-/// [`handle_launch_app_get`] via [`launch`].
+/// for the resolve-then-dispatch flow and the auth posture.
 #[utoipa::path(
     post,
     tag = "Launch",
     path = "/apps/{id}",
     params(("id" = String, Path, description = "App id")),
     responses(
-        (status = 204, description = "Host sink opened the launch URL for a loopback caller (no redirect)"),
-        (status = 302, description = "Redirect (Location header) to the resolved launch URL"),
+        (status = 200, description = "The resolved launch URL, for a forwarded caller's page to navigate to", body = LaunchTargetBody),
+        (status = 204, description = "Host sink opened the launch URL for a loopback caller"),
         (status = 403, description = "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes", body = InsufficientScopeBody),
         (status = 404, description = "No app has this id", body = AppNotFoundBody),
         (status = 503, description = "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)", body = LaunchUnavailableBody),
@@ -95,97 +86,8 @@ pub(crate) async fn handle_launch_app(
     launch(&launcher, state, headers, id).await
 }
 
-/// `GET /apps/{id}` — the web launch arm. A home-screen tile is a real
-/// `<a href="/apps/{id}" rel="nofollow noreferrer">`, so a plain click navigates
-/// the current tab and a cmd/ctrl-click opens a new one — native affordances a
-/// form-`POST` or `fetch` can't preserve. The auth cookie rides the anchor
-/// navigation (even the initial document request, before any JS), so a forwarded
-/// `GET` authenticates and the server `302`s to the resolved target. Shares
-/// [`launch`] with the `POST` arm — identical resolve-then-dispatch and auth
-/// posture.
-///
-/// A *failed* `GET` (`403`/`404`/`503`) is rewritten to a `303` back to
-/// `/home?launchError=<base64 body>` by [`redirect_browser_launch_errors`], so the
-/// browser lands on the SPA's banner (naming the missing scopes for a `403`) instead
-/// of the raw error body. The `4xx`/`5xx` responses documented below are the
-/// handler's own (what the `POST` arm returns); the browser arm never renders them.
-#[utoipa::path(
-    get,
-    tag = "Launch",
-    path = "/apps/{id}",
-    params(("id" = String, Path, description = "App id")),
-    responses(
-        (status = 204, description = "Host sink opened the launch URL for a loopback caller (no redirect)"),
-        (status = 302, description = "Redirect (Location header) to the resolved launch URL"),
-        (status = 403, description = "The caller's token doesn't cover `wildflower/launch`, or a SMART app's required client scopes", body = InsufficientScopeBody),
-        (status = 404, description = "No app has this id", body = AppNotFoundBody),
-        (status = 503, description = "No reachable launch target (forwarded launch with no public host, or a requires_tunnel app while the tunnel is down)", body = LaunchUnavailableBody),
-    ),
-)]
-pub(crate) async fn handle_launch_app_get(
-    launcher: Scoped<LiveAppLauncher>,
-    State(state): State<Arc<AppsState>>,
-    headers: HeaderMap,
-    Path(id): Path<String>,
-) -> Result<Response, AppsError> {
-    launch(&launcher, state, headers, id).await
-}
-
-/// The SPA route a failed **browser** launch bounces to; the home screen decodes
-/// the base64 `launchError` body into a banner (see the apps-react `/home` route).
-const LAUNCH_ERROR_HOME: &str = "/home";
-
-/// Cap on the error body read into the redirect param. The launch error bodies (a
-/// JSON `InsufficientScope` / `AppNotFound` / `LaunchUnavailable`) are tiny; this
-/// only bounds a pathological body.
-const LAUNCH_ERROR_BODY_LIMIT: usize = 64 * 1024;
-
-/// A layer over the launch routes that bounces a **failed browser (`GET`) launch**
-/// to `/home?launchError=<base64>` instead of letting the raw error body render as
-/// a full page (the web arm is a native `<a href="/apps/{id}">` navigation, so a
-/// `403`/`404`/`503` would otherwise paint its JSON/text body as the page).
-///
-/// The failed response body — a JSON `InsufficientScope` naming the missing scopes,
-/// or an `AppNotFound` / `LaunchUnavailable` — is URL-safe-base64'd into the
-/// redirect so the SPA can decode it and show the *same* permission banner a failed
-/// mutation would (an `AuthorizationFailure` surface naming the scopes), rather than
-/// a coarse kind.
-///
-/// Only a `GET` is rewritten, and only on an error status — a successful launch
-/// (`302` to the app, or `204`) passes through untouched, and the typed loopback
-/// `POST` arm (the SPA/Tauri client, which decodes the body) is never rewritten, so
-/// it still sees the real status. Applied in
-/// [`launch_openapi_router`](crate::http::routes::launch_openapi_router).
-pub(crate) async fn redirect_browser_launch_errors(request: Request, next: Next) -> Response {
-    let is_browser_get = request.method() == Method::GET;
-    let response = next.run(request).await;
-    let status = response.status();
-    if !is_browser_get || !(status.is_client_error() || status.is_server_error()) {
-        return response;
-    }
-    // Consume the error body and base64 it into the redirect so the SPA banner
-    // shows exactly what the server reported. An unreadable body degrades to an
-    // empty param, which the SPA treats as "no launch error" (no banner) rather
-    // than a generic message — see `launchBannerError` in apps-react's
-    // `-launch-error.ts`.
-    let body = axum::body::to_bytes(response.into_body(), LAUNCH_ERROR_BODY_LIMIT)
-        .await
-        .unwrap_or_default();
-    let encoded = URL_SAFE_NO_PAD.encode(&body);
-    let location = format!("{LAUNCH_ERROR_HOME}?launchError={encoded}");
-    // `303 See Other`: the browser re-issues a `GET` to `/home` (dropping the failed
-    // request's method + body). `location` is a path plus URL-safe base64, so the
-    // header value is always valid ASCII.
-    Response::builder()
-        .status(StatusCode::SEE_OTHER)
-        .header(LOCATION, location)
-        .body(axum::body::Body::empty())
-        .expect("a static /home redirect is always a valid response")
-}
-
-/// The shared launch body for both `GET` and `POST /apps/{id}` — the method only
-/// picks the arm (native anchor navigation vs. the typed loopback client); the
-/// resolve-then-dispatch flow and auth posture are identical.
+/// The launch body behind [`handle_launch_app`]: gate, resolve, then dispatch on
+/// the request's provenance (see the module docs).
 async fn launch(
     launcher: &LiveAppLauncher,
     state: Arc<AppsState>,
@@ -220,12 +122,10 @@ async fn launch(
     // Per-app SMART gate (module docs, step 4): a SMART app additionally requires
     // the caller's grant to cover its OAuth client's resource scopes (OIDC /
     // launch-context scopes are filtered out). A shortfall bails before any
-    // side-effect with the shared `403 InsufficientScope` JSON body naming the gap —
-    // the same body for both arms: the loopback/SPA caller decodes it directly, and a
-    // forwarded browser `GET` has it base64'd into `?launchError` by
-    // `redirect_browser_launch_errors` and decoded by the home banner. Keeping it
-    // structured (not a flattened message) lets the banner name the scopes and a
-    // future "request permissions" action read them. A non-SMART app needs only the
+    // side-effect with the shared `403 InsufficientScope` JSON body naming the gap,
+    // which the typed client decodes. Keeping it structured (not a flattened
+    // message) lets the home banner name the scopes and a future "request
+    // permissions" action read them. A non-SMART app needs only the
     // umbrella (short-circuited inside).
     let missing = launcher.missing_launch_scopes(&registration)?;
     if !missing.is_empty() {
@@ -256,7 +156,7 @@ async fn launch(
                 Some(host) => state.launch_cookies.rescope_for_host(&headers, host),
                 None => Vec::new(),
             };
-            redirect(resolved.target_url, set_cookies)
+            Ok(navigate_to(resolved.target_url, set_cookies))
         }
     }
 }
@@ -408,7 +308,7 @@ fn served_origin(state: &AppsState, provenance: &RequestProvenance) -> String {
 /// Resolve the launch origin for a cloud app.
 ///
 /// A non-tunnel launch resolves to the *served* origin (see [`served_origin`]) so
-/// the `302`'s `Location` is something the caller can actually reach. A
+/// the launch URL is something the caller can actually reach. A
 /// `requires_tunnel` launch asks the `TunnelService` to start: `Ok(origin)` is the
 /// live verified origin; `Err(reason)` means the tunnel couldn't be brought up —
 /// and since the third-party app needs the tunnel to reach the user's FHIR server,
@@ -428,22 +328,23 @@ async fn resolve_origin(
     })
 }
 
-/// 302 with an empty body, carrying each of `set_cookies` as a distinct
-/// `Set-Cookie` (empty for every launch but a forwarded self-hosted one). The
-/// `Content-Type` of `text/html; charset=utf-8` matches the TS contract
-/// (`HttpApiSchema.Text`). A failure here means the rendered URL contained a byte
-/// the header codec rejected; surfaces as a logged 500 (never a handler panic).
-fn redirect(location: String, set_cookies: Vec<HeaderValue>) -> Result<Response, AppsError> {
-    let mut builder = Response::builder()
-        .status(StatusCode::FOUND)
-        .header(LOCATION, &location)
-        .header("content-type", "text/html; charset=utf-8");
+/// Wire shape of a forwarded launch's `200`: the resolved launch URL, for the
+/// caller's page to navigate to.
+#[derive(Debug, Serialize, ToSchema)]
+pub(crate) struct LaunchTargetBody {
+    /// The absolute launch URL (public subdomain or rendered cloud template).
+    pub url: String,
+}
+
+/// `200` with the launch URL as [`LaunchTargetBody`], carrying each of
+/// `set_cookies` as a distinct `Set-Cookie` (empty for every launch but a
+/// forwarded self-hosted one).
+fn navigate_to(url: String, set_cookies: Vec<HeaderValue>) -> Response {
+    let mut response = (StatusCode::OK, Json(LaunchTargetBody { url })).into_response();
     for cookie in set_cookies {
-        builder = builder.header(SET_COOKIE, cookie);
+        response.headers_mut().append(SET_COOKIE, cookie);
     }
-    builder
-        .body(axum::body::Body::empty())
-        .map_err(|e| AppsError::infrastructure("redirect builder failed", e))
+    response
 }
 
 /// 204 No Content — the response when the host's
