@@ -106,6 +106,38 @@ mod tests {
         sync_vendored_self_hosted_apps(&missing, dest.path(), false).unwrap();
     }
 
+    /// The first-party apps build to their own `dist/`, so the vendored tree
+    /// holds no `medication` / `web-trace` / `importer` folder — the
+    /// `content_folder`s their original self-hosted seeds recorded — while the
+    /// host's app-data can still hold a copy an older build synced. In both
+    /// modes the sync copies only what the source has and leaves that stale
+    /// destination folder exactly as it was.
+    #[test]
+    fn a_first_party_folder_absent_from_the_source_is_a_noop() {
+        for overwrite in [true, false] {
+            let source = TempDir::new();
+            let dest = TempDir::new();
+            write(source.path(), "patient-browser/index.html", "pb");
+            write(source.path(), "README.md", "docs");
+            write(dest.path(), "medication/index.html", "stale");
+
+            sync_vendored_self_hosted_apps(source.path(), dest.path(), overwrite).unwrap();
+
+            assert_eq!(read(dest.path(), "patient-browser/index.html"), "pb");
+            assert_eq!(
+                read(dest.path(), "medication/index.html"),
+                "stale",
+                "a folder the source no longer has is neither created nor removed",
+            );
+            for absent in ["web-trace", "importer"] {
+                assert!(
+                    !dest.path().join(absent).exists(),
+                    "{absent} must not be created when the source has no such folder",
+                );
+            }
+        }
+    }
+
     #[test]
     fn copies_top_level_dirs_and_skips_files() {
         let source = TempDir::new();

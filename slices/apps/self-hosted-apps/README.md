@@ -1,55 +1,50 @@
 # self-hosted-apps
 
-Home for vendored FHIR app builds. Four directories live here, and they no
-longer all play the same role:
+Home for vendored FHIR app builds. The model is:
 
-| Directory         | Role                                                                                                                                                                                                   |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `patient-browser` | The only remaining **release** self-hosted app: a vendored build of the third-party [`patient-browser`][upstream] sample app, seeded by apps migration `0002` and served from its own loopback origin. |
-| `medication`      | Build output of `apps/medications-app`. **Source** for the published `/medications-app` section of the Pages site, and fallback content for the debug-only `medications-app-dev` row.                  |
-| `web-trace`       | Build output of `apps/web-trace`. Same arrangement for `/web-trace-app` and `web-trace-app-dev`.                                                                                                       |
-| `importer`        | Build output of `apps/importer-web`. Same arrangement for `/importer-app` and `importer-app-dev` — the one shipped app that **writes** to the FHIR base its SMART launch named.                        |
+- **First-party apps are cloud rows.** Medications, Web Trace and Importer
+  build into their own package's `dist/` (`apps/<app>/dist`), `apps/github-pages`
+  publishes them on <https://wildflowerhealth.io>, and the host launches them from
+  there — apps migrations `0005_first_party_apps_to_cloud` (Medications, Web
+  Trace) and `0006_seed_wildflower_importer_app` (Importer). Nothing of theirs is
+  built into, or served from, this directory.
+- **Self-hosted apps are `patient-browser` plus user uploads.** The one vendored
+  build here is `patient-browser/`, a build of the third-party
+  [`patient-browser`][upstream] sample app, seeded by apps migration `0002` and
+  served from its own loopback origin. Everything else a device serves
+  self-hosted is a `.zip` the owner uploaded (see
+  [Uploaded builds](#uploaded-builds-user-apps)).
 
-The OHIF imaging viewer (`apps/ohif-viewer`, published at `/ohif-viewer`, apps
-migration `0007_seed_ohif_viewer_app`) has no directory here: it is a downloaded
-prebuilt bundle. Having no fallback content is exactly why its debug-only
-`ohif-viewer-dev` row is a **cloud** row on the preview origin rather than a
-self-hosted one (`apps-rust/src/dev_seed.rs`) — `vp run -F ohif-viewer dev`
-serves it, and the host binds no listener for it.
+The debug-only `<app>-dev` rows (`apps-rust/src/dev_seed.rs`) are **cloud** rows
+too: each is a launch URL naming the app's vite dev-server port on `localhost`,
+so a "(Dev)" tile launches whatever is serving that port — the vite dev server
+when it is up, nothing when it is down. The host binds no listener for them and
+there is no fallback content. The OHIF imaging viewer (`apps/ohif-viewer`,
+published at `/ohif-viewer`, apps migration `0007_seed_ohif_viewer_app`) follows
+the same shape: a downloaded prebuilt bundle, published from its own `dist/`, with
+a cloud `ohif-viewer-dev` row that `vp run -F ohif-viewer dev` serves.
 
 [upstream]: https://github.com/smart-on-fhir/patient-browser
 
-## Which mechanism still serves which directory
+## What ships in `bundle.resources`
 
-The three first-party apps launch in production from the deployed site
-(<https://wildflowerhealth.io>), as **cloud** rows — apps migrations
-`0005_first_party_apps_to_cloud` (Medications, Web Trace) and
-`0006_seed_wildflower_importer_app` (Importer). Their build output stays here
-because two other consumers read it:
+`apps/wildflower-tauri/src-tauri/tauri.conf.json` maps this **whole directory**
+to `self-hosted-apps/` in the release bundle. In practice that ships only
+`patient-browser/` — the one release row whose `content_folder` names a folder
+here — plus these two tracked docs files, which the sync skips.
 
-1. `apps/github-pages` copies these directories into the published artifact (see
-   [that package's README](../../../apps/github-pages/README.md)); this is why
-   the three apps' vite `outDir`s cannot move.
-2. Debug builds seed a `<app>-dev` self-hosted row per app
-   (`apps-rust/src/dev_seed.rs`) whose `content_folder` is the directory here, so
-   the host can serve _something_ on the dev port when the vite dev server is not
-   running.
+The entry names the directory rather than `patient-browser/` because
+`tauri-build` resolves every `bundle.resources` path at compile time — in debug
+builds and `cargo check` too — and fails the build when a path is missing or a
+glob matches nothing. `patient-browser/` is gitignored, so a fresh clone and CI
+don't have it; naming it directly would break every build that hasn't vendored
+it. The directory itself always exists because this README and `.gitignore` are
+tracked.
 
-The vendored-build **mechanism** therefore stays (patient-browser needs it, and
-so does the dev fallback), including the `bundle.resources` shipping of this
-whole directory in release builds — which is now partly dead weight: in a release
-build only `patient-browser/` is referenced by a row's `content_folder`. Removing
-the other three from the bundle would save space at the cost of a
-`bundle.resources` entry that no longer matches the directory, so they are left
-in for now; revisit if bundle size matters.
-
-**Fallback caveat (dev).** The fallback content a `<app>-dev` row serves is a
-_production_ build, which sends the production `clientId`
-(`import.meta.env.DEV` is false in a built bundle). Since the production client
-now registers only the absolute published-site redirect, a SMART handshake
-started from that fallback content cannot complete: the tile renders, auth
-fails. Run the vite dev server (which sends the `-dev` client id) for a working
-dev launch.
+No build writes into this directory, so a release bundle carries exactly what is
+vendored here by hand. Any other folder sitting here when a release is built —
+a stale local `medication/`, `web-trace/` or `importer/` from an old checkout,
+say — ships too, so keep only `patient-browser/` before cutting one.
 
 This directory holds the **vendored builds** — one gitignored folder per app
 (e.g. `patient-browser/`), each containing the app's static files — plus these
@@ -97,9 +92,8 @@ Adding a new template file needs no code change, just a Rust rebuild (the tree
 is embedded at compile time), and other apps just get whatever's on disk.
 
 Populating that directory is no longer a hand-copy. Two install surfaces feed
-it (see below): the **vendored-build sync** places the shipped apps
-(patient-browser, plus the two first-party builds used as dev fallback content)
-there at host startup, and the **upload endpoint** extracts a
+it (see below): the **vendored-build sync** places the shipped app
+(patient-browser) there at host startup, and the **upload endpoint** extracts a
 user-supplied `.zip` into a new `self-hosted-apps/<slug>/`. The committed
 template is always served regardless; the rest of an app's routes 404 until its
 directory holds the build.
