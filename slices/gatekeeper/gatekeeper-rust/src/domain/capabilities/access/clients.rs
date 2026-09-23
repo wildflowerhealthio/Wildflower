@@ -1,19 +1,8 @@
 //! Client capabilities — the `wildflower/Client.*` capabilities behind
-//! `/access/clients[/{clientId}/{disable,enable}]`: the Owner's view of every
-//! client they have trusted (seeded or [trusted on first use]) and the switch
-//! that takes that trust back. Generic over the store port so the logic is
-//! unit-testable against the in-memory fake; the bindings instantiate them over
-//! the concrete `SqliteGatekeeperStore`.
-//!
-//! Disabling only stamps `disabled_at`. Every OAuth entry point already refuses
-//! a disabled client (`/oauth/authorize` renders a local error page; client
-//! authentication at `/oauth/token` and `/oauth/device_authorization` fails),
-//! and a trust-on-first-use widening never clears the stamp, so re-enabling is
-//! the only way back. The client's standing grants and refresh-token families
-//! are left as they are — they are unusable while the client is disabled and
-//! usable again once it is enabled.
-//!
-//! [trusted on first use]: crate::domain::capabilities::writers::GrantRecorder
+//! `/access/clients[/{clientId}/{disable,enable}]`: list every registered
+//! client and switch one's `disabled_at`. What disabling does (and leaves
+//! alone) is described under "Client" in `slices/gatekeeper/docs/Jargon
+//! Explanation.md`.
 
 use std::sync::Arc;
 
