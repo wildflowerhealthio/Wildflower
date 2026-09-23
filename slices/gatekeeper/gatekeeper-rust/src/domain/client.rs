@@ -187,11 +187,17 @@ impl Client {
     /// client).
     #[must_use]
     pub fn allows_scopes(&self, requested: &[String]) -> bool {
-        requested.iter().all(|requested| {
-            self.allowed_scopes
-                .iter()
-                .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested))
-        })
+        requested
+            .iter()
+            .all(|requested_scope| self.allows_scope(requested_scope))
+    }
+
+    /// Whether some entry of this client's `allowed_scopes` covers
+    /// `requested_scope`.
+    fn allows_scope(&self, requested_scope: &str) -> bool {
+        self.allowed_scopes
+            .iter()
+            .any(|allowed| scopes_rust::allowed_scope_covers(allowed, requested_scope))
     }
 }
 

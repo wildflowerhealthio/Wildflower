@@ -173,10 +173,10 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             .split_whitespace()
             .map(str::to_string)
             .collect();
-        // Only the first-party host is held to its allowlist here; every other
-        // client's unregistered scope becomes part of its registration verdict.
-        if let (true, Some(host)) = (registration_is_locked, maybe_existing_client.as_ref()) {
-            if !host.allows_scopes(&requested_scopes) {
+        if let (true, Some(locked_client)) =
+            (registration_is_locked, maybe_existing_client.as_ref())
+        {
+            if !locked_client.allows_scopes(&requested_scopes) {
                 return Err(AuthorizationStartError::Redirectable {
                     redirect_uri: requested_redirect_uri,
                     error: OAuthErrorCode::InvalidScope,

@@ -165,9 +165,8 @@ impl RegistrationClassifier<'_> {
     /// Classify a pending request for `requested_client_id` against
     /// `maybe_existing_client` (its current row, or `None` when the id is
     /// unknown), expanding app-relative allowlist entries for this request's
-    /// provenance. The caller loads the row: each caller needs it for more
-    /// than the verdict, and they differ on a store failure (the consent view
-    /// renders it as `New`; `/authorize` and the approval fail).
+    /// provenance. The caller loads the row, because each caller needs it for
+    /// more than the verdict.
     pub(crate) fn classify(
         &self,
         requested_client_id: &str,

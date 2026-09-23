@@ -157,9 +157,8 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         let requested_redirect_uri = pending_request.redirect_uri().clone();
         let request = pending_request.into_request();
         // A missing row is the `New` verdict, and its name falls back to the raw
-        // `client_id` — a store failure reads the same way, deliberately: the
-        // prompt still renders, warning rather than silently reassuring.
-        let maybe_existing_client = self.store.client_by_id(&request.client_id).ok().flatten();
+        // `client_id`. A store failure fails the read.
+        let maybe_existing_client = self.store.client_by_id(&request.client_id)?;
         let client_name = maybe_existing_client.as_ref().map_or_else(
             || request.client_id.clone(),
             |existing_client| existing_client.name.clone(),
@@ -190,9 +189,9 @@ impl<S: GatekeeperStore> ConsentReader<S> {
     ) -> Result<DeviceConsentView, GatekeeperError> {
         let request = load_pending_device_request(&self.store, user_code)?;
         let (client_name, registered_client_scopes) =
-            match self.store.client_by_id(&request.client_id) {
-                Ok(Some(existing_client)) => (existing_client.name, existing_client.allowed_scopes),
-                _ => (request.client_id.clone(), Vec::new()),
+            match self.store.client_by_id(&request.client_id)? {
+                Some(existing_client) => (existing_client.name, existing_client.allowed_scopes),
+                None => (request.client_id.clone(), Vec::new()),
             };
         Ok(DeviceConsentView {
             request,
@@ -884,5 +883,47 @@ mod tests {
             view.requested_redirect_uri.as_str(),
             "https://example.com/cb"
         );
+    }
+
+    /// A client row the store cannot read fails the prompt read instead of
+    /// rendering as an unknown (`New`) client, on both consent surfaces.
+    #[test]
+    fn consent_reader_surfaces_a_client_read_failure() {
+        use crate::db::SqliteGatekeeperStore;
+        use diesel::RunQueryDsl;
+
+        let store = SqliteGatekeeperStore::open_in_memory().expect("open in-memory store");
+        store.upsert_client(&client("client", &["read"])).unwrap();
+        store
+            .insert_authorization_request(&code_request(
+                "req-1",
+                RequestStatus::Pending,
+                Utc::now() + Duration::minutes(5),
+            ))
+            .unwrap();
+        store
+            .insert_authorization_request(&device_request(
+                "dev-1",
+                "USER-CODE",
+                RequestStatus::Pending,
+            ))
+            .unwrap();
+        let mut conn = store.pool().get().expect("check out a connection");
+        diesel::sql_query(
+            "UPDATE clients SET allowed_scopes = 'not json' WHERE client_id = 'client'",
+        )
+        .execute(&mut conn)
+        .expect("corrupt the stored row");
+        drop(conn);
+
+        let reader = ConsentReader::new(store, Arc::new(NoSelfHostedRedirects));
+        assert!(matches!(
+            reader.oauth_consent("req-1", "http://127.0.0.1"),
+            Err(GatekeeperError::Infrastructure { .. })
+        ));
+        assert!(matches!(
+            reader.device_consent("USER-CODE"),
+            Err(GatekeeperError::Infrastructure { .. })
+        ));
     }
 }
