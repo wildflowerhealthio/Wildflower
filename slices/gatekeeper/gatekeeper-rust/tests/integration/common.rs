@@ -600,3 +600,26 @@ pub fn owner_revocation_request(token: &str, body: Value) -> Request<Body> {
         Body::from(body.to_string()),
     )
 }
+
+/// Assert `res` carries both cache-suppression headers — `Cache-Control:
+/// no-store` and `Pragma: no-cache` — each exactly once. `what` names the
+/// response in the failure message.
+pub fn assert_cache_suppressed(res: &axum::response::Response, what: &str) {
+    let values = |name: &str| -> Vec<&str> {
+        res.headers()
+            .get_all(name)
+            .iter()
+            .map(|v| v.to_str().expect("ascii header"))
+            .collect()
+    };
+    assert_eq!(
+        values("cache-control"),
+        ["no-store"],
+        "{what} must carry exactly one Cache-Control: no-store"
+    );
+    assert_eq!(
+        values("pragma"),
+        ["no-cache"],
+        "{what} must carry exactly one Pragma: no-cache"
+    );
+}
