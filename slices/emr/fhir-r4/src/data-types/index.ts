@@ -14,7 +14,10 @@ export * as DomainResource from './base/domain-resource.ts'
 export * as Element from './base/element.ts'
 export * as Meta from './base/meta.ts'
 export * as Resource from './base/resource.ts'
-export { choiceElementSetPassthroughFields } from './base/choice-element-passthrough-fields.ts'
+export {
+  choiceElementSetExclusive,
+  choiceElementSetPassthroughFields,
+} from './base/choice-element-passthrough-fields.ts'
 
 // Complex
 export * as Address from './complex/address.ts'

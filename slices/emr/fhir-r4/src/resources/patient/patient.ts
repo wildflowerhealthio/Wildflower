@@ -15,6 +15,7 @@ import {
   Attachment,
   ChoiceElementSet,
   CodeableConcept,
+  choiceElementSetExclusive,
   choiceElementSetPassthroughFields,
   ContactPoint,
   DomainResource,
@@ -198,7 +199,15 @@ const PatientStruct = Schema.extend(
       ),
     })
   )
-).annotations({ jsonSchema: patientJsonSchema })
+)
+  .pipe(
+    choiceElementSetExclusive('deceased', ChoiceElementSet.FhirR4SetChoices['Patient.deceased[x]']),
+    choiceElementSetExclusive(
+      'multipleBirth',
+      ChoiceElementSet.FhirR4SetChoices['Patient.multipleBirth[x]']
+    )
+  )
+  .annotations({ jsonSchema: patientJsonSchema })
 
 const PatientSchema: Schema.Schema<typeof PatientStruct.Type, FhirR4.Patient, never> = PatientStruct
 

@@ -7,6 +7,7 @@ import type * as FhirR4 from 'fhir/r4.d.ts'
 import {
   Annotation,
   ChoiceElementSet,
+  choiceElementSetExclusive,
   choiceElementSetPassthroughFields,
   CodeableConcept,
   Dosage,
@@ -233,7 +234,18 @@ const MedicationDispenseStruct = Schema.extend(
       eventHistory: referenceArray,
     })
   )
-).annotations({ jsonSchema: medicationDispenseJsonSchema })
+)
+  .pipe(
+    choiceElementSetExclusive(
+      'statusReason',
+      ChoiceElementSet.FhirR4SetChoices['MedicationDispense.statusReason[x]']
+    ),
+    choiceElementSetExclusive(
+      'medication',
+      ChoiceElementSet.FhirR4SetChoices['MedicationDispense.medication[x]']
+    )
+  )
+  .annotations({ jsonSchema: medicationDispenseJsonSchema })
 
 /**
  * All-empty R4 `MedicationDispense`: every field carries its "absent" value.

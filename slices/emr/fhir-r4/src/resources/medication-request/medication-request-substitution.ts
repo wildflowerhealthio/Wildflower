@@ -5,7 +5,10 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../../data-types/base/backbone-element.ts'
-import { choiceElementSetPassthroughFields } from '../../data-types/base/choice-element-passthrough-fields.ts'
+import {
+  choiceElementSetExclusive,
+  choiceElementSetPassthroughFields,
+} from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as CodeableConcept from '../../data-types/complex/codeable-concept.ts'
 
@@ -20,6 +23,11 @@ const MedicationRequestSubstitutionStruct = mutableEncoded(
     ),
     reason: OrNullAsOptional(Schema.suspend(() => CodeableConcept.Schema)),
   })
+).pipe(
+  choiceElementSetExclusive(
+    'allowed',
+    ChoiceElementSet.FhirR4SetChoices['MedicationRequest.substitution.allowed[x]']
+  )
 )
 
 const MedicationRequestSubstitutionSchema: Schema.Schema<

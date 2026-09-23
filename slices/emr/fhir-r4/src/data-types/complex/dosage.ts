@@ -5,7 +5,10 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
 import * as BackboneElement from '../base/backbone-element.ts'
-import { choiceElementSetPassthroughFields } from '../base/choice-element-passthrough-fields.ts'
+import {
+  choiceElementSetExclusive,
+  choiceElementSetPassthroughFields,
+} from '../base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../base/choice-element-set.ts'
 import * as CodeableConcept from './codeable-concept.ts'
 import * as Range from './range.ts'
@@ -65,6 +68,8 @@ const DosageStruct = mutableEncoded(
     maxDosePerAdministration: OrNullAsOptional(Schema.suspend(() => SimpleQuantity.Schema)),
     maxDosePerLifetime: OrNullAsOptional(Schema.suspend(() => SimpleQuantity.Schema)),
   })
+).pipe(
+  choiceElementSetExclusive('asNeeded', ChoiceElementSet.FhirR4SetChoices['Dosage.asNeeded[x]'])
 )
 
 const DosageSchema: Schema.Schema<typeof DosageStruct.Type, FhirR4.Dosage, never> = DosageStruct

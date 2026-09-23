@@ -20,13 +20,23 @@ The `HttpApi` definition and the schemas here are hand-synchronized with what HF
 
 The `/fhir-r4` mount path itself is unchanged on the server side — only where it is applied on the client side moved.
 
-## Choice element XOR not enforced
+## Choice element at-most-one rule
 
-FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Extension.value[x]`, `MedicationRequest.medication[x]`, `MedicationRequest.reported[x]`, `MedicationRequest.substitution.allowed[x]`, `MedicationDispense.medication[x]`, `MedicationDispense.statusReason[x]`, `Dosage.asNeeded[x]`, `Dosage.doseAndRate.dose[x]`, `Dosage.doseAndRate.rate[x]`, `ServiceRequest.quantity[x]`, `ServiceRequest.occurrence[x]`, `ServiceRequest.asNeeded[x]`) are mutex by spec — only one variant may be set at a time. Our schemas declare every variant as an independent optional field (via `choiceElementSetPassthroughFields(prefix, variants)`, or — for the `Dosage.doseAndRate` `dose[x]`/`rate[x]` slots whose `SimpleQuantity` type is named `…Quantity` on the wire — as explicit `doseRange`/`doseQuantity`/`rateRatio`/`rateRange`/`rateQuantity` fields). A payload setting both `deceasedBoolean` and `deceasedDateTime`, or both `medicationCodeableConcept` and `medicationReference`, will validate.
+FHIR R4 choice elements (`Patient.deceased[x]`, `Patient.multipleBirth[x]`, `Observation.value[x]`, `Observation.effective[x]`, `Observation.component.value[x]`, `Extension.value[x]`, `MedicationRequest.medication[x]`, `MedicationRequest.reported[x]`, `MedicationRequest.substitution.allowed[x]`, `MedicationDispense.medication[x]`, `MedicationDispense.statusReason[x]`, `DiagnosticReport.effective[x]`, `Dosage.asNeeded[x]`, `ServiceRequest.quantity[x]`, `ServiceRequest.occurrence[x]`, `ServiceRequest.asNeeded[x]`) allow at most one populated slot. Each is modeled as one independent optional field per variant (`choiceElementSetPassthroughFields(prefix, variants)`), and the containing struct is piped through `choiceElementSetExclusive(prefix, variants)` — a `Schema.filter` that counts the non-null `${prefix}*` slots and fails when there are two or more. The STU3-as-R4 `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` schemas in `fhir-stu3-as-r4` carry the same guard.
 
-FHIR also marks `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` as required (1..1); modeling every variant as an independent optional means neither is required at the schema level, so a payload with no medication slot set also validates.
+The rule is enforced on both sides of the wire:
 
-We accept the loosening for now because we don't have a place to perform the cross-field refinement cheaply with `Schema.transformOrFail` without changing the Type. To enforce, add a `Schema.filter` on the relevant container struct that asserts at most one variant is set.
+- **Decode**: a payload setting both `valueString` and `valueInteger` (or `deceasedBoolean` and `deceasedDateTime`, …) fails with a `ParseResult.Type` issue naming every populated slot: `choice element value[x] allows at most one populated slot, but found 2: valueString, valueInteger`. The slots are listed in the choice element's variant order.
+- **Encode**: a decoded value with two slots set fails with the same issue, so the client never emits the invalid wire JSON.
+
+The per-slot field types are unchanged: the decoded resource still carries every `${prefix}*` key, with `null` for the unpopulated ones.
+
+Remaining gaps:
+
+- **Unregistered slots are invisible to the check.** A slot whose datatype has no fhir-r4 wire schema decodes to `null` (see [Unregistered choice-element datatypes](#unregistered-choice-element-datatypes-valuex--effectivex)), so a wire payload pairing, say, `valueMoney` with `valueString` decodes with only `valueString` set. Encoding a non-null unregistered slot still fails.
+- **`Dosage.doseAndRate` `dose[x]` / `rate[x]` are not guarded.** Their `SimpleQuantity` variant is named `…Quantity` on the wire, so they are modeled as explicit `doseRange`/`doseQuantity`/`rateRatio`/`rateRange`/`rateQuantity` fields rather than through the choice-element helpers, and a payload setting two of them validates.
+- **Required choice elements are not required.** FHIR marks `MedicationRequest.medication[x]` and `MedicationDispense.medication[x]` as 1..1; with every variant optional, a payload with no medication slot set also validates.
+- **`Schema.omit` / `Schema.pick` drop the guard.** Effect rebuilds the struct without its refinements. `withMandatoryId` — the `id`-narrowing wrapper the HTTP API definition applies to every resource — re-applies them; any other schema derived that way from a guarded resource has no guard.
 
 ## `Observation.status` defaulted to `unknown` when absent
 
@@ -41,9 +51,11 @@ Consequence on the types: because accepting a missing status on decode and the d
 `Medication` is modeled with its standard R4 fields (`code`, `status`,
 `manufacturer`, `form`, `amount`, `ingredient[]`, `batch`) plus the
 `DomainResource` extension array, primarily to give `fhir-stu3-as-r4`'s
-STU3→R4 transforms a real R4 target. As with every resource here,
-`Medication.ingredient.item[x]` (CodeableConcept | Reference) is two independent
-optional fields, not an enforced XOR. A `Medication.empty` all-absent default is
+STU3→R4 transforms a real R4 target.
+`Medication.ingredient.item[x]` (CodeableConcept | Reference) is two explicit
+optional fields without the at-most-one guard (see
+[Choice element at-most-one rule](#choice-element-at-most-one-rule)), so setting
+both validates. A `Medication.empty` all-absent default is
 exported (alongside `.empty` on `MedicationRequest` / `MedicationDispense` /
 `MedicationRequestDispenseRequest` and `IdentifierAndReference.emptyReference`)
 for transforms that overlay populated fields onto it. `Quantity.fromSimpleQuantity`
@@ -115,7 +127,7 @@ Normalizations and deviations:
 
 ## DocumentReference choice / required modeling
 
-`DocumentReference` has no `choice[x]` elements, so the XOR caveat above does not apply to it. Its modifier-required `status` (`current | superseded | entered-in-error`) is modeled as a plain required `Schema.Literal` (no `unknown`-default rescue like `Observation.status`, since HFS serves it reliably). `content` is `1..*` in the spec; the client models it as a plain (non-optional) array, so its presence is required on both the decoded and wire sides, but the array's non-emptiness (`min 1`) is **not** enforced — a payload with `content: []` validates. The `content.attachment` and `relatesTo.code`/`relatesTo.target` required sub-elements are likewise modeled as required (non-nullable) fields.
+`DocumentReference` has no `choice[x]` elements, so the choice-element rule above does not apply to it. Its modifier-required `status` (`current | superseded | entered-in-error`) is modeled as a plain required `Schema.Literal` (no `unknown`-default rescue like `Observation.status`, since HFS serves it reliably). `content` is `1..*` in the spec; the client models it as a plain (non-optional) array, so its presence is required on both the decoded and wire sides, but the array's non-emptiness (`min 1`) is **not** enforced — a payload with `content: []` validates. The `content.attachment` and `relatesTo.code`/`relatesTo.target` required sub-elements are likewise modeled as required (non-nullable) fields.
 
 ## DiagnosticReport search parameters (subset declared)
 
@@ -129,7 +141,7 @@ Per FHIR R4 § Practitioner.search, the standard parameters include `_id`, `_las
 
 ## DiagnosticReport / Practitioner choice / required modeling
 
-`DiagnosticReport.effective[x]` is `dateTime | Period`, modeled the same way as `Observation.effective[x]` (both slots optional, XOR not enforced — see above). Its required `status` (the ten-code `DiagnosticReport.status` value set) and `code` are modeled as plain required fields, with no `unknown`-default rescue for `status`: an absent status fails the decode. `media.link` is likewise required. `Practitioner` has no choice elements and no required fields beyond `resourceType`; its `qualification.code` is modeled as required, per the spec's 1..1.
+`DiagnosticReport.effective[x]` is `dateTime | Period`, modeled the same way as `Observation.effective[x]` (both slots optional, at most one populated — see above). Its required `status` (the ten-code `DiagnosticReport.status` value set) and `code` are modeled as plain required fields, with no `unknown`-default rescue for `status`: an absent status fails the decode. `media.link` is likewise required. `Practitioner` has no choice elements and no required fields beyond `resourceType`; its `qualification.code` is modeled as required, per the spec's 1..1.
 
 ## MedicationRequest / MedicationDispense search parameters (only paging declared)
 
@@ -227,7 +239,7 @@ Notably absent: `patient` (same as `subject` but typed to Patient only), `encoun
 
 ## ServiceRequest choice / required modeling
 
-`ServiceRequest.quantity[x]` (Quantity | Ratio | Range), `ServiceRequest.occurrence[x]` (dateTime | Period | Timing), and `ServiceRequest.asNeeded[x]` (boolean | CodeableConcept) are each modeled as independent optional fields via `choiceElementSetPassthroughFields` — XOR not enforced (see "Choice element XOR not enforced" above). Required `status`, `intent`, and `subject` are modeled as plain required fields; `authoredOn` is nullable-optional (FHIR R4 marks it 0..1). `note` is typed as `Schema.Array(Schema.Any)` — Annotation backbone elements are not individually typed. `specimen` is omitted from the schema entirely (ServiceRequest is modeled for radiology/DICOM order tracking, not lab orders). `ServiceRequest.medication[x]` does not exist on this resource (it is not MedicationRequest).
+`ServiceRequest.quantity[x]` (Quantity | Ratio | Range), `ServiceRequest.occurrence[x]` (dateTime | Period | Timing), and `ServiceRequest.asNeeded[x]` (boolean | CodeableConcept) are each modeled as independent optional fields via `choiceElementSetPassthroughFields`, with at most one populated slot per element (see "Choice element at-most-one rule" above). Required `status`, `intent`, and `subject` are modeled as plain required fields; `authoredOn` is nullable-optional (FHIR R4 marks it 0..1). `note` is typed as `Schema.Array(Schema.Any)` — Annotation backbone elements are not individually typed. `specimen` is omitted from the schema entirely (ServiceRequest is modeled for radiology/DICOM order tracking, not lab orders). `ServiceRequest.medication[x]` does not exist on this resource (it is not MedicationRequest).
 
 ## ImagingStudy search parameters (subset declared)
 
@@ -252,4 +264,4 @@ Notably absent: `patient`, `encounter`, `bodysite`, `dicom-class`, `instance`, `
 
 ## Post-merge audit (TODO)
 
-A handful of finer-grained spec audits — the `topLevel: true` collision on domain-resource groups, choice element XOR enforcement, Reference target-type enforcement, etc. — are tracked under the **Post Merge Audit** epic on GitHub.
+A handful of finer-grained spec audits — the `topLevel: true` collision on domain-resource groups, Reference target-type enforcement, etc. — are tracked under the **Post Merge Audit** epic on GitHub.

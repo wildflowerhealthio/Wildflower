@@ -4,7 +4,10 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
-import { choiceElementSetPassthroughFields } from '../../data-types/base/choice-element-passthrough-fields.ts'
+import {
+  choiceElementSetExclusive,
+  choiceElementSetPassthroughFields,
+} from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
 import * as Annotation from '../../data-types/complex/annotation.ts'
@@ -297,7 +300,15 @@ const ObservationStruct = Schema.extend(
       ),
     })
   )
-).annotations({ jsonSchema: observationJsonSchema })
+)
+  .pipe(
+    choiceElementSetExclusive('value', ChoiceElementSet.FhirR4SetChoices['Observation.value[x]']),
+    choiceElementSetExclusive(
+      'effective',
+      ChoiceElementSet.FhirR4SetChoices['Observation.effective[x]']
+    )
+  )
+  .annotations({ jsonSchema: observationJsonSchema })
 
 // The wire (Encoded) type matches `FhirR4.Observation` except for `status`:
 // because we decode a missing status to a default (see the struct), the
