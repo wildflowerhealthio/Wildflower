@@ -30,7 +30,7 @@ async fn auth_code_grant_happy_path_end_to_end() {
         .and_then(|v| v.to_str().ok())
         .expect("location")
         .to_string();
-    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+    let request_id = polling_request_id(&polling);
 
     // 2. Owner approves the requested scope via the consent endpoint.
     let approve = loopback_request(
@@ -153,7 +153,7 @@ async fn oauth_consent_prompt_carries_client_display_name() {
         .and_then(|v| v.to_str().ok())
         .expect("location")
         .to_string();
-    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+    let request_id = polling_request_id(&polling);
 
     let res = g
         .router
@@ -212,7 +212,7 @@ async fn auth_code_grant_owner_narrows_requested_scope() {
         .and_then(|v| v.to_str().ok())
         .expect("location")
         .to_string();
-    let request_id = polling.rsplit('/').next().expect("request id").to_string();
+    let request_id = polling_request_id(&polling);
 
     // 2. Owner approves the *narrowed* `.s` — tighter than the requested `.rs`.
     let approve = loopback_request(

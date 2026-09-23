@@ -8,6 +8,8 @@ struct TauriSharedConfig {
     loopback_port: u16,
     local_granted_scopes: String,
     first_party_client_id: String,
+    owner_ui_base_url: String,
+    owner_ui_dev_base_url: String,
 }
 
 fn main() {
@@ -53,6 +55,14 @@ fn main() {
     println!(
         "cargo:rustc-env=WILDFLOWER_FIRST_PARTY_CLIENT_ID={}",
         config.first_party_client_id
+    );
+    println!(
+        "cargo:rustc-env=WILDFLOWER_OWNER_UI_BASE_URL={}",
+        config.owner_ui_base_url
+    );
+    println!(
+        "cargo:rustc-env=WILDFLOWER_OWNER_UI_DEV_BASE_URL={}",
+        config.owner_ui_dev_base_url
     );
 
     // Build-time tunnel seed: read the package-local `.env` (a sibling of this

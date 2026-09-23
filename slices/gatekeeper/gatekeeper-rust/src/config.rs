@@ -1,3 +1,4 @@
+use shared_structures_rust::owner_ui::OwnerUiBase;
 use url::Url;
 
 #[derive(Debug, Clone)]
@@ -25,4 +26,9 @@ pub struct GatekeeperConfig {
     /// `tauri-shared-config.json` (the single source shared with the TS shell);
     /// standalone/test builds use [`crate::default_first_party_client_id`].
     pub first_party_client_id: String,
+
+    /// The hosted owner UI the device-flow `verification_uri` and the
+    /// `/authorize` polling page live on (see [`OwnerUiBase`]). The live Tauri
+    /// app sources it from `tauri-shared-config.json`.
+    pub owner_ui_base: OwnerUiBase,
 }

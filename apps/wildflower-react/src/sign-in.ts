@@ -286,6 +286,7 @@ export {
   REGISTERED_REDIRECT_URI,
   rememberReturnTo,
   RETURN_TO_KEY,
+  RETURN_TO_PARAM,
   scheduleExpiry,
   signInEnvironment,
   startSignIn,

@@ -302,6 +302,7 @@ pub fn setup_gatekeeper(
         revocation_store: revocation_store.clone(),
         loopback_base_url: config.loopback_base_url.clone(),
         first_party_client_id: config.first_party_client_id.clone().into(),
+        owner_ui_base: config.owner_ui_base.clone(),
         active_pending_consent_sender: active_pending_consent_tx,
         self_hosted_redirects,
         loopback_consent_prompt,

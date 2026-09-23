@@ -5,8 +5,8 @@ import monorepoBase from '../../vite.config.base.ts'
 import { routes } from './routes.config.ts'
 
 /**
- * Shared base. Both `vite.config.web.ts` and `vite.config.single-web.ts`
- * extend this with bundle-specific plugins / build options.
+ * Shared base. `vite.config.web.ts` (the hosted `main-web` bundle) and the
+ * test-only `vite.config.ts` extend this with their own options.
  *
  * `tanstackRouter` must run before `react()` so the generated route tree
  * is in place before the React transform. It reads the virtual config in

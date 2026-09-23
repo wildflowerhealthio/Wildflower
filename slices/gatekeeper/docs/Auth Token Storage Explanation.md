@@ -24,7 +24,11 @@ source.
 
 ## `makeWebAuthStateStore` — cookie-derived (#218)
 
-Used by the standalone web entries (`main-web` / `main-single-web`).
+Exported as `makeCookieAuthStateStore`. No in-tree entry uses it: the only
+web entry, `main-web`, runs cross-origin to its server and holds an in-memory
+bearer (`makeBearerAuthStateStore`), and no server serves a same-origin UI.
+The cookie store, and the `wf_auth` cookie the server plants, remain as
+described below until they are removed.
 
 On the web path the real access token is the **`HttpOnly` `wf_auth`
 cookie** the gatekeeper server sets at token issuance

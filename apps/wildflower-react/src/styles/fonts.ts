@@ -9,9 +9,8 @@
  * for the Tauri host, which must render correctly offline and without a Google
  * Fonts dependency.
  *
- * Imported once from `app-root.tsx`, which every entry (`main-web`,
- * `main-single-web`, and the Tauri shell via `wildflower-react/app-root`)
- * routes through — so a single import covers every Tundraish surface.
+ * Imported once from `app-root.tsx`, which every entry (`main-web` and the
+ * Tauri shell via `wildflower-react/app-root`) routes through — so a single import covers every Tundraish surface.
  *
  *   - Atkinson Hyperlegible Next — the single UI family (body, labels, titles);
  *     the italic cut carries emphasis.

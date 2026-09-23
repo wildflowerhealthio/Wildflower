@@ -83,12 +83,6 @@ jobs:
               - 'pnpm-lock.yaml'
               - 'pnpm-workspace.yaml'
 
-      - name: Stub the embedded SPA bundle
-        # Placeholder for the gitignored bundle `spa.rs` embeds. The script is
-        # shared with rust-cache-warm.yml (so the two can't drift) and documents
-        # which bundles need a stand-in and why.
-        run: ./scripts/ci/stub-embedded-bundles.sh spa
-
       - name: Install Tauri system dependencies
         run: |
           sudo apt-get update

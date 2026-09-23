@@ -1,8 +1,8 @@
 mod bridge;
 mod loopback_consent_dialog;
 mod native_webview_handle;
+mod not_found;
 mod self_hosted_redirect_resolver;
-mod spa;
 mod tunnel_adapters;
 
 use anyhow::Context;
@@ -16,6 +16,7 @@ use gatekeeper_rust::{
     client_allowed_scopes, ensure_bearer_header, gatekeeper_auth_middleware,
     is_pre_auth_public_path, require_loopback_peer_middleware, setup_gatekeeper, GatekeeperConfig,
 };
+use shared_structures_rust::owner_ui::OwnerUiBase;
 use shared_structures_rust::ServerRuntimeConfig;
 use shared_structures_server_rust::{ProxyTable, TunnelSubdomainReverseProxy};
 use std::net::SocketAddr;
@@ -55,6 +56,16 @@ const LOCAL_GRANTED_SCOPES: &str = env!("WILDFLOWER_LOCAL_GRANTED_SCOPES");
 // (`vite.config.ts`), so the WebView's device-login `client_id` can't drift from
 // the id gatekeeper seeds the first-party client and mints the owner token under.
 const FIRST_PARTY_CLIENT_ID: &str = env!("WILDFLOWER_FIRST_PARTY_CLIENT_ID");
+
+// The hosted owner UI (see `shared_structures_rust::owner_ui`), sourced from the
+// same `tauri-shared-config.json` (re-emitted by `build.rs`). Debug builds use
+// the local `main-web` dev server, so a dev host's links open the UI being
+// worked on rather than the published one.
+const OWNER_UI_BASE_URL: &str = if cfg!(debug_assertions) {
+    env!("WILDFLOWER_OWNER_UI_DEV_BASE_URL")
+} else {
+    env!("WILDFLOWER_OWNER_UI_BASE_URL")
+};
 
 // Filenames of the host's SQLite databases under the shared app-data dir. These
 // are the single source of truth for each database's on-disk name: the slice
@@ -237,6 +248,8 @@ async fn run_server(
     // bare origin string (no trailing slash) for the few sub-URLs built by hand.
     let loopback_base_url = runtime.loopback_base_url();
     let loopback_origin = shared_structures_rust::origin_string(&loopback_base_url);
+    let owner_ui_base = OwnerUiBase::parse(OWNER_UI_BASE_URL)
+        .context("owner_ui_base_url (from tauri-shared-config.json) must be an absolute URL")?;
     // The FHIR R4 SearchParameter bundle HFS indexes from is a deployed asset,
     // not embedded in the binary — dev reads it from the workspace source tree,
     // release from the bundled resource dir (declared in `tauri.conf.json` under
@@ -316,6 +329,7 @@ async fn run_server(
             .map(str::to_owned)
             .collect(),
         first_party_client_id: FIRST_PARTY_CLIENT_ID.to_owned(),
+        owner_ui_base: owner_ui_base.clone(),
     };
 
     // One shared SQLite database for all persistence-rust-backed slices
@@ -719,7 +733,12 @@ async fn run_server(
         .merge(gated_launch)
         .merge(gated_databases)
         .merge(gated_docs)
-        .fallback(spa::handle_serving_spa_html)
+        // No slice claimed the route: `404`, pointing a browser at the hosted
+        // owner UI (the host serves no UI of its own). See `not_found.rs`.
+        .fallback(not_found::fallback(Arc::new(not_found::NotFoundConfig {
+            owner_ui_base,
+            loopback_base_url: loopback_base_url.clone(),
+        })))
         // Desktop loopback-owner trust (see `inject_loopback_owner_token`):
         // present the host owner token for a direct-local caller so the webview
         // authenticates on connection provenance rather than the cross-site

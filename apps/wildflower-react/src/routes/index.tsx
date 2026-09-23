@@ -43,8 +43,8 @@ const rememberServer = (serverUrl: string): void => {
  *   signs in by SMART standalone launch — see `../sign-in.ts` for the flow and
  *   why this entry uses it rather than the device-code screen.
  * - **`main-web` + authed**: redirects to `/home`.
- * - **Every other entry**: redirects to `/home` unconditionally. They are
- *   served by the API server itself, so there is no server to pick, and their
+ * - **`main-tauri`**: redirects to `/home` unconditionally. The host webview
+ *   talks to its own loopback server, so there is no server to pick, and the
  *   `_auth` gate handles the auth check.
  */
 const Route = createFileRoute('/')({
