@@ -111,7 +111,7 @@ pub fn client_allowed_scopes(
     client_id: &str,
 ) -> anyhow::Result<Vec<scopes_rust::Scope>> {
     let reader = ClientScopesReader::new(state.store.clone());
-    Ok(reader.allowed_scopes(client_id)?)
+    Ok(reader.registered_client_scopes(client_id)?)
 }
 
 /// The gatekeeper OAuth + discovery `OpenAPI` document, collected from the very

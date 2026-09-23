@@ -61,7 +61,7 @@ pub(super) fn approve_device_consent(
     // what a device prompt may grant and covered by the approver's own grant.
     let Some(delegated_scopes) = DelegatedScopes::clamp(
         approver,
-        input.approved_scopes,
+        input.owner_approved_scopes,
         &ApprovableScopes::for_device(&client),
     )?
     else {

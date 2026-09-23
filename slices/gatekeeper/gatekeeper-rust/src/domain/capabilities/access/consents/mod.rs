@@ -71,7 +71,7 @@ pub(crate) struct OAuthConsentView {
 pub(crate) struct DeviceConsentView {
     pub(crate) request: AuthorizationRequest,
     pub(crate) client_name: String,
-    pub(crate) allowed_scopes: Vec<String>,
+    pub(crate) registered_client_scopes: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +93,7 @@ pub(crate) enum ConsentOutcome {
 /// The Owner's approval of an authorization-code consent prompt.
 pub(crate) struct ApproveOAuthConsentInput {
     /// The scopes the Owner ticked.
-    pub approved_scopes: Vec<String>,
+    pub owner_approved_scopes: Vec<String>,
     /// Optional SMART-on-FHIR patient context to bind to the grant.
     pub patient: Option<String>,
     /// The Owner's explicit acknowledgement that they recognise this app and
@@ -110,7 +110,7 @@ pub(crate) struct ApproveOAuthConsentInput {
 /// The Owner's approval of a device-code consent prompt.
 pub(crate) struct ApproveDeviceConsentInput {
     /// The scopes the Owner ticked.
-    pub approved_scopes: Vec<String>,
+    pub owner_approved_scopes: Vec<String>,
     /// Optional SMART-on-FHIR patient context to bind to the grant.
     pub patient: Option<String>,
     /// An optional adjusted device name (the approver renaming the device before
@@ -183,14 +183,15 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         user_code: &str,
     ) -> Result<DeviceConsentView, GatekeeperError> {
         let request = load_pending_device_request(&self.store, user_code)?;
-        let (client_name, allowed_scopes) = match self.store.client_by_id(&request.client_id) {
-            Ok(Some(client)) => (client.name, client.allowed_scopes),
-            _ => (request.client_id.clone(), Vec::new()),
-        };
+        let (client_name, registered_client_scopes) =
+            match self.store.client_by_id(&request.client_id) {
+                Ok(Some(existing_client)) => (existing_client.name, existing_client.allowed_scopes),
+                _ => (request.client_id.clone(), Vec::new()),
+            };
         Ok(DeviceConsentView {
             request,
             client_name,
-            allowed_scopes,
+            registered_client_scopes,
         })
     }
 }
@@ -340,7 +341,7 @@ mod tests {
     /// An approval of everything requested, acknowledged — the common input.
     fn approved(scopes: &[&str]) -> ApproveOAuthConsentInput {
         ApproveOAuthConsentInput {
-            approved_scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
+            owner_approved_scopes: scopes.iter().map(|s| (*s).to_owned()).collect(),
             patient: None,
             acknowledged_registration: true,
         }
@@ -443,7 +444,7 @@ mod tests {
             &publisher,
             "req-1",
             ApproveOAuthConsentInput {
-                approved_scopes: vec!["read".to_owned()],
+                owner_approved_scopes: vec!["read".to_owned()],
                 patient: None,
                 acknowledged_registration: false,
             },
@@ -683,7 +684,7 @@ mod tests {
             &publisher,
             "UC-1",
             ApproveDeviceConsentInput {
-                approved_scopes: vec!["read".to_owned()],
+                owner_approved_scopes: vec!["read".to_owned()],
                 patient: None,
                 device_name: Some("My Phone".to_owned()),
             },
@@ -753,7 +754,7 @@ mod tests {
         assert_eq!(
             result,
             Err(GatekeeperError::InsufficientApproverScope {
-                missing_scopes: vec!["system/Patient.r".to_owned()],
+                approver_missing_scopes: vec!["system/Patient.r".to_owned()],
             }),
         );
         assert_eq!(
@@ -783,7 +784,7 @@ mod tests {
             &publisher,
             "UC-1",
             ApproveDeviceConsentInput {
-                approved_scopes: vec!["system/Patient.r".to_owned()],
+                owner_approved_scopes: vec!["system/Patient.r".to_owned()],
                 patient: None,
                 device_name: None,
             },
@@ -793,7 +794,7 @@ mod tests {
         assert_eq!(
             result,
             Err(GatekeeperError::InsufficientApproverScope {
-                missing_scopes: vec!["system/Patient.r".to_owned()],
+                approver_missing_scopes: vec!["system/Patient.r".to_owned()],
             }),
         );
         assert_eq!(publisher.count(), 0);
@@ -815,7 +816,7 @@ mod tests {
             &publisher,
             "UC-1",
             ApproveDeviceConsentInput {
-                approved_scopes: vec!["system/Patient.r".to_owned()],
+                owner_approved_scopes: vec!["system/Patient.r".to_owned()],
                 patient: None,
                 device_name: Some("My Phone".to_owned()),
             },

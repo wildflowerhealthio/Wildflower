@@ -80,13 +80,16 @@ pub(crate) fn code_request(
 
 /// A public-client fixture with a caller-chosen `allowed_scopes` set and the
 /// `https://example.com/cb` redirect the request fixtures use.
-pub(crate) fn client(client_id: &str, allowed_scopes: &[&str]) -> Client {
+pub(crate) fn client(client_id: &str, registered_client_scopes: &[&str]) -> Client {
     Client {
         client_id: client_id.to_owned(),
         name: format!("{client_id} display name"),
         kind: ClientKind::Public,
         redirect_uris: vec![Url::parse("https://example.com/cb").unwrap().into()],
-        allowed_scopes: allowed_scopes.iter().map(|s| (*s).to_owned()).collect(),
+        allowed_scopes: registered_client_scopes
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect(),
         allowed_grant_types: AllowedGrantType::ALL.to_vec(),
         secret_hash: None,
         registered_at: Utc::now(),

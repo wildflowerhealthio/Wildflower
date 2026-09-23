@@ -37,12 +37,12 @@ use crate::domain::GatekeeperStore as _;
 /// step fails.
 pub fn open_and_seed_store(
     pool: DieselPool,
-    granted_scopes: &[String],
+    host_owner_scopes: &[String],
     first_party_client_id: &str,
 ) -> anyhow::Result<SqliteGatekeeperStore> {
     let store = SqliteGatekeeperStore::new(pool).context("failed to open gatekeeper store")?;
     ensure_some_active_signing_key(&store).context("failed to seed signing key")?;
-    ensure_first_party_client(&store, granted_scopes, first_party_client_id)
+    ensure_first_party_client(&store, host_owner_scopes, first_party_client_id)
         .context("failed to seed first-party client")?;
     Ok(store)
 }
@@ -65,14 +65,14 @@ fn ensure_some_active_signing_key(store: &SqliteGatekeeperStore) -> anyhow::Resu
 
 /// Ensure the first-party host client matches the code's definition. Upserted on
 /// every boot so its `allowed_scopes` (and the rest of its policy) always match
-/// the host's `granted_scopes`, and its `client_id` matches
+/// the host's `host_owner_scopes`, and its `client_id` matches
 /// `first_party_client_id` (the live app sources both from
 /// `tauri-shared-config.json`; see [`crate::default_local_granted_scopes`] /
 /// [`crate::default_first_party_client_id`]), correcting a store seeded by an
 /// older build (registration time and any admin disable are preserved).
 fn ensure_first_party_client(
     store: &SqliteGatekeeperStore,
-    granted_scopes: &[String],
+    host_owner_scopes: &[String],
     first_party_client_id: &str,
 ) -> anyhow::Result<()> {
     let client = Client {
@@ -80,7 +80,7 @@ fn ensure_first_party_client(
         name: "Wildflower (host)".to_string(),
         kind: ClientKind::Public,
         redirect_uris: vec![],
-        allowed_scopes: granted_scopes.to_vec(),
+        allowed_scopes: host_owner_scopes.to_vec(),
         allowed_grant_types: AllowedGrantType::ALL.to_vec(),
         secret_hash: None,
         registered_at: Utc::now(),
@@ -312,7 +312,7 @@ pub(crate) fn mint_host_owner_token(
     iss: &str,
     aud: &str,
     ttl: Duration,
-    granted_scopes: &[String],
+    host_owner_scopes: &[String],
     first_party_client_id: &str,
 ) -> Result<String, TokenIssuanceError> {
     // The host owner token carries the host's granted scopes (by default the FHIR
@@ -325,7 +325,7 @@ pub(crate) fn mint_host_owner_token(
     // The one token minted with no approving human: its authority is the named
     // `HostOwnerEntitlement` proof (constructible only here), through the same
     // minter.
-    let entitlement = HostOwnerEntitlement::for_host(first_party_client_id, granted_scopes);
+    let entitlement = HostOwnerEntitlement::for_host(first_party_client_id, host_owner_scopes);
     AccessTokenMinter::new(store, iss, aud, ttl).mint(TokenEntitlement::HostOwner(&entitlement))
 }
 

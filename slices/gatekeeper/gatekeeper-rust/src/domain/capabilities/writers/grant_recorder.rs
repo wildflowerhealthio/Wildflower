@@ -317,7 +317,7 @@ mod tests {
             store.upsert_client(&client("app", &["openid"])).unwrap();
             let verdict = ClientRegistration::Changed {
                 redirect_uri_is_new,
-                new_scopes: vec!["patient/Patient.r".to_owned()],
+                unregistered_requested_scopes: vec!["patient/Patient.r".to_owned()],
             };
             GrantRecorder::over(&store)
                 .record_code_grant(

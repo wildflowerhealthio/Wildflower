@@ -299,7 +299,7 @@ async fn run_server(
     };
     let gatekeeper_config = GatekeeperConfig {
         loopback_base_url: loopback_base_url.clone(),
-        granted_scopes: LOCAL_GRANTED_SCOPES
+        host_owner_scopes: LOCAL_GRANTED_SCOPES
             .split_whitespace()
             .map(str::to_owned)
             .collect(),

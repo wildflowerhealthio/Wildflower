@@ -28,7 +28,10 @@ impl<S: GatekeeperStore> ClientScopesReader<S> {
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] on a store failure.
-    pub(crate) fn allowed_scopes(&self, client_id: &str) -> Result<Vec<Scope>, GatekeeperError> {
+    pub(crate) fn registered_client_scopes(
+        &self,
+        client_id: &str,
+    ) -> Result<Vec<Scope>, GatekeeperError> {
         let Some(client) = self.store.client_by_id(client_id)? else {
             tracing::warn!(
                 "app launch scopes requested for unknown client_id `{client_id}`; per-app \
@@ -59,9 +62,9 @@ mod tests {
             .unwrap();
         let reader = ClientScopesReader::new(store);
         assert_eq!(
-            scopes_rust::render_scopes(&reader.allowed_scopes("app").unwrap()),
+            scopes_rust::render_scopes(&reader.registered_client_scopes("app").unwrap()),
             vec!["patient/*.rs".to_owned(), "openid".to_owned()]
         );
-        assert!(reader.allowed_scopes("ghost").unwrap().is_empty());
+        assert!(reader.registered_client_scopes("ghost").unwrap().is_empty());
     }
 }

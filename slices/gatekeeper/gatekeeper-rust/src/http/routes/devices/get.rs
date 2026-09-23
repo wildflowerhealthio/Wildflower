@@ -39,7 +39,7 @@ async fn handle_get_device_consent(
     let DeviceConsentView {
         request,
         client_name,
-        allowed_scopes,
+        registered_client_scopes,
     } = consents.device_consent(&user_code)?;
     Ok(Json(DeviceConsent {
         user_code,
@@ -47,6 +47,6 @@ async fn handle_get_device_consent(
         client_name,
         device_name: request.device_name,
         requested_scopes: request.requested_scopes,
-        allowed_scopes,
+        allowed_scopes: registered_client_scopes,
     }))
 }

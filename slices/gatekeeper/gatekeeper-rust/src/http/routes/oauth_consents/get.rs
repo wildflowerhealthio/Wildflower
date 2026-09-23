@@ -67,7 +67,7 @@ impl From<ClientRegistration> for ClientRegistrationBody {
             ClientRegistration::New => ClientRegistrationBody::New,
             ClientRegistration::Changed {
                 redirect_uri_is_new,
-                new_scopes,
+                unregistered_requested_scopes: new_scopes,
             } => ClientRegistrationBody::Changed {
                 redirect_uri_is_new,
                 new_scopes,

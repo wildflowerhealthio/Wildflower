@@ -177,9 +177,9 @@ impl IntoResponse for GatekeeperError {
                 }),
             )
                 .into_response(),
-            GatekeeperError::InsufficientApproverScope { missing_scopes } => {
-                insufficient_scope(missing_scopes)
-            }
+            GatekeeperError::InsufficientApproverScope {
+                approver_missing_scopes,
+            } => insufficient_scope(approver_missing_scopes),
             GatekeeperError::Infrastructure { context, source } => {
                 InternalError::new(context, source).into_response()
             }

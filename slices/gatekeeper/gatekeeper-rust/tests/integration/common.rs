@@ -50,7 +50,7 @@ pub fn spin_up() -> (Gatekeeper, String, TestDb) {
     let pool = persistence_rust::open_in_memory_pool().expect("open in-memory pool");
     let config = GatekeeperConfig {
         loopback_base_url: Url::parse(LOOPBACK_ORIGIN).expect("LOOPBACK_ORIGIN is a valid URL"),
-        granted_scopes: gatekeeper_rust::default_local_granted_scopes(),
+        host_owner_scopes: gatekeeper_rust::default_local_granted_scopes(),
         first_party_client_id: gatekeeper_rust::default_first_party_client_id(),
     };
     let (token_tx, token_rx) = watch::channel::<Option<String>>(None);

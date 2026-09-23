@@ -115,7 +115,7 @@ pub const WILDFLOWER_WIDEST_SCOPES: &[Scope] = &[
 ///
 /// This is no longer the *live* source: the running Tauri app sources the host
 /// grant from `tauri-shared-config.json` and threads it via
-/// [`GatekeeperConfig::granted_scopes`], so the value can't drift from the TS
+/// [`GatekeeperConfig::host_owner_scopes`], so the value can't drift from the TS
 /// shell's device-authorization request. This const is the fallback for
 /// standalone/test builds that don't thread one.
 ///
@@ -142,7 +142,7 @@ pub const WILDFLOWER_LOCAL_GRANTED_SCOPES: &[Scope] = &[
 
 /// The default host granted-scope wire strings — the rendered
 /// [`WILDFLOWER_LOCAL_GRANTED_SCOPES`]. Standalone and test builds seed
-/// [`GatekeeperConfig::granted_scopes`] from this; the live Tauri app sources
+/// [`GatekeeperConfig::host_owner_scopes`] from this; the live Tauri app sources
 /// the value from `tauri-shared-config.json` instead.
 pub fn default_local_granted_scopes() -> Vec<String> {
     scopes_rust::render_scopes(WILDFLOWER_LOCAL_GRANTED_SCOPES)
@@ -247,27 +247,30 @@ pub fn setup_gatekeeper(
     active_pending_consent_tx: watch::Sender<Option<PendingConsentHead>>,
     self_hosted_redirects: Arc<dyn ports::SelfHostedRedirectResolver>,
 ) -> anyhow::Result<Gatekeeper> {
-    // The host owner token is minted from `granted_scopes` (the live app sources
+    // The host owner token is minted from `host_owner_scopes` (the live app sources
     // these from `tauri-shared-config.json`), but the `/access/*` owner gate
     // still checks coverage of every `WILDFLOWER_WIDEST_SCOPES` entry. The JSON
     // must keep covering WIDEST or the Owner UI silently 401s, so fail loudly at
     // boot rather than at first `/access/*` call.
-    let granted: Vec<Scope> = config
-        .granted_scopes
+    let host_owner: Vec<Scope> = config
+        .host_owner_scopes
         .iter()
         .map(|s| Scope::from(s.as_str()))
         .collect();
     assert!(
         WILDFLOWER_WIDEST_SCOPES
             .iter()
-            .all(|widest| granted.iter().any(|g| g.covers(widest))),
-        "granted_scopes (from tauri-shared-config.json) must cover every \
+            .all(|widest| host_owner.iter().any(|held| held.covers(widest))),
+        "host_owner_scopes (from tauri-shared-config.json) must cover every \
          WILDFLOWER_WIDEST_SCOPES entry, or the host owner token can't pass the \
          /access/* owner gate; got {:?}",
-        config.granted_scopes
+        config.host_owner_scopes
     );
-    let store =
-        seeding::open_and_seed_store(pool, &config.granted_scopes, &config.first_party_client_id)?;
+    let store = seeding::open_and_seed_store(
+        pool,
+        &config.host_owner_scopes,
+        &config.first_party_client_id,
+    )?;
     // `iss` and `aud` are both the canonical issuer: the one token is presented
     // over loopback and at the tunnel origin (#256), so a served-origin `aud`
     // couldn't cover both. See `docs/Origins/Explanation.md`.
@@ -276,7 +279,7 @@ pub fn setup_gatekeeper(
         shared_structures_rust::CANONICAL_ISSUER,
         shared_structures_rust::CANONICAL_ISSUER,
         HOST_OWNER_TOKEN_TTL,
-        &config.granted_scopes,
+        &config.host_owner_scopes,
         &config.first_party_client_id,
     )
     .context("failed to mint host owner token")?;
@@ -304,7 +307,7 @@ pub fn setup_gatekeeper(
     // the (now-short) owner-token TTL. See #269.
     spawn_owner_token_reminter(
         store,
-        config.granted_scopes.clone(),
+        config.host_owner_scopes.clone(),
         config.first_party_client_id.clone(),
         local_owner_token_tx.clone(),
     );
@@ -322,7 +325,7 @@ pub fn setup_gatekeeper(
 /// shutdown) it stops.
 fn spawn_owner_token_reminter(
     store: SqliteGatekeeperStore,
-    granted_scopes: Vec<String>,
+    host_owner_scopes: Vec<String>,
     first_party_client_id: String,
     sender: watch::Sender<Option<String>>,
 ) {
@@ -339,7 +342,7 @@ fn spawn_owner_token_reminter(
                 shared_structures_rust::CANONICAL_ISSUER,
                 shared_structures_rust::CANONICAL_ISSUER,
                 HOST_OWNER_TOKEN_TTL,
-                &granted_scopes,
+                &host_owner_scopes,
                 &first_party_client_id,
             ) {
                 // `send` errors only once every receiver has dropped — i.e. the

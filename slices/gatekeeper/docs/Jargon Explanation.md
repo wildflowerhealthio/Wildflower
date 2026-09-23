@@ -330,6 +330,22 @@ measures the grantable subset against `client.allowedScopes`; `for_code`
 measures it against the request's `requestedScopes`. The shared scope-picker UI models the
 same split with its `expandable` vs `clamped` mode.
 
+### Scope sets
+
+A consent decision reads several scope lists at once, so the Rust names each
+one by **where it comes from**:
+
+| Name                            | Source                                                                                                       |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `requested_scopes`              | The OAuth client's request (`?scope=`, or the device request).                                               |
+| `owner_approved_scopes`         | The scopes the Owner ticked on the consent prompt (`approvedScopes` on the wire).                            |
+| `registered_client_scopes`      | The client's stored registration (`Client.allowed_scopes`, `allowedScopes` on the wire).                     |
+| `registration_ceiling_scopes`   | The most a code approval may grant: the registration, plus the request for a client trusted on first use.    |
+| `unregistered_requested_scopes` | Requested scopes the registration does not cover (`newScopes` on the wire).                                  |
+| `approver_missing_scopes`       | Resource scopes an approval would grant that the approving Owner does not hold (`missingScopes` on the 403). |
+| `granted_scopes`                | What an approval delegated, recorded on the request, the code, and the refresh family.                       |
+| `host_owner_scopes`             | The host owner's configured authority (`local_granted_scopes` in `tauri-shared-config.json`).                |
+
 ### Bootstrap URL
 
 Replaces the deleted PIN flow's "operator gets onto a cold deployment"

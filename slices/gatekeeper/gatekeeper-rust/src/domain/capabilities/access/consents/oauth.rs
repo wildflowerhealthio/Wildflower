@@ -105,7 +105,7 @@ pub(super) fn approve_oauth_consent(
     // what this prompt may grant and covered by the approver's own grant.
     let Some(delegated_scopes) = DelegatedScopes::clamp(
         ctx.approver,
-        input.approved_scopes,
+        input.owner_approved_scopes,
         &ApprovableScopes::for_code(
             &request.requested_scopes,
             maybe_existing_client.as_ref(),

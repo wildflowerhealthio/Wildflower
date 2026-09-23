@@ -10,59 +10,65 @@ use crate::domain::client::Client;
 use crate::domain::gatekeeper_error::GatekeeperError;
 
 /// The scopes one consent prompt may grant at most, decided by its flow. An
-/// approved scope must be covered by a scope of the request **and** by a scope
-/// of the client's allowance; each constructor names the policy that fills
+/// Owner-approved scope must be covered by a scope of the request **and** by a
+/// scope of the registration ceiling (the most the client's registration
+/// permits for this approval); each constructor names the policy that fills
 /// those two halves.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ApprovableScopes {
     requested_scopes: Vec<String>,
-    allowed_scopes: Vec<String>,
+    registration_ceiling_scopes: Vec<String>,
 }
 
 impl ApprovableScopes {
     /// A device-code prompt. Device consent is **expandable**: the Owner may
-    /// grant anything the client is allowed, whatever the device asked for, so
-    /// the client's `allowed_scopes` fill both halves.
-    pub(crate) fn for_device(client: &Client) -> Self {
+    /// grant anything the client's registration allows, whatever the device
+    /// asked for, so the registered client scopes fill both halves.
+    pub(crate) fn for_device(existing_client: &Client) -> Self {
+        let registered_client_scopes = &existing_client.allowed_scopes;
         ApprovableScopes {
-            requested_scopes: client.allowed_scopes.clone(),
-            allowed_scopes: client.allowed_scopes.clone(),
+            requested_scopes: registered_client_scopes.clone(),
+            registration_ceiling_scopes: registered_client_scopes.clone(),
         }
     }
 
     /// An authorization-code prompt for `requested_scopes`. A locked
-    /// registration (the first-party host) allows only what it lists; any other
-    /// client is trusted on first use, so it is also allowed what this request
+    /// registration (the first-party host) is its own ceiling; any other client
+    /// is trusted on first use, so its ceiling also takes in what this request
     /// asked for — its registration is widened with the grant.
     pub(crate) fn for_code(
         requested_scopes: &[String],
         maybe_existing_client: Option<&Client>,
         registration_is_locked: bool,
     ) -> Self {
-        let registered_scopes = maybe_existing_client
+        let registered_client_scopes = maybe_existing_client
             .iter()
-            .flat_map(|client| client.allowed_scopes.iter().cloned());
-        let allowed_scopes = if registration_is_locked {
-            registered_scopes.collect()
+            .flat_map(|existing_client| existing_client.allowed_scopes.iter().cloned());
+        let registration_ceiling_scopes = if registration_is_locked {
+            registered_client_scopes.collect()
         } else {
-            registered_scopes
+            registered_client_scopes
                 .chain(requested_scopes.iter().cloned())
                 .collect()
         };
         ApprovableScopes {
             requested_scopes: requested_scopes.to_vec(),
-            allowed_scopes,
+            registration_ceiling_scopes,
         }
     }
 
-    /// The subset of the Owner's `approved_scopes` this prompt may grant: each
-    /// one covered by a requested scope and by an allowed scope (coverage, not
-    /// spelling — see [`scopes_rust::grantable_scopes`]). Rendered in canonical
-    /// form, deduplicated, in the Owner's order.
-    pub(crate) fn grantable_subset(&self, approved_scopes: Vec<String>) -> Vec<String> {
+    /// The subset of the `owner_approved_scopes` this prompt may grant: each
+    /// one covered by a requested scope and by a registration-ceiling scope
+    /// (coverage, not spelling — see [`scopes_rust::grantable_scopes`]).
+    /// Rendered in canonical form, deduplicated, in the Owner's order.
+    pub(crate) fn grantable_subset(&self, owner_approved_scopes: Vec<String>) -> Vec<String> {
         let requested: HashSet<&str> = self.requested_scopes.iter().map(String::as_str).collect();
-        let allowed: HashSet<&str> = self.allowed_scopes.iter().map(String::as_str).collect();
-        grantable_scopes(approved_scopes, &requested, &allowed)
+        let ceiling: HashSet<&str> = self
+            .registration_ceiling_scopes
+            .iter()
+            .map(String::as_str)
+            .collect();
+        grantable_scopes(owner_approved_scopes, &requested, &ceiling)
     }
 }
 
@@ -76,7 +82,7 @@ pub(crate) struct DelegatedScopes {
 }
 
 impl DelegatedScopes {
-    /// Clamp the Owner's `approved_scopes` to the `approvable` scopes' grantable
+    /// Clamp the `owner_approved_scopes` to the `approvable` scopes' grantable
     /// subset,
     /// then require that the `approver_grant` covers every **resource** scope
     /// that survives.
@@ -94,18 +100,20 @@ impl DelegatedScopes {
     /// the approver cannot delegate.
     pub(crate) fn clamp(
         approver_grant: &Grant,
-        approved_scopes: Vec<String>,
+        owner_approved_scopes: Vec<String>,
         approvable: &ApprovableScopes,
     ) -> Result<Option<Self>, GatekeeperError> {
-        let scopes = approvable.grantable_subset(approved_scopes);
+        let scopes = approvable.grantable_subset(owner_approved_scopes);
         if scopes.is_empty() {
             return Ok(None);
         }
-        let missing_scopes = uncovered_resource_scopes(&scopes, approver_grant);
-        if missing_scopes.is_empty() {
+        let approver_missing_scopes = uncovered_resource_scopes(&scopes, approver_grant);
+        if approver_missing_scopes.is_empty() {
             Ok(Some(DelegatedScopes { scopes }))
         } else {
-            Err(GatekeeperError::InsufficientApproverScope { missing_scopes })
+            Err(GatekeeperError::InsufficientApproverScope {
+                approver_missing_scopes,
+            })
         }
     }
 
@@ -225,7 +233,7 @@ mod tests {
         assert_eq!(
             outcome,
             Err(GatekeeperError::InsufficientApproverScope {
-                missing_scopes: owned_scopes(&["patient/Observation.r"]),
+                approver_missing_scopes: owned_scopes(&["patient/Observation.r"]),
             }),
         );
     }

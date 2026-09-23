@@ -38,7 +38,7 @@ pub(crate) enum ClientRegistration {
         redirect_uri_is_new: bool,
         /// The requested scopes no `allowed_scopes` entry covers, in request
         /// order. Empty when only the redirect changed.
-        new_scopes: Vec<String>,
+        unregistered_requested_scopes: Vec<String>,
     },
 }
 
@@ -115,14 +115,14 @@ pub(crate) fn classify_registration(
         pending_registration.served_origin,
         pending_registration.topology,
     );
-    let new_scopes = uncovered_scopes(
+    let unregistered_requested_scopes = uncovered_scopes(
         &existing_client.allowed_scopes,
         pending_registration.requested_scopes,
     );
-    if redirect_uri_is_new || !new_scopes.is_empty() {
+    if redirect_uri_is_new || !unregistered_requested_scopes.is_empty() {
         ClientRegistration::Changed {
             redirect_uri_is_new,
-            new_scopes,
+            unregistered_requested_scopes,
         }
     } else {
         ClientRegistration::Registered
@@ -273,7 +273,7 @@ mod tests {
             classify(Some(&client), &elsewhere, &["read"]),
             ClientRegistration::Changed {
                 redirect_uri_is_new: true,
-                new_scopes: Vec::new(),
+                unregistered_requested_scopes: Vec::new(),
             }
         );
     }
@@ -287,12 +287,12 @@ mod tests {
         assert!(!ClientRegistration::Registered.redirect_uri_is_new());
         assert!(ClientRegistration::Changed {
             redirect_uri_is_new: true,
-            new_scopes: Vec::new(),
+            unregistered_requested_scopes: Vec::new(),
         }
         .redirect_uri_is_new());
         assert!(!ClientRegistration::Changed {
             redirect_uri_is_new: false,
-            new_scopes: vec!["write".to_owned()],
+            unregistered_requested_scopes: vec!["write".to_owned()],
         }
         .redirect_uri_is_new());
     }
@@ -306,7 +306,7 @@ mod tests {
             classify(Some(&client), &redirect(), &["write", "read", "admin"]),
             ClientRegistration::Changed {
                 redirect_uri_is_new: false,
-                new_scopes: vec!["write".to_owned(), "admin".to_owned()],
+                unregistered_requested_scopes: vec!["write".to_owned(), "admin".to_owned()],
             }
         );
     }
@@ -324,7 +324,7 @@ mod tests {
             classify(Some(&client), &redirect(), &["something else!!"]),
             ClientRegistration::Changed {
                 redirect_uri_is_new: false,
-                new_scopes: vec!["something else!!".to_owned()],
+                unregistered_requested_scopes: vec!["something else!!".to_owned()],
             }
         );
     }
@@ -364,7 +364,7 @@ mod tests {
             }),
             ClientRegistration::Changed {
                 redirect_uri_is_new: true,
-                new_scopes: Vec::new(),
+                unregistered_requested_scopes: Vec::new(),
             }
         );
     }
@@ -383,7 +383,7 @@ mod tests {
         /// two facts it reports: `Registered` iff the redirect is allowlisted and
         /// nothing is uncovered, and a `Changed` verdict never carries both
         /// "nothing new" flags (that would be `Registered`). The reported
-        /// `new_scopes` are always a subset of what was requested, in request
+        /// `unregistered_requested_scopes` are always a subset of what was requested, in request
         /// order.
         #[test]
         fn verdict_agrees_with_what_it_reports(
@@ -410,13 +410,13 @@ mod tests {
                     prop_assert!(allowlisted);
                     prop_assert!(uncovered.is_empty());
                 }
-                ClientRegistration::Changed { redirect_uri_is_new, new_scopes } => {
+                ClientRegistration::Changed { redirect_uri_is_new, unregistered_requested_scopes } => {
                     prop_assert_eq!(redirect_uri_is_new, !allowlisted);
-                    prop_assert_eq!(&new_scopes, &uncovered);
-                    prop_assert!(redirect_uri_is_new || !new_scopes.is_empty());
+                    prop_assert_eq!(&unregistered_requested_scopes, &uncovered);
+                    prop_assert!(redirect_uri_is_new || !unregistered_requested_scopes.is_empty());
                     // A subset of the request, in request order.
                     let mut remaining = requested.iter();
-                    for new_scope in &new_scopes {
+                    for new_scope in &unregistered_requested_scopes {
                         prop_assert!(remaining.any(|r| r == new_scope));
                     }
                 }
