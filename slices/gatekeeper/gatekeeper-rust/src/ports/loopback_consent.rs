@@ -64,8 +64,8 @@ pub enum LoopbackConsentAnswer {
     /// Reject — including closing the dialog: the login is denied
     /// (`access_denied`).
     Reject,
-    /// No dialog was shown (the host has none): the request stays pending for
-    /// the Owner UI to decide.
+    /// No dialog was shown (the host has none, or one is already on screen):
+    /// the request stays pending for the Owner UI to decide.
     Abstain,
 }
 

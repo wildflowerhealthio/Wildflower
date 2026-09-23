@@ -7,6 +7,8 @@
 //! The slice owns the trait; the dialog plugin is a host dependency; so the
 //! adapter lives here, like the self-hosted redirect resolver.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use gatekeeper_rust::{LoopbackConsentAnswer, LoopbackConsentPrompt, LoopbackConsentRequest};
 use tauri_plugin_dialog::{DialogExt, MessageDialogButtons, MessageDialogKind};
 
@@ -16,6 +18,12 @@ pub struct TauriLoopbackConsentPrompt {
     /// The scopes the host Owner holds — the most a login can be granted, so a
     /// request for all of them is summarised as full owner access.
     host_owner_scopes: Vec<String>,
+    /// Whether a dialog is on screen. At most one is shown at a time: any
+    /// loopback caller can hit `/authorize` with the hosted owner UI's
+    /// `client_id`, and each dialog holds a blocking worker until dismissed
+    /// (even past its request's expiry), so an unbounded stream of them would
+    /// stack dialogs and drain the shared blocking pool.
+    showing: AtomicBool,
 }
 
 impl TauriLoopbackConsentPrompt {
@@ -23,14 +31,39 @@ impl TauriLoopbackConsentPrompt {
         Self {
             app_handle,
             host_owner_scopes,
+            showing: AtomicBool::new(false),
         }
+    }
+}
+
+/// Holds the one dialog slot while a dialog is on screen, and frees it on drop
+/// (including if showing the dialog panics).
+struct DialogSlot<'a>(&'a AtomicBool);
+
+impl<'a> DialogSlot<'a> {
+    /// Claim the slot, or `None` when a dialog is already showing.
+    fn claim(showing: &'a AtomicBool) -> Option<Self> {
+        showing
+            .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+            .ok()
+            .map(|_| DialogSlot(showing))
+    }
+}
+
+impl Drop for DialogSlot<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
     }
 }
 
 impl LoopbackConsentPrompt for TauriLoopbackConsentPrompt {
     /// Blocks on the native dialog (gatekeeper calls this on a blocking worker,
-    /// never the async runtime). Closing the dialog is a reject.
+    /// never the async runtime). Closing the dialog is a reject. While another
+    /// dialog is still on screen it abstains, leaving the login to the Owner UI.
     fn ask(&self, request: &LoopbackConsentRequest) -> LoopbackConsentAnswer {
+        let Some(_slot) = DialogSlot::claim(&self.showing) else {
+            return LoopbackConsentAnswer::Abstain;
+        };
         let approved = self
             .app_handle
             .dialog()
@@ -127,6 +160,17 @@ mod tests {
         assert!(message.contains("\"wildflower-react\" at https://wildflowerhealth.io"));
         assert!(message.contains("New address for a known app."));
         assert!(message.contains("full owner access to this device's data"));
+    }
+
+    /// Only one dialog slot can be held at a time, and dropping the holder
+    /// frees it for the next login.
+    #[test]
+    fn the_dialog_slot_is_single_flight() {
+        let showing = AtomicBool::new(false);
+        let first = DialogSlot::claim(&showing).expect("free slot");
+        assert!(DialogSlot::claim(&showing).is_none());
+        drop(first);
+        assert!(DialogSlot::claim(&showing).is_some());
     }
 
     /// A narrower request lists its scopes rather than claiming owner access.
