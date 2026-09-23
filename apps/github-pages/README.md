@@ -27,8 +27,10 @@ GitHub Pages serves one `404.html` for every path it has no file for, so a deep
 link into any section (`/web-trace-app/captures`, `/ohif-viewer/fhir-viewer?iss=…`)
 would otherwise land on an error page. `404.html` — staged into the artifact
 root by `assemble.ts`, not by any section — probes ancestor directories for an
-`index.html`, redirects to the deepest one that answers, and hands the leftover
-route over as `?redirect=<route>` alongside whatever query the link carried.
+`index.html`, redirects to the deepest one that answers, and hands the requested
+path over, site-absolute, as `?redirect=<path>` alongside whatever query the
+link carried. Site-absolute because an app-relative route named like the app's
+own directory (`/app` below `/app/`) would read as the app root.
 
 While it probes, the page paints the design system's `--color-canvas` for the
 visitor's `prefers-color-scheme`, so dark-mode users don't see a white flash;

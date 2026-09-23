@@ -19,10 +19,13 @@
     </style>
     <script>
       // GitHub Pages SPA redirect.  Probes for the deepest ancestor path
-      // that serves an index.html and redirects there, passing the leftover
-      // route as ?redirect= so the SPA can complete the navigation
+      // that serves an index.html and redirects there, passing the full
+      // requested path as ?redirect= so the SPA can complete the navigation
       // client-side.  Works for both a standalone single-SPA Pages site and
       // a multi-SPA host where each app lives in its own sub-directory.
+      // The path goes over site-absolute: an app-relative route named like
+      // the app's own directory (`/app` below `/app/`) would read as the app
+      // root.
       ;(async function () {
         var loc = window.location
         var segments = loc.pathname.split('/').filter(Boolean)
@@ -49,7 +52,7 @@
           var spaPath = '/' + segments.slice(results[j].depth).join('/')
           if (spaPath === '/') break
           var params = new URLSearchParams(loc.search)
-          params.set('redirect', spaPath)
+          params.set('redirect', loc.pathname)
           loc.replace(results[j].base + '?' + params.toString() + loc.hash)
           return
         }
