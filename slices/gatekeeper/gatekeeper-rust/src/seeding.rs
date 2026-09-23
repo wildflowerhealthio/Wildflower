@@ -14,7 +14,6 @@
 use anyhow::Context;
 use chrono::{Duration, Utc};
 use persistence_rust::DieselPool;
-use thiserror::Error;
 
 use crate::db::SqliteGatekeeperStore;
 use crate::domain::authority::{HostOwnerEntitlement, TokenEntitlement};
@@ -294,15 +293,6 @@ pub fn seed_dev_app_clients(pool: DieselPool) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Failures while minting the host owner token at boot — the minter's own
-/// failure vocabulary (no key, a signing failure, a store failure), wrapped so
-/// the boot path reports where it was minting.
-#[derive(Debug, Error)]
-pub(crate) enum HostTokenError {
-    #[error("mint host owner token")]
-    Mint(#[from] TokenIssuanceError),
-}
-
 /// Mint an Owner-scoped access token for `wildflower-host`, the
 /// first-party client. Called once during [`crate::setup_gatekeeper`] so
 /// the host can hand the resulting token to the `WebView` via the
@@ -312,6 +302,11 @@ pub(crate) enum HostTokenError {
 /// audience `require_auth` accepts over both loopback and the tunnel origin
 /// (#256). The token carries the `wf_owner` marker (`is_host_owner: true`) so
 /// `require_auth` honours that audience only for it. See `docs/Origins/Explanation.md`.
+///
+/// # Errors
+///
+/// The minter's [`TokenIssuanceError`]: no active signing key, a signing
+/// failure, or a store failure. The boot path adds where it was minting.
 pub(crate) fn mint_host_owner_token(
     store: &SqliteGatekeeperStore,
     iss: &str,
@@ -319,7 +314,7 @@ pub(crate) fn mint_host_owner_token(
     ttl: Duration,
     granted_scopes: &[String],
     first_party_client_id: &str,
-) -> Result<String, HostTokenError> {
+) -> Result<String, TokenIssuanceError> {
     // The host owner token carries the host's granted scopes (by default the FHIR
     // and Wildflower full-access wildcards): it gates HFS's FHIR surface, and —
     // because those wildcards cover every per-resource scope the `Scoped<…>`
@@ -331,8 +326,7 @@ pub(crate) fn mint_host_owner_token(
     // `HostOwnerEntitlement` proof (constructible only here), through the same
     // minter.
     let entitlement = HostOwnerEntitlement::for_host(first_party_client_id, granted_scopes);
-    Ok(AccessTokenMinter::new(store, iss, aud, ttl)
-        .mint(TokenEntitlement::HostOwner(&entitlement))?)
+    AccessTokenMinter::new(store, iss, aud, ttl).mint(TokenEntitlement::HostOwner(&entitlement))
 }
 
 #[cfg(test)]
