@@ -1,8 +1,8 @@
-import type { BearerAuthStateStore } from 'gatekeeper-react'
 import { Unauthed } from 'react-kitchen-sink'
 import type { SettingsItem } from 'shared-structures-react'
+import type { BearerAuthStateStore } from './client/bearer-auth-state-store.ts'
 
-/** What {@link logOutBearerSession} needs from `main-web`'s wiring. */
+/** What {@link logOutBearerSession} needs from the entry's wiring. */
 interface BearerLogoutDeps {
   /** The API server the page is signed in to — the `?server=` it runs against. */
   readonly apiBaseUrl: string
@@ -49,11 +49,12 @@ const logOutBearerSession = async (deps: BearerLogoutDeps): Promise<void> => {
 }
 
 /**
- * `main-web`'s "Logout" settings row. An action row (`onClick`): the page
- * holds its bearer in memory, so logging out means forgetting that bearer and
- * revoking it with an authenticated request — see {@link logOutBearerSession}.
+ * Gatekeeper's "Logout" settings row, for an entry that holds a bearer
+ * (`main-web`). An action row (`onClick`): logging out purges the page's
+ * in-memory bearer and invalidates it server-side (`POST /access/logout`
+ * revokes its `jti`) — see {@link logOutBearerSession}.
  */
-const makeBearerLogoutSettingsItem = (deps: BearerLogoutDeps): SettingsItem => ({
+const gatekeeperLogoutSettingsItem = (deps: BearerLogoutDeps): SettingsItem => ({
   id: 'logout',
   title: 'Logout',
   subtitle: 'Log out of Wildflower and end this session.',
@@ -62,5 +63,5 @@ const makeBearerLogoutSettingsItem = (deps: BearerLogoutDeps): SettingsItem => (
   },
 })
 
-export { logOutBearerSession, makeBearerLogoutSettingsItem }
+export { logOutBearerSession, gatekeeperLogoutSettingsItem }
 export type { BearerLogoutDeps }

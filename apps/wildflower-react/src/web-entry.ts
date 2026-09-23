@@ -1,5 +1,6 @@
 import { searchWithServerUrl, serverUrlFromSearch } from 'gatekeeper-core/smart-client'
 import {
+  gatekeeperLogoutSettingsItem,
   makeAwaitLandingAuthReady,
   makeBearerAuthStateStore,
   type BearerAuthStateStore,
@@ -16,7 +17,6 @@ import {
 } from '../../wildflower-tauri/tauri-shared-config.json'
 
 import type { RenderAppOptions } from './app-root.tsx'
-import { makeBearerLogoutSettingsItem } from './bearer-logout.ts'
 import { stubTransport } from './bridges/transport-context.ts'
 
 /**
@@ -74,7 +74,7 @@ const underBasepath = (basepath: string, route: string): string =>
  * - `readBearer`: wired to the store's `bearer()` reader, so
  *   every relative request gets an `Authorization` header.
  * - `makeTransport`: pre-resolved stub (no host bridge).
- * - `platformSettingsItems`: the bearer logout row (`bearer-logout.ts`) —
+ * - `platformSettingsItems`: gatekeeper's logout row (`gatekeeperLogoutSettingsItem`) —
  *   forgets the bearer, revokes it at `{server}/access/logout`, and reloads the
  *   landing page at `basepath`, still pointed at the same server.
  * - `platformTabs`: none.
@@ -108,7 +108,7 @@ const makeWebEntryOptions = (
     apiBaseUrl,
     readBearer: bearerStore.bearer,
     platformSettingsItems: [
-      makeBearerLogoutSettingsItem({
+      gatekeeperLogoutSettingsItem({
         apiBaseUrl,
         bearerStore,
         fetch: (input, init) => window.fetch(input, init),

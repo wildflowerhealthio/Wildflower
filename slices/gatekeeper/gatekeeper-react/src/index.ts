@@ -57,6 +57,12 @@ export {
 export { makeEmbeddedAuthStateStore } from './client/auth-state-store.ts'
 
 export {
+  gatekeeperLogoutSettingsItem,
+  logOutBearerSession,
+  type BearerLogoutDeps,
+} from './logout.ts'
+
+export {
   makeBearerAuthStateStore,
   type BearerAuthStateStore,
 } from './client/bearer-auth-state-store.ts'

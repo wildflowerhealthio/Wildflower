@@ -1,9 +1,9 @@
 import * as fc from 'fast-check'
-import { makeBearerAuthStateStore } from 'gatekeeper-react'
 import { numRunsFor } from 'kitchen-sink/test'
 import { AuthedUntil } from 'react-kitchen-sink'
 import { describe, expect, it } from 'vite-plus/test'
-import { logOutBearerSession, makeBearerLogoutSettingsItem } from './bearer-logout.ts'
+import { makeBearerAuthStateStore } from './client/bearer-auth-state-store.ts'
+import { gatekeeperLogoutSettingsItem, logOutBearerSession } from './logout.ts'
 
 describe('logOutBearerSession', () => {
   it('should revoke the held bearer at the server’s logout endpoint', async () => {
@@ -136,12 +136,12 @@ describe('logOutBearerSession', () => {
   })
 })
 
-describe('makeBearerLogoutSettingsItem', () => {
+describe('gatekeeperLogoutSettingsItem', () => {
   it('should be an action row titled Logout that logs the session out when selected', async () => {
     // Arrange
     const store = signedInStore('eyJ.owner.token')
     const left = Promise.withResolvers<undefined>()
-    const item = makeBearerLogoutSettingsItem({
+    const item = gatekeeperLogoutSettingsItem({
       apiBaseUrl: 'https://abc.tunnel.example',
       bearerStore: store,
       fetch: recordingFetch().fetch,
