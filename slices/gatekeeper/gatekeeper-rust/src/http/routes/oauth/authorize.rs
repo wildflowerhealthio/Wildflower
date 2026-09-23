@@ -19,7 +19,6 @@ use crate::http::errors::{oauth_error_html, OAuthErrorKind};
 use crate::http::extractors::Live;
 use crate::http::ServedOrigin;
 use crate::live_bindings::{LiveCodeAuthorizationStarter, LiveLoopbackOwnerApprover};
-use crate::ports::LoopbackConsentAnswer;
 
 /// `302 Found` redirect. RFC 6749's examples use 302 and the TypeScript
 /// implementation emits 302, so all `/oauth/authorize` redirects use it for
@@ -242,88 +241,21 @@ pub(super) async fn handle_authorize_request(
                 Some(RequestProvenance::Loopback)
             );
             if asks_loopback_dialog(is_direct_loopback, &params.client_id) {
-                spawn_loopback_dialog(
-                    loopback_owner_approver.0,
+                let asking = Arc::new(loopback_owner_approver.0).ask_and_decide(
                     request_id.clone(),
                     origin.0.clone(),
+                    generate_authorization_code,
                 );
+                tokio::spawn(async move {
+                    match asking.await {
+                        Ok(decision) => tracing::info!(?decision, "loopback dialog decided"),
+                        Err(error) => tracing::error!(%error, "loopback dialog failed"),
+                    }
+                });
             }
             found_redirect(&page_paths::oauth_polling_url(&origin, &request_id))
         }
     })
-}
-
-/// Put the parked request `request_id` to the host's loopback dialog in the
-/// background and apply the Owner's answer, without holding up the redirect to
-/// the polling page (which picks the decision up like any other).
-///
-/// The dialog blocks until the Owner answers, so it runs on a blocking worker;
-/// the wait is bounded by the request's expiry, after which the silence is
-/// applied as a reject (a no-op once the request has expired or been decided in
-/// the Owner UI). A dialog still on screen then stays until dismissed — its late
-/// answer is discarded.
-fn spawn_loopback_dialog(
-    approver: LiveLoopbackOwnerApprover,
-    request_id: String,
-    served_origin: String,
-) {
-    let approver = Arc::new(approver);
-    tokio::spawn(async move {
-        let consent_request = {
-            let (approver, request_id, served_origin) =
-                (approver.clone(), request_id.clone(), served_origin.clone());
-            tokio::task::spawn_blocking(move || {
-                approver.consent_request(&request_id, &served_origin)
-            })
-            .await
-        };
-        let consent_request = match consent_request {
-            Ok(Ok(Some(consent_request))) => consent_request,
-            Ok(Ok(None)) => return,
-            Ok(Err(error)) => {
-                tracing::error!(%request_id, %error, "loopback dialog: loading the request failed");
-                return;
-            }
-            Err(error) => {
-                tracing::error!(%request_id, %error, "loopback dialog: loading task failed");
-                return;
-            }
-        };
-        let wait = (consent_request.expires_at - chrono::Utc::now())
-            .to_std()
-            .unwrap_or_default();
-        let asking = {
-            let approver = approver.clone();
-            tokio::task::spawn_blocking(move || approver.ask(&consent_request))
-        };
-        let answer = match tokio::time::timeout(wait, asking).await {
-            Ok(Ok(answer)) => answer,
-            // Unanswered by the request's expiry, or the dialog task died:
-            // either way the Owner did not approve.
-            Ok(Err(_)) | Err(_) => LoopbackConsentAnswer::Reject,
-        };
-        let decided = tokio::task::spawn_blocking(move || {
-            approver
-                .decide(
-                    &request_id,
-                    answer,
-                    &served_origin,
-                    generate_authorization_code,
-                    chrono::Utc::now(),
-                )
-                .map(|decision| (request_id, decision))
-        })
-        .await;
-        match decided {
-            Ok(Ok((request_id, decision))) => {
-                tracing::info!(%request_id, ?answer, ?decision, "loopback dialog answered");
-            }
-            Ok(Err(error)) => {
-                tracing::error!(%error, "loopback dialog: applying the answer failed")
-            }
-            Err(error) => tracing::error!(%error, "loopback dialog: decision task failed"),
-        }
-    });
 }
 
 fn html_bad_request(html: String) -> Response {

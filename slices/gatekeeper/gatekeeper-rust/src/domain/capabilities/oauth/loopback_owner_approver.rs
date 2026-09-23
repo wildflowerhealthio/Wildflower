@@ -115,7 +115,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] on a store failure.
-    pub(crate) fn consent_request(
+    fn consent_request(
         &self,
         request_id: &str,
         served_origin: &str,
@@ -146,7 +146,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
 
     /// Show the host's dialog for `request` and wait for the Owner's answer.
     /// Blocks — call it off the async runtime.
-    pub(crate) fn ask(&self, request: &LoopbackConsentRequest) -> LoopbackConsentAnswer {
+    fn ask(&self, request: &LoopbackConsentRequest) -> LoopbackConsentAnswer {
         self.prompt.ask(request)
     }
 
@@ -162,7 +162,7 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
     /// # Errors
     ///
     /// [`GatekeeperError::Infrastructure`] on a store failure.
-    pub(crate) fn decide(
+    fn decide(
         &self,
         request_id: &str,
         answer: LoopbackConsentAnswer,
@@ -232,6 +232,68 @@ impl<S: GatekeeperStore> LoopbackOwnerApprover<S> {
             self_hosted_redirects: self.self_hosted_redirects.as_ref(),
             served_origin,
         }
+    }
+}
+
+impl<S: GatekeeperStore + Send + Sync + 'static> LoopbackOwnerApprover<S> {
+    /// Put the parked request `request_id` to the dialog and apply the answer:
+    /// the whole flow, which `/authorize` runs in the background after it has
+    /// sent the browser to the polling page.
+    ///
+    /// The store and the dialog both block, so each step runs on a blocking
+    /// worker. The dialog is given until the request expires; after that the
+    /// silence is applied as a reject (a no-op once the request has expired). A
+    /// dialog still on screen then stays until dismissed, and its answer is
+    /// discarded.
+    ///
+    /// # Errors
+    ///
+    /// [`GatekeeperError::Infrastructure`] on a store failure or a worker that
+    /// died.
+    pub(crate) async fn ask_and_decide(
+        self: Arc<Self>,
+        request_id: String,
+        served_origin: String,
+        generate_code: fn() -> String,
+    ) -> Result<LoopbackDecision, GatekeeperError> {
+        let (id, origin) = (request_id.clone(), served_origin.clone());
+        let Some(consent_request) = self
+            .on_blocking_worker(move |approver| approver.consent_request(&id, &origin))
+            .await??
+        else {
+            return Ok(LoopbackDecision::AlreadyDecided);
+        };
+        let until_expiry = (consent_request.expires_at - Utc::now())
+            .to_std()
+            .unwrap_or_default();
+        let asking = self.on_blocking_worker(move |approver| approver.ask(&consent_request));
+        let answer = tokio::time::timeout(until_expiry, asking)
+            .await
+            .unwrap_or(Ok(LoopbackConsentAnswer::Reject))?;
+        self.on_blocking_worker(move |approver| {
+            approver.decide(
+                &request_id,
+                answer,
+                &served_origin,
+                generate_code,
+                Utc::now(),
+            )
+        })
+        .await?
+    }
+
+    /// Run one blocking `step` of [`ask_and_decide`](Self::ask_and_decide) on
+    /// tokio's blocking pool.
+    async fn on_blocking_worker<T: Send + 'static>(
+        self: &Arc<Self>,
+        step: impl FnOnce(&Self) -> T + Send + 'static,
+    ) -> Result<T, GatekeeperError> {
+        let approver = Arc::clone(self);
+        tokio::task::spawn_blocking(move || step(&approver))
+            .await
+            .map_err(|error| {
+                GatekeeperError::infrastructure("loopback dialog worker failed", error)
+            })
     }
 }
 
