@@ -1,0 +1,43 @@
+name: TypeScript Cache Warm
+
+# Saves the `vp run pack` outputs into main's cache scope, the one a
+# ci-typescript.yml PR run can restore from, so new PRs don't pack cold. Not a
+# gate. Why: docs/TypeScript/CI Build Cache Explanation.md.
+
+on:
+  # Unfiltered on purpose; see the doc above.
+  push:
+    branches: [main]
+  # Re-warm on demand, e.g. after the 7-day idle eviction drops the entry.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Only the newest main commit's cache is worth building; supersede in-flight
+# warms rather than queueing them.
+concurrency:
+  group: ts-cache-warm
+  cancel-in-progress: true
+
+jobs:
+  warm:
+    name: Build internal projects
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Also saves the pnpm store into main's scope.
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1.21.0
+        with:
+          cache: true
+
+      - name: Cache vp pack outputs
+        uses: ./.github/actions/vp-pack-cache
+
+      - name: Install dependencies
+        run: vp install
+
+      - name: Build internal projects
+        run: vp run pack
