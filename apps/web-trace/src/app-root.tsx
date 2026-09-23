@@ -1,6 +1,5 @@
 import { QueryClientProvider } from '@tanstack/react-query'
 import { AppLanding, BrandBar, SiteFooter, SiteHeader, fromApp } from 'branding-react'
-import { ConnectMenu } from 'fhir-r4-react/connect'
 import {
   buildSmartQueryClient,
   launchErrorFrom,
@@ -8,6 +7,7 @@ import {
 } from 'fhir-r4-react/smart'
 import { useState, type JSX } from 'react'
 import { ErrorBanner } from 'react-tundraish'
+import { ConnectMenu } from 'smart-app-react'
 
 import { App } from './app.tsx'
 import { standaloneSmartConfig } from './config.ts'

@@ -4,16 +4,15 @@ import { APP_DESCRIPTIONS, APP_SECTION_IDS, type AppSectionId } from 'branding-c
 import { StrictMode, type JSX } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import type { ConnectMenuProps } from '../connect/connect-menu.tsx'
-import { encodeLaunchError } from '../smart/launch-error.ts'
-import type * as SmartLaunch from '../smart/smart-launch.ts'
-import { SMART_HANDSHAKE_QUERY_KEY, useSmartHandshake } from '../smart/use-smart-handshake.ts'
+import { encodeLaunchError, useSmartHandshake } from 'fhir-r4-react/smart'
+
+import type { ConnectMenuProps } from './connect-menu.tsx'
 import { SmartAppRoot } from './smart-app-root.tsx'
 
 // The stub echoes the props it was handed as data attributes so the wiring
 // (`clientId` / `scope` from the `standalone` prop, `redirectUri` from the URL)
 // is observable. The branding chrome renders for real.
-vi.mock('../connect/connect-menu.tsx', () => ({
+vi.mock('./connect-menu.tsx', () => ({
   ConnectMenu: ({ clientId, scope, redirectUri }: ConnectMenuProps) => (
     <div
       data-testid="connect-menu-stub"
@@ -22,13 +21,6 @@ vi.mock('../connect/connect-menu.tsx', () => ({
       data-redirect-uri={redirectUri}
     />
   ),
-}))
-
-// The token exchange never settles, so a handshake started under the shell
-// stays in flight — observable in the query cache, never reaching the network.
-vi.mock('../smart/smart-launch.ts', async (importOriginal) => ({
-  ...(await importOriginal<typeof SmartLaunch>()),
-  readySmartClient: () => new Promise<never>(() => undefined),
 }))
 
 const STANDALONE = {
@@ -189,9 +181,10 @@ describe('SmartAppRoot', () => {
       </StrictMode>
     )
 
-    // Assert — every render saw the same client, and the handshake query lives on it
+    // Assert — every render saw the same client, and the one handshake query
+    // (StrictMode's double mount included) lives on it
     expect(new Set(seen).size).toBe(1)
-    expect(seen[0].getQueryCache().find({ queryKey: SMART_HANDSHAKE_QUERY_KEY })).toBeDefined()
+    expect(seen[0].getQueryCache().getAll()).toHaveLength(1)
   })
 
   it('should report a failed launch in an alert beside the connect menu', () => {

@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite-plus'
+
 import base from '../../../vite.config.base.ts'
 
 export default defineConfig({
@@ -10,7 +11,6 @@ export default defineConfig({
     exports: false,
     entry: {
       index: 'src/index.ts',
-      'smart/index': 'src/smart/index.ts',
     },
   },
   test: {

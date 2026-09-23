@@ -18,6 +18,8 @@
     "test": "vp test --passWithNoTests"
   },
   "dependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-query": "catalog:",
     "branding-core": "workspace:*",
     "branding-react": "workspace:*",
@@ -32,7 +34,9 @@
     "medication-sponsorship-react": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-tundraish": "workspace:*"
+    "react-tundraish": "workspace:*",
+    "smart-app-react": "workspace:*",
+    "tundra-css": "catalog:"
   },
   "devDependencies": {
     "@testing-library/dom": "catalog:",

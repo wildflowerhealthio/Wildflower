@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vite-plus/test'
 import { AppRoot } from './app-root.tsx'
 
 // The shell's own behaviour (the two branches, the latch, the shared client,
-// the launch-failure banner) is covered by `fhir-r4-react/app-shell`'s
+// the launch-failure banner) is covered by `smart-app-react`'s
 // `smart-app-root.test.tsx`; this pins only that the app mounts it as itself.
 vi.mock('./app.tsx', () => ({
   App: () => <div data-testid="app" />,

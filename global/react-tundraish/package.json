@@ -31,6 +31,11 @@
       "source": "./src/styles.css",
       "default": "./dist/style.css"
     },
+    "./styles": {
+      "source": "./src/styles.ts",
+      "types": "./dist/styles.d.ts",
+      "default": "./dist/styles.js"
+    },
     "./package.json": "./package.json"
   },
   "publishConfig": {
@@ -44,6 +49,8 @@
     "test": "vp test"
   },
   "devDependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-router": "catalog:",
     "@testing-library/dom": "catalog:",
     "@testing-library/react": "catalog:",
@@ -64,6 +71,8 @@
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
+    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
     "@tanstack/react-router": "catalog:",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",

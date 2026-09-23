@@ -1,15 +1,16 @@
 import { cleanup, screen } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vite-plus/test'
 
-import { launchErrorFrom } from '../smart/launch-error.ts'
-import type { SmartLaunchConfig } from '../smart/smart-launch.ts'
+import { launchErrorFrom, type SmartLaunchConfig } from 'fhir-r4-react/smart'
+import type * as Smart from 'fhir-r4-react/smart'
 import { authorizeFromLaunchPage, runSmartLaunchEntry } from './smart-launch-entry.ts'
 
 // Stub the one call that leaves the page: fhirclient's authorize redirect.
 const { authorizeSmartLaunchMock } = vi.hoisted(() => ({
   authorizeSmartLaunchMock: vi.fn<(config: SmartLaunchConfig) => Promise<void>>(),
 }))
-vi.mock('../smart/smart-launch.ts', () => ({
+vi.mock('fhir-r4-react/smart', async (importOriginal) => ({
+  ...(await importOriginal<typeof Smart>()),
   authorizeSmartLaunch: authorizeSmartLaunchMock,
 }))
 

@@ -13,18 +13,6 @@
       "source": "./src/smart/index.ts",
       "default": "./dist/smart/index.js"
     },
-    "./connect": {
-      "source": "./src/connect/index.ts",
-      "default": "./dist/connect/index.js"
-    },
-    "./app-shell": {
-      "source": "./src/app-shell/index.ts",
-      "default": "./dist/app-shell/index.js"
-    },
-    "./app-shell/styles": {
-      "source": "./src/app-shell/styles.ts",
-      "default": "./dist/app-shell/styles.js"
-    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -34,10 +22,7 @@
     "test": "vp test"
   },
   "dependencies": {
-    "@fontsource-variable/atkinson-hyperlegible-mono": "catalog:",
-    "@fontsource-variable/atkinson-hyperlegible-next": "catalog:",
-    "fhirclient": "^2.5.4",
-    "tundra-css": "catalog:"
+    "fhirclient": "^2.5.4"
   },
   "devDependencies": {
     "@effect/platform": "catalog:",
@@ -48,8 +33,6 @@
     "@testing-library/user-event": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
-    "branding-core": "workspace:*",
-    "branding-react": "workspace:*",
     "effect": "catalog:",
     "fast-check": "catalog:",
     "fhir-r4": "workspace:*",
@@ -58,7 +41,6 @@
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
     "react-dom": "catalog:",
-    "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*",
     "typescript": "catalog:",
     "vite": "catalog:",
@@ -68,15 +50,11 @@
     "@effect/platform": "catalog:",
     "@tanstack/react-query": "catalog:",
     "@tanstack/react-router": "catalog:",
-    "branding-core": "workspace:*",
-    "branding-react": "workspace:*",
     "effect": "catalog:",
     "fhir-r4": "workspace:*",
     "gatekeeper-core": "workspace:*",
     "kitchen-sink": "workspace:*",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "react-tundraish": "workspace:*",
     "shared-structures-react": "workspace:*"
   }
 }

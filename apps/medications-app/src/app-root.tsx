@@ -1,5 +1,5 @@
-import { SmartAppRoot } from 'fhir-r4-react/app-shell'
 import type { JSX } from 'react'
+import { SmartAppRoot } from 'smart-app-react'
 
 import { App } from './app.tsx'
 import { standaloneSmartConfig } from './config.ts'

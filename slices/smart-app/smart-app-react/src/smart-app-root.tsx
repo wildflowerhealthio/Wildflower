@@ -4,10 +4,14 @@ import { AppLanding, BrandBar, fromApp, SiteFooter, SiteHeader } from 'branding-
 import { useState, type JSX, type ReactNode } from 'react'
 import { ErrorBanner } from 'react-tundraish'
 
-import { ConnectMenu } from '../connect/connect-menu.tsx'
-import { launchErrorFrom } from '../smart/launch-error.ts'
-import { buildSmartQueryClient } from '../smart/self-hosted-runtime.ts'
-import { shouldCompleteSmartLaunch, type SmartLaunchConfig } from '../smart/smart-launch.ts'
+import {
+  buildSmartQueryClient,
+  launchErrorFrom,
+  shouldCompleteSmartLaunch,
+  type SmartLaunchConfig,
+} from 'fhir-r4-react/smart'
+
+import { ConnectMenu } from './connect-menu.tsx'
 
 import styles from './smart-app-root.module.css'
 
@@ -47,7 +51,7 @@ interface SmartAppRootProps {
  * The branch is latched on mount: fhirclient's `oauth2.ready()` strips
  * `code`/`state` once the exchange completes, so re-reading the URL later
  * would flip a finished launch back to the connect menu. See the
- * `fhir-r4-react/app-shell` guardrail in `slices/emr/AGENTS.md`.
+ * guardrails in `slices/smart-app/AGENTS.md`.
  */
 function SmartAppRoot({ app, standalone, launched, children }: SmartAppRootProps): JSX.Element {
   const [isLaunched] = useState(() => launched ?? shouldCompleteSmartLaunch())

@@ -8,12 +8,12 @@ menu, where the user picks a FHIR server, on a bare visit).
 
 ## Boot structure
 
-Both entries run on `fhir-r4-react/app-shell`, the shared root every
-self-hosted SMART app mounts.
+Both entries run on `smart-app-react`, the chrome every self-hosted SMART app
+boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
 
-`src/main.tsx` is the `index.html` entry: it imports the shell's
-stylesheet module (`fhir-r4-react/app-shell/styles` — tundra-css, react-tundraish,
-branding-react layout tokens and the self-hosted fonts, in that order),
+`src/main.tsx` is the `index.html` entry: it imports the design-system
+stylesheet module (`react-tundraish/styles` — tundra-css, react-tundraish and
+the self-hosted fonts, in that order),
 completes a GitHub Pages 404 redirect, wires the OS colour-scheme listener, and
 renders `<AppRoot />` inside `<StrictMode>`.
 

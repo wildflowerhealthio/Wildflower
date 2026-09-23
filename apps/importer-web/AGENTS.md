@@ -66,8 +66,8 @@ The app is reachable two ways, both wired here:
   the host names (`iss={origin}/fhir-r4`). `index.html` is the redirect target.
 - **Standalone launch** — a visitor lands on the published `index.html` directly.
   With no OAuth callback in the URL, `app-root.tsx`'s `AppRoot` (the shared
-  `SmartAppRoot` from `fhir-r4-react/app-shell`) renders `SiteHeader` +
-  `AppLanding` beside `ConnectMenu` (`fhir-r4-react/connect`) + `SiteFooter` in
+  `SmartAppRoot` from `smart-app-react`) renders `SiteHeader` +
+  `AppLanding` beside `ConnectMenu` (also `smart-app-react`) + `SiteFooter` in
   shared Wildflower chrome, where the user picks the FHIR server to import into.
   `shouldCompleteSmartLaunch()` is the gate between the two; the EHR-launched
   branch renders `BrandBar` + `App` instead.
@@ -221,10 +221,11 @@ into it. The marketing site links there from its "collection of apps" section
 
 ## Boot and chrome
 
-Both entries run on `fhir-r4-react/app-shell`, the shared root every self-hosted
-SMART app mounts. `main.tsx` imports the shell's one stylesheet
-(`fhir-r4-react/app-shell/styles`: tundra → tundraish → branding → fonts),
-completes a GitHub Pages 404 redirect, calls `addOsColorSchemeListener()`, and
+Both entries run on `smart-app-react`, the chrome every self-hosted SMART app
+boots through (see [slices/smart-app/AGENTS.md](../../slices/smart-app/AGENTS.md)).
+`main.tsx` imports the design-system stylesheet module (`react-tundraish/styles`:
+tundra → tundraish → fonts; branding's tokens arrive through `branding-react`'s
+JS entry), completes a GitHub Pages 404 redirect, calls `addOsColorSchemeListener()`, and
 renders `<AppRoot />`. `launch-main.tsx` imports the same module and makes one
 `runSmartLaunchEntry` call. `AppRoot` (exported from `app-root.tsx` and from the
 package's `"."` export as a `source`-only seam) is
@@ -238,7 +239,7 @@ package's `"."` export as a `source`-only seam) is
   `<ConnectMenu …/>` + `<SiteFooter />`.
 
 The decision is **latched on mount** inside `SmartAppRoot`; the shell's
-[`smart-app-root.test.tsx`](../../slices/emr/fhir-r4-react/src/app-shell/smart-app-root.test.tsx)
+[`smart-app-root.test.tsx`](../../slices/smart-app/smart-app-react/src/smart-app-root.test.tsx)
 pins it along with the rest of the shell's behaviour.
 
 The `source`-only export (`"exports": { ".": { "source": "…" } }`) has no
@@ -256,8 +257,8 @@ workspace `source` condition at bundle time.
 - `app-root.test.tsx` — that `AppRoot` mounts the shared shell as the Importer
   (the landing `h1` is `APP_DESCRIPTIONS.importer.name`). The chrome gate itself
   — both branches, the latch, the `ConnectMenu` wiring, the launch-failure
-  banner, the one shared `QueryClient` — is tested once, in `fhir-r4-react`'s
-  `app-shell/smart-app-root.test.tsx`.
+  banner, the one shared `QueryClient` — is tested once, in `smart-app-react`'s
+  `smart-app-root.test.tsx`.
 - `app.test.tsx` — the whole tree over a recording stub transport, through the
   real `buildSmartRouterContext`. It walks a synthesized HAR (built with
   `web-trace-core`'s `emitHar` + `test-helpers`, the established pattern —

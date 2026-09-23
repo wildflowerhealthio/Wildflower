@@ -1,10 +1,10 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
-// The shared SMART-app stylesheet stack (design system, branding tokens, fonts)
-// in its load-bearing order. Imported before the app's own CSS modules so app
-// styles win on tied specificity.
-import 'fhir-r4-react/app-shell/styles'
+// The design-system stylesheet stack (tundra-css, the Wildflower palette and
+// type scale, the self-hosted fonts) in its load-bearing order. Imported before
+// the app's own CSS modules so app styles win on tied specificity.
+import 'react-tundraish/styles'
 
 import { restoreRedirectedUrl } from 'branding-core'
 import { addOsColorSchemeListener } from 'react-tundraish'

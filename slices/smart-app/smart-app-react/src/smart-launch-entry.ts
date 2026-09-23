@@ -2,8 +2,12 @@ import { createElement, StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import { addOsColorSchemeListener } from 'react-tundraish'
 
-import { launchErrorBodyFor, launchErrorRedirect } from '../smart/launch-error.ts'
-import { authorizeSmartLaunch, type SmartLaunchConfig } from '../smart/smart-launch.ts'
+import {
+  authorizeSmartLaunch,
+  launchErrorBodyFor,
+  launchErrorRedirect,
+  type SmartLaunchConfig,
+} from 'fhir-r4-react/smart'
 import { LaunchPage } from './launch-page.tsx'
 
 /** Configuration for {@link runSmartLaunchEntry}. */
@@ -59,7 +63,7 @@ const authorizeFromLaunchPage = async (
  * call so the page is never blank while discovery is in flight. The colour
  * scheme listener runs first so the page does not flash light before the app
  * root picks the scheme up. The entry imports
- * `fhir-r4-react/app-shell/styles` itself, before calling this.
+ * `react-tundraish/styles` itself, before calling this.
  *
  * @returns Settles once a failed launch has been handed to the app root; on a
  *   successful authorize the page navigates away first.
