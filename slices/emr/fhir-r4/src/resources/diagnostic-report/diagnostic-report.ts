@@ -4,7 +4,10 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import type * as FhirR4 from 'fhir/r4.d.ts'
 
-import { choiceElementSetPassthroughFields } from '../../data-types/base/choice-element-passthrough-fields.ts'
+import {
+  filterForExclusiveChoiceElementSet,
+  choiceElementSetPassthroughFields,
+} from '../../data-types/base/choice-element-passthrough-fields.ts'
 import * as ChoiceElementSet from '../../data-types/base/choice-element-set.ts'
 import * as DomainResource from '../../data-types/base/domain-resource.ts'
 import * as Attachment from '../../data-types/complex/attachment.ts'
@@ -210,7 +213,14 @@ const DiagnosticReportStruct = Schema.extend(
       ),
     })
   )
-).annotations({ jsonSchema: diagnosticReportJsonSchema })
+)
+  .pipe(
+    filterForExclusiveChoiceElementSet(
+      'effective',
+      ChoiceElementSet.FhirR4SetChoices['DiagnosticReport.effective[x]']
+    )
+  )
+  .annotations({ jsonSchema: diagnosticReportJsonSchema })
 
 const DiagnosticReportSchema: Schema.Schema<
   typeof DiagnosticReportStruct.Type,

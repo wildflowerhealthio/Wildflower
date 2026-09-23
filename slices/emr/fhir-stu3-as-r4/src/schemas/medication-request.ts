@@ -6,6 +6,7 @@ import {
   Annotation,
   BackboneElement,
   ChoiceElementSet,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
   DomainResource,
   Duration,
@@ -117,6 +118,11 @@ const MedicationRequestStruct = Schema.extend(
       note: annotationArray,
       dispenseRequest: OrNullAsOptional(DispenseRequestSchema),
     })
+  )
+).pipe(
+  filterForExclusiveChoiceElementSet(
+    'medication',
+    ChoiceElementSet.FhirR4SetChoices['MedicationRequest.medication[x]']
   )
 )
 

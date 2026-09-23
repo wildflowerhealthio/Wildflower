@@ -4,6 +4,7 @@ import { OrNullAsOptional, StructNoContext, mutableEncoded } from 'kitchen-sink/
 
 import {
   ChoiceElementSet,
+  filterForExclusiveChoiceElementSet,
   choiceElementSetPassthroughFields,
   DomainResource,
   IdentifierAndReference,
@@ -63,6 +64,11 @@ const MedicationDispenseStruct = Schema.extend(
       whenPrepared: OrNullAsOptional(Schema.DateTimeUtc),
       whenHandedOver: OrNullAsOptional(Schema.DateTimeUtc),
     })
+  )
+).pipe(
+  filterForExclusiveChoiceElementSet(
+    'medication',
+    ChoiceElementSet.FhirR4SetChoices['MedicationDispense.medication[x]']
   )
 )
 

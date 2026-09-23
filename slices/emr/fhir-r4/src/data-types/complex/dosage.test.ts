@@ -4,6 +4,7 @@ import { AnnotateArrayWithArbitrary } from 'kitchen-sink/schema'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, test } from 'vite-plus/test'
 
+import { atMostOnePopulatedSlot } from '../base/choice-element-passthrough-fields.test-helpers.ts'
 import * as CodeableConcept from './codeable-concept.ts'
 import * as Dosage from './dosage.ts'
 import * as Ratio from './ratio.ts'
@@ -118,7 +119,7 @@ describe('FhirR4Dosage', () => {
   test('property: asNeeded[x] choice field round-trips', () => {
     fc.assert(
       fc.property(
-        overrideArb({
+        atMostOnePopulatedSlot({
           asNeededBoolean: Schema.NullOr(Schema.Boolean),
           asNeededCodeableConcept: Schema.NullOr(CodeableConcept.Schema),
         }),

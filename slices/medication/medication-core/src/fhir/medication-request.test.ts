@@ -405,11 +405,13 @@ describe('medicationRequestToMedicationView', () => {
     expect(view.description).toBe('Take 1 tablet by mouth once daily\nWith food')
   })
 
-  test('prefers the contained Medication DIN and description over the concept/sig fallbacks', () => {
+  // A request can't carry `medicationCodeableConcept` beside the
+  // `medicationReference` here — fhir-r4 rejects two populated
+  // `medication[x]` slots — so the sig is the only fallback left to outrank.
+  test('prefers the contained Medication DIN and description over the sig fallback', () => {
     const view = medicationRequestToMedicationView(
       decode({
         ...carebookRequest,
-        medicationCodeableConcept: { coding: [{ code: 'DO-NOT-USE' }] },
         dosageInstruction: [{ text: 'do-not-use sig' }],
       }),
       'fallback'
