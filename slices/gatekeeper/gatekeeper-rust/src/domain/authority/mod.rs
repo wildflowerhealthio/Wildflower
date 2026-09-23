@@ -26,9 +26,16 @@
 //!  - [`HostOwnerEntitlement`] — what the host's own boot-time owner token may
 //!    claim, the one authority with no approving human; constructible only in
 //!    `seeding` (guarded below).
-//!  - [`TokenEntitlement`] — the sealed trait the minter mints under;
-//!    implementors carry their claims privately, so a token's scopes are never
-//!    a caller-assembled slice.
+//!  - [`TokenEntitlement`] — the enum the minter mints under, one variant per
+//!    proof above that a token may be minted for; each carries its claims
+//!    privately, so a token's scopes are never a caller-assembled slice.
+//!    [`GrantRedemption`] is the same shape for the two redemptions that may
+//!    start a refresh-token family.
+//!
+//! The sets of proofs a writer accepts are enums rather than traits on purpose
+//! ([`TokenEntitlement`], [`GrantRedemption`], and the writers'
+//! `CodeAuthority`): a closed list in one place is what an audit reads, and a
+//! new source of authority has to be added there.
 //!
 //! Not proofs: the registration-acknowledgement check (a consent-UI rule run
 //! before any clamp) and the pending-request bookkeeping writes (park, poll,
@@ -50,9 +57,6 @@ pub(crate) use redemption::{
 };
 pub(crate) use standing_grant::{GrantCoverage, StandingGrantCoverage};
 pub(crate) use token_entitlement::TokenEntitlement;
-// The sealing trait, exposed only so a writer test can stub a redemption.
-#[cfg(test)]
-pub(crate) use token_entitlement::sealed;
 
 #[cfg(test)]
 mod construction_site_guard {

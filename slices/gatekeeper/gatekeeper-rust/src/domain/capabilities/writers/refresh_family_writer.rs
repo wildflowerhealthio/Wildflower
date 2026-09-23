@@ -8,7 +8,7 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::crypto_util::random_token::{generate_refresh_token, token_storage_hash};
-use crate::domain::authority::{GrantRedemption, TokenEntitlement, ValidatedRefreshToken};
+use crate::domain::authority::{GrantRedemption, ValidatedRefreshToken};
 use crate::domain::gatekeeper_error::GatekeeperError;
 use crate::domain::refresh_token::{
     consume_refresh_token, RefreshToken, RefreshTokenConsumeOutcome, RefreshTokenFamily,
@@ -45,7 +45,7 @@ impl<'a, S: GatekeeperStore> RefreshFamilyWriter<'a, S> {
     /// [`GatekeeperError::Infrastructure`] on a store failure.
     pub(crate) fn start_family(
         &self,
-        redemption: &impl GrantRedemption,
+        redemption: GrantRedemption<'_>,
         now: DateTime<Utc>,
     ) -> Result<String, GatekeeperError> {
         let plaintext = generate_refresh_token();
@@ -125,55 +125,17 @@ mod tests {
     use super::*;
 
     use crate::domain::test_fake::{
-        authenticated_public_client, client, owned_scopes, FakeGatekeeperStore,
+        authenticated_public_client, client, code_grant, redeemed_code, FakeGatekeeperStore,
     };
-
-    /// A stand-in redemption for the family-start tests: the proof types'
-    /// constructors are exercised in `domain::authority`; here only the
-    /// writer's reading of one matters.
-    struct FakeRedemption {
-        scopes: Vec<String>,
-        code: Option<String>,
-    }
-
-    impl crate::domain::authority::sealed::Sealed for FakeRedemption {}
-
-    impl crate::domain::authority::TokenEntitlement for FakeRedemption {
-        fn client_id(&self) -> &str {
-            "client"
-        }
-        fn token_scopes(&self) -> &[String] {
-            &self.scopes
-        }
-        fn patient(&self) -> Option<&str> {
-            Some("pat-1")
-        }
-        fn is_host_owner(&self) -> bool {
-            false
-        }
-    }
-
-    impl GrantRedemption for FakeRedemption {
-        fn granted_scopes(&self) -> &[String] {
-            &self.scopes
-        }
-        fn authorization_code(&self) -> Option<&str> {
-            self.code.as_deref()
-        }
-        fn grant_id(&self) -> Option<&str> {
-            Some("grant-1")
-        }
-    }
 
     /// Only a grant carrying `offline_access` earns a refresh token.
     #[test]
     fn only_offline_access_earns_a_refresh_token() {
-        let redemption = |scopes: &[&str]| FakeRedemption {
-            scopes: owned_scopes(scopes),
-            code: None,
-        };
-        assert!(!redemption(&["openid"]).earns_refresh_token());
-        assert!(redemption(&["openid", "offline_access"]).earns_refresh_token());
+        let store = FakeGatekeeperStore::default();
+        let without = redeemed_code(&store, "a", &["openid"]);
+        let with = redeemed_code(&store, "b", &["openid", "offline_access"]);
+        assert!(!GrantRedemption::AuthorizationCode(&without).earns_refresh_token());
+        assert!(GrantRedemption::AuthorizationCode(&with).earns_refresh_token());
     }
 
     /// The family records the redemption's scopes, patient, code hash, and
@@ -181,16 +143,13 @@ mod tests {
     #[test]
     fn start_family_records_the_redemption() {
         let store = FakeGatekeeperStore::default();
-        let writer = RefreshFamilyWriter::over(&store);
+        store
+            .create_authorization_code_grant(&code_grant("grant-1", "client"))
+            .unwrap();
+        let redeemed_code = redeemed_code(&store, "client", &["openid", "offline_access"]);
         let now = Utc::now();
-        let plaintext = writer
-            .start_family(
-                &FakeRedemption {
-                    scopes: owned_scopes(&["openid", "offline_access"]),
-                    code: Some("the-code".to_owned()),
-                },
-                now,
-            )
+        let plaintext = RefreshFamilyWriter::over(&store)
+            .start_family(GrantRedemption::AuthorizationCode(&redeemed_code), now)
             .unwrap();
         let (token, family) = store
             .refresh_token_with_family_by_hash(&token_storage_hash(&plaintext))
@@ -202,7 +161,7 @@ mod tests {
         assert_eq!(family.patient.as_deref(), Some("pat-1"));
         assert_eq!(
             family.authorization_code_hash.as_deref(),
-            Some(token_storage_hash("the-code").as_str())
+            Some(token_storage_hash(redeemed_code.authorization_code()).as_str())
         );
         assert_eq!(family.grant_id.as_deref(), Some("grant-1"));
         assert_eq!(family.expires_at, now + REFRESH_TOKEN_FAMILY_TTL);
@@ -221,14 +180,9 @@ mod tests {
         let store = FakeGatekeeperStore::default();
         let writer = RefreshFamilyWriter::over(&store);
         let now = Utc::now();
+        let redeemed_code = redeemed_code(&store, "client", &["offline_access"]);
         let first = writer
-            .start_family(
-                &FakeRedemption {
-                    scopes: owned_scopes(&["offline_access"]),
-                    code: None,
-                },
-                now,
-            )
+            .start_family(GrantRedemption::AuthorizationCode(&redeemed_code), now)
             .unwrap();
         let presented = validated(&store, &first);
 

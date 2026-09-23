@@ -17,7 +17,7 @@ use persistence_rust::DieselPool;
 use thiserror::Error;
 
 use crate::db::SqliteGatekeeperStore;
-use crate::domain::authority::HostOwnerEntitlement;
+use crate::domain::authority::{HostOwnerEntitlement, TokenEntitlement};
 use crate::domain::capabilities::writers::AccessTokenMinter;
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::signing_key::SigningKey;
@@ -331,7 +331,8 @@ pub(crate) fn mint_host_owner_token(
     // `HostOwnerEntitlement` proof (constructible only here), through the same
     // minter.
     let entitlement = HostOwnerEntitlement::for_host(first_party_client_id, granted_scopes);
-    Ok(AccessTokenMinter::new(store, iss, aud, ttl).mint(&entitlement)?)
+    Ok(AccessTokenMinter::new(store, iss, aud, ttl)
+        .mint(TokenEntitlement::HostOwner(&entitlement))?)
 }
 
 #[cfg(test)]

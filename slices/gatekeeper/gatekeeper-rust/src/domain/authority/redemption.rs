@@ -12,8 +12,9 @@
 //!    is *validated*, not yet rotated, on purpose: the flow mints first and
 //!    rotates after, so a signing failure never burns the presented token.
 //!
-//! [`GrantRedemption`] marks the two that may also start a refresh-token
-//! family (a refresh can only rotate the family it belongs to).
+//! [`GrantRedemption`] names the two that may also start a refresh-token
+//! family (a refresh can only rotate the family it belongs to). Every proof
+//! is minted under through its [`TokenEntitlement`] variant.
 
 use chrono::{DateTime, Utc};
 use scopes_rust::KnownScope;
@@ -21,7 +22,7 @@ use subtle::ConstantTimeEq;
 use url::Url;
 
 use super::authenticated_client::AuthenticatedClient;
-use super::token_entitlement::{sealed, TokenEntitlement};
+use super::token_entitlement::TokenEntitlement;
 use crate::crypto_util::pkce::{compute_code_challenge, is_valid_code_verifier_length};
 use crate::crypto_util::random_token::token_storage_hash;
 use crate::domain::authorization_code::IssuedAuthorizationCode;
@@ -41,20 +42,84 @@ pub(crate) struct PresentedAuthorizationCode<'a> {
 }
 
 /// A redemption that may start a refresh-token family: the two grants that
-/// establish a session rather than renew one. Sealed like [`TokenEntitlement`].
-pub(crate) trait GrantRedemption: TokenEntitlement {
+/// establish a session rather than renew one. An enum, like
+/// [`TokenEntitlement`], so the set is closed and listed here.
+#[derive(Clone, Copy)]
+pub(crate) enum GrantRedemption<'a> {
+    /// An authorization code redeemed at `/oauth/token`.
+    AuthorizationCode(&'a RedeemedAuthorizationCode),
+    /// An approved device request claimed by its poll.
+    DeviceCode(&'a ConsumedDeviceRequest),
+}
+
+impl<'a> GrantRedemption<'a> {
+    /// The entitlement a token is minted under for this redemption.
+    pub(crate) fn entitlement(self) -> TokenEntitlement<'a> {
+        match self {
+            GrantRedemption::AuthorizationCode(redeemed_code) => {
+                TokenEntitlement::AuthorizationCode(redeemed_code)
+            }
+            GrantRedemption::DeviceCode(consumed_device_request) => {
+                TokenEntitlement::DeviceCode(consumed_device_request)
+            }
+        }
+    }
+
+    /// The `client_id` the redemption is bound to.
+    pub(crate) fn client_id(self) -> &'a str {
+        match self {
+            GrantRedemption::AuthorizationCode(redeemed_code) => redeemed_code.client_id(),
+            GrantRedemption::DeviceCode(consumed_device_request) => {
+                consumed_device_request.client_id()
+            }
+        }
+    }
+
+    /// SMART-on-FHIR patient context bound at approval, if any.
+    pub(crate) fn patient(self) -> Option<&'a str> {
+        match self {
+            GrantRedemption::AuthorizationCode(redeemed_code) => redeemed_code.patient(),
+            GrantRedemption::DeviceCode(consumed_device_request) => {
+                consumed_device_request.patient()
+            }
+        }
+    }
+
     /// The scopes as granted (before the minter's spelling twin), for the
     /// token response's `scope` and the family's record.
-    fn granted_scopes(&self) -> &[String];
+    pub(crate) fn granted_scopes(self) -> &'a [String] {
+        match self {
+            GrantRedemption::AuthorizationCode(redeemed_code) => redeemed_code.granted_scopes(),
+            GrantRedemption::DeviceCode(consumed_device_request) => {
+                consumed_device_request.granted_scopes()
+            }
+        }
+    }
+
     /// The authorization code this redemption consumed, so a later replay of
     /// that code can revoke the family it started; `None` for the device flow.
-    fn authorization_code(&self) -> Option<&str>;
+    pub(crate) fn authorization_code(self) -> Option<&'a str> {
+        match self {
+            GrantRedemption::AuthorizationCode(redeemed_code) => {
+                Some(redeemed_code.authorization_code())
+            }
+            GrantRedemption::DeviceCode(_) => None,
+        }
+    }
+
     /// The standing grant behind this redemption, if one was resolved.
-    fn grant_id(&self) -> Option<&str>;
+    pub(crate) fn grant_id(self) -> Option<&'a str> {
+        match self {
+            GrantRedemption::AuthorizationCode(redeemed_code) => redeemed_code.grant_id(),
+            GrantRedemption::DeviceCode(consumed_device_request) => {
+                consumed_device_request.grant_id()
+            }
+        }
+    }
 
     /// Whether the grant carries [`KnownScope::OfflineAccess`] and so earns a
     /// refresh-token family alongside its access token.
-    fn earns_refresh_token(&self) -> bool {
+    pub(crate) fn earns_refresh_token(self) -> bool {
         self.granted_scopes()
             .iter()
             .any(|scope| scope == KnownScope::OfflineAccess.as_str())
@@ -150,38 +215,35 @@ impl RedeemedAuthorizationCode {
             grant_id,
         })
     }
-}
 
-impl sealed::Sealed for RedeemedAuthorizationCode {}
-
-impl TokenEntitlement for RedeemedAuthorizationCode {
-    fn client_id(&self) -> &str {
+    /// The redeeming client.
+    pub(crate) fn client_id(&self) -> &str {
         &self.code.client_id
     }
 
-    fn token_scopes(&self) -> &[String] {
+    /// The code's scopes with each SMART scope's alternate spelling added —
+    /// the token's `scope` claim.
+    pub(crate) fn token_scopes(&self) -> &[String] {
         &self.token_scopes
     }
 
-    fn patient(&self) -> Option<&str> {
-        self.code.patient.as_deref()
-    }
-
-    fn is_host_owner(&self) -> bool {
-        false
-    }
-}
-
-impl GrantRedemption for RedeemedAuthorizationCode {
-    fn granted_scopes(&self) -> &[String] {
+    /// The scopes the code was issued with.
+    pub(crate) fn granted_scopes(&self) -> &[String] {
         &self.code.granted_scopes
     }
 
-    fn authorization_code(&self) -> Option<&str> {
-        Some(&self.code.code)
+    /// The patient context the code was bound to, if any.
+    pub(crate) fn patient(&self) -> Option<&str> {
+        self.code.patient.as_deref()
     }
 
-    fn grant_id(&self) -> Option<&str> {
+    /// The consumed code itself.
+    pub(crate) fn authorization_code(&self) -> &str {
+        &self.code.code
+    }
+
+    /// The standing grant behind the code, if one was resolved.
+    pub(crate) fn grant_id(&self) -> Option<&str> {
         self.grant_id.as_deref()
     }
 }
@@ -270,38 +332,30 @@ impl ConsumedDeviceRequest {
             grant_id,
         })
     }
-}
 
-impl sealed::Sealed for ConsumedDeviceRequest {}
-
-impl TokenEntitlement for ConsumedDeviceRequest {
-    fn client_id(&self) -> &str {
+    /// The polling client the request was claimed by.
+    pub(crate) fn client_id(&self) -> &str {
         &self.request.client_id
     }
 
-    fn token_scopes(&self) -> &[String] {
+    /// The granted scopes with each SMART scope's alternate spelling added —
+    /// the token's `scope` claim.
+    pub(crate) fn token_scopes(&self) -> &[String] {
         &self.token_scopes
     }
 
-    fn patient(&self) -> Option<&str> {
-        self.request.patient.as_deref()
-    }
-
-    fn is_host_owner(&self) -> bool {
-        false
-    }
-}
-
-impl GrantRedemption for ConsumedDeviceRequest {
-    fn granted_scopes(&self) -> &[String] {
+    /// The scopes the Owner granted at approval.
+    pub(crate) fn granted_scopes(&self) -> &[String] {
         &self.granted_scopes
     }
 
-    fn authorization_code(&self) -> Option<&str> {
-        None
+    /// The patient context bound at approval, if any.
+    pub(crate) fn patient(&self) -> Option<&str> {
+        self.request.patient.as_deref()
     }
 
-    fn grant_id(&self) -> Option<&str> {
+    /// The standing device grant behind the request, if one was resolved.
+    pub(crate) fn grant_id(&self) -> Option<&str> {
         self.grant_id.as_deref()
     }
 }
@@ -361,9 +415,25 @@ impl ValidatedRefreshToken {
         })
     }
 
+    /// The client the family belongs to.
+    pub(crate) fn client_id(&self) -> &str {
+        &self.family.client_id
+    }
+
+    /// The family's scopes with each SMART scope's alternate spelling added —
+    /// the token's `scope` claim.
+    pub(crate) fn token_scopes(&self) -> &[String] {
+        &self.token_scopes
+    }
+
     /// The family's scopes as granted, for the token response's `scope`.
     pub(crate) fn granted_scopes(&self) -> &[String] {
         &self.family.scopes
+    }
+
+    /// The patient context the family was bound to, if any.
+    pub(crate) fn patient(&self) -> Option<&str> {
+        self.family.patient.as_deref()
     }
 
     /// The family this token belongs to.
@@ -374,26 +444,6 @@ impl ValidatedRefreshToken {
     /// The storage hash of the presented token — what rotation consumes.
     pub(crate) fn presented_hash(&self) -> &str {
         &self.presented_hash
-    }
-}
-
-impl sealed::Sealed for ValidatedRefreshToken {}
-
-impl TokenEntitlement for ValidatedRefreshToken {
-    fn client_id(&self) -> &str {
-        &self.family.client_id
-    }
-
-    fn token_scopes(&self) -> &[String] {
-        &self.token_scopes
-    }
-
-    fn patient(&self) -> Option<&str> {
-        self.family.patient.as_deref()
-    }
-
-    fn is_host_owner(&self) -> bool {
-        false
     }
 }
 
@@ -479,7 +529,11 @@ mod tests {
             proof.token_scopes(),
             ["patient/Patient.read", "patient/Patient.rs"]
         );
-        assert_eq!(proof.authorization_code(), Some(code.as_str()));
+        assert_eq!(proof.authorization_code(), code);
+        assert_eq!(
+            GrantRedemption::AuthorizationCode(&proof).authorization_code(),
+            Some(code.as_str())
+        );
         assert_eq!(
             reason(RedeemedAuthorizationCode::redeem(
                 &store,
@@ -603,7 +657,10 @@ mod tests {
         let proof = ConsumedDeviceRequest::consume(&store, &client, "dev", later).expect("claimed");
         assert_eq!(proof.client_id(), "client");
         assert_eq!(proof.granted_scopes(), ["openid"]);
-        assert_eq!(proof.authorization_code(), None);
+        assert_eq!(
+            GrantRedemption::DeviceCode(&proof).authorization_code(),
+            None
+        );
         assert!(matches!(
             ConsumedDeviceRequest::consume(&store, &client, "dev", later),
             Err(TokenExchangeError::ExpiredToken)

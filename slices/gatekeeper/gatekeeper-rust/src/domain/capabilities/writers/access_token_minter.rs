@@ -1,8 +1,8 @@
 //! [`AccessTokenMinter`] — the writer that reads the active signing key and
 //! mints a JWT. What a token claims (client, scopes, patient, owner marker)
 //! comes from a [`TokenEntitlement`] proof, never from a caller-assembled scope
-//! slice, so what a token can be minted *for* is the closed set of proof types
-//! in [`crate::domain::authority`]. Where the token is valid (issuer, audience)
+//! slice, so what a token can be minted *for* is that enum's closed set of
+//! variants. Where the token is valid (issuer, audience)
 //! and for how long are fixed when the minter is built.
 
 use chrono::Duration;
@@ -44,7 +44,7 @@ impl<'a, S: GatekeeperStore> AccessTokenMinter<'a, S> {
     /// [`TokenIssuanceError::Store`] when the key store can't be read.
     pub(crate) fn mint(
         &self,
-        entitlement: &impl TokenEntitlement,
+        entitlement: TokenEntitlement<'_>,
     ) -> Result<String, TokenIssuanceError> {
         let key = self
             .store
@@ -88,7 +88,7 @@ mod tests {
     fn mint_fails_closed_without_an_active_key() {
         let store = FakeGatekeeperStore::default();
         let entitlement = HostOwnerEntitlement::for_host("host", &["openid".to_owned()]);
-        let outcome = minter(&store).mint(&entitlement);
+        let outcome = minter(&store).mint(TokenEntitlement::HostOwner(&entitlement));
         assert!(matches!(
             outcome,
             Err(TokenIssuanceError::NoActiveSigningKey)
@@ -103,7 +103,9 @@ mod tests {
         seed_active_signing_key(&store);
         let scopes = vec!["system/*.cruds".to_owned(), "openid".to_owned()];
         let entitlement = HostOwnerEntitlement::for_host("host", &scopes);
-        let access_token = minter(&store).mint(&entitlement).expect("mint");
+        let access_token = minter(&store)
+            .mint(TokenEntitlement::HostOwner(&entitlement))
+            .expect("mint");
         let keys = store.all_signing_keys().unwrap();
         let claims = verify_jwt(
             &access_token,

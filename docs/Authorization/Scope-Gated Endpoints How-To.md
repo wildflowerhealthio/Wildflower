@@ -270,9 +270,11 @@ the rule the proof stands for:
 - `HostOwnerEntitlement` — what the host's own boot-time owner token may claim,
   the one authority with no approving human; constructible only in `seeding.rs`.
 
-The minter signs only under a `TokenEntitlement` — a sealed trait the
-redemptions and `HostOwnerEntitlement` implement — so a token's claims always
-come from a proof, never from a caller-assembled scope list.
+The minter signs only under a `TokenEntitlement` — an enum with one variant per
+redemption plus `HostOwnerEntitlement` — so a token's claims always come from a
+proof, never from a caller-assembled scope list. The sets of proofs a writer
+accepts (`TokenEntitlement`, `GrantRedemption`, `CodeAuthority`) are enums, not
+traits, so each is one closed list an audit can read.
 
 Two source guards make it structural: one pins every privileged store method
 name to the writers, the other pins the `HostOwnerEntitlement` constructor to

@@ -5,8 +5,6 @@
 //! (`seeding`, enforced by the guard test in the parent module) rather than an
 //! implicit branch in the minter.
 
-use super::token_entitlement::{sealed, TokenEntitlement};
-
 /// Proof that a token is the host's own owner token. Carries the first-party
 /// `client_id` and the host's configured grant (both sourced from
 /// `tauri-shared-config.json` on the live app), which the minter records
@@ -25,24 +23,14 @@ impl HostOwnerEntitlement {
             scopes: granted_scopes.to_vec(),
         }
     }
-}
 
-impl sealed::Sealed for HostOwnerEntitlement {}
-
-impl TokenEntitlement for HostOwnerEntitlement {
-    fn client_id(&self) -> &str {
+    /// The first-party `client_id` the token is issued to.
+    pub(super) fn client_id(&self) -> &str {
         &self.client_id
     }
 
-    fn token_scopes(&self) -> &[String] {
+    /// The configured grant, recorded verbatim.
+    pub(super) fn token_scopes(&self) -> &[String] {
         &self.scopes
-    }
-
-    fn patient(&self) -> Option<&str> {
-        None
-    }
-
-    fn is_host_owner(&self) -> bool {
-        true
     }
 }

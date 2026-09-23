@@ -7,7 +7,13 @@ use scopes_rust::Grant;
 use url::Url;
 
 use super::FakeGatekeeperStore;
-use crate::domain::authority::{ApprovableScopes, AuthenticatedClient, DelegatedScopes};
+use crate::crypto_util::pkce::compute_code_challenge;
+use crate::crypto_util::random_token::generate_authorization_code;
+use crate::domain::authority::{
+    ApprovableScopes, AuthenticatedClient, DelegatedScopes, PresentedAuthorizationCode,
+    RedeemedAuthorizationCode,
+};
+use crate::domain::authorization_code::{IssuedAuthorizationCode, AUTHORIZATION_CODE_TTL};
 use crate::domain::authorization_request::{AuthorizationRequest, GrantType, RequestStatus};
 use crate::domain::client::{AllowedGrantType, Client, ClientKind};
 use crate::domain::client_credentials::ClientCredentials;
@@ -129,6 +135,47 @@ pub(crate) fn authenticated_public_client(
         },
     )
     .expect("a public client authenticates")
+}
+
+/// A code issued to `client_id` (registered here as a public client) for
+/// `granted_scopes`, bound to patient `pat-1` and `https://example.com/cb`, then
+/// redeemed through the real [`RedeemedAuthorizationCode::redeem`] — for a test
+/// that needs the proof rather than the redemption rule. A standing grant the
+/// test planted for that client and redirect is picked up.
+pub(crate) fn redeemed_code(
+    store: &FakeGatekeeperStore,
+    client_id: &str,
+    granted_scopes: &[&str],
+) -> RedeemedAuthorizationCode {
+    const VERIFIER: &str = "verifier-verifier-verifier-verifier-verifier-1";
+    let redirect_uri = Url::parse("https://example.com/cb").unwrap();
+    let authenticated = authenticated_public_client(store, client(client_id, granted_scopes));
+    let now = Utc::now();
+    let code = generate_authorization_code();
+    store
+        .issue_authorization_code(&IssuedAuthorizationCode {
+            code: code.clone(),
+            request_id: "req".to_owned(),
+            client_id: client_id.to_owned(),
+            redirect_uri: redirect_uri.clone(),
+            code_challenge: compute_code_challenge(VERIFIER),
+            granted_scopes: owned_scopes(granted_scopes),
+            patient: Some("pat-1".to_owned()),
+            issued_at: now,
+            expires_at: now + AUTHORIZATION_CODE_TTL,
+        })
+        .unwrap();
+    RedeemedAuthorizationCode::redeem(
+        store,
+        &authenticated,
+        &PresentedAuthorizationCode {
+            code: &code,
+            code_verifier: VERIFIER,
+            redirect_uri: redirect_uri.as_str(),
+        },
+        now,
+    )
+    .expect("a freshly issued code redeems")
 }
 
 /// `scopes` as delegated by an owner-equivalent approver, with nothing clamped

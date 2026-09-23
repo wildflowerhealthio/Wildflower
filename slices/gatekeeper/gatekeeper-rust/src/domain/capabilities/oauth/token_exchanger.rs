@@ -72,8 +72,13 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(client, AllowedGrantType::AuthorizationCode)?;
-        let redeemed = RedeemedAuthorizationCode::redeem(&self.store, client, presented, now)?;
-        self.issue_for_redemption(&redeemed, origin, now, false)
+        let redeemed_code = RedeemedAuthorizationCode::redeem(&self.store, client, presented, now)?;
+        self.issue_for_redemption(
+            GrantRedemption::AuthorizationCode(&redeemed_code),
+            origin,
+            now,
+            false,
+        )
     }
 
     /// Poll a device request (RFC 8628 §3.4) and, once it is approved and this
@@ -92,9 +97,15 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(client, AllowedGrantType::DeviceCode)?;
-        let consumed = ConsumedDeviceRequest::consume(&self.store, client, device_code, now)?;
-        let establishes_owner_session = self.is_first_party(&consumed);
-        self.issue_for_redemption(&consumed, origin, now, establishes_owner_session)
+        let consumed_device_request =
+            ConsumedDeviceRequest::consume(&self.store, client, device_code, now)?;
+        let establishes_owner_session = self.is_first_party(consumed_device_request.client_id());
+        self.issue_for_redemption(
+            GrantRedemption::DeviceCode(&consumed_device_request),
+            origin,
+            now,
+            establishes_owner_session,
+        )
     }
 
     /// Trade a live refresh token for a fresh access token and the refresh
@@ -117,17 +128,21 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         now: DateTime<Utc>,
     ) -> Result<IssuedTokens, TokenExchangeError> {
         self.ensure_grant_type_allowed(client, AllowedGrantType::RefreshToken)?;
-        let validated =
+        let validated_refresh_token =
             ValidatedRefreshToken::validate(&self.store, client, presented_refresh_token, now)?;
-        let access_token = self.mint(&validated, origin)?;
-        let successor = RefreshFamilyWriter::over(&self.store).rotate(&validated, now)?;
+        let access_token = self.mint(
+            TokenEntitlement::RefreshToken(&validated_refresh_token),
+            origin,
+        )?;
+        let successor =
+            RefreshFamilyWriter::over(&self.store).rotate(&validated_refresh_token, now)?;
         Ok(IssuedTokens {
             access_token,
             expires_in: ACCESS_TOKEN_TTL.num_seconds(),
-            granted_scopes: validated.granted_scopes().to_vec(),
+            granted_scopes: validated_refresh_token.granted_scopes().to_vec(),
             refresh_token: Some(successor),
-            patient: validated.patient().map(str::to_owned),
-            establishes_owner_session: self.is_first_party(&validated),
+            patient: validated_refresh_token.patient().map(str::to_owned),
+            establishes_owner_session: self.is_first_party(validated_refresh_token.client_id()),
         })
     }
 
@@ -148,12 +163,12 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     /// one (the mint comes first so a signing failure creates no credential).
     fn issue_for_redemption(
         &self,
-        redemption: &impl GrantRedemption,
+        redemption: GrantRedemption<'_>,
         origin: &str,
         now: DateTime<Utc>,
         establishes_owner_session: bool,
     ) -> Result<IssuedTokens, TokenExchangeError> {
-        let access_token = self.mint(redemption, origin)?;
+        let access_token = self.mint(redemption.entitlement(), origin)?;
         let refresh_token = if redemption.earns_refresh_token() {
             Some(RefreshFamilyWriter::over(&self.store).start_family(redemption, now)?)
         } else {
@@ -173,7 +188,7 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
     /// request's served origin's FHIR base (see `docs/Origins/Explanation.md`).
     fn mint(
         &self,
-        entitlement: &impl TokenEntitlement,
+        entitlement: TokenEntitlement<'_>,
         origin: &str,
     ) -> Result<String, TokenExchangeError> {
         let audience = format!("{origin}/fhir-r4");
@@ -186,8 +201,9 @@ impl<S: GatekeeperStore> TokenExchanger<S> {
         Ok(minter.mint(entitlement)?)
     }
 
-    fn is_first_party(&self, entitlement: &impl TokenEntitlement) -> bool {
-        entitlement.client_id() == &*self.first_party_client_id
+    /// Whether `client_id` is the first-party host's.
+    fn is_first_party(&self, client_id: &str) -> bool {
+        client_id == &*self.first_party_client_id
     }
 }
 
