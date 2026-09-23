@@ -23,7 +23,7 @@ non-FHIR portal JSON.
   `…/prescription-history?customerId=…` → one `MedicationDispense` per history
   entry (no Patient, no MedicationRequest).
 - `src/response-kinds/medication-wire.ts` — the `medicationCodeableConcept`
-  builder (brand/chemical text + DIN coding) shared by the two dispense-emitting
+  builder (brand/chemical text + DIN codings) shared by the two dispense-emitting
   entities.
 - `src/shoppers.ts` — the identifier/coding-system URL catalogue
   (`ShoppersIdentifierSystem`, `DIN_CODE_SYSTEM`,
@@ -51,6 +51,24 @@ particular it must **never** import anything from `slices/collector`
 config/plan/form are its concern) or `slices/importer` (whose
 `har-importer-core` consumes this package's
 `shoppersDrugMartSource.responseKinds`).
+
+## Conventional slots
+
+What a synthesized resource carries where, so one reader covers this source
+and `rexall-be-well-source` alike:
+
+- **DIN** — two codings on `medicationCodeableConcept`, both carrying the same
+  `code`: the vendor `DIN_CODE_SYSTEM` first, then `fhir-r4`'s canonical
+  `CanadianCodingSystem.Din` (`http://hl7.org/fhir/NamingSystem/ca-hc-din`). A
+  reader matches on the canonical one; the vendor one is kept, additively.
+- **Store link** — the public store-locator URL
+  (`SHOPPERS_STORE_LOCATOR_BASE` + `storeId`) as a literal `reference` on
+  `MedicationRequest.dispenseRequest.performer`, and on
+  `MedicationDispense.location` for every dispense (the status feed's and the
+  history feed's alike; the history one also carries the store name as
+  `display`) — never on `supportingInformation`. A request whose
+  payload carries a store but nothing else for `dispenseRequest` still gets a
+  `dispenseRequest` holding just the `performer`.
 
 ## Traps
 

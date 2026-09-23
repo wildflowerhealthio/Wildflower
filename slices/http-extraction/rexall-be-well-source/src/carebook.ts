@@ -40,7 +40,11 @@ const SYSTEM_BASE = 'http://schema.carebook.com/v1/fhir'
  */
 const CarebookExtension = {
   // --- common/ — emitted on both MedicationRequest and MedicationDispense ---
-  /** Identifier of the external system the record originated from (`RexallPharmacy`). */
+  /**
+   * Identifier of the external system the record originated from
+   * (`RexallPharmacy`). With the resource's `external-store-id`, promoted to
+   * the store-locator URL — see {@link CarebookExtension.RequestExternalStoreId}.
+   */
   ExternalSystemSource: `${EXTENSION_BASE}/common/extension/external-system-source`,
   /** How the record entered the source system. */
   InputSource: `${EXTENSION_BASE}/common/extension/input-source`,
@@ -59,10 +63,10 @@ const CarebookExtension = {
   /** Whether the prescription is renewable. No conventional R4 field. */
   Renewable: `${EXTENSION_BASE}/medicationrequest/extension/renewable`,
   /**
-   * Rexall store number. **Kept as an extension on purpose** — see AGENTS.md:
-   * the obvious home, `Reference.identifier` on the promoted
-   * `dispenseRequest.performer`, is 0..1 and the dialect already fills it with
-   * carebook's own pharmacy id. `medication-core` reads it here.
+   * Rexall store number. With `external-system-source == RexallPharmacy`,
+   * promoted to the public store-locator URL on
+   * `dispenseRequest.performer.reference` — **not** `Reference.identifier`,
+   * which is 0..1 and already holds carebook's own pharmacy id. See AGENTS.md.
    */
   RequestExternalStoreId: `${EXTENSION_BASE}/medicationrequest/extension/external-store-id`,
   /** Presentation rank for the prescriptions list. Non-contiguous; not clinical. */
@@ -71,7 +75,9 @@ const CarebookExtension = {
   PrescriptionOrder: `${EXTENSION_BASE}/medicationrequest/extension/prescription-order`,
   /**
    * Repeats still available. Emitted as a `modifierExtension` on
-   * `MedicationRequest.dispenseRequest`, as a `positiveInt`.
+   * `MedicationRequest.dispenseRequest`, as a `positiveInt`. Promoted, with
+   * its `v2` twin, to one `WildflowerExtension.RepeatsAvailable` on
+   * `dispenseRequest.extension`.
    */
   NumberOfRepeatsAvailable: `${EXTENSION_BASE}/medicationrequest/extension/number-of-repeats-available`,
   /**
@@ -98,7 +104,7 @@ const CarebookExtension = {
   DispenseMedicationProcessor: `${EXTENSION_BASE}/medicationdispense/extension/medication-processor`,
   /** Duplicate of {@link CarebookExtension.DispenseMedicationProcessor} in every observed record. */
   DispenseMedicationRecordProcessor: `${EXTENSION_BASE}/medicationdispense/extension/medicationrecord-processor`,
-  /** Rexall store number. Kept as an extension — see {@link CarebookExtension.RequestExternalStoreId}. */
+  /** Rexall store number. Promoted to `location.reference` — see {@link CarebookExtension.RequestExternalStoreId}. */
   DispenseExternalStoreId: `${EXTENSION_BASE}/medicationdispense/extension/external-store-id`,
 
   // --- medication/ — on the contained Medication ---
@@ -126,7 +132,10 @@ const CarebookIdentifierSystem = {
 
 /** Carebook coding systems. Note the host spelling differs between these. */
 const CarebookCodingSystem = {
-  /** Health Canada Drug Identification Numbers, on `Medication.code`. */
+  /**
+   * Health Canada Drug Identification Numbers, on `Medication.code`. Kept, with
+   * a `CanadianCodingSystem.Din` (`fhir-r4`) coding added beside it.
+   */
   Din: `${SYSTEM_BASE}/coding/medication-din-code`,
   /** Dose form, on `Medication.form` (e.g. `capsule`, `tablet`). */
   MedicationForm: `${SYSTEM_BASE}/coding/medication-form-code`,

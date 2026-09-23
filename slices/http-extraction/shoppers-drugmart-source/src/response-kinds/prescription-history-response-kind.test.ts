@@ -1,5 +1,6 @@
 import { Effect, Option, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { CanadianCodingSystem } from 'fhir-r4/data-types'
 import { MedicationDispense } from 'fhir-r4/resources'
 import type { FhirResource } from 'fhir-r4/resources'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
@@ -117,7 +118,10 @@ describe('PrescriptionHistoryResponseKind', () => {
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-1' }],
           status: 'completed',
           medicationCodeableConcept: {
-            coding: [{ system: DIN_CODE_SYSTEM, code: '51480840', display: 'Amoxicillin 500mg' }],
+            coding: [
+              { system: DIN_CODE_SYSTEM, code: '51480840', display: 'Amoxicillin 500mg' },
+              { system: CanadianCodingSystem.Din, code: '51480840', display: 'Amoxicillin 500mg' },
+            ],
             text: 'Amoxil',
           },
           authorizingPrescription: [
@@ -136,7 +140,10 @@ describe('PrescriptionHistoryResponseKind', () => {
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-2' }],
           status: 'completed',
           medicationCodeableConcept: {
-            coding: [{ system: DIN_CODE_SYSTEM, code: '80717730', display: 'Amoxicillin 500mg' }],
+            coding: [
+              { system: DIN_CODE_SYSTEM, code: '80717730', display: 'Amoxicillin 500mg' },
+              { system: CanadianCodingSystem.Din, code: '80717730', display: 'Amoxicillin 500mg' },
+            ],
             text: 'Apo-Amoxi',
           },
           authorizingPrescription: [
@@ -181,7 +188,10 @@ describe('PrescriptionHistoryResponseKind', () => {
           identifier: [{ system: ShoppersIdentifierSystem.DispenseId, value: 'disp-9' }],
           status: 'completed',
           medicationCodeableConcept: {
-            coding: [{ system: DIN_CODE_SYSTEM, code: '51480840' }],
+            coding: [
+              { system: DIN_CODE_SYSTEM, code: '51480840' },
+              { system: CanadianCodingSystem.Din, code: '51480840' },
+            ],
           },
           authorizingPrescription: [{ reference: 'MedicationRequest/rx-uuid-1' }],
         }),

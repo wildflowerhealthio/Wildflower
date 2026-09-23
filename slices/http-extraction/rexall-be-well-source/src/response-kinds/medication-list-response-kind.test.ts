@@ -1,10 +1,12 @@
-import { Effect, type Either, Option, type ParseResult } from 'effect'
+import { Effect, type Either, Option, type ParseResult, Schema } from 'effect'
 import * as fc from 'fast-check'
+import { CanadianCodingSystem, CodeableConcept, WildflowerExtension } from 'fhir-r4/data-types'
 import { type HttpResponse, Specificity } from 'http-extraction-fundamentals'
 import { makeHttpResponse } from 'http-extraction-fundamentals/test-helpers'
 import { numRunsFor, utilityExpectations } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
+import { CarebookCodingSystem, CarebookExtension } from '../carebook.ts'
 import prescriptions from '../fixtures/prescriptions-searchset.json' with { type: 'json' }
 import { REXALL_CAREBOOK_SYSTEM } from '../source-system.ts'
 import {
@@ -13,6 +15,9 @@ import {
 } from './medication-list-response-kind.ts'
 
 const { expectRightToEqual } = utilityExpectations(expect)
+
+/** `medication[x]` is loosely typed on the decoded resource; read it as a concept. */
+const decodeConcept = Schema.decodeUnknownSync(Schema.typeSchema(CodeableConcept.Schema))
 
 /** The prescriptions searchset URL the SPA fires (tunnel host), matched by `tryRecognize`. */
 const LIST_URL =
@@ -130,15 +135,55 @@ describe('MedicationListResponseKind', () => {
       expect(urls).toContain(
         'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/renewable'
       )
-      // Read downstream by medication-core's store-locator link.
-      expect(urls).toContain(
-        'http://schemas.carebook.com/v1/fhir/medicationrequest/extension/external-store-id'
-      )
-      expect(urls).toContain(
-        'http://schemas.carebook.com/v1/fhir/common/extension/external-system-source'
-      )
       // An unrecognized extension is never disturbed.
       expect(urls).toContain('http://example.org/unknown-future-extension')
+    })
+
+    it('lifts the DIN, store link and remaining repeats into conventional slots', () => {
+      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
+      if (result._tag !== 'Right') throw new Error('expected a successful parse')
+      const request = result.right.find((r) => r.id === 'mr-0001')
+      if (request?.resourceType !== 'MedicationRequest')
+        throw new Error('missing MedicationRequest')
+
+      // The store link lands on the performer beside carebook's own pharmacy id,
+      // and both extensions that spelled it are consumed.
+      expect(request.dispenseRequest?.performer?.reference).toBe(
+        'https://www.rexall.ca/storelocator/store/4821'
+      )
+      expect(request.dispenseRequest?.performer?.identifier?.value).toBe('pharmacy-4821')
+      const urls = request.extension.map((e) => e.url)
+      expect(urls).not.toContain(CarebookExtension.RequestExternalStoreId)
+      expect(urls).not.toContain(CarebookExtension.ExternalSystemSource)
+
+      // Both remaining-repeats copies collapse into one Wildflower extension.
+      expect(request.dispenseRequest?.modifierExtension).toEqual([])
+      expect(request.dispenseRequest?.extension.map((e) => [e.url, e.valueInteger])).toStrictEqual([
+        [WildflowerExtension.RepeatsAvailable, 2],
+      ])
+
+      // The contained Medication's DIN gains its canonical twin, vendor kept.
+      const medication: unknown = request.contained[0]
+      expect(medication).toMatchObject({
+        code: {
+          coding: [
+            { system: CarebookCodingSystem.Din, code: '02241497' },
+            { system: CanadianCodingSystem.Din, code: '02241497' },
+          ],
+        },
+      })
+    })
+
+    it('holds the store link on a fresh performer when no medication-processor named one', () => {
+      const result = runParse(makeResponse(JSON.stringify(prescriptions)))
+      if (result._tag !== 'Right') throw new Error('expected a successful parse')
+      const request = result.right.find((r) => r.id === 'mr-0002')
+      if (request?.resourceType !== 'MedicationRequest')
+        throw new Error('missing MedicationRequest')
+      expect(request.dispenseRequest?.performer?.reference).toBe(
+        'https://www.rexall.ca/storelocator/store/4821'
+      )
+      expect(request.dispenseRequest?.performer?.identifier).toBeNull()
     })
 
     it('promotes the dispensing pharmacy onto MedicationDispense.location', () => {
@@ -148,6 +193,13 @@ describe('MedicationListResponseKind', () => {
       if (dispense?.resourceType !== 'MedicationDispense')
         throw new Error('missing MedicationDispense')
       expect(dispense.location?.identifier?.value).toBe('pharmacy-4821')
+      // The store link mirrors the request's performer.
+      expect(dispense.location?.reference).toBe('https://www.rexall.ca/storelocator/store/4821')
+      const concept = decodeConcept(dispense.medicationCodeableConcept)
+      expect(concept.coding.map((c) => [c.system?.href, c.code])).toStrictEqual([
+        [CarebookCodingSystem.Din, '02241497'],
+        [CanadianCodingSystem.Din, '02241497'],
+      ])
       expect(dispense.daysSupply).toMatchObject({ value: 30, unit: 'day', code: 'd' })
       expect(dispense.extension.map((e) => e.url)).not.toContain(
         'http://schemas.carebook.com/v1/fhir/medicationdispense/extension/medication-processor'

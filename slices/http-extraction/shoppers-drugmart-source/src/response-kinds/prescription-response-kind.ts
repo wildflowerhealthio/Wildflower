@@ -42,8 +42,8 @@ const SourcePrescription = Schema.Struct({
   lastFillDate: Schema.optional(Schema.String),
   // `lastFillDate` / `nextFillDate` bound the fill window (see {@link dispenseRequestWire}).
   nextFillDate: Schema.optional(Schema.String),
-  // The store id → the store-locator link on `supportingInformation`; lenient on
-  // string vs number.
+  // The store id → the store-locator link on `dispenseRequest.performer` (and
+  // each dispense's `location`); lenient on string vs number.
   storeId: Schema.optional(Schema.Union(Schema.String, Schema.Number)),
   // `expired`/`archived` drive `MedicationRequest.status` → `'stopped'`;
   // `renewable` is decoded but not mapped.
@@ -119,6 +119,8 @@ const patientReference = (patientId: string): Record<string, unknown> => ({
 /** Build the R4 `MedicationRequest.dispenseRequest` wire, or `undefined` if it would be empty. */
 const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
   const dr: Record<string, unknown> = {}
+  const store = storeReferenceWire(rx)
+  if (store != null) dr['performer'] = store
   if (rx.numFillsLeft != null && Number.isFinite(rx.numFillsLeft)) {
     const repeats = Math.trunc(rx.numFillsLeft)
     if (repeats >= 0) dr['numberOfRepeatsAllowed'] = repeats
@@ -139,16 +141,15 @@ const dispenseRequestWire = (rx: SourcePrescription): Record<string, unknown> | 
 }
 
 /**
- * The `supportingInformation` wire: a `Reference` to the public store-locator URL
- * for the prescription's `storeId`; `undefined` when no store id is present.
+ * The dispensing store as a `Reference` to its public store-locator URL — the
+ * wire for both `dispenseRequest.performer` and each dispense's `location`;
+ * `undefined` when no store id is present.
  */
-const supportingInformationWire = (
-  rx: SourcePrescription
-): ReadonlyArray<Record<string, unknown>> | undefined => {
+const storeReferenceWire = (rx: SourcePrescription): Record<string, unknown> | undefined => {
   if (rx.storeId == null) return undefined
   const storeId = String(rx.storeId)
   if (storeId.length === 0) return undefined
-  return [{ reference: shoppersStoreLocatorUrl(storeId) }]
+  return { reference: shoppersStoreLocatorUrl(storeId) }
 }
 
 /**
@@ -225,9 +226,6 @@ const requestWire = (
   if (authoredOn != null) wire['authoredOn'] = authoredOn
   if (rx.direction != null) wire['dosageInstruction'] = [{ text: rx.direction }]
 
-  const supportingInformation = supportingInformationWire(rx)
-  if (supportingInformation != null) wire['supportingInformation'] = supportingInformation
-
   const dispenseRequest = dispenseRequestWire(rx)
   if (dispenseRequest != null) wire['dispenseRequest'] = dispenseRequest
   return wire
@@ -257,6 +255,8 @@ const dispenseWire = (
     wire['quantity'] = { value: dispense.quantityDispensed }
   }
   if (decodesAsDateTime(dispense.dispenseDate)) wire['whenHandedOver'] = dispense.dispenseDate
+  const location = storeReferenceWire(rx)
+  if (location != null) wire['location'] = location
   return wire
 }
 

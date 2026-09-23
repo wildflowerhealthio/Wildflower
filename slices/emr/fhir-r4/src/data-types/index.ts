@@ -46,6 +46,13 @@ export * as Narrative from './special-purpose/narrative.ts'
 // Resources
 export * as Bundle from './resources/bundle.ts'
 
+// Terminology — canonical coding-system and extension URLs
+export {
+  CanadianCodingSystem,
+  WILDFLOWER_EXTENSION_BASE,
+  WildflowerExtension,
+} from './terminology.ts'
+
 // Named decoded interfaces, re-exported at the top level so downstream packages
 // that build schemas from these datatypes (e.g. `fhir-stu3-as-r4`) can name them in
 // generated declarations. Without a top-level export path, `tsgo`'s `.d.ts`

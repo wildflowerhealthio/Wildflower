@@ -47,21 +47,30 @@ output of the `fhir-stu3-as-r4` transform.
 **It is deliberately a post-step in this package, not part of that transform.**
 `R4FromStu3Schema` is bidirectional, and its encode side rejects by name most of
 what gets written here (`category`, `doNotPerform`, `dispenseRequest.performer`,
-`MedicationDispense.location`) because STU3 has no slot for them. Promoting
-inside it would turn each promotion into a round-trip invariant on a slice whose
-job is _generic_ STU3⇄R4. These are Rexall-specific readings of a vendor
+`MedicationDispense.location`, `dispenseRequest.extension`) because STU3 has no
+slot for them. Promoting inside it would turn each promotion into a round-trip
+invariant on a slice whose job is _generic_ STU3⇄R4. These are Rexall-specific readings of a vendor
 dialect, so they live beside the rest of the carebook knowledge.
 
 What moves (lift-and-drop — the extension is removed once the value lands):
 
-| Extension                                               | Conventional home                                                                                       |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
-| `medicationrequest/…/do-not-perform`                    | `MedicationRequest.doNotPerform` — an exact 1:1; the extension exists only because the source is STU3   |
-| `medicationrequest/…/request-type` (`fill` \| `refill`) | `MedicationRequest.category` — `intent` is a constant `order` and carries no signal                     |
-| `medicationrequest/…/medication-processor`              | `dispenseRequest.performer`                                                                             |
-| `medicationdispense/…/medication-processor`             | `MedicationDispense.location`                                                                           |
-| `medication/…/description`                              | the contained `Medication`'s narrative (`text.div`), **only when** it is absent or the `code.text` copy |
-| `medication/…/strength`                                 | merged into `Medication.ingredient[0].strength`, **only when it parses** as `<number> <unit>`           |
+| Extension                                                                                        | Conventional home                                                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `medicationrequest/…/do-not-perform`                                                             | `MedicationRequest.doNotPerform` — an exact 1:1; the extension exists only because the source is STU3                                                                                             |
+| `medicationrequest/…/request-type` (`fill` \| `refill`)                                          | `MedicationRequest.category` — `intent` is a constant `order` and carries no signal                                                                                                               |
+| `medicationrequest/…/medication-processor`                                                       | `dispenseRequest.performer`                                                                                                                                                                       |
+| `medicationdispense/…/medication-processor`                                                      | `MedicationDispense.location`                                                                                                                                                                     |
+| `common/…/external-system-source` (`RexallPharmacy`) + `medicationrequest/…/external-store-id`   | `dispenseRequest.performer.reference` = `https://www.rexall.ca/storelocator/store/<id>`, **only when both** are present; `performer.identifier` (carebook's pharmacy id) and `display` are kept   |
+| `common/…/external-system-source` (`RexallPharmacy`) + `medicationdispense/…/external-store-id`  | `MedicationDispense.location.reference`, the same URL — mirroring the request                                                                                                                     |
+| `medicationrequest/…/number-of-repeats-available`, `v1` (`positiveInt`) **and** `v2` (`decimal`) | one `dispenseRequest.extension` under `fhir-r4`'s `WildflowerExtension.RepeatsAvailable`, as `valueInteger`; `v1` preferred, `v2` the fallback; each copy consumed only if it carries that number |
+| `medication/…/description`                                                                       | the contained `Medication`'s narrative (`text.div`), **only when** it is absent or the `code.text` copy                                                                                           |
+| `medication/…/strength`                                                                          | merged into `Medication.ingredient[0].strength`, **only when it parses** as `<number> <unit>`                                                                                                     |
+
+The DIN is not an extension, but it is lifted the same way: every
+`medication-din-code` (vendor) coding — on a contained `Medication.code` and on
+either resource's `medicationCodeableConcept` — gains exactly one twin under
+`fhir-r4`'s `CanadianCodingSystem.Din` (`http://hl7.org/fhir/NamingSystem/ca-hc-din`)
+carrying the same `code`. Additive: the vendor coding stays, first.
 
 The same contained-Medication promotions run on `MedicationDispense.contained`.
 No dispense in the capture inlines a Medication, but the slot is identical, and
@@ -108,18 +117,33 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   namespace; a conformant server rejects anything else on write. `promote.ts`
   wraps and escapes, and `medication-core` extracts the text
   content back out — the two are a pair.
-- **`external-store-id` stays an extension on purpose.** `Reference.identifier`
-  is 0..1 and the dialect already fills it on the processor reference with
-  carebook's own pharmacy id; giving the store number that slot would discard a
-  vendor identifier. `medication-core` reads it where it is to
-  build the store-locator link.
-- **The redundant extensions are kept, deliberately.** `when-requested` (equals
-  `whenPrepared`), both `estimated-pick-up`s (equal `whenHandedOver`),
-  `medicationrecord-processor` (byte-equal to `medication-processor`), the `v2`
-  `number-of-repeats-available` (equals its `v1` sibling) and the
+- **The store number lands on `Reference.reference`, never
+  `Reference.identifier`.** `identifier` is 0..1 and the dialect already fills
+  it on the processor reference with carebook's own pharmacy id; giving the
+  store number that slot would discard a vendor identifier. The store-locator
+  URL goes on `reference` instead — a literal reference to a public, non-FHIR
+  page, the convention the Shoppers source shares. It **replaces** the
+  processor's own `reference` (`rexall-pharmacy-location/<id>`), which resolves
+  to nothing and repeats the id `identifier` already holds. An absolute URL is
+  also left untouched by adoption's reference rewrite.
+- **The store pair is all-or-nothing.** `external-system-source` must read
+  `RexallPharmacy` **and** a non-blank `external-store-id` must be present;
+  either one alone is not a store link, so both stay. On a request, the pair is
+  consumed only when `dispenseRequest` exists to hold the link (a fresh
+  `performer` is created when no `medication-processor` supplied one — the
+  capture's `mr-0002`); a dispense always has a `location` slot.
+- **The two repeats copies are consumed by value, not by url.** Each is dropped
+  only if it decodes to the same whole, non-negative number that was promoted.
+  A copy that disagrees, is fractional or negative, or does not decode stays in
+  `modifierExtension` — a value nobody promoted is never silently lost.
+- **The other redundant extensions are kept, deliberately.** `when-requested`
+  (equals `whenPrepared`), both `estimated-pick-up`s (equal `whenHandedOver`),
+  `medicationrecord-processor` (byte-equal to `medication-processor`) and the
   `prescription-order` stub (`display: 'todo'`) are all redundant with something
   that already carries the value. Dropping them is a separate decision from
-  promoting misplaced ones, so promotion leaves them.
+  promoting misplaced ones, so promotion leaves them. The `v2` repeats copy is
+  not on this list: its value lands in the Wildflower extension alongside
+  `v1`'s, so it is consumed like any promoted extension.
 - **`medication-processor-timezone` cannot be applied.** Every dialect timestamp
   arrives `+00:00` and this extension is their real offset, but both schemas
   type `dateTime` as `Schema.DateTimeUtc`, which normalizes to UTC on decode —
@@ -128,9 +152,13 @@ Two things ride along, both fixing accuracy bugs rather than moving extensions:
   `fhir-r4`, not this package.
 - **`medication-core` reads this dialect too**, off the same
   decoded resources. It reads the description (**the extension first**, the
-  narrative as the post-promotion fallback), the DIN, the `v2` repeats
-  modifierExtension, and `external-system-source` + `external-store-id` for the
-  store link. Changing what this package emits can break that view — check it.
+  narrative as the post-promotion fallback), the DIN (the vendor coding, still
+  present), the `v2` repeats modifierExtension, and `external-system-source` +
+  `external-store-id` for the store link. Promotion **consumes** those last
+  two, so a resource this package writes shows no store link or
+  remaining-repeats count in that view until its reader moves to the
+  conventional slots (issue #583). Changing what this package emits can break
+  that view — check it.
   The read order is load-bearing in one direction only: exactly one of the two
   is present on a resource this package wrote, but a resource that has _not_
   been promoted (already in the store, or from the Medications app's own FHIR

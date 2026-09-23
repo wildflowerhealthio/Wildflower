@@ -1,11 +1,18 @@
 import { Option, Schema } from 'effect'
 
-import { Code, CodeableConcept, IdentifierAndReference } from 'fhir-r4/data-types'
-import type { Extension, Quantity } from 'fhir-r4/data-types'
+import {
+  CanadianCodingSystem,
+  Code,
+  CodeableConcept,
+  Extension,
+  IdentifierAndReference,
+  WildflowerExtension,
+} from 'fhir-r4/data-types'
+import type { Quantity } from 'fhir-r4/data-types'
 import type { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import { nonEmpty } from 'kitchen-sink'
 
-import { CarebookExtension } from './carebook.ts'
+import { CarebookCodingSystem, CarebookExtension, REXALL_SYSTEM_SOURCE } from './carebook.ts'
 
 /**
  * Promotes carebook-dialect extensions into the conventional FHIR R4 fields
@@ -37,10 +44,32 @@ const UCUM_DAY = { code: 'd', unit: 'day' } as const
 /** The namespace FHIR R4 requires on a `Narrative.div`, which is typed `xhtml`. */
 const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml'
 
+/** Base of the public Rexall store-locator page a store number is appended to. */
+const REXALL_STORE_LOCATOR_BASE = 'https://www.rexall.ca/storelocator/store/'
+
+/** The public store-locator URL for a Rexall store number. */
+const rexallStoreLocatorUrl = (storeId: string): string =>
+  `${REXALL_STORE_LOCATOR_BASE}${encodeURIComponent(storeId)}`
+
 const decodeReference = Schema.decodeUnknownOption(
   Schema.typeSchema(IdentifierAndReference.ReferenceSchema)
 )
 const decodeConcept = Schema.decodeUnknownOption(Schema.typeSchema(CodeableConcept.Schema))
+
+/** A decoded R4 `CodeableConcept`. */
+type ConceptType = typeof CodeableConcept.Schema.Type
+
+/**
+ * The DIN-relevant fields of one `Coding`, loose enough to read both a decoded
+ * coding (`system` a `URL`) and a raw `contained` one (`system` a string).
+ */
+const decodeSystemCoding = Schema.decodeUnknownOption(
+  Schema.Struct({
+    system: Schema.optional(Schema.NullOr(Schema.Union(Schema.String, Schema.instanceOf(URL)))),
+    code: Schema.optional(Schema.NullOr(Schema.String)),
+    display: Schema.optional(Schema.NullOr(Schema.String)),
+  })
+)
 
 /** The wire-shape fields of a `contained` entry; `contained` is untyped passthrough. */
 const decodeRecord = Schema.decodeUnknownOption(
@@ -97,6 +126,185 @@ const conceptDisplay = (value: unknown): string | null => {
 /** The index of the first extension with this url, or `-1`. */
 const indexOfExtension = (extensions: readonly Extension.Type[], url: string): number =>
   extensions.findIndex((extension) => extension.url === url)
+
+/**
+ * The Rexall store-locator URL the `external-system-source` +
+ * `external-store-id` pair spells, and the two entry indexes it came from — or
+ * `null` unless the source reads {@link REXALL_SYSTEM_SOURCE} **and** a
+ * non-blank store id is present. Either one alone is not a store link, so a
+ * lone extension is left where it is.
+ */
+const storeLink = (
+  extensions: readonly Extension.Type[],
+  storeIdUrl: string
+): { readonly url: string; readonly indexes: readonly number[] } | null => {
+  const sourceIndex = indexOfExtension(extensions, CarebookExtension.ExternalSystemSource)
+  const storeIdIndex = indexOfExtension(extensions, storeIdUrl)
+  if (extensions[sourceIndex]?.valueString !== REXALL_SYSTEM_SOURCE) return null
+  const storeId = nonEmpty(extensions[storeIdIndex]?.valueString)?.trim() ?? ''
+  return storeId.length === 0
+    ? null
+    : { url: rexallStoreLocatorUrl(storeId), indexes: [sourceIndex, storeIdIndex] }
+}
+
+/**
+ * {@link withStoreReference} when there is a store link, else the reference
+ * unchanged.
+ */
+const withStore = (
+  existing: IdentifierAndReference.ReferenceType | null,
+  store: { readonly url: string } | null
+): IdentifierAndReference.ReferenceType | null =>
+  store === null ? existing : withStoreReference(existing, store.url)
+
+/**
+ * `reference` set to the store-locator `url`, keeping every other field of the
+ * existing reference — in particular the `identifier` carrying carebook's own
+ * pharmacy id, which the store number must not displace.
+ */
+const withStoreReference = (
+  existing: IdentifierAndReference.ReferenceType | null,
+  url: string
+): IdentifierAndReference.ReferenceType => ({
+  ...(existing ?? IdentifierAndReference.emptyReference),
+  reference: url,
+})
+
+/**
+ * A non-negative whole number, or `null`. The only shape a remaining-repeats
+ * count may take — a fractional or negative value is not one, and its extension
+ * stays put.
+ */
+const repeatCount = (value: number | null | undefined): number | null =>
+  typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : null
+
+/**
+ * Promote the dialect's remaining-repeats count off the dispense request's
+ * `modifierExtension` into a single {@link WildflowerExtension.RepeatsAvailable}
+ * `valueInteger` on its `extension`.
+ *
+ * @remarks
+ * `v1` (`valuePositiveInt`) is preferred, `v2` (`valueDecimal`) the fallback;
+ * each copy is consumed only when it carries the promoted number — see
+ * AGENTS.md under "Extension Promotion".
+ */
+const promoteRepeatsAvailable = (
+  dispenseRequest: NonNullable<MedicationRequest.Type['dispenseRequest']>
+): NonNullable<MedicationRequest.Type['dispenseRequest']> => {
+  const modifiers = dispenseRequest.modifierExtension
+  const v1Index = indexOfExtension(modifiers, CarebookExtension.NumberOfRepeatsAvailable)
+  const v2Index = indexOfExtension(modifiers, CarebookExtension.NumberOfRepeatsAvailableV2)
+  const v1 = repeatCount(modifiers[v1Index]?.valuePositiveInt)
+  const v2 = repeatCount(modifiers[v2Index]?.valueDecimal)
+  const count = v1 ?? v2
+  if (count === null) return dispenseRequest
+
+  const consumed = new Set<number>()
+  if (v1 === count) consumed.add(v1Index)
+  if (v2 === count) consumed.add(v2Index)
+
+  const alreadyPresent = dispenseRequest.extension.some(
+    (extension) => extension.url === WildflowerExtension.RepeatsAvailable
+  )
+  return {
+    ...dispenseRequest,
+    modifierExtension: withoutConsumed(modifiers, consumed),
+    extension: alreadyPresent
+      ? dispenseRequest.extension
+      : [
+          ...dispenseRequest.extension,
+          {
+            ...Extension.emptyValueChoice,
+            id: null,
+            extension: [],
+            url: WildflowerExtension.RepeatsAvailable,
+            valueInteger: count,
+          },
+        ],
+  }
+}
+
+/**
+ * The canonical {@link CanadianCodingSystem.Din} codings a list of raw or
+ * decoded codings is missing: one per distinct vendor DIN `code`
+ * ({@link CarebookCodingSystem.Din}) that has no canonical twin yet.
+ *
+ * @remarks
+ * Additive — the vendor coding stays beside the canonical one. Reads both
+ * shapes: a decoded `Coding.system` is a `URL`, a raw `contained` one a string.
+ */
+const missingCanonicalDins = (
+  codings: readonly unknown[]
+): readonly { readonly code: string; readonly display: string | null }[] => {
+  const vendor: { code: string; display: string | null }[] = []
+  const canonical = new Set<string>()
+  for (const raw of codings) {
+    const coding = decodeSystemCoding(raw)
+    if (Option.isNone(coding)) continue
+    const system = coding.value.system
+    const code = nonEmpty(coding.value.code)
+    if (code === null) continue
+    const href = system instanceof URL ? system.href : system
+    if (href === CanadianCodingSystem.Din) canonical.add(code)
+    else if (href === CarebookCodingSystem.Din && !vendor.some((entry) => entry.code === code)) {
+      vendor.push({ code, display: nonEmpty(coding.value.display) })
+    }
+  }
+  return vendor.filter((entry) => !canonical.has(entry.code))
+}
+
+/**
+ * A decoded `CodeableConcept` with its missing canonical DIN codings appended.
+ * Takes the slot as `unknown` because `medication[x]` is loosely typed on the
+ * decoded resource; anything that is not a concept comes back unchanged.
+ */
+const withCanonicalDin = (value: unknown): unknown => {
+  const decoded = decodeConcept(value)
+  if (Option.isNone(decoded)) return value
+  const concept: ConceptType = decoded.value
+  const missing = missingCanonicalDins(concept.coding)
+  if (missing.length === 0) return value
+  return {
+    ...concept,
+    coding: [
+      ...concept.coding,
+      ...missing.map((entry) => ({
+        id: null,
+        extension: [],
+        system: new URL(CanadianCodingSystem.Din),
+        code: Code.make(entry.code),
+        display: entry.display,
+        userSelected: null,
+        version: null,
+      })),
+    ],
+  }
+}
+
+/**
+ * A raw `contained` `code` with its missing canonical DIN codings appended, or
+ * `null` when it needs none (or is not an object with a `coding` array).
+ */
+const rawCodeWithCanonicalDin = (code: unknown): Record<string, unknown> | null => {
+  const record = decodeRecord(code)
+  if (Option.isNone(record)) return null
+  const rawCodings = record.value['coding']
+  if (!Array.isArray(rawCodings)) return null
+  const codings: readonly unknown[] = rawCodings
+  const missing = missingCanonicalDins(codings)
+  if (missing.length === 0) return null
+  return {
+    ...record.value,
+    coding: [
+      ...codings,
+      ...missing.map((entry) => ({
+        system: CanadianCodingSystem.Din,
+        code: entry.code,
+        ...(entry.display === null ? {} : { display: entry.display }),
+      })),
+    ],
+  }
+}
 
 /** Every extension *entry* whose value was consumed by a promotion, dropped. */
 const withoutConsumed = (
@@ -200,7 +408,8 @@ const withStrength = (
 
 /**
  * Promote the two carebook extensions on a `contained` Medication:
- * `description` → the narrative, `strength` → `ingredient[0].strength`.
+ * `description` → the narrative, `strength` → `ingredient[0].strength` — and
+ * give its vendor DIN coding a canonical {@link CanadianCodingSystem.Din} twin.
  *
  * @remarks
  * `contained` is untyped passthrough on the decoded resource, so this reads and
@@ -244,12 +453,17 @@ const promoteContainedMedication = (entry: unknown): unknown => {
     }
   })
 
-  if (consumed.size === 0) return entry
+  const codeWithDin = rawCodeWithCanonicalDin(code)
+  if (consumed.size === 0 && codeWithDin === null) return entry
 
   const next: Record<string, unknown> = { ...fields }
-  next['extension'] = rawExtensions.filter((_, index) => !consumed.has(index))
+  if (consumed.size > 0)
+    next['extension'] = rawExtensions.filter((_, index) => !consumed.has(index))
+  if (codeWithDin !== null) next['code'] = codeWithDin
   if (description !== null) next['text'] = { status: 'generated', div: narrativeDiv(description) }
-  if (strength !== null) next['ingredient'] = withStrength(fields['ingredient'], code, strength)
+  if (strength !== null) {
+    next['ingredient'] = withStrength(fields['ingredient'], codeWithDin ?? code, strength)
+  }
   return next
 }
 
@@ -276,8 +490,11 @@ const containedMedicationLink = (
 /**
  * Promote a carebook `MedicationRequest`: `do-not-perform` → `doNotPerform`,
  * `request-type` → `category`, `medication-processor` →
- * `dispenseRequest.performer`, and the UCUM day unit onto
- * `expectedSupplyDuration`.
+ * `dispenseRequest.performer`, `external-system-source` + `external-store-id` →
+ * the store-locator URL on `dispenseRequest.performer.reference`, the
+ * remaining-repeats `modifierExtension` pair → one
+ * {@link WildflowerExtension.RepeatsAvailable}, a canonical DIN coding beside
+ * the vendor one, and the UCUM day unit onto `expectedSupplyDuration`.
  *
  * @remarks
  * Also links the orphaned `contained` Medication by
@@ -308,20 +525,29 @@ const promoteMedicationRequest = (request: MedicationRequest.Type): MedicationRe
   )
   const performer = decodeReference(request.extension[processorIndex]?.valueReference)
 
+  const store = storeLink(request.extension, CarebookExtension.RequestExternalStoreId)
+
   const contained = request.contained.map(promoteContainedMedication)
   const link = containedMedicationLink(contained)
 
   const dispenseRequest =
     request.dispenseRequest === null
       ? null
-      : {
+      : promoteRepeatsAvailable({
           ...request.dispenseRequest,
           expectedSupplyDuration: withDayUnit(request.dispenseRequest.expectedSupplyDuration),
-          performer: Option.isSome(performer) ? performer.value : request.dispenseRequest.performer,
-        }
+          performer: withStore(
+            Option.isSome(performer) ? performer.value : request.dispenseRequest.performer,
+            store
+          ),
+        })
   // After `dispenseRequest`, not before: with none there is no `performer` to
-  // land in, and consuming anyway would destroy the dispensing pharmacy.
-  if (dispenseRequest !== null && Option.isSome(performer)) consumed.add(processorIndex)
+  // land in, and consuming anyway would destroy the dispensing pharmacy (or
+  // the store number).
+  if (dispenseRequest !== null) {
+    if (Option.isSome(performer)) consumed.add(processorIndex)
+    for (const index of store?.indexes ?? []) consumed.add(index)
+  }
 
   const existingTarget = nonEmpty(request.medicationReference?.reference)
   const retargetable = existingTarget === null || existingTarget.startsWith('#')
@@ -331,6 +557,7 @@ const promoteMedicationRequest = (request: MedicationRequest.Type): MedicationRe
     extension: withoutConsumed(request.extension, consumed),
     contained,
     doNotPerform: doNotPerform ?? request.doNotPerform,
+    medicationCodeableConcept: withCanonicalDin(request.medicationCodeableConcept),
     category: Option.isSome(requestType)
       ? [...request.category, requestType.value]
       : request.category,
@@ -353,8 +580,11 @@ const promoteMedicationRequest = (request: MedicationRequest.Type): MedicationRe
 
 /**
  * Promote a carebook `MedicationDispense`: `medication-processor` → `location`,
- * the UCUM day unit onto `daysSupply`, and the same contained-Medication
- * promotions the request path performs.
+ * `external-system-source` + `external-store-id` → the store-locator URL on
+ * `location.reference` (mirroring the request's `dispenseRequest.performer`), a
+ * canonical DIN coding beside the vendor one, the UCUM day unit onto
+ * `daysSupply`, and the same contained-Medication promotions the request path
+ * performs.
  *
  * @remarks
  * `location` rather than `performer` because the reference denotes a
@@ -374,11 +604,16 @@ const promoteMedicationDispense = (dispense: MedicationDispense.Type): Medicatio
   const location = decodeReference(dispense.extension[processorIndex]?.valueReference)
   if (Option.isSome(location)) consumed.add(processorIndex)
 
+  // `location` always exists to land in, so the pair is consumed unconditionally.
+  const store = storeLink(dispense.extension, CarebookExtension.DispenseExternalStoreId)
+  for (const index of store?.indexes ?? []) consumed.add(index)
+
   return {
     ...dispense,
     extension: withoutConsumed(dispense.extension, consumed),
     contained: dispense.contained.map(promoteContainedMedication),
-    location: Option.isSome(location) ? location.value : dispense.location,
+    medicationCodeableConcept: withCanonicalDin(dispense.medicationCodeableConcept),
+    location: withStore(Option.isSome(location) ? location.value : dispense.location, store),
     daysSupply: withDayUnit(dispense.daysSupply),
   }
 }

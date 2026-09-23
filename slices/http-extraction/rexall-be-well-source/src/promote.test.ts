@@ -1,11 +1,18 @@
 import { Schema } from 'effect'
 import * as fc from 'fast-check'
-import { Code, Extension, IdentifierAndReference } from 'fhir-r4/data-types'
+import {
+  CanadianCodingSystem,
+  Code,
+  CodeableConcept,
+  Extension,
+  IdentifierAndReference,
+  WildflowerExtension,
+} from 'fhir-r4/data-types'
 import { MedicationDispense, MedicationRequest } from 'fhir-r4/resources'
 import { numRunsFor } from 'kitchen-sink/test'
 import { describe, expect, it } from 'vite-plus/test'
 
-import { CarebookCodingSystem, CarebookExtension } from './carebook.ts'
+import { CarebookCodingSystem, CarebookExtension, REXALL_SYSTEM_SOURCE } from './carebook.ts'
 import { promoteMedicationDispense, promoteMedicationRequest } from './promote.ts'
 
 describe('promoteMedicationRequest', () => {
@@ -494,6 +501,240 @@ describe('promoteMedicationRequest', () => {
     )
   })
 
+  it('should give a contained vendor DIN coding exactly one canonical twin with the same code', () => {
+    fc.assert(
+      fc.property(dinArbitrary, fc.boolean(), (din, twice) => {
+        // Arrange
+        const request = {
+          ...MedicationRequest.empty,
+          contained: [{ ...containedMedication({ id: 'med-1' }), code: vendorDinCode(din) }],
+        }
+
+        // Act — a second pass must not add a second canonical coding.
+        const once = promoteMedicationRequest(request)
+        const promoted = twice ? promoteMedicationRequest(once) : once
+
+        // Assert — additive: the vendor coding is still there, first.
+        expect(rawCodingSystemsFor(firstContained(promoted), din)).toEqual([
+          CarebookCodingSystem.Din,
+          CanadianCodingSystem.Din,
+        ])
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should give an inline medicationCodeableConcept vendor DIN its canonical twin', () => {
+    fc.assert(
+      fc.property(dinArbitrary, (din) => {
+        // Arrange — no contained Medication, so the inline concept stays put.
+        const request = {
+          ...MedicationRequest.empty,
+          medicationCodeableConcept: decodedVendorDinConcept(din),
+        }
+
+        // Act
+        const promoted = promoteMedicationRequest(request)
+
+        // Assert
+        expect(decodedCodingSystemsFor(promoted.medicationCodeableConcept, din)).toEqual([
+          CarebookCodingSystem.Din,
+          CanadianCodingSystem.Din,
+        ])
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should put the store link on performer.reference, keeping the carebook pharmacy identifier', () => {
+    fc.assert(
+      fc.property(storeIdArbitrary, fc.array(unrelatedUrl), (storeId, extras) => {
+        // Arrange
+        const request = {
+          ...MedicationRequest.empty,
+          extension: [
+            extensionWith(CarebookExtension.RequestMedicationProcessor, {
+              valueReference: referenceTo('pharmacy-4821'),
+            }),
+            ...storeExtensions(CarebookExtension.RequestExternalStoreId, storeId),
+            ...extras.map((url) => extensionWith(url, { valueString: 'kept' })),
+          ],
+          dispenseRequest: { ...emptyDispenseRequest },
+        }
+
+        // Act
+        const promoted = promoteMedicationRequest(request)
+
+        // Assert
+        expect(promoted.dispenseRequest?.performer?.reference).toBe(
+          `https://www.rexall.ca/storelocator/store/${encodeURIComponent(storeId)}`
+        )
+        expect(promoted.dispenseRequest?.performer?.identifier?.value).toBe('pharmacy-4821')
+        expect(urlsOf(promoted.extension)).toEqual(extras)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should create a performer to hold the store link when no medication-processor supplied one', () => {
+    // Arrange — the capture's `mr-0002` shape: store pair, no processor.
+    const request = {
+      ...MedicationRequest.empty,
+      extension: storeExtensions(CarebookExtension.RequestExternalStoreId, '4821'),
+      dispenseRequest: { ...emptyDispenseRequest },
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.dispenseRequest?.performer).toEqual({
+      ...emptyReference,
+      reference: 'https://www.rexall.ca/storelocator/store/4821',
+    })
+    expect(urlsOf(promoted.extension)).toEqual([])
+  })
+
+  it('should leave a lone half of the store pair untouched', () => {
+    fc.assert(
+      fc.property(fc.boolean(), storeIdArbitrary, (keepSource, storeId) => {
+        // Arrange — only one of the two: not a store link, and never a silent drop.
+        const [source, store] = storeExtensions(CarebookExtension.RequestExternalStoreId, storeId)
+        const lone = keepSource ? source : store
+        const request = {
+          ...MedicationRequest.empty,
+          extension: lone === undefined ? [] : [lone],
+          dispenseRequest: { ...emptyDispenseRequest },
+        }
+
+        // Act
+        const promoted = promoteMedicationRequest(request)
+
+        // Assert
+        expect(promoted.dispenseRequest?.performer).toBeNull()
+        expect(promoted.extension).toEqual(request.extension)
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should never build a Rexall store link for another system source', () => {
+    fc.assert(
+      fc.property(
+        fc.string().filter((source) => source !== REXALL_SYSTEM_SOURCE),
+        storeIdArbitrary,
+        (source, storeId) => {
+          // Arrange
+          const request = {
+            ...MedicationRequest.empty,
+            extension: [
+              extensionWith(CarebookExtension.ExternalSystemSource, { valueString: source }),
+              extensionWith(CarebookExtension.RequestExternalStoreId, { valueString: storeId }),
+            ],
+            dispenseRequest: { ...emptyDispenseRequest },
+          }
+
+          // Act
+          const promoted = promoteMedicationRequest(request)
+
+          // Assert
+          expect(promoted.dispenseRequest?.performer).toBeNull()
+          expect(promoted.extension).toEqual(request.extension)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should keep the store pair when there is no dispenseRequest to hold the link', () => {
+    // Arrange
+    const request = {
+      ...MedicationRequest.empty,
+      extension: storeExtensions(CarebookExtension.RequestExternalStoreId, '4821'),
+      dispenseRequest: null,
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(promoted.extension).toEqual(request.extension)
+  })
+
+  it('should consume both remaining-repeats copies into one Wildflower valueInteger', () => {
+    fc.assert(
+      fc.property(fc.nat({ max: 99 }), (count) => {
+        // Arrange — the dialect's dual write, as the capture carries it.
+        const request = {
+          ...MedicationRequest.empty,
+          dispenseRequest: {
+            ...emptyDispenseRequest,
+            modifierExtension: repeatsModifiers({ v1: count, v2: count }),
+          },
+        }
+
+        // Act
+        const promoted = promoteMedicationRequest(request)
+
+        // Assert
+        expect(promoted.dispenseRequest?.modifierExtension).toEqual([])
+        expect(promoted.dispenseRequest?.extension).toEqual([
+          extensionWith(WildflowerExtension.RepeatsAvailable, { valueInteger: count }),
+        ])
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should leave a remaining-repeats copy that is not a whole count in place', () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(
+          fc.double({ noNaN: true, noDefaultInfinity: true }).filter((n) => !Number.isInteger(n)),
+          fc.integer({ max: -1 })
+        ),
+        (malformed) => {
+          // Arrange — only the v2 decimal copy, and it is no repeat count.
+          const request = {
+            ...MedicationRequest.empty,
+            dispenseRequest: {
+              ...emptyDispenseRequest,
+              modifierExtension: repeatsModifiers({ v2: malformed }),
+            },
+          }
+
+          // Act
+          const promoted = promoteMedicationRequest(request)
+
+          // Assert
+          expect(promoted.dispenseRequest).toEqual(request.dispenseRequest)
+        }
+      ),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should keep a v2 remaining-repeats copy that disagrees with the v1 value it promoted', () => {
+    // Arrange — the two copies are supposed to be equal; when they are not, the
+    // v1 integer wins and the v2 value nobody promoted stays.
+    const request = {
+      ...MedicationRequest.empty,
+      dispenseRequest: {
+        ...emptyDispenseRequest,
+        modifierExtension: repeatsModifiers({ v1: 2, v2: 3 }),
+      },
+    }
+
+    // Act
+    const promoted = promoteMedicationRequest(request)
+
+    // Assert
+    expect(urlsOf(promoted.dispenseRequest?.modifierExtension ?? [])).toEqual([
+      CarebookExtension.NumberOfRepeatsAvailableV2,
+    ])
+    expect(promoted.dispenseRequest?.extension[0]?.valueInteger).toBe(2)
+  })
+
   it('should always be idempotent — a second promotion changes nothing', () => {
     fc.assert(
       fc.property(fc.boolean(), fc.array(unrelatedUrl), (doNotPerform, extras) => {
@@ -503,10 +744,12 @@ describe('promoteMedicationRequest', () => {
           contained: [containedMedication({ id: 'med-1', strength: '5 mg', description: 'Drug' })],
           extension: [
             extensionWith(CarebookExtension.DoNotPerform, { valueBoolean: doNotPerform }),
+            ...storeExtensions(CarebookExtension.RequestExternalStoreId, '4821'),
             ...extras.map((url) => extensionWith(url, { valueString: 'kept' })),
           ],
           dispenseRequest: {
             ...emptyDispenseRequest,
+            modifierExtension: repeatsModifiers({ v1: 2, v2: 2 }),
             expectedSupplyDuration: { ...emptyQuantity, value: 30 },
           },
         }
@@ -541,6 +784,73 @@ describe('promoteMedicationDispense', () => {
     // Assert
     expect(promoted.location?.identifier?.value).toBe('pharmacy-4821')
     expect(urlsOf(promoted.extension)).toEqual([])
+  })
+
+  it('should mirror the store link on location.reference, keeping the pharmacy identifier', () => {
+    fc.assert(
+      fc.property(storeIdArbitrary, (storeId) => {
+        // Arrange
+        const dispense = {
+          ...MedicationDispense.empty,
+          extension: [
+            extensionWith(CarebookExtension.DispenseMedicationProcessor, {
+              valueReference: referenceTo('pharmacy-4821'),
+            }),
+            ...storeExtensions(CarebookExtension.DispenseExternalStoreId, storeId),
+          ],
+        }
+
+        // Act
+        const promoted = promoteMedicationDispense(dispense)
+
+        // Assert
+        expect(promoted.location?.reference).toBe(
+          `https://www.rexall.ca/storelocator/store/${encodeURIComponent(storeId)}`
+        )
+        expect(promoted.location?.identifier?.value).toBe('pharmacy-4821')
+        expect(urlsOf(promoted.extension)).toEqual([])
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
+  })
+
+  it('should leave a lone dispense external-store-id untouched', () => {
+    // Arrange
+    const dispense = {
+      ...MedicationDispense.empty,
+      extension: [
+        extensionWith(CarebookExtension.DispenseExternalStoreId, { valueString: '4821' }),
+      ],
+    }
+
+    // Act
+    const promoted = promoteMedicationDispense(dispense)
+
+    // Assert
+    expect(promoted.location).toBeNull()
+    expect(promoted.extension).toEqual(dispense.extension)
+  })
+
+  it('should give the dispense medicationCodeableConcept vendor DIN its canonical twin', () => {
+    fc.assert(
+      fc.property(dinArbitrary, (din) => {
+        // Arrange
+        const dispense = {
+          ...MedicationDispense.empty,
+          medicationCodeableConcept: decodedVendorDinConcept(din),
+        }
+
+        // Act
+        const promoted = promoteMedicationDispense(dispense)
+
+        // Assert
+        expect(decodedCodingSystemsFor(promoted.medicationCodeableConcept, din)).toEqual([
+          CarebookCodingSystem.Din,
+          CanadianCodingSystem.Din,
+        ])
+      }),
+      { numRuns: numRunsFor({ base: 100 }) }
+    )
   })
 
   it('should spell out the day unit on a bare daysSupply', () => {
@@ -622,8 +932,10 @@ describe('promoteMedicationDispense', () => {
             extensionWith(CarebookExtension.DispenseMedicationProcessor, {
               valueReference: referenceTo('pharmacy-4821'),
             }),
+            ...storeExtensions(CarebookExtension.DispenseExternalStoreId, '4821'),
             ...extras.map((url) => extensionWith(url, { valueString: 'kept' })),
           ],
+          medicationCodeableConcept: decodedVendorDinConcept('02241497'),
           daysSupply: { ...emptyQuantity, value: 90 },
         }
 
@@ -662,6 +974,82 @@ describe('promoteMedicationDispense', () => {
 
 /** Urls that cannot collide with a carebook one, so they must survive promotion. */
 const unrelatedUrl = fc.string().map((suffix) => `http://example.org/${suffix}`)
+
+/** An 8-digit Health Canada DIN. */
+const dinArbitrary = fc.stringMatching(/^\d{8}$/)
+
+/** A non-blank store number, as `external-store-id` carries it. */
+const storeIdArbitrary = fc.stringMatching(/^[A-Za-z0-9-]{0,6}[A-Za-z0-9]$/)
+
+/** The `external-system-source` (Rexall) + `external-store-id` pair, in that order. */
+const storeExtensions = (storeIdUrl: string, storeId: string): readonly Extension.Type[] => [
+  extensionWith(CarebookExtension.ExternalSystemSource, { valueString: REXALL_SYSTEM_SOURCE }),
+  extensionWith(storeIdUrl, { valueString: storeId }),
+]
+
+/** The dialect's dual-written remaining-repeats `modifierExtension`s, either copy optional. */
+const repeatsModifiers = (copies: {
+  readonly v1?: number
+  readonly v2?: number
+}): readonly Extension.Type[] => [
+  ...(copies.v1 === undefined
+    ? []
+    : [
+        extensionWith(CarebookExtension.NumberOfRepeatsAvailable, {
+          valuePositiveInt: copies.v1,
+        }),
+      ]),
+  ...(copies.v2 === undefined
+    ? []
+    : [extensionWith(CarebookExtension.NumberOfRepeatsAvailableV2, { valueDecimal: copies.v2 })]),
+]
+
+/** A raw `contained` Medication `code` carrying one carebook vendor DIN coding. */
+const vendorDinCode = (din: string): Record<string, unknown> => ({
+  coding: [{ system: CarebookCodingSystem.Din, code: din }],
+  text: 'Atorvastatin 20 mg tablet',
+})
+
+/** A decoded `CodeableConcept` carrying one carebook vendor DIN coding. */
+const decodedVendorDinConcept = (din: string): typeof CodeableConcept.Schema.Type => ({
+  id: null,
+  extension: [],
+  text: 'Atorvastatin 20 mg tablet',
+  coding: [
+    {
+      id: null,
+      extension: [],
+      code: Code.make(din),
+      display: null,
+      system: new URL(CarebookCodingSystem.Din),
+      userSelected: null,
+      version: null,
+    },
+  ],
+})
+
+const decodeConcept = Schema.decodeUnknownSync(Schema.typeSchema(CodeableConcept.Schema))
+
+/** The `system` href of every decoded `coding` whose `code` is `din`, in order. */
+const decodedCodingSystemsFor = (concept: unknown, din: string): readonly (string | undefined)[] =>
+  decodeConcept(concept)
+    .coding.filter((coding) => coding.code === din)
+    .map((coding) => coding.system?.href)
+
+/** The `system` of every raw `code.coding` on a contained Medication whose `code` is `din`. */
+const rawCodingSystemsFor = (
+  medication: Record<string, unknown>,
+  din: string
+): readonly unknown[] => {
+  const code = decodeRecord(medication['code'])
+  const codings = code['coding']
+  return Array.isArray(codings)
+    ? codings
+        .map((coding: unknown) => decodeRecord(coding))
+        .filter((coding) => coding['code'] === din)
+        .map((coding) => coding['system'])
+    : []
+}
 
 const extensionWith = (url: string, value: Partial<Extension.Type>): Extension.Type => ({
   ...Extension.emptyValueChoice,
