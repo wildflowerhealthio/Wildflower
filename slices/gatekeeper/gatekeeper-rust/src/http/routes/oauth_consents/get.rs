@@ -89,7 +89,7 @@ async fn handle_get_oauth_consent(
 ) -> Result<Json<OAuthConsent>, GatekeeperError> {
     let OAuthConsentView {
         request,
-        redirect_uri,
+        requested_redirect_uri,
         client_name,
         registration,
     } = consents.oauth_consent(&id, &origin)?;
@@ -98,7 +98,7 @@ async fn handle_get_oauth_consent(
         client_id: request.client_id,
         client_name,
         scopes: request.requested_scopes,
-        redirect_uri,
+        redirect_uri: requested_redirect_uri,
         pre_approved_scopes: request.pre_approved_scopes,
         patient: request.patient,
         registration: registration.into(),

@@ -147,7 +147,7 @@ mod tests {
         authenticated_public_client(store, client("app", &["patient/*.rs", "openid"]))
     }
 
-    /// A request inside the allowlist (by coverage, not spelling) is parked as
+    /// A request inside the allowlist (by coverage, not spelling) is parked_request as
     /// a pending device request under its user code and the popup is raised.
     #[test]
     fn start_parks_a_pending_request_and_raises_the_popup() {
@@ -155,30 +155,39 @@ mod tests {
         let client = authenticated(&store);
         let publisher = Arc::new(RecordingPublisher::default());
         let authorizer = DeviceAuthorizer::new(store, publisher.clone());
-        let started = authorizer
+        let device_codes = authorizer
             .start(
                 &client,
                 owned_scopes(&["patient/Patient.r", "openid"]),
                 Some("Kitchen iPad".to_owned()),
             )
             .expect("starts");
-        assert_eq!(started.expires_in, DEVICE_AUTHORIZATION_TTL.num_seconds());
-        assert_eq!(started.interval, DEVICE_CODE_POLL_INTERVAL.num_seconds());
-        let parked = authorizer
+        assert_eq!(
+            device_codes.expires_in,
+            DEVICE_AUTHORIZATION_TTL.num_seconds()
+        );
+        assert_eq!(
+            device_codes.interval,
+            DEVICE_CODE_POLL_INTERVAL.num_seconds()
+        );
+        let parked_request = authorizer
             .store
-            .authorization_request_by_user_code(&started.user_code)
+            .authorization_request_by_user_code(&device_codes.user_code)
             .unwrap()
-            .expect("parked under the user code");
-        assert_eq!(parked.id, started.device_code);
-        assert_eq!(parked.grant_type, GrantType::DeviceCode);
-        assert_eq!(parked.status, RequestStatus::Pending);
-        assert_eq!(parked.requested_scopes, ["patient/Patient.r", "openid"]);
-        assert_eq!(parked.device_name.as_deref(), Some("Kitchen iPad"));
+            .expect("parked_request under the user code");
+        assert_eq!(parked_request.id, device_codes.device_code);
+        assert_eq!(parked_request.grant_type, GrantType::DeviceCode);
+        assert_eq!(parked_request.status, RequestStatus::Pending);
+        assert_eq!(
+            parked_request.requested_scopes,
+            ["patient/Patient.r", "openid"]
+        );
+        assert_eq!(parked_request.device_name.as_deref(), Some("Kitchen iPad"));
         assert_eq!(publisher.count(), 1);
     }
 
     /// A scope outside the allowlist refuses the whole request before anything
-    /// is parked.
+    /// is parked_request.
     #[test]
     fn start_refuses_a_scope_outside_the_allowlist() {
         let store = FakeGatekeeperStore::default();

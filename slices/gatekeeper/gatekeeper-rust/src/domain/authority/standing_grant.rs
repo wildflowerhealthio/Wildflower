@@ -28,7 +28,8 @@ pub(crate) enum GrantCoverage {
 }
 
 impl GrantCoverage {
-    /// Look up the standing grant for `(client_id, redirect_uri)` and compute
+    /// Look up the standing grant for `(requested_client_id,
+    /// requested_redirect_uri)` and compute
     /// which of `requested_scopes` it covers. A request whose `registration`
     /// verdict is not [`Registered`](ClientRegistration::Registered) never
     /// resolves past [`GrantCoverage::Uncovered`], whatever the grant says.
@@ -44,14 +45,16 @@ impl GrantCoverage {
     pub(crate) fn resolve(
         store: &impl GatekeeperStore,
         registration: &ClientRegistration,
-        client_id: &str,
-        redirect_uri: &Url,
+        requested_client_id: &str,
+        requested_redirect_uri: &Url,
         requested_scopes: &[String],
     ) -> Result<GrantCoverage, GatekeeperError> {
         if !registration.is_registered() {
             return Ok(GrantCoverage::Uncovered);
         }
-        let Some(grant) = store.grant_by_client_and_redirect(client_id, redirect_uri)? else {
+        let Some(grant) =
+            store.grant_by_client_and_redirect(requested_client_id, requested_redirect_uri)?
+        else {
             return Ok(GrantCoverage::Uncovered);
         };
         let pre_approved_scopes: Vec<String> = requested_scopes

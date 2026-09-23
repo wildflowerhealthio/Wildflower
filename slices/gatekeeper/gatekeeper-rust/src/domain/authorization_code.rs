@@ -4,7 +4,7 @@ use url::Url;
 
 use crate::db::authorization_codes::authorization_codes;
 use crate::db::shared::{JsonStrings, UrlText};
-use crate::domain::authorization_request::AuthorizationRequest;
+use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
 
 /// Lifetime of an `authorization_code`, from issuance (the `/authorize`
 /// fast path or an Owner's consent approval) to the client redeeming it at
@@ -47,19 +47,22 @@ pub struct IssuedAuthorizationCode {
 /// A pending authorization-code request that is known to be well formed: it's
 /// `Pending`, an `AuthorizationCode` grant flow, unexpired, and carries both a
 /// `redirect_uri` and a PKCE `code_challenge`. Those two are unwrapped once so
-/// callers never re-prove them (parse-don't-validate). It is what
+/// callers never re-prove them (parse-don't-validate), and the fields are
+/// private so the unwrapped copies can't drift from the request. It is what
 /// [`RequestApprover::approve_for_code`](crate::domain::capabilities::writers::RequestApprover::approve_for_code)
 /// approves.
 ///
-/// Built by the consent flow's `load_pending_code_request` and
-/// by the `/authorize` flow from the request it just parked — the sibling of
+/// Built by the consent flow's `load_pending_code_request`
+/// ([`from_request`](Self::from_request)) and by the `/authorize` flow when it
+/// parks a new request ([`new_code_authorization`](Self::new_code_authorization))
+/// — the sibling of
 /// the [`IssuedAuthorizationCode`] it exists to mint, so it lives beside it
 /// rather than in a file of its own.
 #[derive(Debug, PartialEq)]
 pub struct PendingCodeRequest {
-    pub request: AuthorizationRequest,
-    pub redirect_uri: Url,
-    pub code_challenge: String,
+    request: AuthorizationRequest,
+    redirect_uri: Url,
+    code_challenge: String,
 }
 
 impl PendingCodeRequest {
@@ -75,5 +78,43 @@ impl PendingCodeRequest {
             redirect_uri,
             code_challenge,
         })
+    }
+
+    /// A new pending code-flow request built from `args` — the `/authorize`
+    /// flow's request to park. Its redirect and challenge are present by
+    /// construction.
+    #[must_use]
+    pub fn new_code_authorization(args: StartCodeAuthorizationArgs) -> Self {
+        let redirect_uri = args.redirect_uri.clone();
+        let code_challenge = args.code_challenge.clone();
+        PendingCodeRequest {
+            request: AuthorizationRequest::new_code_authorization(args),
+            redirect_uri,
+            code_challenge,
+        }
+    }
+
+    /// The stored request.
+    #[must_use]
+    pub fn request(&self) -> &AuthorizationRequest {
+        &self.request
+    }
+
+    /// The redirect the request was made with.
+    #[must_use]
+    pub fn redirect_uri(&self) -> &Url {
+        &self.redirect_uri
+    }
+
+    /// The request's PKCE S256 challenge.
+    #[must_use]
+    pub fn code_challenge(&self) -> &str {
+        &self.code_challenge
+    }
+
+    /// The stored request, giving up the unwrapped fields.
+    #[must_use]
+    pub fn into_request(self) -> AuthorizationRequest {
+        self.request
     }
 }

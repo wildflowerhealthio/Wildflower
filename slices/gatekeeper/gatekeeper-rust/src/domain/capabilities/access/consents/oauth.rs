@@ -80,12 +80,9 @@ pub(super) fn approve_oauth_consent(
 ) -> Result<ConsentOutcome, GatekeeperError> {
     let now = ctx.now;
     let make_consent_not_found = || GatekeeperError::OAuthConsentNotFound { id: id.to_owned() };
-    let pending = load_pending_code_request(store, id)?;
-    let PendingCodeRequest {
-        request,
-        redirect_uri,
-        ..
-    } = &pending;
+    let pending_request = load_pending_code_request(store, id)?;
+    let request = pending_request.request();
+    let requested_redirect_uri = pending_request.redirect_uri();
 
     // The first-party host is held to its registration; every other client is
     // trusted on first use, so its registration may be created or widened.
@@ -97,7 +94,7 @@ pub(super) fn approve_oauth_consent(
     let registration = ctx.classifier.classify(
         &request.client_id,
         maybe_existing_client.as_ref(),
-        redirect_uri,
+        requested_redirect_uri,
         &request.requested_scopes,
     );
     if registration.needs_acknowledgement() && !input.acknowledged_registration {
@@ -119,9 +116,9 @@ pub(super) fn approve_oauth_consent(
         return deny_consent(store, publisher, id).map(|()| ConsentOutcome::Denied);
     };
 
-    let Some(authorization_code) = RequestApprover::over(store).approve_for_code(
+    let Some(issued_code) = RequestApprover::over(store).approve_for_code(
         CodeAuthority::OwnerDelegated(&delegated_scopes),
-        &pending,
+        &pending_request,
         input.patient.as_deref(),
         generate_code(),
         now,
@@ -135,7 +132,7 @@ pub(super) fn approve_oauth_consent(
     let registration_to_widen = (!registration_is_locked).then_some(&registration);
     GrantRecorder::over(store).record_code_grant(
         &request.client_id,
-        redirect_uri,
+        requested_redirect_uri,
         &delegated_scopes,
         input.patient.as_deref(),
         now,
@@ -148,7 +145,7 @@ pub(super) fn approve_oauth_consent(
     publisher.republish_active();
 
     let redirect = request.client_state.as_deref().map(|client_state| {
-        build_client_redirect_url(redirect_uri, &authorization_code.code, client_state)
+        build_client_redirect_url(requested_redirect_uri, &issued_code.code, client_state)
     });
     Ok(ConsentOutcome::Approved { redirect })
 }

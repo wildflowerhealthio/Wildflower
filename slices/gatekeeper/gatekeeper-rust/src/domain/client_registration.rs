@@ -76,7 +76,7 @@ pub(crate) struct PendingRegistration<'a> {
     /// The current `clients` row, or `None` when the `client_id` is unknown.
     pub(crate) maybe_existing_client: Option<&'a Client>,
     /// The `redirect_uri` the request presented, already parsed.
-    pub(crate) redirect_uri: &'a Url,
+    pub(crate) requested_redirect_uri: &'a Url,
     /// The whitespace-split requested scopes, in request order.
     pub(crate) requested_scopes: &'a [String],
     /// The request's served origin, parsed — the base an app-relative allowlist
@@ -89,7 +89,7 @@ pub(crate) struct PendingRegistration<'a> {
     pub(crate) topology: Option<&'a SelfHostedRedirectTopology>,
 }
 
-/// Classify `pending` against its current client row.
+/// Classify `pending_registration` against its current client row.
 ///
 /// @returns [`New`](ClientRegistration::New) when no row exists,
 /// [`Registered`](ClientRegistration::Registered) when the redirect resolves to
@@ -103,17 +103,22 @@ pub(crate) struct PendingRegistration<'a> {
 /// `Unknown` scope that only covers itself, so it is reported as new unless the
 /// registration lists it verbatim — deliberately, since the Owner should see an
 /// unrecognized scope string.
-pub(crate) fn classify_registration(pending: &PendingRegistration<'_>) -> ClientRegistration {
-    let Some(client) = pending.maybe_existing_client else {
+pub(crate) fn classify_registration(
+    pending_registration: &PendingRegistration<'_>,
+) -> ClientRegistration {
+    let Some(existing_client) = pending_registration.maybe_existing_client else {
         return ClientRegistration::New;
     };
     let redirect_uri_is_new = !redirect_is_allowlisted(
-        client,
-        pending.redirect_uri,
-        pending.served_origin,
-        pending.topology,
+        existing_client,
+        pending_registration.requested_redirect_uri,
+        pending_registration.served_origin,
+        pending_registration.topology,
     );
-    let new_scopes = uncovered_scopes(&client.allowed_scopes, pending.requested_scopes);
+    let new_scopes = uncovered_scopes(
+        &existing_client.allowed_scopes,
+        pending_registration.requested_scopes,
+    );
     if redirect_uri_is_new || !new_scopes.is_empty() {
         ClientRegistration::Changed {
             redirect_uri_is_new,
@@ -154,36 +159,44 @@ pub(crate) struct RegistrationClassifier<'a> {
 }
 
 impl RegistrationClassifier<'_> {
-    /// Classify a pending request against `client` (the current row, or `None`
-    /// when the id is unknown), expanding app-relative allowlist entries for this
-    /// request's provenance.
+    /// Classify a pending request for `requested_client_id` against
+    /// `maybe_existing_client` (its current row, or `None` when the id is
+    /// unknown), expanding app-relative allowlist entries for this request's
+    /// provenance. The caller loads the row: each caller needs it for more
+    /// than the verdict, and they differ on a store failure (the consent view
+    /// renders it as `New`; `/authorize` and the approval fail).
     pub(crate) fn classify(
         &self,
-        client_id: &str,
-        client: Option<&Client>,
-        redirect_uri: &Url,
+        requested_client_id: &str,
+        maybe_existing_client: Option<&Client>,
+        requested_redirect_uri: &Url,
         requested_scopes: &[String],
     ) -> ClientRegistration {
-        let topology = self.redirects.resolve(client_id);
+        let topology = self.redirects.resolve(requested_client_id);
         let served_origin = self.parsed_served_origin();
         classify_registration(&PendingRegistration {
-            maybe_existing_client: client,
-            redirect_uri,
+            maybe_existing_client,
+            requested_redirect_uri,
             requested_scopes,
             served_origin: served_origin.as_ref(),
             topology: topology.as_ref(),
         })
     }
 
-    /// Whether `client`'s allowlist admits `redirect_uri` for this request — the
-    /// redirect half of [`classify`](Self::classify), for a caller that must
-    /// decide whether the redirect is trusted before it has the scopes.
-    pub(crate) fn redirect_is_allowlisted(&self, client: &Client, redirect_uri: &Url) -> bool {
-        let topology = self.redirects.resolve(&client.client_id);
+    /// Whether `existing_client`'s allowlist admits `requested_redirect_uri`
+    /// for this request — the redirect half of [`classify`](Self::classify),
+    /// for a caller that must decide whether the redirect is trusted before it
+    /// has the scopes.
+    pub(crate) fn redirect_is_allowlisted(
+        &self,
+        existing_client: &Client,
+        requested_redirect_uri: &Url,
+    ) -> bool {
+        let topology = self.redirects.resolve(&existing_client.client_id);
         let served_origin = self.parsed_served_origin();
         redirect_is_allowlisted(
-            client,
-            redirect_uri,
+            existing_client,
+            requested_redirect_uri,
             served_origin.as_ref(),
             topology.as_ref(),
         )
@@ -209,14 +222,14 @@ mod tests {
 
     /// Classify against the fixture client (allowlisting `https://example.com/cb`).
     fn classify(
-        client: Option<&Client>,
-        redirect_uri: &Url,
+        maybe_existing_client: Option<&Client>,
+        requested_redirect_uri: &Url,
         scopes: &[&str],
     ) -> ClientRegistration {
         let requested: Vec<String> = scopes.iter().map(|s| (*s).to_owned()).collect();
         classify_registration(&PendingRegistration {
-            maybe_existing_client: client,
-            redirect_uri,
+            maybe_existing_client,
+            requested_redirect_uri,
             requested_scopes: &requested,
             served_origin: None,
             topology: None,
@@ -334,7 +347,7 @@ mod tests {
         assert_eq!(
             classify_registration(&PendingRegistration {
                 maybe_existing_client: Some(&app),
-                redirect_uri: &callback,
+                requested_redirect_uri: &callback,
                 requested_scopes: &requested,
                 served_origin: Some(&served),
                 topology: Some(&topology),
@@ -344,7 +357,7 @@ mod tests {
         assert_eq!(
             classify_registration(&PendingRegistration {
                 maybe_existing_client: Some(&app),
-                redirect_uri: &callback,
+                requested_redirect_uri: &callback,
                 requested_scopes: &requested,
                 served_origin: Some(&served),
                 topology: None,
@@ -385,7 +398,7 @@ mod tests {
             }
             let verdict = classify_registration(&PendingRegistration {
                 maybe_existing_client: Some(&app),
-                redirect_uri: &redirect(),
+                requested_redirect_uri: &redirect(),
                 requested_scopes: &requested,
                 served_origin: None,
                 topology: None,
@@ -424,7 +437,7 @@ mod tests {
             prop_assert_eq!(
                 classify_registration(&PendingRegistration {
                     maybe_existing_client: Some(&app),
-                    redirect_uri: &redirect(),
+                    requested_redirect_uri: &redirect(),
                     requested_scopes: &requested,
                     served_origin: None,
                     topology: None,

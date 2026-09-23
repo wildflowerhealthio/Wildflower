@@ -50,20 +50,21 @@ pub(crate) fn build_client_error_redirect_url(
     url.to_string()
 }
 
-/// Whether `parsed_redirect` matches any entry on `client`'s redirect allowlist,
+/// Whether `requested_redirect_uri` matches any entry on `existing_client`'s
+/// redirect allowlist,
 /// each entry first resolved for **this request's provenance** via
 /// [`resolve_registered_redirect`]. This is the one allowlist verdict: both
 /// `/authorize` and the consent read path call it, so a prompt can never disagree
 /// with the endpoint that parked it.
 pub(crate) fn redirect_is_allowlisted(
-    client: &Client,
-    parsed_redirect: &Url,
+    existing_client: &Client,
+    requested_redirect_uri: &Url,
     served: Option<&Url>,
     topology: Option<&SelfHostedRedirectTopology>,
 ) -> bool {
-    client.redirect_uris.iter().any(|entry| {
+    existing_client.redirect_uris.iter().any(|entry| {
         resolve_registered_redirect(entry, served, topology)
-            .is_some_and(|resolved| resolved == *parsed_redirect)
+            .is_some_and(|resolved| resolved == *requested_redirect_uri)
     })
 }
 

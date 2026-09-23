@@ -16,7 +16,6 @@ use std::sync::Arc;
 use chrono::{DateTime, Utc};
 use scopes_rust::{Grant, Permission, Scope, WildflowerResource};
 
-use crate::domain::authorization_code::PendingCodeRequest;
 use crate::domain::authorization_request::AuthorizationRequest;
 use crate::domain::client_registration::{ClientRegistration, RegistrationClassifier};
 use crate::domain::gatekeeper_error::GatekeeperError;
@@ -58,7 +57,7 @@ pub(crate) fn consent_decider_scopes() -> Vec<Scope> {
 /// its [registration verdict](ClientRegistration) already resolved.
 pub(crate) struct OAuthConsentView {
     pub(crate) request: AuthorizationRequest,
-    pub(crate) redirect_uri: url::Url,
+    pub(crate) requested_redirect_uri: url::Url,
     pub(crate) client_name: String,
     /// How this request compares against the client's registration **as it
     /// stands now** — the warning the prompt leads with when the app, its
@@ -148,31 +147,30 @@ impl<S: GatekeeperStore> ConsentReader<S> {
         id: &str,
         served_origin: &str,
     ) -> Result<OAuthConsentView, GatekeeperError> {
-        let PendingCodeRequest {
-            request,
-            redirect_uri,
-            ..
-        } = load_pending_code_request(&self.store, id)?;
+        let pending_request = load_pending_code_request(&self.store, id)?;
+        let requested_redirect_uri = pending_request.redirect_uri().clone();
+        let request = pending_request.into_request();
         // A missing row is the `New` verdict, and its name falls back to the raw
         // `client_id` — a store failure reads the same way, deliberately: the
         // prompt still renders, warning rather than silently reassuring.
-        let client = self.store.client_by_id(&request.client_id).ok().flatten();
-        let client_name = client
-            .as_ref()
-            .map_or_else(|| request.client_id.clone(), |c| c.name.clone());
+        let maybe_existing_client = self.store.client_by_id(&request.client_id).ok().flatten();
+        let client_name = maybe_existing_client.as_ref().map_or_else(
+            || request.client_id.clone(),
+            |existing_client| existing_client.name.clone(),
+        );
         let classifier = RegistrationClassifier {
             redirects: self.redirects.as_ref(),
             served_origin,
         };
         let registration = classifier.classify(
             &request.client_id,
-            client.as_ref(),
-            &redirect_uri,
+            maybe_existing_client.as_ref(),
+            &requested_redirect_uri,
             &request.requested_scopes,
         );
         Ok(OAuthConsentView {
             request,
-            redirect_uri,
+            requested_redirect_uri,
             client_name,
             registration,
         })
@@ -839,9 +837,9 @@ mod tests {
             ))
             .unwrap();
         let loaded = load_pending_code_request(&store, "req-1").expect("live request");
-        assert_eq!(loaded.request.id, "req-1");
-        assert_eq!(loaded.redirect_uri.as_str(), "https://example.com/cb");
-        assert_eq!(loaded.code_challenge.len(), 43);
+        assert_eq!(loaded.request().id, "req-1");
+        assert_eq!(loaded.redirect_uri().as_str(), "https://example.com/cb");
+        assert_eq!(loaded.code_challenge().len(), 43);
 
         // Denied / expired / wrong-flow / unknown → OAuthConsentNotFound.
         store
@@ -875,6 +873,9 @@ mod tests {
             .oauth_consent("req-1", "http://127.0.0.1")
             .expect("view");
         assert_eq!(view.request.id, "req-1");
-        assert_eq!(view.redirect_uri.as_str(), "https://example.com/cb");
+        assert_eq!(
+            view.requested_redirect_uri.as_str(),
+            "https://example.com/cb"
+        );
     }
 }

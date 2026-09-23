@@ -104,7 +104,7 @@ fn device_authorization(
         .filter(|name| !name.is_empty())
         .map(str::to_string)
         .or_else(|| user_agent.and_then(device_name_from_user_agent));
-    let started = authorizer
+    let device_codes = authorizer
         .start(&client, requested_scopes, device_name)
         .map_err(|error| match error {
             DeviceAuthorizationError::ScopeNotAllowed => TokenError::bad_request(
@@ -118,14 +118,14 @@ fn device_authorization(
             DeviceAuthorizationError::Store(error) => TokenError::from(error),
         })?;
     Ok(DeviceAuthorizationResponse {
-        device_code: started.device_code,
+        device_code: device_codes.device_code,
         verification_uri: page_paths::device_entry_url(origin),
         verification_uri_complete: page_paths::device_entry_url_with_code(
             origin,
-            &started.user_code,
+            &device_codes.user_code,
         ),
-        user_code: started.user_code,
-        expires_in: started.expires_in,
-        interval: started.interval,
+        user_code: device_codes.user_code,
+        expires_in: device_codes.expires_in,
+        interval: device_codes.interval,
     })
 }

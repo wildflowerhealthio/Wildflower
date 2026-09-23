@@ -183,7 +183,7 @@ pub struct AuthorizeParams {
     )
 )]
 pub(super) async fn handle_authorize_request(
-    starter: Live<LiveCodeAuthorizationStarter>,
+    code_authorization_starter: Live<LiveCodeAuthorizationStarter>,
     origin: ServedOrigin,
     Query(params): Query<AuthorizeParams>,
 ) -> Result<Response, AuthorizeError> {
@@ -198,7 +198,7 @@ pub(super) async fn handle_authorize_request(
             "SMART App Launch parameters received at /oauth/authorize",
         );
     }
-    let started = starter.start(
+    let next_step = code_authorization_starter.start(
         &AuthorizeRequest {
             response_type: &params.response_type,
             code_challenge_method: &params.code_challenge_method,
@@ -215,7 +215,7 @@ pub(super) async fn handle_authorize_request(
         },
         chrono::Utc::now(),
     )?;
-    Ok(match started {
+    Ok(match next_step {
         // Fully pre-approved: 302 the user-agent straight back to the client
         // with the fresh code (RFC 6749 §4.1.2).
         AuthorizeNextStep::RedirectToClient {

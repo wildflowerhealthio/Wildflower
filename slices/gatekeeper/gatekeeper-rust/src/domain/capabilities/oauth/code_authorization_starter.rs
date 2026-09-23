@@ -13,7 +13,7 @@ use url::Url;
 use crate::crypto_util::pkce::is_valid_s256_code_challenge;
 use crate::domain::authority::GrantCoverage;
 use crate::domain::authorization_code::PendingCodeRequest;
-use crate::domain::authorization_request::{AuthorizationRequest, StartCodeAuthorizationArgs};
+use crate::domain::authorization_request::StartCodeAuthorizationArgs;
 use crate::domain::capabilities::writers::{CodeAuthority, RequestApprover};
 use crate::domain::client::Client;
 use crate::domain::client_registration::RegistrationClassifier;
@@ -148,19 +148,21 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             served_origin,
         };
         let registration_is_locked = self.registration_is_locked(request.client_id);
-        let client = self.load_client(request.client_id, registration_is_locked)?;
-        let redirect_uri = parse_redirect_uri(request.redirect_uri)?;
+        let maybe_existing_client = self.load_client(request.client_id, registration_is_locked)?;
+        let requested_redirect_uri = parse_redirect_uri(request.redirect_uri)?;
         // A redirect is trustworthy only when a client we already know already
         // registered it.
-        let redirect_allowlisted = client
+        let redirect_allowlisted = maybe_existing_client
             .as_ref()
-            .is_some_and(|client| classifier.redirect_is_allowlisted(client, &redirect_uri));
+            .is_some_and(|existing_client| {
+                classifier.redirect_is_allowlisted(existing_client, &requested_redirect_uri)
+            });
         if registration_is_locked && !redirect_allowlisted {
             return Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::RedirectUriNotAllowed,
             ));
         }
-        validate_code_params(request, &redirect_uri, redirect_allowlisted)?;
+        validate_code_params(request, &requested_redirect_uri, redirect_allowlisted)?;
         let requested_scopes: Vec<String> = request
             .scope
             .split_whitespace()
@@ -168,10 +170,10 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             .collect();
         // Only the first-party host is held to its allowlist here; every other
         // client's unregistered scope becomes part of its registration verdict.
-        if let (true, Some(host)) = (registration_is_locked, client.as_ref()) {
+        if let (true, Some(host)) = (registration_is_locked, maybe_existing_client.as_ref()) {
             if !host.allows_scopes(&requested_scopes) {
                 return Err(AuthorizationStartError::Redirectable {
-                    redirect_uri,
+                    redirect_uri: requested_redirect_uri,
                     error: OAuthErrorCode::InvalidScope,
                     client_state: request.client_state.to_owned(),
                 });
@@ -179,34 +181,32 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
         }
         let registration = classifier.classify(
             request.client_id,
-            client.as_ref(),
-            &redirect_uri,
+            maybe_existing_client.as_ref(),
+            &requested_redirect_uri,
             &requested_scopes,
         );
         let coverage = GrantCoverage::resolve(
             &self.store,
             &registration,
             request.client_id,
-            &redirect_uri,
+            &requested_redirect_uri,
             &requested_scopes,
         )?;
 
         // Park the request — every path from here on references it by id.
-        let parked = PendingCodeRequest {
-            request: AuthorizationRequest::new_code_authorization(StartCodeAuthorizationArgs {
+        let parked_request =
+            PendingCodeRequest::new_code_authorization(StartCodeAuthorizationArgs {
                 id: ids.request_id.clone(),
                 client_id: request.client_id.to_owned(),
                 requested_scopes,
                 code_challenge: request.code_challenge.to_owned(),
-                redirect_uri: redirect_uri.clone(),
+                redirect_uri: requested_redirect_uri.clone(),
                 client_state: request.client_state.to_owned(),
                 pre_approved_scopes: coverage.pre_approved_scopes().to_vec(),
                 ttl: AUTHORIZATION_REQUEST_TTL,
-            }),
-            redirect_uri: redirect_uri.clone(),
-            code_challenge: request.code_challenge.to_owned(),
-        };
-        self.store.insert_authorization_request(&parked.request)?;
+            });
+        self.store
+            .insert_authorization_request(parked_request.request())?;
 
         if let GrantCoverage::Full(standing) = coverage {
             // The fast path: the standing grant is the authority. The insert
@@ -214,20 +214,20 @@ impl<S: GatekeeperStore> CodeAuthorizationStarter<S> {
             // approval, so the popup head is recomputed afterwards rather than
             // left on a request the consent surface now 404s for; recomputing
             // can only publish the genuinely-pending head, never this one.
-            let issued = RequestApprover::over(&self.store).approve_for_code(
+            let issued_code = RequestApprover::over(&self.store).approve_for_code(
                 CodeAuthority::StandingGrant(&standing),
-                &parked,
+                &parked_request,
                 standing.patient(),
                 ids.code,
                 now,
             )?;
             self.publisher.republish_active();
-            let Some(issued) = issued else {
+            let Some(issued_code) = issued_code else {
                 return Err(AuthorizationStartError::RequestNotPending);
             };
             return Ok(AuthorizeNextStep::RedirectToClient {
-                redirect_uri,
-                code: issued.code,
+                redirect_uri: requested_redirect_uri,
+                code: issued_code.code,
                 client_state: request.client_state.to_owned(),
             });
         }
@@ -370,17 +370,17 @@ mod tests {
     ) {
         seed_active_signing_key(&store);
         let publisher = Arc::new(RecordingPublisher::default());
-        let starter = CodeAuthorizationStarter::new(
+        let code_authorization_starter = CodeAuthorizationStarter::new(
             store,
             publisher.clone(),
             Arc::new(NoSelfHostedRedirects),
             "host".into(),
         );
-        (starter, publisher)
+        (code_authorization_starter, publisher)
     }
 
     /// A registered client with a standing grant covering every requested
-    /// scope takes the fast path: the request is parked and approved, a code
+    /// scope takes the fast path: the request is parked_request and approved, a code
     /// is issued under the grant's authority (with its patient), and the popup
     /// head is recomputed.
     #[test]
@@ -396,8 +396,8 @@ mod tests {
                 ..code_grant("g1", "app")
             })
             .unwrap();
-        let (starter, publisher) = starter(store);
-        let outcome = starter
+        let (code_authorization_starter, publisher) = starter(store);
+        let outcome = code_authorization_starter
             .start(
                 &request("app", "patient/Patient.r openid"),
                 "http://127.0.0.1",
@@ -413,13 +413,13 @@ mod tests {
                 client_state: "xyz".to_owned(),
             }
         );
-        let parked = starter
+        let parked_request = code_authorization_starter
             .store
             .authorization_request_by_id("req-1")
             .unwrap()
-            .expect("parked");
-        assert_eq!(parked.status, RequestStatus::Approved);
-        assert_eq!(parked.patient.as_deref(), Some("pat-1"));
+            .expect("parked_request");
+        assert_eq!(parked_request.status, RequestStatus::Approved);
+        assert_eq!(parked_request.patient.as_deref(), Some("pat-1"));
         assert_eq!(publisher.count(), 1);
     }
 
@@ -436,8 +436,8 @@ mod tests {
                 ..code_grant("g1", "app")
             })
             .unwrap();
-        let (starter, publisher) = starter(store);
-        let outcome = starter
+        let (code_authorization_starter, publisher) = starter(store);
+        let outcome = code_authorization_starter
             .start(
                 &request("app", "patient/Patient.r openid"),
                 "http://127.0.0.1",
@@ -451,44 +451,44 @@ mod tests {
                 request_id: "req-1".to_owned()
             }
         );
-        let parked = starter
+        let parked_request = code_authorization_starter
             .store
             .authorization_request_by_id("req-1")
             .unwrap()
-            .expect("parked");
-        assert_eq!(parked.status, RequestStatus::Pending);
-        assert!(parked.pre_approved_scopes.is_empty());
+            .expect("parked_request");
+        assert_eq!(parked_request.status, RequestStatus::Pending);
+        assert!(parked_request.pre_approved_scopes.is_empty());
         assert_eq!(publisher.count(), 1);
     }
 
-    /// Trust on first use: an unknown non-first-party client is parked for the
+    /// Trust on first use: an unknown non-first-party client is parked_request for the
     /// Owner, and its later failures render locally (the redirect is
     /// unvouched-for), while the first-party host with an unregistered
     /// redirect is refused outright.
     #[test]
     fn unknown_clients_park_and_untrusted_redirects_fail_locally() {
-        let (starter, _) = starter(FakeGatekeeperStore::default());
-        let outcome = starter
+        let (code_authorization_starter, _) = starter(FakeGatekeeperStore::default());
+        let outcome = code_authorization_starter
             .start(
                 &request("newcomer", "openid"),
                 "http://127.0.0.1",
                 ids(),
                 Utc::now(),
             )
-            .expect("parked for the owner");
+            .expect("parked_request for the owner");
         assert!(matches!(outcome, AuthorizeNextStep::AwaitOwner { .. }));
 
         let mut bad_type = request("newcomer", "openid");
         bad_type.response_type = "token";
         assert!(matches!(
-            starter.start(&bad_type, "http://127.0.0.1", ids(), Utc::now()),
+            code_authorization_starter.start(&bad_type, "http://127.0.0.1", ids(), Utc::now()),
             Err(AuthorizationStartError::LocalPage(
                 OAuthErrorKind::UnsupportedResponseType
             ))
         ));
 
         assert!(matches!(
-            starter.start(
+            code_authorization_starter.start(
                 &request("host", "openid"),
                 "http://127.0.0.1",
                 ids(),
@@ -514,18 +514,18 @@ mod tests {
                 ..client("host", &["openid"])
             })
             .unwrap();
-        let (starter, _) = starter(store);
+        let (code_authorization_starter, _) = starter(store);
         let mut bad_type = request("host", "openid");
         bad_type.response_type = "token";
         assert!(matches!(
-            starter.start(&bad_type, "http://127.0.0.1", ids(), Utc::now()),
+            code_authorization_starter.start(&bad_type, "http://127.0.0.1", ids(), Utc::now()),
             Err(AuthorizationStartError::Redirectable {
                 error: OAuthErrorCode::UnsupportedResponseType,
                 ..
             })
         ));
         assert!(matches!(
-            starter.start(
+            code_authorization_starter.start(
                 &request("host", "openid patient/Patient.r"),
                 "http://127.0.0.1",
                 ids(),
@@ -538,18 +538,18 @@ mod tests {
         ));
     }
 
-    /// Without a signing key nothing is parked: the endpoint refuses up front.
+    /// Without a signing key nothing is parked_request: the endpoint refuses up front.
     #[test]
     fn no_signing_key_refuses_before_parking() {
         let store = FakeGatekeeperStore::default();
-        let starter = CodeAuthorizationStarter::new(
+        let code_authorization_starter = CodeAuthorizationStarter::new(
             store,
             Arc::new(RecordingPublisher::default()),
             Arc::new(NoSelfHostedRedirects),
             "host".into(),
         );
         assert!(matches!(
-            starter.start(
+            code_authorization_starter.start(
                 &request("app", "openid"),
                 "http://127.0.0.1",
                 ids(),
@@ -557,7 +557,7 @@ mod tests {
             ),
             Err(AuthorizationStartError::NoActiveSigningKey)
         ));
-        assert!(starter
+        assert!(code_authorization_starter
             .store
             .authorization_request_by_id("req-1")
             .unwrap()

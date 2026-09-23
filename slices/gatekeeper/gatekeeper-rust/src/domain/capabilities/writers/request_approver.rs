@@ -48,7 +48,7 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
         RequestApprover { store }
     }
 
-    /// Approve the `pending` code-flow request under `authority` and issue
+    /// Approve the pending code-flow request under `authority` and issue
     /// `code` for it, bound to the request's client, redirect, and PKCE
     /// challenge and to the SMART-on-FHIR `patient` context (if any), expiring
     /// [`AUTHORIZATION_CODE_TTL`] after `now`. The flow generates `code` (a
@@ -65,19 +65,19 @@ impl<'a, S: GatekeeperStore> RequestApprover<'a, S> {
     pub(crate) fn approve_for_code(
         &self,
         authority: CodeAuthority<'_>,
-        pending: &PendingCodeRequest,
+        pending_request: &PendingCodeRequest,
         patient: Option<&str>,
         code: String,
         now: DateTime<Utc>,
     ) -> Result<Option<IssuedAuthorizationCode>, GatekeeperError> {
         let scopes = authority.scopes();
-        let request = &pending.request;
+        let request = pending_request.request();
         let authorization_code = IssuedAuthorizationCode {
             code,
             request_id: request.id.clone(),
             client_id: request.client_id.clone(),
-            redirect_uri: pending.redirect_uri.clone(),
-            code_challenge: pending.code_challenge.clone(),
+            redirect_uri: pending_request.redirect_uri().clone(),
+            code_challenge: pending_request.code_challenge().to_owned(),
             granted_scopes: scopes.to_vec(),
             patient: patient.map(str::to_owned),
             issued_at: now,
@@ -130,33 +130,37 @@ mod tests {
     };
 
     /// The fixture code request `id`, in `status`, as the approver takes it.
-    fn pending(store: &FakeGatekeeperStore, id: &str, status: RequestStatus) -> PendingCodeRequest {
+    fn pending_request(
+        store: &FakeGatekeeperStore,
+        id: &str,
+        status: RequestStatus,
+    ) -> PendingCodeRequest {
         let request = code_request(id, status, Utc::now() + Duration::minutes(5));
         store.insert_authorization_request(&request).unwrap();
         PendingCodeRequest::from_request(request).expect("a code request")
     }
 
     /// The code flow: the request flips to approved carrying the proof's scopes,
-    /// and the issued code is bound to the request's client, redirect, and
+    /// and the issued_code code is bound to the request's client, redirect, and
     /// challenge with the same scopes.
     #[test]
     fn approve_for_code_records_the_proofs_scopes_on_request_and_code() {
         let store = FakeGatekeeperStore::default();
-        let pending = pending(&store, "req-1", RequestStatus::Pending);
+        let pending_request = pending_request(&store, "req-1", RequestStatus::Pending);
         let now = Utc::now();
-        let issued = RequestApprover::over(&store)
+        let issued_code = RequestApprover::over(&store)
             .approve_for_code(
                 CodeAuthority::OwnerDelegated(&delegated_scopes(&["patient/Patient.r"])),
-                &pending,
+                &pending_request,
                 Some("pat-1"),
                 "the-code".to_owned(),
                 now,
             )
             .unwrap()
             .expect("request was pending");
-        assert_eq!(issued.granted_scopes, ["patient/Patient.r"]);
-        assert_eq!(issued.expires_at, now + AUTHORIZATION_CODE_TTL);
-        assert_eq!(issued.code_challenge, pending.code_challenge);
+        assert_eq!(issued_code.granted_scopes, ["patient/Patient.r"]);
+        assert_eq!(issued_code.expires_at, now + AUTHORIZATION_CODE_TTL);
+        assert_eq!(issued_code.code_challenge, pending_request.code_challenge());
         let request = store
             .authorization_request_by_id("req-1")
             .unwrap()
@@ -169,7 +173,7 @@ mod tests {
         let stored = store
             .authorization_code_by_request_id("req-1")
             .unwrap()
-            .expect("code issued");
+            .expect("code issued_code");
         assert_eq!(stored.code, "the-code");
         assert_eq!(stored.patient.as_deref(), Some("pat-1"));
     }
@@ -179,17 +183,17 @@ mod tests {
     #[test]
     fn approve_for_code_issues_nothing_when_the_request_is_not_pending() {
         let store = FakeGatekeeperStore::default();
-        let pending = pending(&store, "req-1", RequestStatus::Denied);
-        let issued = RequestApprover::over(&store)
+        let pending_request = pending_request(&store, "req-1", RequestStatus::Denied);
+        let issued_code = RequestApprover::over(&store)
             .approve_for_code(
                 CodeAuthority::OwnerDelegated(&delegated_scopes(&["patient/Patient.r"])),
-                &pending,
+                &pending_request,
                 None,
                 "the-code".to_owned(),
                 Utc::now(),
             )
             .unwrap();
-        assert_eq!(issued, None);
+        assert_eq!(issued_code, None);
         assert_eq!(
             store.authorization_code_by_request_id("req-1").unwrap(),
             None
