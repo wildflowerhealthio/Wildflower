@@ -283,6 +283,78 @@ describe('medicationRequestToMedicationView', () => {
     expect(other.shoppersStoreUrl).toBeNull()
   })
 
+  test('reads the store link from dispenseRequest.performer.reference, as the sources now promote it', () => {
+    const rexall = medicationRequestToMedicationView(
+      decode({
+        ...base,
+        dispenseRequest: {
+          performer: {
+            reference: 'https://www.rexall.ca/storelocator/store/8174',
+            identifier: { value: '8174' },
+          },
+        },
+      }),
+      'fallback'
+    )
+    expect(rexall.rexallStoreUrl).toBe('https://www.rexall.ca/storelocator/store/8174')
+    expect(rexall.shoppersStoreUrl).toBeNull()
+
+    const shoppers = medicationRequestToMedicationView(
+      decode({
+        ...base,
+        dispenseRequest: {
+          performer: { reference: 'https://www.shoppersdrugmart.ca/store-locator/store/1414' },
+        },
+      }),
+      'fallback'
+    )
+    expect(shoppers.shoppersStoreUrl).toBe(
+      'https://www.shoppersdrugmart.ca/store-locator/store/1414'
+    )
+    expect(shoppers.rexallStoreUrl).toBeNull()
+
+    // A performer reference outside either store base is not a store link.
+    const other = medicationRequestToMedicationView(
+      decode({ ...base, dispenseRequest: { performer: { reference: 'Organization/9' } } }),
+      'fallback'
+    )
+    expect(other.rexallStoreUrl).toBeNull()
+    expect(other.shoppersStoreUrl).toBeNull()
+  })
+
+  test('reads remaining repeats from the Wildflower repeats-available extension, before the legacy modifierExtension', () => {
+    const repeatsExtension = (value: number): { url: string; valueInteger: number } => ({
+      url: 'https://wildflowerhealth.io/fhir/StructureDefinition/repeats-available',
+      valueInteger: value,
+    })
+    const promoted = medicationRequestToMedicationView(
+      decode({
+        ...base,
+        dispenseRequest: { numberOfRepeatsAllowed: 5, extension: [repeatsExtension(2)] },
+      }),
+      'fallback'
+    )
+    expect(promoted.repeatsAllowed).toBe(5)
+    expect(promoted.repeatsAvailable).toBe(2)
+
+    const both = medicationRequestToMedicationView(
+      decode({
+        ...base,
+        dispenseRequest: {
+          extension: [repeatsExtension(1)],
+          modifierExtension: [
+            {
+              url: 'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available',
+              valueDecimal: 4,
+            },
+          ],
+        },
+      }),
+      'fallback'
+    )
+    expect(both.repeatsAvailable).toBe(1)
+  })
+
   test('does not treat validityPeriod.end as a next fill date', () => {
     // `validityPeriod.end` is the *authorization* expiry in R4 — the last date
     // the script may be dispensed against, not when the current supply runs

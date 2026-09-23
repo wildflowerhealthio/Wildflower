@@ -1,4 +1,5 @@
 import { DateTime, Option, Schema } from 'effect'
+import { WildflowerExtension } from 'fhir-r4/data-types'
 import type { MedicationRequest } from 'fhir-r4/resources'
 import { nonEmpty } from 'kitchen-sink'
 import { nextFillDate } from 'medication-calendar-core'
@@ -22,9 +23,13 @@ type MedicationRequestResource = Schema.Schema.Type<typeof MedicationRequest.Sch
 const DIN_CODING_SYSTEM = 'http://schema.carebook.com/v1/fhir/coding/medication-din-code'
 const DESCRIPTION_EXTENSION_URL =
   'http://schemas.carebook.com/v1/fhir/medication/extension/description'
+// Legacy slots: `rexall-be-well-source` now promotes the repeats count onto
+// `WildflowerExtension.RepeatsAvailable` and the store link onto
+// `dispenseRequest.performer.reference`, but requests stored before that
+// promotion still carry the carebook shapes below, so both are read.
 const REPEATS_AVAILABLE_EXTENSION_URL =
   'http://schemas.carebook.com/v2/fhir/medicationrequest/extension/number-of-repeats-available'
-// A request sourced from a Rexall pharmacy carries both of these top-level
+// A legacy request sourced from a Rexall pharmacy carries both of these top-level
 // extensions; together they build a store-locator link. `external-system-source`
 // must read `RexallPharmacy` and `external-store-id` supplies the store number.
 const EXTERNAL_SYSTEM_SOURCE_URL =
@@ -34,9 +39,10 @@ const EXTERNAL_STORE_ID_URL =
 const REXALL_SYSTEM_SOURCE = 'RexallPharmacy'
 const REXALL_STORE_URL_BASE = 'https://www.rexall.ca/storelocator/store/'
 // A Shoppers Drug Mart request carries its dispensing store as a
-// `supportingInformation` reference to the public store-locator URL. Unlike
+// `dispenseRequest.performer` reference to the public store-locator URL (legacy
+// requests: a `supportingInformation` reference). Unlike
 // Rexall (which needs two top-level extensions), the URL is self-identifying:
-// any `supportingInformation.reference` under this base marks a Shoppers store.
+// any such reference under this base marks a Shoppers store.
 // Keep in sync with the collector's `SHOPPERS_STORE_LOCATOR_BASE`.
 const SHOPPERS_STORE_URL_BASE = 'https://www.shoppersdrugmart.ca/store-locator/store/'
 // Shoppers puts the DIN inline on `medicationCodeableConcept.coding` rather than
@@ -127,6 +133,10 @@ const DispenseRequest = Schema.Struct({
   modifierExtension: Schema.optional(
     Schema.Array(Schema.Struct({ url: nullableString, valueDecimal: nullableNumber }))
   ),
+  extension: Schema.optional(
+    Schema.Array(Schema.Struct({ url: nullableString, valueInteger: nullableNumber }))
+  ),
+  performer: Schema.optional(Schema.NullOr(Schema.Struct({ reference: nullableString }))),
 })
 /** Decoded once per view and threaded into the readers that need it. */
 type DispenseRequestValue = Schema.Schema.Type<typeof DispenseRequest>
@@ -333,11 +343,32 @@ const noteOf = (request: MedicationRequestResource): string | null =>
   joinTexts(decodeNotes(request.note))
 
 /**
- * The Rexall store-locator URL for a request that carries both the
- * `external-system-source` (`RexallPharmacy`) and `external-store-id` top-level
- * extensions; `null` unless both are present.
+ * The `dispenseRequest.performer.reference` when it is a store-locator URL under
+ * `base` — where the sources put the dispensing store's public page.
  */
-const rexallStoreUrlOf = (request: MedicationRequestResource): string | null => {
+const performerStoreUrlOf = (
+  dispenseRequest: Option.Option<DispenseRequestValue>,
+  base: string
+): string | null => {
+  if (Option.isNone(dispenseRequest)) return null
+  const reference = nonEmpty(dispenseRequest.value.performer?.reference)
+  return reference !== null && reference.startsWith(base) ? reference : null
+}
+
+/**
+ * The Rexall store-locator URL: the `dispenseRequest.performer.reference` under
+ * the Rexall store base, falling back (legacy requests) to one built from the
+ * `external-system-source` (`RexallPharmacy`) and `external-store-id` top-level
+ * extensions; `null` unless one of the two is present.
+ */
+const rexallStoreUrlOf = (
+  request: MedicationRequestResource,
+  dispenseRequest: Option.Option<DispenseRequestValue>
+): string | null =>
+  performerStoreUrlOf(dispenseRequest, REXALL_STORE_URL_BASE) ?? legacyRexallStoreUrlOf(request)
+
+/** The Rexall store-locator URL built from the legacy carebook extension pair. */
+const legacyRexallStoreUrlOf = (request: MedicationRequestResource): string | null => {
   const extensions = decodeStringExtensions(request.extension)
   if (Option.isNone(extensions)) return null
   let isRexall = false
@@ -358,11 +389,19 @@ const rexallStoreUrlOf = (request: MedicationRequestResource): string | null => 
 }
 
 /**
- * The Shoppers Drug Mart store-locator URL for a request whose
- * `supportingInformation` carries a reference under the Shoppers store base
- * (`…/store-locator/store/:id`); the first such reference, or `null` when none.
+ * The Shoppers Drug Mart store-locator URL: the `dispenseRequest.performer`
+ * reference under the Shoppers store base (`…/store-locator/store/:id`), falling
+ * back (legacy requests) to the first such `supportingInformation` reference;
+ * `null` when neither carries one.
  */
-const shoppersStoreUrlOf = (request: MedicationRequestResource): string | null => {
+const shoppersStoreUrlOf = (
+  request: MedicationRequestResource,
+  dispenseRequest: Option.Option<DispenseRequestValue>
+): string | null =>
+  performerStoreUrlOf(dispenseRequest, SHOPPERS_STORE_URL_BASE) ?? legacyShoppersStoreUrlOf(request)
+
+/** The Shoppers store-locator URL from a legacy `supportingInformation` reference. */
+const legacyShoppersStoreUrlOf = (request: MedicationRequestResource): string | null => {
   const slot: unknown = request.supportingInformation
   const supportingInformation = decodeSupportingInformation(slot)
   if (Option.isNone(supportingInformation)) return null
@@ -375,7 +414,9 @@ const shoppersStoreUrlOf = (request: MedicationRequestResource): string | null =
 
 /**
  * The dispense-repeat counts: `numberOfRepeatsAllowed` (standard R4) and the
- * carebook remaining-repeats `modifierExtension` (`valueDecimal`).
+ * remaining repeats — the {@link WildflowerExtension.RepeatsAvailable}
+ * `extension` (`valueInteger`), falling back (legacy requests) to the carebook
+ * `modifierExtension` (`valueDecimal`).
  */
 const repeatsOf = (
   dispenseRequest: Option.Option<DispenseRequestValue>
@@ -383,6 +424,15 @@ const repeatsOf = (
   if (Option.isNone(dispenseRequest)) return { allowed: null, available: null }
   const allowed = dispenseRequest.value.numberOfRepeatsAllowed ?? null
   let available: number | null = null
+  for (const extension of dispenseRequest.value.extension ?? []) {
+    if (
+      extension.url === WildflowerExtension.RepeatsAvailable &&
+      extension.valueInteger !== null &&
+      extension.valueInteger !== undefined
+    ) {
+      return { allowed, available: extension.valueInteger }
+    }
+  }
   for (const extension of dispenseRequest.value.modifierExtension ?? []) {
     if (
       extension.url === REPEATS_AVAILABLE_EXTENSION_URL &&
@@ -464,7 +514,10 @@ interface MedicationView {
   readonly note: string | null
   /** `dispenseRequest.numberOfRepeatsAllowed`. */
   readonly repeatsAllowed: number | null
-  /** carebook remaining-repeats `modifierExtension` (`valueDecimal`). */
+  /**
+   * Remaining repeats: the Wildflower `repeats-available` extension, or the
+   * legacy carebook `modifierExtension`.
+   */
   readonly repeatsAvailable: number | null
   /**
    * Estimated next-fill date (ISO) — `authoredOn` + `expectedSupplyDuration`.
@@ -505,8 +558,8 @@ const medicationRequestToMedicationView = (
     repeatsAllowed: repeats.allowed,
     repeatsAvailable: repeats.available,
     nextFillDate: nextFillDateOf(request, dispenseRequest),
-    rexallStoreUrl: rexallStoreUrlOf(request),
-    shoppersStoreUrl: shoppersStoreUrlOf(request),
+    rexallStoreUrl: rexallStoreUrlOf(request, dispenseRequest),
+    shoppersStoreUrl: shoppersStoreUrlOf(request, dispenseRequest),
   }
 }
 
