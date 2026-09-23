@@ -50,19 +50,15 @@ the domain has to be staged into one directory tree. Each assembled section is a
 workspace `devDependency` of this package, so the workspace's own build ordering
 (`vp run pack`, i.e. `vp run --cache -r build`) builds every section before this
 package's build stages them. Doing that here keeps each app's own build config
-untouched — in particular the medications app, the Web Trace app and the
-Importer keep building into `slices/apps/self-hosted-apps/medication`,
-`slices/apps/self-hosted-apps/web-trace` and
-`slices/apps/self-hosted-apps/importer`, where they are also vendored as Tauri
-resources. Those paths are each a seeded app row's (or its debug-only `-dev`
-row's) `content_folder`, so this package only copies from them rather than
-redirecting them. The server-docs console builds into its own `dist/` and is
-copied verbatim, and so is the OHIF viewer, whose `dist/` is a downloaded
-prebuilt bundle (or a stub page while none is pinned) rather than a Vite build.
+untouched: every section builds into its own package — the medications app, the
+Web Trace app, the Importer and the server-docs console into their default
+`dist/`, the owner UI into `dist-web/` — and this package only copies from there.
+The OHIF viewer's `dist/` is a downloaded prebuilt bundle (or a stub page while
+none is pinned) rather than a Vite build, and is copied verbatim too.
 
-Each of those three apps sets a relative `base: './'` in its own Vite config,
-which is what lets the same build serve from a loopback origin's root on device
-and from a subpath here.
+Each of the three SMART apps sets a relative `base: './'` in its own Vite
+config, which is what lets the same build serve from a subpath here and from a
+loopback origin's root under its dev server.
 
 The `CNAME` file (the custom domain) comes from `marketing-website`'s `public/`
 and lands at the root of the artifact, which is the only place GitHub Pages

@@ -210,58 +210,66 @@ describe('site-wide files', () => {
 })
 
 describe('layout reconciliation with the packages it assembles', () => {
-  it('reads the medications source dir from the medications app vite config', () => {
-    // Deriving the expected path from the config (rather than pinning a second
-    // literal copy of it) is what makes this test able to fail if the
-    // medications app ever moves its build output.
-    const configPath = join(repoRoot, 'apps', 'medications-app', 'vite.config.ts')
-    const config = readFileSync(configPath, 'utf8')
-    const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
-    expect(declared).toBeDefined()
-    const expected = resolve(join(repoRoot, 'apps', 'medications-app'), declared ?? '')
-    expect(join(repoRoot, sectionFor('medications-app').sourceDir)).toBe(expected)
+  /**
+   * The three first-party SMART apps: each builds into its own package's
+   * default `dist/` and the site copies it from there. `appDir` is the folder
+   * under `apps/`, which differs from the package name for two of them.
+   */
+  const firstPartyApps = [
+    { packageName: 'medications-app', appDir: 'medications-app' },
+    { packageName: 'wildflower-web-trace', appDir: 'web-trace' },
+    { packageName: 'wildflower-importer', appDir: 'importer-web' },
+  ] as const
+
+  it.each(firstPartyApps)(
+    'reads $packageName from the default dist its vite config leaves alone',
+    ({ packageName, appDir }) => {
+      // No `build.outDir`, so Vite writes the package's own `dist/`. If the app
+      // ever redirects its output, this fails rather than the deploy silently
+      // publishing a stale copy.
+      const config = readFileSync(join(repoRoot, 'apps', appDir, 'vite.config.ts'), 'utf8')
+      expect(config).not.toMatch(/\boutDir\s*:/)
+      expect(sectionFor(packageName).sourceDir).toBe(`apps/${appDir}/dist`)
+    }
+  )
+
+  it('sources the first-party apps only from their own packages', () => {
+    // Nothing the site publishes is read out of the vendored self-hosted-apps
+    // tree: that directory holds only the third-party patient-browser build.
+    for (const section of siteSections) {
+      expect(section.sourceDir.startsWith('slices/apps/self-hosted-apps')).toBe(false)
+    }
   })
 
-  it('reads the web trace source dir from the web trace app vite config', () => {
-    // Same reasoning as the medications case: derive the path rather than
-    // pinning a second literal copy, so this fails if the app moves its output.
-    const configPath = join(repoRoot, 'apps', 'web-trace', 'vite.config.ts')
-    const config = readFileSync(configPath, 'utf8')
-    const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
-    expect(declared).toBeDefined()
-    const expected = resolve(join(repoRoot, 'apps', 'web-trace'), declared ?? '')
-    expect(join(repoRoot, sectionFor('wildflower-web-trace').sourceDir)).toBe(expected)
-  })
+  it.each(firstPartyApps)(
+    'requires exactly the HTML entries $packageName builds',
+    ({ packageName, appDir }) => {
+      // The app declares its entries explicitly, so the required files can be
+      // reconciled against them: adding or dropping a SMART entry there without
+      // updating the layout fails here instead of publishing a section whose
+      // launch endpoint 404s.
+      const dir = join(repoRoot, 'apps', appDir)
+      const config = readFileSync(join(dir, 'vite.config.ts'), 'utf8')
+      const entries = [...config.matchAll(/'\.\/([\w-]+\.html)'/g)].map(([, file]) => file ?? '')
+      expect(entries.length).toBeGreaterThan(0)
+      expect([...sectionFor(packageName).requiredFiles].toSorted()).toEqual(entries.toSorted())
+      // The entries the config names are real files in the app, so the build
+      // genuinely produces the required outputs.
+      for (const entry of entries) expect(existsSync(join(dir, entry))).toBe(true)
+    }
+  )
 
-  it('requires exactly the HTML entries the web trace app builds', () => {
-    // The app declares its entries explicitly, so the required files can be
-    // reconciled against them: adding or dropping a SMART entry there without
-    // updating the layout fails here instead of publishing a section whose
-    // launch endpoint 404s.
-    const appDir = join(repoRoot, 'apps', 'web-trace')
-    const config = readFileSync(join(appDir, 'vite.config.ts'), 'utf8')
-    const entries = [...config.matchAll(/'\.\/([\w-]+\.html)'/g)].map(([, file]) => file ?? '')
-    expect(entries.length).toBeGreaterThan(0)
-    expect([...sectionFor('wildflower-web-trace').requiredFiles].toSorted()).toEqual(
-      entries.toSorted()
-    )
-    // The entries the config names are real files in the app, so the build
-    // genuinely produces the required outputs.
-    for (const entry of entries) expect(existsSync(join(appDir, entry))).toBe(true)
-  })
-
-  it('reads the importer source dir from the importer app vite config', () => {
-    // Same derivation as the medications app above, and for the same reason:
-    // the section has to follow the app if it ever moves its build output. The
-    // app folder is `apps/importer-web`; the package (and the section's
-    // `packageName`) is `wildflower-importer`.
-    const configPath = join(repoRoot, 'apps', 'importer-web', 'vite.config.ts')
-    const config = readFileSync(configPath, 'utf8')
-    const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
-    expect(declared).toBeDefined()
-    const expected = resolve(join(repoRoot, 'apps', 'importer-web'), declared ?? '')
-    expect(join(repoRoot, sectionFor('wildflower-importer').sourceDir)).toBe(expected)
-  })
+  it.each(firstPartyApps)(
+    'reports a missing $packageName entry as a required-path miss',
+    ({ packageName }) => {
+      // Assembly exits non-zero whenever this list is non-empty; dropping one
+      // app's launch endpoint from an otherwise complete site must land in it.
+      const resolved = resolveSections(repoRoot, outDir)
+      const [section] = resolveSections(repoRoot, outDir, [sectionFor(packageName)])
+      const absent = join(section?.to ?? '', 'launch.html')
+      expect(missingRequiredPaths(resolved, (path) => path !== absent)).toEqual([absent])
+    }
+  )
 
   it('points at the marketing build output that carries the CNAME', () => {
     expect(existsSync(join(repoRoot, 'apps', 'marketing-website', 'public', 'CNAME'))).toBe(true)
@@ -279,9 +287,9 @@ describe('layout reconciliation with the packages it assembles', () => {
   })
 
   it('reads the hosted owner UI source dir from the wildflower-react web vite config', () => {
-    // Same derivation as the medications/web-trace cases: pin the section to the
-    // `outDir` the app's hosted (`web`) build declares, so this fails rather
-    // than silently publishing a stale copy if that build ever moves its output.
+    // Pin the section to the `outDir` the app's hosted (`web`) build declares,
+    // so this fails rather than silently publishing a stale copy if that build
+    // ever moves its output.
     const configPath = join(repoRoot, 'apps', 'wildflower-react', 'vite.config.web.ts')
     const config = readFileSync(configPath, 'utf8')
     const declared = /outDir:\s*'([^']+)'/.exec(config)?.[1]
